@@ -1,5 +1,6 @@
 import base64;
 import json;
+import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo {
@@ -26,10 +27,61 @@ obj UnitProducts {
         ct_file_deps: list[str] = [],
         ct_body_deps: list[str] = [],
         ct_def_deps: list[str] = [],
+        def_spans: list[str] = [],
         app: str = "",
         persistence: list[str] = [],
         import_edges: list[str] = [],
         client_manifest: str = "";
+}
+
+def definition_span_rows(tree: uni.Module) -> list[str] {
+    rows: list[str] = [];
+    for ability in tree.get_all_sub_nodes(uni.Ability) {
+        note_definition_span(rows, ability, uni.definition_qualname(ability));
+    }
+    for arch in tree.get_all_sub_nodes(uni.Archetype) {
+        note_definition_span(rows, arch, uni.definition_qualname(arch));
+    }
+    for enum_def in tree.get_all_sub_nodes(uni.Enum) {
+        note_definition_span(rows, enum_def, uni.definition_qualname(enum_def));
+    }
+    for impl_def in tree.get_all_sub_nodes(uni.ImplDef) {
+        parts: list[str] = [part.sym_name for part in impl_def.target];
+        note_definition_span(rows, impl_def, ".".join(parts));
+    }
+    return rows;
+}
+
+def note_definition_span(rows: list[str], definition: uni.UniNode, qualname: str) {
+    loc = definition.loc;
+    if not qualname or loc is None or not loc.mod_path {
+        return;
+    }
+    rows.append(
+        os.path.realpath(loc.mod_path)
+            + DEF_DEP_SEP
+            + qualname
+            + DEF_DEP_SEP
+            + str(loc.pos_start)
+            + ","
+            + str(loc.pos_end)
+    );
+}
+
+def dependency_span_rows(module: uni.Module, program: JacProgram) -> list[str] {
+    rows: list[str] = [];
+    seen: set[str] = set();
+    for (path, _) in module.ct_def_deps {
+        if path in seen {
+            continue;
+        }
+        seen.add(path);
+        dep = program.mod.hub.get(path);
+        if dep is not None {
+            rows.extend(definition_span_rows(dep));
+        }
+    }
+    return rows;
 }
 
 def import_edge_rows(module: uni.Module) -> list[str] {
@@ -389,6 +441,9 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
             path + DEF_DEP_SEP + qualname for (path, qualname) in module.ct_def_deps
         ]
     );
+    if module.ct_def_deps {
+        products.def_spans = dependency_span_rows(module, program);
+    }
     owned: dict[(str, Info)] = {};
     for scope in program.analysis.mtir_owned.get(module.loc.mod_path, []) {
         info = program.mtir_map.get(scope);
@@ -430,6 +485,7 @@ def products_record(products: UnitProducts) -> dict[str, any] {
         "ct_file_deps": list(products.ct_file_deps),
         "ct_body_deps": list(products.ct_body_deps),
         "ct_def_deps": list(products.ct_def_deps),
+        "def_spans": list(products.def_spans),
         "app": products.app,
         "persistence": list(products.persistence),
         "import_edges": list(products.import_edges),
@@ -449,6 +505,7 @@ def products_from_record(raw: dict[str, any]) -> UnitProducts {
         ct_file_deps=json_str_list(raw.get("ct_file_deps")),
         ct_body_deps=json_str_list(raw.get("ct_body_deps")),
         ct_def_deps=json_str_list(raw.get("ct_def_deps")),
+        def_spans=json_str_list(raw.get("def_spans")),
         app=str(raw.get("app", "")),
         persistence=json_str_list(raw.get("persistence")),
         import_edges=json_str_list(raw.get("import_edges")),

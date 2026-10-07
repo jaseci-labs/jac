@@ -156,12 +156,42 @@ def kernel_compile_reported(
     return compiled;
 }
 
+def last_compiled_native(path: str) -> bool {
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SEC_NBITCODE,
+        SEC_NOBJ,
+        SECTIONS_MAGIC,
+        get_module_cache_path,
+        read_sections
+    }
+    try {
+        data = get_module_cache_path(path).read_bytes();
+        found = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+        if found < 0 {
+            return False;
+        }
+        held = read_sections(data, found + len(SECTIONS_MAGIC));
+    } except Exception {
+        return False;
+    }
+    return SEC_NBITCODE in held or SEC_NOBJ in held;
+}
+
 def host_kernel_compile(
     host: HostServices, program: JacProgram, path: str, options: CompileOptions
 ) -> (CompileReport | None) {
     (routed, in_process) = kernel_route(program, path);
     if not routed or options.skip_analysis {
         return None;
+    }
+    if last_compiled_native(path) {
+        return CompileReport(
+            analysis=AnalysisReport(
+                entry_path=path,
+                modules=[ModuleReport(path=os.path.realpath(path), native=True)]
+            )
+        );
     }
     ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
     if ready is not None {

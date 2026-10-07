@@ -1065,51 +1065,66 @@ def module_ct_deps_section(mod: any) -> (bytes | None) {
 
 glob _DEFINITION_TEXTS: dict[str, tuple[str, dict[str, list[str]]]] = {};
 
-def _definition_texts(path: str) -> dict[str, list[str]] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import jaclang.compiler.frontend.unitree as uni;
-    import from jaclang.compiler.frontend.unitree { definition_qualname }
+def _texts_of_spans(real: str, text: str, rows: list[str]) -> dict[str, list[str]] {
+    import from jaclang.compiler.driver.unit_products { DEF_DEP_SEP }
+    texts: dict[str, list[str]] = {};
+    for row in rows {
+        parts = row.split(DEF_DEP_SEP);
+        if len(parts) != 3 or parts[0] != real {
+            continue;
+        }
+        (start, _, stop) = parts[2].partition(",");
+        texts.setdefault(parts[1], []).append(text[int(start):int(stop)]);
+    }
+    return texts;
+}
+
+def _source_and_digest(path: str) -> (tuple[str, str] | None) {
     try {
         content_digest = compute_content_sha256(path);
         with open(path, encoding="utf-8") as handle {
-            text = handle.read();
+            return (content_digest, handle.read());
         }
     } except OSError {
+        return None;
+    }
+}
+
+def seed_definition_texts(rows: list[str]) {
+    import from jaclang.compiler.driver.unit_products { DEF_DEP_SEP }
+    files: set[str] = {row.split(DEF_DEP_SEP)[0] for row in rows};
+    for real in files {
+        held = _source_and_digest(real);
+        if held is None {
+            continue;
+        }
+        cached = _DEFINITION_TEXTS.get(real);
+        if cached is None or cached[0] != held[0] {
+            _DEFINITION_TEXTS[real] = (held[0], _texts_of_spans(real, held[1], rows));
+        }
+    }
+}
+
+def _definition_texts(path: str) -> dict[str, list[str]] {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.unit_products { definition_span_rows }
+    real = os.path.realpath(path);
+    held = _source_and_digest(real);
+    if held is None {
         return {};
     }
-    cached = _DEFINITION_TEXTS.get(path);
+    (content_digest, text) = held;
+    cached = _DEFINITION_TEXTS.get(real);
     if cached is not None and cached[0] == content_digest {
         return cached[1];
     }
     texts: dict[str, list[str]] = {};
-    tree: (uni.Module | None) = None;
     try {
-        tree = JacProgram().parse_source(text, path);
+        texts = _texts_of_spans(
+            real, text, definition_span_rows(JacProgram().parse_source(text, real))
+        );
     } except Exception {}
-    if tree is not None {
-        definitions: list[uni.UniNode] = [
-            *tree.get_all_sub_nodes(uni.Ability),
-            *tree.get_all_sub_nodes(uni.Archetype),
-            *tree.get_all_sub_nodes(uni.Enum)
-        ];
-        for definition in definitions {
-            qualname = definition_qualname(definition);
-            if qualname and definition.loc {
-                texts.setdefault(qualname, []).append(
-                    text[definition.loc.pos_start:definition.loc.pos_end]
-                );
-            }
-        }
-        for impl_def in tree.get_all_sub_nodes(uni.ImplDef) {
-            qualname = ".".join(part.sym_name for part in impl_def.target);
-            if qualname and impl_def.loc {
-                texts.setdefault(qualname, []).append(
-                    text[impl_def.loc.pos_start:impl_def.loc.pos_end]
-                );
-            }
-        }
-    }
-    _DEFINITION_TEXTS[path] = (content_digest, texts);
+    _DEFINITION_TEXTS[real] = (content_digest, texts);
     return texts;
 }
 

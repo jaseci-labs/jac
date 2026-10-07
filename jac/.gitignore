@@ -112,6 +112,8 @@ libjac_*.so
 libjac_*.dylib
 libjac_*.so.layout.json
 libjac_*.dylib.layout.json
+libjac_*.so.stamp
+libjac_*.dylib.stamp
 # Zig-built libjacpyembed desktop shim, placed in-tree per host platform.
 libjacpyembed.so
 libjacpyembed.dylib

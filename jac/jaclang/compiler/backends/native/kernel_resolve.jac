@@ -290,6 +290,31 @@ def _sha256_file(path: str) -> str {
     return h.hexdigest();
 }
 
+def _stamped_sha256(path: str) -> str {
+    import json;
+    st = os.stat(path);
+    stamp_file = path + ".stamp";
+    try {
+        with open(stamp_file, "r", encoding="utf-8") as f {
+            held = json.load(f);
+        }
+        if held.get("size") == st.st_size and held.get("mtime_ns") == st.st_mtime_ns {
+            return str(held.get("sha256", ""));
+        }
+    } except (OSError, ValueError, AttributeError) {}
+    digest = _sha256_file(path);
+    try {
+        scratch_file = stamp_file + f".{os.getpid()}.tmp";
+        with open(scratch_file, "w", encoding="utf-8") as f {
+            json.dump(
+                {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "sha256": digest}, f
+            );
+        }
+        os.replace(scratch_file, stamp_file);
+    } except OSError {}
+    return digest;
+}
+
 def _sidecar_matches_sources(sidecar: dict[str, any]) -> bool {
     """Acceptance runs while the bootstrap tier is still compiling, so it
     reaches only the cache-key module; the link plan, which the legacy
@@ -374,7 +399,7 @@ def _accept_in_tree(lib_path: str) -> (ResolvedKernel | None) {
         return None;
     }
     try {
-        if sidecar.get("artifact_sha256") != _sha256_file(lib_path) {
+        if sidecar.get("artifact_sha256") != _stamped_sha256(lib_path) {
             return None;
         }
     } except OSError {

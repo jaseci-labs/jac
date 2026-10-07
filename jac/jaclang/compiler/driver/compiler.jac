@@ -20,6 +20,7 @@ import from jaclang.compiler.driver.jir {
     FLAG_PRECOMPILED,
     carried_module_bytecode,
     ct_deps_section,
+    seed_definition_texts,
     compute_content_sha256,
     get_module_cache_path,
     is_module_cache_valid,
@@ -156,6 +157,7 @@ def unit_sections(
         sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
     }
     if products.ct_file_deps or products.ct_body_deps or products.ct_def_deps {
+        seed_definition_texts(products.def_spans);
         sections[SEC_CTDEPS] = ct_deps_section(
             products.ct_file_deps,
             products.ct_body_deps,

@@ -84,8 +84,15 @@ class NativeCompiler {
         self._keep = [];
         self.classes = {};
         self._value_rows: dict[str, int] = {};
+        self._registered = False;
         self._bind();
-        self._register();
+    }
+
+    def _ensure_registered(self: NativeCompiler) {
+        if not self._registered {
+            self._registered = True;
+            self._register();
+        }
     }
 
     def _bind(self: NativeCompiler) {
@@ -496,14 +503,17 @@ class NativeCompiler {
     }
 
     def annex(self: NativeCompiler, annex: WovenAnnex) -> int {
+        self._ensure_registered();
         return self._call_strs("jc_annex", annex.source, annex.path, annex.consumer);
     }
 
     def run(self: NativeCompiler, source: str, path: str) -> int {
+        self._ensure_registered();
         return self._call_strs("jc_run", source, path);
     }
 
     def prepare_early(self: NativeCompiler, context: str) {
+        self._ensure_registered();
         self.lib.jc_set_early({"server": 1, "client": 2, "native": 3}.get(context, 0));
     }
 

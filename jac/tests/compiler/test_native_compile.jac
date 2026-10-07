@@ -982,3 +982,45 @@ test "an empty package init compiles in the session that reaches it" {
         assert init_unit is not None and init_unit.jcir;
     }
 }
+
+"""A module placed native is compiled by the host, where the native backend
+runs, and whether a module ends up native is only known once it has been
+analysed. A module whose last compile produced native code is therefore
+handed to the host without a kernel session first: the kernel's analysis of
+it would be thrown away and done again."""
+test "a module that last compiled to native code skips the kernel session" {
+    import jaclang.project.kernel_compile as kernel_compile_mod;
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        entry_file = str(base / 'main.jac');
+        assert not kernel_compile_mod.last_compiled_native(entry_file);
+        sessions: list[str] = [];
+        def counted(*args: any, **kwargs: any) -> any {
+            sessions.append(str(args[2]));
+            raise AssertionError("a kernel session ran");
+        }
+        def routed(program: JacProgram, path: str) -> tuple[bool, bool] {
+            return (True, True);
+        }
+        def was_native(path: str) -> bool {
+            return os.path.realpath(path) == entry_file;
+        }
+        with patch.object(kernel_compile_mod, "kernel_route", routed) {
+            with patch.object(kernel_compile_mod, "kernel_compile_reported", counted) {
+                with patch.object(
+                    kernel_compile_mod, "last_compiled_native", was_native
+                ) {
+                    outcome = kernel_compile_mod.host_kernel_compile(
+                        active_host(), JacProgram(), entry_file, compile_options()
+                    );
+                }
+            }
+        }
+        assert not sessions , sessions;
+        assert outcome is not None and not outcome.units;
+        placed = outcome.analysis.module(entry_file);
+        assert placed is not None and placed.native;
+    }
+}
