@@ -203,6 +203,7 @@ obj KernelInputs {
         scanned_modules: int = 0,
         emit_paths: list[str] = [],
         emit_closure: bool = False,
+        native_codegen: bool = False,
         emit_of: dict[str, bool] = {},
         manifest: ManifestSets = ManifestSets(),
         layout: LayoutTables = LayoutTables(),
@@ -709,6 +710,7 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "scanned_modules": inputs.scanned_modules,
         "emit_paths": list(inputs.emit_paths),
         "emit_closure": inputs.emit_closure,
+        "native_codegen": inputs.native_codegen,
         "manifest": manifest_to_dict(inputs.manifest),
         "layout": layout_to_dict(inputs.layout)
     };
@@ -949,6 +951,7 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         scanned_modules=json_int(raw.get("scanned_modules"), 0),
         emit_paths=json_str_list(raw.get("emit_paths")),
         emit_closure=bool(raw.get("emit_closure", False)),
+        native_codegen=bool(raw.get("native_codegen", False)),
         manifest=manifest_from_dict(json_map(raw.get("manifest"))),
         layout=layout_from_dict(json_map(raw.get("layout")))
     );

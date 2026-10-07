@@ -64,6 +64,7 @@ glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
          "lint_settings"
      ),
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
+     KERNEL_NATIVE_ENV: str = "JAC_KERNEL_NATIVE",
      _TOTALS: list[HostCensus] = [],
      _EXIT_REPORT: list[bool] = [];
 
@@ -482,6 +483,7 @@ def kernel_snapshot(
 ) -> KernelSnapshot {
     seed = session_inputs(host, program, path, options);
     seed.emit_closure = emit_closure;
+    seed.native_codegen = bool(os.environ.get(KERNEL_NATIVE_ENV));
     snapshot = KernelSnapshot(
         host=host, program=program, options=options, seed=seed, emit_cached=emit_cached
     );
