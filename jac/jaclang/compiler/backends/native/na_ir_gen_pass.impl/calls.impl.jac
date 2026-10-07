@@ -1674,9 +1674,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    import from jaclang.compiler.types { types as jtypes }
     _callee_t = nd.target?.type;
-    if isinstance(_callee_t, jtypes.ClassType)
+    if isinstance(_callee_t, ClassType)
         and _callee_t.private.distinct_key is not None {
         _cast_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
         if len(_cast_params) == 1 {
