@@ -91,7 +91,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
         if (_key_sz > 0 and not is_bytes_key and not is_str_key)
         else None;
     if _tkf is not None {
-        bhe.ret(self._emit_tuple_key_hash(bhe, hash_fn.args[0]));
+        _tkh = self._emit_tuple_key_hash(bhe, hash_fn.args[0]);
+        bhe.ret(
+            bhe.xor(_tkh, bhe.lshr(_tkh, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     } elif is_str_key and not is_bytes_key and _key_sz == 0 {
         bhe.ret(bhe.call(self._emit_cstr_hash_fn(), [hash_fn.args[0]], name="h"));
     } elif is_bytes_key or _key_sz > 0 {
@@ -143,12 +146,21 @@ impl NaIRGenPass._emit_hash_core_helpers(
         brt.ret(brt.load(h_a, name="hf"));
     } elif isinstance(key_type, ir.PointerType) {
         ki = bhe.ptrtoint(hash_fn.args[0], i64, name="ki");
-        bhe.ret(bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="h"));
+        _hk = bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="hk");
+        bhe.ret(
+            bhe.xor(_hk, bhe.lshr(_hk, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     } elif isinstance(key_type, ir.DoubleType) {
         kbits = bhe.bitcast(hash_fn.args[0], i64, name="kbits");
-        bhe.ret(bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="h"));
+        _hk = bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="hk");
+        bhe.ret(
+            bhe.xor(_hk, bhe.lshr(_hk, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     } else {
-        bhe.ret(bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="h"));
+        _hk = bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="hk");
+        bhe.ret(
+            bhe.xor(_hk, bhe.lshr(_hk, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     }
 
     find_fnty = ir.FunctionType(i64, [cont_ptr_type, key_type, i64]);
