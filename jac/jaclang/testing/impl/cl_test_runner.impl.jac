@@ -428,13 +428,12 @@ impl _run_harness(
     timeout: float,
     source_path: (str | None) = None
 ) -> list[ClTestResult] {
-    import from jaclang.client.bun_installer { get_bun }
+    import from jaclang.client.js_engine { get_js_engine }
 
-    bun = get_bun();
-    if bun is None {
+    js_engine = get_js_engine();
+    if js_engine is None {
         raise RuntimeError(
-            "bun is required to run client (cl) tests but could not be located "
-            "or installed."
+            "js_engine is required to run client (cl) tests but could not be located."
         );
     }
 
@@ -512,7 +511,7 @@ impl _run_harness(
         harness_path.write_text(harness, encoding="utf-8");
 
         proc = subprocess.run(
-            [bun, "run", str(harness_path)],
+            [js_engine, "run", str(harness_path)],
             cwd=str(work_dir),
             capture_output=True,
             text=True,

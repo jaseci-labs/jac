@@ -79,10 +79,10 @@ def build(base: Path) {
             build_native_product(directory, application['native']);
         }
         if application.get('client_dist') {
-            bun = shutil.which('bun');
-            if bun {
-                subprocess.run([bun, 'install'], cwd=directory, check=True);
-                subprocess.run([bun, 'run', 'build'], cwd=directory, check=True);
+            js_engine = shutil.which('js_engine');
+            if js_engine {
+                subprocess.run([js_engine, 'install'], cwd=directory, check=True);
+                subprocess.run([js_engine, 'run', 'build'], cwd=directory, check=True);
             } else {
                 subprocess.run(['npm', 'install'], cwd=directory, check=True);
                 subprocess.run(['npm', 'run', 'build'], cwd=directory, check=True);

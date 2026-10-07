@@ -164,7 +164,7 @@ def _read(path: str) -> str {
 
 
 """The raw-tree control build, retried on the same transient install/network
-markers the deploy retries on, so a flaky bun install cannot fail the VITE_
+markers the deploy retries on, so a flaky js_engine install cannot fail the VITE_
 leg for a reason unrelated to what it asserts."""
 def _control_build(cwd: str) -> any {
     attempt = 0;

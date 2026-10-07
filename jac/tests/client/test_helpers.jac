@@ -32,26 +32,26 @@ def get_jac_command -> list[str] {
     return jac_command();
 }
 
-"""Get environment dict with bun in PATH."""
-def get_env_with_bun -> dict[str, str] {
-    import from jaclang.client { get_bun }
+"""Get environment dict with js_engine in PATH."""
+def get_env_with_js_engine -> dict[str, str] {
+    import from jaclang.client { get_js_engine }
     env = os.environ.copy();
-    bun_path = get_bun();
-    if not bun_path {
-        bun_path = shutil.which("bun");
+    js_engine_path = get_js_engine();
+    if not js_engine_path {
+        js_engine_path = shutil.which("js_engine");
     }
-    if bun_path {
-        bun_dir = str(Path(bun_path).parent);
+    if js_engine_path {
+        engine_dir = str(Path(js_engine_path).parent);
         current_path = env.get("PATH", "");
-        if bun_dir not in current_path {
-            env["PATH"] = f"{bun_dir}:{current_path}";
+        if engine_dir not in current_path {
+            env["PATH"] = f"{engine_dir}:{current_path}";
         }
     }
     return env;
 }
 
 # Backward compatibility alias
-glob get_env_with_npm = get_env_with_bun;
+glob get_env_with_npm = get_env_with_js_engine;
 
 """Block until a TCP port is accepting connections or timeout."""
 def wait_for_port(
@@ -152,7 +152,7 @@ def start_app_server(
     import tempfile;
     port = get_free_port();
     jac_cmd = get_jac_command();
-    env = get_env_with_bun();
+    env = get_env_with_js_engine();
     args = [*jac_cmd, "run", "--serve"];
     if extra_args {
         args = [*args, *extra_args];

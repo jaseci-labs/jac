@@ -2,7 +2,7 @@
 
 Nothing here talks to a backend, so the module never imports `@jac/runtime`.
 The runner still has to neutralize the `fake-npm-pkg` import, because the
-harness runs in a sealed temp dir with no `node_modules` for bun to resolve
+harness runs in a sealed temp dir with no `node_modules` for js_engine to resolve
 it against.
 """
 

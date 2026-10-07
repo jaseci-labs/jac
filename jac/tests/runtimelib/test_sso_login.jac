@@ -1,4 +1,4 @@
-"""Client-runtime SSO login tests (run under bun via the cl test runner).
+"""Client-runtime SSO login tests (run under js_engine via the cl test runner).
 
 These exercise the real compiled `@jac/runtime` `jacSsoLogin` with `fetch` and
 the desktop-shell `window` flags mocked, so no webview, OAuth provider, or

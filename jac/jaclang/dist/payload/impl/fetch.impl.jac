@@ -15,7 +15,6 @@ import from jaclang.dist.payload.fsutil {
     die,
     extract_tar,
     file_exists,
-    find_sum_line,
     host_os_arch,
     log,
     make_dirs,
@@ -84,18 +83,6 @@ impl http_get_range(url: str, start: int, end: int) -> bytes {
         );
     }
     return body;
-}
-
-impl bun_asset_name(osarch: str) -> str | None {
-    return {
-        "macos-aarch64": "bun-darwin-aarch64",
-        "macos-x86_64": "bun-darwin-x64",
-        "linux-x86_64": "bun-linux-x64",
-        "linux-aarch64": "bun-linux-aarch64",
-        "windows-x86_64": "bun-windows-x64"
-    }.get(
-        osarch
-    );
 }
 
 def _gunzip(gz: bytes) -> bytes {
@@ -371,85 +358,4 @@ impl fetch_llvm_slice(dest: str, rel: LlvmSlice, src: HttpSource, macos: bool) {
         i = rb + 1;
     }
     log(f"fetch-llvm: slice extracted {written} members");
-}
-
-impl unzip_member_by_suffix(zip_bytes: bytes, suffix: str) -> bytes {
-    if len(zip_bytes) < 22 {
-        die("fetch-bun: zip too small");
-    }
-    (cd_size, cd_off) = parse_eocd(zip_bytes, "fetch-bun");
-    if cd_off + cd_size > len(zip_bytes) {
-        die("fetch-bun: central directory out of range");
-    }
-    cd_end = cd_off + cd_size;
-    p = cd_off;
-    while p + 46 <= cd_end and zip_bytes[p:p + 4] == ZIP_CDH_SIG {
-        method = rd_u16(zip_bytes, p + 10);
-        csize = rd_u32(zip_bytes, p + 20);
-        nlen = rd_u16(zip_bytes, p + 28);
-        elen = rd_u16(zip_bytes, p + 30);
-        clen = rd_u16(zip_bytes, p + 32);
-        lho = rd_u32(zip_bytes, p + 42);
-        name = zip_bytes[p + 46:p + 46 + nlen].decode("utf-8", errors="replace");
-        if name.endswith(suffix) {
-            if lho + 30 > len(zip_bytes) or zip_bytes[lho:lho + 4] != ZIP_LFH_SIG {
-                die(f"fetch-bun: bad local header for {name}");
-            }
-            data_off = lho
-                + 30
-                + rd_u16(zip_bytes, lho + 26)
-                + rd_u16(zip_bytes, lho + 28);
-            if data_off + csize > len(zip_bytes) {
-                die(f"fetch-bun: member data out of range for {name}");
-            }
-            return inflate_member(
-                method, zip_bytes[data_off:data_off + csize], "fetch-bun"
-            );
-        }
-        p += 46 + nlen + elen + clen;
-    }
-    raise PayloadDie(f"fetch-bun: no member ending in '{suffix}' found in zip");
-}
-
-impl fetch_bun(osarch: str, dest: str) {
-    is_windows = osarch.startswith("windows");
-    bun_name = "bun.exe" if is_windows else "bun";
-    out_path = os.path.join(dest, bun_name);
-    if file_exists(out_path) {
-        log(f"fetch-bun: already present at {out_path}");
-        return;
-    }
-
-    asset = bun_asset_name(osarch);
-    if asset is None {
-        die(f"fetch-bun: unsupported platform '{osarch}'");
-    }
-    zip_name = f"{asset}.zip";
-    url = f"{BUN_BASE}/bun-v{BUN_VERSION}/{zip_name}";
-
-    log(f"fetch-bun: downloading {zip_name}");
-    zip_bytes = http_get(url);
-
-    sums = http_get(f"{BUN_BASE}/bun-v{BUN_VERSION}/SHASUMS256.txt").decode(
-        "utf-8", errors="replace"
-    );
-    expected = find_sum_line(sums, zip_name);
-    if expected is None {
-        die(f"fetch-bun: no checksum for {zip_name} in SHASUMS256.txt");
-    }
-    actual = sha256_hex(zip_bytes);
-    if actual != expected {
-        die(
-            f"fetch-bun: checksum mismatch for {zip_name}\n  expected {expected}\n  actual   {actual}"
-        );
-    }
-
-    bun_bytes = unzip_member_by_suffix(zip_bytes, "/" + bun_name);
-
-    make_dirs(dest);
-    write_bytes(out_path, bun_bytes);
-    if not file_exists(out_path) {
-        die(f"fetch-bun: extract produced no {bun_name}");
-    }
-    log(f"fetch-bun: ready at {out_path} ({len(bun_bytes) >> 20} MiB)");
 }

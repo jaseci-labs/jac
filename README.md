@@ -244,7 +244,7 @@ One download replaces the interpreter, the JS runtime, the compilers and linker,
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/one-binary-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/one-binary-light.svg">
-    <img alt="The jac binary links in CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src=".github/assets/readme/one-binary-light.svg" width="880">
+    <img alt="The jac binary links in CPython, js_engine, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src=".github/assets/readme/one-binary-light.svg" width="880">
   </picture>
 </div>
 
@@ -259,7 +259,7 @@ Here is the actual anatomy. The `jac` you download is a small native **launcher 
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/binary-anatomy-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/binary-anatomy-light.svg">
-    <img alt="Anatomy of the jac binary: a native launcher stub plus a runtime payload carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives" src=".github/assets/readme/binary-anatomy-light.svg" width="880">
+    <img alt="Anatomy of the jac binary: a native launcher stub plus a runtime payload carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the js_engine executable, vendored typeshed stubs, and static libc archives" src=".github/assets/readme/binary-anatomy-light.svg" width="880">
   </picture>
 </div>
 
@@ -268,10 +268,10 @@ Here is the actual anatomy. The `jac` you download is a small native **launcher 
 | **Launcher stub** | The `jac` file itself: native machine code linked against libc only. Everything below rides in the appended payload | -- |
 | **CPython 3.14** | A private [python-build-standalone](https://github.com/astral-sh/python-build-standalone) build (PGO+LTO, stripped), `dlopen`ed by the launcher at startup: your system Python is never consulted | Python, pyenv, conda |
 | **Jac compiler + runtime** | Precompiled to JIR in the payload's private site: the REST server (`jac run`), client framework, K8s deployer (`jac scale deploy`), and byLLM (`by llm()`). Their optional third-party deps (litellm, pymongo, ...) resolve per-project via `jac install` | Flask, FastAPI, Express · Docker, kubectl, Helm · LangChain |
-| **Bun** | The real Bun executable, carried inside the payload and invoked by absolute path, never on your `PATH` | Node.js, npm, npx, yarn |
+| **js_engine** | A JavaScript runtime written in Jac and compiled by the Jac native compiler, carried inside the payload and invoked by absolute path, never on your `PATH` | Node.js, npm, npx, yarn |
 | **LLVM 22** | Statically linked into a single `jacllvm` shared library behind the llvmlite ABI | gcc, clang |
 | **Linker + C floor** | Jac's own linker emits ELF / Mach-O / PE / wasm directly. Static libc + crt archives, a musl runtime (Linux), and wasm32 libc bitcode are vendored in the payload | ld, lld, make, cmake, emscripten |
-| **Package manager** | pip runs inside the private interpreter, npm resolution goes through the carried Bun: one `jac.toml`, an automatic `.jac/venv`, and `jac x` to run any installed CLI tool | pip, pipx, uv, poetry, venv/virtualenv |
+| **Package manager** | pip runs inside the private interpreter, npm resolution goes through the carried js_engine: one `jac.toml`, an automatic `.jac/venv`, and `jac x` to run any installed CLI tool | pip, pipx, uv, poetry, venv/virtualenv |
 | **Type checker** | Built into the compiler (`jac check`), with the typeshed stdlib stubs vendored at a pinned commit | mypy, pyright, tsc |
 | **Dev tooling** | Formatter, test runner, language server, and MCP server are modules of the same site (`jac fmt` / `jac test` / `jac lsp` / `jac mcp`) | black, ruff, pytest, jest |
 
@@ -279,13 +279,13 @@ Full story: [One Binary, Build Anything](https://www.jaclang.org/docs/latest/qui
 
 </details>
 
-The anatomy records a design position. The components written in Jac (the compiler and runtime at roughly 190,000 lines, the type checker, the formatter and test tooling, and the linkers) sit inside the compiler's own jurisdiction. The carried engines (CPython, Bun, LLVM, and the C runtime archives) are included for feature completeness: each provides a level of compatibility and performance that a reimplementation would not, and each is reached across an ABI, built by a foreign toolchain, and outside the jurisdiction of the language's own verifier. We call the division the **self-hosting frontier**. The design goal is to replace each carried engine with a Jac implementation, so that the entire artifact above the operating system is written in the language it ships, and gradual borrow checking removes the reason these components were written in C and C++ in the first place. The frontier has moved in one direction only: the compiler crossed first, and the linkers followed, displacing `ld` and `lld`. We make no claim about schedule. The full strategy is developed in [the ninja book](https://zenodo.org/records/21498692).
+The anatomy records a design position. The components written in Jac (the compiler and runtime at roughly 190,000 lines, the type checker, the formatter and test tooling, the linkers, and the js_engine JavaScript runtime) sit inside the compiler's own jurisdiction. The carried engines (CPython, LLVM, and the C runtime archives) are included for feature completeness: each provides a level of compatibility and performance that a reimplementation would not, and each is reached across an ABI, built by a foreign toolchain, and outside the jurisdiction of the language's own verifier. We call the division the **self-hosting frontier**. The design goal is to replace each carried engine with a Jac implementation, so that the entire artifact above the operating system is written in the language it ships, and gradual borrow checking removes the reason these components were written in C and C++ in the first place. The frontier has moved in one direction only: the compiler crossed first, the linkers followed, displacing `ld` and `lld`, and the JavaScript runtime followed them. We make no claim about schedule. The full strategy is developed in [the ninja book](https://zenodo.org/records/21498692).
 
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/self-hosting-frontier-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset=".github/assets/readme/self-hosting-frontier-light.svg">
-    <img alt="The self-hosting frontier through the jac binary's payload: above the line, written in Jac, sit the compiler and runtime sealed as JIR, the type checker and dev tooling, and the linkers; below the line, carried in binary form for feature completeness, sit CPython, Bun, LLVM, and the C runtime archives; the frontier moves in one direction only, toward the operating system, the floor the artifact concedes" src=".github/assets/readme/self-hosting-frontier-light.svg" width="880">
+    <img alt="The self-hosting frontier through the jac binary's payload: above the line, written in Jac, sit the compiler and runtime sealed as JIR, the type checker and dev tooling, the linkers, and the js_engine JavaScript runtime; below the line, carried in binary form for feature completeness, sit CPython, LLVM, and the C runtime archives; the frontier moves in one direction only, toward the operating system, the floor the artifact concedes" src=".github/assets/readme/self-hosting-frontier-light.svg" width="880">
   </picture>
 </div>
 
@@ -343,7 +343,7 @@ Each of those deliverables is a **project kind**: `jac create myapp --kind <kind
 | `web-app` | Full-stack web app | Backend, frontend, and data model **in one file**: `cl` code compiles to React, and the compiler generates every RPC and shares types across the boundary, instead of two projects and five frameworks |
 | `web-static` | Client-only page | `na {}` blocks compile to **WebAssembly with Jac's own wasm linker** (no emscripten), and `jac build` emits a portable `index.html` that opens straight from disk |
 | `desktop`  | Native desktop binary | The same app wrapped in the **OS webview** as one compiled binary: no Electron, no Rust, no PyInstaller |
-| `mobile`  | Android / iOS app | True-native React Native via mobUI, the same `cl` components rendered as native views: JS tooling runs on the bundled Bun, no Node.js |
+| `mobile`  | Android / iOS app | True-native React Native via mobUI, the same `cl` components rendered as native views: JS tooling runs on the bundled js_engine, no Node.js |
 
 The full matrix, with a working recipe and guided track for each: [What You Can Build](https://www.jaclang.org/docs/latest/quick-guide/project-kinds).
 

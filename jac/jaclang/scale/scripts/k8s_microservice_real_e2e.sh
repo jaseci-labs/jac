@@ -196,13 +196,13 @@ GW_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gateway -o name | head -1)
 if kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- \
         test -f /app/.jac/client/dist/index.html 2>/dev/null; then
     # the "Installing npm dependencies" banner prints even under --no-npm;
-    # a "bun install" invocation only appears when the closure really installs
+    # a "js_engine install" invocation only appears when the closure really installs
     if kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null \
-            | grep -q "bun install v"; then
+            | grep -q "js_engine install v"; then
         echo "FAIL: bundle shipped a prebuilt dist but the gateway still installed the npm closure"
         echo "--- debug: dist dir + bootstrap branch marker ---"
         kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- ls -la /app/.jac/client/dist/ 2>&1 | head -6
-        kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null | grep -E "jac-scale|bun install" | head -4
+        kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null | grep -E "jac-scale|js_engine install" | head -4
         exit 1
     fi
     echo "  dist shipped and npm skipped OK"

@@ -3,7 +3,7 @@ import hashlib;
 import json;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.client { get_bun }
+import from jaclang.client { get_js_engine }
 
 def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
     shim = project_dir / "node_modules" / ".bin" / tool;
@@ -14,7 +14,7 @@ def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
 }
 
 def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
-    bun = _require_bundled_bun();
+    js_engine = _require_js_engine();
     `entry = resolve_node_tool_entry(project_dir, tool);
     if `entry is None {
         raise RuntimeError(
@@ -23,23 +23,23 @@ def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
             "dependencies first; project tools must resolve from the local node_modules."
         );
     }
-    return [bun, str(`entry)];
+    return [js_engine, str(`entry)];
 }
 
 def resolve_package_manager -> str {
-    return _require_bundled_bun();
+    return _require_js_engine();
 }
 
-def _require_bundled_bun -> str {
-    bun_path = get_bun();
-    if bun_path is None {
+def _require_js_engine -> str {
+    js_engine_path = get_js_engine();
+    if js_engine_path is None {
         raise RuntimeError(
-            "Bundled bun is missing. Shipped jac binaries include it (a "
+            "Bundled js_engine is missing. Shipped jac binaries include it (a "
             "missing copy indicates a broken build); for a source checkout "
-            "run `zig build fetch-bun`, or set JAC_BUN to a bun binary."
+            "run `make` in js_engine/, or set JAC_JS_ENGINE to a js_engine binary."
         );
     }
-    return bun_path;
+    return js_engine_path;
 }
 
 def run_manifest_install(project_dir: Path) {
@@ -87,7 +87,7 @@ def _deps_current(project_dir: Path, stamp: Path, signature: str) -> bool {
 
 def manifest_signature(project_dir: Path) -> str {
     digest = hashlib.sha256();
-    for name in ["package.json", "bun.lock", "bun.lockb"] {
+    for name in ["package.json", "bun.lock"] {
         path = project_dir / name;
         if path.is_file() {
             digest.update(name.encode());

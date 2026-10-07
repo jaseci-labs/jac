@@ -11,7 +11,7 @@ test "a failed production client build prevents initialization and a corrected r
     import from jaclang.testing.requires { require_tool }
     import from jaclang.scale.runtime.context.util { jac_executable }
     import from urllib.request { urlopen }
-    require_tool('bun');
+    require_tool('js_engine');
     with TemporaryDirectory(prefix='jac-bundle-preparation-') as tmp {
         project = Path(tmp);
         (project / 'jac.toml').write_text(

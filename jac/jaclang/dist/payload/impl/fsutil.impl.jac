@@ -164,7 +164,7 @@ impl skip_jaclang(p: str) -> bool {
         or "_precompiled" in p
         or "vendor/typeshed/stubs" in p
         or "libjacllvm." in p
-        or "client/_bun" in p
+        or "client/_js_engine" in p
         or p.endswith(".pyc")
     );
 }
@@ -220,19 +220,6 @@ impl toml_string(toml: str, key: str) -> str | None {
             continue;
         }
         return after[:q2];
-    }
-    return None;
-}
-
-impl find_sum_line(sums: str, asset: str) -> str | None {
-    for line in sums.split("\n") {
-        toks = line.replace("\t", " ").replace("\r", " ").split();
-        if len(toks) < 2 {
-            continue;
-        }
-        if toks[1] == asset {
-            return toks[0];
-        }
     }
     return None;
 }

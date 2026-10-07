@@ -271,7 +271,7 @@ The `web-static` kind sets up a complete project with:
 - `main.jac` -- Entry point with client code
 - `jac.toml` -- Project configuration
 - `styles.css` -- Default stylesheet
-- Bundled frontend dependencies (via Bun)
+- Bundled frontend dependencies (via js_engine)
 
 Available templates:
 

@@ -1434,7 +1434,7 @@ Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See 
 
 ### jac x
 
-`jac x <tool>` runs an installed command-line tool under the `jac` runtime -- the Jac-native, cross-ecosystem equivalent of `pipx run` / `npx`. It resolves a **Python console-script** (from an installed package's entry points) or an **npm tool** (from `node_modules/.bin`) and runs it. Python tools execute in-process under the bundled interpreter; npm tools run through the jac-managed **bun** runtime -- so **neither a system Python nor a system Node is required**.
+`jac x <tool>` runs an installed command-line tool under the `jac` runtime -- the Jac-native, cross-ecosystem equivalent of `pipx run` / `npx`. It resolves a **Python console-script** (from an installed package's entry points) or an **npm tool** (from `node_modules/.bin`) and runs it. Python tools execute in-process under the bundled interpreter; npm tools run through the jac-managed **js_engine** runtime -- so **neither a system Python nor a system Node is required**.
 
 The CLI tools you install with `jac install` are therefore runnable without putting anything on your shell `PATH`, and resolution is project-aware: inside a project, a tool installed in that project shadows a global one of the same name. `jac x <name>` also runs custom scripts defined in the `[scripts]` section of `jac.toml` -- this absorbs the former `jac script`. A bare `jac x` (or `jac x --list`) lists everything runnable.
 
@@ -1467,7 +1467,7 @@ jac x hf download gpt2
 # Run an installed formatter on the current directory
 jac x black .
 
-# Run a project npm tool (node_modules/.bin) through bun -- no system Node needed
+# Run a project npm tool (node_modules/.bin) through js_engine -- no system Node needed
 jac x eslint .
 jac x vite build
 
@@ -1479,7 +1479,7 @@ jac x --node vite build       # the project's npm copy
 jac x --list
 ```
 
-> **No system Python or Node required.** Python tools run in-process under the `jac` binary's bundled interpreter; npm tools run via the jac-managed `bun` (resolved from the system `PATH`, the project's `.jac/bin/bun`, or auto-downloaded), which executes the `node_modules/.bin` shims directly. Arguments after the tool name -- including flags like `--help` -- pass straight through, and the tool's exit code becomes `jac x`'s exit code.
+> **No system Python or Node required.** Python tools run in-process under the `jac` binary's bundled interpreter; npm tools run via the `js_engine` runtime bundled in the `jac` binary (or the one named by `JAC_JS_ENGINE`), which executes the `node_modules/.bin` shims directly. Arguments after the tool name -- including flags like `--help` -- pass straight through, and the tool's exit code becomes `jac x`'s exit code.
 
 ---
 
@@ -1781,7 +1781,7 @@ python build.py
 python main.py
 ```
 
-JavaScript builds use Node/npm or Bun. Native code is emitted as C from the
+JavaScript builds use Node/npm or js_engine. Native code is emitted as C from the
 existing native lowering and built with Clang; browser native modules also need
 a WASI sysroot. Exporting native source requires LLVM 22 development files and
 CMake, or a configured `JAC_LLVM_CBE`. Generated C retains the selected target's

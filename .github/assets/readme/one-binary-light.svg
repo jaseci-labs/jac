@@ -14,7 +14,7 @@
 
   <g font-size="11" text-anchor="middle" class="sans fg">
     <rect x="32" y="112" width="128" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/><text x="96" y="131">CPython 3.14</text>
-    <rect x="172" y="112" width="128" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/><text x="236" y="131">Bun (JS runtime)</text>
+    <rect x="172" y="112" width="128" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/><text x="236" y="131">js_engine (JS)</text>
     <rect x="32" y="150" width="128" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/><text x="96" y="169">LLVM + Zig linker</text>
     <rect x="172" y="150" width="128" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/><text x="236" y="169">Package manager</text>
     <rect x="32" y="188" width="128" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/><text x="96" y="207">REST server</text>

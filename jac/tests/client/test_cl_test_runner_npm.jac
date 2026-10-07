@@ -1,7 +1,7 @@
 """cl test runner behaviours: npm import handling and annex resolution.
 
-Client tests run under bun in a sealed temp dir with no `node_modules`, so
-every non-relative import spec has to be rewritten to something bun can
+Client tests run under js_engine in a sealed temp dir with no `node_modules`, so
+every non-relative import spec has to be rewritten to something js_engine can
 resolve.  These cover that rewriting for modules that are not `@jac/runtime`.
 
 They also cover which file the runner compiles (#9606): an annex resolves to its
@@ -25,7 +25,7 @@ glob FIXTURES = Path(__file__).parent / "fixtures",
      ANNEX = str(ANNEX_DIR / "widget.test.jac"),
      ORPHAN = str(ANNEX_DIR / "no_such_module.test.jac");
 
-test "a client test importing only an npm module runs under bun" {
+test "a client test importing only an npm module runs under js_engine" {
     fixture = str(NPM / "test_npm_only.jac");
     assert module_is_client(fixture) , f"{fixture} is not in the client codespace";
 

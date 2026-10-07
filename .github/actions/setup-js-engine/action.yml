@@ -1,0 +1,39 @@
+name: Set up js_engine
+description: >
+  Provide the js_engine JavaScript runtime that jac's client toolchain runs
+  (package installs, Vite, the cl test runner). Restores a build cached on the
+  engine sources; on a miss, compiles js_engine/ with the jac already on PATH
+  (so this runs after jac-kit). Exports JAC_JS_ENGINE for sealed lanes, which
+  cannot see the checkout's js_engine/bin, and puts the engine on PATH for the
+  suites that gate on `require_tool("js_engine")`.
+runs:
+  using: composite
+  steps:
+    - name: Install js_engine system libraries
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          cmake libuv1 libssl3 zlib1g libnghttp2-14 libbrotli1 libzstd1 \
+          libicu-dev libpcre2-dev libnode-dev
+
+    - name: Restore cached js_engine build
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          js_engine/bin
+          js_engine/lib
+          js_engine/engine/src/builtins/js/**/*.jsbc
+        key: js-engine-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('js_engine/engine/src/**', 'js_engine/napi/**', 'js_engine/native/**', 'js_engine/Makefile', 'js_engine/jac.toml', 'jac/jaclang/compiler/backends/native/**') }}
+
+    - name: Build js_engine
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: make -C js_engine
+
+    - name: Export the engine path
+      shell: bash
+      run: |
+        echo "JAC_JS_ENGINE=$GITHUB_WORKSPACE/js_engine/bin/js_engine" >> "$GITHUB_ENV"
+        echo "$GITHUB_WORKSPACE/js_engine/bin" >> "$GITHUB_PATH"

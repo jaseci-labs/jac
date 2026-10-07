@@ -13,7 +13,7 @@ face of the contract live:
   Face D -- a callback created in the handler reads current state when it
             fires (102), not a render-time snapshot (100).
 
-Integration test: real `bun install` of react + jsdom, so it runs only when
+Integration test: real `js_engine install` of react + jsdom, so it runs only when
 `JAC_CLIENT_INTEGRATION` is set (mirrors `test_solid_jsdom.jac`).
 """
 
@@ -22,9 +22,9 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-import from jaclang.client.bun_installer { get_bun }
+import from jaclang.client.js_engine { get_js_engine }
 import from .react_jsdom_harness {
-    bun_install,
+    npm_install,
     compile_page,
     require_client_integration,
     run_harness,
@@ -113,9 +113,9 @@ process.exit(failures.length ? 1 : 0);
 
 test "react state semantics: all four contract faces hold live in jsdom" {
     require_client_integration("React state-semantics");
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
 
     component_js = compile_page(
@@ -127,7 +127,7 @@ test "react state semantics: all four contract faces hold live in jsdom" {
         (work / "component.js").write_text(component_js, encoding="utf-8");
         write_runtime(work);
         (work / "harness.mjs").write_text(_HARNESS, encoding="utf-8");
-        bun_install(bun, work, "react-state-semantics-test");
-        run_harness(bun, work, [], "react state-semantics");
+        npm_install(js_engine, work, "react-state-semantics-test");
+        run_harness(js_engine, work, [], "react state-semantics");
     }
 }

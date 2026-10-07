@@ -171,16 +171,21 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
-    _bundle_bun(site, opts);
+    _bundle_js_engine(site, opts);
 }
 
-impl _bundle_bun(site: str, opts: MkPayloadOpts) {
-    bb = opts.bun_bin;
-    if bb is not None {
-        bun_dir = os.path.join(site, "jaclang", "client", "_bun");
-        make_dirs(bun_dir);
-        log(f"==> bundling contained bun runtime ({bb})");
-        copy_file(bb, os.path.join(bun_dir, os.path.basename(bb)));
+impl _bundle_js_engine(site: str, opts: MkPayloadOpts) {
+    src = opts.js_engine_dir;
+    if src is not None {
+        if not file_exists(os.path.join(src, "bin", "js_engine")) {
+            raise PayloadDie(
+                f"mkpayload: --js-engine={src} holds no bin/js_engine; stage it"
+                " with `make dist` in js_engine/."
+            );
+        }
+        dst = os.path.join(site, "jaclang", "client", "_js_engine");
+        log(f"==> bundling js_engine runtime ({src})");
+        copy_tree(src, dst, skip_none);
     }
 }
 
@@ -636,7 +641,7 @@ impl is_volatile_path(p: str) -> bool {
         if "compiler/backends/native/llvm" in p {
             return False;
         }
-        if "client/_bun" in p {
+        if "client/_js_engine" in p {
             return False;
         }
         return True;

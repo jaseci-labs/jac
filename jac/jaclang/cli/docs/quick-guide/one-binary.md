@@ -30,7 +30,7 @@ maintain: they are compiler output, owned and re-derived on every build.
 | Capability | What it replaces | How you use it |
 |---|---|---|
 | **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
-| **Bun** | Node.js, npm, npx | Bundled -- compiles `.jac` to JS, manages npm deps |
+| **js_engine** | Node.js, npm, npx | Bundled -- compiles `.jac` to JS, manages npm deps |
 | **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build <file> --native` produces native binaries |
 | **Package manager** | pip, npm, pipx | `jac install` for PyPI and npm |
 | **REST server** | Flask, FastAPI, Express | `jac run` -- walkers become API endpoints |
@@ -102,7 +102,7 @@ jac install --npm prettier
 jac x prettier --check . # runs from the project's node_modules/.bin
 ```
 
-The tool runs with the correct environment automatically -- no `source .venv/bin/activate`, no `npx`, no `pipx`. Python tools execute in-process under the bundled interpreter; npm tools run through the bundled Bun runtime. Inside a project, a project-installed tool shadows a global one of the same name; a bare `jac x` lists everything runnable. See [`jac x`](../reference/cli/index.md#jac-x) for resolution details.
+The tool runs with the correct environment automatically -- no `source .venv/bin/activate`, no `npx`, no `pipx`. Python tools execute in-process under the bundled interpreter; npm tools run through the bundled js_engine runtime. Inside a project, a project-installed tool shadows a global one of the same name; a bare `jac x` lists everything runnable. See [`jac x`](../reference/cli/index.md#jac-x) for resolution details.
 
 ## What You Can Uninstall
 
@@ -112,7 +112,7 @@ With Jac installed, you no longer need these on your development machine:
 |---|---|
 | Python / pyenv / conda | Jac bundles CPython 3.14 |
 | pip / pipx / uv / poetry | `jac install` manages Python deps |
-| Node.js / npm / npx / yarn | Jac bundles Bun; `jac install` manages JS deps |
+| Node.js / npm / npx / yarn | Jac bundles js_engine; `jac install` manages JS deps |
 | venv / virtualenv | `.jac/venv` is automatic and project-scoped |
 | gcc / clang / make / cmake | Jac bundles LLVM + Zig for native compilation |
 | Flask / FastAPI / Express | `jac run` generates a server from your code |
@@ -143,7 +143,7 @@ And when your program fits the restricted `na` subset, `jac build <file> --nativ
 The Jac binary is a self-contained native executable that embeds:
 
 - A **CPython 3.14 runtime** (stripped of unnecessary components)
-- A **Bun runtime** for JavaScript/TypeScript compilation
+- A **js_engine runtime** for JavaScript/TypeScript compilation
 - An **LLVM backend** for native code generation
 - A **Zig-based linker** for producing native binaries and shared libraries
 - The **Jac compiler**, type checker, formatter, and all language tooling

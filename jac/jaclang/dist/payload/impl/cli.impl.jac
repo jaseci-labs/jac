@@ -2,12 +2,7 @@ import os;
 import sys;
 
 import from jaclang.dist.payload.assemble { mk_payload }
-import from jaclang.dist.payload.fetch {
-    fetch_bun,
-    fetch_llvm,
-    fetch_typeshed,
-    typeshed_sha
-}
+import from jaclang.dist.payload.fetch { fetch_llvm, fetch_typeshed, typeshed_sha }
 import from jaclang.dist.payload.fsutil { PayloadDie, die }
 import from jaclang.dist.payload.pack { pack }
 import from jaclang.dist.payload.pins { host_py_minor, py_ver }
@@ -44,9 +39,6 @@ impl dispatch(argv: list[str]) {
     if cmd == "fetch-llvm" {
         _need(argv, 2, "usage: payload fetch-llvm <dest-dir>");
         fetch_llvm(argv[1]);
-    } elif cmd == "fetch-bun" {
-        _need(argv, 3, "usage: payload fetch-bun <os-arch> <dest-dir>");
-        fetch_bun(argv[1], argv[2]);
     } elif cmd == "build-musl" {
         _need(argv, 4, "usage: payload build-musl <os-arch> <dest-dir> <zig-exe>");
         build_musl(argv[1], argv[2], argv[3]);
@@ -86,7 +78,7 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
     opts = MkPayloadOpts();
     valued = {
         "--shim=": "shim_so",
-        "--bun=": "bun_bin",
+        "--js-engine=": "js_engine_dir",
         "--link-source=": "link_source",
         "--musl=": "musl_dir",
         "--wasm-libc=": "wasm_libc_dir",

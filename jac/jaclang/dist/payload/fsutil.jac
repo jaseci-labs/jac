@@ -25,7 +25,6 @@ def skip_site_template(p: str) -> bool;
 def skip_stage_site(p: str) -> bool;
 def skip_typeshed_tests(p: str) -> bool;
 def toml_string(toml: str, key: str) -> str | None;
-def find_sum_line(sums: str, asset: str) -> str | None;
 def clone_env(parent: dict[str, str] | None = None) -> dict[str, str];
 def run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) -> bool;
 def strip_best_effort(path: str, args: list[str] | None = None);

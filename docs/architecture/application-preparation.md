@@ -109,7 +109,7 @@ The output contains `requirements.txt`, `build.py`, and `main.py`. Install the
 requirements with Python, run `python build.py`, then `python main.py`. Server
 applications accept `--host` and `--port`; `--app` selects an exported application.
 CLI arguments are forwarded to Python and native executable entries. JavaScript
-builds use Node/npm or Bun. C builds use Clang (overridable through `CC`), with a
+builds use Node/npm or js_engine. C builds use Clang (overridable through `CC`), with a
 WASI sysroot for WebAssembly (`WASI_SYSROOT`). Jac is not required in the exported
 build or runtime environment. Original project resources remain available to
 applications that serve source files or other data.

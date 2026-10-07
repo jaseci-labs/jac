@@ -72,7 +72,7 @@ remaining rows.
 | 3 | **`cl → cl`** | Free | Direct JS call | JS values (by ref) | -- (plain client-side `import`) |
 | 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
 | 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jaclang.scale` |
-| 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `JcirGenPass` static route + Vite/Bun bundler |
+| 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `JcirGenPass` static route + Vite/js_engine bundler |
 | 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `JcirGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
 | 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + `WasmLinker` exports |
@@ -234,8 +234,8 @@ The pipeline lives in `client/`:
    each module's `mod.gen.js`, plus compiles the client runtime.
 2. **Entry** -- writes an `_entry.js` with the `createRoot(...).render(...)`
    mount.
-3. **Bundle** -- `ViteBundler.build` resolves Bun (pinned, auto-downloaded),
-   runs `bun install` then `bun x vite build` with `@vitejs/plugin-react`,
+3. **Bundle** -- `ViteBundler.build` resolves js_engine (bundled in the `jac` binary),
+   runs `js_engine install` then `js_engine x vite build` with `@vitejs/plugin-react`,
    producing a content-hashed `client.<hash>.js` (+ `styles.css`).
 4. **Serve** -- the Python server serves the JS from memory at
    `GET /static/client.js`; other assets from `.jac/client/dist/`.

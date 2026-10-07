@@ -19,7 +19,7 @@ import os;
 import tempfile;
 import from subprocess { run }
 
-import from .test_helpers { copy_fixture, get_env_with_bun, get_jac_command }
+import from .test_helpers { copy_fixture, get_env_with_js_engine, get_jac_command }
 
 """A fullstack client importing @jac/wasm_host builds and ships a dist.
 
@@ -32,7 +32,7 @@ test "fullstack client importing @jac/wasm_host builds" {
     with tempfile.TemporaryDirectory() as temp_dir {
         project_dir = copy_fixture("wasm_host_app", temp_dir);
         jac_cmd = get_jac_command();
-        env = get_env_with_bun();
+        env = get_env_with_js_engine();
         add_result = run(
             [*jac_cmd, "install", "--npm"],
             cwd=project_dir,
@@ -42,7 +42,7 @@ test "fullstack client importing @jac/wasm_host builds" {
         );
         if add_result.returncode != 0 {
             testfail(
-                f"jac install --npm failed (bun/npm unavailable?)\n"
+                f"jac install --npm failed (js_engine/npm unavailable?)\n"
                 f"STDOUT:\n{add_result.stdout[:2000]}\n"
                 f"STDERR:\n{add_result.stderr[:2000]}\n"
             );

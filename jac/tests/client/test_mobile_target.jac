@@ -1208,23 +1208,23 @@ test "build_expo_start_argv emits expected metro flags" {
     import unittest.mock;
     import from jaclang.client.targets.react_native.dev { build_expo_start_argv }
 
-    def _fake_get_bun -> str {
-        return "/opt/jac/_bun/bun";
+    def _fake_get_js_engine -> str {
+        return "/opt/jac/_js_engine/bin/js_engine";
     }
 
     with tempfile.TemporaryDirectory() as tmp {
         rn_dir = Path(tmp);
         `entry = _stub_node_tool(rn_dir, "expo", "expo");
         with unittest.mock.patch(
-            "jaclang.client.targets.node_tooling_common.get_bun",
-            side_effect=_fake_get_bun
+            "jaclang.client.targets.node_tooling_common.get_js_engine",
+            side_effect=_fake_get_js_engine
         ) {
             argv = build_expo_start_argv(rn_dir, 8081, clear_cache=True);
             argv2 = build_expo_start_argv(rn_dir, 9090, clear_cache=False);
         }
-        # Expo's own JS entry is the argument bun runs; `bun x expo` would
+        # Expo's own JS entry is the argument js_engine runs; `js_engine x expo` would
         # dispatch on the `.bin` shim's node shebang instead.
-        assert argv[:2] == ["/opt/jac/_bun/bun", str(`entry.resolve())];
+        assert argv[:2] == ["/opt/jac/_js_engine/bin/js_engine", str(`entry.resolve())];
     }
     assert "start" in argv;
     assert "--port" in argv;
@@ -1516,7 +1516,7 @@ test "mobile start honors JAC_MOBILE_PLATFORM over the configured default" {
     }
 }
 
-"""Lay out a tool the way `bun install` does: the package's real JS entry
+"""Lay out a tool the way `js_engine install` does: the package's real JS entry
 plus the `node_modules/.bin` symlink, which is what carries the
 `#!/usr/bin/env node` shebang."""
 def _stub_node_tool(project_dir: Path, package: str, tool: str) -> Path {
@@ -1531,7 +1531,7 @@ def _stub_node_tool(project_dir: Path, package: str, tool: str) -> Path {
     return `entry;
 }
 
-test "node tooling runs installs and tools on the bundled bun only" {
+test "node tooling runs installs and tools on the bundled js_engine only" {
     import tempfile;
     import unittest.mock;
     import from jaclang.client.targets.node_tooling_common {
@@ -1551,8 +1551,8 @@ test "node tooling runs installs and tools on the bundled bun only" {
         return _Res();
     }
 
-    def _fake_get_bun -> str {
-        return "/opt/jac/_bun/bun";
+    def _fake_get_js_engine -> str {
+        return "/opt/jac/_js_engine/bin/js_engine";
     }
 
     with tempfile.TemporaryDirectory() as tmp {
@@ -1560,28 +1560,28 @@ test "node tooling runs installs and tools on the bundled bun only" {
         `entry = _stub_node_tool(project_dir, "expo", "expo");
         with unittest.mock.patch("subprocess.run", side_effect=_fake_run) {
             with unittest.mock.patch(
-                "jaclang.client.targets.node_tooling_common.get_bun",
-                side_effect=_fake_get_bun
+                "jaclang.client.targets.node_tooling_common.get_js_engine",
+                side_effect=_fake_get_js_engine
             ) {
                 run_manifest_install(project_dir);
                 runner = resolve_node_tool(project_dir, "expo");
             }
         }
         # The tool's own JS entry is named, never the `.bin` shim and never
-        # `bun x`: both of those dispatch on the node shebang.
-        assert runner == ["/opt/jac/_bun/bun", str(`entry.resolve())];
+        # `js_engine x`: both of those dispatch on the node shebang.
+        assert runner == ["/opt/jac/_js_engine/bin/js_engine", str(`entry.resolve())];
     }
-    # No system tooling is ever probed or used -- bundled bun only.
-    assert ["/opt/jac/_bun/bun", "install"] in calls;
+    # No system tooling is ever probed or used -- bundled js_engine only.
+    assert ["/opt/jac/_js_engine/bin/js_engine", "install"] in calls;
     assert "x" not in runner;
     for cmd in calls {
-        assert cmd[0] != "npm" and cmd[0] != "npx" and cmd[0] != "bunx" , (
+        assert cmd[0] != "npm" and cmd[0] != "npx" , (
             f"system JS tooling must never be invoked, got: {cmd}"
         );
     }
 }
 
-test "run_manifest_install skips bun install while the stamp is current" {
+test "run_manifest_install skips js_engine install while the stamp is current" {
     # ensure_ready runs on every `jac run` / `jac build`, so the deps sync must
     # be cheap when nothing changed: the online path is stamp-gated like the
     # offline one (manifest + lockfile signature, and every declared package
@@ -1602,8 +1602,8 @@ test "run_manifest_install skips bun install while the stamp is current" {
         return _Res();
     }
 
-    def _fake_get_bun -> str {
-        return "/opt/jac/_bun/bun";
+    def _fake_get_js_engine -> str {
+        return "/opt/jac/_js_engine/bin/js_engine";
     }
 
     prev_offline = os.environ.pop("JAC_OFFLINE", None);
@@ -1614,11 +1614,12 @@ test "run_manifest_install skips bun install while the stamp is current" {
                 '{"dependencies": {"expo": "1.0.0"}}\n', encoding="utf-8"
             );
             with unittest.mock.patch("subprocess.run", side_effect=_fake_run), unittest.mock.patch(
-                "jaclang.client.targets.node_tooling_common.get_bun",
-                side_effect=_fake_get_bun
+                "jaclang.client.targets.node_tooling_common.get_js_engine",
+                side_effect=_fake_get_js_engine
             ) {
                 run_manifest_install(project_dir);
-                assert calls == [["/opt/jac/_bun/bun", "install"]] , calls;
+                assert calls
+                    == [["/opt/jac/_js_engine/bin/js_engine", "install"]] , calls;
                 assert (project_dir / ".jac-dependencies.sha256").is_file() , (
                     "a successful install writes the stamp"
                 );
@@ -1655,16 +1656,16 @@ test "node tooling refuses to run a tool that is not installed locally" {
     import unittest.mock;
     import from jaclang.client.targets.node_tooling_common { resolve_node_tool }
 
-    def _fake_get_bun -> str {
-        return "/opt/jac/_bun/bun";
+    def _fake_get_js_engine -> str {
+        return "/opt/jac/_js_engine/bin/js_engine";
     }
 
-    # A clean break: with no local install there is nothing bun can run, and
-    # falling back to `bun x` would silently reintroduce the node dependency.
+    # A clean break: with no local install there is nothing js_engine can run, and
+    # falling back to `js_engine x` would silently reintroduce the node dependency.
     with tempfile.TemporaryDirectory() as tmp {
         with unittest.mock.patch(
-            "jaclang.client.targets.node_tooling_common.get_bun",
-            side_effect=_fake_get_bun
+            "jaclang.client.targets.node_tooling_common.get_js_engine",
+            side_effect=_fake_get_js_engine
         ) {
             try {
                 resolve_node_tool(Path(tmp), "expo");
@@ -1677,25 +1678,26 @@ test "node tooling refuses to run a tool that is not installed locally" {
     }
 }
 
-test "node tooling raises actionably when the bundled bun is missing" {
+test "node tooling raises actionably when the bundled js_engine is missing" {
     import tempfile;
     import unittest.mock;
     import from jaclang.client.targets.node_tooling_common { resolve_node_tool }
 
-    def _no_bun -> None {
+    def _no_js_engine -> None {
         return None;
     }
 
     with tempfile.TemporaryDirectory() as tmp {
         with unittest.mock.patch(
-            "jaclang.client.targets.node_tooling_common.get_bun", side_effect=_no_bun
+            "jaclang.client.targets.node_tooling_common.get_js_engine",
+            side_effect=_no_js_engine
         ) {
             try {
                 resolve_node_tool(Path(tmp), "expo");
-                assert False , "expected RuntimeError when bundled bun is absent";
+                assert False , "expected RuntimeError when bundled js_engine is absent";
             } except RuntimeError as e {
-                assert "fetch-bun" in str(e);
-                assert "JAC_BUN" in str(e);
+                assert "js_engine/" in str(e);
+                assert "JAC_JS_ENGINE" in str(e);
             }
         }
     }
@@ -1736,14 +1738,14 @@ test "expo prebuild runs even when native tree and prebuild state exist" {
         );
         with unittest.mock.patch(
             "jaclang.client.targets.react_native.build.resolve_node_tool",
-            return_value=["/opt/jac/_bun/bun", "/expo/bin/cli.js"]
+            return_value=["/opt/jac/_js_engine/bin/js_engine", "/expo/bin/cli.js"]
         ), unittest.mock.patch("subprocess.run", side_effect=_fake_run) {
             run_expo_prebuild(rn_dir, "android");
         }
     }
 
     assert [
-        "/opt/jac/_bun/bun",
+        "/opt/jac/_js_engine/bin/js_engine",
         "/expo/bin/cli.js",
         "prebuild",
         "--platform",

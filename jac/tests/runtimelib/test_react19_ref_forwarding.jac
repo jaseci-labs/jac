@@ -13,8 +13,8 @@ pipeline itself pins, and reads the refs back off the live DOM -- once handed
 straight to the component, once through the radix `Slot` an `asChild` trigger
 renders, and once through the explicit `ref: Ref[...]` param lowering.
 
-Integration test: real `bun install` of react + radix + jsdom, so it gates on
-bun being present (mirrors `test_react_state_semantics.jac`).
+Integration test: real `js_engine install` of react + radix + jsdom, so it gates on
+js_engine being present (mirrors `test_react_state_semantics.jac`).
 """
 
 import os;
@@ -22,11 +22,11 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import from jaclang.cli.shadcn.shadcn_handler { load_registry }
-import from jaclang.client.bun_installer { get_bun }
+import from jaclang.client.js_engine { get_js_engine }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from .react_jsdom_harness {
     REACT_JSDOM_DEPS,
-    bun_install,
+    npm_install,
     compile_page,
     require_client_integration,
     run_harness,
@@ -155,9 +155,9 @@ process.exit(failures.length ? 1 : 0);
 
 test "a compiled component is a ref target, live in jsdom" {
     require_client_integration("React 19 ref-as-prop");
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
     component_js = compile_page(
         os.path.join(FIXTURES, "react19_ref_components.jac"), ReactBackend()
@@ -171,12 +171,12 @@ test "a compiled component is a ref target, live in jsdom" {
         # REACT_JSDOM_DEPS is the pin the client pipeline itself ships, so
         # this suite fails the moment it drifts back off React 19. radix-ui
         # supplies the `Slot` an `asChild` trigger renders.
-        bun_install(
-            bun,
+        npm_install(
+            js_engine,
             work,
             "react19-ref-forwarding-test",
             deps={** REACT_JSDOM_DEPS, "radix-ui": radix_pin()}
         );
-        run_harness(bun, work, [], "react 19 ref forwarding");
+        run_harness(js_engine, work, [], "react 19 ref forwarding");
     }
 }

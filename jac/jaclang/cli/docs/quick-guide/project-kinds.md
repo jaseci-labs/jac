@@ -36,7 +36,7 @@ Every kind also fixes two facts the compiler and the CLI read: its **UI** (what 
 
 Jac gives you three runtime targets -- server (`sv`), client (`cl`), and native (`na`) -- plus a few ways to **serve**, **package**, or wrap them in a **shell**. Everything below is a *combination* of those building blocks, not a separate mode. The grid shows which blocks each recipe uses; each recipe name links to the track that owns its code.
 
-Jac is also batteries-included -- it bundles LLVM, ships its own native linker, runs its own server, and auto-installs the JS runtime (`bun`) on demand. The only recipes needing an external toolchain are the ones wrapping a native OS shell, called out in the last column.
+Jac is also batteries-included -- it bundles LLVM, ships its own native linker, runs its own server, and bundles the JS runtime (`js_engine`). The only recipes needing an external toolchain are the ones wrapping a native OS shell, called out in the last column.
 
 | Recipe | status | sv | cl | na | served | packaged | shell | requires |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|---|

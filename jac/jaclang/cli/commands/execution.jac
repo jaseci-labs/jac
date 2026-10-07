@@ -337,7 +337,10 @@ comptime SPEC_X: CommandSpec = CommandSpec(
                  "Run the 'hf' tool (project venv first, else global)"
              ),
              ("jac x black .", "Run an installed formatter on the current directory"),
-             ("jac x eslint .", "Run a project npm tool (node_modules/.bin) via bun"),
+             (
+                 "jac x eslint .",
+                 "Run a project npm tool (node_modules/.bin) via js_engine"
+             ),
              ("jac x --global hf whoami", "Force the global-site copy of a tool"),
              (
                  "jac x --global eslint .",

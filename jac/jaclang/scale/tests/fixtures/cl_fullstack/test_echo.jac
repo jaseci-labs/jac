@@ -1,7 +1,7 @@
 """Full-stack cl test exercised by the cl test-runner integration tests.
 
 Runs in the client codespace: these `test` blocks compile to JS and execute
-under bun, driving the real `@jac/runtime` fetch bridge against the sibling
+under js_engine, driving the real `@jac/runtime` fetch bridge against the sibling
 `server.jac` that the cl test runner boots automatically -- here against
 jac-scale's enhanced server. Covers signup -> login -> authenticated walker
 spawn end to end, plus the function-call 401 self-heal (issue #7638).

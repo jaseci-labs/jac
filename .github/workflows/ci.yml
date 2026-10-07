@@ -782,13 +782,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-js-engine
       - name: Install the serve deps the plugin-integration test needs
         run: jac install "python-dotenv>=1.2.1,<2.0.0" "requests>=2.32.0,<3.0.0" --global
       # tests/client is test-client's lane (it needs the serial runner). The
-      # jsdom suites in tests/runtimelib gate on bun being present, which the
-      # Bun setup above provides -- with JAC_TEST_STRICT=1 they must run here,
+      # jsdom suites in tests/runtimelib gate on js_engine being present, which the
+      # js_engine setup above provides -- with JAC_TEST_STRICT=1 they must run here,
       # so a new jsdom suite is covered the moment it exists instead of when
       # someone remembers to name it in this file.
       - name: Runtime suite via the binary
@@ -882,8 +881,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-js-engine
       - name: Install the scale dep the in-process dispatch tests import
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
       - name: Run all client tests
@@ -896,7 +894,7 @@ jobs:
           JAC_TEST_STRICT: "1"
         run: jac test jac/tests/client
 
-  # The jsdom suites gate on bun being on PATH and run in test-runtime under
+  # The jsdom suites gate on js_engine being available and run in test-runtime under
   # JAC_TEST_STRICT=1; the desktop tests live in tests/client (test-client).
 
   # In-package suites (jaclang/byllm/tests, jaclang/scale/tests) run through
@@ -953,12 +951,11 @@ jobs:
       - uses: actions/checkout@v5
         with:
           submodules: true
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
       # The bundle tests read the pod binary from jac/zig-out/bin via a
       # __file__-relative lookup and silently self-skip when it is missing.
       # Reroute lane for the same reason as test-packages-and-docs above.
       - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
       - name: Install scale deps + test deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
@@ -1191,9 +1188,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
 
       - name: Validate performance accounting
         timeout-minutes: 2
@@ -1732,8 +1728,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
       - name: Install the C export toolchain
         run: |
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /usr/share/keyrings/llvm.asc >/dev/null

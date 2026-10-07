@@ -239,18 +239,6 @@ pub fn build(b: *std.Build) void {
             .dependOn(&fetch_llvm_run.step);
     }
 
-    // Standalone: place the pinned, contained bun runtime into the source tree at
-    // jaclang/client/_bun/ for the HOST. Editable/source checkouts,
-    // the test suite, and -Ddev linked binaries resolve it there via get_bun()'s
-    // __file__-relative lookup. (Normal/release builds instead bundle a
-    // target-matched bun into the payload; see the payload block below.)
-    {
-        const fetch_bun = tool.run("payload", &.{ "fetch-bun", host_osarch, b.pathFromRoot("jaclang/client/_bun") });
-        fetch_bun.has_side_effects = true;
-        b.step("fetch-bun", "Place the pinned bun into the source tree (editable/dev + tests)")
-            .dependOn(&fetch_bun.step);
-    }
-
     // Standalone: harvest a static-musl runtime (libc.a + libzigc.a + compiler-rt
     // + crt, plus the glibc LFS64 forwarders the floor archives call) from the
     // bundled Zig toolchain into .pbs-build/<osarch>/musl/lib, so
@@ -403,20 +391,17 @@ pub fn build(b: *std.Build) void {
             if (debug_src) mk.addArg("--debug-src");
         }
 
-        // Contained bun runtime: fetch the pinned bun for the target and bundle
-        // it inside the client package via --bun. In linked-source/dev mode
-        // there is no bundled copy to fall back on -- get_bun() resolves from
-        // the linked tree -- so place bun INTO that tree instead.
-        if (link_dir == null) {
-            const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
-            const fetch_bun = tool.run("payload", &.{ "fetch-bun", osarch, bun_dir });
-            fetch_bun.has_side_effects = true;
-            mk.step.dependOn(&fetch_bun.step);
-            mk.addArg(b.fmt("--bun={s}/bun", .{bun_dir}));
-        } else {
-            const fetch_bun = tool.run("payload", &.{ "fetch-bun", host_osarch, b.fmt("{s}/jaclang/client/_bun", .{link_dir.?}) });
-            fetch_bun.has_side_effects = true;
-            mk.step.dependOn(&fetch_bun.step);
+        // js_engine runtime: bundle a staged engine tree (`make dist` in
+        // ../js_engine) inside the client package via --js-engine. The engine
+        // is compiled by a jac binary, so it cannot be built here; without the
+        // option the payload ships no JavaScript runtime. In linked-source/dev
+        // mode get_js_engine() resolves the checkout's js_engine/bin instead.
+        if (b.option([]const u8, "js-engine", "Staged js_engine tree to bundle (output of `make dist` in js_engine/)")) |d| {
+            if (link_dir == null) {
+                const engine_dir = if (std.fs.path.isAbsolute(d)) d else b.pathFromRoot(d);
+                mk.addArg(b.fmt("--js-engine={s}", .{engine_dir}));
+                mk.addFileInput(.{ .cwd_relative = b.fmt("{s}/bin/js_engine", .{engine_dir}) });
+            }
         }
 
         // Linux: harvest a static-musl runtime for the target and bundle it so
@@ -470,7 +455,7 @@ pub fn build(b: *std.Build) void {
         // The project manifest (version stamped into dist-info) lives at the
         // repo root, one level above this build root.
         mk.addFileInput(.{ .cwd_relative = b.pathFromRoot("../jac.toml") });
-        // The pins (Python/bun/LLVM) and the tool itself; a bump must repack.
+        // The pins (Python/LLVM) and the tool itself; a bump must repack.
         mk.addFileInput(b.path(pins.PINS_PATH));
         mk.addFileInput(b.path("bootstrap/python/sources.json"));
         mk.addFileInput(b.path("bootstrap/python/cpython-sources.txt"));
