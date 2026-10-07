@@ -7,6 +7,7 @@ import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
 import type from jaclang.compiler.placement.placement { PlacementSummary }
 import type from jaclang.compiler.placement.placement_work { PlacementWork }
+import type from jaclang.compiler.native_notes { NativeNote }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
     CompilationProduct,
@@ -320,7 +321,7 @@ class AnalysisCaches {
     has placement_summaries: dict[str, PlacementSummary],
         placement_work: (PlacementWork | None),
         placement_evidence: dict[str, list[str]],
-        native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]],
+        native_notes: dict[str, dict[str, NativeNote]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         mtir_owned: dict[str, list[str]],
@@ -338,7 +339,7 @@ class AnalysisCaches {
         self.placement_summaries: dict[str, PlacementSummary] = {};
         self.placement_work: (PlacementWork | None) = None;
         self.placement_evidence: dict[str, list[str]] = {};
-        self.native_verdict_notes: dict[str, tuple[str, str, list[list[str]]]] = {};
+        self.native_notes: dict[str, dict[str, NativeNote]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.mtir_owned: dict[str, list[str]] = {};

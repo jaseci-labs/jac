@@ -113,15 +113,25 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         }
 
         if not name_nd.is_kwesc {
-            native_position = self._native_type_position(name_nd);
-            if native_position is not None {
+            if self._clib_type_position(name_nd) {
                 self.ctx.emit(
                     E2018,
                     node_override=name_nd,
                     name=name_nd.value,
-                    position=native_position
+                    position="C library declaration type position"
                 );
                 continue;
+            }
+            if in_type_position(name_nd, include_subscripts=False) {
+                import from jaclang.compiler.native_notes { note_native }
+                note_native(
+                    self.prog,
+                    name_nd,
+                    "E2018",
+                    E2018.format_message(
+                        name=name_nd.value, position="native type position"
+                    )
+                );
             }
         }
 
@@ -242,18 +252,12 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: Name) -> (str | None) {
     return None;
 }
 
-impl StaticAnalysisPass._native_type_position(name_nd: Name) -> (str | None) {
+impl StaticAnalysisPass._clib_type_position(name_nd: Name) -> bool {
     if not in_type_position(name_nd, include_subscripts=False) {
-        return None;
+        return False;
     }
     imp = name_nd.find_parent_of_type(Import);
-    if imp is not None and imp.clib_decls {
-        return "C library declaration type position";
-    }
-    if name_nd.in_native_context() {
-        return "native type position";
-    }
-    return None;
+    return imp is not None and bool(imp.clib_decls);
 }
 
 impl StaticAnalysisPass._check_unreachable_code(mod: Module) -> None {

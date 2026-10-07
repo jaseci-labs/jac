@@ -333,13 +333,6 @@ impl TypeEvaluator._validate_call_type(
         return fw_type;
     }
 
-    if self._in_native_context() {
-        na_iter_ret = self._native_iter_next_result(expr);
-        if na_iter_ret is not None {
-            return na_iter_ret;
-        }
-    }
-
     if isinstance(caller_type, AnyType) {
         self._evaluate_call_args(expr);
         return caller_type;

@@ -593,7 +593,7 @@ walker TypeEvaluator {
     def is_none_type(ty: TypeBase) -> bool;
     def _is_strict_site(nd: UniNode) -> bool;
     def _diag_unnarrowed_optional(nd: UniNode, ty: TypeBase, required: str) -> bool;
-    def _in_native_context -> bool;
+    def note_native(nd: UniNode, code: str, text: str, requires: bool = False) -> None;
     def is_typevar_class(ty: TypeBase) -> bool;
     def is_paramspec_class(ty: TypeBase) -> bool;
     def is_type_var_tuple_class(ty: TypeBase) -> bool;
@@ -734,7 +734,6 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
-    def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(
         edge_type: ClassType, want_src: bool

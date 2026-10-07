@@ -1,29 +1,20 @@
 # ruff: noqa: N801, N802, N803
-"""Native (.na.jac) ambient type stubs.
+"""Native-only builtins.
 
-These model the native runtime surface that NaIRGenPass lowers directly to
-LLVM (see compiler/passes/native/na_ir_gen_pass.impl/file_io.impl.jac). Unlike
-jac_builtins.pyi / dom_types.pyi, this stub is NOT merged into the global
-builtins: the TypeEvaluator resolves these names only inside .na.jac modules
-(native context), so `File` and the native `open` never leak into regular Jac.
-
-Signatures mirror the emitted File struct and methods so that File-typed code
-type-checks accurately instead of degrading to UnknownType.
+These names belong to the one builtin namespace of the language, but only
+the native backend can realize them. The type checker resolves them in every
+module; using one records a native requirement on the enclosing unit, which
+the placement step honors or reports. Nothing here shadows a Python builtin:
+`open`, `iter` and `next` are typed by the Python stubs in every codespace,
+and the native runtime's file and iterator types are bound to those
+interfaces by the native binding table.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable as Iterable, Iterator as Iterator
-from typing import Literal, TypeVar, overload
+from typing import TypeVar, overload
 
 __all__ = [
-    "File",
-    "BinaryFile",
-    "open",
-    "Iterable",
-    "Iterator",
-    "iter",
-    "next",
     "managed",
     "take",
     "swap",
@@ -32,7 +23,6 @@ __all__ = [
 ]
 
 _T = TypeVar("_T")
-_D = TypeVar("_D")
 
 def managed(__x: _T) -> _T: ...
 
@@ -51,79 +41,3 @@ class Region:
 # The region a value was allocated in (the growth anchor of a traversal),
 # or None for a managed value.
 def region_of(__x: object) -> Region | None: ...
-
-def iter(__o: Iterable[_T]) -> Iterator[_T]: ...
-@overload
-def next(__i: Iterator[_T]) -> _T: ...
-@overload
-def next(__i: Iterator[_T], __default: _D) -> _T | _D: ...
-
-class File:
-    # Fields backing the emitted struct (handle is opaque and intentionally
-    # not exposed): path, mode and the closed flag.
-    path: str
-    mode: str
-    closed: bool
-
-    def read(self) -> str: ...
-    def readline(self) -> str: ...
-    def write(self, data: str) -> int: ...
-    def close(self) -> None: ...
-    def flush(self) -> None: ...
-    def __enter__(self) -> File: ...
-    def __exit__(
-        self, exc_type: object, exc_val: object, traceback: object
-    ) -> bool: ...
-
-class BinaryFile:
-    # open(path, "rb"/"wb"/...) -> binary file: read()/readline() yield a
-    # length-aware bytes value, write() takes bytes (mirrors CPython's
-    # BufferedReader/Writer split from TextIOWrapper).
-    path: str
-    mode: str
-    closed: bool
-
-    def read(self) -> bytes: ...
-    def readline(self) -> bytes: ...
-    def write(self, data: bytes) -> int: ...
-    def close(self) -> None: ...
-    def flush(self) -> None: ...
-    def __enter__(self) -> BinaryFile: ...
-    def __exit__(
-        self, exc_type: object, exc_val: object, traceback: object
-    ) -> bool: ...
-
-# A binary mode literal (containing "b") selects BinaryFile; any other mode is
-# a text File. The codegen reads the same literal to pick the struct, so the
-# static type and emitted object always agree (#6404).
-#
-# `encoding` is declared on the text overload because CPython accepts it there
-# and the emitter has to answer for it. It does not lower: `_emit_open` refuses
-# any keyword argument, which demotes the calling function to a Python-only
-# seam. Leaving the parameter off made the same call a type error instead, and
-# a type error in a native module refuses the whole module rather than the one
-# function that wrote it.
-@overload
-def open(
-    path: str,
-    mode: Literal[
-        "rb",
-        "br",
-        "rb+",
-        "r+b",
-        "wb",
-        "bw",
-        "wb+",
-        "w+b",
-        "ab",
-        "ba",
-        "ab+",
-        "a+b",
-        "xb",
-        "bx",
-        "xb+",
-        "x+b",
-    ],
-) -> BinaryFile: ...
-@overload
-def open(path: str, mode: str = "r", encoding: str | None = None) -> File: ...

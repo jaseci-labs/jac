@@ -309,42 +309,6 @@ impl TypeEvaluator._get_iterable_element_type(
     return None;
 }
 
-impl TypeEvaluator._native_iter_next_result(expr: FuncCall) -> TypeBase | None {
-    if not (
-        isinstance(expr.target, Name)
-        and expr.target.value in ("iter", "next")
-        and len(expr.params or []) == 1
-    ) {
-        return None;
-    }
-    sym = expr.target.sym;
-    if sym is None or sym.parent_tab is not self.na_builtins_module {
-        return None;
-    }
-    arg = expr.params[0];
-
-    if isinstance(arg, KWPair) {
-        return None;
-    }
-    arg_expr = arg;
-    arg_type = self.get_type_of_expression(arg_expr);
-    if isinstance(arg_type, UnknownType) {
-        return None;
-    }
-    elem = self._get_iterable_element_type(arg_type, arg_expr);
-    if elem is None {
-        return None;
-    }
-    if expr.target.value == "next" {
-        return elem;
-    }
-    iter_cls = self._get_type_from_module(self.na_builtins_module, "Iterator");
-    if not isinstance(iter_cls, ClassType) {
-        return None;
-    }
-    return self._convert_to_instance(iter_cls.specialize_generics([elem]));
-}
-
 impl TypeEvaluator._extract_tuple_element_type_path(
     tuple_type: TypeBase, path: list[int]
 ) -> TypeBase | None {
