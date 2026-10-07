@@ -78,6 +78,7 @@ obj ModuleCompilation {
         if not (
             analysis.native or ModuleFacts.has_native_context_stmts(analysis.module)
         )
+            or self.session.defers_native_codegen()
             or native_codegen() is None {
             return;
         }
@@ -186,9 +187,7 @@ obj ModuleCompilation {
             return;
         }
         needs_native = analysis.native or ModuleFacts.has_native_context_stmts(module);
-        if needs_native
-            and self.session.defers_native_codegen()
-            and native_codegen() is None {
+        if needs_native and self.session.defers_native_codegen() {
             return;
         }
         if needs_native

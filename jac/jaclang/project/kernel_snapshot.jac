@@ -374,6 +374,14 @@ obj KernelSnapshot(HostAsker) {
             learner.sibling_declaration(key);
         } elif method == "client_pulls" {
             learner.client_pulls(key);
+        } elif method == "held_native_iface" and len(fields) == 2 {
+            iface_text = "";
+            if self.options.unit_codegen_identity(fields[0]) == fields[1] {
+                iface_text = self.host.held_native_iface(
+                    self.program, fields[0], self.options
+                );
+            }
+            learner.inputs.native_ifaces[pair_key(fields[0], fields[1])] = iface_text;
         } elif method == "jac_virtual_module_path" {
             learner.jac_virtual_module_path(key);
         } elif method == "is_path_alias" and len(fields) == 2 {
@@ -483,7 +491,7 @@ def kernel_snapshot(
 ) -> KernelSnapshot {
     seed = session_inputs(host, program, path, options);
     seed.emit_closure = emit_closure;
-    seed.native_codegen = bool(os.environ.get(KERNEL_NATIVE_ENV));
+    seed.native_codegen = True;
     snapshot = KernelSnapshot(
         host=host, program=program, options=options, seed=seed, emit_cached=emit_cached
     );
@@ -840,6 +848,9 @@ def call_with_asker(
     isolated: bool
 ) -> str {
     call = call_kernel_isolated if isolated else call_kernel;
+    if not os.environ.get(KERNEL_NATIVE_ENV) {
+        snapshot.seed.native_codegen = False;
+    }
     return call(kernel, kind, snapshot.text(), path, source, snapshot.ask);
 }
 

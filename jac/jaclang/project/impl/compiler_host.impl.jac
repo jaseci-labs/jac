@@ -310,6 +310,38 @@ impl ProjectHost.client_stub_globals -> list[str] {
     return list(self._stub_globals);
 }
 
+impl ProjectHost.native_dep_iface(
+    program: JacProgram, path: str, options: CompileOptions
+) -> (NativeIface | None) {
+    ent = program.native_units().ensure(
+        path,
+        compile_on_miss=True,
+        options=options,
+        check_deps=False,
+        products=not options.no_cgen
+    );
+    return ent.iface if ent is not None else None;
+}
+
+impl ProjectHost.held_native_iface(
+    program: JacProgram, path: str, options: CompileOptions
+) -> str {
+    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+    ent = program.native_units().ensure(
+        path,
+        compile_on_miss=is_compiler_source_path(path),
+        options=options,
+        check_deps=False,
+        products=not options.no_cgen
+    );
+    return ent.iface.to_bytes().decode("utf-8") if ent is not None else "";
+}
+
+impl ProjectHost.native_lowering_failed(program: JacProgram, path: str, detail: str) {
+    import os;
+    program.native_units().failures[os.path.realpath(path)] = detail;
+}
+
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
         import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }

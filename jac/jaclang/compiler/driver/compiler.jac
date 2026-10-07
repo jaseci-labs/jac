@@ -155,6 +155,30 @@ def cached_client_pulls(full_target: str) -> str {
     return ",".join([str(index) for index in held.pulled]);
 }
 
+def native_first(units: list[UnitProducts]) -> list[UnitProducts] {
+    by_path: dict[str, UnitProducts] = {os.path.realpath(u.path): u for u in units};
+    ordered: list[UnitProducts] = [];
+    placed: set[str] = set();
+    def place(unit: UnitProducts) {
+        real = os.path.realpath(unit.path);
+        if real in placed {
+            return;
+        }
+        placed.add(real);
+        for dep in unit.native_deps {
+            needed = by_path.get(os.path.realpath(dep));
+            if needed is not None {
+                place(needed);
+            }
+        }
+        ordered.append(unit);
+    }
+    for unit in units {
+        place(unit);
+    }
+    return ordered;
+}
+
 def assemble_jcir(jcir: bytes) -> (bytes | None) {
     if not jcir {
         return None;
@@ -269,6 +293,17 @@ obj JacCompiler(SessionHooks) {
     ) -> tuple[bool, (bytes | None)];
 
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
+    def kernel_native_entry(
+        full_target: str, target_program: JacProgram, options: (CompileOptions | None)
+    ) -> tuple[bool, any];
+
+    def _adopt_native_unit(
+        unit: UnitProducts,
+        program: JacProgram,
+        options: CompileOptions,
+        compile_deps: bytes
+    ) -> dict[int, bytes];
+
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,

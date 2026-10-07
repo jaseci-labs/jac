@@ -157,6 +157,15 @@ def kernel_compile_reported(
     return compiled;
 }
 
+def native_generation_enabled -> bool {
+    import from jaclang.project.kernel_snapshot { KERNEL_NATIVE_ENV }
+    return kernel_compile_in_process() or bool(os.environ.get(KERNEL_NATIVE_ENV));
+}
+
+def kernel_generates_native(program: JacProgram, path: str) -> bool {
+    return native_generation_enabled() and kernel_route(program, path)[0];
+}
+
 def last_compiled_native(path: str) -> bool {
     import from jaclang.compiler.driver.jir {
         HEADER_SIZE,
@@ -186,7 +195,7 @@ def host_kernel_compile(
     if not routed or options.skip_analysis {
         return None;
     }
-    if last_compiled_native(path) {
+    if last_compiled_native(path) and not native_generation_enabled() {
         return CompileReport(
             analysis=AnalysisReport(
                 entry_path=path,

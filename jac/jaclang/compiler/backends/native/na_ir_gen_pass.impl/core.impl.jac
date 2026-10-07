@@ -460,14 +460,7 @@ impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
         opts = copy.copy(opts);
         opts.no_ir_cache = False;
     }
-    ent = self.prog.native_units().ensure(
-        path,
-        compile_on_miss=True,
-        options=opts,
-        check_deps=False,
-        products=not opts.no_cgen
-    );
-    return ent.iface if ent is not None else None;
+    return active_host().native_dep_iface(self.prog, path, opts);
 }
 
 impl NaIRGenPass._dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool {
@@ -2090,6 +2083,10 @@ impl NaIRGenPass.run_walk with uni.Module entry {
 }
 
 impl NaIRGenPass._publish_lowering_failure(here: uni.Module) -> None {
-    self.prog.native_units().failures[os.path.realpath(here.loc.mod_path)] = "Native module lowering failed:\n"
-        + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had);
+    active_host().native_lowering_failed(
+        self.prog,
+        here.loc.mod_path,
+        "Native module lowering failed:\n"
+            + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had)
+    );
 }

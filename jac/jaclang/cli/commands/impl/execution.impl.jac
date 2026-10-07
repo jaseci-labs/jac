@@ -1048,19 +1048,26 @@ def _exec_file(
                         if _kind_forced or backend == "native"
                         else None
                 );
-                ir_mod = program.compile(file_path=full_path, options=_run_options);
+                (in_kernel, engine) = program._get_compiler().kernel_native_entry(
+                    full_path, program, _run_options
+                );
+                if not in_kernel {
+                    ir_mod = program.compile(file_path=full_path, options=_run_options);
+                    if (
+                        ir_mod
+                        and ir_mod.decided_codespace == 'native'
+                        and ir_mod.gen.native_engine
+                    ) {
+                        engine = ir_mod.gen.native_engine;
+                    }
+                }
                 if program.errors_had {
                     for _err in program.errors_had {
                         console.error(_err.pretty_print());
                     }
                     return 1;
                 }
-                if (
-                    ir_mod
-                    and ir_mod.decided_codespace == 'native'
-                    and ir_mod.gen.native_engine
-                ) {
-                    engine = ir_mod.gen.native_engine;
+                if engine is not None {
                     _populate_native_argv(engine, sys.argv);
                     if main {
                         addr = engine.get_function_address("jac_entry");

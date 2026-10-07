@@ -10,6 +10,7 @@ import from jaclang.compiler.driver.pipeline {
 }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
+import from jaclang.compiler.frontend.host { active_host }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
