@@ -1241,9 +1241,17 @@ impl NaIRGenPass._permuted_walk_order(
         return list(reversed(mods));
     }
     if _spec.startswith("shuffle:") {
-        import random as _wo_random;
         _out = list(mods);
-        _wo_random.Random(int(_spec.split(":", 1)[1])).shuffle(_out);
+        _state = int(_spec.split(":", 1)[1]) % 2147483648;
+        _i = len(_out) - 1;
+        while _i > 0 {
+            _state = (_state * 1103515245 + 12345) % 2147483648;
+            _j = _state % (_i + 1);
+            _held = _out[_i];
+            _out[_i] = _out[_j];
+            _out[_j] = _held;
+            _i -= 1;
+        }
         return _out;
     }
     raise ValueError(f"unknown native_module_walk_order: {_spec!r}");
