@@ -352,24 +352,28 @@ impl JacCompiler._adopt_kernel_compile(
         placed_native = entry_report is not None and entry_report.native;
         return (bool(compiled.analysis.errors) and not placed_native, None);
     }
+    import from jaclang.compiler.driver.pass_driver { compile_progress }
     adopted: (bytes | None) = None;
     for unit in compiled.units {
-        bytecode = assemble_jcir(unit.jcir);
-        if bytecode is None {
-            if not unit.jcir and unit is not target {
-                continue;
+        with compile_progress.track(unit.path) {
+            bytecode = assemble_jcir(unit.jcir);
+            if bytecode is None {
+                if not unit.jcir and unit is not target {
+                    continue;
+                }
+                raise RuntimeError(
+                    "the native compiler kernel emitted no assemblable JCIR for "
+                    f"{unit.path}"
+                );
             }
-            raise RuntimeError(
-                f"the native compiler kernel emitted no assemblable JCIR for {unit.path}"
-            );
-        }
-        sections = unit_sections(unit, bytecode);
-        try {
-            write_module_cache(unit.path, bytecode, extra_sections=sections);
-        } except OSError {}
-        if unit is target {
-            self._restore_sections(full_target, program, sections);
-            adopted = bytecode;
+            sections = unit_sections(unit, bytecode);
+            try {
+                write_module_cache(unit.path, bytecode, extra_sections=sections);
+            } except OSError {}
+            if unit is target {
+                self._restore_sections(full_target, program, sections);
+                adopted = bytecode;
+            }
         }
     }
     return (True, adopted);
@@ -1141,6 +1145,16 @@ impl JacCompiler._get_client_artifact(
         actual_program.hub.client_artifacts.pop(full_target, None);
     }
     mark = len(actual_program.errors_had);
+    if not has_live_tree and not actual_program.internal {
+        self.get_bytecode(full_target=full_target, target_program=actual_program);
+        if len(actual_program.errors_had) > mark {
+            return None;
+        }
+        emitted = actual_program.hub.client_artifacts.get(full_target);
+        if emitted is not None {
+            return emitted;
+        }
+    }
     compiled = self.compile(
         file_path=full_target,
         target_program=actual_program,

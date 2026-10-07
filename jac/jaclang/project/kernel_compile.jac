@@ -92,11 +92,12 @@ def kernel_compile(
     }
     if analysis.status == ANALYSIS_CRASHED {
         detail = f" ({analysis.misses[-1]})" if analysis.misses else "";
-        raise KernelAnalysisError(analysis.message + detail);
+        raise KernelAnalysisError(analysis.message + detail + snapshot.failure_note());
     }
     if analysis.misses {
         raise KernelAnalysisError(
             f"the kernel lacked host answers ({analysis.misses[0]})"
+                + snapshot.failure_note()
         );
     }
     return outcome;

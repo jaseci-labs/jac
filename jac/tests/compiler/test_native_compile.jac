@@ -761,11 +761,11 @@ test "a kernel compile asks the host for what it lacks and runs once" {
     }
 }
 
-"""An application with a client prepares on the host, and its service apps
-are part of that application. Preparing each service through its own kernel
-session paid a full snapshot per service for modules the host had already
-compiled."""
-test "the services of a client application prepare on the host with it" {
+"""An application with a client prepares through the kernel like any other:
+one session per entry, the entry's client manifest read from its unit, and
+the client compiler fed from the artifacts those units carry. It used to
+prepare on the host, services included."""
+test "an application with a client prepares through the kernel" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.application { prepare_application }
     import jaclang.project.kernel_compile as kernel_compile_mod;
@@ -806,8 +806,8 @@ test "the services of a client application prepare on the host with it" {
         with TemporaryDirectory() as client_dir {
             served = sessions_for(Path(os.path.realpath(server_dir)), False);
             assert sorted(served) == ["main.jac", "svc.jac"] , served;
-            hosted = sessions_for(Path(os.path.realpath(client_dir)), True);
-            assert not hosted , hosted;
+            with_client = sessions_for(Path(os.path.realpath(client_dir)), True);
+            assert sorted(with_client) == ["main.jac", "svc.jac"] , with_client;
         }
     }
 }

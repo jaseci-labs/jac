@@ -557,9 +557,13 @@ def prepare_application(
     watched = bool(os.environ.get('JAC_KERNEL_TIMING'));
     if watched {
         import faulthandler;
-        faulthandler.dump_traceback_later(
-            SLOW_PREPARE_SECONDS, repeat=True, file=sys.stderr
-        );
+        try {
+            faulthandler.dump_traceback_later(
+                SLOW_PREPARE_SECONDS, repeat=True, file=sys.stderr
+            );
+        } except (ValueError, OSError) {
+            watched = False;
+        }
     }
     try {
         with console.status('Preparing application...', file=sys.stderr) as status {
@@ -573,10 +577,6 @@ def prepare_application(
                 import from jaclang.runtime.prepared { publish }
                 applications: list[PreparedApplication] = [];
                 for path in entries {
-                    if client {
-                        import from jaclang.project.kernel_compile { host_preparing }
-                        host_preparing(`entry);
-                    }
                     options = bind_options(
                         path,
                         program,
@@ -823,10 +823,9 @@ def _prepare_revision(
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
-    units: (dict[str, ManifestSource] | None) = None;
-    if not client and not (Path(`entry).parent / 'pages').is_dir() {
-        units = _kernel_units(program, entries, `root, before, inputs);
-    }
+    units: (dict[str, ManifestSource] | None) = _kernel_units(
+        program, entries, `root, before, inputs
+    );
     if units is None {
         import from jaclang.compiler.driver.pipeline_runner { compile_application }
         import from jaclang.project.kernel_compile { host_preparing }
@@ -839,7 +838,9 @@ def _prepare_revision(
             _check(program, before);
         }
     }
-    entry_client = modules[`entry].gen.client_manifest if units is None else None;
+    entry_client = modules[`entry].gen.client_manifest
+        if units is None
+        else units[os.path.realpath(`entry)].client;
     has_client = client
         and bool(
             (entry_client is not None and entry_client.has_client)

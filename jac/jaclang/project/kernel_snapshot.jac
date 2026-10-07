@@ -302,6 +302,7 @@ obj KernelSnapshot(HostAsker) {
         shipped: set[str] = set(),
         asked: int = 0,
         ask_seconds: float = 0.0,
+        failures: list[str] = [],
         other_compiler: str = "";
 
     def inputs -> KernelInputs {
@@ -323,7 +324,9 @@ obj KernelSnapshot(HostAsker) {
         try {
             refused = self.answer(learner, method, key.split(KEY_SEP));
         } except Exception as err {
-            kernel_note(f"no answer for {method} {key!r}: {type(err).__name__}: {err}");
+            failed = f"no answer for {method} {key!r}: {type(err).__name__}: {err}";
+            self.failures.append(failed);
+            kernel_note(failed);
             return "";
         } finally {
             install_host(asking);
@@ -408,6 +411,10 @@ obj KernelSnapshot(HostAsker) {
                 } except Exception {}
             }
         }
+    }
+
+    def failure_note -> str {
+        return f"; the host said: {self.failures[-1]}" if self.failures else "";
     }
 
     def serve_interface(learner: KernelHost, module_file: str) {
@@ -847,7 +854,7 @@ def kernel_analysis(
     }
     if outcome.status == ANALYSIS_CRASHED and not host_deferred(outcome) {
         detail = f" ({outcome.misses[-1]})" if outcome.misses else "";
-        raise KernelAnalysisError(outcome.message + detail);
+        raise KernelAnalysisError(outcome.message + detail + snapshot.failure_note());
     }
     return outcome;
 }
