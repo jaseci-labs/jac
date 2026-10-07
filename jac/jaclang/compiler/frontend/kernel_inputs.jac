@@ -235,6 +235,7 @@ obj KernelInputs {
         siblings: dict[str, str] = {},
         client_pulls: dict[str, str] = {},
         native_ifaces: dict[str, str] = {},
+        native_facts: dict[str, str] = {},
         path_aliases: dict[str, bool] = {},
         virtual_modules: dict[str, str] = {},
         imports: list[ImportResolution] = [],
@@ -790,6 +791,7 @@ def answers_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "siblings": dict(inputs.siblings),
         "client_pulls": dict(inputs.client_pulls),
         "native_ifaces": dict(inputs.native_ifaces),
+        "native_facts": dict(inputs.native_facts),
         "path_aliases": dict(inputs.path_aliases),
         "virtual_modules": dict(inputs.virtual_modules),
         "imports": [
@@ -866,6 +868,7 @@ def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
     merge_str_map(inputs.siblings, raw.get("siblings"));
     merge_str_map(inputs.client_pulls, raw.get("client_pulls"));
     merge_str_map(inputs.native_ifaces, raw.get("native_ifaces"));
+    merge_str_map(inputs.native_facts, raw.get("native_facts"));
     merge_bool_map(inputs.path_aliases, raw.get("path_aliases"));
     merge_str_map(inputs.virtual_modules, raw.get("virtual_modules"));
     merge_bool_map(inputs.emit_of, raw.get("emit_of"));

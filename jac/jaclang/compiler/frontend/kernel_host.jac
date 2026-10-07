@@ -1051,6 +1051,26 @@ obj KernelHost(HostServices) {
         }
     }
 
+    def native_fact(kind: str, key: str) -> str {
+        self.census.count("native_fact");
+        tag = pair_key(kind, key);
+        if tag in self.inputs.native_facts {
+            return self.inputs.native_facts[tag];
+        }
+        with self.missing("native_fact", tag) as host {
+            answer = host.native_fact(kind, key);
+        }
+        self.inputs.native_facts[tag] = answer;
+        return answer;
+    }
+
+    def save_native_debug_ir(path: str, text: str) {
+        self.census.count("save_native_debug_ir");
+        if self.fallback is not None {
+            self.fallback.save_native_debug_ir(path, text);
+        }
+    }
+
     def native_lowering_failed(program: JacProgram, path: str, detail: str) {
         self.census.count("native_lowering_failed");
         if self.fallback is not None {

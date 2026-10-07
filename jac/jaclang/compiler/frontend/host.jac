@@ -251,6 +251,11 @@ obj HostServices {
     }
 
     def native_lowering_failed(program: JacProgram, path: str, detail: str) {}
+    def native_fact(kind: str, key: str) -> str {
+        return "";
+    }
+
+    def save_native_debug_ir(path: str, text: str) {}
     def native_units_for(program: JacProgram) -> NativeUnitRegistry {
         raise RuntimeError("no compiler host is installed");
     }

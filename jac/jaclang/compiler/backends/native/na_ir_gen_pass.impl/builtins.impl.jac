@@ -282,8 +282,7 @@ impl NaIRGenPass._emit_print_call(
     i32 = ir.IntType(32);
     i8p = ir.IntType(8).as_pointer();
     libc_name = "stderr";
-    import platform as _plat;
-    if _plat.system() == "Darwin" {
+    if active_host().native_fact(FACT_OS, "") == "Darwin" {
         libc_name = "__stderrp";
     }
     if libc_name not in self.llvm_module.globals {
@@ -1558,9 +1557,8 @@ impl NaIRGenPass._emit_sys_stream(stream: str) -> (ir.Value | None) {
     file_st = self._get_file_struct_type();
     self._emit_file_helpers();
 
-    import platform as _plat;
     libc_name = stream;
-    if _plat.system() == "Darwin" {
+    if active_host().native_fact(FACT_OS, "") == "Darwin" {
         libc_name = "__stdoutp" if stream == "stdout" else "__stderrp";
     }
 

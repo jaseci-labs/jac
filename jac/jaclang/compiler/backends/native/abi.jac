@@ -1,23 +1,40 @@
 import jaclang.compiler.backends.native.llvm.ir as ir;
 
 def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
-    """Read identified struct offsets and sizes from LLVM's target ABI.""";
-    import from jaclang.compiler.backends.native.llvm { binding }
+    """Read identified struct offsets and sizes from LLVM's target ABI. LLVM
+    is the host's: the probe module and each struct's member count go to it,
+    and the offsets and sizes come back.""";
+    import json;
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.backends.native.na_constants {
+        FACT_SEP,
+        FACT_STRUCT_LAYOUTS
+    }
     probe = ir.Module(name="layout", context=module.context);
     probe.data_layout = module.data_layout;
+    counts: dict[str, int] = {};
     for (name, struct) in module.context.identified_types.items() {
         if not struct.is_opaque {
             ir.GlobalVariable(probe, struct, name=name);
+            counts[name] = len(struct.members());
         }
     }
     layouts: dict[str, tuple[list[int], int]] = {};
-    with binding.parse_assembly(str(probe)) as bound, binding.create_target_data(
+    if not counts {
+        return layouts;
+    }
+    answered = active_host().native_fact(
+        FACT_STRUCT_LAYOUTS,
         str(module.data_layout)
-    ) as target_data {
-        for value in bound.global_variables {
-            count = len(module.context.identified_types[value.name].members());
-            layouts[value.name] = target_data.get_global_struct_layout(value, count);
-        }
+            + FACT_SEP
+            + json.dumps(counts, sort_keys=True)
+            + FACT_SEP
+            + str(probe)
+    );
+    found: dict[str, list[any]] = json.loads(answered);
+    for (name, row) in found.items() {
+        offsets: list[int] = [int(offset) for offset in row[0]];
+        layouts[name] = (offsets, int(row[1]));
     }
     return layouts;
 }

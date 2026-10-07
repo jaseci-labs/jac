@@ -626,6 +626,10 @@ obj NativeUnitRegistry {
         if opts.native_required_for(resolved) {
             require_native_ir(ir_text);
         }
+        if opts.debug_ir {
+            import from jaclang.compiler.frontend.host { active_host }
+            active_host().save_native_debug_ir(resolved, ir_text);
+        }
         debug = bool(opts.native_debug);
         bitcode = optimize_unit_texts(
             [ir_text], opts, 0 if debug else int(opts.opt_level or 0)

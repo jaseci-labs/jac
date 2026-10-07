@@ -374,6 +374,8 @@ obj KernelSnapshot(HostAsker) {
             learner.sibling_declaration(key);
         } elif method == "client_pulls" {
             learner.client_pulls(key);
+        } elif method == "native_fact" and len(fields) >= 2 {
+            learner.native_fact(fields[0], KEY_SEP.join(fields[1:]));
         } elif method == "held_native_iface" and len(fields) == 2 {
             iface_text = "";
             if self.options.unit_codegen_identity(fields[0]) == fields[1] {

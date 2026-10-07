@@ -2229,8 +2229,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             buf = self._stack_entry_alloca(buf_type, "input.buf");
             buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
 
-            import platform;
-            stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
+            stdin_name = "__stdinp"
+                if active_host().native_fact(FACT_OS, "") == "Darwin"
+                else "stdin";
             if stdin_name not in self.llvm_module.globals {
                 stdin_type = i8p;
                 stdin_global = ir.GlobalVariable(

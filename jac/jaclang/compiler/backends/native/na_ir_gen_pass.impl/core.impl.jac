@@ -23,21 +23,13 @@ impl NaIRGenPass.postinit -> None {
     _ni_src: str = self.module.loc.mod_path if self.module.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self._llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
-    import jaclang.compiler.backends.native.llvm.binding as _llvm_bind;
-
-    _ni_target_ovr = _ni_opts.native_target or "";
-    if _ni_target_ovr {
-        _llvm_bind.initialize_all_targets();
-        _llvm_bind.initialize_all_asmprinters();
-        _target = _llvm_bind.Target.from_triple(_ni_target_ovr);
-    } else {
-        _llvm_bind.initialize_native_target();
-        _target = _llvm_bind.Target.from_default_triple();
-    }
-
-    _tm = _target.create_target_machine(reloc="pic", codemodel="small");
-    self.llvm_module.data_layout = str(_tm.target_data);
-    self.llvm_module.triple = _tm.triple;
+    _ni_target = active_host().native_fact(
+        FACT_TARGET, _ni_opts.native_target or ""
+    ).split(
+        FACT_SEP
+    );
+    self.llvm_module.data_layout = _ni_target[0];
+    self.llvm_module.triple = _ni_target[1];
     import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
     self._unit_prefix = native_unit_prefix(_ni_src) if _ni_src else "jac_native";
 
@@ -1303,12 +1295,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs
             and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
         if _wl_jac_internal {
-            try {
-                import from jaclang.jac0core { sealed as _wl_sealed }
-                _wl_internal = _wl_sealed._jaclang_image() is not None;
-            } except Exception {
-                _wl_internal = False;
-            }
+            _wl_internal = bool(active_host().native_fact(FACT_SEALED_RUNTIME, ""));
         }
     }
     _imp_fn_unavail: (set | None) = None;
@@ -1890,7 +1877,6 @@ impl NaIRGenPass._ensure_emitters -> dict[str, object] {
 }
 
 impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
-    import inspect;
     if self._primitive_method_name_cache is None {
         self._primitive_method_name_cache = {};
     }
@@ -1899,16 +1885,9 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
         return _cached;
     }
     _names: set[str] = set();
-    _emitter = self._ensure_emitters().get(type_name);
-    if _emitter is not None {
-        for _n in dir(_emitter) {
-            if _n.startswith("emit_") and not _n.startswith("emit_op_") {
-                _fn = getattr(_emitter, _n);
-
-                if len(inspect.signature(_fn).parameters) >= 3 {
-                    _names.add(_n.removeprefix("emit_"));
-                }
-            }
+    for _n in active_host().native_fact(FACT_PRIMITIVE_METHODS, type_name).split(",") {
+        if _n {
+            _names.add(_n);
         }
     }
     self._primitive_method_name_cache[type_name] = _names;

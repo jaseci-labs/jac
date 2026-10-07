@@ -2497,8 +2497,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     return self._emit_sys_argv();
                 }
                 if right_name == "platform" {
-                    import platform as _plat;
-                    return self._make_global_string(_plat.system().lower());
+                    return self._make_global_string(
+                        active_host().native_fact(FACT_OS, "").lower()
+                    );
                 }
                 if right_name == "maxsize" {
                     return ir.Constant(ir.IntType(64), 0x7FFFFFFFFFFFFFFF);

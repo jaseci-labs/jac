@@ -806,21 +806,9 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
     if self._codec_lookup_function is not None {
         return self._codec_lookup_function;
     }
-    import encodings;
-    import encodings.aliases;
-    import pkgutil;
-    supported = {"utf_8": 1, "latin_1": 2, "ascii": 3};
-    aliases = encodings.aliases.aliases;
-    alias_rows = bytearray();
-    for key in sorted(aliases) {
-        alias_rows += bytes([supported.get(aliases[key], 4)]) + key.encode() + b"\x00";
-    }
-    module_rows = bytearray();
-    for mod in sorted(m.name for m in pkgutil.iter_modules(encodings.__path__)) {
-        if mod != "aliases" and mod not in aliases {
-            module_rows += bytes([supported.get(mod, 4)]) + mod.encode() + b"\x00";
-        }
-    }
+    codec_tables = active_host().native_fact(FACT_CODEC_TABLES, "").split(FACT_SEP);
+    alias_rows = bytes.fromhex(codec_tables[0]);
+    module_rows = bytes.fromhex(codec_tables[1]);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -832,8 +820,8 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
     fn.linkage = "private";
     name = fn.args[0];
     name.name = "name";
-    alias_table = self._private_cstr(bytes(alias_rows) + b"\x00", ".codec.aliases");
-    module_table = self._private_cstr(bytes(module_rows) + b"\x00", ".codec.modules");
+    alias_table = self._private_cstr(alias_rows + b"\x00", ".codec.aliases");
+    module_table = self._private_cstr(module_rows + b"\x00", ".codec.modules");
     lookup = self._name_lookup_fn();
     entry_bb = fn.append_basic_block("entry");
     loop = fn.append_basic_block("loop");
@@ -1292,7 +1280,6 @@ impl NaIRGenPass._emit_bytes_decode(
     Other arguments resolve at run time. Empty input decodes to "" without
     looking the codec up, as CPython does.
     """;
-    import codecs;
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1356,10 +1343,10 @@ impl NaIRGenPass._emit_bytes_decode(
     n = self._bytes_len_val(target);
     nonempty = b.icmp_signed("!=", n, ir.Constant(i64, 0), name="dec.nonempty");
     if enc_literal is not None {
-        codec_name: (str | None) = None;
-        try {
-            codec_name = codecs.lookup(enc_literal).name;
-        } except LookupError {
+        codec_name: (str | None) = active_host().native_fact(
+            FACT_CODEC_NAME, enc_literal
+        );
+        if not codec_name {
             self._emit_runtime_raise(
                 nonempty, "LookupError", f"unknown encoding: {enc_literal}"
             );

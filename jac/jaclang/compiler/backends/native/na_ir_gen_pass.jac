@@ -11,6 +11,16 @@ import from jaclang.compiler.driver.pipeline {
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import from jaclang.compiler.frontend.host { active_host }
+import from jaclang.compiler.backends.native.na_constants {
+    FACT_CODEC_NAME,
+    FACT_CODEC_TABLES,
+    FACT_OS,
+    FACT_PRIMITIVE_METHODS,
+    FACT_SEALED_RUNTIME,
+    FACT_SEP,
+    FACT_STRUCT_LAYOUTS,
+    FACT_TARGET
+}
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;

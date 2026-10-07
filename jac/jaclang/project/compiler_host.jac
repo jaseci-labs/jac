@@ -72,6 +72,8 @@ obj ProjectHost(HostServices) {
     ) -> str;
 
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def native_fact(kind: str, key: str) -> str;
+    def save_native_debug_ir(path: str, text: str);
     def has_npm_package(spec: str, base_path: str) -> bool;
     def resolve_npm_package(spec: str, base_path: str) -> (str | None);
     def npm_declarations(spec: str, base_path: str) -> (str | None);
