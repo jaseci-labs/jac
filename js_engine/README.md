@@ -147,29 +147,11 @@ js_engine/
       ffi/                 # C bindings: libuv, libssl, libcrypto, zlib, libpcre2,
                            #   libllhttp, libnghttp2, libc, libm, libdl
       httpcore/ net/ tls/ ws/   # networking stacks
-    tests/
-      unit/                # Jac-level unit tests (test_*.na.jac)
-      qa/                  # regression suite, driven by run_reg.jac
-      e2e/                 # end-to-end JS tests
-      test262/vendor/      # tc39/test262 conformance suite (tools/fetch_test_deps.sh)
-      node/vendor/         # nodejs/node (v24.x) for the Node.js test suite (tools/fetch_test_deps.sh)
   napi/                    # N-API ABI shim + bindings (Node native-addon compat)
   bin/js_engine            # build output (gitignored)
 ```
 
 The N-API layer under `napi/` needs the Node headers at `/usr/include/node` and builds a shim shared library, `lib/libnapi_shim.so`.
-
-## Testing
-
-```bash
-make test          # QA regression suite     (engine/tests/qa/, via run_reg.jac)
-make test_node     # same suite, diffed against system Node.js
-make test_unit     # Jac unit tests          (engine/tests/unit/test_*.na.jac, via `jac run`)
-make test_e2e      # end-to-end JS tests      (engine/tests/e2e/run_tests.sh)
-make test_napi     # build the N-API addons and run napi/tests/*
-```
-
-ECMAScript conformance is tracked against [tc39/test262](https://github.com/tc39/test262) under `engine/tests/test262/vendor`. The official [Node.js](https://github.com/nodejs/node) sources (branch `v24.x`) live under `engine/tests/node/vendor`; run them with `jac engine/tests/node/run_node_tests.jac` (see `engine/tests/node/README.md`). Both, and the Rollup sources the `apps/rollup` suite runs against, are fetched at pinned commits by `tools/fetch_test_deps.sh`.
 
 ## Status
 

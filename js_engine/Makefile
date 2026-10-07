@@ -78,7 +78,7 @@ LLHTTP_SRCDIR   := /tmp/llhttp-release-v$(LLHTTP_VERSION)
 LLHTTP_BUILDDIR := /tmp/llhttp-build-$(LLHTTP_VERSION)
 LLHTTP_INSTDIR  := $(CURDIR)/lib/llhttp
 
-.PHONY: all build scrub scrub-engine clean run test test_unit test_e2e test_napi test_rollup napi_shim tz_shim icu_shim tzdata wasmtime install_deps check_native_kinds js_compiler builtins-bytecode check-bytecode js_engine_select
+.PHONY: all build scrub scrub-engine clean run dist napi_shim tz_shim icu_shim tzdata wasmtime install_deps js_compiler builtins-bytecode check-bytecode js_engine_select
 
 # ── Default (incremental build) ──────────────────────────────────────────────
 all: build
@@ -278,42 +278,23 @@ check-bytecode: $(JSC)
 run: $(BIN)
 	$(BIN) $(FILE)
 
-# ── Test targets ─────────────────────────────────────────────────────────────
-check_native_kinds:
-	@jac engine/tests/check_native_kinds.jac
-
-test: $(BIN)
-	@jac engine/tests/qa/run_reg.jac --gc
-
-test_node: $(BIN)
-	@jac engine/tests/qa/run_reg.jac --node
-
-test_unit:
-	@for f in engine/tests/unit/test_*.jac; do \
-		echo "=== $$f ==="; \
-		jac run $$f || exit 1; \
-	done
-
-test_e2e: $(BIN)
-	@bash engine/tests/e2e/run_tests.sh
-
-test_napi: $(BIN) $(NAPI_SHIM_SO)
-	@NAPI_INC=$(NAPI_INC) bash napi/tests/run_napi.sh $(abspath $(BIN))
-
-# Data-driven rollup suites runnable under the chunked orchestrator.
-# (cli needs subprocess spawn, browser is out of scope, and the spec-file
-# categories — hooks/misc/watch/... — need more mocha surface in the shim.)
-ROLLUP_SUITES ?= function form chunking-form sourcemaps file-hashes
-test_rollup: $(BIN)
-	@cd apps/rollup && python3 suite/run_chunks.py $(ROLLUP_SUITES) \
-		--chunk 10 --jobs 6 --test-timeout 30 --mem-limit-mb 3072 \
-		--engine $(abspath $(BIN)) --baseline suite/rollup.latest.jsonl
+# ── Relocatable runtime tree (what the jac binary bundles) ───────────────────
+# The engine finds its builtins relative to its own path (<root>/engine/src/
+# builtins/js) and its shims through $$ORIGIN, so this tree runs from anywhere.
+# `zig build -Djs-engine=../js_engine/dist` packs it into the jac payload.
+DIST := dist
+dist: build
+	rm -rf $(DIST)
+	mkdir -p $(DIST)/bin $(DIST)/engine/src/builtins
+	cp $(BIN) $(DIST)/bin/
+	cp -L $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) $(LLHTTP_SO) $(DIST)/bin/
+	cp -r engine/src/builtins/js $(DIST)/engine/src/builtins/
+	@echo "Staged: $(DIST)/"
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 clean:
-	rm -rf bin lib
+	rm -rf bin lib $(DIST)
 	find . -type d -name '.jac_ir' -exec rm -rf {} + 2>/dev/null || true
-	find napi/tests -name 'addon.node' -delete 2>/dev/null || true
 
 # ── Install system dependencies ───────────────────────────────────────────────
 # Ensures PCRE2 10.45+ is installed at $(PCRE2_SO) so that variable-length
@@ -380,11 +361,7 @@ help:
 	@echo "  build            Compile main.jac → bin/js_engine  (incremental; runs install_deps first)"
 	@echo "  scrub            Full recompile from scratch (jac clean --cache, then build)"
 	@echo "  run FILE=<path>  Run a JS file with the compiled engine"
-	@echo "  test             Run QA regression suite (engine/tests/qa/) via run_reg.jac"
-	@echo "  test_unit        Run unit tests (engine/tests/unit/test_*.jac) one by one via jac run"
-	@echo "  test_e2e         Run e2e JS tests (engine/tests/e2e/) via run_tests.sh"
-	@echo "  test_napi        Build all NAPI addon.c files and run napi/tests/*"
-	@echo "  test_rollup      Run all rollup suites chunked (override list: ROLLUP_SUITES=\"function form ...\")"
+	@echo "  dist             Stage a relocatable runtime tree in dist/ (what the jac binary bundles)"
 	@echo "  napi_shim        Build lib/libnapi_shim.so (NAPI ABI surface)"
 	@echo "  tz_shim          Build lib/libtz_shim.so (IANA TZif timezone shim)"
 	@echo "  icu_shim         Build lib/libicu_shim.so (ICU Intl shim)"

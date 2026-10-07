@@ -1,2 +1,0 @@
-// NODE_COMMONJS_PSEUDO_GLOBALS_COMPREHENSIVE_TEST_PLAN.md — NCJS-MOD-003
-exports.loadedAtFirstLine = module.loaded;

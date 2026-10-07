@@ -11,12 +11,6 @@ profile = "rc"
 "engine.src.*" = "native"
 "napi.src.*" = "native"
 "tools.*" = "server"
-"engine.tests.check_native_kinds" = "server"
-"engine.tests.qa.run_reg" = "server"
-"engine.tests.node.run_node_tests" = "server"
-"engine.tests.test262.run_test262" = "server"
-"engine.tests.test262.analyze_builtins_failures" = "server"
-"engine.tests.qa.04_node_modules.22_packages._gen_fixtures" = "server"
 
 [native]
 link_mode = "bitcode"
