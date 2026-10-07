@@ -1,18 +1,4 @@
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.unparse { unparse_node }
-import from jaclang.runtime.semantic {
-    ClassInfo,
-    FieldInfo,
-    FunctionInfo,
-    MethodInfo,
-    ParamInfo,
-    TypeForm,
-    mk_dict,
-    mk_form,
-    mk_list,
-    type_to_str
-}
 
 impl MTIRGenPass._run_impl(ir_in: Module) -> Module {
     self._owned = [];

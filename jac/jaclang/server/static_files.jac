@@ -1,13 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.client_paths {
-    client_app_dir_for,
-    client_app_root,
-    client_assets_config,
-    client_assets_dir
-}
-import from jaclang.project.config { find_project_root, get_config, get_config_for_dir }
-import from jaclang.project.kinds { kind_has_client }
-import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 
 glob DEFAULT_ASSET_EXTENSIONS: set[str] = {

@@ -1,6 +1,3 @@
-import from jaclang.project.config { get_config_for_path }
-import from jaclang.client.artifact { client_output_dir }
-
 impl JacClient.render_page(
     introspector: ModuleIntrospector,
     function_name: str,

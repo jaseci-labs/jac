@@ -1,19 +1,10 @@
 import asyncio;
-import from jaclang.runtime.object_interop { fields as record_fields, is_record }
-import from jaclang.runtime.object_model { MISSING }
+
 import inspect;
 import json;
 import os;
 import from inspect { iscoroutine }
 import from typing { get_type_hints }
-import from jaclang.data.serializer { Serializer }
-import from jaclang.client.artifact { ClientBundleError, MissingBunError }
-import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.server.exchange { forget_response_choice }
-import from jaclang.server.net { PORT_RETRY_LIMIT }
-import from jaclang.server.serving.server { ServingServer }
-import type from jaclang.runtime.constructs { Archetype }
 
 impl ExecutionManager.report_collector(
     call_state: CallState
@@ -39,7 +30,6 @@ impl ExecutionManager.report_collector(
 async def _begin_request_context(
     user_root_id: str, target: object | None = None
 ) -> tuple[(ExecutionContext, any)] {
-    import from jaclang.runtime.osp_kernel_sv { isolate_request_walk_stack }
     parent = Jac.get_context();
     req_ctx = await ExecutionContext.for_target(target, parent, user_root_id);
     token = Jac.push_request_context(req_ctx);
@@ -51,7 +41,6 @@ async def _begin_request_context(
 async def _abegin_user_request_context(
     user_manager: UserManager, username: str, target: object | None = None
 ) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
-    import from jaclang.runtime.exceptions { MissingAnchorError }
     root_id = await user_manager.aget_root_id(username);
     if not root_id {
         import os;
@@ -358,7 +347,6 @@ impl ExecutionManager.spawn_walker(
 impl ExecutionManager.spawn_walker_sync(
     walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.runtime.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
 
@@ -395,7 +383,6 @@ impl ExecutionManager.spawn_walker_sync(
 impl ExecutionManager.spawn_walker_async(
     walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.runtime.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
 
@@ -482,7 +469,7 @@ impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
-    import from jaclang.server.sealed_serve { serve_manifest_for }
+
     path: str = getattr(self._module, '__file__', '');
     manifest = serve_manifest_for(path) if path else None;
     if manifest is None {
@@ -496,8 +483,6 @@ impl ModuleIntrospector._load_manifest -> None {
 }
 
 impl ModuleIntrospector._load_surface -> None {
-    import from jaclang.server.sealed_serve { serve_manifest_for }
-    import from jaclang.runtime.surface { SurfaceEntry }
     path: str = getattr(self._module, '__file__', '') if self._module else '';
     manifest = serve_manifest_for(path) if path else None;
     if manifest is None {
@@ -522,8 +507,6 @@ impl ModuleIntrospector._load_surface -> None {
 }
 
 impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.server.sealed_serve { sealed_root_for }
     own_file: str = getattr(self._module, '__file__', '') if self._module else '';
     img_root = self._manifest_root
         or (sealed_root_for(own_file) if own_file else '')
@@ -531,7 +514,7 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
     src_path = os.path.join(img_root, rel)
         if (img_root and not os.path.isabs(rel))
         else rel;
-    import from jaclang.runtime.prepared { application_for, source_for_origin }
+
     application = application_for(own_file, self._module.__name__)
         if self._module is not None
         else None;
@@ -543,7 +526,7 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
     if own_file and os.path.abspath(src_path) == os.path.abspath(own_file) {
         return getattr(self._module, name, None);
     }
-    import from jaclang.runtime.prepared { load_prepared_module }
+
     if application is not None and os.path.realpath(src_path) in application.code {
         return getattr(load_prepared_module(src_path, application), name, None);
     }
@@ -561,8 +544,6 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
 }
 
 impl ModuleIntrospector.scheduled_members -> list[tuple[str, any, bool]] {
-    import from jaclang.runtime.constructs { WalkerArchetype }
-    import from jaclang.server.task_scheduler { ScheduleSpec }
     found: list[tuple[str, any, bool]] = [];
     if not self._module {
         return found;
@@ -614,7 +595,6 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., any)]] {
 }
 
 impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
-    import from jaclang.runtime.constructs { WalkerArchetype }
     if not self._module {
         return {};
     }
@@ -637,7 +617,6 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
 }
 
 impl ModuleIntrospector._check_module_freshness -> None {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     if not self._module {
         return;
     }
@@ -940,7 +919,6 @@ impl ModuleIntrospector.spa_fallback_status(url_path: str) -> int {
 }
 
 impl ModuleIntrospector._load_spa_routes -> (list[str] | None) {
-    import from jaclang.server.sealed_serve { serve_manifest_for }
     path: str = getattr(self._module, '__file__', '')
         if self._module
         else str(Path(self.base_path or '.') / (self.module_name + '.jac'));
@@ -1069,8 +1047,6 @@ def _warm_persistence {
 
 
 impl JacAPIServer.postinit -> None {
-    import from jaclang.server.identity.config { configure_identity, signing_secret }
-    import from jaclang.server.task_scheduler { Scheduler }
     if self.settings is None {
         overrides: dict[str, any] = {};
         if self.port > 0 {
@@ -1149,8 +1125,6 @@ impl JacAPIServer.add_shutdown_hook(fn: Callable[..., any]) -> None {
 }
 
 impl JacAPIServer._install_middleware -> None {
-    import from jaclang.server.middleware { jwt_middleware, request_context_middleware }
-
     self.add_middleware(
         request_context_middleware(
             base_path_dir=Jac.get_base_path_dir() or self.base_path or None,
@@ -1162,14 +1136,6 @@ impl JacAPIServer._install_middleware -> None {
 }
 
 impl JacAPIServer.build_app -> ServingApp {
-    import from jaclang.server.middleware { metrics_middleware }
-    import from jaclang.server.serving.drain { drain_middleware }
-    import from jaclang.server.serving.middleware {
-        cors_middleware,
-        custom_headers_middleware
-    }
-    import from jaclang.server.serving.openapi { register_docs_endpoints }
-    import from jaclang.project.config { JacConfig }
     settings = self.resolved_settings();
     if not settings.static_only {
         self.introspector.load();
@@ -1235,21 +1201,6 @@ impl JacAPIServer.build_app -> ServingApp {
 }
 
 impl JacAPIServer.register_endpoints -> None {
-    import from jaclang.server.endpoints.auth { register_auth_endpoints }
-    import from jaclang.server.endpoints.colocated { register_colocated_endpoints }
-    import from jaclang.server.endpoints.introspection {
-        register_introspection_endpoints
-    }
-    import from jaclang.server.endpoints.pages {
-        register_diagnostics_endpoints,
-        register_graph_endpoints,
-        register_page_endpoints
-    }
-    import from jaclang.server.endpoints.walkers {
-        register_function_endpoints,
-        register_walker_endpoints
-    }
-    import from jaclang.server.serving.health { register_health_endpoints }
     settings = self.resolved_settings();
     register_health_endpoints(self.require_app(), self.drain);
     if settings.static_only {
@@ -1299,7 +1250,7 @@ impl JacAPIServer._refresh_dev_endpoints -> None {
     app = self.require_app();
     app.clear_routes();
     self._endpoints = [];
-    import from jaclang.server.serving.openapi { register_docs_endpoints }
+
     self.register_endpoints();
     for ext in (self.extensions or []) {
         ext.register(self);
@@ -1365,7 +1316,6 @@ impl JacAPIServer._ensure_sv_siblings -> None {
 }
 
 impl JacAPIServer._ensure_client_bundle -> None {
-    import from jaclang.runtime.prepared { application_for }
     module_path: str = getattr(self.introspector._module, '__file__', '');
     if module_path and application_for(module_path) is not None {
         return;
@@ -1373,10 +1323,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
 
     import sys;
     import time;
-    import from jaclang.cli.banners { JAC_DISCORD_URL }
-    import from jaclang.cli.console { console }
-    import from jaclang.client.client_diagnostics { format_build_diagnostics }
-    import from jaclang.project.config { get_config }
+
     settings = self.resolved_settings();
     if settings.dev or settings.no_client or settings.client_dist {
         return;
@@ -1385,7 +1332,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
     if not client_exports {
         return;
     }
-    import from jaclang.project.client_paths { client_app_dir_for }
+
     config = get_config();
     dist_dir = client_app_dir_for(config) / 'dist'
         if config
@@ -1420,7 +1367,6 @@ impl JacAPIServer._ensure_client_bundle -> None {
 }
 
 impl JacAPIServer._ensure_internal_users -> None {
-    import from jaclang.server.identity.user_manager { SYSTEM_USER, UserRole }
     self.user_manager.ensure_internal_user(Con.GUEST.value, '__no_password__');
     self.user_manager.ensure_internal_user(
         SYSTEM_USER, '__no_login__', role=UserRole.SYSTEM.value
@@ -1428,7 +1374,6 @@ impl JacAPIServer._ensure_internal_users -> None {
 }
 
 impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
-    import from jaclang.server.task_scheduler { ScheduleSpec }
     found: list[tuple[str, any, bool]] = [];
     seen: set[str] = set();
     for (name, member, is_walker) in self.introspector.scheduled_members() {
@@ -1457,9 +1402,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     if self.resolved_settings().static_only {
         return;
     }
-    import from jaclang.server.identity.user_manager { SYSTEM_USER }
-    import from jaclang.runtime.builtin { ScheduleTrigger }
-    import from jaclang.server.task_scheduler { schedule_namespace }
+
     _self = self;
     def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
         async def _run -> any {
@@ -1518,7 +1461,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             f"static scheduler: {len(self.scheduler._tasks)} task(s) registered"
         );
     }
-    import from jaclang.server.identity.identity_storage { PgIdentityStorage }
+
     storage = self.user_manager._identity_storage;
     store: any = storage.store if isinstance(storage, PgIdentityStorage) else None;
     if store is not None {
@@ -1532,7 +1475,6 @@ impl JacAPIServer._register_scheduled_tasks -> None {
 }
 
 impl JacAPIServer._validate_or_raise -> None {
-    import from jaclang.server.settings { ServeConfigError }
     settings = self.resolved_settings();
     problems = settings.validate();
     for ext in (self.extensions or []) {
@@ -1554,7 +1496,6 @@ impl JacAPIServer._validate_or_raise -> None {
 }
 
 impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings {
-    import from jaclang.server.serving.accesslog { configure_access_logging }
     settings = self.resolved_settings();
     settings.dev = dev;
     settings.no_client = no_client;
@@ -1583,7 +1524,6 @@ impl JacAPIServer.serve_background(
     on_ready: Callable[..., None] | None = None,
     port_retries: int = 0
 ) -> Callable[[], None] {
-    import from jaclang.server.outbox { start_worker_if_bridging, stop_worker }
     settings = self._prepare_to_serve(dev, no_client);
     serving = ServingServer(
         app=self.require_app(), settings=settings, drain=self.drain
@@ -1616,8 +1556,6 @@ impl JacAPIServer.start(
     no_client: bool = False,
     on_ready: Callable[..., None] | None = None
 ) -> int {
-    import from jaclang.cli.console { console }
-    import from jaclang.server.serving.supervisor { WorkerSupervisor }
     settings = self._prepare_to_serve(dev, no_client);
 
     def _announce(bound_port: int) {
@@ -1664,7 +1602,6 @@ impl JacAPIServer._worker_main(
     on_ready: (Callable[[int], None] | None) = None,
     port_retries: int = 0
 ) -> int {
-    import from jaclang.server.outbox { start_worker_if_bridging, stop_worker }
     settings = self.resolved_settings();
     serving = ServingServer(
         app=self.require_app(),
@@ -1717,7 +1654,6 @@ impl JacAPIServer.request_stop -> None {
 
 
 impl print_endpoint_docs(server: JacAPIServer) -> None {
-    import from jaclang.cli.console { console }
     server.introspector.load();
     functions = server.introspector.get_functions();
     walkers = server.introspector.get_walkers();
@@ -1800,12 +1736,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             );
         }
     }
-    import from jaclang.project.config { get_config }
-    import from jaclang.server.endpoints.colocated {
-        colocated_providers,
-        provider_route
-    }
-    import from jaclang.server.static_files { sibling_app_names }
+
     config = get_config();
     root_app = server.introspector.resolve_root_app();
     section('CLIENT PAGES', 'Public');

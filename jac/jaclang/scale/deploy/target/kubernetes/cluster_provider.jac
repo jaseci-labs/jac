@@ -1,6 +1,3 @@
-import from jaclang.scale._optdeps.kubernetes { client }
-import from jaclang.scale.observability.logger { Logger }
-
 obj ClusterProvider {
     def service_type -> str abst;
     def validate_ports(node_port: int, current_namespace: str) -> None abst;

@@ -1,25 +1,6 @@
 import os;
 import sys;
 import json;
-import from jaclang.cli.console { console }
-import from jaclang.cli.browser_engine {
-    cmd_open,
-    cmd_navigate,
-    cmd_eval,
-    cmd_click,
-    cmd_type,
-    cmd_fill,
-    cmd_press,
-    cmd_get,
-    cmd_wait,
-    cmd_scroll,
-    cmd_console,
-    cmd_snapshot,
-    cmd_screenshot,
-    cmd_state,
-    cmd_sessions,
-    cmd_close
-}
 
 def _need(args: list[str], n: int, usage: str) {
     if len(args) < n {

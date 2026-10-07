@@ -1,5 +1,4 @@
 import bisect;
-import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint, WSEndPoint }
 
 
 obj RouteSegment {

@@ -31,7 +31,7 @@ def arena_fixture(name: str) -> str {
         }
         with open(os.path.join(tmp, "arch.jac"), "a") as f {
             f.write(
-                "\nimpl import core.site.game {\n    sim --> core.site.game."
+                "\ngraph import core.site.game {\n    sim --> core.site.game."
                     + name
                     + " { "
                     + names

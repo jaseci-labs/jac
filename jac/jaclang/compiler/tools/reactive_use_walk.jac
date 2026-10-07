@@ -1,7 +1,3 @@
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { ExprCtx }
-import from jaclang.compiler.frontend.roles { Kid, ValueRole }
-
 walker ReactiveUseWalker {
     has reactive: set[str],
         writes: list[tuple[int, int, str]] = [],

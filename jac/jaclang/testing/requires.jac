@@ -3,7 +3,6 @@ import shutil;
 import socket;
 import unittest;
 import from importlib.util { find_spec }
-import from jaclang.testing.test_runner { STRICT_ENV, strict_mode }
 
 
 def _unmet(kind: str, name: str, hint: str) {

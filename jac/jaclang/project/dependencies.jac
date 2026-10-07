@@ -1,5 +1,3 @@
-import from jaclang.project.package_scope { is_package_name }
-
 glob PACKAGE_DEP_KEYS: tuple[str, ...] = (
          "version",
          "path",

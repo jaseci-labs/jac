@@ -1,13 +1,3 @@
-import from jaclang.runtime.scalars {
-    ScalarShape,
-    numeric_shapes,
-    sized_scalar_names,
-    shape_literal_fits,
-    shape_range,
-    shapes_unify,
-    shapes_widen_to
-}
-
 enum NumericKind {
     NotNumeric = "not_numeric",
     IntKind = "int_kind",

@@ -1,6 +1,5 @@
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.client.targets.registry { ClientTarget }
 
 obj WebTarget(ClientTarget) {
     has name: str = "web",

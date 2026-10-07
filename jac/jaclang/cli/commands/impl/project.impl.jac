@@ -7,10 +7,6 @@ import shlex;
 import base64;
 import importlib.metadata;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.dist.seal { make_sealed_image as _make_sealed_image, build_jab }
-import type from jaclang.project.template_registry { ProjectTemplate, TemplateRegistry }
-import type from jaclang.project.providers { InstallContext }
 
 impl create(
     name: str = '',
@@ -103,12 +99,7 @@ def _create_body(
         };
         stash_create_theme(overrides);
     }
-    import from jaclang.project.config { find_project_root }
-    import from jaclang.project.template_registry {
-        TemplateRegistry,
-        get_template_registry
-    }
-    import from jaclang.project.kinds { is_valid_kind, VALID_KINDS }
+
     registry: TemplateRegistry = get_template_registry();
 
     if list_kinds {
@@ -352,7 +343,6 @@ def _create_body(
 }
 
 def _run_blurb(kind: str) -> str {
-    import from jaclang.project.kinds { VALID_KINDS }
     blurbs: dict[str, str] = {
         "cli": "Execute the project",
         "cli-native": "Native-compile and run",
@@ -377,10 +367,6 @@ def _run_blurb(kind: str) -> str {
 def _create_app(
     registry: TemplateRegistry, app_name: str, kind: str, app_path: str, force: bool
 ) -> int {
-    import from jaclang.project.config { find_project_root }
-    import from jaclang.project.kinds { is_valid_kind, VALID_KINDS }
-    import from jaclang.project.template_loader { scaffold_app }
-
     existing = find_project_root(Path.cwd());
     if existing is None {
         console.error(
@@ -456,7 +442,6 @@ def _create_app(
 }
 
 def _toml_apps_and_default(toml_path: Path) -> tuple[set[str], str] {
-    import from jaclang.project.tomlio { read_toml_with_encoding }
     try {
         doc = read_toml_with_encoding(str(toml_path));
     } except Exception {
@@ -551,7 +536,7 @@ def _project_name_from_cwd(cwd: Path) -> str {
 
 def _resolve_bundled_template(name: str, example: str) -> ProjectTemplate | None {
     import jaclang;
-    import from jaclang.project.template_loader { load_template_from_directory }
+
     pkg = Path(jaclang.__file__).parent;
     candidates = [pkg.parent / f"{name}_template", pkg.parent / "examples" / example];
     for cand in candidates {
@@ -570,13 +555,6 @@ def _resolve_bundled_template(name: str, example: str) -> ProjectTemplate | None
 }
 
 def _resolve_template(use: str, registry: TemplateRegistry) -> ProjectTemplate | None {
-    import from jaclang.project.template_loader { load_template_from_directory }
-    import from jaclang.packages.templates {
-        TemplateError,
-        fetch_template,
-        is_template_spec,
-        load_template_jab
-    }
     import shutil;
 
     if use.startswith("http://")
@@ -782,18 +760,6 @@ impl install(
         return run_npm_add(packages, dev, install_global);
     }
     import from pathlib { Path }
-    import from jaclang.project.config { get_config }
-    import from jaclang.project.pyvenv {
-        ensure_venv,
-        get_venv_site_packages,
-        make_git_spec
-    }
-    import from jaclang.project.providers {
-        InstallContext,
-        get_provider_registry,
-        get_python_provider,
-        resolve_plan
-    }
 
     flag_defs: list[tuple[bool, str]] = [
         (force_reinstall, "--force-reinstall"),
@@ -1067,7 +1033,7 @@ impl install(
         );
         return 1;
     }
-    import from jaclang.packages.commands { install_project }
+
     console.print(f"\nInstalling dependencies for {config.project.name}", style="bold");
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     if extras {
@@ -1086,7 +1052,6 @@ impl install(
 }
 
 def _bootstrap_project_deps(project_path: Path) -> bool {
-    import from jaclang.project.config { get_config, set_config }
     prev = os.getcwd();
     prev_cfg = get_config();
     try {
@@ -1121,8 +1086,7 @@ impl remove(
         import from jaclang.client.cli { run_npm_remove }
         return run_npm_remove(packages, dev);
     }
-    import from jaclang.project.config { get_config }
-    import from jaclang.project.providers { InstallContext, get_python_provider }
+
     config = get_config();
     if config is None {
         console.error(
@@ -1171,8 +1135,6 @@ impl update(
     dev: bool = False,
     verbose: bool = False
 ) -> int {
-    import from jaclang.project.config { get_config }
-    import from jaclang.project.providers { InstallContext }
     config = get_config();
     if config is None {
         console.error(
@@ -1184,11 +1146,7 @@ impl update(
     if pypi {
         return _update_pypi(config, packages, dev, ctx);
     }
-    import from jaclang.packages.commands {
-        PYPI_HINT,
-        install_project,
-        split_package_specs
-    }
+
     (specs, stray) = split_package_specs(packages);
     if stray {
         console.error(f"Not Jac package names: {', '.join(stray)}", hint=PYPI_HINT);
@@ -1213,8 +1171,6 @@ impl update(
 def _update_pypi(
     config: JacConfig, packages: list[str], dev: bool, ctx: InstallContext
 ) -> int {
-    import from jaclang.project.pyvenv { make_git_spec }
-    import from jaclang.project.providers { get_python_provider }
     python = get_python_provider();
     specs_to_update: list[str] = [];
     names_to_update: list[str] = [];
@@ -1275,7 +1231,6 @@ def _update_pypi(
 def _rewrite_compatible_pins(
     config: JacConfig, names: list[str], dev: bool, ctx: InstallContext
 ) -> int {
-    import from jaclang.project.providers { get_python_provider }
     python = get_python_provider();
     if not names {
         names = list(config.pypi_dependencies);
@@ -1336,7 +1291,7 @@ impl publish(
         import from jaclang.packages.verify { run_verify }
         return run_verify(verify_index, base, author, mirror_out);
     }
-    import from jaclang.project.config { get_config }
+
     config = get_config();
     if config is None or config.project_root is None {
         console.error(
@@ -1348,7 +1303,7 @@ impl publish(
         import from jaclang.packages.publish { yank_version }
         return yank_version(config, yank, registry_name=registry);
     }
-    import from jaclang.packages.publish { publish_project }
+
     return publish_project(
         config, dry_run=dry_run, registry_name=registry, output=output
     );
@@ -1356,8 +1311,7 @@ impl publish(
 
 impl deps(scale: bool = False, as_json: bool = False) -> int {
     import json;
-    import from jaclang.project.config { get_config }
-    import from jaclang.project.providers { resolve_plan }
+
     config = get_config();
     if config is None {
         console.error(
@@ -1414,7 +1368,6 @@ impl deps(scale: bool = False, as_json: bool = False) -> int {
 }
 
 impl script(name: str = '', list_scripts: bool = False) -> int {
-    import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
         console.error(
@@ -1472,7 +1425,7 @@ impl clean(
     force: bool = False
 ) -> int {
     import shutil;
-    import from jaclang.project.config { get_config }
+
     config = get_config();
     if config is None {
         console.error(
@@ -1552,8 +1505,6 @@ impl clean(
 
 
 def _bundle_wheel(config: any, output: str, allow_drop_client: bool = False) -> int {
-    import from jaclang.dist.publish.builder { WheelBuilder }
-
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
     builder = WheelBuilder(
@@ -1628,12 +1579,6 @@ def _bundle_sealed(config: any, output: str, app: str = "") -> int {
 }
 
 def _bundle_jab(config: any, output: str, fat: bool = False, app: str = "") -> int {
-    import from jaclang.packages.artifact {
-        ArtifactError,
-        ROLE_APP,
-        build_package,
-        project_role
-    }
     role = project_role(config);
     if role != ROLE_APP {
         try {
@@ -1678,7 +1623,6 @@ def _bundle_binary(config: any, output: str, fat: bool = False, app: str = "") -
     import os;
     import shutil;
     import tempfile;
-    import from jaclang.dist.fused_binary { has_runtime, append_overlay }
 
     name = config.project.name;
     jac_bin = os.path.realpath(sys.executable);
@@ -1723,9 +1667,6 @@ def _bundle_binary(config: any, output: str, fat: bool = False, app: str = "") -
 }
 
 def _bundle_npm(config: any, output: str) -> int {
-    import from jaclang.dist.publish.npm_builder { NpmBuilder }
-    import from jaclang.dist.publish.npm_sources { NpmBoundaryError }
-
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
     console.print("\n  Building npm tarball", style="muted");
@@ -1749,7 +1690,6 @@ def _bundle_npm(config: any, output: str) -> int {
 }
 
 def _bundle_npm_runtime(output: str, framework: str = "") -> int {
-    import from jaclang.dist.publish.runtime_npm { build_runtime_to, runtime_pkg_name }
     import importlib.metadata;
 
     version = importlib.metadata.version("jaclang");
@@ -1778,8 +1718,6 @@ impl bundle(
     app: str = "",
     allow_drop_client: bool = False
 ) -> int {
-    import from jaclang.project.config { get_config }
-
     if target == "npm-runtime" {
         return _bundle_npm_runtime(output);
     }

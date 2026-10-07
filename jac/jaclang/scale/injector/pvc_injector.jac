@@ -1,14 +1,5 @@
 import os;
 import logging;
-import from jaclang.scale.injector.injector { Injector }
-import from jaclang.scale.injector.bundle {
-    pack_jab,
-    content_address,
-    bundle_object_key,
-    ensure_jac_toml_cmd,
-    APP_VOLUME_NAME,
-    APP_MOUNT_PATH
-}
 
 glob logger = logging.getLogger(__name__);
 
@@ -265,12 +256,7 @@ obj PvcInjector(Injector) {
                 "bytes to publish. prepare() must run first to pack the project."
             );
         }
-        import from jaclang.scale._optdeps.kubernetes { client, ApiException }
-        import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-            run_kubectl_command,
-            wait_for_pod_phase,
-            wait_for_pod_deletion
-        }
+
         import tempfile;
         import from pathlib { Path }
 

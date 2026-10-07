@@ -1,5 +1,3 @@
-import from jaclang.byllm._optdeps.litellm { litellm }
-
 obj ByLLMError(Exception) {
     has message: str = "";
 

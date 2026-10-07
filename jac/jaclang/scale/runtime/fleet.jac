@@ -1,10 +1,9 @@
 import os;
-import type from jaclang.project.apps { AppConfig }
+
 import json;
 import logging;
 import from pathlib { Path }
 import from jaclang.server { sv_client }
-import from jaclang.scale.runtime.routing { guard_route_prefix }
 
 glob logger = logging.getLogger(__name__),
      FLEET_ENV: str = "JAC_SV_FLEET",
@@ -289,7 +288,6 @@ def _dedup_edges(edges: list[tuple[str, str]]) -> list[tuple[str, str]] {
 def _compiled_app_edges(
     entry_path: str, app_name: str, app_kind: str, project_root: str
 ) -> list[tuple[str, str]] {
-    import from jaclang.runtime.build_services { build_services }
     return build_services().application_edges(
         entry_path, app_name, app_kind, project_root
     );
@@ -359,7 +357,6 @@ def _member_file(entry_path: str, relative_to: str) -> str {
 
 
 def _has_client(config: any, app: any) -> bool {
-    import from jaclang.project.kinds { kind_has_client }
     kind = config.resolved_kind(app) if config is not None else app.kind;
     return kind_has_client(kind);
 }
@@ -373,7 +370,6 @@ def _build_fleet(
     entries: dict[str, str],
     relative_to: str
 ) -> FleetSpec {
-    import from jaclang.scale.config.config_loader { app_scale_overrides }
     by_name: dict[str, any] = {a.name: a for a in services};
     by_name[served.name] = served;
     ordered = order_by_edges(

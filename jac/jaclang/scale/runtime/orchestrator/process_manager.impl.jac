@@ -168,12 +168,11 @@ impl ServiceProcessManager._assign_port(service_entry: ServiceEntry) -> int {
     if service_entry.port > 0 {
         return service_entry.port;
     }
-    import from jaclang.scale.runtime.context.util { pick_free_port }
+
     return pick_free_port(service_entry.name, avoid=self._ports_in_use());
 }
 
 impl ServiceProcessManager._assign_free_port(service_entry: ServiceEntry) -> int {
-    import from jaclang.scale.runtime.context.util { pick_free_port }
     return pick_free_port(f"{service_entry.name}-api", avoid=self._ports_in_use());
 }
 
@@ -202,12 +201,6 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     self._prepare_ports(`entry);
     port: int = `entry.port;
 
-    import from jaclang.scale.runtime.context.util { jac_executable }
-    import from jaclang.server.sv_client {
-        app_start_args,
-        headless_start_args,
-        peer_url_env_key
-    }
     jac_bin: str = jac_executable();
 
     if `entry.page_port > 0 {
@@ -288,7 +281,7 @@ impl ServiceProcessManager._boot_order -> list[str] {
 
 impl ServiceProcessManager._await_lead(name: str) -> None {
     import time;
-    import from jaclang.scale.runtime.context.util { wait_for_health }
+
     `entry = self.registry.entries[name];
     proc = self.processes.get(name);
     if proc is None or not `entry.url {

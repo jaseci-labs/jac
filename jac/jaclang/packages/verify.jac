@@ -6,22 +6,6 @@ import tempfile;
 import tomllib;
 import from pathlib { Path }
 import from urllib.parse { urlsplit }
-import from jaclang.cli.console { console }
-import from jaclang.dist.archive { extract_tar_gz }
-import from jaclang.packages.apidiff { check_bump, diff_surfaces }
-import from jaclang.packages.artifact { API_FILE, MANIFEST_DIR, read_package_manifest }
-import from jaclang.packages.index {
-    API_DIR,
-    IndexEntry,
-    Registry,
-    RegistryError,
-    api_rel_path,
-    fetch_verified,
-    parse_index_lines
-}
-import from jaclang.packages.publish { previous_release, previous_surface }
-import from jaclang.packages.semver { SemverError, Version }
-import from jaclang.project.package_scope { is_package_name }
 
 glob ORGS_DIR: str = "orgs",
      INDEX_DIR: str = "index",
@@ -242,9 +226,6 @@ def _verify_library(
     history: list[IndexEntry],
     outcome: VerifyReport
 ) {
-    import from jaclang.packages.api { package_surface, surface_digest }
-    import from jaclang.packages.install { InstallError, sync }
-    import from jaclang.project.config { JacConfig }
     label = f"{item.name} {item.version}";
     config = JacConfig.load(tree / "jac.toml");
     try {

@@ -1,6 +1,3 @@
-import from jaclang.scale.runtime.middleware.middleware { MiddlewareRegistry }
-
-
 obj Gateway {
     has middleware: MiddlewareRegistry postinit;
 

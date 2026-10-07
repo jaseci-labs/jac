@@ -3,8 +3,6 @@ import shutil;
 import tempfile;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.dist.archive { tar_gz_dir }
-import from jaclang.dist.sanitize { sanitize_shipped_tree }
 
 glob PACKAGE_EXCLUDES: set[str] = {
          ".git",
@@ -117,7 +115,6 @@ obj BuiltPackage {
 }
 
 def project_role(config: any) -> str {
-    import from jaclang.project.package_scope { is_package_name }
     raw = config.get_section("jacpack");
     if raw is not None {
         return ROLE_TEMPLATE;
@@ -145,9 +142,6 @@ def package_identity(config: any) -> PackageIdentity {
 def package_manifest(
     config: any, role: str, surface: dict[str, any]
 ) -> dict[str, any] {
-    import from jaclang.compiler.driver.jir { jaclang_version }
-    import from jaclang.packages.api { surface_digest }
-    import from jaclang.packages.resolve { manifest_npm, manifest_pypi }
     ident = package_identity(config);
     manifest: dict[str, any] = {
         "format": PACKAGE_MANIFEST_FORMAT,
@@ -189,7 +183,7 @@ def read_package_manifest(tree: Path) -> dict[str, any] | None {
 def build_package(config: any) -> BuiltPackage {
     import hashlib;
     import json;
-    import from jaclang.packages.api { package_surface }
+
     if config.project_root is None {
         raise ArtifactError("building a package needs a project (jac.toml)");
     }

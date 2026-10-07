@@ -1,15 +1,5 @@
 import re;
 import hashlib;
-import from jaclang.scale._optdeps.kubernetes { client, ApiException }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    delete_if_exists,
-    delete_k8s_secret
-}
-import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 
 obj MonitoringDeployer {
     has k8s_config: KubernetesConfig,

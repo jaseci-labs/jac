@@ -1,20 +1,6 @@
 import time;
 import atexit;
 import logging;
-import from jaclang.cli.console { console }
-import from jaclang.scale.runtime.fleet { FleetSpec, ROOT_PREFIX }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
-import from jaclang.scale.runtime.orchestrator.local_deployer { LocalDeployer }
-import from jaclang.scale.runtime.gateway.process_gateway { ProcessGateway }
-import from jaclang.scale.runtime.context.util {
-    DEFAULT_GATEWAY_PORT,
-    DEFAULT_GATEWAY_HOST
-}
 
 glob logger = logging.getLogger(__name__),
      _BOOT_RECHECK_INTERVAL: float = 2.0;

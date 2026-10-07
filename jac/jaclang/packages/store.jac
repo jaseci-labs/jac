@@ -3,9 +3,6 @@ import json;
 import os;
 import shutil;
 import from pathlib { Path }
-import from jaclang.dist.archive { extract_tar_gz }
-import from jaclang.packages.artifact { ArtifactError, expect_identity }
-import from jaclang.project.package_scope { store_root }
 
 glob MARKER_NAME: str = ".jac-package.json";
 
@@ -31,8 +28,6 @@ def is_materialized(path: Path, sha256: str) -> bool {
 def materialize(
     name: str, version: str, sha256: str, data: bytes, source: str
 ) -> Path {
-    import from jaclang.cache.registry { bucket }
-    import from jaclang.jac0core.cache_paths { FileLock }
     actual = hashlib.sha256(data).hexdigest();
     if actual != sha256 {
         raise StoreError(

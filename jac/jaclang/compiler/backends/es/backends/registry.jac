@@ -1,6 +1,3 @@
-import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.frontend.diagnostics { E5081 }
-
 glob _BACKENDS: dict[str, FrameworkBackend] = {};
 
 def resolve_framework_backend(framework: str) -> FrameworkBackend {
@@ -30,7 +27,6 @@ def resolve_framework_backend(framework: str) -> FrameworkBackend {
 }
 
 def active_framework -> str {
-    import from jaclang.compiler.frontend.host { active_host }
     defaults = active_host().project_defaults();
     return defaults.client_framework if defaults is not None else "react";
 }

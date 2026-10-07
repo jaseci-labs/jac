@@ -1,36 +1,6 @@
 import base64;
 import hmac;
 import logging;
-import from jaclang.server.identity.audit { client_ip, emit as audit }
-import from jaclang.server.identity.auth_models {
-    ForgotPasswordRequest,
-    SendVerificationRequest
-}
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.middleware { require_user }
-import from jaclang.server.server { JacAPIServer, ServerExtension }
-import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
-import from jaclang.server.serving.drain { HEALTH_PATHS }
-import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
-import from jaclang.server.transport { Meta, TransportResponse }
-import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
-import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
-import from jaclang.scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
-import from jaclang.scale.admin.logs { JacAPIServerLogs }
-import from jaclang.scale.admin.network { JacAPIServerNetwork }
-import from jaclang.scale.admin.ops { JacAPIServerOps }
-import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
-import from jaclang.scale.admin.traces { JacAPIServerTraces }
-import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.emailer.emailer { Emailer }
-import from jaclang.scale.observability.metrics { MetricsCollector }
-import from jaclang.scale.state.factory { get_state_backend }
-import from jaclang.scale.state.state_backend { StateBackend }
-import from jaclang.scale.server.jobs_ext { JobsExtension }
-import from jaclang.scale.server.sso_ext { ApiKeyExtension, SSOExtension }
-import from jaclang.scale.server.webhook_ext { WebhookExtension }
-import from jaclang.scale.server.websocket_ext { WebSocketExtension }
 
 glob logger: logging.Logger = logging.getLogger(__name__);
 
@@ -67,24 +37,6 @@ obj FleetIdentityExtension(ServerExtension) {
 
 obj ObservabilityExtension(ServerExtension) {
     def register(server: JacAPIServer) {
-        import from jaclang.scale.runtime.context.auth_ctx {
-            reset_current_auth,
-            set_current_auth
-        }
-        import from jaclang.scale.runtime.context.log_emit {
-            install_structured_logging
-        }
-        import from jaclang.scale.runtime.context.trace_ctx {
-            ensure_trace_id,
-            reset_current_trace,
-            set_current_trace
-        }
-        import from jaclang.scale.runtime.context.tracing {
-            end_span,
-            install_tracing,
-            start_server_span,
-            tracing_installed
-        }
         install_structured_logging();
         if not tracing_installed() {
             trc = get_scale_config().get_gateway_config().get('tracing', {});
@@ -139,7 +91,6 @@ obj ObservabilityExtension(ServerExtension) {
 
 obj MetricsExtension(ServerExtension) {
     def register(server: JacAPIServer) -> None {
-        import from jaclang.scale.observability.factory { UtilityFactory }
         cfg = get_scale_config().get_monitoring_config();
         collector: MetricsCollector = UtilityFactory.create_metrics(
             'prometheus', cfg, server.resolved_settings().workers.count
@@ -250,7 +201,6 @@ obj RecoveryMailExtension(ServerExtension) {
     }
 
     def register(server: JacAPIServer) {
-        import from jaclang.scale.emailer.factory { create as create_emailer }
         emailer_cfg = get_scale_config().get_emailer_config();
         self.emailer = create_emailer(emailer_cfg);
         server.emailer = self.emailer;
@@ -498,9 +448,6 @@ obj EventsExtension(ServerExtension) {
     has broker: any = None;
 
     def register(server: JacAPIServer) -> None {
-        import from jaclang.scale.events.publisher { set_broker }
-        import from jaclang.scale.events.subscriber { get_subscriptions }
-        import from jaclang.server.shared_store { scale_db_url }
         cfg = get_scale_config().get_events_config();
         if not cfg.get('enabled', False) {
             return;
@@ -543,7 +490,6 @@ obj EventsExtension(ServerExtension) {
     }
 
     def validate(server: JacAPIServer) -> list[str] {
-        import from jaclang.server.shared_store { scale_db_url }
         cfg = get_scale_config().get_events_config();
         settings = server.resolved_settings();
         if cfg.get('enabled', False)

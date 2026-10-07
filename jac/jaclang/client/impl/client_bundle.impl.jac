@@ -147,7 +147,6 @@ impl emitted_tree_digest(tree_root: Path) -> str {
 }
 
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
-    import from jaclang.compiler.driver.jir { ct_dep_digest }
     parts = [f"{path}:{ct_dep_digest(str(path), with_annexes=True)}" for path in paths];
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
 }

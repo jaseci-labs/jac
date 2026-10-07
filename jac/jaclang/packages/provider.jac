@@ -1,16 +1,3 @@
-import from jaclang.packages.install {
-    InstallError,
-    load_lock,
-    package_npm_requirements,
-    package_pip_requirements
-}
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.providers {
-    EcosystemProvider,
-    InstallContext,
-    ResolvedDependency
-}
-
 obj JacPackageProvider(EcosystemProvider) {
     has name: str = "jac",
         manifest_key: str = "",

@@ -1,11 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext, TreePass }
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.compiler.frontend.constant { OwnershipKind, is_mut_kind }
-import from jaclang.compiler.frontend.roles { Role }
-
 walker UnparsePass(TreePass) {
     def _comma_sep(nodes: Sequence[uni.UniNode]) -> str;
     can unparse_prepare_exit with uni.UniNode exit;
@@ -34,7 +26,7 @@ walker UnparsePass(TreePass) {
     can exit_module_item with uni.ModuleItem exit;
     can exit_archetype with uni.Archetype exit;
     can exit_impl_def with uni.ImplDef exit;
-    can exit_impl_import with uni.ImplImport exit;
+    can exit_graph_import with uni.GraphImport exit;
     can exit_import_wire with uni.ImportWire exit;
     can exit_import_rule with uni.ImportRule exit;
     can exit_module_pattern with uni.ModulePattern exit;

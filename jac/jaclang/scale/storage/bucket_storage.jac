@@ -1,5 +1,3 @@
-import from jaclang.data.storage.storage { Storage }
-
 class BucketStorage(Storage) {
     has prefix: str = "";
 

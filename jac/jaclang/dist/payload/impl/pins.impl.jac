@@ -1,8 +1,6 @@
 import json;
 import sys;
 
-import from jaclang.dist.payload.fsutil { die }
-
 impl load_pins(path: str | None = None) -> Pins {
     p = PINS_FILE if path is None else path;
     try {

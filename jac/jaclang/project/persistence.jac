@@ -1,5 +1,3 @@
-import from jaclang.project.workspace { persistence_namespace }
-
 obj PersistenceConfig {
     has namespace: str = "main";
 

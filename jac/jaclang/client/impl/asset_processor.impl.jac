@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-
 impl AssetProcessor.copy_custom_asset_types(
     self: AssetProcessor, src_dir: Path, dest_dir: Path, preserve_structure: bool = True
 ) -> None {
@@ -37,7 +35,7 @@ impl AssetProcessor.copy_custom_asset_types(
             }
         }
     }
-    import from jaclang.client.config_loader { JacClientConfig }
+
     custom_asset_extensions = JacClientConfig().get_asset_extensions();
     if custom_asset_extensions {
         copy_recursive(src_dir, dest_dir);

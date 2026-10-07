@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.const_fold { fold_const }
-
 impl NaIRGenPass._emit_float_pow(
     base: ir.Value, exp: ir.Value, unsigned: bool = False
 ) -> ir.Value {

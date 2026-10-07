@@ -2,28 +2,6 @@ import asyncio;
 import inspect;
 import logging;
 import traceback;
-import from jaclang.server.serving.coerce {
-    RequestValidationError,
-    bind_parameters,
-    body_param_name,
-    coerce_value,
-    get_callback_spec,
-    filter_kwargs_for_callback
-}
-import from jaclang.server.serving.datatypes {
-    HTTPError,
-    JSONResponse,
-    RedirectResponse,
-    Request,
-    Response,
-    StreamingResponse,
-    parse_query_string
-}
-import from jaclang.server.serving.endpoint { JEndPoint, WSEndPoint }
-import from jaclang.server.serving.multipart { parse_multipart, parse_urlencoded_form }
-import from jaclang.server.serving.router { Router }
-import from jaclang.server.serving.sse { sse_frame_stream }
-import from jaclang.server.transport { TransportResponse }
 
 
 glob _logger: logging.Logger = logging.getLogger("jaclang.server.serving.app");
@@ -181,7 +159,6 @@ obj ServingApp {
     }
 
     def openapi -> dict[str, any] {
-        import from jaclang.server.serving.openapi { build_openapi }
         return build_openapi(self);
     }
 

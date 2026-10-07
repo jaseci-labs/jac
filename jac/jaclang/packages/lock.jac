@@ -2,7 +2,6 @@ import hashlib;
 import json;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.project.config { toml_value }
 
 glob LOCK_NAME: str = "jac.lock",
      LOCK_VERSION: int = 1,

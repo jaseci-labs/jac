@@ -1,7 +1,6 @@
 import hashlib;
 import math;
 import logging;
-import from jaclang.server.shared_store { shared_store }
 
 def limit_key(scope: str, actor: str) -> str {
     return "ratelimit:" + hashlib.sha256((scope + ":" + actor).encode()).hexdigest();

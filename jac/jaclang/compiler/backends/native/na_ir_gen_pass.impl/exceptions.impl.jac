@@ -278,15 +278,13 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     if exc_name in self._exc_type_registry {
         return self._exc_type_registry[exc_name];
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     type_id = JAC_TYPE_REGISTRY.exception_type_id(exc_name);
     self._exc_type_registry[exc_name] = type_id;
     return type_id;
 }
 
 impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     roots = [type_name] + JAC_TYPE_REGISTRY.exception_descendants(type_name);
     descendants = roots[1:];
     for cls in get_layout_registry(self.module, self.prog).mro_order {
@@ -317,8 +315,7 @@ impl NaIRGenPass._exception_member_name(member: uni.UniNode) -> (str | None) {
     if arch_key is not None {
         return arch_key;
     }
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     if isinstance(member, uni.Expr) and isinstance(member.type, ClassType) {
         name = class_type_native_name(member.type) or name;
     }
@@ -363,7 +360,6 @@ impl NaIRGenPass._emit_exception_match(
     on_match: ir.Block,
     on_miss: ir.Block
 ) -> None {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     b = self.builder;
     i32 = ir.IntType(32);
     does_match: ir.Value = ir.Constant(ir.IntType(1), 0);
@@ -425,7 +421,6 @@ impl NaIRGenPass._emit_exception_match(
 }
 
 impl NaIRGenPass._exc_message_slot(type_name: str) -> (int | None) {
-    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
     return self.struct_field_indices.get(type_name, {}).get(EXC_MESSAGE_FIELD);
 }
 
@@ -445,7 +440,6 @@ impl NaIRGenPass._store_exc_message(
     pre: dict[int, ir.Value],
     shared: bool
 ) -> bool {
-    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
     values: list[ir.Value] = [];
     for arg in args {
         val = self._codegen_expr(arg);
@@ -530,7 +524,6 @@ impl NaIRGenPass._exc_args_text(
 }
 
 impl NaIRGenPass._exc_stored_message(obj_val: ir.Value, type_name: str) -> ir.Value {
-    import from jaclang.compiler.passes.layout_pass { EXC_MESSAGE_FIELD }
     i8p = ir.IntType(8).as_pointer();
     raw = self._codegen_field_access(obj_val, EXC_MESSAGE_FIELD, type_name);
     if raw is None {
@@ -767,8 +760,6 @@ impl NaIRGenPass._emit_exc_lineage_match(
 }
 
 impl NaIRGenPass._register_exc_lineage(cause: (uni.Expr | None), type_id: int) -> None {
-    import from jaclang.compiler.types.types { ClassType, TypeBase }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
     if type_id == 0 or cause is None {
         return;
     }

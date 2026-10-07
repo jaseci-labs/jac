@@ -1,5 +1,4 @@
 import from enum { StrEnum }
-import from jaclang.packages.semver { Requirement, Version, VersionSet }
 
 enum CauseKind(StrEnum) {
     ROOT = "root_name",

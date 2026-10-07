@@ -2,7 +2,6 @@ import from contextvars { ContextVar }
 import from typing { get_type_hints }
 import from pydantic { GetCoreSchemaHandler }
 import from pydantic_core { core_schema }
-import from jaclang.runtime.object_model { fields, MISSING }
 
 glob _schema_refs: ContextVar[dict[object, str] | None] = ContextVar(
          "jac_object_schema_refs", `default=None

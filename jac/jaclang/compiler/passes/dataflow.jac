@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.unitree { UniCFGNode }
-
 type SymId = int;
 type DataflowTransfer = Callable[[UniCFGNode, set[SymId]], set[SymId]];
 

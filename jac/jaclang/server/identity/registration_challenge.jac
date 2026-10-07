@@ -1,7 +1,6 @@
 import hashlib;
 import secrets;
 import hmac;
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
 
 glob CHALLENGE_TTL: int = 300,
      CHALLENGE_MAX: int = 100000,

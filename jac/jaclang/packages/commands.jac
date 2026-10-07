@@ -1,27 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.packages.install {
-    InstallError,
-    project_dir,
-    SyncResult,
-    describe_sync,
-    has_packages,
-    load_lock,
-    sync,
-    write_lock
-}
-import from jaclang.packages.lock { Lockfile, digest_of }
-import from jaclang.packages.resolve { manifest_inputs }
-import from jaclang.packages.semver { SemverError, Version, caret_for }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.dependencies { PackageDep }
-import from jaclang.project.package_scope { is_package_name }
-import from jaclang.project.providers {
-    InstallContext,
-    get_provider_registry,
-    get_python_provider,
-    resolve_plan
-}
 
 glob PYPI_HINT: str = "Jac packages are scoped as org/name; install a Python package with 'jac install --pypi <name>'";
 
@@ -186,7 +163,6 @@ def install_project(
 }
 
 def _org_collisions(config: JacConfig, lock: Lockfile) -> list[str] {
-    import from jaclang.project.pyvenv { get_venv_site_packages }
     orgs = {p.name.split("/", 1)[0] for p in lock.packages};
     venv = config.get_venv_dir();
     if not orgs or not venv.is_dir() {
@@ -218,8 +194,6 @@ def _bun_lock_digest(config: JacConfig) -> str {
 }
 
 def _dep_from_source(git: str, path: str, rev: str, base: Path) -> PackageDep {
-    import from jaclang.packages.artifact { read_identity }
-    import from jaclang.packages.sources { checkout, resolve_path }
     if path {
         tree = resolve_path(base, path);
         name = read_identity(tree).name;

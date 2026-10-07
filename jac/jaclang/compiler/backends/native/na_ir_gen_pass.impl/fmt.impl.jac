@@ -2,7 +2,7 @@ impl NaIRGenPass._ensure_fmt_kernel -> bool {
     if self._fmt_kernel_mod is not None {
         return True;
     }
-    import from jaclang.compiler.frontend.codeinfo { FMT_KERNEL_REL, kernel_unit_path }
+
     kernel_mod = self._load_native_unit_module(kernel_unit_path(FMT_KERNEL_REL));
     if kernel_mod is None {
         return False;

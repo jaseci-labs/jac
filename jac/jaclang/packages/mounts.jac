@@ -2,7 +2,6 @@ import json;
 import os;
 import shutil;
 import from pathlib { Path }
-import from jaclang.project.package_scope { mounts_dir }
 
 glob MOUNTS_RECORD: str = ".jac-mounts.json",
      COPY_MARKER: str = ".jac-mount-copy";

@@ -2,8 +2,6 @@ import asyncio;
 import json;
 import logging;
 import time;
-import from jaclang.server.serving.ws { WebSocket }
-import from jaclang.scale.websocket.websocket { ConnectionContext, consume_rate_token }
 
 glob logger = logging.getLogger(__name__),
      WS_CLOSE_UNAUTHORIZED: int = 4401,

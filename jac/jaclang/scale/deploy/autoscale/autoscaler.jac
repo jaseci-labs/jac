@@ -1,10 +1,3 @@
-import from jaclang.scale.models.resource_status {
-    ResourceStatus,
-    ResourceStatusInfo,
-    assess_workload,
-    field_of
-}
-
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
@@ -175,9 +168,7 @@ class Autoscaler {
         if not spec.behavior_overlay {
             return `default;
         }
-        import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-            merge_manifest_overlay
-        }
+
         return merge_manifest_overlay(`default, spec.behavior_overlay);
     }
 
@@ -217,7 +208,6 @@ class Autoscaler {
         namespace: str,
         apps_api: (any | None) = None
     ) -> (any | None) {
-        import from jaclang.scale._optdeps.kubernetes { client, ApiException }
         api = apps_api or client.AppsV1Api();
         try {
             return api.read_namespaced_deployment(

@@ -1,7 +1,4 @@
 impl cfg_dot_from_file(file_name: str) -> str {
-    import from jaclang.compiler.driver.pipeline_runner { run_utility }
-    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
-    import from jaclang.compiler.driver.program { JacProgram }
     with open(file_name, encoding="utf-8") as f {
         file_source = f.read();
     }
@@ -93,9 +90,6 @@ impl CoalesceBBPass._has_bool_sc(condition: Expr) -> bool {
 }
 
 impl CoalesceBBPass._node_label(nd: UniNode) -> str {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
-    import from jaclang.compiler.frontend.unparse { unparse_node }
-
     if isinstance(nd, ElseIf) {
         return 'elif'
             if self._has_bool_sc(nd.condition)

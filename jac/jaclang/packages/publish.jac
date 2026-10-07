@@ -3,36 +3,6 @@ import json;
 import tarfile;
 import time;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.packages.apidiff {
-    ApiChange,
-    check_bump,
-    diff_surfaces,
-    minimum_next
-}
-import from jaclang.packages.artifact {
-    API_FILE,
-    ArtifactError,
-    BuiltPackage,
-    MANIFEST_DIR,
-    ROLE_LIB,
-    ROLE_TEMPLATE,
-    build_package,
-    package_identity,
-    project_role
-}
-import from jaclang.packages.index {
-    IndexEntry,
-    Registry,
-    RegistryError,
-    api_rel_path,
-    index_rel_path,
-    parse_index_lines,
-    registry_named
-}
-import from jaclang.packages.semver { SemverError, Version }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.package_scope { is_package_name }
 
 glob SOURCE_URL_KEYS: tuple[str, ...] = (
          "repository",
@@ -154,7 +124,6 @@ def gate_problems(config: JacConfig, role: str) -> list[str] {
 }
 
 def check_gate(config: JacConfig) -> bool {
-    import from jaclang.cli.commands.analysis { check }
     return check(
         paths=[str(config.project_root)],
         ignore=[".jac", "node_modules", ".git", "_precompiled"],
@@ -269,7 +238,6 @@ def open_index_pull(
     body: str,
     surface: dict[str, any] | None = None
 ) -> str {
-    import from jaclang.packages.github { GitHub }
     gh = GitHub.from_env();
     repo = index_repo(registry);
     login = gh.login();

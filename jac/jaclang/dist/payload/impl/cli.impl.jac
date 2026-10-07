@@ -1,18 +1,6 @@
 import os;
 import sys;
 
-import from jaclang.dist.payload.assemble { mk_payload }
-import from jaclang.dist.payload.fetch {
-    fetch_bun,
-    fetch_llvm,
-    fetch_typeshed,
-    typeshed_sha
-}
-import from jaclang.dist.payload.fsutil { PayloadDie, die }
-import from jaclang.dist.payload.pack { pack }
-import from jaclang.dist.payload.pins { host_py_minor, py_ver }
-import from jaclang.dist.payload.vendor { build_musl, build_wasm_libc }
-
 impl main(argv: list[str]) -> int {
     import os;
     os.environ.setdefault("JAC_COMPILER_LIB", "off");

@@ -1,16 +1,9 @@
 import json;
 import shutil;
 import from pathlib { Path }
-import from jaclang.runtime.prepared { PreparedApplication }
 
 
 def write_client(application: PreparedApplication, base: Path) -> str {
-    import from jaclang.client.vite_bundler { ViteBundler }
-    import from jaclang.client.client_bundle { client_program }
-    import from jaclang.compiler.driver.pipeline_runner { wasm_ir }
-    import from jaclang.compiler.backends.native.wasm_build { prepare_wasm_module }
-    import from jaclang.compiler.backends.native.c_emit { emit_c }
-    import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     compiler = application.client_compiler;
     if compiler is None {
         raise ValueError(

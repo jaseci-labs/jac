@@ -1,6 +1,3 @@
-import from jaclang.compiler.frontend.constant { SymbolType }
-import from jaclang.compiler.field_semantics { field_initialization }
-
 glob CLASS_CTOR_BUCKETS: int = 256,
      CLASS_CTOR_REGISTRY: str = "__jac_class_ctors",
      CLASS_CTOR_MAX_PARAMS: int = 63,
@@ -37,7 +34,7 @@ impl NaIRGenPass._class_expr_bound(
     } elif not typ.is_instantiable() or typ.is_instance() {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     return class_type_native_name(typ);
 }
 

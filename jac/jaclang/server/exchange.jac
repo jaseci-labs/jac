@@ -1,7 +1,5 @@
 import re;
 import from contextvars { ContextVar }
-import from jaclang.server.serving.datatypes { JSONResponse, Request }
-import from jaclang.server.transport { TransportResponse }
 
 glob CREDENTIAL_HEADERS: frozenset[str] = frozenset(
          ['authorization', 'cookie', 'proxy-authorization']
@@ -183,7 +181,7 @@ def settle_envelope(envelope: TransportResponse) -> (TransportResponse | JSONRes
     if choice.status is None and not choice.headers {
         return envelope;
     }
-    import from jaclang.server.serving.app { transport_to_response }
+
     response = transport_to_response(envelope);
     if choice.status is not None {
         response.status_code = choice.status;

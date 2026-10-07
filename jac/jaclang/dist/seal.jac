@@ -3,10 +3,6 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.project.apps { AppConfig }
 
 
 def seal_copy_ignore(_dir: str, items: list[str]) -> list[str] {
@@ -46,8 +42,6 @@ def run_precompiler(src_dir: str, flags: list[str]) -> int {
 }
 
 def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
-    import from jaclang.dist.precompile_bytecode { bundle_app }
-
     proj_root = config.project_root;
     chosen = bundle_app(config, app);
     if chosen is None or proj_root is None {
@@ -72,10 +66,7 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] | None) {
     program = JacProgram();
     program.options = CompileOptions(skip_native_engine=True);
-    import from jaclang.compiler.driver.application { prepare_application }
-    import from jaclang.project.config { get_config_for_path }
-    import from jaclang.project.app_kinds { kind_has_server }
-    import from jaclang.server.assembly { service_apps }
+
     try {
         config = get_config_for_path(proj_root);
         services: list[AppConfig] = [];
@@ -109,10 +100,6 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
 
 
 def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
-    import from jaclang.client { get_bun }
-    import from jaclang.client.targets.web_target { WebTarget }
-
-    import from jaclang.project.client_paths { client_app_dir_for }
     dist = client_app_dir_for(config, str(entry_file)) / 'dist';
     bun = None;
     try {
@@ -147,9 +134,6 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
 
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     import os;
-    import from jaclang.jac0core.ext_registry { base_stem }
-    import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
-    import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     entry_file = resolve_entry_file(config, app);
     if entry_file is None or not native_default_path_ok(str(entry_file)) {
@@ -166,7 +150,7 @@ def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     out_dir = pkg_copy / NATIVE_DIR_REL / triple;
     out_dir.mkdir(parents=True, exist_ok=True);
     console.print(f"  Compiling native binary for {triple}", style="muted");
-    import from jaclang.cli.commands.native_build { native_build }
+
     rc = native_build(filename=str(entry_file), output=str(out_dir / stem));
     if rc != 0 {
         console.error("Native compilation failed; seal aborted.");
@@ -180,13 +164,12 @@ def bake_serve_payloads(
 ) -> bool {
     import json;
     import shutil;
-    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL, CLIENT_DIST_REL }
 
     entry_file = resolve_entry_file(config, app);
     if entry_file is None {
         return True;
     }
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
+
     Jac.set_full_target_path(str(entry_file));
     sm = build_serve_manifest(entry_file, Path(config.project_root));
     if sm is None {
@@ -223,9 +206,7 @@ def bake_serve_payloads(
 
 def vendor_packages(config: any, pkg_copy: Path) {
     import os;
-    import from jaclang.packages.artifact { stage_source_tree }
-    import from jaclang.packages.install { has_packages, sync }
-    import from jaclang.project.package_scope { mounts_dir }
+
     if not has_packages(config) {
         return;
     }
@@ -263,8 +244,6 @@ def make_sealed_image(
 ) -> (Path | None) {
     import shutil;
     import tempfile;
-    import from jaclang.jac0core { ext_registry }
-    import from jaclang.dist.sanitize { sanitize_shipped_tree }
 
     proj_root = config.project_root;
     if proj_root is None {
@@ -335,14 +314,6 @@ def make_sealed_image(
 }
 
 def vendor_jab_deps(config: any, img: Path) -> bool {
-    import from jaclang.project.providers { resolve_plan, get_python_provider }
-    import from jaclang.jac0core.sealed { python_tag }
-    import from jaclang.dist.jab_vendor {
-        wheels_dir,
-        download_wheels,
-        write_vendor_manifest
-    }
-
     plan = resolve_plan(config, include_dev=False);
     py_prov = get_python_provider();
     py_deps = [
@@ -412,8 +383,6 @@ def build_jab(
     bake_client: bool = True,
     require_entry: bool = False
 ) -> Path {
-    import from jaclang.dist.archive { tar_gz_dir }
-    import from jaclang.dist.jab { jab_app_meta }
     out_path = Path(out_path);
     out_path.parent.mkdir(parents=True, exist_ok=True);
     work = Path(tempfile.mkdtemp(prefix="jab-", dir=str(out_path.parent)));

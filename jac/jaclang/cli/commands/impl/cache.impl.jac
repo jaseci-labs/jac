@@ -1,8 +1,4 @@
 import from enum { StrEnum }
-import from jaclang.cli.console { console }
-import from jaclang.cache.home { cache_home }
-import from jaclang.cache.policy { format_bytes }
-import from jaclang.cache.registry { RETIRED, gc, purge, status, unmanaged }
 
 
 enum CacheAction(StrEnum) { STATUS = "status", GC = "gc", PURGE = "purge" }

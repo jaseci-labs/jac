@@ -1,16 +1,6 @@
 import os;
 import logging;
 import time;
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.admin.service_urls { service_base_url }
 
 glob logger = logging.getLogger(__name__);
 
@@ -66,7 +56,6 @@ def _build_traceql(service: str, status: str, min_duration_ms: int) -> str {
 async def _tempo_request(
     path: str, params: dict[str, str], accept_json: bool = False
 ) -> dict[str, any] {
-    import from jaclang.server.serving.client { ClientConnectionError, arequest }
     base = _tempo_base_url();
     url = base + path;
     headers: dict[str, str] = {};

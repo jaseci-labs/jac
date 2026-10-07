@@ -3,7 +3,6 @@ import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from jaclang.packages.artifact { pack_source_tree }
 
 obj GitError(Exception) {}
 
@@ -32,13 +31,10 @@ def _git(args: list[str], cwd: Path | None = None) -> str {
 }
 
 def _mirror_dir(url: str) -> Path {
-    import from jaclang.cache.registry { bucket }
     return bucket("pkg-git").ensure() / hashlib.sha256(url.encode()).hexdigest()[:20];
 }
 
 def checkout(url: str, rev: str = "") -> GitCheckout {
-    import from jaclang.jac0core.cache_paths { FileLock }
-    import from jaclang.toolchains.store { offline }
     mirror = _mirror_dir(url);
     with FileLock(mirror.with_suffix(".lock")) {
         if not (mirror / "HEAD").is_file() {

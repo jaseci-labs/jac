@@ -3,9 +3,6 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.client.desktop_config { DesktopIdentity }
-import from jaclang.client.targets.desktop.app_layout { AppLayout }
-import from jaclang.toolchains.desktop { MACOS_DESKTOP_MIN_VERSION }
 
 glob ICON_NAME: str = "AppIcon",
      ICONSET_POINTS: list[int] = [16, 32, 128, 256, 512];

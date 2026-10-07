@@ -1,48 +1,6 @@
 import os;
 import sys;
 import time;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.host {
-    HostServices,
-    active_host,
-    install_host,
-    kernel_host_mode
-}
-import from jaclang.compiler.frontend.kernel_inputs {
-    KEY_SEP,
-    KernelInputs,
-    ManifestSets,
-    NpmAnswer,
-    PythonInterface,
-    answers_to_dict,
-    pair_key,
-    request_of
-}
-import from jaclang.compiler.frontend.kernel_host {
-    EMIT_QUESTION,
-    HOST_ONLY_ANSWER,
-    HostAsker,
-    HostCensus,
-    KernelHost
-}
-import from jaclang.compiler.frontend.kernel_analyze {
-    ANALYSIS_CRASHED,
-    ANALYSIS_OK,
-    AnalysisReport,
-    analysis_report,
-    run_kernel_analysis
-}
-import from jaclang.compiler.driver.module_analysis { ModuleAnalysis, analyze_module }
-import from jaclang.compiler.driver.session_compile {
-    CompileFrame,
-    SessionContext,
-    SessionHooks,
-    compile_in_session
-}
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
-import type from jaclang.compiler.native_compiler { NativeCompiler }
 
 glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _IFACE_REFUSED: dict[str, str] = {},
@@ -70,12 +28,6 @@ glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
 class KernelAnalysisError(RuntimeError) {}
 
 def manifest_sets -> ManifestSets {
-    import from jaclang.bootstrap_manifest {
-        NATIVE_LOWERED_PATHS,
-        NATIVE_ONLY_DIR_REL,
-        NATIVE_ONLY_REL,
-        SEED_PATHS
-    }
     return ManifestSets(
         seed_paths=list(SEED_PATHS),
         native_only_files=list(NATIVE_ONLY_REL),
@@ -87,10 +39,6 @@ def manifest_sets -> ManifestSets {
 def python_interface(
     path: str, options: CompileOptions, scratch: (JacProgram | None) = None
 ) -> (PythonInterface | None) {
-    import from jaclang.compiler.types.stubcat.writer {
-        IncoherentInterface,
-        build_module_iface
-    }
     resolved = os.path.realpath(path);
     if scratch is None {
         scratch = JacProgram();
@@ -106,8 +54,6 @@ def python_interface(
 }
 
 def interface_dependencies(iface: PythonInterface) -> list[str] {
-    import from jaclang.compiler.types.stubcat.format { MOD_EXTERNAL }
-    import from jaclang.compiler.types.stubcat.modiface { open_module_iface }
     catalog = open_module_iface(iface.data, iface.pkg_dir);
     if catalog is None {
         return [];
@@ -145,10 +91,7 @@ def file_stamp(path: str) -> str {
 
 def interface_cache_file(path: str) -> str {
     import hashlib;
-    import from jaclang.compiler.driver.jir {
-        get_jir_cache_dir,
-        running_compiler_digest
-    }
+
     key = hashlib.sha256(
         (running_compiler_digest() + "\x1f" + path).encode("utf-8")
     ).hexdigest();
@@ -242,10 +185,6 @@ def served_interface(
 def session_inputs(
     host: HostServices, program: JacProgram, path: str, options: CompileOptions
 ) -> KernelInputs {
-    import from jaclang.compiler.driver.bccache { host_layout_tables }
-    import from jaclang.project.modresolver { get_jac_search_paths, get_typeshed_paths }
-    import from jaclang.compiler.types.stubcat.locate { catalog_origin }
-    import from jaclang.compiler.frontend.host { package_root }
     catalog_dir = "";
     host.compiler_for(program).ensure_stub_catalog();
     catalog_active = host.has_active_stub_catalog();
@@ -440,7 +379,6 @@ obj KernelSnapshot(HostAsker) {
     }
 
     def emits(path: str) -> bool {
-        import from jaclang.jac0core.ext_registry { is_annex }
         if not path.endswith(".jac")
             or is_annex(path)
             or is_compiler_source_path(path) {
@@ -461,10 +399,6 @@ def kernel_note(message: str) {
 }
 
 def compiled_already(path: str) -> bool {
-    import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
-        is_module_cache_valid
-    }
     try {
         return is_module_cache_valid(path, get_module_cache_path(path));
     } except Exception {
@@ -762,7 +696,6 @@ def in_other_compiler_tree(path: str) -> bool {
 }
 
 def other_compiler_dir(folder: str) -> bool {
-    import from jaclang.project.modresolver { COMPILER_PACKAGE }
     current = os.path.realpath(folder);
     if is_compiler_source_path(os.path.join(current, "x.jac")) {
         return False;
@@ -781,7 +714,6 @@ def other_compiler_dir(folder: str) -> bool {
 }
 
 def native_stdlib_misses(misses: list[str]) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
     stdlib_dir = native_stdlib_root();
     if not misses or not stdlib_dir {
         return False;
@@ -818,7 +750,6 @@ def host_deferred(outcome: AnalysisReport) -> bool {
 }
 
 def loaded_kernel(kind: KernelEntry) -> NativeCompiler {
-    import from jaclang.compiler.native_compiler { ensure_loaded }
     kernel = ensure_loaded();
     if kernel is None {
         raise KernelAnalysisError("no native compiler kernel is available");

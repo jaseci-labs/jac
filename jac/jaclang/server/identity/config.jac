@@ -1,5 +1,3 @@
-import from jaclang.server.settings { AuthSettings }
-
 glob _active: list[any] = [AuthSettings(), '', None];
 
 

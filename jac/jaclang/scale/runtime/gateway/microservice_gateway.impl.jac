@@ -1,19 +1,7 @@
 import shutil;
 
-import from jaclang.server.serving.ws { WebSocket }
-import from jaclang.server.serving.endpoint { WSEndPoint }
-import from jaclang.scale.runtime.routing {
-    GATEWAY_BUILTIN_PREFIXES,
-    GATEWAY_BARE_API_PATHS,
-    GATEWAY_DISCOVERY_SEGMENTS,
-    GATEWAY_REPLICATED_SEGMENTS
-}
-
 
 def _install_ws_catchall(gw: MicroserviceGateway) {
-    import from jaclang.scale.runtime.middleware.ws_forward { websocket_forward }
-    import from jaclang.scale.runtime.gateway.service_registry { ServiceStatus }
-
     async def ws_proxy(websocket: WebSocket) -> None {
         ws_path: str = websocket.path_params.get('ws_path', '');
         if gw.drain.draining {
@@ -68,7 +56,6 @@ def _install_ws_catchall(gw: MicroserviceGateway) {
 
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
     import jaclang;
-
     registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
     return registry.get(service_entry.name, service_entry.url);
 }
@@ -259,10 +246,6 @@ glob _BUILTIN_PREFIXES: tuple[str, ...] = GATEWAY_BUILTIN_PREFIXES,
      _REPLICATED_SEGMENTS: set[str] = set(GATEWAY_REPLICATED_SEGMENTS);
 
 impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {
-    import from jaclang.scale.runtime.context.trace_ctx {
-        get_current_trace,
-        ensure_trace_id
-    }
     fwd: dict[str, str] = {};
     for (key, value) in request.headers.items() {
         if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "x-forwarded-for" {
@@ -278,7 +261,6 @@ impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, st
     trace = get_current_trace() or ensure_trace_id(request.headers.get("X-Trace-Id"));
     fwd["X-Trace-Id"] = trace;
 
-    import from jaclang.scale.runtime.context.tracing { current_traceparent }
     tp = current_traceparent(trace);
     if tp {
         fwd["traceparent"] = tp;
@@ -321,8 +303,6 @@ impl MicroserviceGateway.handle_health_ready -> Response {
 
 impl MicroserviceGateway.aggregate_graph_data(request: Request) -> Response | None {
     import json;
-    import from jaclang.scale.runtime.context.util { http_forward_timeout }
-    import from jaclang.scale.runtime.transport.http_forward { raw_forward }
 
     fwd_headers = self.build_forward_headers(request);
     query: str = str(request.url.query);
@@ -560,9 +540,6 @@ impl MicroserviceGateway.deliver_once(request: Request, path: str) -> Response |
 impl MicroserviceGateway.probe_services(
     request: Request, path: str, candidates: list[tuple[str, ServiceEntry]]
 ) -> Response {
-    import from jaclang.scale.runtime.context.util { http_forward_timeout }
-    import from jaclang.scale.runtime.transport.http_forward { stream_forward }
-
     fwd_headers = self.build_forward_headers(request);
     body: bytes = request.body;
     query: str = str(request.url.query);
@@ -605,7 +582,7 @@ impl MicroserviceGateway.probe_services(
         }
         return fr.to_response();
     }
-    import from jaclang.scale.runtime.context.errors { not_found }
+
     return not_found(path, message="Not found on any service");
 }
 
@@ -624,13 +601,6 @@ impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
 impl MicroserviceGateway.forward_to(
     request: Request, service_entry: ServiceEntry, target_url: str
 ) -> Response | None {
-    import from jaclang.scale.runtime.context.errors {
-        service_unavailable,
-        gateway_timeout
-    }
-    import from jaclang.scale.runtime.transport.http_forward { stream_forward }
-    import from jaclang.scale.runtime.context.util { http_forward_timeout }
-
     if service_entry.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
         return service_unavailable(service_entry.name, service_entry.status.value);
     }
@@ -664,8 +634,6 @@ impl MicroserviceGateway.handle_proxy(request: Request, path: str) -> Response |
 impl MicroserviceGateway.refresh_app_routes -> bool {
     import asyncio;
     import time;
-    import from jaclang.scale.runtime.gateway.route_table { learn_service_routes }
-    import from jaclang.scale.runtime.context.util { route_refresh_seconds }
 
     crawl = self._spec_crawl;
     if crawl is None or crawl.done() {
@@ -707,19 +675,15 @@ impl MicroserviceGateway.handle_app_route(
 }
 
 impl MicroserviceGateway.handle_openapi -> Response {
-    import from jaclang.scale.runtime.gateway.openapi_agg { aggregate_openapi }
     doc = await aggregate_openapi(self.registry);
     return JSONResponse(status_code=200, content=doc);
 }
 
 impl MicroserviceGateway.handle_docs -> Response {
-    import from jaclang.server.serving.openapi { swagger_ui_html }
     return HTMLResponse(content=swagger_ui_html("/openapi.json", "Jac Gateway - API"));
 }
 
 impl MicroserviceGateway.handle_metrics -> Response {
-    import from jaclang.scale.runtime.middleware.metrics { render_metrics }
-    import from jaclang.scale.runtime.context.errors { error_response }
     (body, ctype) = render_metrics(self._metrics_registry);
     if not body {
         return error_response(
@@ -804,15 +768,8 @@ impl MicroserviceGateway.setup -> ServingApp {
         );
     }
 
-    import from jaclang.scale.runtime.context.trace_ctx {
-        set_current_trace,
-        reset_current_trace,
-        ensure_trace_id
-    }
-    import from jaclang.scale.runtime.middleware.metrics { build_gateway_metrics }
-    import from jaclang.scale.config.config_loader { get_scale_config }
     mon_cfg = get_scale_config().get_monitoring_config();
-    import from jaclang.scale.runtime.context.log_emit { install_structured_logging }
+
     install_structured_logging();
     (self._metrics_registry, self._metrics_requests, self._metrics_duration) = (
         build_gateway_metrics(
@@ -821,14 +778,8 @@ impl MicroserviceGateway.setup -> ServingApp {
         )
     );
 
-    import from jaclang.scale.observability.factory { UtilityFactory }
     self._metrics = UtilityFactory.create_metrics('prometheus', mon_cfg);
 
-    import from jaclang.scale.runtime.context.tracing {
-        install_tracing,
-        start_server_span,
-        end_span
-    }
     trc_cfg = get_scale_config().get_gateway_config().get("tracing", {});
     install_tracing(
         enabled=trc_cfg.get("enabled", False),
@@ -1016,25 +967,16 @@ impl MicroserviceGateway.setup -> ServingApp {
 
     self.app.add_middleware(dispatcher);
 
-    import from jaclang.scale.runtime.middleware.middleware {
-        Middleware,
-        MiddlewareRegistry
-    }
     registry = MiddlewareRegistry();
 
-    import from jaclang.server.serving.drain { drain_middleware }
     registry.register(
         Middleware(
             name="drain", priority=20, fn=drain_middleware(self.drain, "__gateway__")
         )
     );
 
-    import from jaclang.scale.config.config_loader { get_scale_config }
     gw_cfg = get_scale_config().get_gateway_config();
 
-    import from jaclang.scale.runtime.middleware.rate_limit {
-        build_rate_limit_middleware
-    }
     rl_mw = build_rate_limit_middleware(gw_cfg.get("rate_limit", {}));
     if rl_mw is not None {
         registry.register(Middleware(name="rate_limit", priority=10, fn=rl_mw));
@@ -1067,10 +1009,6 @@ def _log_gateway_ready(host: str, bound: int) {
 
 
 impl MicroserviceGateway.start(on_ready: any = None) -> None {
-    import from jaclang.server.net { PORT_RETRY_LIMIT }
-    import from jaclang.server.serving.server { ServingServer }
-    import from jaclang.server.settings { ServeSettings }
-
     if self.app is None {
         self.setup();
     }
@@ -1104,11 +1042,6 @@ impl MicroserviceGateway.identity -> UserManager {
 
 
 impl MicroserviceGateway._install_admin_api -> None {
-    import from jaclang.server.endpoints.auth { register_auth_endpoints }
-    import from jaclang.server.middleware { jwt_middleware }
-    import from jaclang.server.identity.config { configure_identity }
-    import from jaclang.server.settings { ServeSettings }
-
     settings = ServeSettings.load(self.base_path);
     configure_identity(settings.auth, self.base_path);
     self.server = self;

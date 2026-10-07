@@ -96,7 +96,7 @@ def stage0_source_dir -> str {
     if explicit {
         return os.path.realpath(explicit);
     }
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+
     return os.path.dirname(os.path.realpath(jaclang_pkg_root()));
 }
 
@@ -145,7 +145,6 @@ def _contract_file_sha(path: str) -> str {
 }
 
 def abi_contract_digest(pkg_root: str) -> str {
-    import from jaclang.compiler.native_scope { KERNEL_ABI_CONTRACT_REL }
     h = hashlib.sha256();
     for rel in KERNEL_ABI_CONTRACT_REL {
         h.update(rel.encode("utf-8"));
@@ -157,7 +156,6 @@ def abi_contract_digest(pkg_root: str) -> str {
 }
 
 def abi_contract_differences(pkg_root: str, other_root: str) -> list[str] {
-    import from jaclang.compiler.native_scope { KERNEL_ABI_CONTRACT_REL }
     return [
         rel
         for rel in KERNEL_ABI_CONTRACT_REL
@@ -181,12 +179,12 @@ def stage0_sidecar_matches(sidecar: dict[str, object]) -> bool {
         or str(record.get("digest", "")) != pin.compiler_digest {
         return False;
     }
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
+
     abi = sidecar.get("abi");
     if not isinstance(abi, int) or abi != NATIVE_ABI_VERSION {
         return False;
     }
-    import from jaclang.compiler.kernel_target { target_pkg_root }
+
     return str(sidecar.get("abi_contract", ""))
         == abi_contract_digest(target_pkg_root());
 }

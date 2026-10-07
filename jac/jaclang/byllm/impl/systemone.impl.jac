@@ -77,8 +77,6 @@ impl instructions_of(mt_run: MTRuntime) -> str {
 
 
 def _state_value(value: object) -> object {
-    import from jaclang.runtime.object_interop { fields as record_fields, is_record }
-
     if value is None or isinstance(value, (str, int, float, bool)) {
         return value;
     }
@@ -118,8 +116,6 @@ def _messages_text(mt_run: MTRuntime) -> str {
 
 
 impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
-    import from jaclang.byllm.types { Media }
-
     owner = mt_run.mtir;
     if owner is None {
         text = _messages_text(mt_run);
@@ -263,7 +259,6 @@ def _unwrap_decision_info(info: object) -> object {
 def _record_fields(t: object) -> dict[str, any] {
     import sys;
     import from typing { get_type_hints }
-    import from jaclang.runtime.object_interop { fields as record_fields, is_record }
 
     if not isinstance(t, type) {
         return {};
@@ -356,8 +351,6 @@ def _lower_record(
 impl lower(
     mt_run: MTRuntime, caps: (ProviderCaps | None) = None
 ) -> (SystemOneSpec | None) {
-    import from jaclang.byllm.types { image_resp_kind }
-
     caps = caps or default_caps();
 
     if mt_run.tools or mt_run.stream or image_resp_kind(mt_run.resp_type) {

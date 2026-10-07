@@ -422,10 +422,7 @@ impl Serializer._deserialize_value(val: object) -> object {
 impl Serializer.register(cls: type) -> None {
     register_type(cls);
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
-    import from jaclang.runtime.typecache {
-        invalidate as _invalidate_typecache,
-        warm as _warm_typecache
-    }
+
     _invalidate_typecache(cls);
 
     _warm_typecache(cls);
@@ -436,7 +433,6 @@ impl Serializer.register(cls: type) -> None {
         setattr(cls, '__jac_fingerprint__', '');
     }
 
-    import from jaclang.data.schema_rules { collect_rules }
     if (rules := collect_rules(cls)) {
         for old_name in rules.was_names {
             Serializer.register_alias(old_name, cls);
@@ -481,7 +477,6 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
 impl Serializer.repair(
     data: dict[str, object], cls: type
 ) -> tuple[dict[str, object], list[str]] {
-    import from jaclang.data.schema_rules { apply_rules, merged_rules_for, repair_mode }
     mode = repair_mode();
     if mode == 'off' {
         return (data, []);
@@ -630,7 +625,6 @@ impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] 
 }
 
 impl Serializer.fingerprint(cls: type) -> str {
-    import from jaclang.data.type_identity { schema_type }
     field_types = get_field_types(cls);
     field_pairs: list[list[str]] = [];
     if is_record(cls) {
@@ -1118,7 +1112,6 @@ impl Serializer._deserialize_access(data: object) -> Access {
 impl Serializer._deserialize_archetype(
     data: dict[str, object], anchor: Anchor
 ) -> (object | None) {
-    import from jaclang.data.schema_rules { ATTIC_KEY, REPAIRS_ATTR, repair_mode }
     raw_type_name = data.get('__type__');
     raw_module_name = data.get('__module__');
     if not isinstance(raw_type_name, str) or not isinstance(raw_module_name, str) {

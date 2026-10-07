@@ -23,7 +23,6 @@ glob logger = logging.getLogger(__name__),
 
 
 def _after_fork_in_child {
-    import from jaclang.data.pgpool { detach }
     _lock = threading.Lock();
     store: any = _holder.pop('store', None);
     _holder.pop('key', None);

@@ -1,8 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import type from jaclang.project.config { JacConfig }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_CREATE: CommandSpec = CommandSpec(
          name="create",
          help="Create a new Jac project",

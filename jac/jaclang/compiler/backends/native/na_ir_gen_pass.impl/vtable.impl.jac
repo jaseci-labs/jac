@@ -120,10 +120,6 @@ impl NaIRGenPass._vtable_slot_entry(
 }
 
 impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
-    import from jaclang.compiler.frontend.codeinfo {
-        native_symbol_name,
-        native_unit_spelling
-    }
     src = self._struct_source_mod.get(arch_name, "");
     prefix = self._prefix_of_path(src) if src else self._own_prefix();
     owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
@@ -154,8 +150,6 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
 }
 
 impl NaIRGenPass._vtable_candidates(names: list[str]) -> list[ir.GlobalVariable] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-
     reg = get_layout_registry(self.module, self.prog);
     out: list[ir.GlobalVariable] = [];
     for cand in reg.mro_order {
@@ -187,7 +181,6 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
     garbage. Either way the answer has to come from the class-name identity
     every instance carries instead.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
     _reach = self._vtable_less_reach;
     if _reach is None {
@@ -234,7 +227,6 @@ impl NaIRGenPass._isinstance_unprovable_class(
     case that most needs the refusal. Returns the class whose MRO is short, or
     `None` when every chain this operand could take is whole.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
     _missing = self._short_mro_reach;
     if _missing is None {
@@ -384,7 +376,7 @@ impl NaIRGenPass._codegen_virtual_call(
 
     _vd_variants: list[tuple[str, ir.GlobalVariable, ir.Function]] = [];
     _vd_uniform = True;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
+
     _vd_reg = _vd_glr(self.module, self.prog);
     for _vd_cls in _vd_reg.mro_order {
         if obj_type_name not in self._mro_of(_vd_cls) {
@@ -593,7 +585,7 @@ impl NaIRGenPass._emit_class_display_fn -> ir.Function {
     if self._class_display_fn is not None {
         return self._class_display_fn;
     }
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ARCH_SCOPE_SEP }
+
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -828,7 +820,7 @@ impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
     if not expr.type.is_instantiable() or expr.type.is_instance() {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     return class_type_native_name(expr.type);
 }
 
@@ -897,7 +889,6 @@ impl NaIRGenPass._codegen_class_ref(
 }
 
 impl NaIRGenPass._is_enum_arch(name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     if name in self.enum_types {
         return True;
     }
@@ -959,7 +950,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     after the hashes agree, which also keeps two names that collide on 64 bits
     distinct.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
     if self._isa_h_fn is not None {
         return self._isa_h_fn;
     }
@@ -1331,7 +1322,7 @@ impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
     `None` members are fine (the operand is null-checked first); an unknown or
     non-class type is not.
     """;
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     members: list[TypeBase] = (
         list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
     );

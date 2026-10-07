@@ -1,7 +1,3 @@
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.frontend.constant { is_borrow_kind }
-
 def collect_foreign_structs(
     modules: list[uni.Module]
 ) -> dict[str, list[tuple[str, str | None]]] {

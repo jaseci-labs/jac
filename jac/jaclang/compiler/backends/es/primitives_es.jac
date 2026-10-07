@@ -1,19 +1,3 @@
-import from jaclang.compiler.backends.common.primitives {
-    PrimitiveEmitter,
-    IntEmitter,
-    FloatEmitter,
-    ComplexEmitter,
-    StrEmitter,
-    BytesEmitter,
-    ListEmitter,
-    DictEmitter,
-    SetEmitter,
-    FrozensetEmitter,
-    TupleEmitter,
-    RangeEmitter,
-    BuiltinEmitter
-}
-
 obj ESEmitCtx {
     has unparser: object,
         arg_type_names: (list[str] | None) = None,

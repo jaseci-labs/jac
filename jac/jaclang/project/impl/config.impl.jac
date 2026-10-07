@@ -67,7 +67,6 @@ impl UnresolvedRef.reason -> str {
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from jaclang.project.modresolver { find_project_root as _find_project_root }
     return _find_project_root(start);
 }
 
@@ -95,7 +94,6 @@ impl JacConfig.discover(
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
-    import from jaclang.project.tomlio { read_toml_with_encoding }
     if not toml_path.exists() {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
@@ -294,7 +292,6 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
-    import from jaclang.project.tomlio { read_toml_with_encoding }
     if not toml_path.exists() {
         return;
     }
@@ -968,7 +965,6 @@ impl toml_value(value: any) -> str {
 impl JacConfig.merge_dependency_tables(
     data: dict[str, any], section_prefix: str = ""
 ) -> None {
-    import from jaclang.project.dependencies { split_dependency_table }
     if isinstance(data.get("registries"), dict) {
         for (name, url) in data["registries"].items() {
             self.registries[str(name)] = str(url);
@@ -1381,7 +1377,7 @@ impl _parse_toml_data(
         app = implicit_app(config);
         config.apps = {app.name: app};
     }
-    import from jaclang.project.persistence { parse_persistence }
+
     config.persistence = parse_persistence(
         data.get("persistence", {}), config.project.name
     );
@@ -1563,7 +1559,7 @@ impl JacConfig.resolved_kind(app: AppConfig) -> str {
     if app.kind {
         return app.kind;
     }
-    import from jaclang.project.kinds { resolve_app_kind, resolve_entry }
+
     root_dir = str(self.project_root) if self.project_root else "";
     entry_file = resolve_entry(self, root_dir, app) if root_dir else "";
     return resolve_app_kind(self, app, entry_file);
@@ -1614,7 +1610,6 @@ impl JacConfig.app_for_target(entry_path: str = "") -> AppConfig | None {
 }
 
 impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
-    import from jaclang.runtime.prepared { origin_for_source }
     abs_path = origin_for_source(abs_path);
     if self.project_root is None {
         return None;
@@ -1628,7 +1623,6 @@ impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
 }
 
 impl JacConfig.serving_apps -> list[AppConfig] {
-    import from jaclang.project.kinds { kind_spec }
     out: list[AppConfig] = [];
     for app in self.apps.values() {
         spec = kind_spec(self.resolved_kind(app));
@@ -1647,7 +1641,7 @@ def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
     if "build" not in data or not isinstance(data["build"], dict) {
         return;
     }
-    import from jaclang.cli.console { console }
+
     build_data = data["build"];
     for (_old_key, _new_home) in [
         ("default_codespace", "[placement] default"),
@@ -1679,7 +1673,6 @@ def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
 }
 
 def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
-    import from jaclang.cli.console { console }
     for (_old, _new) in [("gc", "[memory] profile / enforce / exempt")] {
         if _old in data {
             console.error(f"jac.toml: the [{_old}] section was retired; use {_new}.");
@@ -1746,17 +1739,12 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             cfg.native.threads = 4;
         }
     }
-    if "arch" in data and isinstance(data["arch"], dict) {
-        arch_data = data["arch"];
-        if "closed" in arch_data {
-            if not isinstance(arch_data["closed"], list)
-                or not all(
-                    isinstance(pattern, str) for pattern in arch_data["closed"]
-                ) {
-                raise ValueError("[arch] closed must be a list of module patterns");
-            }
-            cfg.arch.closed = list(arch_data["closed"]);
-        }
+    if "arch" in data {
+        raise ValueError(
+            "[arch] was removed from jac.toml: an arch.jac seals the directory it"
+            " sits in. Delete the [arch] table and run `jac arch init --strip` in"
+            " each directory it closed."
+        );
     }
     if "placement" in data
         and isinstance(data["placement"], dict)

@@ -4,12 +4,6 @@ import socket;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional, cast }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
-import from jaclang.server.sv_client { headless_start_args }
-import from jaclang.server.watcher { FileChangeEvent }
-import type from jaclang.client.vite_bundler { ViteBundler }
-import type from jaclang.client.compiler { ViteCompiler }
 
 def port_bind_error(port: int) -> Optional[str] {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
@@ -133,9 +127,6 @@ def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) 
 def prepare_vite_dev_compilation(
     project_dir: Path, entry_file: Path
 ) -> tuple[ViteBundler, ViteCompiler] {
-    import from jaclang.client.vite_bundler { ViteBundler }
-    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-
     console.print("  Preparing compilation for Vite dev…", style="muted");
     bundler = ViteBundler(project_dir=project_dir);
     package_json_path = bundler._get_client_dir() / "configs" / "package.json";
@@ -185,8 +176,6 @@ obj _ClientHmrHandler {
 def dev_proxy_paths(
     project_dir: Path, entry_file: Path
 ) -> tuple[list[str], list[str]] {
-    import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
-    import from jaclang.jac0core.ext_registry { base_stem }
     try {
         import from jaclang.runtime.prepared { prepared_manifest }
         if prepared_manifest(str(entry_file)) is None {

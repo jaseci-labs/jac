@@ -1,6 +1,3 @@
-import from jaclang.server.identity.config { auth_settings, token_ttl_days }
-import from jaclang.server.serving.datatypes { Request, Response }
-
 glob SESSION_COOKIE: str = 'jac_session',
      COOKIE_METHODS: tuple[str, ...] = ('GET', 'HEAD'),
      SESSION_CHANGE: str = 'session_change';

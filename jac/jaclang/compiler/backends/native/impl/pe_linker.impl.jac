@@ -1,11 +1,5 @@
-import from jaclang.jac0core.cache_paths { atomic_write }
 import struct;
 import os;
-import from jaclang.compiler.backends.native.linker_common {
-    _align,
-    _append_to_blob,
-    _resolve_seg_vaddr
-}
 
 glob IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 

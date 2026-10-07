@@ -1,6 +1,5 @@
 import fnmatch;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 
 def _is_excluded(file_path: Path, pkg_root: Path) -> bool {
     if pkg_root.name.endswith(".egg-info") {

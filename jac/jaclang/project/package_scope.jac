@@ -1,10 +1,5 @@
 import os;
 import from pathlib { Path }
-import from jaclang.project.modresolver {
-    MOUNTS_DIR_NAME,
-    is_scoped_package_name,
-    module_name_in
-}
 
 glob STORE_BUCKET: str = "pkgs";
 
@@ -17,7 +12,6 @@ def import_prefix(name: str) -> str {
 }
 
 def store_root -> Path {
-    import from jaclang.cache.registry { bucket }
     return bucket(STORE_BUCKET).path();
 }
 
@@ -28,13 +22,11 @@ def in_store(path: str) -> bool {
 }
 
 def declared_package_name(project_root: str) -> str {
-    import from jaclang.project.config { get_config_for_dir }
     cfg = get_config_for_dir(project_root);
     return cfg.project.name if cfg is not None else "";
 }
 
 def package_root_of(path: str) -> (str | None) {
-    import from jaclang.project.modresolver { find_jac_project_root }
     pkg_dir = find_jac_project_root(path);
     if pkg_dir is None or not is_package_name(declared_package_name(pkg_dir)) {
         return None;
@@ -62,7 +54,6 @@ def mounts_dir(build_dir: Path) -> Path {
 
 
 def package_exports(project_root: str) -> list[str] {
-    import from jaclang.project.config { get_config_for_dir }
     cfg = get_config_for_dir(project_root);
     return list(cfg.project.exports) if cfg is not None else [];
 }

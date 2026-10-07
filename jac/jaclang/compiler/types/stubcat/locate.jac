@@ -1,8 +1,6 @@
-import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import hashlib;
 import os;
 import sys;
-import from jaclang.compiler.types.stubcat.format { FORMAT_VERSION }
 
 obj CatalogOrigin {
     has path: str,
@@ -118,12 +116,10 @@ def bundled_catalog_path(pkg_dir: str) -> str {
 }
 
 def dev_catalog_path(pkg_dir: str) -> str {
-    import from jaclang.cache.registry { bucket }
     return str(bucket("jir-stubcat").path() / (catalog_key(pkg_dir) + ".bin"));
 }
 
 def _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
-    import from jaclang.compiler.types.stubcat.reader { open_catalog_file }
     try {
         found = open_catalog_file(path, pkg_dir);
         if found is not None {
@@ -139,7 +135,6 @@ def _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
 def _open_region(
     exe: str, offset: int, length: int, pkg_dir: str
 ) -> StubCatalog | None {
-    import from jaclang.compiler.types.stubcat.reader { open_catalog_region }
     try {
         found = open_catalog_region(exe, offset, length, pkg_dir);
         if found is not None {
@@ -212,7 +207,6 @@ def _find_catalog -> StubCatalog | None {
 }
 
 def _publish(cat: StubCatalog | None) -> StubCatalog | None {
-    import from jaclang.jac0core.stubcat_hook { set_active }
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
         set_active(cat);
@@ -248,7 +242,7 @@ def ensure_catalog -> StubCatalog | None {
     }
     dev = dev_catalog_path(pkg);
     _build_dev_catalog(dev, pkg);
-    import from jaclang.cache.registry { maybe_sweep }
+
     maybe_sweep("jir-stubcat");
     cat = _publish(_open_file(dev, pkg));
     if cat is None {
@@ -260,7 +254,6 @@ def ensure_catalog -> StubCatalog | None {
 }
 
 def reset_catalog_cache {
-    import from jaclang.jac0core.stubcat_hook { set_active }
     _CATALOG_CACHE.clear();
     _DIGEST_CACHE.clear();
     _ORIGIN.clear();

@@ -375,16 +375,16 @@ impl ModuleItem.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
-impl ImplImport.scope.getter -> (ModulePath | None) {
+impl GraphImport.scope.getter -> (ModulePath | None) {
     found = [self->:ScopeRole:->];
     return found[0] if found else None;
 }
 
-impl ImplImport.body.getter -> Sequence[ImportWire | ImportRule] {
+impl GraphImport.body.getter -> Sequence[ImportWire | ImportRule] {
     return ([self->:BodyRole:->]) as Sequence[ImportWire | ImportRule];
 }
 
-impl ImplImport.__repr__ -> str {
+impl GraphImport.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
@@ -1990,7 +1990,7 @@ impl ModuleItem.init(
     self.postinit();
 }
 
-impl ImplImport.init(
+impl GraphImport.init(
     *,
     doc: (String | None) = None,
     scope: (ModulePath | None),
@@ -2043,14 +2043,9 @@ impl ImportRule.init(
 }
 
 impl ModulePattern.init(
-    *,
-    path: (ModulePath | None),
-    is_glob: bool = False,
-    is_any: bool = False,
-    kid: Sequence[UniNode] = []
+    *, path: (ModulePath | None), is_glob: bool = False, kid: Sequence[UniNode] = []
 ) -> None {
     self.is_glob = is_glob;
-    self.is_any = is_any;
     self._link(kid, {PatternPathRole: path});
     self.postinit();
 }

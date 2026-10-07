@@ -1,6 +1,3 @@
-import from jaclang.server.transport { TransportResponse }
-import from jaclang.server.server { EndpointHost }
-
 obj JacAPIServerWorkloads {
     has server: (EndpointHost | None) = None;
 

@@ -1,12 +1,3 @@
-import from jaclang.scale.deploy.target.registry { DeploymentTargetRegistry }
-import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale._optdeps.optional_deps { require_optional }
-import from jaclang.project.capabilities {
-    ensure_global_capability,
-    missing_capability_dists
-}
-
 def ensure_deploy_tooling(dry_run: bool = False) {
     if dry_run {
         return;
@@ -15,7 +6,7 @@ def ensure_deploy_tooling(dry_run: bool = False) {
     if not missing {
         return;
     }
-    import from jaclang.cli.console { console }
+
     console.print(
         f"Deploy tooling missing; installing {', '.join(missing)} "
         f"(capability 'deploy.k8s') into the jac global site."

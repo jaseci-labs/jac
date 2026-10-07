@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-
 glob _RC_THREAD_SPAWN_FNS: frozenset[str] = frozenset(
          {"pthread_create", "thrd_create", "CreateThread", "_beginthreadex"}
      );
@@ -169,7 +167,6 @@ impl NaIRGenPass._transfer_own_args(
 }
 
 impl NaIRGenPass._callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None) {
-    import from jaclang.compiler.symbol_utils { resolved_callee }
     return resolved_callee(nd);
 }
 
@@ -1241,7 +1238,6 @@ impl NaIRGenPass._native_module_call_target(
         return None;
     }
 
-    import from jaclang.compiler.symbol_utils { imported_module_name }
     mod_name = imported_module_name(trailer.target);
     method_name = self._get_name(trailer.right);
     if mod_name is None or method_name is None {
@@ -1293,7 +1289,7 @@ impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] |
     local or module definition that shadows the name never matches. The stub is
     named by its place in the stdlib tree, not its file stem: `os` is a package
     whose stub is `os/__init__.pyi`.""";
-    import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+
     if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
         return None;
     }
@@ -1312,8 +1308,6 @@ impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] |
 impl NaIRGenPass._codegen_intrinsic(
     nd: uni.FuncCall, intr: IntrinsicEntry
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.intrinsic_registry { IntrinsicDispatch }
-
     positional: list[uni.Expr] = [];
     _has_kw = False;
     for p in (nd.params or []) {
@@ -1540,11 +1534,7 @@ impl NaIRGenPass._codegen_synthetic_call(
     call = uni.FuncCall(
         target=target, params=params, genai_call=None, kid=[target, *params]
     );
-    import from jaclang.compiler.symbol_utils {
-        ability_of_symbol,
-        classify_call,
-        resolve_expr_symbol
-    }
+
     call.call_kind = classify_call(call).value;
     call.callee_decl = ability_of_symbol(resolve_expr_symbol(target));
     owner = origin.parent;
@@ -1560,13 +1550,6 @@ impl NaIRGenPass._codegen_synthetic_call(
 }
 
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
-    import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
-    import from jaclang.compiler.erased_imports { erased_identity_call_arg }
-    import from jaclang.compiler.field_semantics {
-        field_initialization,
-        is_field_marker
-    }
-
     _identity_arg = erased_identity_call_arg(nd);
     if _identity_arg is not None {
         return self._codegen_expr(_identity_arg);
@@ -1670,7 +1653,6 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    import from jaclang.compiler.types { types as jtypes }
     _callee_t = nd.target?.type;
     if isinstance(_callee_t, jtypes.ClassType)
         and _callee_t.private.distinct_key is not None {
@@ -3527,7 +3509,6 @@ impl NaIRGenPass._emit_isinstance_user(
 }
 
 impl NaIRGenPass._flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | None) {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     asgn = nd.parent;
     if not (
         isinstance(asgn, uni.Assignment)
@@ -3580,7 +3561,6 @@ impl NaIRGenPass._flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | No
 }
 
 impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     if nd.tok is None {
         return None;
     }
@@ -4072,7 +4052,6 @@ impl NaIRGenPass._consume_kw_spreads(
 impl NaIRGenPass._codegen_sized_builtin_call(
     nd: uni.FuncCall, func_name: (str | None), call_kind: str
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if call_kind == "method" and isinstance(nd.target, uni.AtomTrailer) {
         _owner = self._get_name(nd.target.target);
         _attr = self._get_name(nd.target.right);
@@ -4213,7 +4192,7 @@ impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
     `c == '#'`; folding keeps each of those a constant instead of a runtime
     decode of a static string.
     """;
-    import from jaclang.compiler.frontend.const_fold { fold_const }
+
     params = list(nd.params or []);
     if len(params) != 1 or not isinstance(params[0], uni.Expr) {
         return None;

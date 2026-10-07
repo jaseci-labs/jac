@@ -1,16 +1,7 @@
 import os;
 import logging;
-import from jaclang.scale.deploy.target.service_deployer { ServiceDeployer }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry
-}
+
 import from jaclang.server { sv_client }
-import from jaclang.scale.runtime.context.util { DEFAULT_GATEWAY_PORT }
-import from jaclang.scale.runtime.context.service_routing {
-    ServiceRoute,
-    resolve_service_route
-}
 
 glob logger = logging.getLogger(__name__),
      _config_load_warned: set[str] = set();
@@ -123,7 +114,6 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
 def build_k8s_registry_routes(
     routes: list[str] | dict[str, str], port: int = DEFAULT_GATEWAY_PORT
 ) -> dict[str, ServiceRoute] {
-    import from jaclang.scale.runtime.context.util { in_cluster_namespace }
     namespace: str = in_cluster_namespace();
     result: dict[str, ServiceRoute] = {};
     for svc_name in list(routes) {

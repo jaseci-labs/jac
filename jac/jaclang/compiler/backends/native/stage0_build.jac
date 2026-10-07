@@ -5,20 +5,6 @@ import shutil;
 import subprocess;
 import sys;
 import tarfile;
-import type from jaclang.compiler.kernel_target { KernelTarget }
-import from jaclang.compiler.backends.native.kernel_resolve {
-    KERNEL_DEV_LINK_MODE,
-    STAGE0_BUILDER
-}
-import from jaclang.compiler.backends.native.stage0_pin {
-    Stage0Pin,
-    Stage0PinError,
-    abi_contract_differences,
-    abi_contract_digest,
-    read_stage0_pin,
-    stage0_source_dir,
-    stage0_strict
-}
 
 glob STAGE0_CACHE_DIR: str = "stage0",
      STAGE0_STAMP_NAME: str = ".stage0.json",
@@ -92,7 +78,6 @@ def ensure_commit(repo: str, commit: str) {
 }
 
 def stage0_dir(commit: str) -> str {
-    import from jaclang.jac0core.cache_paths { get_cache_home }
     return os.path.join(str(get_cache_home()), STAGE0_CACHE_DIR, commit);
 }
 
@@ -161,7 +146,6 @@ def _extract_snapshot(repo: str, prefix: str, pin: Stage0Pin, s0_dir: str) {
 }
 
 def _materialize_typeshed(snapshot_pkg: str) {
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     source = os.path.join(
         os.path.realpath(jaclang_pkg_root()), *_TYPESHED_REL, "stdlib"
     );
@@ -183,8 +167,6 @@ def _materialize_typeshed(snapshot_pkg: str) {
 }
 
 def provision_stage0(pin: Stage0Pin, repo: str, prefix: str) -> str {
-    import from jaclang.jac0core.cache_paths { FileLock }
-    import from jaclang.compiler.driver.jir { compiler_source_digest }
     s0_dir = stage0_dir(pin.commit);
     os.makedirs(os.path.dirname(s0_dir), exist_ok=True);
     lock = FileLock(s0_dir + ".lock");
@@ -242,10 +224,6 @@ def typeshed_pin_of(pkg_root: str) -> str {
 }
 
 def file_guard_trips(pin: Stage0Pin, snapshot_pkg: str, target_root: str) -> list[str] {
-    import from jaclang.compiler.frontend.codeinfo {
-        NATIVE_ABI_VERSION,
-        jaclang_pkg_root
-    }
     trips: list[str] = [];
     ours = typeshed_pin_of(jaclang_pkg_root());
     theirs = typeshed_pin_of(snapshot_pkg);
@@ -280,9 +258,6 @@ def native_tree_trips(pin: Stage0Pin, repo: str, prefix: str) -> list[str] {
 }
 
 def stage0_child_env(snapshot_pkg: str, spec_path: str) -> dict[str, str] {
-    import from jaclang.compiler.backends.native.kernel_resolve { kernel_build_env }
-    import from jaclang.compiler.kernel_target { KERNEL_TARGET_ENV }
-    import from jaclang.compiler.backends.native.llvm { _find_shim }
     parent = os.path.dirname(snapshot_pkg);
     env = dict(os.environ);
     env.pop("JAC_NO_DEV_SOURCE", None);
@@ -317,22 +292,12 @@ def _unit_candidates(spec: KernelTarget) -> list[str] {
 }
 
 def unit_sources_before(spec: KernelTarget) -> dict[str, str] {
-    import from jaclang.compiler.driver.jir { unit_source_digest }
     return {os.path.realpath(p): unit_source_digest(p) for p in _unit_candidates(spec)};
 }
 
 def restamp_stage0_sidecar(
     dst: str, pin: Stage0Pin, target_root: str, before: dict[str, str]
 ) -> dict[str, object] {
-    import from jaclang.jac0core.cache_paths { atomic_write }
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        LAYOUT_SIDECAR_SUFFIX,
-        kernel_options,
-        read_sidecar
-    }
-    import from jaclang.compiler.driver.jir { sidecar_unit_paths, unit_source_digest }
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
-    import from jaclang.compiler.driver.compile_options { NATIVE_LINK_MODE_BITCODE }
     sidecar = read_sidecar(dst);
     if sidecar is None {
         raise Stage0Unavailable("the stage-0 build left no layout sidecar");
@@ -418,12 +383,7 @@ def build_kernel_by_pin(
     if pin.is_self() {
         return False;
     }
-    import from jaclang.compiler.kernel_target {
-        active_kernel_target,
-        with_link_mode,
-        write_kernel_target
-    }
-    import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
+
     spec = with_link_mode(
         spec or active_kernel_target() or running_kernel_target(), link_mode
     );
@@ -473,8 +433,7 @@ def pin_for_commit(commit: str) -> Stage0Pin {
         ).strip()
     );
     s0_dir = stage0_dir(full);
-    import from jaclang.jac0core.cache_paths { FileLock }
-    import from jaclang.compiler.driver.jir { compiler_source_digest }
+
     os.makedirs(os.path.dirname(s0_dir), exist_ok=True);
     lock = FileLock(s0_dir + ".lock");
     lock.acquire();

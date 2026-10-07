@@ -1,6 +1,3 @@
-import from jaclang.compiler.backends.native.abi { classify_foreign_fn }
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         self._maybe_declare_ability(stmt);
@@ -677,7 +674,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
-    import from jaclang.compiler.frontend.codeinfo { native_test_symbol }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     if self._exc_raise_fn is None {
@@ -765,7 +761,7 @@ impl NaIRGenPass._demote_native_test(
 ) -> None {
     """A test that cannot run natively is a seam like any function: it leaves
     the native test table and runs its Python body in the server codespace.""";
-    import from jaclang.compiler.frontend.codeinfo { native_test_symbol }
+
     line = nd.loc.first_line if nd.loc else 0;
     key = native_test_symbol(nd.name.sym_name, line);
     if not self._demote_method_if_unlowerable(key, func, local_mark, keep_func=True) {
@@ -929,7 +925,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     _p = nd.parent;
     _frame: (uni.UniNode | None) = None;
     while _p is not None {
@@ -1447,7 +1442,6 @@ impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Functi
 }
 
 impl NaIRGenPass._emit_glob_init_func -> None {
-    import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = self._define_function(
         native_glob_init_name(self.module.loc.mod_path)
@@ -1629,11 +1623,6 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     }
     i64 = ir.IntType(64);
     import re;
-
-    import from jaclang.compiler.frontend.codeinfo {
-        native_entry_name,
-        native_runtime_probe_name
-    }
 
     fnty = ir.FunctionType(ir.VoidType(), []);
     _entry_sym = native_entry_name(self.module.loc.mod_path)

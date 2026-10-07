@@ -6,7 +6,6 @@ import urllib.error;
 import urllib.request;
 import from pathlib { Path }
 import from urllib.parse { urljoin, urlsplit }
-import from jaclang.project.package_scope { is_package_name }
 
 glob DEFAULT_REGISTRY_NAME: str = "jaseci",
      DEFAULT_REGISTRY_URL: str = "https://raw.githubusercontent.com/jaseci-labs/jac-index/main/",
@@ -139,7 +138,6 @@ def name_of_index_path(rel: str) -> str | None {
 }
 
 def _github_tree(repo: str, branch: str) -> list[str] {
-    import from jaclang.packages.github { find_token }
     headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"};
     token = find_token();
     if token {
@@ -190,7 +188,6 @@ obj Registry {
     }
 
     def _cache_file(rel: str) -> Path {
-        import from jaclang.cache.registry { bucket }
         return bucket("pkg-index").path() / self.key() / rel;
     }
 
@@ -199,7 +196,7 @@ obj Registry {
             target = Path(self.base()) / rel;
             return target.read_text(encoding="utf-8") if target.is_file() else None;
         }
-        import from jaclang.toolchains.store { allowed_url, offline }
+
         cache = self._cache_file(rel);
         cached: dict[str, any] = {};
         if cache.is_file() {
@@ -361,8 +358,7 @@ def fetch_verified(url: str, sha256: str, label: str) -> bytes {
         }
         return data;
     }
-    import from jaclang.toolchains.store { Artifact, fetch }
-    import from jaclang.cache.registry { bucket }
+
     dest = bucket("pkgs").ensure() / f".fetch-{sha256}.jab";
     try {
         fetched = fetch(

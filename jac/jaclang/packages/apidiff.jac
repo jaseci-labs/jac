@@ -1,5 +1,3 @@
-import from jaclang.packages.semver { Version }
-
 glob NONE: int = 0,
      PATCH: int = 1,
      MINOR: int = 2,

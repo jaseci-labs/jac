@@ -3,16 +3,6 @@ import threading;
 import time;
 import uuid;
 import from collections { OrderedDict }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse }
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.server.server { JsonValue }
-import from jaclang.server.serving.endpoint {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
 
 import json as json_module;
 
@@ -543,7 +533,6 @@ glob _telemetry_store: TelemetryStore | None = None;
 
 
 impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
-    import from jaclang.scale.config.config_loader { get_scale_config }
     telemetry_cfg = get_scale_config().get_telemetry_config();
     _telemetry_store = TelemetryStore(max_traces=telemetry_cfg.get('max_traces', 1000));
     store = _telemetry_store;

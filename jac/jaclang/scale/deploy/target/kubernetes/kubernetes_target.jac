@@ -1,33 +1,3 @@
-import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
-import from jaclang.scale.models.resource_status {
-    ResourceStatus,
-    ResourceStatusInfo,
-    assess_workload
-}
-import from jaclang.scale.models.progress { EventSink, NoopSink, ProgressEvent }
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    COMPANION_DEFS,
-    create_k8s_secret,
-    get_cluster_provider,
-    resize_pvc_if_needed
-}
-import from jaclang.scale._optdeps.kubernetes {
-    client,
-    config as k8s_cluster_config,
-    ApiException,
-    ConfigException
-}
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.deploy.database.kubernetes_postgres {
-    KubernetesPostgresProvider
-}
-import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
-import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV }
-
 obj KubernetesTargetBase(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,

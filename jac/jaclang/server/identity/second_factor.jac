@@ -4,17 +4,6 @@ import logging;
 import secrets;
 import uuid;
 import from datetime { UTC, datetime }
-import from jaclang.server.identity.assurance { METHOD_RECOVERY, METHOD_TOTP }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.identity.config { auth_settings }
-import from jaclang.server.identity.identity_storage { IdentityStorage }
-import from jaclang.server.identity.rate_limit { consume_limit, refund_limit }
-import from jaclang.server.identity.totp {
-    matching_step,
-    new_totp_secret,
-    provisioning_uri
-}
-import from jaclang.server.shared_store { shared_store }
 
 glob logger = logging.getLogger(__name__),
      TOTP_CREDENTIAL: str = 'totp',

@@ -2,9 +2,6 @@ import inspect;
 import json;
 import os;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { SymbolAccess, SymbolType }
-import from jaclang.compiler.frontend.unitree { HasVar, Module, Symbol }
-import from jaclang.compiler.types.types { ClassType, FunctionType, ParamKind }
 
 glob API_FORMAT: int = 1,
      DOC_KEYS: tuple[str, ...] = ("doc", "value"),
@@ -212,9 +209,6 @@ def module_path_for(base_root: Path, module: str) -> Path | None {
 }
 
 def package_surface(base_root: Path, exports: list[str]) -> dict[str, any] {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.compilation_context { compilation_scope }
-    import from jaclang.compiler.driver.program { JacProgram }
     program = JacProgram();
     modules: dict[str, any] = {};
     module_docs: dict[str, str] = {};

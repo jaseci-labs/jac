@@ -1,20 +1,5 @@
 import os;
 import from pathlib { Path }
-import from jaclang.packages.index {
-    IndexEntry,
-    Registry,
-    RegistryError,
-    registry_named,
-    registry_urls
-}
-import from jaclang.packages.lock { LockedPackage, Lockfile, digest_of }
-import from jaclang.packages.pubgrub { PackageSource, SolveFailure, solve }
-import from jaclang.packages.semver { Requirement, SemverError, Version }
-import from jaclang.packages.sources { GitError, checkout, pack_checkout, resolve_path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.dependencies { PackageDep }
-import from jaclang.project.jac_version { satisfies as jac_satisfies }
-import from jaclang.project.package_scope { is_package_name }
 
 obj ResolveError(Exception) {}
 
@@ -28,7 +13,6 @@ obj LocalPackage {
 }
 
 def running_jac_version -> Version {
-    import from jaclang.compiler.driver.jir { jaclang_version }
     try {
         return Version.parse(jaclang_version()).release();
     } except SemverError {
@@ -292,7 +276,6 @@ def _mark_dev(
 def resolve_graph(
     config: JacConfig, previous: Lockfile | None = None, update: list[str] | None = None
 ) -> Lockfile {
-    import from jaclang.compiler.driver.jir { jaclang_version }
     if config.project_root is None {
         raise ResolveError("resolving packages needs a project (jac.toml)");
     }

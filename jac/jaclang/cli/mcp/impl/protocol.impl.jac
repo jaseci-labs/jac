@@ -187,10 +187,6 @@ impl McpEngine._get_prompt(params: dict[str, any]) -> dict[str, any] {
 }
 
 impl build_engine(instructions: str = "") -> McpEngine {
-    import from jaclang.cli.mcp.resources { get_resource_provider }
-    import from jaclang.cli.mcp.tools { ToolProvider }
-    import from jaclang.cli.mcp.prompts { PromptProvider }
-
     rp = get_resource_provider();
     return McpEngine(
         resources=rp,

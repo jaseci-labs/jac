@@ -1,12 +1,7 @@
 import enum;
 import re;
-import from jaclang.runtime.object_interop { fields, is_record }
+
 import from types { UnionType }
-import from jaclang.byllm._optdeps.loguru { logger }
-import from jaclang.byllm.llm { BaseLLM }
-import from jaclang.byllm.systemone { ROUTE_SELECT_ATTR }
-import from jaclang.runtime.semantic { ClassInfo }
-import from jaclang.runtime.archetype { Anchor, Archetype, ObjectSpatialFunction }
 
 
 def _class_info(arch: object) -> (ClassInfo | None) {
@@ -173,14 +168,6 @@ def _make_handles(recs: list[dict[str, object]]) -> list[str] {
 
 
 def _route_context -> tuple[object, (Anchor | None)] {
-    import from jaclang.runtime.osp_kernel { _current_scope }
-    import from jaclang.runtime.archetype {
-        EdgeAnchor,
-        EdgeArchetype,
-        NodeAnchor,
-        NodeArchetype,
-        WalkerAnchor
-    }
     scope = _current_scope();
     if scope is None {
         return (None, None);
@@ -199,12 +186,6 @@ def _route_context -> tuple[object, (Anchor | None)] {
 
 
 def _candidate_for(item: object, here_anchor: (Anchor | None)) -> tuple[any, ...] {
-    import from jaclang.runtime.archetype {
-        EdgeAnchor,
-        EdgeArchetype,
-        NodeAnchor,
-        NodeArchetype
-    }
     if isinstance(item, EdgeArchetype) {
         ea = item.__jac__;
         direction = "out";
@@ -277,10 +258,6 @@ def _resolve_choice(
 
 
 def route_visit(candidates: list[object], model: BaseLLM) -> list[object] {
-    import from jaclang.byllm.mtir { MTRuntime }
-    import from jaclang.byllm.types { Message, MessageRole }
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-
     if not candidates {
         return [];
     }

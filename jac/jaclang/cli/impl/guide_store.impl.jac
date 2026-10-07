@@ -4,7 +4,7 @@ import from pathlib { Path }
 
 glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E0077": "jac-impl-files",
-         "E1140": "jac-arch-wiring",
+         "W2084": "jac-arch-wiring",
          "E1141": "jac-arch-wiring",
          "E1142": "jac-arch-wiring",
          "E1143": "jac-arch-wiring",

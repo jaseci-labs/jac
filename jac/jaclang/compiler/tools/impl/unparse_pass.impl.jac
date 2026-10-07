@@ -1215,8 +1215,8 @@ impl UnparsePass.exit_match_arch with uni.MatchArch exit {
     here.gen.jac = here.name.gen.jac + "(" + ", ".join(parts) + ")";
 }
 
-impl UnparsePass.exit_impl_import with uni.ImplImport exit {
-    head = "impl import";
+impl UnparsePass.exit_graph_import with uni.GraphImport exit {
+    head = "graph import";
     if here.scope {
         head = head + " " + here.scope.gen.jac;
     }
@@ -1261,9 +1261,7 @@ impl UnparsePass.exit_import_rule with uni.ImportRule exit {
 }
 
 impl UnparsePass.exit_module_pattern with uni.ModulePattern exit {
-    if here.is_any {
-        here.gen.jac = "any";
-    } elif here.path is None {
+    if here.path is None {
         here.gen.jac = "*";
     } else {
         here.gen.jac = here.path.gen.jac + (".*" if here.is_glob else "");

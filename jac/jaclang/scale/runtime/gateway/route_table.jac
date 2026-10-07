@@ -1,9 +1,4 @@
 import logging;
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
 
 glob _rt_logger = logging.getLogger(__name__),
      _SPEC_PROBE_TIMEOUT_SECONDS: float = 1.0;
@@ -46,10 +41,6 @@ async def learn_service_routes(
     registry: ServiceRegistry, table: ServiceRouteTable, now: float, max_age: float
 ) -> int {
     import asyncio;
-    import from jaclang.scale.runtime.gateway.openapi_agg {
-        fetch_service_spec,
-        SpecFetch
-    }
 
     due: list[tuple[str, ServiceEntry]] = [
         (name, `entry)

@@ -1,6 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
-
 glob _AMBIENT_CACHE: set[str] = set(),
      _RAW_DECL_KEYWORDS: set[str] = {"function", "class", "const", "let", "var"};
 
@@ -135,7 +132,7 @@ impl client_ambient_globals -> set[str] {
     if _AMBIENT_CACHE {
         return _AMBIENT_CACHE;
     }
-    import from jaclang.compiler.frontend.host { active_host }
+
     names: set[str] = set(_JS_LANGUAGE_GLOBALS);
     names.update(BROWSER_SEED_GLOBALS);
     names.update(active_host().client_stub_globals());

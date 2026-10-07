@@ -1,6 +1,5 @@
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.client.targets.web_target { WebTarget }
 
 obj DesktopTarget(WebTarget) {
     has name: str = "desktop",

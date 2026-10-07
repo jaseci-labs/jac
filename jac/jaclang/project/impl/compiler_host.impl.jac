@@ -74,7 +74,6 @@ impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
     facts = ProjectFacts(
         project_root=project_root,
         check=check_settings_of(cfg.check),
-        arch_closed=list(cfg.arch.closed),
         client_framework=cfg.client.framework if cfg.client else "react",
         package_name=package_name_of(cfg.project.name),
         package_exports=list(cfg.project.exports),
@@ -419,15 +418,19 @@ impl ProjectHost.native_parse(
     file_path: str,
     program: (JacProgram | None),
     annexes: list[WovenAnnex],
-    early_context: str = ""
+    early_context: str = "",
+    load_kernel: bool = True
 ) -> (tuple[Module, bool] | None) {
     import from jaclang.compiler.frontend.parser.frontend { finish_parse }
     import jaclang.compiler.native_compiler as _jc;
-    kernel = _jc.ensure_loaded();
+    kernel = _jc.ensure_loaded()
+        if load_kernel
+        else (_jc._KERNEL_CELL[0] if _jc._KERNEL_CELL else None);
     if kernel is None {
         return None;
     }
-    kernel.prepare_early(early_context if program is not None else "");
+    wired = any([bool(annex.consumer) for annex in annexes]);
+    kernel.prepare_early(early_context if program is not None and not wired else "");
     for annex in annexes {
         kernel.annex(annex);
     }
@@ -453,6 +456,30 @@ impl ProjectHost.native_parse(
         }
     }
     return (module, had_error);
+}
+
+impl ProjectHost.woven_module(
+    path: str, program: (JacProgram | None)
+) -> (Module | None) {
+    import from jaclang.compiler.frontend.parser.frontend { annex_sources, parse_woven }
+    try {
+        source = self.read_source(path);
+    } except Exception {
+        return None;
+    }
+    (module, had_error) = parse_woven(
+        source, path, program, annex_sources(path), load_kernel=False
+    );
+    if had_error {
+        return None;
+    }
+    self.place_wired_imports(module);
+    return module;
+}
+
+impl ProjectHost.place_wired_imports(module: Module) {
+    import from jaclang.compiler.driver.wiring { dedupe_generated_imports }
+    dedupe_generated_imports(module);
 }
 
 impl ProjectHost.resolve_local_module(

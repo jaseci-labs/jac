@@ -1,8 +1,6 @@
-import type from jaclang.project.config { AppConfig }
 import os;
 
 import from pathlib { Path }
-import from jaclang.cli.console { console }
 
 def _is_file_target(target: str) -> bool {
     if not target {
@@ -58,8 +56,6 @@ def _build_app(
     place: bool,
     allow_drop_client: bool = False
 ) -> int {
-    import from jaclang.project.kinds { plan_app_run }
-
     plan = None;
     if app is not None {
         try {
@@ -191,7 +187,6 @@ impl build(
     native_link_mode: str = "",
     allow_drop_client: bool = False
 ) -> int {
-    import from jaclang.project.config { get_config }
     if native or lib or memory or native_target or debug or native_link_mode {
         import from jaclang.cli.commands.native_build { native_build }
         if not native {

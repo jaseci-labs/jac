@@ -1,6 +1,6 @@
 import json;
 import sys;
-import type from jaclang.runtime.prepared { PreparedApplication }
+
 import threading;
 import from weakref { WeakValueDictionary }
 import from contextlib { contextmanager }

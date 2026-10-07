@@ -885,10 +885,6 @@ def stored_wiring_digest(source_path: str) -> str {
     h.update(b"\0");
     if facts is not None {
         h.update((facts.package_name or "").encode());
-        for pattern in facts.arch_closed {
-            h.update(b"\0");
-            h.update(pattern.encode());
-        }
     }
     stamp = h.hexdigest();
     relative = os.path.relpath(

@@ -1,17 +1,7 @@
 import from pathlib { Path }
 import from fnmatch { fnmatch }
-import from jaclang.cli.console { console }
-import from jaclang.cli.check_report {
-    print_file_progress,
-    print_section,
-    print_failed_summary,
-    print_final_summary,
-    print_native_coverage,
-    print_placement_report
-}
 
 def _maybe_malloc_trim {
-    import from jaclang.cli.workpool { maybe_malloc_trim }
     maybe_malloc_trim();
 }
 
@@ -47,12 +37,10 @@ def _diag_wire(alert: any) -> dict[(str, any)] {
 }
 
 def _check_rss_cap_mb -> int {
-    import from jaclang.cli.workpool { env_int }
     return env_int("JAC_CHECK_RECYCLE_MB", 3072);
 }
 
 def _check_retire(served: int, rss_mb: int) -> bool {
-    import from jaclang.cli.workpool { env_int, should_retire }
     return should_retire(
         served, env_int("JAC_CHECK_RECYCLE", 0), rss_mb, _check_rss_cap_mb()
     );
@@ -86,9 +74,7 @@ def _is_app_name(target: str) -> bool {
 
 def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     import os;
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.bccache { discover_base_file }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+
     opts = _wire_dict(request.get("opts"));
     file_path = str(request["path"]);
     result: dict[(str, any)] = {
@@ -291,22 +277,13 @@ impl check(
     jobs: str = "",
     app: str = ""
 ) -> int {
-    import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-    import from jaclang.cli.workpool {
-        WorkPool,
-        forced_serial,
-        jobs_setting,
-        pool_available,
-        resolve_jobs
-    }
-    import from jaclang.project.config { get_config }
     import from time { time }
     if lint_only {
         return lint(paths=paths, fix=fix, ignore=ignore);
     }
     import gc;
     import os;
-    import from jaclang.compiler.driver.compiler { CHECK_GC_THRESHOLDS }
+
     if not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
         gc.set_threshold(*CHECK_GC_THRESHOLDS);
     }
@@ -328,7 +305,6 @@ impl check(
         );
     }
 
-    import from jaclang.project.workspace { workspace_for_path }
     ws = workspace_for_path(os.getcwd()) if not paths else None;
     units: list[dict[(str, any)]] = [];
     had_path_errors = False;
@@ -603,7 +579,6 @@ impl check(
 impl lint(
     paths: list[str], fix: bool = False, ignore: (list[str] | None) = None
 ) -> int {
-    import from jaclang.compiler.driver.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -776,8 +751,7 @@ def _format_single_file_worker(
     logical_path: str = ""
 ) -> dict[str, any] {
     import os;
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.project.textio { read_file_with_encoding }
+
     path_obj = Path(file_path);
 
     effective_logical = logical_path or file_path;
@@ -1052,14 +1026,7 @@ impl format(
     jobs: str = ""
 ) -> int {
     import os;
-    import from jaclang.cli.workpool {
-        WorkPool,
-        forced_serial,
-        jobs_setting,
-        pool_available,
-        resolve_jobs
-    }
-    import from jaclang.project.config { get_config }
+
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -1325,7 +1292,7 @@ impl precommit(
     import shutil;
     import subprocess;
     import tempfile;
-    import from jaclang.project.config { get_config }
+
     if install {
         return _install_precommit_hook(force);
     }
@@ -1635,9 +1602,7 @@ impl `test(
     jobs: str = ""
 ) -> int {
     import os;
-    import from jaclang.project.config { get_config }
-    import from jaclang.testing.test_runner { run_tests }
-    import from jaclang.cli.workpool { jobs_setting }
+
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -1778,16 +1743,12 @@ impl `test(
 }
 
 impl gen_parser -> int {
-    import from jaclang.compiler { gen_all_parsers }
     gen_all_parsers();
     console.success('Parser generated.');
     return 0;
 }
 
 impl grammar(output: str = "", strict: bool = False) -> int {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
     parser_path = str(
         Path(jaclang.__file__).parent
@@ -1808,8 +1769,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
         }
         return 1;
     }
-    import from jaclang.compiler.driver.pipeline_runner { run_utility }
-    import from jaclang.compiler.driver.pipeline_types { UtilityProduct }
+
     import from typing { cast }
     pass_ = cast(GrammarExtractPass, run_utility(UtilityProduct.GRAMMAR, mod, prog));
     if len(pass_.rules) == 0 {
@@ -1863,8 +1823,8 @@ def _iter_jac_files(
                     walked.append(str(jac_file));
                 }
             }
-            if _drop_git_ignored([str(path_obj)]) {
-                result.extend(_drop_git_ignored(walked));
+            if drop_git_ignored([str(path_obj)]) {
+                result.extend(drop_git_ignored(walked));
             } else {
                 result.extend(walked);
             }
@@ -1881,8 +1841,7 @@ def _iter_jac_files(
 
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
     import os;
-    import from jaclang.compiler.driver.bccache { discover_base_file }
-    import from jaclang.jac0core.ext_registry { is_annex }
+
     modules = {
         os.path.realpath(f)
         for f in files
@@ -1902,19 +1861,17 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
 }
 
 def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
-    import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
 }
 
 def _configured_check_excludes -> list[str] {
-    import from jaclang.project.config { get_config }
     config = get_config();
     return list(config.check.exclude) if config is not None else [];
 }
 
 def _is_project_wide_run(paths: list[str]) -> bool {
     import os;
-    import from jaclang.project.config { get_config }
+
     if not paths {
         return True;
     }
@@ -1926,52 +1883,13 @@ def _is_project_wide_run(paths: list[str]) -> bool {
     return os.path.realpath(paths[0]) == os.path.realpath(proj);
 }
 
-def _drop_git_ignored(paths: list[str]) -> list[str] {
-    import subprocess;
-    if not paths {
-        return paths;
-    }
-    try {
-        proc = subprocess.run(
-            ['git', 'check-ignore', '--stdin'],
-            input="\n".join(paths),
-            capture_output=True,
-            text=True,
-            check=False
-        );
-    } except (OSError, ValueError) {
-        return paths;
-    }
-
-    if proc.returncode not in (0, 1) {
-        return paths;
-    }
-    ignored = {
-        line
-        for line in proc.stdout.splitlines()
-        if line
-    };
-    if not ignored {
-        return paths;
-    }
-    return [
-        p
-        for p in paths
-        if p not in ignored
-    ];
-}
-
-
 def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool {
-    import from jaclang.project.source { path_matches_exclude }
     return path_matches_exclude(file_path, ignore_patterns);
 }
 
 impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> int {
     import os;
-    import from jaclang.cli.console { console }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+
     if not os.path.isfile(filename) {
         console.error(f"File not found: {filename}");
         return 1;
@@ -2023,9 +1941,7 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
         return 0;
     }
     import re;
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_linked_ir_text
-    }
+
     mod = prog.compile(
         file_path=path,
         options=CompileOptions(aot_mode=True, default_codespace="native")

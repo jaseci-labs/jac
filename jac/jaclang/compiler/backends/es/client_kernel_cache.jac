@@ -8,7 +8,6 @@ glob OSP_CORE_PARTS: tuple[str, ...] = (
      _OSP_CORE_JS_MEMO: list[str] = [];
 
 def _cache_dir -> str {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
     d = os.path.join(str(get_jir_cache_dir()), "client_kernel");
     os.makedirs(d, exist_ok=True);
     return d;
@@ -16,7 +15,7 @@ def _cache_dir -> str {
 
 def _es_backend_fingerprint -> str {
     import glob as _g;
-    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+
     es_dir = os.path.join(jaclang_pkg_root(), "compiler", "backends", "es");
     h = hashlib.sha256();
     for pat in ["*.jac", os.path.join("impl", "*.jac")] {
@@ -32,7 +31,6 @@ def _es_backend_fingerprint -> str {
 }
 
 def _unit_source_path -> tuple[str, str] {
-    import from jaclang.compiler.frontend.codeinfo { kernel_unit_path }
     texts: list[str] = [];
     for rel in OSP_CORE_PARTS {
         with open(kernel_unit_path(rel), "r", encoding="utf-8") as f {
@@ -53,7 +51,6 @@ def _unit_source_path -> tuple[str, str] {
 }
 
 def _artifact_path(source_digest: str) -> str {
-    import from jaclang.compiler.driver.jir { running_compiler_digest }
     h = hashlib.sha256();
     h.update(running_compiler_digest().encode());
     h.update(source_digest.encode());
@@ -62,13 +59,6 @@ def _artifact_path(source_digest: str) -> str {
 }
 
 def _lower(cl_copy: str) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-    import from jaclang.compiler.backends.es { estree as es }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-    import from jaclang.compiler.backends.es.jac_runtime_js { JAC_PRELUDE_MODULE }
     prog = JacProgram();
     ir = prog.compile(
         file_path=cl_copy,

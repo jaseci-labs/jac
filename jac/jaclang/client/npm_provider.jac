@@ -1,12 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.providers {
-    EcosystemProvider,
-    InstallContext,
-    ResolvedDependency,
-    manifest_plugin_deps
-}
-import from jaclang.client.client_bundle { ClientBundleError }
 
 glob CORE_RUNTIME_DEPS: dict[str, str] = {
          "react": "^19.2.0",
@@ -51,13 +43,11 @@ def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str
 
 
 def _app_wants_client(config: JacConfig, app: any) -> bool {
-    import from jaclang.project.kinds { kind_has_client }
     return app.implicit or kind_has_client(app.kind);
 }
 
 
 def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
-    import from jaclang.client.targets.registry { KIND_TARGET }
     (base_deps, base_dev) = manifest_plugin_deps(config, "npm");
     out: list[tuple[str, str, str, bool]] = [];
     seen: dict[tuple[str, bool], tuple[str, str]] = {};
@@ -111,10 +101,6 @@ def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
 
 
 def regenerate_and_install(project_dir: Path) {
-    import from jaclang.client.vite_bundler { ViteBundler }
-    import from jaclang.client { get_bun }
-    import from jaclang.client.bun_installer { bun_unavailable_message }
-
     bun = get_bun();
     if not bun {
         raise RuntimeError(bun_unavailable_message()) from None;

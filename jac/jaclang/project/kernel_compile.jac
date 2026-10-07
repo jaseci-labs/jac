@@ -1,26 +1,4 @@
 import os;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.host { HostServices }
-import from jaclang.compiler.driver.unit_products { UnitProducts }
-import from jaclang.compiler.frontend.kernel_analyze {
-    ANALYSIS_CRASHED,
-    AnalysisReport,
-    CompileReport,
-    ModuleReport,
-    kernel_trace,
-    run_kernel_compile
-}
-import from jaclang.project.kernel_snapshot {
-    COMPILE_ENTRY,
-    KernelAnalysisError,
-    call_with_asker,
-    host_deferred,
-    _IFACE_BUILT,
-    other_compiler_report,
-    kernel_snapshot,
-    loaded_kernel
-}
 
 glob KERNEL_COMPILE_ENV: str = "JAC_KERNEL_COMPILE",
      KERNEL_TIMING_ENV: str = "JAC_KERNEL_TIMING",
@@ -104,14 +82,13 @@ def kernel_compile(
 }
 
 def kernel_route(program: JacProgram, path: str) -> tuple[bool, bool] {
-    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if program.internal or is_compiler_source_path(path) or _HOST_PREPARING {
         return (False, False);
     }
     if kernel_compile_in_process() {
         return (True, True);
     }
-    import from jaclang.compiler.native_compiler { ensure_loaded }
+
     return (ensure_loaded() is not None, False);
 }
 
@@ -147,7 +124,7 @@ def kernel_compile_reported(
     if entry_report is not None and entry_report.native {
         return compiled;
     }
-    import from jaclang.project.kernel_check { alert_of }
+
     for diag in compiled.analysis.errors {
         program.errors_had.append(alert_of(diag));
     }
@@ -158,14 +135,6 @@ def kernel_compile_reported(
 }
 
 def last_compiled_native(path: str) -> bool {
-    import from jaclang.compiler.driver.jir {
-        HEADER_SIZE,
-        SEC_NBITCODE,
-        SEC_NOBJ,
-        SECTIONS_MAGIC,
-        get_module_cache_path,
-        read_sections
-    }
     try {
         data = get_module_cache_path(path).read_bytes();
         found = data.find(SECTIONS_MAGIC, HEADER_SIZE);

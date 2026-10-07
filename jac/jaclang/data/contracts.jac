@@ -1,8 +1,7 @@
 import json;
 import types;
 import typing;
-import from jaclang.runtime.object_interop { fields, is_record }
-import from jaclang.runtime.object_model { MISSING }
+
 import from typing { get_args, get_origin, get_type_hints, Union }
 
 obj:pub ContractError(ValueError) {}

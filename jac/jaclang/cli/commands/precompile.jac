@@ -1,7 +1,3 @@
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-
-
 comptime SPEC_PRECOMPILE: CommandSpec = CommandSpec(
          name="precompile",
          help="Precompile a package tree into _precompiled .jir units (the seal engine behind 'jac build --as jab|sealed')",

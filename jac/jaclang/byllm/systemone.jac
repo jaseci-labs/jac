@@ -1,13 +1,5 @@
 import from enum { Enum }
-import from jaclang.runtime.semantic {
-    ClassInfo,
-    EnumInfo,
-    FunctionInfo,
-    TypeForm,
-    VarInfo
-}
-import from jaclang.byllm.mtir { MTRuntime }
-import from jaclang.byllm.exceptions { OutputConversionError }
+
 import from types { MethodType }
 
 glob CHOICE = "choice",

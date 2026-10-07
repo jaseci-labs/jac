@@ -1,13 +1,3 @@
-import from jaclang.scale.observability.metrics { MetricsCollector }
-import from jaclang.scale._optdeps.prometheus {
-    Counter,
-    Histogram,
-    Gauge,
-    generate_latest,
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry
-}
-import from jaclang.server.serving.datatypes { Response }
 import logging;
 
 glob logger = logging.getLogger(__name__),

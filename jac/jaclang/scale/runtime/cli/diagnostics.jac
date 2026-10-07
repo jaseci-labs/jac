@@ -1,16 +1,3 @@
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ScalingMode }
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.runtime.cli._narrow {
-    bget,
-    dget,
-    effective_resources,
-    iget,
-    lget,
-    pod_spec,
-    sget
-}
-
-
 obj Diagnostic {
     has severity: str,
         message: str,
@@ -126,8 +113,6 @@ obj PlanValidator {
     }
 
     def _check_config_keys(out: list[Diagnostic]) {
-        import from jaclang.scale.config.config_loader { get_scale_config }
-        import from jaclang.scale.config.validation { validate_scale_config }
         try {
             raw = get_scale_config().get_jac_config().get_plugin_config("scale");
         } except Exception as e {

@@ -956,7 +956,7 @@ node ModuleItem(UniNode) {
     def __repr__ -> str;
 }
 
-node ImplImport(ElementStmt) {
+node GraphImport(ElementStmt) {
     has scope: (ModulePath | None) { getter; }
     has body: Sequence[ImportWire | ImportRule] { getter; }
 
@@ -998,7 +998,7 @@ node ImportWire(UniNode) {
 
     def postinit -> None;
 
-    has block: ImplImport { getter; }
+    has block: GraphImport { getter; }
     has provider_path: str { getter; }
     has consumer_paths: list[str] { getter; }
 
@@ -1023,24 +1023,18 @@ node ImportRule(UniNode) {
 
     def postinit -> None;
 
-    has block: ImplImport { getter; }
+    has block: GraphImport { getter; }
     has item_names: set[str] { getter; }
 
     def __repr__ -> str;
 }
 
 node ModulePattern(UniNode) {
-    has is_glob: bool = False,
-        is_any: bool = False;
-
+    has is_glob: bool = False;
     has path: (ModulePath | None) { getter; }
 
     def init(
-        *,
-        path: (ModulePath | None),
-        is_glob: bool = False,
-        is_any: bool = False,
-        kid: Sequence[UniNode] = []
+        *, path: (ModulePath | None), is_glob: bool = False, kid: Sequence[UniNode] = []
     ) -> None;
 
     def postinit -> None;

@@ -1,19 +1,6 @@
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Expr,
-    FuncCall,
-    ImplDef,
-    Import,
-    Module,
-    ModuleItem,
-    Name,
-    UniNode
-}
-
 def erased_import_binds(
     nd: UniNode, name: str, imported_name: str | None = None
 ) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_IMPORTS }
     mod = nd.find_parent_of_type(Module);
     if mod is None {
         return False;
@@ -43,7 +30,6 @@ def erased_import_binds(
 }
 
 def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_IDENTITY_CALLS }
     tgt = nd.target;
     if not isinstance(tgt, Name) or tgt.sym_name not in NATIVE_ERASED_IDENTITY_CALLS {
         return None;

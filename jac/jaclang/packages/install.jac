@@ -1,18 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.packages.index { RegistryError, registry_named }
-import from jaclang.packages.lock { LockedPackage, Lockfile, LockError }
-import from jaclang.packages.mounts { link_mounts }
-import from jaclang.packages.resolve {
-    ResolveError,
-    manifest_inputs,
-    pip_requirement,
-    resolve_graph
-}
-import from jaclang.packages.sources { GitError, checkout, pack_checkout }
-import from jaclang.packages.store { StoreError, cached, materialize }
-import from jaclang.project.config { JacConfig }
-import from jaclang.project.package_scope { is_package_name }
 
 obj InstallError(Exception) {}
 
@@ -97,7 +83,6 @@ def fetch_locked(config: JacConfig, pkg: LockedPackage) -> Path {
 }
 
 def _registry_for_source(config: JacConfig, base: str) -> any {
-    import from jaclang.packages.index { Registry, registry_urls }
     for (name, url) in registry_urls(config.registries).items() {
         candidate = registry_named(name, config.registries);
         if candidate.base() == base {

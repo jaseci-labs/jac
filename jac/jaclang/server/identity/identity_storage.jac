@@ -1,14 +1,7 @@
 import json;
-import from jaclang.server.serving.authcrypt {
-    hash_password as _scrypt_hash,
-    verify_password as _scrypt_verify,
-    is_prescrypt_hash as _is_prescrypt,
-    needs_rehash as _needs_rehash
-}
+
 import uuid;
 import from datetime { datetime, UTC }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.server.identity.config { password_hash_cost }
 
 obj IdentityTakenError(Exception) {}
 

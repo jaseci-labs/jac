@@ -1,5 +1,3 @@
-import type from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-
 obj RuntimeSymbol {
     has name: str,
         source: str = "@jac/runtime",
@@ -73,10 +71,6 @@ def _required_runtime_globals(
 def with_runtime_globals(
     js_code: str, backend: (FrameworkBackend | None) = None
 ) -> str {
-    import from jaclang.compiler.backends.es.free_ident_audit {
-        js_identifiers,
-        js_top_level_declarations
-    }
     (names, src) = _required_runtime_globals(backend);
     referenced = set(js_identifiers(js_code));
     declared = js_top_level_declarations(js_code);
@@ -97,8 +91,5 @@ def with_runtime_globals(
 }
 
 def prepend_active_runtime_globals(js_code: str) -> str {
-    import from jaclang.compiler.backends.es.backends.registry {
-        resolve_active_backend
-    }
     return with_runtime_globals(js_code, resolve_active_backend());
 }

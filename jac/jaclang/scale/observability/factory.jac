@@ -1,10 +1,3 @@
-import from jaclang.scale.observability.logger { Logger }
-import from jaclang.scale.observability.metrics {
-    MetricsCollector,
-    NoOpMetricsCollector
-}
-import from jaclang.scale._optdeps.optional_deps { is_optional_available }
-
 class UtilityFactory {
     static def create_logger(
         logger_type: str = 'standard', config: (dict[str, any] | None) = None

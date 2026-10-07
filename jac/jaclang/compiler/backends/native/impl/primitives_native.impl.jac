@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.diagnostics { E5092 }
-
 glob SORT_KEY_MSG: str = "comparison requires orderable key values (int, float, bool, str, bytes, tuple, list, set, or frozenset)";
 
 impl NativeIntEmitter.emit_to_bytes(

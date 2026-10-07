@@ -6,12 +6,6 @@ import time;
 import from base64 { b64encode }
 import from hashlib { sha1 }
 import from json { dumps, loads }
-import from jaclang.server.serving.datatypes {
-    Headers,
-    QueryParams,
-    URL,
-    WebSocketDisconnect
-}
 
 
 glob WS_GUID: str = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11',

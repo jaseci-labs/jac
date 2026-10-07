@@ -1,29 +1,9 @@
 import os;
 import time;
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.backends.native.link_plan { LinkResult }
-import from jaclang.compiler.kernel_target {
-    KERNEL_TARGET_FORMAT,
-    KernelTarget,
-    read_kernel_target,
-    set_kernel_target
-}
-import from jaclang.compiler.backends.native.kernel_resolve {
-    KERNEL_DEV_LINK_MODE,
-    _StoreParserSpan,
-    kernel_plan
-}
 
 glob STAGE0_UNKNOWN_FORMAT: int = 3;
 
 def running_kernel_target(pkg_root: str = "") -> KernelTarget {
-    import from jaclang.bootstrap_manifest {
-        NATIVE_LOWERED_PATHS,
-        NATIVE_ONLY_DIR_REL,
-        NATIVE_ONLY_REL
-    }
-    import from jaclang.compiler.frontend.codeinfo { KERNEL_UNIT_REL, jaclang_pkg_root }
-    import from jaclang.compiler.native_scope { KERNEL_ROOT_MODULE, NATIVE_SCOPE }
     return KernelTarget(
         format=KERNEL_TARGET_FORMAT,
         `root=os.path.abspath(pkg_root or jaclang_pkg_root()),
@@ -42,10 +22,6 @@ def link_kernel(
     log: (Callable[[str], None] | None) = None,
     link_mode: str = ""
 ) -> LinkResult {
-    import from jaclang.compiler.backends.native.link_plan {
-        ArtifactKind,
-        link_artifact
-    }
     mode = link_mode
         or (target.link_mode if target is not None else "")
         or KERNEL_DEV_LINK_MODE;

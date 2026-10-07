@@ -1,61 +1,4 @@
 import os;
-import type from jaclang.compiler.driver.program { JacProgram }
-
-import type from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
-import type from jaclang.compiler.intrinsic_registry { IntrinsicRegistry }
-import type from jaclang.compiler.passes.context { CompilerPass }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    BinaryExpr,
-    ContextAwareNode,
-    ElementStmt,
-    Enum as UniEnum,
-    Expr,
-    FuncCall,
-    GlobalVars,
-    HasVar,
-    ImplDef,
-    Import,
-    KWPair,
-    Module,
-    ModuleItem,
-    ModulePath,
-    Name,
-    NameAtom,
-    ParamVar,
-    Symbol,
-    Token,
-    UniNode,
-    UniScopeNode,
-    ability_of_symbol,
-    in_type_position
-}
-import from jaclang.compiler.frontend.constant {
-    CodeContext,
-    Tokens as Tok,
-    SymbolType
-}
-import from jaclang.compiler.frontend.diagnostics { E5082, E5084, W6006, W6007 }
-import from jaclang.compiler.driver.boundary_classify {
-    ClientImportVerdict,
-    classify_client_import_item,
-    is_client_boundary_import,
-    symbol_linked_source_module
-}
-import from jaclang.compiler.expr_keys {
-    classify_condition_key,
-    collect_assigned_symbols,
-    collect_assignment_target_keys,
-    collect_narrowing_symbols,
-    find_destructure_index_path,
-    get_expr_key,
-    int_subscript_suffix,
-    reference_key_deps
-}
 
 enum CallKind {
     METHOD = "method",
@@ -88,7 +31,6 @@ def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol |
 }
 
 def imported_module_name(expr: Expr) -> str | None {
-    import from jaclang.compiler.types.types { ModuleType }
     if not isinstance(expr.type, ModuleType) {
         return None;
     }
@@ -137,11 +79,10 @@ def _is_user_symbol(sym: Symbol) -> bool {
 }
 
 def intrinsic_registry_if_ready -> (IntrinsicRegistry | None) {
-    import from jaclang.compiler.frontend.host { active_host }
     if active_host().module_in_flight(["jaclang.compiler.intrinsic_registry"]) {
         return None;
     }
-    import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
+
     return INTRINSIC_REGISTRY;
 }
 
@@ -150,8 +91,6 @@ def resolved_callee(nd: FuncCall) -> (Ability | None) {
 }
 
 def classify_call(nd: FuncCall) -> CallKind {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-
     if isinstance(nd.target, AtomTrailer) and nd.target.is_attr {
         return CallKind.METHOD;
     }
@@ -230,7 +169,6 @@ def collect_field_names(
 }
 
 def collect_method_names(arch: Archetype) -> set[str] {
-    import from jaclang.compiler.passes.layout_pass { archetype_accessors }
     names: set[str] = set();
     if arch.body is not None and isinstance(arch.body, Sequence) {
         for stmt in arch.body {
@@ -438,8 +376,6 @@ def _report_client_bare_import_uses(
 }
 
 def report_placement_warnings(reporter: CompilerPass, mod: Module) {
-    import from jaclang.compiler.placement.placement { get_module_summary }
-    import from jaclang.compiler.frontend.constant { CodeContext }
     ps = get_module_summary(mod, reporter.prog);
     written_glob_idxs: set[int] = set();
     for es in ps.elements {
@@ -518,7 +454,6 @@ def _module_top_element(mod: Module, nd: UniNode) -> (UniNode | None) {
 }
 
 def client_bridged_endpoint(mod: Module, top: UniNode) -> bool {
-    import from jaclang.compiler.placement.placement { project_has_server }
     return (
         isinstance(top, Ability)
         and isinstance(top, ContextAwareNode)
@@ -634,10 +569,6 @@ def _import_used_as_value(mod: Module, imp: Import) -> bool {
 def serverless_server_evidence(
     mod: Module, prog: JacProgram
 ) -> list[tuple[str, str, UniNode]] {
-    import from jaclang.compiler.placement.placement {
-        get_module_summary,
-        project_has_server
-    }
     if project_has_server(mod) {
         return [];
     }
@@ -667,8 +598,6 @@ def serverless_server_evidence(
 }
 
 def report_serverless_kind_errors(reporter: CompilerPass, mod: Module) {
-    import from jaclang.compiler.frontend.diagnostics { E5087 }
-    import from jaclang.compiler.placement.placement { project_kind_name }
     evidence = serverless_server_evidence(mod, reporter.prog);
     if not evidence {
         return;

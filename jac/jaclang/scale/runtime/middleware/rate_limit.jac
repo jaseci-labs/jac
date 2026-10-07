@@ -2,8 +2,6 @@ import logging;
 import time;
 import hashlib;
 import from threading { Lock as _RLLock }
-import from jaclang.scale.state.state_backend { StateBackend }
-import from jaclang.scale.state.factory { get_state_backend }
 
 glob logger = logging.getLogger(__name__),
      _rl_lock = _RLLock(),
@@ -154,8 +152,6 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
             capacity=max(1.0, per_user_rpm * burst / 60.0)
         );
     }
-
-    import from jaclang.scale.runtime.context.errors { error_response }
 
     async def rate_limit_middleware(request: any, call_next: any) -> any {
         path: str = request.url.path;

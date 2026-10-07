@@ -5,9 +5,6 @@ import from pathlib { Path }
 import from urllib.parse { urlencode }
 
 import from jaclang { JacRuntime as Jac }
-import from jaclang.project.config { JacConfig }
-import from jaclang.server.server { JacAPIServer }
-
 impl TestResponse.json -> dict[str, any] {
     if self._json_cache is None {
         try {
@@ -84,7 +81,6 @@ impl JacTestClient._ensure_initialized -> None {
     );
     Jac.set_context(mach);
 
-    import from jaclang.project.config { set_config, get_config }
     pinned = self._config;
     if pinned is not None {
         set_config(pinned);
@@ -92,8 +88,6 @@ impl JacTestClient._ensure_initialized -> None {
         get_config(start_path=Path(self._base_path), force_discover=True);
     }
 
-    import from jaclang.runtime.prepared { initialize_application }
-    import from jaclang.runtime.build_services { build_services }
     prepared = build_services().prepare_application(
         self._jac_file, Jac.get_program(), base, default_codespace='server'
     );
@@ -294,7 +288,6 @@ impl JacTestClient.reload -> None {
 }
 
 impl JacTestClient.close -> None {
-    import from jaclang.runtime.prepared { forget }
     forget(self._jac_file);
     import from contextlib { suppress }
     if self._server {

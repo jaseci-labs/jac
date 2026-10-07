@@ -1,8 +1,6 @@
 import copy;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.project.config { serialize_toml, toml_minimal_update }
-import from jaclang.project.dependencies { migrate_dependency_table }
 
 glob DEP_TABLES: tuple[str, ...] = ("dependencies", "dev-dependencies");
 

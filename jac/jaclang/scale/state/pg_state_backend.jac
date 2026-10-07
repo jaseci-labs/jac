@@ -3,7 +3,6 @@ import os;
 import socket;
 import threading;
 import uuid;
-import from jaclang.scale.state.state_backend { StateBackend }
 
 glob logger = logging.getLogger(__name__);
 

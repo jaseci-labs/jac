@@ -1,13 +1,9 @@
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { MISSING }
+
 import from logging { getLogger }
 import from queue { Queue }
 import from typing { cast, Generator, AsyncGenerator }
 import from uuid { UUID }
-
-import from jaclang.runtime.archetype { NodeAnchor, PermissionDenied, Root }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.memory { Memory }
 
 glob __all__ = ['ExecutionContext'],
      logger = getLogger(__name__);
@@ -37,7 +33,6 @@ obj ExecutionContext {
     static async def for_target(
         target: object, parent: ExecutionContext, user_root_id: str
     ) -> ExecutionContext {
-        import from jaclang.runtime.prepared { application_of, application_for }
         application = application_of(target);
         caller = application_for(parent.full_target_path or '');
         if application is None or caller is None or application is caller {

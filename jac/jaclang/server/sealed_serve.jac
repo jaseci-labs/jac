@@ -2,7 +2,6 @@ import json;
 import os;
 
 import from pathlib { Path }
-import from jaclang.jac0core.sealed { MANIFEST_NAME }
 
 glob SERVE_MANIFEST_REL: str = os.path.join(".jac", "serve_manifest.json"),
      CLIENT_DIST_REL: str = os.path.join(".jac", "client", "dist"),
@@ -93,7 +92,6 @@ def unlisted_image_root(path: str) -> (str | None) {
 
 
 def serve_manifest_for(path: str) -> (dict[str, any] | None) {
-    import from jaclang.runtime.prepared { prepared_manifest }
     prepared = prepared_manifest(path);
     if prepared is not None {
         return prepared;
@@ -120,7 +118,6 @@ def serve_manifest_for(path: str) -> (dict[str, any] | None) {
 
 
 def client_dist_for(path: str) -> (Path | None) {
-    import from jaclang.runtime.prepared { application_for }
     prepared = application_for(path);
     if prepared is not None and prepared.client_dist and not prepared.dev {
         return Path(prepared.client_dist);

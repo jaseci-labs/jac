@@ -4,8 +4,6 @@ import from collections.abc { Callable }
 import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
-import type from jaclang.runtime.constructs { AccessLevel, NodeArchetype }
-import type from jaclang.runtime.runtime { LLMModel }
 import type from jaclang { JacRuntimeInterface }
 
 enum APIProtocol(StrEnum) {

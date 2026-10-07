@@ -1,11 +1,10 @@
 import json;
-import type from jaclang.compiler.driver.program { JacProgram }
 
 def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, any] {
     boundaries: dict[str, dict[str, any]] = {};
     effects: dict[str, dict[str, any]] = {};
     host_imports: dict[str, dict[str, any]] = {};
-    import from jaclang.compiler.driver.unit_products { interop_record }
+
     manifests = list(artifacts);
     for module in program.mod.hub.values() {
         if module is not None and module.gen is not None {

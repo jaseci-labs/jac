@@ -1,18 +1,4 @@
 import logging;
-import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
-import from jaclang.scale.injector.binary {
-    download_release_binary,
-    host_seal_platform,
-    node_arch,
-    pack_binary_bytes,
-    resolve_console_version,
-    resolve_deploy_version,
-    stage_admin_dist,
-    toolchain_object_key
-}
-import from jaclang.runtime.graph_utils { host_arch }
-import from jaclang.scale.injector.bundle { bundle_object_key, content_address }
-import from jaclang.scale.config.dev_config { Channel }
 
 glob logger = logging.getLogger(__name__),
      DRY_RUN_DIGEST: str = "sha256-computed-at-deploy";
@@ -82,9 +68,6 @@ def select_injector(
     access_mode: str = "ReadWriteMany",
     fleet: any = None
 ) -> tuple[PvcInjector, str] {
-    import from jaclang.cli.console { console }
-    import from jaclang.scale.config.dev_config { resolve_dev_channel }
-
     channel = resolve_dev_channel(project_dir);
     blurbs = {
         Channel.LOCAL: "shipping the local jac binary",

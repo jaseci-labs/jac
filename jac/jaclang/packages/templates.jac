@@ -1,17 +1,6 @@
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.dist.archive { extract_tar_gz }
-import from jaclang.packages.artifact {
-    MANIFEST_DIR,
-    ROLE_TEMPLATE,
-    read_package_manifest
-}
-import from jaclang.packages.index { IndexEntry, RegistryError, registry_named }
-import from jaclang.packages.resolve { running_jac_version }
-import from jaclang.packages.semver { Requirement, SemverError, Version }
-import from jaclang.project.jac_version { satisfies as jac_satisfies }
-import from jaclang.project.package_scope { is_package_name }
 
 obj TemplateError(Exception) {}
 
