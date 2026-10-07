@@ -293,7 +293,7 @@ impl NaIRGenPass._export_native_iface -> None {
     layout = self.module.gen.native_layout;
     iface.layout = layout;
     for (name, ex) in self._unit_exports.items() {
-        sig: any = None;
+        sig: (NativeFuncLayout | None) = None;
         if layout is not None {
             sig = layout.functions.get(name) or layout.methods.get(name);
         }
@@ -330,18 +330,24 @@ impl NaIRGenPass._export_native_iface -> None {
     }
     import json;
     for (cname, native_body) in self._build_class_layouts().items() {
-        body = json.loads(native_unit_spelling(json.dumps(native_body), mod_path));
+        body: dict[str, any] = json.loads(
+            native_unit_spelling(json.dumps(native_body), mod_path)
+        );
+        _raw_fields: dict[str, any] = body.get("fields", {});
+        _field_slots: dict[str, NativeFieldSlot] = {};
+        for (fname, fd) in _raw_fields.items() {
+            _field_slots[fname] = NativeFieldSlot.from_dict(fd);
+        }
+        _raw_bases: list[any] = body.get("bases", []);
+        _raw_vtable: list[any] = body.get("vtable", []);
         iface.classes[native_unit_spelling(cname, mod_path)] = NativeClassLayout(
             name=cname,
             size=int(body.get("size", 0)),
             tag=int(body.get("tag", 0)),
             tag_offset=int(body.get("tag_offset", -1)),
-            fields={
-                fname: NativeFieldSlot.from_dict(fd)
-                for (fname, fd) in body.get("fields", {}).items()
-            },
-            bases=list(body.get("bases", [])),
-            vtable=list(body.get("vtable", [])),
+            fields=_field_slots,
+            bases=[str(_b) for _b in _raw_bases],
+            vtable=[str(_v) for _v in _raw_vtable],
             is_node=bool(body.get("is_node", False))
         );
     }
@@ -377,7 +383,8 @@ impl NaIRGenPass._export_native_iface -> None {
 }
 
 impl NaIRGenPass._build_class_layouts -> dict[str, any] {
-    return dict(self._build_jc_layout().get("classes", {}));
+    _classes: dict[str, any] = self._build_jc_layout().get("classes", {});
+    return dict(_classes);
 }
 
 impl NaIRGenPass._own_prefix -> str {
