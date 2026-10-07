@@ -828,10 +828,12 @@ impl NaIRGenPass._export_native_layout -> None {
 
     for (tkey, ttype) in self.tuple_types.items() {
         elem_types = [self._llvm_type_str(e, pointee_names) for e in ttype.elements];
+        _no_hints: list[str | None] = [];
+        for _ in elem_types {
+            _no_hints.append(None);
+        }
         layout.tuples[tkey] = NativeTupleLayout(
-            key=tkey,
-            element_types=elem_types,
-            element_struct_hints=[None] * len(elem_types)
+            key=tkey, element_types=elem_types, element_struct_hints=_no_hints
         );
     }
 
@@ -974,6 +976,10 @@ impl NaIRGenPass._exported_accessors(arch_name: str) -> dict[(str, dict[(str, st
 impl NaIRGenPass._ret_tuple_hints(
     fname: str, ret_tuple: any
 ) -> (list[str | None] | None) {
+    import from jaclang.compiler.frontend.codeinfo { NativeTupleLayout }
+    if not isinstance(ret_tuple, NativeTupleLayout) {
+        return None;
+    }
     keys = self.func_ret_elem_keys.get(fname);
     if not keys or len(keys) != len(ret_tuple.element_types) {
         return None;
