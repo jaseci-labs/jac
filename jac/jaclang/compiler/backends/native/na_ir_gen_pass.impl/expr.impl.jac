@@ -4,6 +4,9 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
+    if self._bound_expr_node is not None and nd is self._bound_expr_node {
+        return self._bound_expr_value;
+    }
     _jac_loc: str = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
@@ -2322,6 +2325,128 @@ impl NaIRGenPass._recast_object(value: ir.Value, target: ir.Type) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    if nd.is_null_ok and not isinstance(nd.right, uni.FilterCompr) {
+        return self._codegen_null_safe_trailer(nd);
+    }
+    return self._codegen_plain_trailer(nd);
+}
+
+impl NaIRGenPass._codegen_null_safe_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    recv = self._codegen_expr(nd.target);
+    if recv is None {
+        return None;
+    }
+    b = self.builder;
+    is_none: (ir.Value | None) = None;
+    if self._opt_payload_of(recv.type) is not None {
+        is_none = b.icmp_unsigned(
+            "==",
+            b.extract_value(recv, 0, name="nullsafe.tag"),
+            ir.Constant(ir.IntType(8), 0),
+            name="nullsafe.isnone"
+        );
+    } elif self._is_jacval_ty(recv.type) {
+        is_none = self._jacval_is_none(recv, False);
+    } elif isinstance(recv.type, ir.PointerType) {
+        is_none = b.icmp_unsigned(
+            "==", recv, ir.Constant(recv.type, None), name="nullsafe.isnone"
+        );
+    }
+    saved_node = self._bound_expr_node;
+    saved_value = self._bound_expr_value;
+    saved_trailer = self._null_safe_trailer;
+    some_bb: (ir.Block | None) = None;
+    none_bb: (ir.Block | None) = None;
+    if is_none is not None {
+        fn = b.block.function;
+        some_bb = fn.append_basic_block(name="nullsafe.some");
+        none_bb = fn.append_basic_block(name="nullsafe.none");
+        b.cbranch(is_none, none_bb, some_bb);
+        b.position_at_end(some_bb);
+    }
+    self._bound_expr_node = nd.target;
+    self._bound_expr_value = recv;
+    self._null_safe_trailer = nd;
+    found = self._codegen_plain_trailer(nd);
+    self._bound_expr_node = saved_node;
+    self._bound_expr_value = saved_value;
+    self._null_safe_trailer = saved_trailer;
+    if found is None or none_bb is None {
+        return found;
+    }
+    result_type = self._null_safe_type(found.type);
+    owned = self._is_owned(found);
+    some_value = found
+        if result_type == found.type
+        else self._coerce_type(found, result_type);
+    some_end = b.block;
+    done_bb = some_end.function.append_basic_block(name="nullsafe.done");
+    b.branch(done_bb);
+    b.position_at_end(none_bb);
+    none_value = self._null_safe_none(result_type);
+    none_end = b.block;
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    result = b.phi(result_type, name="nullsafe.value");
+    result.add_incoming(some_value, some_end);
+    result.add_incoming(none_value, none_end);
+    if owned {
+        return self._mark_owned(result);
+    }
+    return result;
+}
+
+impl NaIRGenPass._null_safe_type(found: ir.Type) -> ir.Type {
+    if self._opt_payload_of(found) is not None
+        or self._is_jacval_ty(found)
+        or isinstance(found, ir.PointerType) {
+        return found;
+    }
+    return self._jac_optional_type(found);
+}
+
+impl NaIRGenPass._null_safe_none(result_type: ir.Type) -> ir.Value {
+    if self._is_jacval_ty(result_type) {
+        return self._box_to_jacval(ir.Constant(ir.IntType(8).as_pointer(), None));
+    }
+    return ir.Constant(result_type, None);
+}
+
+impl NaIRGenPass._null_safe_field_load(
+    field_ptr: ir.Value, field_name: str
+) -> ir.Value {
+    b = self.builder;
+    fn = b.block.function;
+    hit_bb = fn.append_basic_block(name="nullsafe.field.hit");
+    miss_bb = fn.append_basic_block(name="nullsafe.field.miss");
+    done_bb = fn.append_basic_block(name="nullsafe.field.done");
+    b.cbranch(
+        b.icmp_unsigned(
+            "==", field_ptr, ir.Constant(field_ptr.type, None), name="nullsafe.missing"
+        ),
+        miss_bb,
+        hit_bb
+    );
+    b.position_at_end(hit_bb);
+    loaded = b.load(field_ptr, name=f"field.{field_name}");
+    result_type = self._null_safe_type(loaded.type);
+    hit_value = loaded
+        if result_type == loaded.type
+        else self._coerce_type(loaded, result_type);
+    hit_end = b.block;
+    b.branch(done_bb);
+    b.position_at_end(miss_bb);
+    miss_value = self._null_safe_none(result_type);
+    miss_end = b.block;
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    result = b.phi(result_type, name=f"nullsafe.field.{field_name}");
+    result.add_incoming(hit_value, hit_end);
+    result.add_incoming(miss_value, miss_end);
+    return result;
+}
+
+impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
     if isinstance(nd.right, uni.FilterCompr) {
         return self._codegen_chained_filter(nd);
     }

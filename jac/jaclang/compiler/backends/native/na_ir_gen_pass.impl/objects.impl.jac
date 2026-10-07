@@ -3801,7 +3801,8 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
     type_name: str,
     field_name: str,
     ftype: (ir.Type | None),
-    parts: (list[str] | None) = None
+    parts: (list[str] | None) = None,
+    missing_ok: bool = False
 ) -> (ir.Value | None) {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry as _df_glr }
     reg = _df_glr(self.module, self.prog);
@@ -3927,11 +3928,13 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
         _df_fbc = b.bitcast(_df_fb, _fp_t, name="df.pc.fb");
         _df_incoming.append((_df_fbc, b.block));
     } else {
-        self._emit_runtime_raise(
-            ir.Constant(ir.IntType(1), 1),
-            "AttributeError",
-            f"object has no attribute '{field_name}'"
-        );
+        if not missing_ok {
+            self._emit_runtime_raise(
+                ir.Constant(ir.IntType(1), 1),
+                "AttributeError",
+                f"object has no attribute '{field_name}'"
+            );
+        }
         _df_incoming.append((ir.Constant(_fp_t, None), b.block));
     }
     b.branch(_df_done);
@@ -4100,14 +4103,19 @@ impl NaIRGenPass._codegen_field_access(
     if _getter is None and (field_indices is None or field_name not in field_indices) {
         _uf_recv = self._narrow_receiver_ptr(obj_val, type_name);
         if _uf_recv is not None {
+            _uf_null_safe = nd is not None and nd is self._null_safe_trailer;
             _uf_ptr = self._emit_dispatched_field_ptr(
                 _uf_recv,
                 type_name,
                 field_name,
                 None,
-                parts=self._receiver_union_parts(nd)
+                parts=self._receiver_union_parts(nd),
+                missing_ok=_uf_null_safe
             );
             if _uf_ptr is not None {
+                if _uf_null_safe {
+                    return self._null_safe_field_load(_uf_ptr, field_name);
+                }
                 return self.builder.load(_uf_ptr, name=f"field.{field_name}");
             }
         }

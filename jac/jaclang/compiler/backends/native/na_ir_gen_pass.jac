@@ -404,6 +404,9 @@ walker NaIRGenPass(CompilerPass) {
         set_types: dict[str, ir.IdentifiedStructType] = {},
         set_helpers: dict[str, dict[str, any]] = {},
         _peer_container_ty: (ir.Type | None) = None,
+        _bound_expr_node: (uni.UniNode | None) = None,
+        _bound_expr_value: (ir.Value | None) = None,
+        _null_safe_trailer: (uni.AtomTrailer | None) = None,
         _exc_state_type: (ir.Type | None) = None,
         _exc_push_fn: (ir.Function | None) = None,
         _exc_pop_fn: (ir.Function | None) = None,
@@ -1560,6 +1563,11 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_yield_suspend(v: ir.Value) -> None;
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _codegen_null_safe_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _null_safe_type(found: ir.Type) -> ir.Type;
+    def _null_safe_none(result_type: ir.Type) -> ir.Value;
+    def _null_safe_field_load(field_ptr: ir.Value, field_name: str) -> ir.Value;
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
     def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
@@ -2023,7 +2031,8 @@ walker NaIRGenPass(CompilerPass) {
         type_name: str,
         field_name: str,
         ftype: (ir.Type | None),
-        parts: (list[str] | None) = None
+        parts: (list[str] | None) = None,
+        missing_ok: bool = False
     ) -> (ir.Value | None);
 
     def _receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] | None);
