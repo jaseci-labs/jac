@@ -54,7 +54,7 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     field_indices = self.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
 
-    ptr_fields = [];
+    ptr_fields: list[tuple[str, int, bool]] = [];
     for (fname, ftype) in field_types.items() {
         if fname in foreign_fields {
             continue;
@@ -119,11 +119,13 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     b.ret_void();
 }
 
-impl NaIRGenPass._register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool {
+impl NaIRGenPass._register_trace_pair(
+    dtor_fn: (ir.Function | None), trace_fn: ir.Function
+) -> bool {
     if dtor_fn is None {
         return False;
     }
-    _key = dtor_fn?.name or str(dtor_fn);
+    _key = dtor_fn.name;
     if _key not in self.rc_trace_pairs {
         self.rc_trace_pairs[_key] = (dtor_fn, trace_fn);
     }
