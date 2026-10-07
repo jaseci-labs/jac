@@ -39,6 +39,7 @@ import from jaclang.compiler.frontend.unitree {
     ListVal,
     Literal,
     MatchAs,
+    MatchArch,
     ModuleCode,
     ImportRule,
     ModuleItem,
@@ -219,6 +220,7 @@ walker TypeCheckPass(TreePass) {
     can exit_raise_stmt with RaiseStmt exit;
     can exit_except with Except exit;
     can exit_match_as with MatchAs exit;
+    can exit_match_arch with MatchArch exit;
     can enter_with_stmt with WithStmt entry;
     can exit_with_stmt with WithStmt exit;
     can enter_if_stmt with IfStmt entry;

@@ -1,5 +1,9 @@
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
+glob _RC_THREAD_SPAWN_FNS: frozenset[str] = frozenset(
+         {"pthread_create", "thrd_create", "CreateThread", "_beginthreadex"}
+     );
+
 glob _NA_ABC_REDUCTIONS: dict[str, tuple[str, ...]] = {
          "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
          "MutableSequence": ("list", "bytearray"),
@@ -2218,7 +2222,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
             buf_size = 256;
             buf_type = ir.ArrayType(ir.IntType(8), buf_size);
-            buf = self.builder.alloca(buf_type, name="input.buf");
+            buf = self._stack_entry_alloca(buf_type, "input.buf");
             buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
 
             import platform;
@@ -2504,6 +2508,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     _is_foreign = self.clib_extern_fns.get(func_name) is func;
+    if _is_foreign and func_name in _RC_THREAD_SPAWN_FNS {
+        self._emit_rc_mark_threaded();
+    }
     if _is_foreign and func_name in self.clib_fn_abi {
         _copybacks: list[tuple[ir.Value, ir.Value, any]] = [];
         _clib_args = self._codegen_clib_args(nd, func_name, _copybacks);
@@ -3755,6 +3762,7 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
     _pcreate = self._get_or_declare_extern(
         "pthread_create", i32, [i64.as_pointer(), i8p, _thr_fnty_p, i8p]
     );
+    self._emit_rc_mark_threaded();
     _crc = self.builder.call(
         _pcreate, [_tid_slot, ir.Constant(i8p, None), _task_fn, _fut8], name="fut.crc"
     );

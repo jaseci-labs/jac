@@ -43,11 +43,32 @@ def _with_env(name: str, value: (str | None), fn: any) -> any {
     }
 }
 
-test "the off switch selects the store parser" {
+test "the off switch selects the store parser only in a kernel build" {
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        KERNEL_BUILDING_ENV,
+        KernelUnavailable
+    }
+    def off(fn: any) -> any {
+        return _with_env(KERNEL_LIB_ENV, "off", fn);
+    }
     reset_loaded();
     try {
-        assert _with_env(KERNEL_LIB_ENV, "off", lambda() { resolve_kernel(); }) is None;
-        assert _with_env(KERNEL_LIB_ENV, "off", lambda() { ensure_loaded(); }) is None;
+        def building(fn: any) -> any {
+            return _with_env(KERNEL_BUILDING_ENV, "1", lambda() { off(fn); });
+        }
+        assert building(lambda() { resolve_kernel(); }) is None;
+        assert building(lambda() { ensure_loaded(); }) is None;
+        refused = False;
+        try {
+            _with_env(
+                KERNEL_BUILDING_ENV,
+                None,
+                lambda() { off(lambda() { resolve_kernel(); }); }
+            );
+        } except KernelUnavailable {
+            refused = True;
+        }
+        assert refused , "JAC_COMPILER_LIB=off outside a kernel build must be refused";
     } finally {
         reset_loaded();
     }

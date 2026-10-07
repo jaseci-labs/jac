@@ -594,6 +594,7 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
                 is_builtin_class=is_builtin_class,
                 is_from_stdlib_stub=is_from_stdlib_stub,
                 is_data_class=is_data_class,
+                is_extern_struct=node_.find_parent_of_type(Import) is not None,
             )
         ),
         flags=TypeFlags.Instantiable,

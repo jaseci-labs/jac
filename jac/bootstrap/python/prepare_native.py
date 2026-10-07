@@ -23,6 +23,7 @@ if tuple(map(int, pin["version"].split("."))) != sys.version_info[:3]:
 sys.path.insert(0, str(root))
 os.environ["JAC_NO_DEV_SOURCE"] = "1"
 os.environ["JAC_COMPILER_LIB"] = "off"
+os.environ["JAC_KERNEL_BUILDING"] = "1"
 os.environ["JAC_STUBCAT_BUILDING"] = "1"
 output.mkdir(parents=True, exist_ok=True)
 

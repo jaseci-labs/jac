@@ -84,8 +84,15 @@ class NativeCompiler {
         self._keep = [];
         self.classes = {};
         self._value_rows: dict[str, int] = {};
+        self._registered = False;
         self._bind();
-        self._register();
+    }
+
+    def _ensure_registered(self: NativeCompiler) {
+        if not self._registered {
+            self._registered = True;
+            self._register();
+        }
     }
 
     def _bind(self: NativeCompiler) {
@@ -156,15 +163,33 @@ class NativeCompiler {
 
     def _resolve_classes(self: NativeCompiler) {
         import importlib;
+        import from jaclang.compiler.frontend.codeinfo { NATIVE_ARCH_SCOPE_SEP }
+        by_stem: dict[str, dict[str, type]] = {};
         for modname in CLASS_MODULES {
             mod = importlib.import_module(modname);
             for name in `list(vars(mod)) {
-                if name in self.layout and name not in self.classes {
-                    cls = getattr(mod, name);
-                    if isinstance(cls, `type) {
-                        self.classes[name] = cls;
-                    }
+                cls = getattr(mod, name);
+                if not isinstance(cls, `type) {
+                    continue;
                 }
+                if name in self.layout and name not in self.classes {
+                    self.classes[name] = cls;
+                }
+                owner = sys.modules.get(cls.__module__);
+                owner_file = str(getattr(owner, "__file__", "") or "");
+                stem = os.path.basename(owner_file).split(".")[0];
+                by_stem.setdefault(stem, {})[cls.__name__] = cls;
+            }
+        }
+        for key in self.layout {
+            if key in self.classes or NATIVE_ARCH_SCOPE_SEP not in key {
+                continue;
+            }
+            (bare, _, scope) = key.partition(NATIVE_ARCH_SCOPE_SEP);
+            stem = scope.rsplit("_", 1)[0];
+            cls = by_stem.get(stem, {}).get(bare);
+            if cls is not None {
+                self.classes[key] = cls;
             }
         }
     }
@@ -405,7 +430,7 @@ class NativeCompiler {
                     and name not in seen
                 ) {
                     seen.add(name);
-                    self.lib.jc_reg_edge(stable_osp_tag(name), self._hold(cls));
+                    self.lib.jc_reg_edge(self._class_tag(name), self._hold(cls));
                 }
             }
         }
@@ -478,14 +503,17 @@ class NativeCompiler {
     }
 
     def annex(self: NativeCompiler, annex: WovenAnnex) -> int {
+        self._ensure_registered();
         return self._call_strs("jc_annex", annex.source, annex.path, annex.consumer);
     }
 
     def run(self: NativeCompiler, source: str, path: str) -> int {
+        self._ensure_registered();
         return self._call_strs("jc_run", source, path);
     }
 
     def prepare_early(self: NativeCompiler, context: str) {
+        self._ensure_registered();
         self.lib.jc_set_early({"server": 1, "client": 2, "native": 3}.get(context, 0));
     }
 

@@ -9,6 +9,8 @@ EndpointEffectPass in the same schedule.
 
 import os;
 import tempfile;
+import contextlib;
+import io;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -105,6 +107,158 @@ test "primitive na->sv signatures stay clean of E5093" {
     assert not any(["E5093" in m for m in msgs]) , (
         f"int/str/float are ctypes-mappable and must not raise E5093: {msgs}"
     );
+}
+
+test "native module's pinned-server import records an na->sv binding" {
+    # The na -> sv edge (interop matrix row 8): a native-pinned module
+    # importing from a server-pinned provider. The binding is the one the
+    # sealed-pair gate reads -- `native_imports` non-empty is what drops the
+    # standalone exe at build time and keeps the run host-driven.
+    tmp = write_mods(
+        {
+            "jac.toml": ('[placement.pins]\nmain = "native"\nhelper = "server"\n'),
+            "helper.jac": (
+                "def:pub py_double(x: int) -> int {\n" "    return x * 2;\n" "}\n"
+            ),
+            "main.jac": (
+                "import from .helper { py_double }\n\n"
+                "def crunch(x: int) -> int {\n"
+                "    return py_double(x);\n"
+                "}\n"
+            )
+        }
+    );
+    prog = JacProgram();
+    mod = prog.compile(
+        os.path.join(tmp, "main.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    imports = mod.gen.interop_manifest.native_imports;
+    names = [b.name for b in imports];
+    assert "py_double" in names , (
+        f"native caller of a pinned-server fn must land in native_imports; "
+        f"got: {names} (bindings: "
+        f"{list(mod.gen.interop_manifest.bindings.keys())})"
+    );
+    binding = mod.gen.interop_manifest.bindings["py_double"];
+    assert binding.source_context.value == "server";
+    assert "native" in {c.value for c in binding.callers};
+    assert binding.param_types == ["int"] , (
+        f"expected int param on the ctypes wire, got {binding.param_types}"
+    );
+}
+
+test "native import of a pinned-server type records a type binding" {
+    # A native-pinned module importing a non-ability symbol (an obj) from a
+    # server-pinned provider must register the data shape, not fabricate a
+    # zero-arg int function binding for the type name.
+    tmp = write_mods(
+        {
+            "jac.toml": ('[placement.pins]\nmain = "native"\nhelper = "server"\n'),
+            "helper.jac": ("obj:pub Point {\n" "    has x: int;\n" "}\n"),
+            "main.jac": ("import from .helper { Point }\n")
+        }
+    );
+    prog = JacProgram();
+    mod = prog.compile(
+        os.path.join(tmp, "main.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    binding = mod.gen.interop_manifest.bindings.get("Point");
+    assert binding is not None , (
+        f"type import from a pinned-server provider must record a binding; "
+        f"got keys: {list(mod.gen.interop_manifest.bindings.keys())}"
+    );
+    assert binding.kind == "type" , (
+        f"expected a type binding for the imported obj, got kind={binding.kind}"
+    );
+    assert "Point" in [b.name for b in mod.gen.interop_manifest.native_imports] , (
+        "type imports stay in native_imports: the native module still depends "
+        "on the server module, so the standalone-exe refusal must keep firing"
+    );
+    msgs = [e.pretty_print() for e in prog.errors_had];
+    assert not any(["E5093" in m for m in msgs]) , (
+        f"type bindings carry no call signature and must not raise E5093: {msgs}"
+    );
+}
+
+test "unmappable signature on pinned-server import is E5093" {
+    # The newly-enabled na -> sv import edge enforces the same scalar checks
+    # as the same-module na{} lane: the bad signature blocks native lowering,
+    # the module demotes to the server codespace, and the E5093 reason is
+    # surfaced instead of silently accepted.
+    tmp = write_mods(
+        {
+            "jac.toml": ('[placement.pins]\nmain = "native"\nhelper = "server"\n'),
+            "helper.jac": (
+                "def:pub collect(vals: list[int]) -> int {\n"
+                "    return len(vals);\n"
+                "}\n"
+            ),
+            "main.jac": (
+                "import from .helper { collect }\n\n"
+                "def crunch -> int {\n"
+                "    return collect([1, 2]);\n"
+                "}\n"
+            )
+        }
+    );
+    err_stream = io.StringIO();
+    with contextlib.redirect_stderr(err_stream) {
+        prog = JacProgram();
+        mod = prog.compile(
+            os.path.join(tmp, "main.jac"),
+            options=CompileOptions(default_codespace='server')
+        );
+    }
+    msgs = [e.pretty_print() for e in prog.errors_had];
+    notes = err_stream.getvalue();
+    assert (
+        any(["E5093" in m for m in msgs])
+        or ("did not lower" in notes and "E5093" in notes)
+    ) , (
+        f"a list param on a native->server imported signature must block "
+        f"native lowering; errors: {msgs}, stderr: {notes!r}"
+    );
+    assert not mod.gen.native_codespace , (
+        "the demoted module must not keep a native verdict"
+    );
+}
+
+test "native default codespace stamps the na->sv caller once" {
+    # The aot + native-default-codespace path stamps the module-level verdict
+    # once (gen.native_codespace): the binding records a NATIVE caller, never
+    # a meaningless SERVER caller from the stamp pass disagreeing with the
+    # analysis pass.
+    tmp = write_mods(
+        {
+            "jac.toml": ('[placement.pins]\nhelper = "server"\n'),
+            "helper.jac": (
+                "def:pub py_double(x: int) -> int {\n" "    return x * 2;\n" "}\n"
+            ),
+            "main.jac": (
+                "import from .helper { py_double }\n\n"
+                "def crunch(x: int) -> int {\n"
+                "    return py_double(x);\n"
+                "}\n"
+            )
+        }
+    );
+    prog = JacProgram();
+    mod = prog.compile(
+        os.path.join(tmp, "main.jac"),
+        options=CompileOptions(default_codespace='native', aot_mode=True)
+    );
+    binding = mod.gen.interop_manifest.bindings.get("py_double");
+    assert binding is not None , (
+        f"native-default import must record a binding; got keys: "
+        f"{list(mod.gen.interop_manifest.bindings.keys())}"
+    );
+    assert {c.value for c in binding.callers} == {"native"} , (
+        f"the single stamped verdict must yield exactly the NATIVE caller, "
+        f"got callers: {{c.value for c in binding.callers}}"
+    );
+    assert binding.source_context.value == "server";
 }
 
 test "endpoint effects are recorded by the dedicated effect pass" {

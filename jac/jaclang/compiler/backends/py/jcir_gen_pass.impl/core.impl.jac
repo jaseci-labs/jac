@@ -14,8 +14,10 @@ impl JcirGenPass.postinit -> None {
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
     self._runtime_aliases = {};
-    self._builtin_names = set(JCIR_BUILTIN_NAMES);
-    self._ambient_typing_names = set(JCIR_AMBIENT_TYPING_NAMES);
+    _builtin_names: set[str] = set(JCIR_BUILTIN_NAMES);
+    _ambient_names: set[str] = set(JCIR_AMBIENT_TYPING_NAMES);
+    self._builtin_names = _builtin_names;
+    self._ambient_typing_names = _ambient_names;
     self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
     self.builtin_imports = _builtins;
     self.sized_imports = _sized;
@@ -249,6 +251,22 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
 
 impl JcirGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode {
     return self.nod('Constant', ['value'], [value], jac_node=jac_node);
+}
+
+impl JcirGenPass.int_const_of(
+    value: CtInt, jac_node: (UniNode | None) = None
+) -> CgNode {
+    import from jaclang.compiler.types.ct_value { int_host, int_wide_bytes }
+    wide = int_wide_bytes(value);
+    if wide is None {
+        return self.const_of(int_host(value), jac_node);
+    }
+    return self.nod(
+        'Constant',
+        ['value'],
+        [CgWideInt(negative=value.neg, magnitude=wide)],
+        jac_node=jac_node
+    );
 }
 
 impl JcirGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode {

@@ -10,7 +10,7 @@ import from jaclang.compiler.driver.pipeline {
     providers_of,
     validate_schedule
 }
-import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen, module_pipeline }
+import from jaclang.compiler.driver.module_compile { get_py_code_gen, module_pipeline }
 import from jaclang.compiler.driver.pipeline_types { CompilationPhase }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }

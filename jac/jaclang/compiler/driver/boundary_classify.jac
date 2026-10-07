@@ -395,6 +395,9 @@ def same_workspace(consumer_path: str, provider_path: str) -> bool {
     if cws is None or pws is None {
         return False;
     }
+    if cws.toml_path == pws.toml_path {
+        return True;
+    }
     return os.path.realpath(cws.toml_path) == os.path.realpath(pws.toml_path);
 }
 

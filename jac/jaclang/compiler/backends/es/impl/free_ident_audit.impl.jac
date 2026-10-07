@@ -1,11 +1,8 @@
-import re;
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
 
 glob _AMBIENT_CACHE: set[str] = set(),
-     _RAW_DECL_RE: re.Pattern = re.compile(
-         r"\b(?:function|class|const|let|var)\s+\*?\s*([A-Za-z_$][A-Za-z0-9_$]*)"
-     );
+     _RAW_DECL_KEYWORDS: set[str] = {"function", "class", "const", "let", "var"};
 
 glob _JS_LANGUAGE_GLOBALS: set[str] = {
          "globalThis",
@@ -134,57 +131,14 @@ glob _SYNTACTIC_IDENTIFIERS: set[str] = {
          'void'
      };
 
-def _stub_names(path: str) -> set[str] {
-    import ast;
-    out: set[str] = set();
-    try {
-        with open(path, encoding="utf-8") as handle {
-            tree = ast.parse(handle.read());
-        }
-    } except Exception {
-        return out;
-    }
-
-    for node in tree.body {
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
-            out.add(node.name);
-        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
-            out.add(node.target.id);
-        } elif isinstance(node, ast.Assign) {
-            for tgt in node.targets {
-                if not isinstance(tgt, ast.Name) {
-                    continue;
-                }
-                out.add(tgt.id);
-                if tgt.id != "__all__" {
-                    continue;
-                }
-                for elt in getattr(node.value, "elts", []) {
-                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
-                        out.add(elt.value);
-                    }
-                }
-            }
-        }
-    }
-    return out;
-}
-
 impl client_ambient_globals -> set[str] {
     if _AMBIENT_CACHE {
         return _AMBIENT_CACHE;
     }
-    import os;
+    import from jaclang.compiler.frontend.host { active_host }
     names: set[str] = set(_JS_LANGUAGE_GLOBALS);
     names.update(BROWSER_SEED_GLOBALS);
-
-    import jaclang;
-    stub_dir = os.path.join(
-        os.path.dirname(str(jaclang.__file__)), "compiler", "types"
-    );
-    for stub in ("js_globals.pyi", "dom_types.pyi") {
-        names.update(_stub_names(os.path.join(stub_dir, stub)));
-    }
+    names.update(active_host().client_stub_globals());
     _AMBIENT_CACHE.update(names);
     return _AMBIENT_CACHE;
 }
@@ -197,9 +151,124 @@ def _loc_of(nd: es.Node) -> tuple[int, int] {
     return (loc.start.line, loc.start.column);
 }
 
+def _js_ident_start(ch: str) -> bool {
+    return (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or ch == "_"
+        or ch == "$";
+}
+
+def _js_ident_part(ch: str) -> bool {
+    return _js_ident_start(ch) or (ch >= "0" and ch <= "9");
+}
+
+impl js_identifiers(text: str) -> list[str] {
+    out: list[str] = [];
+    n = len(text);
+    i = 0;
+    while i < n {
+        if not _js_ident_start(text[i]) {
+            i += 1;
+            continue;
+        }
+        start = i;
+        i += 1;
+        while i < n and _js_ident_part(text[i]) {
+            i += 1;
+        }
+        out.append(text[start:i]);
+    }
+    return out;
+}
+
+glob _TOP_LEVEL_DECL_KEYWORDS: set[str] = {
+         "function",
+         "const",
+         "let",
+         "var",
+         "class"
+     };
+
+def _leading_word(line: str, start: int) -> tuple[str, int] {
+    end = start;
+    while end < len(line) and _js_ident_part(line[end]) {
+        end += 1;
+    }
+    return (line[start:end], end);
+}
+
+def _skip_spaces(line: str, start: int) -> int {
+    at = start;
+    while at < len(line) and line[at].isspace() {
+        at += 1;
+    }
+    return at;
+}
+
+impl js_top_level_declarations(code: str) -> set[str] {
+    names: set[str] = set();
+    for line in code.split("\n") {
+        (word, at) = _leading_word(line, 0);
+        for prefix in ["export", "async"] {
+            if word == prefix and at < len(line) and line[at].isspace() {
+                (word, at) = _leading_word(line, _skip_spaces(line, at));
+            }
+        }
+        if word not in _TOP_LEVEL_DECL_KEYWORDS
+            or at >= len(line)
+            or not line[at].isspace() {
+            continue;
+        }
+        at = _skip_spaces(line, at);
+        if at < len(line) and _js_ident_start(line[at]) {
+            (name, _end) = _leading_word(line, at);
+            names.add(name);
+        }
+    }
+    return names;
+}
+
+def _word_char(ch: str) -> bool {
+    return ch.isalnum() or ch == "_";
+}
+
+def _js_ident_char(ch: str) -> bool {
+    return ch.isalnum() or ch == "_" or ch == "$";
+}
+
 def _harvest_raw(source: str, decls: set[str]) {
-    for hit in _RAW_DECL_RE.finditer(source) {
-        decls.add(hit.group(1));
+    n = len(source);
+    i = 0;
+    while i < n {
+        if not _word_char(source[i]) {
+            i += 1;
+            continue;
+        }
+        start = i;
+        while i < n and _word_char(source[i]) {
+            i += 1;
+        }
+        if source[start:i] not in _RAW_DECL_KEYWORDS
+            or i >= n
+            or not source[i].isspace() {
+            continue;
+        }
+        while i < n and source[i].isspace() {
+            i += 1;
+        }
+        if i < n and source[i] == "*" {
+            i += 1;
+            while i < n and source[i].isspace() {
+                i += 1;
+            }
+        }
+        if i < n and _js_ident_char(source[i]) and not source[i].isdigit() {
+            name_start = i;
+            while i < n and _js_ident_char(source[i]) {
+                i += 1;
+            }
+            decls.add(source[name_start:i]);
+        }
     }
 }
 
@@ -239,11 +308,9 @@ def _walk(
     bind_fields = _BIND_FIELDS.get(kind, set());
     skip_fields = _SKIP_FIELDS.get(kind, set());
     ref_fields = _REF_FIELDS.get(kind, set());
-    computed = bool(getattr(nd, 'computed', False));
-    for (field, value) in vars(nd).items() {
-        if field in ('loc', 'type') {
-            continue;
-        }
+    fields = es.es_children(nd);
+    computed = bool(fields.get('computed', False));
+    for (field, value) in fields.items() {
         if (field in skip_fields) and not computed {
             continue;
         }

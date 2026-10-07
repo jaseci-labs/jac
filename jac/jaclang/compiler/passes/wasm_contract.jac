@@ -9,6 +9,8 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
+glob U64_MAX_TEXT: str = "18446744073709551615";
+
 obj WasmValueContract {
     has type_name: str,
         mode: str,
@@ -96,7 +98,10 @@ def value_contract(
             signed=shape.signed,
             is_float=shape.is_float
         );
-        if not shape.is_float {
+        if not shape.is_float and not shape.signed and shape.width == 64 {
+            value.minimum = "0";
+            value.maximum = U64_MAX_TEXT;
+        } elif not shape.is_float {
             import from jaclang.runtime.scalars { ScalarShape, shape_range }
             limits = shape_range(
                 ScalarShape(

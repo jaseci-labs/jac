@@ -1620,8 +1620,8 @@ def _str_method(
         if not sep2 {
             raise ct_exc("ValueError", "empty separator");
         }
-        (a, b, c2) = s.partition(sep2) if name == "partition" else s.rpartition(sep2);
-        return mk_tuple([mk_str(a), mk_str(b), mk_str(c2)]);
+        cut = s.partition(sep2) if name == "partition" else s.rpartition(sep2);
+        return mk_tuple([mk_str(cut[0]), mk_str(cut[1]), mk_str(cut[2])]);
     }
     if name == "encode" {
         slots8 = _arity(name, args, kwargs, ["encoding", "errors"], 0);

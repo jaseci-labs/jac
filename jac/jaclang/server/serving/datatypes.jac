@@ -76,6 +76,18 @@ obj Headers {
         ];
     }
 
+    def add_vary(field: str) {
+        existing = [
+            v.strip() for raw in self.getlist('Vary')
+            for v in str(raw).split(',')
+            if v.strip()
+        ];
+        if any(v.lower() == field.lower() for v in existing) {
+            return;
+        }
+        self.set('Vary', ', '.join(existing + [field]));
+    }
+
     def __contains__(name: str) -> bool {
         return self.get(name) is not None;
     }

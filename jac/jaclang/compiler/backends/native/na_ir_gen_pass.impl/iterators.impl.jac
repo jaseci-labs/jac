@@ -35,6 +35,7 @@ impl NaIRGenPass._register_iter_struct(
     st = self.llvm_module.context.get_identified_type(name);
     st.set_body(*field_types);
     self.struct_types[name] = st;
+    self._helper_structs.add(name);
     idx_map: dict[str, int] = {};
     type_map: dict[str, ir.Type] = {};
     i = 0;
@@ -1396,6 +1397,39 @@ impl NaIRGenPass._iter_source(
     return (iv, elem_t, self._is_owned(iv));
 }
 
+impl NaIRGenPass._retype_boxed_tuple_fields(
+    targets: list[uni.Expr], packed: ir.Value
+) -> ir.Value {
+    if not isinstance(packed.type, ir.LiteralStructType)
+        or len(packed.type.elements) != len(targets) {
+        return packed;
+    }
+    fields: list[ir.Value] = [];
+    changed = False;
+    for (i, target) in enumerate(targets) {
+        field = self.builder.extract_value(packed, i, name=f"iterf.f{i}");
+        want = self._lower_type(target.type) if target.type is not None else None;
+        if isinstance(want, ir.PointerType)
+            and isinstance(want.pointee, ir.LiteralStructType)
+            and isinstance(field.type, ir.PointerType)
+            and field.type != want {
+            field = self.builder.bitcast(field, want, name=f"iterf.f{i}.tuple");
+            changed = True;
+        }
+        fields.append(field);
+    }
+    if not changed {
+        return packed;
+    }
+    out: ir.Value = ir.Constant(
+        ir.LiteralStructType([f.type for f in fields]), ir.Undefined
+    );
+    for (i, field) in enumerate(fields) {
+        out = self.builder.insert_value(out, field, i, name=f"iterf.p{i}");
+    }
+    return out;
+}
+
 impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     source = self._iter_source(nd.collection);
     if source is None {
@@ -1445,6 +1479,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     yielded = self.builder.load(elem_slot, name="iterf.value");
 
     if tuple_target is not None {
+        yielded = self._retype_boxed_tuple_fields(tuple_target.values or [], yielded);
         if not self._codegen_tuple_unpack(tuple_target.values, yielded, None) {
             return False;
         }
