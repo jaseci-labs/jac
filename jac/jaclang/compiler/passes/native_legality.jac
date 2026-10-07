@@ -13,7 +13,7 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.diagnostics { E5090 }
+import from jaclang.compiler.frontend.diagnostics { E5090, E5114 }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.placement.placement_facts { native_placement_soft }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -78,6 +78,7 @@ def settle_native_module(
 walker NativeLegalityPass(CompilerPass) {
     def _emit_refusal(refusal: NativeRefusal) -> None;
     def _report_unmet(legality: NativeLegality, why: str) -> None;
+    def _check_conformance(ir_in: Module) -> None;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
@@ -592,6 +593,7 @@ impl NativeLegalityPass._run_impl(ir_in: Module) -> Module {
         }
         stamped = stamp_native(ir_in);
     }
+    self._check_conformance(ir_in);
     legality = build_native_legality(ir_in, self.prog);
     if not legality.module_refused() {
         if stamped {
@@ -625,6 +627,27 @@ impl NativeLegalityPass._run_impl(ir_in: Module) -> Module {
         self._emit_refusal(refusal);
     }
     return ir_in;
+}
+
+impl NativeLegalityPass._check_conformance(ir_in: Module) -> None {
+    import from jaclang.compiler.native_bindings {
+        conformance_mismatches,
+        native_library_module_name,
+        typeshed_stub_path
+    }
+    mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    lib_name = native_library_module_name(mod_path) if mod_path else None;
+    if lib_name is None {
+        return;
+    }
+    stub_path = typeshed_stub_path(lib_name);
+    if stub_path is None {
+        return;
+    }
+    stub_mod = self.prog.load_dependency_module(stub_path, need_tree=True);
+    for (decl, why) in conformance_mismatches(stub_mod, ir_in) {
+        self.ctx.emit(E5114, node_override=decl, reason=why);
+    }
 }
 
 impl NativeLegalityPass._report_unmet(legality: NativeLegality, why: str) -> None {

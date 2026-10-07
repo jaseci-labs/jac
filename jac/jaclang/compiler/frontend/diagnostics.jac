@@ -2339,6 +2339,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Constructing '{cls}' would run '{owner}.postinit' on a Python shadow the native object cannot see",
          help="A native class over a Python-side base owns two halves: its own slots live in the native struct, the base's live on a Python shadow instance the bridge keeps beside it. Construction runs the base's `__post_init__` on that shadow, where the subclass's native slots do not exist and its method overrides are not on the shadow's class -- so a store the base initializer makes is invisible natively, and a call it dispatches reaches the base's body rather than the override. The object comes out with its declared defaults and nothing says so. Give '{cls}' a `postinit` of its own -- it suppresses the base's and can chain into it with `super.postinit()`, which does bridge -- or bring the base into the native unit so the whole chain lowers."
      ),
+     E5114 = _err(
+         "E5114",
+         Category.CODEGEN,
+         "Native library declaration does not conform to its Python interface: {reason}",
+         help="A native standard-library module implements the interface the Python stubs declare for the module of the same name. Every public function, parameter and member it has must be one that interface declares, so a program typed against the interface means the same thing in every codespace. Make the extra name private with a leading underscore, rename it to match, or leave it out; a name the interface declares and this module lacks is fine, and is reported to callers as a native gap."
+     ),
      E5112 = _err(
          "E5112",
          Category.CODEGEN,

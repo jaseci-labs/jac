@@ -183,6 +183,46 @@ impl NaIRGenPass._internal_error(
     del self.ctx.errors_had[mark:];
 }
 
+impl NaIRGenPass._native_bound_decl(decl: uni.UniNode) -> (uni.UniNode | None) {
+    """The native implementation of a declaration the checker typed from a
+    Python stub, or None when the declaration is not a stub's or the native
+    library has no counterpart. The checker types every codespace against
+    the same interface; this is where the backend swaps the interface for
+    the code that realizes it.""";
+    import from jaclang.compiler.native_bindings { native_bindings_of, stub_home }
+    home = stub_home(decl);
+    if home is None {
+        return None;
+    }
+    base_dir = os.path.dirname(os.path.abspath(self.module.loc.mod_path));
+    bindings = native_bindings_of(self.prog);
+    if isinstance(decl, uni.Archetype) and decl.name is not None {
+        bound = bindings.lookup(self.prog, home.name, decl.name.value, base_dir);
+        return bound.decl if bound is not None else None;
+    }
+    if not isinstance(decl, uni.Ability) or decl.name_ref is None {
+        return None;
+    }
+    owner = decl.find_parent_of_type(uni.Archetype);
+    if owner is None or owner.name is None {
+        bound = bindings.lookup(self.prog, home.name, decl.name_ref.sym_name, base_dir);
+        return bound.decl if bound is not None else None;
+    }
+    bound = bindings.lookup(self.prog, home.name, owner.name.value, base_dir);
+    if bound is None or not isinstance(bound.decl, uni.Archetype) {
+        return None;
+    }
+    body = ModuleFacts.unwrap_body(bound.decl);
+    for member in (body or []) {
+        if isinstance(member, uni.Ability)
+            and member.name_ref is not None
+            and member.name_ref.sym_name == decl.name_ref.sym_name {
+            return member;
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._refuse_split_bodies(mod: uni.Module) -> None {
     """Refuse a module that declares, or imports a module that declares, an
     archetype or enum whose members come from a separate `impl` block. The

@@ -15,6 +15,31 @@ import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import type from jaclang.compiler.driver.program { JacProgram }
 
+glob NATIVE_FILE_CLASSES: dict[str, str] = {
+         "TextIOWrapper": "File",
+         "TextIOBase": "File",
+         "TextIO": "File",
+         "IO": "File",
+         "IOBase": "File",
+         "BufferedReader": "BinaryFile",
+         "BufferedWriter": "BinaryFile",
+         "BufferedRandom": "BinaryFile",
+         "BufferedIOBase": "BinaryFile",
+         "RawIOBase": "BinaryFile",
+         "FileIO": "BinaryFile",
+         "BinaryIO": "BinaryFile"
+     },
+     NATIVE_FILE_MEMBERS: set[str] = {
+         "read",
+         "readline",
+         "write",
+         "close",
+         "flush",
+         "__enter__",
+         "__exit__"
+     },
+     NATIVE_LIBRARY_REL: str = "/runtime/na_stdlib/";
+
 obj NativeBinding {
     has stub_module: str,
         name: str,
@@ -48,6 +73,8 @@ def conformance_mismatches(
 
 def call_gaps(call: FuncCall, binding: NativeBinding) -> list[str];
 def native_bindings_of(prog: JacProgram) -> NativeBindings;
+def native_library_module_name(path: str) -> (str | None);
+def typeshed_stub_path(name: str) -> (str | None);
 def binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str];
 
 impl is_pub(nd: UniNode) -> bool {
@@ -294,6 +321,14 @@ impl binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str] {
     owner = declared.find_parent_of_type(Archetype)
         if isinstance(declared, (Ability, HasVar))
         else None;
+    if owner is not None
+        and owner.name is not None
+        and owner.name.value in NATIVE_FILE_CLASSES {
+        if nm.value in NATIVE_FILE_MEMBERS {
+            return [];
+        }
+        return [f"the native file object has no member '{nm.value}'"];
+    }
     if owner is not None and owner.name is not None {
         bound = bindings.lookup(prog, home.name, owner.name.value, base_dir);
         if bound is None {
@@ -329,4 +364,35 @@ impl binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str] {
         return call_gaps(call, bound);
     }
     return [];
+}
+
+impl native_library_module_name(path: str) -> (str | None) {
+    posix = os.path.realpath(path).replace(os.sep, "/");
+    at = posix.rfind(NATIVE_LIBRARY_REL);
+    if at < 0 or not posix.endswith(".jac") {
+        return None;
+    }
+    rel = posix[at + len(NATIVE_LIBRARY_REL):-len(".jac")];
+    parts = rel.split("/");
+    for part in parts {
+        if part.startswith("_") or "." in part {
+            return None;
+        }
+    }
+    return ".".join(parts);
+}
+
+impl typeshed_stub_path(name: str) -> (str | None) {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    stubs_dir = os.path.join(jaclang_pkg_root(), "vendor", "typeshed", "stdlib");
+    rel = name.replace(".", os.sep);
+    for candidate in (
+        os.path.join(stubs_dir, rel + ".pyi"),
+        os.path.join(stubs_dir, rel, "__init__.pyi")
+    ) {
+        if os.path.isfile(candidate) {
+            return candidate;
+        }
+    }
+    return None;
 }
