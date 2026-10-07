@@ -676,6 +676,30 @@ nativeFs.readdirSync = function(path, options) {
     return result;
 };
 
+// The callback form shares the sync form's option handling (withFileTypes,
+// encoding); the native readdir only ever yields names.
+var _nativeReaddirCb = nativeFs.readdir;
+nativeFs.readdir = function(path, options, callback) {
+    var opts = typeof options === "function" ? undefined : options;
+    var cb = typeof options === "function" ? options : callback;
+    var shaped = opts && typeof opts === "object" &&
+                 (opts.withFileTypes || opts.encoding === "buffer");
+    if (!shaped || typeof cb !== "function") {
+        return _nativeReaddirCb.apply(this, arguments);
+    }
+    var dir = _fsPathArg(path);
+    return _nativeReaddirCb.call(this, path, function(err, names) {
+        if (err) { cb(err); return; }
+        var out = [];
+        for (var i = 0; i < names.length; i++) {
+            out.push(opts.withFileTypes
+                ? new Dirent(names[i], dir)
+                : Buffer.from(String(names[i])));
+        }
+        cb(null, out);
+    });
+};
+
 var _nativeMkdirSync = nativeFs.mkdirSync;
 nativeFs.mkdirSync = function(path, options) {
     path = _fsPathArg(path);
