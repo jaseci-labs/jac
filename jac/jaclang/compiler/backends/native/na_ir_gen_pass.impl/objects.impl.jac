@@ -1224,9 +1224,10 @@ impl NaIRGenPass._codegen_method(
         } except Exception as _codegen_exc {
             if self._na_debug_on() {
                 import sys;
-                import traceback;
-                sys.stderr.write(f"NA_DEBUG raise {full_name}\n");
-                traceback.print_exc(file=sys.stderr);
+                sys.stderr.write(
+                    f"NA_DEBUG raise {full_name}: "
+                    f"{type(_codegen_exc).__name__}: {_codegen_exc}\n"
+                );
             }
             self.emit(
                 E5092,
@@ -1374,11 +1375,9 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
         import from jaclang.compiler.driver.compile_options { env_na_debug as _er_dbg }
         if _er_dbg() {
             import sys as _er_sys;
-            import traceback as _er_tb;
             _er_sys.stderr.write(
                 f"NA_DEBUG erased in unit {self.module.loc.mod_path}; known structs: "
                 f"{sorted(self.struct_types.keys())[:40]}\n"
-                    + "".join(_er_tb.format_stack(limit=14))
             );
         }
     }
