@@ -325,6 +325,7 @@ class AnalysisCaches {
         capability_notes: dict[str, dict[str, CapabilityNote]],
         native_bindings: (NativeBindings | None),
         native_placing: set[str],
+        placement_refusals: dict[str, dict[str, set[int]]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         mtir_owned: dict[str, list[str]],
@@ -345,6 +346,7 @@ class AnalysisCaches {
         self.capability_notes: dict[str, dict[str, CapabilityNote]] = {};
         self.native_bindings: (NativeBindings | None) = None;
         self.native_placing: set[str] = set();
+        self.placement_refusals: dict[str, dict[str, set[int]]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.mtir_owned: dict[str, list[str]] = {};

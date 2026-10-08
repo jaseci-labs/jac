@@ -15,7 +15,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 import from jaclang.compiler.capability_notes { capability_notes_of }
-import from jaclang.compiler.passes.native_legality {
+import from jaclang.compiler.passes.placement_pass {
     build_native_legality,
     native_unit_name
 }
@@ -120,6 +120,19 @@ def compile_native_default(text: str) -> tuple[JacProgram, uni.Module, str, int]
     return (prog, mod, path, parsed.count(path));
 }
 
+"""Where each top-level function and the entry block were placed."""
+def placed_by_name(mod: uni.Module) -> dict[str, str] {
+    out: dict[str, str] = {};
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
+            out[stmt.name_ref.sym_name] = stmt.code_context.value;
+        } elif isinstance(stmt, uni.ModuleCode) {
+            out["entry"] = stmt.code_context.value;
+        }
+    }
+    return out;
+}
+
 def refused_units(prog: JacProgram, mod: uni.Module) -> list[str] {
     legality = build_native_legality(mod, prog);
     return sorted(
@@ -140,31 +153,26 @@ test "a module is parsed and analyzed once and placed native after analysis" {
 test "a refused unit and every unit that reaches it are placed in Python statically" {
     (prog, mod, path, parses) = compile_native_default(SEAM_SRC + SEAM_ENTRY);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert mod.decided_codespace == 'native' , "an unreached seam must not cost the module its placement";
     assert refused_units(prog, mod) == ["helper", "mid"];
     assert not build_native_legality(mod, prog).module_refused();
+    placed = placed_by_name(mod);
+    assert placed["helper"] == 'server' and placed["mid"] == 'server' , placed;
+    assert placed["other"] == 'native' , placed;
     iface = mod.gen.native_iface;
-    assert iface is not None;
-    assert "helper" in iface.demoted and "mid" in iface.demoted;
-    assert "other" not in iface.demoted;
+    assert iface is not None and "other" not in iface.demoted;
 }
 
-test "a statically refused module stays where it was parsed: no backend, no second analysis" {
-    import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    real_lower: any = NaIRGenPass._lower_module;
-    lowered: list[str] = [];
-    def record_lower(this: NaIRGenPass) {
-        lowered.append(os.path.realpath(this.module.loc.mod_path));
-        real_lower(this);
-    }
-    with patch.object(NaIRGenPass, "_lower_module", record_lower) {
-        (prog, mod, path, parses) = compile_native_default(SEAM_SRC + REACHING_ENTRY);
-    }
-    assert path not in lowered , "a statically refused module must never reach the native backend";
-    assert parses == 1 , "a refused module must not be parsed or analyzed again";
+test "placement is per element: what cannot be native stays in Python, the rest is native" {
+    (prog, mod, path, parses) = compile_native_default(SEAM_SRC + REACHING_ENTRY);
+    assert parses == 1 , "placement must not parse or analyze the module again";
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert mod.decided_codespace != 'native';
+    placed = placed_by_name(mod);
+    assert placed["other"] == 'native' , placed;
+    assert placed["helper"] == 'server' and placed["mid"] == 'server' , placed;
+    assert placed["entry"] == 'server' , (
+        f"the entry reaches `mid`, whose str result cannot cross into native code: {placed}"
+    );
+    assert mod.decided_codespace != 'native' , "a mixed module is not whole-module native";
 }
 
 test "a refusal only the backend can see places the module on the server in place" {
@@ -182,8 +190,9 @@ test "a native library gap refuses the function that uses it, not the module" {
         f"a parameter the native json lacks is a placement fact, not a type "
         f"error: {[str(e) for e in prog.errors_had]}"
     );
-    assert mod.decided_codespace == 'native';
     assert refused_units(prog, mod) == ["pretty"];
+    placed = placed_by_name(mod);
+    assert placed["pretty"] == 'server' and placed["plain"] == 'native' , placed;
 }
 
 test "what only matters natively is a note on the typed module, never a type error" {

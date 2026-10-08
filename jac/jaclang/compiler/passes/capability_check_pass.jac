@@ -89,8 +89,3 @@ walker PortabilityWarnPass(CompilerPass) {
     def _check_js_keywords(mod: Module) -> None;
     def _check_js_properties(mod: Module) -> None;
 }
-
-walker ClientCapabilityCheckPass(CompilerPass) {
-    def _run_impl(ir_in: Module) -> Module;
-    can run_walk with Module entry;
-}

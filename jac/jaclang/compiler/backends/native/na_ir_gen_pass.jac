@@ -74,7 +74,7 @@ import from jaclang.compiler.passes.layout_pass {
 }
 import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.passes.native_legality {
+import from jaclang.compiler.passes.placement_pass {
     NativeLegality,
     NativeRefusal,
     NativeRefused

@@ -83,6 +83,10 @@ obj ModuleAnalysis {
             }
             refresh_placement_module(self.module, self.program);
             solve_program_placement(self.module, self.program);
+            import from jaclang.compiler.frontend.constant { CodeContext as _Ctx }
+            self.native = self.module.declares_codespace(
+                _Ctx.NATIVE, path_hint=self.path
+            );
         }
     }
 
@@ -179,8 +183,8 @@ obj ModuleAnalysis {
 glob ANALYSIS_PHASES: list[CompilationPhase] = [
          CompilationPhase.PARSE,
          CompilationPhase.IR,
-         CompilationPhase.PLACEMENT,
          CompilationPhase.ANALYSIS,
+         CompilationPhase.PLACEMENT,
          CompilationPhase.BOUNDARIES
      ];
 

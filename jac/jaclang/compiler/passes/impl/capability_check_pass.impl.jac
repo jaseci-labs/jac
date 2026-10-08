@@ -760,16 +760,6 @@ impl native_capability_demotion_owner(viol_node: UniNode) -> (Ability | None) {
     return None;
 }
 
-impl ClientCapabilityCheckPass._run_impl(ir_in: Module) -> Module {
-    if not ir_in.client_viols_reported {
-        for (_vnode, _vkind) in client_capability_violations(ir_in) {
-            self.ctx.emit(E5096, node_override=_vnode, kind=_vkind);
-        }
-        ir_in.client_viols_reported = True;
-    }
-    return ir_in;
-}
-
 impl PortabilityWarnPass._run_impl(ir_in: Module) -> Module {
     self._check_js_globals(ir_in);
     self._check_js_methods(ir_in);
@@ -922,10 +912,6 @@ impl PortabilityWarnPass._check_js_properties(mod: Module) -> None {
 }
 
 impl PortabilityWarnPass.run_walk with Module entry {
-    self.module = self._run_impl(here);
-}
-
-impl ClientCapabilityCheckPass.run_walk with Module entry {
     self.module = self._run_impl(here);
 }
 

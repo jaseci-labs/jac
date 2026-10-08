@@ -111,12 +111,11 @@ graph TD
         FE6[CFGBuildPass]
         FE7[MTIRGenPass]
         FE8[JsxIntrinsicGuardPass]
-        FE9[PlacementApplyPass]
         FE10[ComptimeResolvePass]
     end
 
-    FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8 --> FE9 --> FE10
-    FE10 --> TYPECK["Analysis (unconditional)<br/>TypeCheckPass / StaticAnalysisPass / AccessCheckPass / OwnershipCheckPass /<br/>NativeLegalityPass / ClientCapabilityCheckPass / PortabilityWarnPass / JacLintCheckPass"]
+    FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8 --> FE10
+    FE10 --> TYPECK["Analysis (unconditional)<br/>TypeCheckPass / StaticAnalysisPass / AccessCheckPass / OwnershipCheckPass /<br/>PlacementPass / PortabilityWarnPass / JacLintCheckPass"]
     TYPECK --> INTEROP["BoundaryAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[JcirGenPass + JcirBytecodeGenPass]
     INTEROP --> CL[EsastGenPass]
@@ -245,21 +244,27 @@ imports), its references to sibling elements, and its value-flow escapes.
 Summaries are serialized into the module's `.jir` as a `SEC_PLACEMENT`
 section and memoized on the program keyed by resolved path.
 
-The solver owns every placement decision, in three cooperating stages:
+Placement is one judgment, made once, after analysis. Nothing is stamped at
+parse time and the type checker never asks which codespace it is in.
 
-1. **Module-granular native placement** (after analysis, in
-   `NativeLegalityPass`): every module is parsed and type-checked by the
-   same rules, with no native guess beforehand. When the effective default
-   codespace is `native`, the pass applies the native rules to the typed
-   module (capability rules, module blockers, the checker's native notes,
-   native library gaps from the binding table, imports of modules placed
-   on the server) and stamps the whole module native only if none refuses
-   it. A refused module stays as parsed, so it is never analyzed twice and
-   nothing about the decision is stored between compiles. Only declared
-   placement (pins, a forced codespace, a module's own native anchor) is
-   stamped at parse time.
-2. **Per-module seeding and fixpoint** (`PlacementApplyPass`, scheduled in
-   both `get_symtab_ir_sched` and `get_ir_gen_sched`): seeds are read off
+1. **Requirements and refusals** (`PlacementPass`, the last analysis pass
+   that touches placement): every top-level element is typed by the same
+   rules. The pass then reads what the typed module says about each target.
+   A *requirement* pins an element: a pin or project kind, a forced
+   codespace, a C library declaration, or a construct that only one target
+   has (a browser global, a native-only builtin), recorded by the checker in
+   `compiler/capability_notes.jac`. A *refusal* rules a target out: a
+   capability rule, a checker note, a native library gap from
+   `compiler/native_bindings.jac`. An element with no requirement takes the
+   project's default target when nothing refuses it. A required target that
+   is refused is an error; any other refusal just leaves the element where
+   it can run.
+2. **Boundaries** (`compiler/boundary_rules.jac`): a reference between two
+   elements placed apart is allowed when the callee's signature has a wire
+   form for that pair of codespaces. Otherwise the referencing element is
+   refused for its target too.
+3. **Per-module seeding and fixpoint** (`solve_module_placement`, called by
+   the pass): seeds are read off
    the summary (JSX and string-path imports stamp CLIENT, clib externs
    stamp NATIVE, browser-global references stamp CLIENT in unanchored
    modules), then placement flows across resolved symbol references to a
@@ -287,7 +292,7 @@ a requirement, or a native library gap (`compiler/native_bindings.jac`), and
 is read by placement rather than raised as a type error. A module that
 prefers native but cannot lower is placed on the server from those facts,
 never from a caught failure.
-`NativeLegalityPass` applies the static rules and propagates them over the
+`PlacementPass` applies the static rules and propagates them over the
 module's reference graph: a unit (function, method or test) that references
 a refused unit is refused, and module-level code that reaches a refused unit
 refuses the module during analysis, before the native backend runs. A
@@ -326,7 +331,6 @@ The ir-gen schedule (`get_ir_gen_sched`):
 | `CFGBuildPass` | [`compiler/passes/cfg_build_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/cfg_build_pass.jac) | Builds control-flow graphs |
 | `MTIRGenPass` | [`compiler/passes/mtir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/mtir_gen_pass.jac) | Generates Meaning-Typed IR for `by llm` calls (scheduled unless MTIR generation is off) |
 | `JsxIntrinsicGuardPass` | [`compiler/passes/jsx_intrinsic_guard_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jsx_intrinsic_guard_pass.jac) | Rejects raw HTML host tags per the project's client kind (`E1105`) |
-| `PlacementApplyPass` | [`compiler/placement/placement_solver.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/placement/placement_solver.jac) | Applies the placement solver's per-module stage: summary-driven seeding plus the CLIENT/NATIVE reference fixpoint (see Stage 2) |
 | `ComptimeResolvePass` | [`compiler/passes/comptime_resolve_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/comptime_resolve_pass.jac) | Settles every `comptime` site (bindings, `if`/`for`/`assert`, comptime-parameter arguments) through the shared `TypeEvaluator` and its `CtEvaluator`, visiting only subtrees that contain a comptime construct; marks the module `ct_resolved` so a later `TypeCheckPass` does not report the same site twice. Runs here, not in the analysis schedule, so modules compiled on import fold identically to `jac check` |
 
 The analysis schedule (`get_analysis_sched`) -- **unconditional**, appended
@@ -338,8 +342,7 @@ on every compile:
 | `StaticAnalysisPass` | [`compiler/passes/static_analysis_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/static_analysis_pass.jac) | Unreachable code, unused variables, import refusals (`E1122`-`E1125`) |
 | `AccessCheckPass` | [`compiler/passes/access_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/access_check_pass.jac) | Access-modifier (`:pub`/`:protect`/`:priv`) enforcement |
 | `OwnershipCheckPass` | [`compiler/passes/ownership_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ownership_check_pass.jac) | Ownership and borrow analysis (see the [Ownership Fact Schema](ownership-checker-spec.md)) |
-| `NativeLegalityPass` | [`compiler/passes/native_legality.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/native_legality.jac) | Decides native lowerability from static rules: per-unit refusals, their propagation over the reference graph, and module-level refusals that place the module on the server before codegen |
-| `ClientCapabilityCheckPass` | [`compiler/passes/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/capability_check_pass.jac) | Stamps client capability facts on module nodes |
+| `PlacementPass` | [`compiler/passes/placement_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/placement_pass.jac) | Decides, after analysis, where every top-level element runs: reads requirements and refusals for each target off the typed module, applies the boundary rule to references between elements, runs the placement fixpoint, and reports a required target that is refused |
 | `PortabilityWarnPass` | [`compiler/passes/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/capability_check_pass.jac) | Emits portability warnings (W6001-W6004) for JS-idiom violations; diagnostic-only |
 | `JacLintCheckPass` | [`compiler/tools/jac_auto_lint_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/tools/jac_auto_lint_pass.jac) | Lint rules (W3xxx / E3xxx) |
 

@@ -131,7 +131,7 @@ impl NaIRGenPass._settle_module -> None {
     the legality table for the driver to place the module in the server
     codespace. On a module that must be native they stay errors. A backend
     crash is never a refusal.""";
-    import from jaclang.compiler.passes.native_legality { settle_native_module }
+    import from jaclang.compiler.passes.placement_pass { settle_native_module }
     if self._internal_errors {
         self.ctx.errors_had.extend(self._internal_errors);
         self._internal_errors = [];
@@ -249,7 +249,7 @@ impl NaIRGenPass._refuse_split_bodies(mod: uni.Module) -> None {
 }
 
 impl NaIRGenPass._lower_module -> None {
-    import from jaclang.compiler.passes.native_legality { build_native_legality }
+    import from jaclang.compiler.passes.placement_pass { build_native_legality }
     self._legality = build_native_legality(self.module, self.prog);
     self._claimed_units = set();
     self._internal_errors = [];

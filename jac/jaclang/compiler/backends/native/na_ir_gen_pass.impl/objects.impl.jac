@@ -1264,7 +1264,7 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     if len(self.ctx.errors_had) <= local_mark {
         return False;
     }
-    import from jaclang.compiler.passes.native_legality { refusal_from_alert }
+    import from jaclang.compiler.passes.placement_pass { refusal_from_alert }
     _own = list(self.ctx.errors_had[local_mark:]);
     _refusals = [refusal_from_alert(_diag) for _diag in _own];
     if self._legality is not None {

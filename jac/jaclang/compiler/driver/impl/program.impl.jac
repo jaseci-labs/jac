@@ -498,27 +498,14 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
     return not self.internal and _default_codespace_for(self) == 'native';
 }
 
-impl JacProgram.anchors_native_under_default(
-    self: JacProgram, mod: uni.Module
-) -> bool {
-    import from jaclang.compiler.driver.boundary_classify { module_own_native_anchor }
-    return not self.internal and module_own_native_anchor(mod);
-}
-
 impl JacProgram.parse_source(
     self: JacProgram,
     source_str: str,
     file_path: str,
     cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.boundary_classify {
-        _coerce_client_module,
-        _coerce_native_module
-    }
     import from jaclang.compiler.frontend.host { active_host }
     had_error = False;
-    run_codespace_infer = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
         (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
     } else {
@@ -543,24 +530,9 @@ impl JacProgram.parse_source(
             annex_sources,
             parse_woven
         }
-        codespace = self.declared_codespace(file_path);
         (parsed, had_error) = parse_woven(
-            source_str,
-            file_path,
-            self,
-            annex_sources(file_path),
-            early_context=codespace or 'server'
+            source_str, file_path, self, annex_sources(file_path), early_context=''
         );
-        if (codespace == 'client') {
-            _coerce_client_module(parsed);
-        } elif (codespace == 'native') {
-            _coerce_native_module(parsed);
-            active_host().record_native_coverage(parsed.loc.mod_path, 'native');
-        } elif codespace == 'server' {
-            parsed.set_code_context(CodeContext.SERVER);
-        } else {
-            run_codespace_infer = True;
-        }
     }
     hub_key = self.hub_key(parsed.loc.mod_path);
     if had_error {
@@ -577,10 +549,6 @@ impl JacProgram.parse_source(
     }
     self.install_module(hub_key, parsed);
 
-    if run_codespace_infer and self.anchors_native_under_default(parsed) {
-        _coerce_native_module(parsed);
-        active_host().record_native_coverage(parsed.loc.mod_path, 'native');
-    }
     return parsed;
 }
 

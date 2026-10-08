@@ -41,7 +41,9 @@ obj NativeLegality {
     has units: dict[int, list[NativeRefusal]] = {},
         owners: dict[int, UniNode] = {},
         refs: dict[int, set[int]] = {},
-        anchored: set[int] = set(),
+        anchored_by: dict[int, set[int]] = {},
+        tops: dict[int, UniNode] = {},
+        elements: dict[int, NativeRefusal] = {},
         module: list[NativeRefusal] = [],
         reach: list[NativeRefusal] = [],
         reached: dict[int, int] = {},
@@ -51,6 +53,8 @@ obj NativeLegality {
 
     def refuse_unit(owner: UniNode, refusal: NativeRefusal) -> None;
     def refuse_module(refusal: NativeRefusal) -> None;
+    def refuse_site(mod: Module, refusal: NativeRefusal) -> None;
+    def refused_elements(mod: Module) -> set[int];
     def unit_refusals(owner: UniNode) -> list[NativeRefusal];
     def unit_refused(owner: UniNode) -> bool;
     def module_refused -> bool;
@@ -67,16 +71,18 @@ def build_native_legality(
     mod: Module, prog: (JacProgram | None) = None
 ) -> NativeLegality;
 
-def stamp_native(mod: Module) -> list[ContextAwareNode];
-def unstamp_native(stamped: list[ContextAwareNode]) -> None;
+def top_element_of(mod: Module, nd: UniNode) -> (UniNode | None);
+def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
+def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
+def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
 def import_placed_native(prog: JacProgram, dep_path: str) -> bool;
 def place_module_server(mod: Module, prog: JacProgram, refusal: NativeRefusal) -> None;
 def settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None);
 
-walker NativeLegalityPass(CompilerPass) {
-    def _emit_refusal(refusal: NativeRefusal) -> None;
+walker PlacementPass(CompilerPass) {
+    def _emit_refusal(refusal: NativeRefusal, required_by: str) -> None;
     def _report_unmet(legality: NativeLegality, why: str) -> None;
     def _check_conformance(ir_in: Module) -> None;
     def _run_impl(ir_in: Module) -> Module;
@@ -132,6 +138,33 @@ impl NativeLegality.refuse_module(refusal: NativeRefusal) -> None {
     self.module.append(refusal);
 }
 
+impl NativeLegality.refuse_site(mod: Module, refusal: NativeRefusal) -> None {
+    top = top_element_of(mod, refusal.site) if refusal.site is not None else None;
+    if top is None {
+        self.module.append(refusal);
+        return;
+    }
+    self.tops[id(top)] = top;
+    if id(top) not in self.elements {
+        self.elements[id(top)] = refusal;
+    }
+}
+
+impl NativeLegality.refused_elements(mod: Module) -> set[int] {
+    out: set[int] = set(self.elements.keys());
+    for (uid, owner) in self.owners.items() {
+        if uid in self.units and owner.parent is mod {
+            out.add(uid);
+        }
+    }
+    if self.module {
+        for elem in mod.body {
+            out.add(id(elem));
+        }
+    }
+    return out;
+}
+
 impl NativeLegality.unit_refusals(owner: UniNode) -> list[NativeRefusal] {
     return self.units.get(id(owner), []);
 }
@@ -141,10 +174,19 @@ impl NativeLegality.unit_refused(owner: UniNode) -> bool {
 }
 
 impl NativeLegality.module_refused -> bool {
-    return len(self.module) > 0 or len(self.reach) > 0;
+    return len(self.module) > 0;
 }
 
 impl NativeLegality.settle -> None {
+    import from jaclang.compiler.boundary_rules { ability_crossing }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
+    def blocked_by(target: int) -> (str | None) {
+        callee = self.owners[target];
+        if not isinstance(callee, Ability) {
+            return "it is not a function";
+        }
+        return ability_crossing(callee, TARGET_NATIVE, TARGET_SERVER);
+    }
     changed = True;
     while changed {
         changed = False;
@@ -156,6 +198,10 @@ impl NativeLegality.settle -> None {
                 if target == uid or target not in self.units {
                     continue;
                 }
+                why = blocked_by(target);
+                if why is None {
+                    continue;
+                }
                 blocker = native_unit_name(self.owners[target]);
                 caller = native_unit_name(self.owners[uid]);
                 self.units[uid] = [
@@ -164,10 +210,10 @@ impl NativeLegality.settle -> None {
                         name=blocker,
                         site=self.owners[uid],
                         code="E5092",
-                        help=f"'{blocker}' is placed on its Python-only implementation "
-                        f"(native seam), so '{caller}' cannot reach it natively; hoist the "
-                        f"blocking construct out of '{blocker}' or move '{caller}' off the "
-                        f"native pathway."
+                        help=f"'{blocker}' is placed in Python and a call to it from "
+                        f"'{caller}' cannot cross into native code ({why}); hoist the "
+                        f"blocking construct out of '{blocker}' or give it a signature "
+                        f"that crosses."
                     )
                 ];
                 self.reached[uid] = target;
@@ -176,21 +222,21 @@ impl NativeLegality.settle -> None {
             }
         }
     }
-    if self.module {
-        return;
-    }
-    for target in self.anchored {
-        if target not in self.units {
+    for (eid, targets) in self.anchored_by.items() {
+        if eid in self.elements {
             continue;
         }
-        blocker = native_unit_name(self.owners[target]);
-        cause = target;
-        while cause in self.reached {
-            cause = self.reached[cause];
-        }
-        first = self.units[cause][0];
-        self.reach.append(
-            NativeRefusal(
+        for target in targets {
+            if target not in self.units or blocked_by(target) is None {
+                continue;
+            }
+            blocker = native_unit_name(self.owners[target]);
+            cause = target;
+            while cause in self.reached {
+                cause = self.reached[cause];
+            }
+            first = self.units[cause][0];
+            reach = NativeRefusal(
                 kind=first.kind,
                 name=first.name,
                 site=first.site,
@@ -199,12 +245,13 @@ impl NativeLegality.settle -> None {
                 text=first.text,
                 brief=first.brief,
                 detail=first.detail,
-                help=f"Module-level native code reaches '{blocker}', which is placed "
-                f"on its Python-only implementation, so the module cannot run on "
-                f"the native pathway."
-            )
-        );
-        return;
+                help=f"This element reaches '{blocker}', which is placed in Python "
+                f"and cannot be called from native code."
+            );
+            self.elements[eid] = reach;
+            self.reach.append(reach);
+            break;
+        }
     }
 }
 
@@ -218,12 +265,12 @@ impl NativeLegality.late_units -> int {
 
 impl NativeLegality.unmet -> list[tuple[NativeRefusal, NativeRefusal]] {
     out: list[tuple[NativeRefusal, NativeRefusal]] = [];
-    blocked = self.module[0]
-        if self.module
-        else (self.reach[0] if self.reach else None);
+    blocked = self.module[0] if self.module else None;
     for (uid, need) in self.requires.items() {
         if uid in self.units {
             out.append((need, self.units[uid][0]));
+        } elif uid in self.elements {
+            out.append((need, self.elements[uid]));
         } elif blocked is not None {
             out.append((need, blocked));
         }
@@ -363,7 +410,8 @@ impl build_native_legality(
                 text=f"error[{note.code}]: {note.text}"
             );
             if note.requires {
-                unit = native_enclosing_unit(note.site);
+                unit = native_enclosing_unit(note.site)
+                    or top_element_of(mod, note.site);
                 if unit is None {
                     legality.module_requires.append(noted);
                 } else {
@@ -374,7 +422,7 @@ impl build_native_legality(
             }
             owner = native_capability_demotion_owner(note.site);
             if owner is None {
-                legality.refuse_module(noted);
+                legality.refuse_site(mod, noted);
             } else {
                 legality.refuse_unit(owner, noted);
             }
@@ -384,8 +432,9 @@ impl build_native_legality(
         owner = native_capability_demotion_owner(vnode);
         if owner is None {
             note = "No owning method or function can absorb this construct as a "
-            "native seam, so the whole module refuses to lower.";
-            legality.refuse_module(
+            "native seam, so the element that contains it is placed in Python.";
+            legality.refuse_site(
+                mod,
                 NativeRefusal(
                     kind=vkind,
                     name=vname,
@@ -414,7 +463,7 @@ impl build_native_legality(
                     );
                     gap_owner = native_capability_demotion_owner(nm);
                     if gap_owner is None {
-                        legality.refuse_module(missing);
+                        legality.refuse_site(mod, missing);
                     } else {
                         legality.refuse_unit(gap_owner, missing);
                     }
@@ -431,7 +480,14 @@ impl build_native_legality(
                 }
                 legality.owners[id(target)] = target;
                 if source is None {
-                    legality.anchored.add(id(target));
+                    top = top_element_of(mod, nm);
+                    if top is not None {
+                        legality.tops[id(top)] = top;
+                        if id(top) not in legality.anchored_by {
+                            legality.anchored_by[id(top)] = set();
+                        }
+                        legality.anchored_by[id(top)].add(id(target));
+                    }
                 } else {
                     legality.owners[id(source)] = source;
                     if id(source) not in legality.refs {
@@ -446,11 +502,70 @@ impl build_native_legality(
     return legality;
 }
 
-impl stamp_native(mod: Module) -> list[ContextAwareNode] {
+impl top_element_of(mod: Module, nd: UniNode) -> (UniNode | None) {
+    cur: (UniNode | None) = nd;
+    while cur is not None and cur.parent is not mod {
+        cur = cur.parent;
+    }
+    return cur;
+}
+
+impl element_requirements(
+    mod: Module, prog: JacProgram
+) -> dict[int, tuple[str, str]] {
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, capability_notes_of }
+    import from jaclang.compiler.placement.placement { element_display_name }
+    import from jaclang.compiler.placement.placement_pins { config_pin_for }
+    out: dict[int, tuple[str, str]] = {};
+    mod_path = mod.loc.mod_path if mod.loc is not None else "";
+    declared = prog.declared_codespace(mod_path) if mod_path else "";
+    for elem in mod.body {
+        if not isinstance(elem, ContextAwareNode) {
+            continue;
+        }
+        pin = config_pin_for(mod_path, element_display_name(elem)) if mod_path else "";
+        if pin {
+            out[id(elem)] = (pin, "pinned in jac.toml");
+        } elif declared {
+            out[id(elem)] = (declared, "declared for the module");
+        } elif isinstance(elem, Import) and elem.has_clib_decls {
+            out[id(elem)] = (TARGET_NATIVE, "declares C library functions");
+        }
+    }
+    for note in capability_notes_of(prog, mod_path) {
+        if not note.requires {
+            continue;
+        }
+        top = top_element_of(mod, note.site);
+        if top is not None and id(top) not in out {
+            out[id(top)] = (note.target, note.text);
+        }
+    }
+    return out;
+}
+
+impl client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]] {
+    import from jaclang.compiler.frontend.module_facts { client_capability_violations }
+    out: dict[int, list[tuple[UniNode, str]]] = {};
+    for (vnode, vkind) in client_capability_violations(mod) {
+        top = top_element_of(mod, vnode);
+        if top is None {
+            continue;
+        }
+        if id(top) not in out {
+            out[id(top)] = [];
+        }
+        out[id(top)].append((vnode, vkind));
+    }
+    return out;
+}
+
+impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
     stamped: list[ContextAwareNode] = [];
     for elem in mod.body {
         if not isinstance(elem, ContextAwareNode)
-            or elem.code_context != CodeContext.SERVER {
+            or elem.code_context != CodeContext.SERVER
+            or id(elem) in held {
             continue;
         }
         elem.code_context = CodeContext.NATIVE;
@@ -466,12 +581,6 @@ impl stamp_native(mod: Module) -> list[ContextAwareNode] {
         }
     }
     return stamped;
-}
-
-impl unstamp_native(stamped: list[ContextAwareNode]) -> None {
-    for elem in stamped {
-        elem.code_context = CodeContext.SERVER;
-    }
 }
 
 impl import_placed_native(prog: JacProgram, dep_path: str) -> bool {
@@ -561,81 +670,135 @@ impl settle_native_module(
     return refusal;
 }
 
-impl NativeLegalityPass._emit_refusal(refusal: NativeRefusal) -> None {
+impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> None {
     if refusal.site is None {
         return;
     }
+    note = f"The element must be native ({required_by}), so this is an error "
+    "rather than a reason to place it elsewhere."
+        if required_by
+        else None;
     self.ctx.emit(
         E5090,
         node_override=refusal.site,
         kind=refusal.kind,
         name=refusal.name,
-        help_text=refusal.help
+        help_text=f"{refusal.help} {note}" if refusal.help and note else (refusal.help or note)
     );
 }
 
-impl NativeLegalityPass._run_impl(ir_in: Module) -> Module {
+impl PlacementPass._run_impl(ir_in: Module) -> Module {
     import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.diagnostics { E5096 }
+    import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
+    import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
     import from jaclang.compiler.placement.placement_solver {
         native_placement_candidate,
-        placement_work
+        placement_work,
+        refresh_placement_module,
+        solve_module_placement
     }
+    spaces: dict[str, CodeContext] = {
+        'server': CodeContext.SERVER,
+        'client': CodeContext.CLIENT,
+        'native': CodeContext.NATIVE
+    };
     ir_in.native_viols_reported = True;
+    ir_in.client_viols_reported = True;
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
-    declared = ModuleFacts.has_native_context_stmts(ir_in);
-    stamped: list[ContextAwareNode] = [];
-    if not declared {
-        (candidate, why) = native_placement_candidate(ir_in, self.prog);
-        if not candidate {
-            active_host().record_native_coverage(mod_path, 'server', '', why);
-            self._report_unmet(build_native_legality(ir_in, self.prog), why);
-            return ir_in;
-        }
-        stamped = stamp_native(ir_in);
-    }
     self._check_conformance(ir_in);
-    legality = build_native_legality(ir_in, self.prog);
-    if not legality.module_refused() {
-        if stamped {
-            ir_in.decided_codespace = CodeContext.NATIVE.value;
-            ir_in.codespace_inferred = True;
-            placement_work(self.prog).changed(ir_in);
+
+    required = element_requirements(ir_in, self.prog);
+    for elem in ir_in.body {
+        need = required.get(id(elem));
+        if need is not None and need[0] in spaces {
+            _stamp_context_element(elem, spaces[need[0]]);
         }
-        active_host().record_native_coverage(mod_path, 'native');
-        self._report_unmet(legality, "");
-        return ir_in;
     }
-    first = legality.module[0] if legality.module else legality.reach[0];
-    if stamped {
-        unstamp_native(stamped);
-        active_host().record_native_coverage(
-            mod_path, 'server', first.code, first.headline()
-        );
-        self._report_unmet(legality, first.headline());
-        return ir_in;
+    (candidate, why) = native_placement_candidate(ir_in, self.prog);
+    tentative: list[ContextAwareNode] = stamp_native(ir_in, set(required.keys()))
+        if candidate
+        else [];
+    legality = build_native_legality(ir_in, self.prog);
+    native_refused = legality.refused_elements(ir_in);
+    client_refused = client_refused_elements(ir_in);
+    for elem in tentative {
+        owner = top_element_of(ir_in, elem);
+        if owner is not None and id(owner) in native_refused {
+            elem.code_context = CodeContext.SERVER;
+        }
     }
+    self.prog.analysis.placement_refusals[os.path.realpath(mod_path)] = {
+        'native': native_refused,
+        'client': set(client_refused.keys())
+    };
+    refresh_placement_module(ir_in, self.prog);
+    solve_module_placement(ir_in, self.prog);
+    placement_work(self.prog).changed(ir_in);
+
+    placed: list[CodeContext] = [];
     seen: set[int] = set();
-    candidates: list[NativeRefusal] = list(legality.module);
-    for refusals in legality.units.values() {
-        candidates.extend(refusals);
-    }
-    for refusal in candidates {
-        if refusal.site is None or id(refusal.site) in seen {
+    for elem in ir_in.body {
+        if not isinstance(elem, ContextAwareNode) {
             continue;
         }
-        seen.add(id(refusal.site));
-        self._emit_refusal(refusal);
+        placed.append(elem.code_context);
+        need = required.get(id(elem));
+        if elem.code_context == CodeContext.NATIVE and id(elem) in native_refused {
+            refusals: list[NativeRefusal] = list(legality.module);
+            if id(elem) in legality.elements {
+                refusals.append(legality.elements[id(elem)]);
+            }
+            refusals.extend(legality.units.get(id(elem), []));
+            for refusal in refusals {
+                if refusal.site is None or id(refusal.site) in seen {
+                    continue;
+                }
+                seen.add(id(refusal.site));
+                self._emit_refusal(refusal, need[1] if need is not None else "");
+            }
+        }
+        if elem.code_context == CodeContext.CLIENT and id(elem) in client_refused {
+            for (vnode, vkind) in client_refused[id(elem)] {
+                self.ctx.emit(E5096, node_override=vnode, kind=vkind);
+            }
+        }
     }
+    self._report_unmet(legality, "" if candidate else why);
+
+    uniform = placed[0] if placed and all(ctx == placed[0] for ctx in placed) else None;
+    ir_in.decided_codespace = uniform.value
+        if uniform is not None and uniform != CodeContext.SERVER
+        else "";
+    ir_in.codespace_inferred = bool(tentative);
+    if CodeContext.NATIVE in placed {
+        active_host().record_native_coverage(mod_path, 'native');
+    } else {
+        first = legality.module[0]
+            if legality.module
+            else (next(iter(legality.elements.values())) if legality.elements else None);
+        active_host().record_native_coverage(
+            mod_path,
+            'server',
+            first.code if first is not None else '',
+            first.headline() if first is not None else why
+        );
+    }
+    report_serverless_kind_errors(self, ir_in);
     return ir_in;
 }
 
-impl NativeLegalityPass._check_conformance(ir_in: Module) -> None {
+impl PlacementPass._check_conformance(ir_in: Module) -> None {
     import from jaclang.compiler.native_bindings {
         conformance_mismatches,
         native_library_module_name,
-        typeshed_stub_path
+        typeshed_stub_path,
+        variant_mismatches
     }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    for (decl, why) in variant_mismatches(ir_in, self.prog) {
+        self.ctx.emit(E5114, node_override=decl, reason=why);
+    }
     lib_name = native_library_module_name(mod_path) if mod_path else None;
     if lib_name is None {
         return;
@@ -650,7 +813,7 @@ impl NativeLegalityPass._check_conformance(ir_in: Module) -> None {
     }
 }
 
-impl NativeLegalityPass._report_unmet(legality: NativeLegality, why: str) -> None {
+impl PlacementPass._report_unmet(legality: NativeLegality, why: str) -> None {
     for (need, blocked) in legality.unmet() {
         if need.site is None {
             continue;
@@ -683,6 +846,6 @@ impl NativeLegalityPass._report_unmet(legality: NativeLegality, why: str) -> Non
     }
 }
 
-impl NativeLegalityPass.run_walk with Module entry {
+impl PlacementPass.run_walk with Module entry {
     self.module = self._run_impl(here);
 }
