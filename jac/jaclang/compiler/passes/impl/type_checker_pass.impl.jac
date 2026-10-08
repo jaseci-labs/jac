@@ -68,11 +68,13 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
             and not isinstance(here.expr, Null)
         ) {
             if not (
-                scope.in_client_context()
-                and scope.signature.event.name == Tok.KW_ENTRY
-                and not scope.is_async
+                scope.signature.event.name == Tok.KW_ENTRY and not scope.is_async
             ) {
                 self.ctx.emit(W2014, node_override=here);
+            } else {
+                self.evaluator.note_client(
+                    here, "W2014", "a value returned from an entry ability"
+                );
             }
             return;
         }
@@ -1431,9 +1433,7 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
     if not isinstance(owner, Ability) {
         return None;
     }
-    if not nd.in_client_context() {
-        return None;
-    }
+    self.evaluator.note_client(nd, "E5096", "component state declared in a function");
     probes: list[Expr | None] = [nd.value, nd.type_tag.tag if nd.type_tag else None];
     for probe in probes {
         cur: (UniNode | None) = probe;

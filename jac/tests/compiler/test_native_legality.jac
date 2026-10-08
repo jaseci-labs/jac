@@ -14,7 +14,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
-import from jaclang.compiler.native_notes { native_notes_of }
+import from jaclang.compiler.capability_notes { capability_notes_of }
 import from jaclang.compiler.passes.native_legality {
     build_native_legality,
     native_unit_name
@@ -191,7 +191,7 @@ test "what only matters natively is a note on the typed module, never a type err
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert parses == 1;
     assert mod.decided_codespace != 'native';
-    assert "E1124" in [note.code for note in native_notes_of(prog, path)];
+    assert "E1124" in [note.code for note in capability_notes_of(prog, path, "native")];
 }
 
 test "a native-only construct in code that cannot be placed native is an error" {

@@ -2183,14 +2183,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
 
-                if symbol is None or symbol.parent_tab is self.builtins_module {
+                if symbol is None {
                     _js_name = expr.value;
                     if _js_name == "import" {
                         _js_name = "__import_meta__";
                     }
                     js_sym = self.js_globals_module.names_in_scope.get(_js_name);
-                    if js_sym is not None and expr.in_client_context() {
+                    if js_sym is not None {
                         symbol = js_sym;
+                        self.note_client(
+                            expr, "E5096", f"'{expr.value}' is a browser global"
+                        );
                     }
                 }
                 if symbol {
@@ -3625,8 +3628,16 @@ impl TypeEvaluator.note_native(
     if self._diagnostic_suppression_depth > 0 {
         return;
     }
-    import from jaclang.compiler.native_notes { note_native }
-    note_native(self.program, nd, code, text, requires);
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, note_capability }
+    note_capability(self.program, nd, TARGET_NATIVE, code, text, requires);
+}
+
+impl TypeEvaluator.note_client(nd: UniNode, code: str, text: str) -> None {
+    if self._diagnostic_suppression_depth > 0 {
+        return;
+    }
+    import from jaclang.compiler.capability_notes { TARGET_CLIENT, note_capability }
+    note_capability(self.program, nd, TARGET_CLIENT, code, text, True);
 }
 
 impl TypeEvaluator._is_typing_special_form(ty: TypeBase, name: str) -> bool {

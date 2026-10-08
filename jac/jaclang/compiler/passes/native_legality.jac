@@ -330,7 +330,7 @@ impl build_native_legality(
         native_capability_violations
     }
     import from jaclang.compiler.placement.placement { scan_native_blockers }
-    import from jaclang.compiler.native_notes { native_notes_of }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, capability_notes_of }
     import from jaclang.compiler.native_bindings { binding_gaps }
     legality = NativeLegality();
     mod_path = mod.loc.mod_path if mod.loc is not None else "";
@@ -354,7 +354,7 @@ impl build_native_legality(
                 break;
             }
         }
-        for note in native_notes_of(prog, mod_path) {
+        for note in capability_notes_of(prog, mod_path, TARGET_NATIVE) {
             noted = NativeRefusal(
                 kind="construct",
                 name=note.text,

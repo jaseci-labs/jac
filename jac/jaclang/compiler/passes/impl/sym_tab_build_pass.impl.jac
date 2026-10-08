@@ -238,14 +238,8 @@ impl SymTabBuildPass.enter_archetype with Archetype entry {
     if self.cur_sym_tab {
         existing_sym = self.cur_scope.names_in_scope.get(here.sym_name, None);
         if existing_sym {
-            nd_native = here.in_native_context();
-            nd_client = here.in_client_context();
             for d in existing_sym.defn {
-                if (
-                    isinstance(d.name_of, Archetype)
-                    and (d.name_of.in_native_context() == nd_native)
-                    and (d.name_of.in_client_context() == nd_client)
-                ) {
+                if isinstance(d.name_of, Archetype) {
                     self.ctx.emit(
                         E0077,
                         node_override=here,

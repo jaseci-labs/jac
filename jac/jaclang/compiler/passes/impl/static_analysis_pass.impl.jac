@@ -123,10 +123,14 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
                 continue;
             }
             if in_type_position(name_nd, include_subscripts=False) {
-                import from jaclang.compiler.native_notes { note_native }
-                note_native(
+                import from jaclang.compiler.capability_notes {
+                    TARGET_NATIVE,
+                    note_capability
+                }
+                note_capability(
                     self.prog,
                     name_nd,
+                    TARGET_NATIVE,
                     "E2018",
                     E2018.format_message(
                         name=name_nd.value, position="native type position"
@@ -423,7 +427,14 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
                 break;
             }
             if isinstance(parent, Test) {
-                in_async = parent.in_client_context();
+                import from jaclang.compiler.capability_notes {
+                    TARGET_CLIENT,
+                    note_capability as _note_await
+                }
+                _note_await(
+                    self.prog, nd, TARGET_CLIENT, "E5096", "await in a test", True
+                );
+                in_async = True;
                 break;
             }
             if isinstance(parent, Ability) {

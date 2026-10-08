@@ -549,10 +549,18 @@ impl ASTValidationPass._check_slot_body(
                 if s.finally_body is not None {
                     self.ctx.emit(E2022, node_override=s);
                 }
-                if not s.in_client_context() {
-                    target = "na" if s.in_native_context() else "sv";
-                    self.ctx.emit(W2020, node_override=s, target=target);
+                import from jaclang.compiler.capability_notes {
+                    TARGET_CLIENT,
+                    note_capability
                 }
+                note_capability(
+                    self.prog,
+                    s,
+                    TARGET_CLIENT,
+                    "W2020",
+                    "an 'awaiting' clause on a try statement",
+                    True
+                );
             }
             self._check_slot_body([b for b in s.body], in_loop, loop_kw);
             if s.awaiting_body is not None {

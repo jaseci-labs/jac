@@ -593,6 +593,7 @@ walker TypeEvaluator {
     def is_none_type(ty: TypeBase) -> bool;
     def _is_strict_site(nd: UniNode) -> bool;
     def _diag_unnarrowed_optional(nd: UniNode, ty: TypeBase, required: str) -> bool;
+    def note_client(nd: UniNode, code: str, text: str) -> None;
     def note_native(nd: UniNode, code: str, text: str, requires: bool = False) -> None;
     def is_typevar_class(ty: TypeBase) -> bool;
     def is_paramspec_class(ty: TypeBase) -> bool;
