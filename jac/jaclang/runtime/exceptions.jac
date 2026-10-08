@@ -47,8 +47,8 @@ obj ReadOnlyRetry(WriteConflict) {
 obj TransactionLost(WriteConflict) {
     def message -> str {
         return (
-            'TransactionLost: the unit of work was rolled back and cannot be '
-            'replayed; abort it and re-run the unit'
+            'TransactionLost: the transaction was rolled back and its writes '
+            'cannot be replayed; re-run the unit'
         );
     }
 }

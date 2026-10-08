@@ -94,6 +94,20 @@ def _stored(ctx: ExecutionContext, id: UUID, field: str) -> (str | None) {
 }
 
 
+"""The version the database holds for a row, read on a connection of its own."""
+def _version(ctx: ExecutionContext, id: UUID) -> int {
+    probe = _as_any(ctx.mem.store).new_session();
+    try {
+        got = probe.rows(
+            "SELECT version FROM anchors WHERE id = CAST(:i AS uuid)", {"i": str(id)}
+        );
+    } finally {
+        probe.close();
+    }
+    return int(got[0][0]) if got else -1;
+}
+
+
 """Make the next `times` COMMITs of this session's open transaction fail the
 way Postgres fails a serializable transaction at commit: the transaction is
 rolled back and the client is told SQLSTATE 40001. Returns the countdown."""
@@ -519,6 +533,51 @@ test "a transaction another writer joined is re-run, never replayed without that
 }
 
 
+test "a unit that cannot be replayed ends at its exit, and the session is usable again" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            store = _as_any(sess.store);
+            sess.unit_enter();
+            lost = _loose(ctx, 1);
+            sess.ensure_writable_txn();
+            store.kv_put("rb_unit", "enqueued");
+            _fail_commits(sess);
+            # The end-of-walk commit swallows whatever its commit raises.
+            try {
+                ctx.mem.commit();
+            } except WriteConflict {}
+            raised = False;
+            try {
+                sess.unit_exit();
+            } except WriteConflict {
+                raised = True;
+            }
+            assert raised , (
+                "the unit's owner must hear that the unit was lost, even though "
+                "the commit that lost it had its exception swallowed"
+            );
+            assert sess.unit_depth() == 0;
+
+            # The unit is over and took its work with it; the next one commits.
+            kept = _loose(ctx, 2);
+            ctx.mem.commit();
+            assert _stored(ctx, kept.ensure_id(), "n") == "2";
+            assert _stored(ctx, lost.ensure_id(), "n") is None , (
+                "half of the lost unit was committed by the unit after it"
+            );
+            assert store.kv_get("rb_unit") is None;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
 test "a rolled-back first write of a type registers the type again" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
@@ -556,8 +615,47 @@ test "a rolled-back first write of a type registers the type again" {
 }
 
 
+test "a commit does not write back anchors it only loaded" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        ids: list[UUID] = [];
+        before: list[int] = [];
+        try {
+            t = RTally(n=1);
+            root +>:RLink(w=1):+> t;
+            seed.mem.commit();
+            tanch = _as_any(t).__jac__;
+            ids = [_as_any(root).__jac__.id, tanch.id, tanch.edges[0].id];
+            before = [_version(seed, id) for id in ids];
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            # A root with an edge, a node with an edge, and the edge itself:
+            # walk them so every edge list is loaded, then commit.
+            assert len([root-->]) == 1;
+            assert len(ctx.mem.batch_get(ids)) == len(ids);
+            ctx.mem.commit();
+            after = [_version(ctx, id) for id in ids];
+            assert after == before , (
+                "the hash taken when an anchor is loaded is the one a commit "
+                "compares against; a mismatch writes every loaded anchor back. "
+                f"Versions went {before} -> {after}"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
 test "a loaded anchor is hashed once (#9410)" {
-    import from jaclang.data.serializer { Serializer }
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
@@ -597,9 +695,14 @@ test "a loaded anchor is hashed once (#9410)" {
                 f"loading {len(ids)} anchors hashed {len(dumps_calls)} times; each "
                 "anchor's stored form is hashed once, when it is deserialized"
             );
+            # The load-time hash is the one the next commit compares against:
+            # an unchanged anchor must not be written back.
             ctx.mem.commit();
             for id in ids {
-                assert _stored(ctx, id, "n") is not None;
+                assert _version(ctx, id) == 0 , (
+                    "a loaded, unchanged anchor was rewritten by the next commit: "
+                    "its load-time hash does not match its flush-time hash"
+                );
             }
         } finally {
             JacRuntime.exec_ctx = old;
