@@ -651,6 +651,20 @@ Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
   envelope. Walkers always keep it, having no single value to project. See
   [jac-scale HTTP](../reference/plugins/jac-scale-http.md#raw-response-bodies).
 
+- **What may cross** -- `compiler/boundary_rules.jac` judges the declared
+  signature of every function and walker a client reaches, and
+  `BoundaryAnalysisPass` reports `E5115` for a type with no wire form. The
+  rule mirrors the two halves above. The request binder builds scalars
+  (`str`, `int`, `float`, `bool`, `bytes`, `None`), lists, tuples and sets,
+  dicts, enums and objects from JSON, and the serializer writes the same
+  shapes back, so those cross, as does an archetype whose fields all cross
+  and a union of types that cross. A dict crosses only with `str` keys,
+  because a JSON object has no other kind and neither side converts them
+  back. An upload is a part of a request, so it crosses only as a parameter
+  of a server function. A generator crosses only as a result, which is
+  streamed. A callable, an awaitable, a file handle or a native handle is
+  behaviour or a resource, not data, and does not cross.
+
 ### C-ABI wire format (`na`)
 
 Scalars use the `JAC_TO_CTYPES` map (`int→c_int64`, `float→c_double`,

@@ -262,7 +262,12 @@ parse time and the type checker never asks which codespace it is in.
 2. **Boundaries** (`compiler/boundary_rules.jac`): a reference between two
    elements placed apart is allowed when the callee's signature has a wire
    form for that pair of codespaces. Otherwise the referencing element is
-   refused for its target too.
+   refused for its target too. Between native and Python code the wire is
+   the ctypes scalars. Between client and server code it is what a request
+   can carry, judged structurally over the declared signature: scalars,
+   lists, tuples and sets of types that cross, dicts with `str` keys, enums,
+   archetypes whose fields all cross, and unions of those; an upload only as
+   a parameter and a generator only as a streamed result (`E5115`).
 3. **Per-module seeding and fixpoint** (`solve_module_placement`, called by
    the pass): seeds are read off
    the summary (JSX and string-path imports stamp CLIENT, clib externs
