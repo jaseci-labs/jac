@@ -1,23 +1,26 @@
-import from jaclang.compiler.backends.native.llvm.ir { _utils }
-import from jaclang.compiler.backends.native.llvm.ir { types }
-class Context(object) {
-    def init(self: Context) -> object {
+import jaclang.compiler.backends.native.llvm.ir._utils as _utils;
+import jaclang.compiler.backends.native.llvm.ir.types as types;
+
+class Context {
+    has scope: _utils.NameScope,
+        identified_types: dict[str, types.IdentifiedStructType];
+
+    def init(self: Context) {
         self.scope = _utils.NameScope();
         self.identified_types = {};
     }
 
-    def get_identified_type(self: Context, name: any, packed: any = False) -> object {
-        if (name not in self.identified_types) {
+    def get_identified_type(
+        self: Context, name: str, packed: bool = False
+    ) -> types.IdentifiedStructType {
+        ty = self.identified_types.get(name);
+        if ty is None {
             self.scope.register(name);
             ty = types.IdentifiedStructType(self, name, packed);
             self.identified_types[name] = ty;
-        } else {
-            ty = self.identified_types[name];
         }
         return ty;
     }
 }
 
-with entry {
-    global_context = Context();
-}
+glob global_context: Context = Context();

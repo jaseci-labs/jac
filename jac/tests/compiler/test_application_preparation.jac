@@ -763,3 +763,49 @@ test "prepared applications are reused by content, not by timestamp" {
         assert not _restored(path, tmp) , "an annex deletion was reused";
     }
 }
+
+def _prepared_lookups(modules: int) -> int {
+    import sys;
+    lookups = [0];
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'mods').mkdir();
+        lines: list[str] = [];
+        for k in range(modules) {
+            (base / 'mods' / f'm{k}.jac').write_text(
+                f'walker:pub w{k} {{\n    can go with Root entry {{\n        report {k};\n    }}\n}}\n'
+            );
+            lines.append(f'import from mods.m{k} {{ w{k} }}\n');
+        }
+        path = base / 'main.jac';
+        path.write_text(''.join(lines));
+        prepared = prepare_application(str(path), JacProgram(), tmp);
+        def tally(frame: any, event: str, arg: any) {
+            if event == 'call'
+                and frame.f_code.co_filename.endswith(
+                    ('prepared.jac', 'prepared_loader.jac')
+                ) {
+                lookups[0] += 1;
+            }
+        }
+        sys.setprofile(tally);
+        try {
+            initialize_application(prepared);
+        } finally {
+            sys.setprofile(None);
+            forget(str(path));
+        }
+    }
+    return lookups[0];
+}
+
+"""Finding a prepared module by name or package used to scan every prepared
+module, so loading an application grew with the square of its module count.
+Counted on a real load, not timed."""
+test "loading a prepared application grows with its module count, not its square" {
+    small = _prepared_lookups(8);
+    large = _prepared_lookups(32);
+    assert large < 6 * small , (
+        f"prepared lookups went {small} -> {large} for 4x the modules"
+    );
+}

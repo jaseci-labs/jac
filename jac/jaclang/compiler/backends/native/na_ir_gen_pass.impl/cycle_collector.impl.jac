@@ -1,4 +1,4 @@
-import from jaclang.compiler.backends.native.llvm { ir }
+import jaclang.compiler.backends.native.llvm.ir as ir;
 
 
 impl NaIRGenPass._emit_rc_roots_globals -> None {

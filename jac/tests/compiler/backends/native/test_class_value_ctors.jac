@@ -88,3 +88,14 @@ test "class-value construction holds under every memory profile" {
         assert native_run("class_value_ctors_memory.jac", memory) == ["15"] , memory;
     }
 }
+
+"""A class with more than 63 constructor parameters cannot have a construct
+entry of its own (the given-arguments mask is one 64-bit word), but it is
+still constructed through a base-typed class value: its entry for that base
+takes the base's parameters and leaves the rest to their defaults. The
+compiler's own passes are such classes."""
+test "a class with more than 63 fields constructs through a base-typed class value" {
+    expected = ["x:228", "x/8", "x"];
+    assert python_tier_run("class_value_ctors_wide.jac") == expected;
+    assert native_run("class_value_ctors_wide.jac") == expected;
+}

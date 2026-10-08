@@ -130,7 +130,11 @@ obj Serializer {
         data: dict[str, object], anchor: Anchor
     ) -> (object | None);
 
-    static def _compute_hash(anchor: Anchor) -> int;
+    static def stored_form(anchor: Anchor) -> dict[str, object];
+    static def stored_hash(
+        anchor: Anchor, stored: (dict[str, object] | None) = None
+    ) -> int;
+
     static def serialize_fields(
         anchor: Anchor, field_names: set[str]
     ) -> dict[str, object];

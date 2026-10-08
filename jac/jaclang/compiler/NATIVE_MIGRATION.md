@@ -4,6 +4,48 @@ This migration is in progress. The production native scope has not been
 expanded to include the full type checker. Verified LLVM IR for individual
 methods is not evidence that the complete checker links or executes natively.
 
+## Checkpoint: the native generator in the kernel (#9852)
+
+The native code generator (`backends/native/na_ir_gen_pass`), the primitive
+emitters and the LLVM IR builder (`backends/native/llvm/ir`) are kernel
+units. A module placed in the native codespace is lowered inside the kernel
+session that analysed it. The session returns the module's LLVM IR text,
+native interface, layout and dependencies in its unit record; the host turns
+that record into machine code, cache sections and an engine
+(`NativeUnitRegistry.adopt_lowered`) and holds no tree for the module. LLVM
+itself, the link and the caches stay on the host.
+
+What the generator needs from the host it asks for through one question,
+`native_fact`: the target's data layout and triple, struct offsets, the host
+OS, codec tables and the primitive emitters' method tables. A project
+dependency the host holds no native unit for is lowered in the same session
+and emitted as its own unit. Demotion to the server codespace happens inside
+the session, and the verdict, notes and coverage records come back in the
+session's report.
+
+A program module is never lowered by the generator running as Python
+bytecode, and there is no switch for it. The bytecode generator still builds
+the compiler's own native units: the kernel, and the runtime library's
+native modules (`runtime/na_stdlib`, the formatting kernel), which a release
+ships precompiled and a source checkout builds on first use. A session is
+served those modules as interfaces and cannot lower them.
+
+Running the generator natively was the first time this much ordinary Jac ran
+on the native tier, and it found places where the tier disagreed with
+Python. The backend fixes are covered by fixtures under
+`tests/compiler/backends/native` (`test_native_generator_shapes.jac`,
+`test_native_null_safe_access.jac`, `test_native_nested_unpack_targets.jac`).
+One family is known and open: a container whose element type differs from
+its destination only by `any`, or by tuple shape, is reinterpreted or rebuilt
+with the wrong element kind instead of converted. Kernel sources must not
+rely on it: give list, dict and tuple parameters their real element types.
+
+Other habits the kernel's sources must keep, each learned from a failure:
+integers are 64-bit and trap on overflow, so hashes and masks are computed in
+halves; an f-string must not contain a NUL; a helper table that mixes kinds
+of value (`dict[str, any]`) is read into a typed local before it is compared
+or indexed; recursion has no interpreter limit to stop it.
+
 ## Checkpoint: code generators in the kernel (#9615)
 
 The ES and JCIR generators, the per-module compile driver
@@ -35,9 +77,7 @@ error. A compile is one kernel run: the kernel asks the host for what it
 lacks (an import's resolution, a path's project, the interface of a Python or
 `jaclang` module) while it runs, and the host neither parses the program
 first nor runs the kernel again. The kernel hands a module back, rather than
-failing on it, in these cases: the module is placed in the native codespace
-(native code generation for a program, and the native stdlib modules it
-imports, are the host's until the native generator joins the kernel); it
+failing on it, in these cases: it
 imports another copy of the compiler package; it reaches a third-party Python
 module the host cannot describe as an interface; or its analysis overflows a
 64-bit integer (interval arithmetic over two 64-bit ranges), because the
