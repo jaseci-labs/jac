@@ -7,6 +7,11 @@ stuck-ContainerCreating branches already guard on fleet membership; these
 tests pin the same contract for the crash-loop branch, which shipped without
 it, while keeping companion crashes fatal.
 
+The crash-loop branch must also judge a container by its current state, not
+its lifetime restart count. A companion that restarted three times while its
+volume attached, and has been Ready since, is healthy; failing every later
+redeploy on that history is the defect the "old restarts" tests pin.
+
 The scanner takes its CoreV1 client as a parameter, so these drive a real
 KubernetesTarget with real kubernetes.client model objects; the only stand-in
 is a hand-rolled pod-list stub at the API boundary. No cluster, no mocks."""
@@ -35,7 +40,9 @@ obj PodListStub {
 }
 
 
-def _cs(name: str, restarts: int, waiting_reason: str = "") -> V1ContainerStatus {
+def _cs(
+    name: str, restarts: int, waiting_reason: str = "", ready: bool | None = None
+) -> V1ContainerStatus {
     waiting = V1ContainerStateWaiting(reason=waiting_reason)
         if waiting_reason
         else None;
@@ -43,7 +50,7 @@ def _cs(name: str, restarts: int, waiting_reason: str = "") -> V1ContainerStatus
         name=name,
         image="jaseci/jaclang:test",
         image_id="",
-        ready=(restarts == 0 and not waiting_reason),
+        ready=(restarts == 0 and not waiting_reason) if ready is None else ready,
         restart_count=restarts,
         state=V1ContainerState(waiting=waiting)
     );
@@ -165,6 +172,57 @@ test "a crash-looping companion (postgres) still fails the deploy" {
         f"a crashing companion went undetected: {scan['crash']}"
     );
     assert "standup-postgres" in scan["crash"];
+}
+
+
+test "a Ready companion with old restarts does not fail the deploy" {
+    postgres = _pod(
+        "standup-postgres-0",
+        "standup-postgres",
+        "Running",
+        [_cs("postgres", 3, ready=True)],
+        pth="7bd94b56c"
+    );
+    scan = _scan(_FLEET + [postgres]);
+    assert scan["crash"] == "" , (
+        f"a healthy companion failed on its restart history: {scan['crash']}"
+    );
+}
+
+
+test "a Ready fleet pod with old restarts does not fail the deploy" {
+    recovered = [
+        _pod(
+            "main-deployment-6874b99c85-dh4p8",
+            "main",
+            "Running",
+            [_cs("main", 4, ready=True)],
+            pth="6874b99c85"
+        ),
+        _FLEET[1]
+    ];
+    scan = _scan(recovered);
+    assert scan["crash"] == "" , (
+        f"a recovered fleet pod failed on its restart history: {scan['crash']}"
+    );
+}
+
+
+test "a companion between crash restarts still fails" {
+    # Running again after its third restart but not Ready: the kubelet has
+    # not put it back into CrashLoopBackOff yet, so there is no waiting
+    # reason. Not Ready is what makes it a crash loop now.
+    postgres = _pod(
+        "standup-postgres-0",
+        "standup-postgres",
+        "Running",
+        [_cs("postgres", 3, ready=False)],
+        pth="7bd94b56c"
+    );
+    scan = _scan(_FLEET + [postgres]);
+    assert "crash-looping" in scan["crash"] , (
+        f"a companion mid crash loop went undetected: {scan['crash']}"
+    );
 }
 
 
