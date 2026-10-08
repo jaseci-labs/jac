@@ -573,6 +573,19 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
+    if isinstance(nd, uni.SpecialVarRef) and nd.value == "root" {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="root",
+            help_text=(
+                "The native tier has no root node yet. Build the graph from a "
+                "node of your own, or keep this module on the server codespace."
+            )
+        );
+        return None;
+    }
     var_name = nd.value;
     _ct_owner = self._ct_type_param_owner(nd);
     if _ct_owner is not None {

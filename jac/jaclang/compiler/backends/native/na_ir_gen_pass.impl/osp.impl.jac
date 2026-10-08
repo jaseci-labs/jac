@@ -702,10 +702,31 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if self._osp_ensure_fn is not None {
         self.builder.call(self._osp_ensure_fn, []);
     }
+    refusals_before = len(self.ctx.errors_had);
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
     if (left is None) or (right is None) {
+        if len(self.ctx.errors_had) == refusals_before {
+            self.emit(
+                E5092, node_override=nd, kind="binary operator", name="ConnectOp"
+            );
+        }
         return None;
+    }
+    for (side, operand) in [(nd.left, left), (nd.right, right)] {
+        if self._spec_from_list_slot_type(operand.type) is not None {
+            self.emit(
+                E5092,
+                node_override=side,
+                kind="connect operand",
+                name="list",
+                help_text=(
+                    "Connecting to or from a list of nodes is not lowered yet; "
+                    "connect each node in a loop."
+                )
+            );
+            return None;
+        }
     }
     i64 = ir.IntType(64);
     dir_val = int(co.edge_dir.value);

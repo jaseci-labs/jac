@@ -87,3 +87,21 @@ test "a Root trigger does not match every node" {
     assert "['either', 'either', 'leaving', 'leaving'] ['either', 'leaving']"
         in out , out;
 }
+
+"""Two graph forms the native tier does not lower yet were accepted and did
+nothing: a statement naming `root` was dropped whole, and `hub ++> [a, b]`
+connected `hub` to the list object. A walker then stopped early and the
+program printed less than the Python tier, with no error. Both are refused
+by name until they are lowered."""
+test "graph forms the native tier cannot lower are refused, not dropped" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from tests.support { native_force_opts }
+    options = native_force_opts();
+    options.skip_native_engine = True;
+    options.no_ir_cache = True;
+    program = JacProgram();
+    program.compile(file_path=fixture("graph_forms_not_lowered.jac"), options=options);
+    refusals = [str(e) for e in program.errors_had];
+    assert any("'root'" in r for r in refusals) , refusals;
+    assert any("connect operand 'list'" in r for r in refusals) , refusals;
+}
