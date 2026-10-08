@@ -1,4 +1,4 @@
-import from _signal_native {
+import from ._signal_native {
     sig_install_fn,
     sig_install_addr,
     sig_kill_self,
@@ -6,7 +6,7 @@ import from _signal_native {
     sig_pause,
     sig_mask
 }
-import from _errno_native { last_errno, raise_errno }
+import from ._errno_native { last_errno, raise_errno }
 
 glob:pub SIGHUP: int = 1,
      SIGINT: int = 2,

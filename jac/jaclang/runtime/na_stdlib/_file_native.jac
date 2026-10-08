@@ -4,7 +4,7 @@ import from c { def ferror(stream: int) -> i32;  }
 import from c { def fclose(stream: int) -> i32;  }
 import from c { def fseek(stream: int, off: i64, whence: i32) -> i32;  }
 import from c { def ftell(stream: int) -> i64;  }
-import from _errno_native { last_errno, raise_os_error }
+import from ._errno_native { last_errno, raise_os_error }
 
 glob _SEEK_SET: int = 0,
      _SEEK_END: int = 2,

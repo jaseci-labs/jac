@@ -47,7 +47,7 @@ obj:pub ContextVar[T] {
     }
 }
 
-obj:pub ContextVarToken[T] {
+obj ContextVarToken[T] {
     has var: ContextVar[T],
         old_value: (T | None) = None,
         _had_value: bool = False,

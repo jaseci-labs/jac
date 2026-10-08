@@ -1,6 +1,6 @@
 import from c { def clock_gettime(clk: i32, ts: int) -> i32;  }
 import from c { def clock_settime(clk: i32, ts: int) -> i32;  }
-import from _errno_native { last_errno, raise_errno }
+import from ._errno_native { last_errno, raise_errno }
 
 glob NS_PER_SEC: int = 1000000000;
 

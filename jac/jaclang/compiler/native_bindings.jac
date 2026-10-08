@@ -78,6 +78,7 @@ obj NativeBinding {
         params: list[str] = [],
         variadic: bool = False,
         members: set[str] = set(),
+        fields: set[str] = set(),
         mismatches: list[str] = [];
 }
 
@@ -169,6 +170,16 @@ def _param_names(decl: Ability) -> tuple[list[str], bool] {
     return (names, variadic);
 }
 
+def _field_names(arch: Archetype) -> set[str] {
+    out: set[str] = set();
+    for stmt in (ModuleFacts.unwrap_body(arch) or []) {
+        for field in stmt.get_all_sub_nodes(HasVar) {
+            out.add(field.name.value);
+        }
+    }
+    return out;
+}
+
 def _member_names(arch: Archetype) -> set[str] {
     out: set[str] = set();
     body = ModuleFacts.unwrap_body(arch);
@@ -209,7 +220,8 @@ impl native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBin
                 name=stmt.name.value,
                 native_path=path,
                 decl=stmt,
-                members=_member_names(stmt)
+                members=_member_names(stmt),
+                fields=_field_names(stmt)
             );
         }
     }
@@ -445,10 +457,16 @@ impl conformance_mismatches(
                 )
             );
         } elif not want.extensible {
+            made = want.maker;
             for member in sorted(binding.members) {
                 if member.startswith("_")
                     or member in LIFECYCLE_MEMBERS
                     or member in want.members {
+                    continue;
+                }
+                if member in binding.fields
+                    and made is not None
+                    and (made.variadic or member in made.params) {
                     continue;
                 }
                 out.append(

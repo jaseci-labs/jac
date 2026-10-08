@@ -1,6 +1,6 @@
-import from _hex { to_hex }
-import from _typename { typename }
-import from _hashlib_native {
+import from ._hex { to_hex }
+import from ._typename { typename }
+import from ._hashlib_native {
     evp_md_for,
     digest_size_for,
     block_size_for,

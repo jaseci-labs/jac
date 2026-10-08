@@ -1,4 +1,4 @@
-import from _zlib_native {
+import from ._zlib_native {
     ZInflateResult,
     Z_STREAM_END,
     Z_MEM_ERROR,

@@ -1,5 +1,5 @@
 import struct;
-import from _passwd_layout { PASSWD_SIZE, PASSWD_DIR }
+import from ._passwd_layout { PASSWD_SIZE, PASSWD_DIR }
 import from c { def getuid -> u32;  }
 import from c {
     def getpwuid_r(

@@ -10,8 +10,8 @@ import from c {
 import from c { def freeaddrinfo(res: int) -> None;  }
 import from c { def gai_strerror(errcode: i32) -> str;  }
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
-import from _errno_native { errno_message }
-import from _socket_abi {
+import from ._errno_native { errno_message }
+import from ._socket_abi {
     ADDRINFO_ADDRLEN_OFFSET,
     ADDRINFO_ADDR_OFFSET,
     ADDRINFO_NEXT_OFFSET,

@@ -1,5 +1,5 @@
 import from socket { socket as Socket }
-import from _ssl_native {
+import from ._ssl_native {
     ctx_new_verifying,
     ctx_load_ca_file,
     ctx_load_default_ca,

@@ -1,4 +1,4 @@
-import from _math_native {
+import from ._math_native {
     m_acos,
     m_acosh,
     m_asin,
@@ -33,7 +33,7 @@ import from _math_native {
     m_tanh,
     m_trunc
 }
-import from _math_fused { fmadd }
+import from ._math_fused { fmadd }
 
 glob:pub pi: float = 3.141592653589793,
      e: float = 2.718281828459045,
