@@ -4,10 +4,13 @@ import from jaclang.project.config { JacConfig, ServeConfig }
 import from jaclang.server.settings { resolve_count }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.config.config_loader {
+    ADMIN_PASSWORD_ENV,
     GATEWAY_POD_KEYS,
+    SIGNING_SECRET_ENV,
     get_scale_config,
     normalize_gateway_config
 }
+import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
 import from jaclang.scale.runtime.fleet { FleetSpec, fleet_from_config, solo_fleet }
 import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV, DeployContext }
 import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
@@ -917,8 +920,7 @@ obj ManifestBuilder {
     }
 
     def _signing_secret -> str {
-        import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
-        configured = str(self.secrets.get("JAC_SERVE_AUTH_SECRET") or "").strip();
+        configured = str(self.secrets.get(SIGNING_SECRET_ENV) or "").strip();
         if configured {
             return configured;
         }
@@ -1166,7 +1168,13 @@ obj ManifestBuilder {
 
     def _build_user_secret_manifest -> dict[str, any] | None {
         data: dict[str, str] = {k: str(v) for (k, v) in self.secrets.items()};
-        data["JAC_SERVE_AUTH_SECRET"] = self._signing_secret();
+        data[SIGNING_SECRET_ENV] = self._signing_secret();
+        admin = get_scale_config().get_admin_config();
+        if admin.get('enabled', True)
+            and not admin.get('default_password')
+            and ADMIN_PASSWORD_ENV not in data {
+            data[ADMIN_PASSWORD_ENV] = PLACEHOLDER_JWT_SECRET;
+        }
         return {
             "apiVersion": "v1",
             "kind": "Secret",

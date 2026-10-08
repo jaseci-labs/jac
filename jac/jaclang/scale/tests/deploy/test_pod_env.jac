@@ -15,7 +15,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     create_k8s_secret,
-    resolve_signing_secret
+    resolve_minted_secret
 }
 import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
 import from kubernetes.client.exceptions { ApiException }
@@ -1253,7 +1253,9 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
         if isinstance(expected, type) {
             raised = False;
             try {
-                resolve_signing_secret(api, "ns", "app-secrets", data);
+                resolve_minted_secret(
+                    api, "ns", "app-secrets", data, "JAC_SERVE_AUTH_SECRET"
+                );
                 create_k8s_secret(api, "ns", "app-secrets", data);
             } except expected {
                 raised = True;
@@ -1266,7 +1268,10 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
             );
             continue;
         }
-        assert resolve_signing_secret(api, "ns", "app-secrets", data) == minted , label;
+        assert resolve_minted_secret(
+            api, "ns", "app-secrets", data, "JAC_SERVE_AUTH_SECRET"
+        )
+            == minted , label;
         revision = create_k8s_secret(api, "ns", "app-secrets", data);
 
         if expected is None {
@@ -1284,14 +1289,26 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
         assert api.created == [];
     }
 
-    rendered = ManifestBuilder(
-        k8s_config=KubernetesConfig(app_name="app", namespace="ns")
-    )._build_user_secret_manifest()["stringData"];
+    with mock.patch.dict(os.environ) {
+        os.environ.pop("JAC_SCALE_ADMIN_PASSWORD", None);
+        rendered = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+        )._build_user_secret_manifest()["stringData"];
+    }
     assert rendered["JAC_SERVE_AUTH_SECRET"] == PLACEHOLDER_JWT_SECRET , (
         "a rendered manifest must never carry a random value the apply will not use"
     );
     first = _FakeSecrets();
-    assert resolve_signing_secret(first, "ns", "app-secrets", rendered);
+    assert resolve_minted_secret(
+        first, "ns", "app-secrets", rendered, "JAC_SERVE_AUTH_SECRET"
+    );
+    assert rendered["JAC_SCALE_ADMIN_PASSWORD"] == PLACEHOLDER_JWT_SECRET , (
+        "with no admin password configured the deploy mints one, like the signing secret"
+    );
+    assert resolve_minted_secret(
+        first, "ns", "app-secrets", rendered, "JAC_SCALE_ADMIN_PASSWORD"
+    );
+    assert rendered["JAC_SCALE_ADMIN_PASSWORD"] not in ("", PLACEHOLDER_JWT_SECRET);
     assert rendered["JAC_SERVE_AUTH_SECRET"] not in ("", PLACEHOLDER_JWT_SECRET) , "a first deploy mints a real secret";
 }
 

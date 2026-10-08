@@ -17,7 +17,7 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     get_cluster_provider,
     namespace_is_owned,
     privileged_pss_labels,
-    resolve_signing_secret,
+    resolve_minted_secret,
     PSS_ENFORCE_LABEL,
     _resolve_current_rs_hashes,
     _refresh_rs_hashes
@@ -50,14 +50,25 @@ import from jaclang.scale.runtime.context.service_routing {
     resolve_interceptor_service_address
 }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
-import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.config.config_loader {
+    ADMIN_PASSWORD_ENV,
+    SIGNING_SECRET_ENV,
+    get_scale_config
+}
 import from jaclang.scale.injector.pvc_injector {
     bundle_keys_from_pod_spec,
     bundle_pvc_name
 }
 import from jaclang.scale.runtime.fleet { FleetSpec }
 
-glob logger = logging.getLogger(__name__),
+glob MINTED_SECRET_NOTES: dict[str, str] = {
+         SIGNING_SECRET_ENV: "Minted a JWT signing secret, kept across redeploys. Set "
+         "[scale.secrets] JAC_SERVE_AUTH_SECRET to control it yourself.",
+         ADMIN_PASSWORD_ENV: "Minted the bootstrap admin password into the app Secret "
+         "as JAC_SCALE_ADMIN_PASSWORD, kept across redeploys. Set [scale.admin] "
+         "default_password to control it yourself."
+     },
+     logger = logging.getLogger(__name__),
      REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision",
      FLEET_SELECTOR: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
 
@@ -1152,17 +1163,17 @@ obj KubernetesTarget(KubernetesTargetBase) {
         config_revision: str = "";
         user_secret = bundle.get("user_secret");
         if user_secret {
-            if resolve_signing_secret(
-                core_v1,
-                namespace,
-                user_secret["metadata"]["name"],
-                user_secret["stringData"]
-            )
-                and self.logger {
-                self.logger.info(
-                    "Minted a JWT signing secret, kept across redeploys. Set "
-                    "[scale.secrets] JAC_SERVE_AUTH_SECRET to control it yourself."
-                );
+            for (key, minted_note) in MINTED_SECRET_NOTES.items() {
+                if resolve_minted_secret(
+                    core_v1,
+                    namespace,
+                    user_secret["metadata"]["name"],
+                    user_secret["stringData"],
+                    key
+                )
+                    and self.logger {
+                    self.logger.info(minted_note);
+                }
             }
             config_revision = create_k8s_secret(
                 core_v1,

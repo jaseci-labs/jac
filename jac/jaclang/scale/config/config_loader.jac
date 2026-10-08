@@ -8,6 +8,7 @@ import from jaclang.scale.config.firebase_env {
 import os;
 
 glob ADMIN_PASSWORD_ENV: str = "JAC_SCALE_ADMIN_PASSWORD",
+     SIGNING_SECRET_ENV: str = "JAC_SERVE_AUTH_SECRET",
      APP_SCALE_KEYS: tuple[str, ...] = (
          "rpc_timeout",
          "http_forward_timeout",

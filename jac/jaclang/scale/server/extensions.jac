@@ -1,6 +1,7 @@
 import base64;
 import hmac;
 import logging;
+import os;
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 import from jaclang.server.serving.drain { HEALTH_PATHS }
@@ -14,7 +15,8 @@ import from jaclang.scale.admin.ops { JacAPIServerOps }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
 import from jaclang.scale.admin.traces { JacAPIServerTraces }
 import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
-import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.config.config_loader { ADMIN_PASSWORD_ENV, get_scale_config }
+import from jaclang.server.identity.policy { check_password }
 import from jaclang.scale.emailer.emailer { Emailer }
 import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale.server.jobs_ext { JobsExtension }
@@ -321,6 +323,23 @@ obj EventsExtension(ServerExtension) {
 
 
 obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
+    def validate(server: JacAPIServer) -> list[str] {
+        admin = get_scale_config().get_admin_config();
+        password = str(admin.get('default_password') or '');
+        if not admin.get('enabled', True)
+            or not password
+            or os.environ.get(ADMIN_PASSWORD_ENV) {
+            return [];
+        }
+        violations = check_password(password, [str(admin.get('username') or '')]);
+        return [
+            "[scale.admin] default_password does not meet [serve.auth.password]: "
+                + ', '.join([v.value for v in violations])
+        ]
+            if violations
+            else [];
+    }
+
     def register(server: JacAPIServer) -> None {
         if not get_scale_config().get_admin_config().get('enabled', True) {
             return;
