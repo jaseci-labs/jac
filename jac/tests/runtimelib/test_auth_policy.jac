@@ -250,6 +250,8 @@ test "the identifier setups accept and refuse the right registrations" {
         assert codes(check_identifiers([email])) == [];
         assert codes(check_identifiers([username, email])) == [];
         assert codes(check_username('victim@corp.example')) == ['USERNAME_INVALID'];
+        assert codes(check_identifiers([{'type': 'login_with', 'value': 'x'}]))
+            == ['IDENTIFIER_NOT_ALLOWED'];
 
         configure_identity(
             AuthSettings(identifiers=IdentifierSettings(username='required')), ''

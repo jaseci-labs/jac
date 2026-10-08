@@ -101,7 +101,8 @@ def check_email(value: str) -> list[Violation] {
 
 
 def check_identity(kind: str, value: str) -> list[Violation] {
-    if getattr(auth_settings().identifiers, kind, 'off') == 'off' {
+    if kind not in IDENTIFIER_KINDS
+        or getattr(auth_settings().identifiers, kind) == 'off' {
         return [Violation.IDENTIFIER_NOT_ALLOWED];
     }
     return check_username(value) if kind == 'username' else check_email(value);
