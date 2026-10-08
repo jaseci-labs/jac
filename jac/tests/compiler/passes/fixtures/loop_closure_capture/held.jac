@@ -1,19 +1,11 @@
-"""Fixture: closures that outlive their iteration and capture a binding the loop reassigns.
+"""Fixture: closures the loop provably keeps past the iteration that created them.
 
-Every function below holds exactly one shape that must be reported
-(E2097). The captured names are unique so the test can name each case:
-forLocal, typedLocal, whileLocal, stepIdx, defLocal, leftPart, rightPart,
-walrusVal, rowSum, seed, deepVal, runTotal, dictKey, regVal, namedVal,
-yieldVal, mapOuter, facVal, implLocal, methodVal, entryLocal.
+Every function below holds one shape that must be an error (E2097): the
+closure is stored in a container, a field or a subscript that outlives the
+iteration, is yielded, or is captured by a closure that is. No opaque call
+stands between the closure and the place that keeps it. The captured names
+are unique so the test can name each case.
 """
-
-obj Registry {
-    has handlers: list[Callable[[], int]] = [];
-
-    def add(fn: Callable[[], int]) {
-        self.handlers.append(fn);
-    }
-}
 
 def for_body_local(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
@@ -133,13 +125,6 @@ def stored_in_dict(names: list[str]) -> dict[str, Callable[[], str]] {
     return table;
 }
 
-def passed_to_a_callee(reg: Registry, xs: list[int]) {
-    for x in xs {
-        regVal = x;
-        reg.add(lambda -> int { return regVal; });
-    }
-}
-
 def named_then_stored(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
     for x in xs {
@@ -155,23 +140,6 @@ def yielded(xs: list[int]) -> Generator[Callable[[], int], None, None] {
         yieldVal = x;
         yield lambda -> int { return yieldVal; };
     }
-}
-
-def created_inside_a_combinator(xs: list[int]) -> list[Callable[[], int]] {
-    out: list[Callable[[], int]] = [];
-    for x in xs {
-        mapOuter = x;
-        out.extend(
-            list(
-                map(
-                    lambda (v: int) -> Callable[[], int] { return lambda -> int { return v
-                        + mapOuter; }; },
-                    xs
-                )
-            )
-        );
-    }
-    return out;
 }
 
 def parameterless_factory(xs: list[int]) -> list[Callable[[], int]] {
@@ -208,6 +176,86 @@ obj Board {
         }
         return out;
     }
+}
+
+obj Watcher {
+    has on_done: Callable[[], int] | None = None,
+        seen: set[Callable[[], int]] = set();
+
+    def watch(xs: list[int]) {
+        for x in xs {
+            fieldVal = x + 1;
+            self.on_done = lambda -> int { return fieldVal; };
+        }
+    }
+
+    def collect(xs: list[int]) {
+        for x in xs {
+            setVal = x + 1;
+            self.seen.add(lambda -> int { return setVal; });
+        }
+    }
+}
+
+def inside_a_stored_literal(names: list[str]) -> dict[str, dict[str, Callable[[], str]]] {
+    table: dict[str, dict[str, Callable[[], str]]] = {};
+    for nm in names {
+        literalVal = nm.upper();
+        table[nm] = {"run": lambda -> str { return literalVal; }};
+    }
+    return table;
+}
+
+def carried_by_rebinding(xs: list[int]) -> list[Callable[[], int]] {
+    rows: list[Callable[[], int]] = [];
+    for x in xs {
+        carriedVal = x * 2;
+        rows = rows + [lambda -> int { return carriedVal; }];
+    }
+    return rows;
+}
+
+def carried_by_augmented_assignment(xs: list[int]) -> list[Callable[[], int]] {
+    acc: list[Callable[[], int]] = [];
+    for x in xs {
+        augVal = x * 2;
+        acc += [lambda -> int { return augVal; }];
+    }
+    return acc;
+}
+
+def extended_and_inserted(xs: list[int]) -> list[Callable[[], int]] {
+    out: list[Callable[[], int]] = [];
+    for x in xs {
+        extendVal = x * 2;
+        out.extend([lambda -> int { return extendVal; }]);
+        insertVal = x * 3;
+        out.insert(0, lambda -> int { return insertVal; });
+    }
+    return out;
+}
+
+def captured_by_a_kept_closure(xs: list[int]) -> list[Callable[[], int]] {
+    out: list[Callable[[], int]] = [];
+    for x in xs {
+        viaVal = x + 1;
+        def helper -> int {
+            return viaVal;
+        }
+        out.append(lambda -> int { return helper(); });
+    }
+    return out;
+}
+
+def kept_through_a_fresh_list(xs: list[int]) -> list[list[Callable[[], int]]] {
+    out: list[list[Callable[[], int]]] = [];
+    for x in xs {
+        freshVal = x + 1;
+        batch: list[Callable[[], int]] = [];
+        batch.append(lambda -> int { return freshVal; });
+        out.append(batch);
+    }
+    return out;
 }
 
 glob entryHandlers: list[Callable[[], int]] = [];

@@ -1,4 +1,4 @@
-"""Fixture: closures in loops that must stay silent (no E2097).
+"""Fixture: closures in loops that must stay silent (no E2097, no W2084).
 
 Each function is one exemption or one binding the loop does not share:
 the closure cannot outlive its iteration, the name is not free in it, the
@@ -158,6 +158,41 @@ def closure_in_the_collection(xs: list[int]) -> int {
         collVal = x;
     }
     return collVal;
+}
+
+def named_callback_of_a_combinator(xs: list[int]) -> list[list[int]] {
+    out: list[list[int]] = [];
+    for x in xs {
+        scaleVal = x;
+        def scaled(v: int) -> int {
+            return v * scaleVal;
+        }
+        out.append(list(map(scaled, xs)));
+    }
+    return out;
+}
+
+def fresh_list_used_in_its_iteration(xs: list[int]) -> int {
+    total = 0;
+    for x in xs {
+        localVal = x;
+        batch = [lambda -> int { return localVal; }];
+        total += batch[0]();
+    }
+    return total;
+}
+
+def kept_only_after_the_loop(xs: list[int]) -> list[Callable[[], int]] {
+    out: list[Callable[[], int]] = [];
+    last: Callable[[], int] | None = None;
+    for x in xs {
+        tailVal = x;
+        last = lambda -> int { return tailVal; };
+    }
+    if last is not None {
+        out.append(last);
+    }
+    return out;
 }
 
 def declared_global(xs: list[int]) -> list[Callable[[], int]] {

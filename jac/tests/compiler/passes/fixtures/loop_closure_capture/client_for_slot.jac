@@ -1,9 +1,15 @@
 """Fixture: per-item handlers built in a JSX `for` slot (issue #8168).
 
 A local assigned in a loop body is owned by the enclosing component, so
-every handler the loop creates over it shares one binding. Reported
-(E2097): slotId, annId, picked, sectionId. Everything else must stay
-silent: a lambda-body local (mapId), a value bound through a parameter
+every handler the loop creates over it shares one binding.
+
+Errors (E2097), the handler is stored in the element: slotId, annId,
+picked, sectionId, namedId, spreadId.
+
+Warnings (W2084), the handler goes through a call first: wrappedId,
+propsId.
+
+Silent: a lambda-body local (mapId), a value bound through a parameter
 (facId), the loop target (t), and a callback an array combinator runs
 before the iteration ends (groupId).
 """
@@ -94,4 +100,44 @@ def:pub Groups(
                 </ul>;
             }}
         </div>;
+}
+
+def:pub Kept(items: any, pick: Callable[[str], None]) -> JsxElement {
+    return
+        <ul>
+            {for it in items {
+                namedId = str(it.id);
+                def choose {
+                    pick(namedId);
+                }
+                <li key={namedId} onClick={choose}>{namedId}</li>;
+            }}
+            {for it in items {
+                spreadId = str(it.id);
+                attrs = {"onClick": lambda { pick(spreadId); }};
+                <li key={spreadId} {...attrs}>{spreadId}</li>;
+            }}
+        </ul>;
+}
+
+def:pub PassedOn(
+    items: any,
+    pick: Callable[[str], None],
+    debounce: Callable[[Callable[[], None]], Callable[[], None]],
+    row: Callable[[dict[str, any]], JsxElement]
+) -> JsxElement {
+    return
+        <ul>
+            {for it in items {
+                wrappedId = str(it.id);
+                <li key={wrappedId} onClick={debounce(lambda { pick(wrappedId); })}>
+                    {wrappedId}
+                </li>;
+            }}
+            {for it in items {
+                propsId = str(it.id);
+                cell = row({"onPick": lambda { pick(propsId); }});
+                <li key={propsId}>{cell}</li>;
+            }}
+        </ul>;
 }
