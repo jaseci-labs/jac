@@ -5,6 +5,13 @@ import from jaclang.jac0core.ext_registry { base_stem }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.client.compiler { ViteCompiler }
 
+obj ModuleIndex {
+    has size: tuple[int, int],
+        names: dict[str, str] = {},
+        packages: set[str] = set(),
+        sources: dict[str, str] = {};
+}
+
 obj PreparedApplication {
     has `root: str,
         `entry: str,
@@ -23,7 +30,8 @@ obj PreparedApplication {
         services: tuple[str, ...] = (),
         dev: bool = True,
         client_dist: str = "",
-        applications: list[PreparedApplication] = [];
+        applications: list[PreparedApplication] = [],
+        index: ModuleIndex | None = None;
 }
 
 glob _applications: dict[str, PreparedApplication] = {};
@@ -219,14 +227,46 @@ def ensure_namespace(application: PreparedApplication, name: str = '') -> str {
     return name;
 }
 
-def qualified_module(path: str, application: PreparedApplication) -> str {
+def relative_module(path: str, application: PreparedApplication) -> str {
     relative = os.path.relpath(os.path.dirname(path), application.root);
     stem = base_stem(path);
     parts = [] if relative == '.' else relative.split(os.sep);
     if stem != '__init__' {
         parts.append(stem);
     }
-    return '.'.join([application_namespace(application), *parts]);
+    return '.'.join(parts);
+}
+
+def qualified_module(path: str, application: PreparedApplication) -> str {
+    relative = relative_module(path, application);
+    namespace = application_namespace(application);
+    return f'{namespace}.{relative}' if relative else namespace;
+}
+
+def module_index(application: PreparedApplication) -> ModuleIndex {
+    size = (len(application.code), len(application.origins));
+    index = application.index;
+    if index is not None and index.size == size {
+        return index;
+    }
+    index = ModuleIndex(size);
+    for source in application.code {
+        index.names.setdefault(relative_module(source, application), source);
+        directory = os.path.dirname(source);
+        while directory not in index.packages {
+            index.packages.add(directory);
+            parent = os.path.dirname(directory);
+            if parent == directory {
+                break;
+            }
+            directory = parent;
+        }
+    }
+    for (path, origin) in application.origins.items() {
+        index.sources.setdefault(origin, path);
+    }
+    application.index = index;
+    return index;
 }
 
 def import_prepared(path: str, application: PreparedApplication) -> types.ModuleType {
@@ -290,7 +330,7 @@ def module_builtins(application: PreparedApplication, source: str) -> dict[str, 
             local = any(
                 candidate + suffix in selected.code for suffix in ('.jac', '.py')
             )
-                or any(p.startswith(candidate + os.sep) for p in selected.code);
+                or candidate in module_index(selected).packages;
             if not local {
                 continue;
             }
@@ -380,10 +420,6 @@ def origin_for_source(path: str) -> str {
 }
 
 def source_for_origin(application: PreparedApplication, origin: str) -> str {
-    for (path, original) in application.origins.items() {
-        if original == origin {
-            return path;
-        }
-    }
-    return os.path.realpath(os.path.join(application.root, origin));
+    source = module_index(application).sources.get(origin);
+    return source or os.path.realpath(os.path.join(application.root, origin));
 }

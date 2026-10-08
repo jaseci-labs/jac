@@ -1,3 +1,18 @@
+def _layout_data_fields(layout: dict[str, any]) -> list[tuple[int, ir.Type]] {
+    fields: list[tuple[int, ir.Type]] = layout["data_fields"];
+    return fields;
+}
+
+def _layout_elem_kinds(layout: dict[str, any]) -> list[str] {
+    kinds: list[str] = layout["elem_kinds"];
+    return kinds;
+}
+
+def _layout_index(layout: dict[str, any], key: str) -> int {
+    index: int = layout[key];
+    return index;
+}
+
 impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
     if self._str_desc_ty is not None and elem_type == self._str_desc_ty {
         return "str";
@@ -200,7 +215,10 @@ impl NaIRGenPass._emit_elem_slot_drop(
     i32 = ir.IntType(32);
     _slot_p = b.gep(
         cont,
-        [ir.Constant(i32, 0), ir.Constant(i32, layout["drop_base"] + data_index)],
+        [
+            ir.Constant(i32, 0),
+            ir.Constant(i32, _layout_index(layout, "drop_base") + data_index)
+        ],
         name="eslot.p"
     );
     _slot = b.load(_slot_p, name="eslot");
@@ -404,18 +422,20 @@ impl NaIRGenPass._emit_spread_copy(
 impl NaIRGenPass._container_managed_fields(
     layout: dict[str, any]
 ) -> list[tuple[int, ir.Type, str]] {
-    _kinds = layout["elem_kinds"];
-    return [
-        (fi, dt, _kinds[_j])
-        for (_j, (fi, dt)) in enumerate(layout["data_fields"])
-        if _kinds[_j] != "raw"
-    ];
+    _kinds = _layout_elem_kinds(layout);
+    _managed: list[tuple[int, ir.Type, str]] = [];
+    for (_j, _fpair) in enumerate(_layout_data_fields(layout)) {
+        if _kinds[_j] != "raw" {
+            _managed.append((_fpair[0], _fpair[1], _kinds[_j]));
+        }
+    }
+    return _managed;
 }
 
 impl NaIRGenPass._container_struct_fields(layout: dict[str, any]) -> list[ir.Type] {
     i64 = ir.IntType(64);
     _fields: list[ir.Type] = [i64, i64];
-    for (_, _dt) in layout["data_fields"] {
+    for (_, _dt) in _layout_data_fields(layout) {
         _fields.append(_dt.as_pointer());
     }
     if layout["kind"] == "hash" {
@@ -424,7 +444,7 @@ impl NaIRGenPass._container_struct_fields(layout: dict[str, any]) -> list[ir.Typ
         _fields.append(i64.as_pointer());
     }
     if self._gc_mode() == "none" {
-        for _ in range(len(layout["data_fields"])) {
+        for _ in range(len(_layout_data_fields(layout))) {
             _fields.append(self._nogc_elem_drop_slot_ty());
         }
     }
@@ -437,7 +457,7 @@ impl NaIRGenPass._emit_live_slot_loop(
     cont: ir.Value,
     layout: dict[str, any],
     tag: str,
-    body_cb: Callable[..., ir.IRBuilder],
+    body_cb: Callable[[ir.IRBuilder, ir.Value, list[ir.Value]], ir.IRBuilder],
     fields: (list[tuple[int, ir.Type]] | None) = None,
     reverse: bool = False
 ) -> ir.IRBuilder {
@@ -446,8 +466,10 @@ impl NaIRGenPass._emit_live_slot_loop(
     i64 = ir.IntType(64);
     _is_hash = layout["kind"] == "hash";
     _reverse = reverse and not _is_hash;
-    _fields = fields if fields is not None else layout["data_fields"];
-    _arrs = [];
+    _fields: list[tuple[int, ir.Type]] = fields
+        if fields is not None
+        else _layout_data_fields(layout);
+    _arrs: list[ir.Value] = [];
     for (_fi, _) in _fields {
         _arrs.append(
             b.load(
@@ -469,7 +491,7 @@ impl NaIRGenPass._emit_live_slot_loop(
         ),
         name=f"{tag}.bound"
     );
-    _ctrl = None;
+    _ctrl: (ir.Value | None) = None;
     if _is_hash {
         _ctrl = b.load(
             b.gep(
@@ -489,12 +511,13 @@ impl NaIRGenPass._emit_live_slot_loop(
     b.branch(_cond_bb);
     bc = ir.IRBuilder(_cond_bb);
     _i = bc.load(_iv, name=f"{tag}.iv");
-    if _is_hash {
+    if _is_hash and _ctrl is not None {
         _chk_bb = fn.append_basic_block(f"{tag}.chk");
         bc.cbranch(
             bc.icmp_unsigned(">=", _i, _bound, name=f"{tag}.done"), _end_bb, _chk_bb
         );
         bk = ir.IRBuilder(_chk_bb);
+        assert _ctrl is not None;
         _cb = bk.load(bk.gep(_ctrl, [_i], name=f"{tag}.cb.p"), name=f"{tag}.cb");
         bk.cbranch(
             bk.icmp_unsigned(">=", _cb, ir.Constant(i8, 0x80), name=f"{tag}.occ"),
@@ -514,7 +537,7 @@ impl NaIRGenPass._emit_live_slot_loop(
     if _reverse {
         _i = bl.sub(_i, ir.Constant(i64, 1), name=f"{tag}.index");
     }
-    _elem_ptrs = [
+    _elem_ptrs: list[ir.Value] = [
         bl.gep(_arr, [_i], name=f"{tag}.e{_k}.p") for (_k, _arr) in enumerate(_arrs)
     ];
     bl = body_cb(bl, _i, _elem_ptrs);
@@ -531,7 +554,7 @@ impl NaIRGenPass._emit_container_new_fn(
     fn_name: str,
     container_ptr_type: ir.Type,
     layout: dict[str, any],
-    dtor_fn: object = None
+    dtor_fn: (ir.Function | None) = None
 ) -> ir.Function {
     new_fnty = ir.FunctionType(container_ptr_type, []);
     new_fn = ir.Function(self.llvm_module, new_fnty, name=fn_name);
@@ -546,13 +569,11 @@ impl NaIRGenPass._emit_container_new_fn(
     if self._gc_mode() == "none" {
         _i32_nz = ir.IntType(32);
         _slot_ty_nz = self._nogc_elem_drop_slot_ty();
-        for _j in range(len(layout["data_fields"])) {
+        _drop_base_nz = _layout_index(layout, "drop_base");
+        for _j in range(len(_layout_data_fields(layout))) {
             _slot_p_nz = b.gep(
                 container_ptr,
-                [
-                    ir.Constant(_i32_nz, 0),
-                    ir.Constant(_i32_nz, layout["drop_base"] + _j)
-                ],
+                [ir.Constant(_i32_nz, 0), ir.Constant(_i32_nz, _drop_base_nz + _j)],
                 name=f"edrop{_j}.init"
             );
             b.store(ir.Constant(_slot_ty_nz, None), _slot_p_nz);
@@ -563,7 +584,7 @@ impl NaIRGenPass._emit_container_new_fn(
         dtor_fn = None;
     }
     if dtor_fn is not None and self.rc_set_type_fn is not None {
-        _dtor_name: str = dtor_fn?.name or str(dtor_fn);
+        _dtor_name: str = dtor_fn.name;
         _type_name = _dtor_name[len("__rc_release_"):]
             if _dtor_name.startswith("__rc_release_")
             else "container";
@@ -600,11 +621,11 @@ impl NaIRGenPass._emit_container_new_fn(
     return new_fn;
 }
 
-impl NaIRGenPass._container_type_name(dtor_fn: object) -> str {
+impl NaIRGenPass._container_type_name(dtor_fn: (ir.Function | None)) -> str {
     if dtor_fn is None {
         return "container";
     }
-    _dtor_name: str = dtor_fn?.name or str(dtor_fn);
+    _dtor_name: str = dtor_fn.name;
     if _dtor_name.startswith("__rc_release_") {
         return _dtor_name[len("__rc_release_"):];
     }
@@ -746,7 +767,7 @@ impl NaIRGenPass._emit_container_release_fn(
         b.branch(post_elems_bb);
         b = ir.IRBuilder(post_elems_bb);
     }
-    for (field_idx, _) in layout["data_fields"] {
+    for (field_idx, _) in _layout_data_fields(layout) {
         data_p = b.gep(
             cont_arg,
             [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
@@ -944,7 +965,7 @@ impl NaIRGenPass._emit_rc_alloc_container(
     container_ptr_type: ir.Type,
     layout: dict[str, any],
     initial_cap: int = 8
-) -> tuple[ir.Value, ...] {
+) -> list[ir.Value] {
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
@@ -970,14 +991,12 @@ impl NaIRGenPass._emit_rc_alloc_container(
     );
     b.store(ir.Constant(i64, initial_cap), cap_p);
 
-    data_ptrs = [];
-    for (i, fpair) in enumerate(layout["data_fields"]) {
+    data_ptrs: list[ir.Value] = [container_ptr];
+    for (i, fpair) in enumerate(_layout_data_fields(layout)) {
         (field_idx, dtype) = fpair;
-        data: any = None;
-        if initial_cap == 0 {
-            data = ir.Constant(dtype.as_pointer(), None);
-        } else {
-            elem_null = ir.Constant(dtype.as_pointer(), None);
+        elem_null = ir.Constant(dtype.as_pointer(), None);
+        data: ir.Value = elem_null;
+        if initial_cap != 0 {
             elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name=f"elem{i}.sizeof");
             elem_size = b.ptrtoint(elem_gep, i64, name=f"elem{i}.size");
             data_bytes = b.mul(
@@ -995,10 +1014,8 @@ impl NaIRGenPass._emit_rc_alloc_container(
         data_ptrs.append(data);
     }
     if layout["kind"] == "hash" {
-        _ctrl0: any = None;
-        if initial_cap == 0 {
-            _ctrl0 = ir.Constant(i8_ptr, None);
-        } else {
+        _ctrl0: ir.Value = ir.Constant(i8_ptr, None);
+        if initial_cap != 0 {
             calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
             _ctrl0 = b.call(
                 calloc_fn,
@@ -1035,7 +1052,7 @@ impl NaIRGenPass._emit_rc_alloc_container(
             )
         );
     }
-    return tuple([container_ptr] + data_ptrs);
+    return data_ptrs;
 }
 
 impl NaIRGenPass._emit_grow_array(

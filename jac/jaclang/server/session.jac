@@ -13,7 +13,7 @@ import from jaclang.data.dbcatalog {
     stop_heartbeat
 }
 import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
+import from jaclang.runtime.exceptions { ReadOnlyRetry, TransactionLost, WriteConflict }
 import from jaclang.data.store { AnchorRow, ConnInfo, PgStore, Store, TxnIsolation }
 
 glob logger = logging.getLogger(__name__),
@@ -131,12 +131,55 @@ def retention_days_for(base_path: (str | None)) -> int;
 def runtime_for_base(base_path: str, target_path: (str | None) = None) -> RuntimeLease;
 
 
+obj RowState {
+    has hash: int,
+        version: int;
+}
+
+
+obj TxnWrites {
+    has upserted: list[UUID],
+        removed: list[UUID],
+        joined: bool = False;
+}
+
+
+obj UnflushedAnchor {
+    has anchor: Anchor,
+        stored: (dict[str, object] | None),
+        hash: int;
+}
+
+
+obj RowLedger {
+    has _committed: dict[UUID, RowState] postinit,
+        _upserted: dict[UUID, RowState] postinit,
+        _removed: set[UUID] postinit,
+        _joined: bool postinit,
+        rollbacks: int = 0;
+
+    def postinit -> None;
+    def current(id: UUID) -> (RowState | None);
+    def write_version(id: UUID) -> int;
+    def loaded(id: UUID, state: RowState) -> None;
+    def upserted(id: UUID, state: RowState) -> None;
+    def removed(id: UUID) -> None;
+    def joined -> None;
+    def forget(id: UUID) -> None;
+    def in_flight -> bool;
+    def promote -> None;
+    def discard -> TxnWrites;
+    def clear -> None;
+    def _reset -> None;
+}
+
+
 obj Session(Memory) {
     has _store: (Store | None) = None,
         _data_location: (str | None) = None,
         _lease: (RuntimeLease | None) = None,
-        _flushed_hash: dict[UUID, int] postinit,
-        _txn_changed: set[UUID] postinit,
+        _rows: RowLedger postinit,
+        _lost: bool postinit,
         _fetch_count: int postinit,
         _active_units: int postinit,
         _flushing: (int | None) postinit,
@@ -144,7 +187,6 @@ obj Session(Memory) {
         _ro_units: int postinit,
         _unit_stack: list[tuple[(str | None), bool]] postinit,
         _snapshot_reads: set[UUID] postinit,
-        _version_seen: dict[UUID, int] postinit,
         _foreign_refs: set[UUID] postinit;
 
     override def new_session(target_path: str) -> Session {
@@ -205,10 +247,14 @@ obj Session(Memory) {
     def read_scope_exit -> None;
     def flush(full: bool = False) -> None;
     def _flush_locked(full: bool) -> None;
+    def _unflushed(full: bool) -> list[UnflushedAnchor];
     def ensure_writable_txn -> None;
     def read_barrier -> None;
-    def _recover_conflict -> None;
-    def _rollback_quiet -> None;
+    def _begin_writable -> None;
+    def _commit_txn -> None;
+    def _rollback_txn -> None;
+    def _replay_txn(cause: Exception, exhausted: bool = False) -> None;
+    def _reclaim_dead_txn -> None;
     def _ensure_txn -> None;
     def _txn_isolation -> TxnIsolation;
     def _register_ro_writers -> str;
@@ -216,6 +262,9 @@ obj Session(Memory) {
     def _drop_snapshot_reads -> None;
     def _materialize(row: AnchorRow) -> (Anchor | None);
     def _load_edges(nd: NodeAnchor) -> list[EdgeAnchor];
-    def _serialize(anchor: Anchor, props: (any | None) = None) -> AnchorRow;
-    def _evict_uncommitted -> None;
+    def _serialize(
+        anchor: Anchor, stored: (dict[str, object] | None) = None
+    ) -> AnchorRow;
+
+    def _forget_loaded -> None;
 }

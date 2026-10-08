@@ -107,7 +107,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
-    seen: set = {arch_name};
+    seen: set[str] = {arch_name};
     queue: list[uni.Expr] = list(arch.base_classes or []);
     while queue {
         base_expr = queue.pop(0);
@@ -132,7 +132,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
             continue;
         }
         if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
-            for stmt in (base_arch.body or []) {
+            for stmt in (ModuleFacts.unwrap_body(base_arch) or []) {
                 if isinstance(stmt, uni.Ability)
                     and stmt.name_ref is not None
                     and stmt.name_ref.sym_name in ("postinit", "__post_init__") {
@@ -187,7 +187,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
-    seen: set = {arch_name};
+    seen: set[str] = {arch_name};
     queue: list[uni.Expr] = list(arch.base_classes or []);
     while queue {
         base_expr = queue.pop(0);
@@ -213,7 +213,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
         }
 
         if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
-            for stmt in (base_arch.body or []) {
+            for stmt in (ModuleFacts.unwrap_body(base_arch) or []) {
                 if not isinstance(stmt, uni.Ability) {
                     continue;
                 }
@@ -802,7 +802,7 @@ impl NaIRGenPass._pyb_build_args(
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     pos: list[uni.Expr] = [];
-    kwp: list[any] = [];
+    kwp: list[uni.KWPair] = [];
     for p in (params or []) {
         if isinstance(p, uni.KWPair) {
             if p.key is None {
@@ -829,16 +829,18 @@ impl NaIRGenPass._pyb_build_args(
         marshalled.append(o);
     }
     kw_pairs: list[tuple[str, ir.Value]] = [];
-    for p in kwp {
-        v = self._codegen_expr(p.value);
+    for kw in kwp {
+        v = self._codegen_expr(kw.value);
         if v is None {
             return None;
         }
-        o = self._pyb_to_py(p.value, v);
+        o = self._pyb_to_py(kw.value, v);
         if o is None {
             return None;
         }
-        kw_pairs.append((p.key.sym_name, o, ));
+        _kw_key = kw.key;
+        assert _kw_key is not None;
+        kw_pairs.append((_kw_key.sym_name, o, ));
     }
     t = self.builder.call(
         self._pyb_helper("tuple_new"),

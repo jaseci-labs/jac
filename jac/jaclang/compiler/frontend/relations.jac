@@ -80,6 +80,8 @@ edge TypeOf: AstTypedVarNode | Expr --> TypeBase {}
 
 edge NarrowedTypeOf: Expr --> TypeBase {}
 
+edge CalleeSignature: FuncCall --> TypeBase {}
+
 edge EventTriggerOf: Ability --> TypeBase {}
 
 edge SharedOf: ClassType --> ClassDetailsShared {}

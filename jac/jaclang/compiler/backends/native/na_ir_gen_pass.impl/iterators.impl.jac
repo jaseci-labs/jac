@@ -214,6 +214,7 @@ impl NaIRGenPass._get_char_cache_gv -> ir.Value {
         (char_struct_type, _entry) = self._static_str_struct_const(bytes([_bi, 0]));
         entries.append(_entry);
     }
+    assert char_struct_type is not None;
     arr256_type = ir.ArrayType(char_struct_type, 256);
     cache_gv = ir.GlobalVariable(self.llvm_module, arr256_type, name=sym);
     cache_gv.linkage = "private";
@@ -351,7 +352,7 @@ impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
     i1 = ir.IntType(1);
     helpers = self.dict_helpers[dict_key];
     dict_ptr_type = self.dict_types[dict_key].as_pointer();
-    key_type = helpers["key_type"];
+    key_type: ir.Type = helpers["key_type"];
     state_ptr_type = self.struct_types["DictKeyIterState"].as_pointer();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(
@@ -1371,7 +1372,10 @@ impl NaIRGenPass._iter_source(
     if is_adapter_call
         or (_ustruct is not None and self._arch_implements_iter(_ustruct)) {
         built = self._build_iter_from_expr(coll);
-        return None if built is None else (built[0], built[2], True);
+        if built is None {
+            return None;
+        }
+        return (built[0], built[2], True);
     }
     elem_t = self._iter_elem_llvm_of(coll);
     if elem_t is None {
@@ -1386,7 +1390,10 @@ impl NaIRGenPass._iter_source(
                 return None;
             }
             made = self._make_iter_from_value(rv, coll);
-            return None if made is None else (made[0], made[2], True);
+            if made is None {
+                return None;
+            }
+            return (made[0], made[2], True);
         }
         return None;
     }
@@ -1401,7 +1408,7 @@ impl NaIRGenPass._retype_boxed_tuple_fields(
     targets: list[uni.Expr], packed: ir.Value
 ) -> ir.Value {
     if not isinstance(packed.type, ir.LiteralStructType)
-        or len(packed.type.elements) != len(targets) {
+        or len(packed.type.members()) != len(targets) {
         return packed;
     }
     fields: list[ir.Value] = [];
@@ -1415,6 +1422,17 @@ impl NaIRGenPass._retype_boxed_tuple_fields(
             and field.type != want {
             field = self.builder.bitcast(field, want, name=f"iterf.f{i}.tuple");
             changed = True;
+        } elif field.type == ir.IntType(8).as_pointer() {
+            class_name = self._struct_name_of(target);
+            class_type = self.struct_types.get(class_name)
+                if class_name is not None
+                else None;
+            if class_type is not None {
+                field = self.builder.bitcast(
+                    field, class_type.as_pointer(), name=f"iterf.f{i}.obj"
+                );
+                changed = True;
+            }
         }
         fields.append(field);
     }
@@ -1455,8 +1473,8 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     if tuple_target is not None {
         targets = tuple_target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
-            or len(targets) != len(elem_type.elements)
-            or any(self._get_name(target) is None for target in targets) {
+            or len(targets) != len(elem_type.members())
+            or any(not self._unpack_target_ok(target) for target in targets) {
             return False;
         }
     } elif self._get_name(nd.target) is None {
@@ -1479,7 +1497,14 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     yielded = self.builder.load(elem_slot, name="iterf.value");
 
     if tuple_target is not None {
-        yielded = self._retype_boxed_tuple_fields(tuple_target.values or [], yielded);
+        yielded = self._retype_boxed_tuple_fields(
+            [
+                v
+                for v in (tuple_target.values or [])
+                if isinstance(v, uni.Expr)
+            ],
+            yielded
+        );
         if not self._codegen_tuple_unpack(tuple_target.values, yielded, None) {
             return False;
         }

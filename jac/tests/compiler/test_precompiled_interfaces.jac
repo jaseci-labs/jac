@@ -114,6 +114,56 @@ test "skipping analysis changes no precompiled product, only analysis dependency
     }
 }
 
+"""LLVM keeps process-wide tables (metadata kinds, for one) that grow with
+whatever was compiled, and a module's bitcode carries them. A unit written
+from the shared context therefore differed, byte for byte, from the same unit
+written in a process that had compiled something else first, with identical
+IR. Every unit is written from a context of its own."""
+test "a unit's native bitcode does not depend on what the process compiled before" {
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        SEC_NBITCODE,
+        read_sections
+    }
+    import from jaclang.compiler.driver.program { JacProgram }
+    earlier = JacProgram();
+    earlier.compile(
+        file_path="bitcode_context_probe.jac",
+        use_str=(
+            "import os;\n"
+            + "glob xs: list[int] = [len(os.getcwd())];\n"
+            + "def f(a: dict[str, int]) -> str { return str(sorted(a.items())); }\n"
+        )
+    );
+    assert not earlier.errors_had , [e.pretty_print() for e in earlier.errors_had];
+    with TemporaryDirectory() as directory {
+        written: dict[bool, (bytes | None)] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            (package / "model.jac").write_text("obj Box { has value: int; }\n");
+            source = package / "api.jac";
+            source.write_text(
+                "import from .model { Box }\n"
+                    + "def make() -> Box { return Box(42); }\n"
+            );
+            data = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+            assert data is not None;
+            start = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+            assert start >= 0;
+            written[skipped] = read_sections(data, start + len(SECTIONS_MAGIC)).get(
+                SEC_NBITCODE
+            );
+        }
+        assert written[False] is not None , "the unit was not placed native";
+        assert written[False] == written[True] , (
+            "the same unit was written as different bitcode"
+        );
+    }
+}
+
 test "a unit that skips analysis is not gated by analysis diagnostics" {
     with TemporaryDirectory() as directory {
         results: dict[bool, (bytes | None)] = {};

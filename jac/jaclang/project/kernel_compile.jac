@@ -143,10 +143,8 @@ def kernel_compile_reported(
         f"kernel compiled {path}: {len(compiled.units)} unit(s), "
         f"{len(compiled.analysis.errors)} error(s)"
     );
-    entry_report = compiled.analysis.module(path);
-    if entry_report is not None and entry_report.native {
-        return compiled;
-    }
+    import from jaclang.compiler.frontend.kernel_host { replay_event_rows }
+    replay_event_rows(host, compiled.analysis.events);
     import from jaclang.project.kernel_check { alert_of }
     for diag in compiled.analysis.errors {
         program.errors_had.append(alert_of(diag));
@@ -157,26 +155,8 @@ def kernel_compile_reported(
     return compiled;
 }
 
-def last_compiled_native(path: str) -> bool {
-    import from jaclang.compiler.driver.jir {
-        HEADER_SIZE,
-        SEC_NBITCODE,
-        SEC_NOBJ,
-        SECTIONS_MAGIC,
-        get_module_cache_path,
-        read_sections
-    }
-    try {
-        data = get_module_cache_path(path).read_bytes();
-        found = data.find(SECTIONS_MAGIC, HEADER_SIZE);
-        if found < 0 {
-            return False;
-        }
-        held = read_sections(data, found + len(SECTIONS_MAGIC));
-    } except Exception {
-        return False;
-    }
-    return SEC_NBITCODE in held or SEC_NOBJ in held;
+def kernel_generates_native(program: JacProgram, path: str) -> bool {
+    return kernel_route(program, path)[0];
 }
 
 def host_kernel_compile(
@@ -185,14 +165,6 @@ def host_kernel_compile(
     (routed, in_process) = kernel_route(program, path);
     if not routed or options.skip_analysis {
         return None;
-    }
-    if last_compiled_native(path) {
-        return CompileReport(
-            analysis=AnalysisReport(
-                entry_path=path,
-                modules=[ModuleReport(path=os.path.realpath(path), native=True)]
-            )
-        );
     }
     ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
     if ready is not None {

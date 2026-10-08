@@ -36,9 +36,9 @@ test "a served surface entry resolves a server module with a relative import" {
                 src="pkg/mod.jac"
             )
         };
-        functions = intro._collect_functions();
-        assert "answer" in functions , "the surface entry did not register";
-        assert functions["answer"]() == "from sibling";
+        answer = intro.target("answer");
+        assert answer is not None , "the surface entry did not register";
+        assert answer() == "from sibling";
         assert intro.is_auth_required_for_function("answer") is False;
     }
 }
