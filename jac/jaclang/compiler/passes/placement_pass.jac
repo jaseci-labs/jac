@@ -810,7 +810,7 @@ impl PlacementPass._check_conformance(ir_in: Module) -> None {
         return;
     }
     stub_mod = self.prog.load_dependency_module(stub_path, need_tree=True);
-    for (decl, why) in conformance_mismatches(stub_mod, ir_in) {
+    for (decl, why) in conformance_mismatches(stub_mod, ir_in, self.prog) {
         self.ctx.emit(E5114, node_override=decl, reason=why);
     }
 }
