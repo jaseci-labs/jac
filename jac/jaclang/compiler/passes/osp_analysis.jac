@@ -5,7 +5,12 @@ import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 
 
-glob OSP_ANY_TAGS: dict[str, int] = {"Node": -2, "Edge": -3, "Walker": -4};
+glob OSP_ANY_TAGS: dict[str, int] = {
+         "Node": -2,
+         "Edge": -3,
+         "Walker": -4,
+         "Root": -5
+     };
 
 obj OspSlot {
     has owner: str,

@@ -73,3 +73,17 @@ test "default object text follows the runtime class" {
     assert "Shape(sides=0) Square(sides=4, width=2) Named<q>" in out , out;
     assert "[Square(sides=4, width=2), Shape(sides=0), Named<q>]" in out , out;
 }
+
+"""An ability triggered by `Root` runs at the root node only. The native
+tier has no root node of its own and read the name as "any location", so
+`with Root | Stop entry` ran at every node, and twice at a `Stop`. An
+ability whose trigger names a base and its subclass does run twice at the
+subclass, on both tiers."""
+test "a Root trigger does not match every node" {
+    out = assert_native_identity(
+        fixture("union_trigger_abilities.jac"), profiles=["rc", "managed"]
+    );
+    assert "['ab', 'a'] ['ab'] ['root-or-c']" in out , out;
+    assert "['either', 'either', 'leaving', 'leaving'] ['either', 'leaving']"
+        in out , out;
+}
