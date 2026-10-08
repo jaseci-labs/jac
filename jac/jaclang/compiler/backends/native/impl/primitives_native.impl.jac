@@ -5457,7 +5457,7 @@ impl NativeBuiltinEmitter.emit_sum(
     }
     use_float = elem_float or start_float;
     acc_ty = f64 if use_float else i64;
-    initial: ir.Value = ir.Constant(acc_ty, 0.0 if use_float else 0);
+    initial: ir.Value = ir.Constant(acc_ty, 0.0) if use_float else ir.Constant(acc_ty, 0);
     if start is not None {
         initial = _sum_operand(b, start, use_float);
     }

@@ -819,8 +819,13 @@ impl NaIRGenPass._export_native_layout -> None {
     }
 
     for (enum_name, entries) in self.enum_string_values.items() {
+        _enum_members: list[tuple[str, any, int]] = [];
+        for _member in entries {
+            _member_value: any = _member[1];
+            _enum_members.append((_member[0], _member_value, _member[2]));
+        }
         layout.enums[enum_name] = NativeEnumLayout(
-            name=enum_name, is_string_valued=True, members=list(entries)
+            name=enum_name, is_string_valued=True, members=_enum_members
         );
     }
 
