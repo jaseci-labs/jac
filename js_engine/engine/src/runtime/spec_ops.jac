@@ -63,6 +63,15 @@ import from engine.src.runtime.wk_keys {
     WK_SET
 }
 import from engine.src.vm.vm_obs { js_object_get_observable, js_object_has_observable }
+import from engine.src.builtins.markers {
+    _KEY_IS_RESOLVE,
+    _KEY_IS_REJECT,
+    _KEY_IS_PROMISE_ALL_RESOLVE,
+    _KEY_IS_PROMISE_ALL_REJECT,
+    _KEY_IS_PROMISE_ALLSETTLED_RESOLVE,
+    _KEY_IS_PROMISE_ALLSETTLED_REJECT,
+    _KEY_IS_PROMISE_ANY_REJECT
+}
 import from engine.src.runtime.error {
     make_type_error,
     vm_throw_native,
@@ -84,6 +93,22 @@ def:pub spec_is_desc_object(desc: JSValue) -> bool {
     return False;
 }
 
+"""True iff v is a promise's resolve / reject function or a Promise.all /
+allSettled / any element function — marker objects (builtins/promise.jac) that
+the VM runs specially; they are functions to JS (typeof, IsCallable)."""
+def:pub spec_is_promise_fn_marker(v: JSValue) -> bool {
+    if not jsv_is_object_cell(v) or jsv_to_table_id(v) <= 0 {
+        return False;
+    }
+    return js_object_has_own(v, _KEY_IS_RESOLVE)
+        or js_object_has_own(v, _KEY_IS_REJECT)
+        or js_object_has_own(v, _KEY_IS_PROMISE_ALL_RESOLVE)
+        or js_object_has_own(v, _KEY_IS_PROMISE_ALL_REJECT)
+        or js_object_has_own(v, _KEY_IS_PROMISE_ALLSETTLED_RESOLVE)
+        or js_object_has_own(v, _KEY_IS_PROMISE_ALLSETTLED_REJECT)
+        or js_object_has_own(v, _KEY_IS_PROMISE_ANY_REJECT);
+}
+
 """Shared IsCallable predicate used by descriptor and callback validation."""
 def:pub spec_is_callable(v: JSValue) -> bool {
     if jsv_is_htmldda(v) {
@@ -100,7 +125,9 @@ def:pub spec_is_callable(v: JSValue) -> bool {
     }
     if jsv_is_object_cell(v) and jsv_to_table_id(v) > 0 {
         return (
-            js_object_has_own(v, KEY_CTOR_KIND) or js_object_has_own(v, WK_IS_CLASS)
+            js_object_has_own(v, KEY_CTOR_KIND)
+            or js_object_has_own(v, WK_IS_CLASS)
+            or spec_is_promise_fn_marker(v)
         );
     }
     return False;

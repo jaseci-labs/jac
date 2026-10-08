@@ -988,7 +988,11 @@ glob:pub NATIVE_KIND_CONSOLE_LOG: int = 1,
      NATIVE_KIND_SET_AB_PROTO: int = 1099,
      NATIVE_KIND_ARRAY_INT_PROBE: int = 1100,
      NATIVE_KIND_TA_FILL_FROM_PROBE: int = 1101,
-     NATIVE_KIND_LAST: int = 1102;
+     NATIVE_KIND_NET_TCP_TRY_WRITE: int = 1102,
+     NATIVE_KIND_NET_TLS_TRY_WRITE: int = 1103,
+     NATIVE_KIND_NET_WAIT_IO: int = 1104,
+     NATIVE_KIND_NET_TCP_SHUTDOWN: int = 1105,
+     NATIVE_KIND_LAST: int = 1106;
 
 
 # ── Global numeric / string utilities ────────────────────────────────────────

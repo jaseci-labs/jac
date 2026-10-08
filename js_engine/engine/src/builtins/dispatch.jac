@@ -703,6 +703,10 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_ZLIB_STREAM_FEED,
     NATIVE_KIND_ZLIB_STREAM_CLOSE,
     NATIVE_KIND_NET_TCP_WRITE_RAW,
+    NATIVE_KIND_NET_TCP_TRY_WRITE,
+    NATIVE_KIND_NET_TLS_TRY_WRITE,
+    NATIVE_KIND_NET_WAIT_IO,
+    NATIVE_KIND_NET_TCP_SHUTDOWN,
     NATIVE_KIND_ZLIB_INFLATE_ONESHOT,
     NATIVE_KIND_ZLIB_DEFLATE_STREAM_OPEN,
     NATIVE_KIND_ZLIB_DEFLATE_STREAM_FEED,
@@ -1874,6 +1878,10 @@ import from engine.src.builtins.net_bridge {
     net_tcp_read_binary_nb,
     net_tls_read_binary_nb,
     net_tcp_write_raw,
+    net_tcp_try_write,
+    net_tls_try_write,
+    net_wait_io,
+    net_tcp_shutdown,
     net_tls_create_server_ctx,
     net_tls_free_server_ctx,
     net_tls_accept,
@@ -9258,6 +9266,30 @@ def _dn_native_kind_net_tcp_write_raw(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
     return net_tcp_write_raw(args);
+}
+
+def _dn_native_kind_net_tcp_try_write(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    return net_tcp_try_write(args);
+}
+
+def _dn_native_kind_net_tls_try_write(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    return net_tls_try_write(args);
+}
+
+def _dn_native_kind_net_wait_io(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    return net_wait_io(args);
+}
+
+def _dn_native_kind_net_tcp_shutdown(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    return net_tcp_shutdown(args);
 
     # ── TLS server operations (Phase 6.14) ────────────────────────────────
 }
@@ -11366,6 +11398,10 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_ICU_FORMAT_NUMBER_RANGE] = _dn_native_kind_icu_format_number_range;
     _DISPATCH_TABLE[NATIVE_KIND_ICU_FORMAT_DATETIME_RANGE] = _dn_native_kind_icu_format_datetime_range;
     _DISPATCH_TABLE[NATIVE_KIND_NET_TCP_WRITE_RAW] = _dn_native_kind_net_tcp_write_raw;
+    _DISPATCH_TABLE[NATIVE_KIND_NET_TCP_TRY_WRITE] = _dn_native_kind_net_tcp_try_write;
+    _DISPATCH_TABLE[NATIVE_KIND_NET_TLS_TRY_WRITE] = _dn_native_kind_net_tls_try_write;
+    _DISPATCH_TABLE[NATIVE_KIND_NET_WAIT_IO] = _dn_native_kind_net_wait_io;
+    _DISPATCH_TABLE[NATIVE_KIND_NET_TCP_SHUTDOWN] = _dn_native_kind_net_tcp_shutdown;
     _DISPATCH_TABLE[NATIVE_KIND_NET_TLS_CREATE_SERVER_CTX] = _dn_native_kind_net_tls_create_server_ctx;
     _DISPATCH_TABLE[NATIVE_KIND_NET_TLS_FREE_SERVER_CTX] = _dn_native_kind_net_tls_free_server_ctx;
     _DISPATCH_TABLE[NATIVE_KIND_NET_TLS_ACCEPT] = _dn_native_kind_net_tls_accept;

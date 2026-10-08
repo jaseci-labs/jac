@@ -7,6 +7,28 @@
 var EventEmitter = require("events");
 var netModule = require("net");
 var _nb = __net; // native bridge
+var _netInternals = netModule._internals;
+
+// cert / key / ca options as the PEM text the native context loads: Node takes
+// strings, Buffers or arrays of them (native treats a string starting with
+// "-" as PEM content, anything else as a file path).
+function _pemOption(v) {
+    if (v === undefined || v === null || v === false) { return ""; }
+    if (Array.isArray(v)) {
+        var parts = [];
+        for (var i = 0; i < v.length; i++) {
+            var pv = _pemOption(v[i] && v[i].pem !== undefined ? v[i].pem : v[i]);
+            if (pv) { parts.push(pv); }
+        }
+        return parts.join("\n");
+    }
+    if (typeof v === "string") { return v.replace(/^\s+/, ""); }
+    if (typeof v === "object" && typeof v.byteLength === "number") {
+        var B = globalThis.Buffer || require("buffer").Buffer;
+        return B.from(v.buffer !== undefined ? v : new Uint8Array(v)).toString("utf8").replace(/^\s+/, "");
+    }
+    return String(v);
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -105,19 +127,36 @@ class TLSSocket extends EventEmitter {
             if (self._destroyed || self._handle === 0) { self._reading = false; return; }
             if (self._readPaused) { self._reading = false; return; }
 
+            if (self._binaryReads) {
+                // Buffers, byte-exact (the HTTP server and client switch to these).
+                _nb.tlsReadBinaryNb(self._handle, 65536, function(ptr, len, isEOF) {
+                    if (self._destroyed) {
+                        if (ptr) { globalThis.__buf.free(ptr); }
+                        return;
+                    }
+                    self._resetTimeout();
+                    if (len > 0) {
+                        var bchunk = _netInternals.bufferFromPtr(ptr, len);
+                        globalThis.__buf.free(ptr);
+                        self.bytesRead += len;
+                        self.emit("data", bchunk);
+                    } else if (ptr) {
+                        globalThis.__buf.free(ptr);
+                    }
+                    if (isEOF) {
+                        self._onReadEOF();
+                        return;
+                    }
+                    readOne();
+                });
+                return;
+            }
             _nb.tlsReadNb(self._handle, 65536, function(chunk, isEOF) {
                 if (self._destroyed) { return; }
                 self._resetTimeout();
 
                 if (isEOF || chunk === "") {
-                    self._ended = true;
-                    self.readable = false;
-                    self._reading = false;
-                    self.emit("end");
-                    if (!self.allowHalfOpen) {
-                        self.writable = false;
-                        self.destroy();
-                    }
+                    self._onReadEOF();
                     return;
                 }
 
@@ -130,56 +169,30 @@ class TLSSocket extends EventEmitter {
         readOne();
     }
 
-    /** write(data, encoding, cb) — sends data through the TLS socket. */
-    write(data, encoding, cb) {
-        var self = this;
-        if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
-        if (this._destroyed || this._writableEnded || this._handle === 0) {
-            var err = new Error("This socket has been ended by the other party");
-            err.code = "EPIPE";
-            if (cb) { cb(err); }
-            return false;
+    /** Peer closed (close_notify / EOF): shared by the text and Buffer reads. */
+    _onReadEOF() {
+        this._ended = true;
+        this.readable = false;
+        this._reading = false;
+        if (this._readableState) {
+            this._readableState.ended = true;
+            this._readableState.endEmitted = true;
         }
-
-        if (typeof data !== "string") { data = String(data); }
-        this._resetTimeout();
-
-        // Non-blocking TLS write — retries on SSL_ERROR_WANT_WRITE via libuv poll
-        _nb.tlsWriteNb(this._handle, data, function(written, errCode) {
-            if (written < 0) {
-                var writeErr = new Error("write EPIPE");
-                writeErr.code = "EPIPE";
-                self.emit("error", writeErr);
-                if (cb) { cb(writeErr); }
-                return;
-            }
-            self.bytesWritten += written;
-            self.emit("drain");
-            if (cb) { cb(null); }
-        });
-        return true;
+        this.emit("end");
+        if (!this.allowHalfOpen) {
+            this.writable = false;
+            this.destroy();
+        }
     }
 
-    /** end(data, encoding, cb) */
-    end(data, encoding, cb) {
-        if (typeof data === "function") { cb = data; data = undefined; }
-        if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
-
-        if (this._writableEnded) { return this; }
-        this._writableEnded = true;
-        this.writable = false;
-
-        if (data !== undefined && data !== null) {
-            var self = this;
-            this.write(data, encoding, function() {
-                self.emit("finish");
-                if (cb) { cb(); }
-                if (self._ended || !self.allowHalfOpen) { self.destroy(); }
-            });
-        } else {
-            this.emit("finish");
-            if (cb) { cb(); }
-            if (this._ended || !this.allowHalfOpen) { this.destroy(); }
+    /** Switch 'data' to Buffers (tlsReadBinaryNb) — see net.Socket. */
+    _useBinaryReads() {
+        this._binaryReads = true;
+        if (!this._readableState) {
+            this._readableState = {
+                ended: this._ended, endEmitted: this._ended,
+                flowing: true, length: 0, destroyed: this._destroyed
+            };
         }
         return this;
     }
@@ -191,6 +204,7 @@ class TLSSocket extends EventEmitter {
         this._reading = false;
         this.readable = false;
         this.writable = false;
+        this._wqDiscard(err);
 
         if (this._timeoutTimer !== null) {
             clearTimeout(this._timeoutTimer);
@@ -259,6 +273,8 @@ class TLSSocket extends EventEmitter {
     }
 }
 
+_netInternals.installWriteQueue(TLSSocket.prototype);
+
 // ── tls.connect ──────────────────────────────────────────────────────────────
 
 /**
@@ -311,6 +327,7 @@ function tlsConnect(options, cb) {
 
         if (errCode !== 0 || handle === 0) {
             socket._connecting = false;
+            socket._wqDiscard();
             var err;
             if (errCode === 1) { // SSL_ERROR_SSL — certificate verification or protocol error
                 err = new Error("unable to verify the first certificate");
@@ -344,6 +361,8 @@ function tlsConnect(options, cb) {
 
         // Start reading
         socket._startReading();
+        // Send what was written during the handshake (and finish a pending end())
+        socket._flushWrites();
     }, rejectUnauthorized, alpnStr);
 
     return socket;
@@ -356,7 +375,7 @@ function createSecureContext(options) {
     var ctx = { context: null, options: options };
     // If cert/key provided, create a native server context
     if (options.cert && options.key) {
-        var handle = _nb.tlsCreateServerCtx(options.cert, options.key);
+        var handle = _nb.tlsCreateServerCtx(_pemOption(options.cert), _pemOption(options.key));
         if (handle > 0) { ctx.context = handle; }
     }
     return ctx;
@@ -397,8 +416,8 @@ function Server(options, connectionListener) {
     this.allowHalfOpen = options.allowHalfOpen || false;
     this.pauseOnConnect = options.pauseOnConnect || false;
 
-    this._cert = options.cert || "";
-    this._key = options.key || "";
+    this._cert = _pemOption(options.cert);
+    this._key = _pemOption(options.key);
     this._alpn = options.ALPNProtocols || null;
 
     if (connectionListener) {

@@ -58,7 +58,8 @@ import from engine.src.net.tcp_socket {
     tcp_connect_nb_start,
     tcp_set_nodelay,
     tcp_set_keepalive,
-    tcp_get_local_address
+    tcp_get_local_address,
+    tcp_shutdown
 }
 import from engine.src.net.udp_socket {
     UDPSocket,
@@ -116,7 +117,9 @@ import from engine.src.ffi.libuv {
     UV_READABLE,
     UV_WRITABLE
 }
+import from engine.src.ffi.libssl { SSL_write, SSL_ctrl, SSL_get_error }
 import from engine.src.ffi.libc {
+    send,
     recv,
     recvfrom,
     close,
@@ -158,6 +161,11 @@ glob _TCP_HANDLES: list[TCPSocket] = [TCPSocket()],
      _NB_TYPE_TLS_WRITE: int = 9,
      _NB_TYPE_UDP_RECV: int = 10,
      _NB_TYPE_UDP_SEND: int = 11,
+     _NB_TYPE_WAIT: int = 12,
+     _NB_MSG_NOSIGNAL: int = 16384,
+     _NB_SSL_CTRL_MODE: int = 33,
+     _NB_SSL_MODE_PARTIAL_MOVING: int = 3,
+     _NB_TLS_WANT_READ_RC: int = -1000,
      _NB_LOOP_PTR: int = 0,
      _NB_ASYNC_PTR: int = 0,
      _NB_POLL_UVPTR: list[int] = [],
@@ -167,7 +175,11 @@ glob _TCP_HANDLES: list[TCPSocket] = [TCPSocket()],
      _NB_POLL_HANDLE_ID: list[int] = [],
      _NB_POLL_READ_N: list[int] = [],
      _NB_POLL_HOST: list[str] = [],
-     _NB_POLL_ALPN: list[str] = [];
+     _NB_POLL_ALPN: list[str] = [],
+     _NB_POLL_EVENTS: list[int] = [],
+     _NB_PH_FD: list[int] = [],
+     _NB_PH_PTR: list[int] = [],
+     _NB_PH_MASK: list[int] = [];
 
 # ── TLS server context table (Phase 6.14) ─────────────────────────────────────
 # Shared server contexts, one per (cert, key) pair.  Index 0 is dummy.
@@ -184,6 +196,10 @@ glob _TCP_HANDLES: list[TCPSocket] = [TCPSocket()],
 # Phase 6.12 — binary-safe reads (callback fires (ptr, len, isEOF) instead of (str, isEOF))
 
 # retry WANT_WRITE
+# __net.waitIo: fire callback(status) when the fd is readable / writable
+# send() flag: a reset peer returns EPIPE instead of raising SIGPIPE
+# SSL_ctrl(SSL_CTRL_MODE, ENABLE_PARTIAL_WRITE | ACCEPT_MOVING_WRITE_BUFFER)
+# __net.tlsTryWrite: SSL wants the fd readable before the write can go on
 
 # Raw libuv pointers (set once by nb_init, called from el_run)
 
@@ -196,6 +212,8 @@ glob _TCP_HANDLES: list[TCPSocket] = [TCPSocket()],
 # max bytes for read ops
 # hostname for TLS connect (SNI)
 # ALPN CSV for TLS connect
+# UV_READABLE / UV_WRITABLE the waiter is interested in
+# Shared poll handles, one per fd: fd, uv_poll_t pointer, current event mask
 # Fired callback queue (drained by el_tick)
 glob:pub _NB_FIRED_FNS: list[JSValue] = [],
      _NB_FIRED_ARGS: list[list[JSValue]] = [];
@@ -271,9 +289,11 @@ def _nb_add_poll(
     handle_id: int,
     read_n: int,
     host: str,
-    alpn: str
+    alpn: str,
+    events: int
 ) {
     _nb_root_once();
+    _NB_POLL_EVENTS.append(events);
     _NB_POLL_UVPTR.append(uvptr);
     _NB_POLL_FD.append(fd);
     _NB_POLL_CB.append(cb);
@@ -285,6 +305,7 @@ def _nb_add_poll(
 }
 
 def _nb_remove_poll(idx: int) {
+    del _NB_POLL_EVENTS[idx];
     del _NB_POLL_UVPTR[idx];
     del _NB_POLL_FD[idx];
     del _NB_POLL_CB[idx];
@@ -295,59 +316,202 @@ def _nb_remove_poll(idx: int) {
     del _NB_POLL_ALPN[idx];
 }
 
+"""Index of the shared poll handle for `fd` in _NB_PH_*, or -1."""
+def _nb_ph_find(fd: int) -> int {
+    j: int = 0;
+    while j < len(_NB_PH_FD) {
+        if _NB_PH_FD[j] == fd {
+            return j;
+        }
+        j = j + 1;
+    }
+    return 0 - 1;
+}
+
+"""Stop and close shared poll handle j and drop it from the table."""
+def _nb_ph_release(j: int) {
+    ph: UVHandle = UVHandle();
+    ph.handle_ptr = _NB_PH_PTR[j];
+    uvpoll_stop(ph);
+    uvpoll_close(ph);
+    del _NB_PH_FD[j];
+    del _NB_PH_PTR[j];
+    del _NB_PH_MASK[j];
+}
+
+"""Bring fd's shared poll handle in line with its remaining waiters: the mask
+becomes the union of their interests, and the handle is closed when none are
+left (so an idle fd costs nothing and close() never races a live poll)."""
+def _nb_ph_update(fd: int) {
+    j: int = _nb_ph_find(fd);
+    if j < 0 {
+        return;
+    }
+    mask: int = 0;
+    i: int = 0;
+    while i < len(_NB_POLL_FD) {
+        if _NB_POLL_FD[i] == fd {
+            mask = mask | _NB_POLL_EVENTS[i];
+        }
+        i = i + 1;
+    }
+    if mask == 0 {
+        _nb_ph_release(j);
+        return;
+    }
+    if mask != _NB_PH_MASK[j] {
+        _NB_PH_MASK[j] = mask;
+        ph: UVHandle = UVHandle();
+        ph.handle_ptr = _NB_PH_PTR[j];
+        uvpoll_start(ph, mask, _nb_poll_cb);
+    }
+}
+
+"""Arm a one-shot waiter for `events` (UV_READABLE / UV_WRITABLE) on `fd`.
+
+libuv allows ONE uv_poll_t per fd — a second uv_poll_init on a polled fd fails
+with EEXIST — yet a socket routinely needs a read and a write armed at once
+(the read loop always keeps one pending). So each fd gets a single shared
+handle whose event mask is the union of its waiters' interests; _nb_poll_cb
+hands every event only to the waiters that asked for it, and each waiter
+fires once."""
+def _nb_watch(
+    events: int,
+    fd: int,
+    cb: JSValue,
+    ptype: int,
+    handle_id: int,
+    read_n: int,
+    host: str,
+    alpn: str
+) {
+    j: int = _nb_ph_find(fd);
+    if j < 0 {
+        lp: UVLoop = UVLoop();
+        lp.loop_ptr = _NB_LOOP_PTR;
+        ph: UVHandle = uvpoll_create(lp, fd);
+        _NB_PH_FD.append(fd);
+        _NB_PH_PTR.append(ph.handle_ptr);
+        _NB_PH_MASK.append(events);
+        uvpoll_start(ph, events, _nb_poll_cb);
+        j = len(_NB_PH_FD) - 1;
+    } else {
+        mask: int = _NB_PH_MASK[j] | events;
+        if mask != _NB_PH_MASK[j] {
+            _NB_PH_MASK[j] = mask;
+            ph2: UVHandle = UVHandle();
+            ph2.handle_ptr = _NB_PH_PTR[j];
+            uvpoll_start(ph2, mask, _nb_poll_cb);
+        }
+    }
+    _nb_add_poll(
+        _NB_PH_PTR[j], fd, cb, ptype, handle_id, read_n, host, alpn, events
+    );
+}
+
+"""Drop every waiter on `fd` and close its shared poll handle (socket close)."""
+def _nb_unwatch_fd(fd: int) {
+    i: int = 0;
+    while i < len(_NB_POLL_FD) {
+        if _NB_POLL_FD[i] == fd {
+            _nb_remove_poll(i);
+        } else {
+            i = i + 1;
+        }
+    }
+    j: int = _nb_ph_find(fd);
+    if j >= 0 {
+        _nb_ph_release(j);
+    }
+}
+
 # ── C poll callback ──────────────────────────────────────────────────────────
 # libuv invokes this with: void (*uv_poll_cb)(uv_poll_t *handle, int status, int events)
 
 def _nb_poll_cb(handle_ptr: int, status: int, events: int) -> None {
-    # Find the matching poll entry by uv_poll_t pointer
-    i: int = 0;
-    while i < len(_NB_POLL_UVPTR) {
-        if _NB_POLL_UVPTR[i] == handle_ptr {
-            cb: JSValue = _NB_POLL_CB[i];
-            ptype: int = _NB_POLL_TYPE[i];
-            hid: int = _NB_POLL_HANDLE_ID[i];
-            fd: int = _NB_POLL_FD[i];
-            read_n: int = _NB_POLL_READ_N[i];
-            host: str = _NB_POLL_HOST[i];
-            alpn_c: str = _NB_POLL_ALPN[i];
-
-            # Stop the poll and remove entry
-            ph: UVHandle = UVHandle();
-            ph.handle_ptr = handle_ptr;
-            uvpoll_stop(ph);
-            uvpoll_close(ph);
-            _nb_remove_poll(i);
-
-            if ptype == _NB_TYPE_CONNECT {
-                _nb_handle_connect_ready(cb, hid, fd, status);
-            } elif ptype == _NB_TYPE_READ {
-                _nb_handle_read_ready(cb, hid, fd, read_n, status);
-            } elif ptype == _NB_TYPE_TLS_CONNECT {
-                _nb_handle_tls_connect_ready(cb, hid, fd, host, status, read_n, alpn_c);
-            } elif ptype == _NB_TYPE_TLS_READ {
-                _nb_handle_tls_read_ready(cb, hid, read_n, status);
-            } elif ptype == _NB_TYPE_ACCEPT {
-                _nb_handle_accept_ready(cb, fd, status);
-            } elif ptype == _NB_TYPE_READ_BINARY {
-                _nb_handle_read_binary_ready(cb, hid, fd, read_n, status);
-            } elif ptype == _NB_TYPE_TLS_READ_BINARY {
-                _nb_handle_tls_read_binary_ready(cb, hid, read_n, status);
-            } elif ptype == _NB_TYPE_TLS_ACCEPT {
-                _nb_handle_tls_accept_ready(cb, hid, fd, read_n, status);
-            } elif ptype == _NB_TYPE_TLS_WRITE {
-                _nb_handle_tls_write_ready(cb, hid, host, status);
-            } elif ptype == _NB_TYPE_UDP_RECV {
-                _nb_handle_udp_recv_ready(cb, hid, fd, read_n, status);
-            } elif ptype == _NB_TYPE_UDP_SEND {
-                _nb_handle_udp_send_ready(cb, hid, host, read_n, alpn_c, status);
-            }
-
-            # Wake the event loop so el_tick drains the fired queue
-            _nb_wake();
-            return;
-        }
-        i = i + 1;
+    # status is a C int and arrives zero-extended (WA-6.1-A): a poll error —
+    # libuv reports POLLERR as UV_EBADF with events 0 — must read as negative
+    # here, or its waiters would match neither the error case nor any event
+    # bit. The handlers still get the raw value, as they always have: they let
+    # the syscall decide (after a peer reset, recv() still returns the bytes
+    # that arrived before it), and __net.waitIo callers just retry the write,
+    # which then reports the real error.
+    st: int = status;
+    if st > 2147483647 {
+        st = st - 4294967296;
     }
+    j: int = 0;
+    while j < len(_NB_PH_PTR) and _NB_PH_PTR[j] != handle_ptr {
+        j = j + 1;
+    }
+    if j >= len(_NB_PH_PTR) {
+        return;
+    }
+    fd: int = _NB_PH_FD[j];
+    # Take the waiters this event satisfies (all of them on a poll error) off
+    # the table and settle the handle's mask first: a handler may re-arm a
+    # waiter on this fd, or close the fd.
+    f_cb: list[JSValue] = [];
+    f_type: list[int] = [];
+    f_hid: list[int] = [];
+    f_n: list[int] = [];
+    f_host: list[str] = [];
+    f_alpn: list[str] = [];
+    i: int = 0;
+    while i < len(_NB_POLL_FD) {
+        if _NB_POLL_FD[i] == fd
+            and (st < 0 or (_NB_POLL_EVENTS[i] & events) != 0) {
+            f_cb.append(_NB_POLL_CB[i]);
+            f_type.append(_NB_POLL_TYPE[i]);
+            f_hid.append(_NB_POLL_HANDLE_ID[i]);
+            f_n.append(_NB_POLL_READ_N[i]);
+            f_host.append(_NB_POLL_HOST[i]);
+            f_alpn.append(_NB_POLL_ALPN[i]);
+            _nb_remove_poll(i);
+        } else {
+            i = i + 1;
+        }
+    }
+    _nb_ph_update(fd);
+
+    k: int = 0;
+    while k < len(f_cb) {
+        cb: JSValue = f_cb[k];
+        ptype: int = f_type[k];
+        hid: int = f_hid[k];
+        read_n: int = f_n[k];
+        host: str = f_host[k];
+        alpn_c: str = f_alpn[k];
+        if ptype == _NB_TYPE_CONNECT {
+            _nb_handle_connect_ready(cb, hid, fd, status);
+        } elif ptype == _NB_TYPE_READ {
+            _nb_handle_read_ready(cb, hid, fd, read_n, status);
+        } elif ptype == _NB_TYPE_TLS_CONNECT {
+            _nb_handle_tls_connect_ready(cb, hid, fd, host, status, read_n, alpn_c);
+        } elif ptype == _NB_TYPE_TLS_READ {
+            _nb_handle_tls_read_ready(cb, hid, read_n, status);
+        } elif ptype == _NB_TYPE_ACCEPT {
+            _nb_handle_accept_ready(cb, fd, status);
+        } elif ptype == _NB_TYPE_READ_BINARY {
+            _nb_handle_read_binary_ready(cb, hid, fd, read_n, status);
+        } elif ptype == _NB_TYPE_TLS_READ_BINARY {
+            _nb_handle_tls_read_binary_ready(cb, hid, read_n, status);
+        } elif ptype == _NB_TYPE_TLS_ACCEPT {
+            _nb_handle_tls_accept_ready(cb, hid, fd, read_n, status);
+        } elif ptype == _NB_TYPE_TLS_WRITE {
+            _nb_handle_tls_write_ready(cb, hid, host, status);
+        } elif ptype == _NB_TYPE_UDP_RECV {
+            _nb_handle_udp_recv_ready(cb, hid, fd, read_n, status);
+        } elif ptype == _NB_TYPE_UDP_SEND {
+            _nb_handle_udp_send_ready(cb, hid, host, read_n, alpn_c, status);
+        } elif ptype == _NB_TYPE_WAIT {
+            _NB_FIRED_FNS.append(cb);
+            _NB_FIRED_ARGS.append([js_int(0)]);
+        }
+        k = k + 1;
+    }
+    # Wake the event loop so el_tick drains the fired queue
+    _nb_wake();
 }
 
 def _nb_handle_connect_ready(cb: JSValue, hid: int, fd: int, status: int) -> None {
@@ -591,19 +755,7 @@ def:pub net_tcp_close(args: list[JSValue]) -> JSValue {
     # Cancel any active polls on this socket's fd (read, connect, …)
     sock_fd: int = sock.fd;
     if sock_fd > 0 {
-        pi: int = 0;
-        while pi < len(_NB_POLL_FD) {
-            if _NB_POLL_FD[pi] == sock_fd {
-                eph: UVHandle = UVHandle();
-                eph.handle_ptr = _NB_POLL_UVPTR[pi];
-                uvpoll_stop(eph);
-                uvpoll_close(eph);
-                _nb_remove_poll(pi);
-                # Don't increment pi — removal shifted elements down
-            } else {
-                pi = pi + 1;
-            }
-        }
+        _nb_unwatch_fd(sock_fd);
     }
 
     tcp_close(sock);
@@ -694,11 +846,7 @@ def _nb_handle_tls_write_ready(cb: JSValue, hid: int, data: str, status: int) ->
     if err == SSL_ERROR_WANT_WRITE {
         # Still not writable — re-arm the poll
         fd: int = sock.tcp_fd;
-        lp: UVLoop = UVLoop();
-        lp.loop_ptr = _NB_LOOP_PTR;
-        ph: UVHandle = uvpoll_create(lp, fd);
-        uvpoll_start(ph, UV_WRITABLE, _nb_poll_cb);
-        _nb_add_poll(ph.handle_ptr, fd, cb, _NB_TYPE_TLS_WRITE, hid, 0, data, "");
+        _nb_watch(UV_WRITABLE, fd, cb, _NB_TYPE_TLS_WRITE, hid, 0, data, "");
         return;
     }
     # Fatal error
@@ -768,11 +916,7 @@ def:pub net_tls_write_nb(args: list[JSValue]) -> JSValue {
     if err == SSL_ERROR_WANT_WRITE {
         # Poll fd for writability and retry with the full payload
         fd: int = sock.tcp_fd;
-        lp: UVLoop = UVLoop();
-        lp.loop_ptr = _NB_LOOP_PTR;
-        ph: UVHandle = uvpoll_create(lp, fd);
-        uvpoll_start(ph, UV_WRITABLE, _nb_poll_cb);
-        _nb_add_poll(ph.handle_ptr, fd, cb, _NB_TYPE_TLS_WRITE, h, 0, data, "");
+        _nb_watch(UV_WRITABLE, fd, cb, _NB_TYPE_TLS_WRITE, h, 0, data, "");
         return js_undefined();
     }
     # Fatal error
@@ -805,18 +949,7 @@ def:pub net_tls_close(args: list[JSValue]) -> JSValue {
     # Cancel any active polls on the underlying TCP fd
     sock_fd: int = sock.tcp_fd;
     if sock_fd > 0 {
-        pi: int = 0;
-        while pi < len(_NB_POLL_FD) {
-            if _NB_POLL_FD[pi] == sock_fd {
-                eph: UVHandle = UVHandle();
-                eph.handle_ptr = _NB_POLL_UVPTR[pi];
-                uvpoll_stop(eph);
-                uvpoll_close(eph);
-                _nb_remove_poll(pi);
-            } else {
-                pi = pi + 1;
-            }
-        }
+        _nb_unwatch_fd(sock_fd);
     }
 
     tls_close(sock);
@@ -919,18 +1052,7 @@ def:pub net_tcp_listener_close(args: list[JSValue]) -> JSValue {
     listener: TCPListener = _LISTENER_HANDLES[h];
 
     # Cancel any active accept polls on this listener fd
-    pi: int = 0;
-    while pi < len(_NB_POLL_FD) {
-        if _NB_POLL_FD[pi] == listener.fd and _NB_POLL_TYPE[pi] == _NB_TYPE_ACCEPT {
-            eph: UVHandle = UVHandle();
-            eph.handle_ptr = _NB_POLL_UVPTR[pi];
-            uvpoll_stop(eph);
-            uvpoll_close(eph);
-            _nb_remove_poll(pi);
-            break;
-        }
-        pi = pi + 1;
-    }
+    _nb_unwatch_fd(listener.fd);
 
     tcp_listener_close(listener);
     return js_undefined();
@@ -1012,11 +1134,7 @@ def:pub net_tcp_connect_nb(args: list[JSValue]) -> JSValue {
     }
 
     # EINPROGRESS — poll for writability to detect connect completion
-    lp: UVLoop = UVLoop();
-    lp.loop_ptr = _NB_LOOP_PTR;
-    ph: UVHandle = uvpoll_create(lp, sock.fd);
-    uvpoll_start(ph, UV_WRITABLE, _nb_poll_cb);
-    _nb_add_poll(ph.handle_ptr, sock.fd, cb, _NB_TYPE_CONNECT, hid, 0, "", "");
+    _nb_watch(UV_WRITABLE, sock.fd, cb, _NB_TYPE_CONNECT, hid, 0, "", "");
     return js_undefined();
 }
 
@@ -1070,11 +1188,7 @@ def:pub net_tcp_read_nb(args: list[JSValue]) -> JSValue {
         return js_undefined();
     }
     # EAGAIN / EWOULDBLOCK — no data yet, poll for readability
-    lp: UVLoop = UVLoop();
-    lp.loop_ptr = _NB_LOOP_PTR;
-    ph: UVHandle = uvpoll_create(lp, fd);
-    uvpoll_start(ph, UV_READABLE, _nb_poll_cb);
-    _nb_add_poll(ph.handle_ptr, fd, cb, _NB_TYPE_READ, h, max_n, "", "");
+    _nb_watch(UV_READABLE, fd, cb, _NB_TYPE_READ, h, max_n, "", "");
     return js_undefined();
 }
 
@@ -1146,15 +1260,9 @@ def _nb_handle_tls_connect_ready(
             ev = UV_WRITABLE;
         }
 
-        lp: UVLoop = UVLoop();
-        lp.loop_ptr = _NB_LOOP_PTR;
-        ph: UVHandle = uvpoll_create(lp, fd);
-        uvpoll_start(ph, ev, _nb_poll_cb);
         # Reuse _NB_TYPE_TLS_ACCEPT — handler retries tls_handshake_nb which
         # calls SSL_connect or SSL_accept based on is_server flag
-        _nb_add_poll(
-            ph.handle_ptr, fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid2, tcp_hid, "", ""
-        );
+        _nb_watch(ev, fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid2, tcp_hid, "", "");
         return;
     }
 
@@ -1186,12 +1294,31 @@ def _nb_handle_tls_read_ready(cb: JSValue, hid: int, max_n: int, status: int) ->
         chunk_val: JSValue = jsv_from_string_id(str_intern(data));
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([chunk_val, js_false()]);
-    } else {
+    } elif not _nb_tls_rearm_read(sock, cb, _NB_TYPE_TLS_READ, hid, max_n) {
         # EOF or error
         eof_val: JSValue = jsv_from_string_id(str_intern(""));
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([eof_val, js_true()]);
     }
+}
+
+"""After an SSL_read that returned no data: when OpenSSL only needs more I/O
+(SSL_ERROR_WANT_READ — e.g. it just consumed TLS 1.3 session tickets, which
+carry no application data — or WANT_WRITE), re-arm the read waiter and return
+True. Only a close_notify or a real error is EOF (returns False)."""
+def _nb_tls_rearm_read(
+    sock: TLSSocket, cb: JSValue, ptype: int, hid: int, max_n: int
+) -> bool {
+    err: int = sock.last_error;
+    if err == SSL_ERROR_WANT_READ {
+        _nb_watch(UV_READABLE, sock.tcp_fd, cb, ptype, hid, max_n, "", "");
+        return True;
+    }
+    if err == SSL_ERROR_WANT_WRITE {
+        _nb_watch(UV_WRITABLE, sock.tcp_fd, cb, ptype, hid, max_n, "", "");
+        return True;
+    }
+    return False;
 }
 
 """__net.tlsConnectNb(host, port, callback) → undefined
@@ -1276,20 +1403,7 @@ def:pub net_tls_connect_nb(args: list[JSValue]) -> JSValue {
             if hs_err == SSL_ERROR_WANT_WRITE {
                 ev2 = UV_WRITABLE;
             }
-            lp2: UVLoop = UVLoop();
-            lp2.loop_ptr = _NB_LOOP_PTR;
-            ph2: UVHandle = uvpoll_create(lp2, sock.fd);
-            uvpoll_start(ph2, ev2, _nb_poll_cb);
-            _nb_add_poll(
-                ph2.handle_ptr,
-                sock.fd,
-                cb,
-                _NB_TYPE_TLS_ACCEPT,
-                tls_hid2,
-                tcp_hid,
-                "",
-                ""
-            );
+            _nb_watch(ev2, sock.fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid2, tcp_hid, "", "");
             return js_undefined();
         }
 
@@ -1302,12 +1416,8 @@ def:pub net_tls_connect_nb(args: list[JSValue]) -> JSValue {
     }
 
     # EINPROGRESS — poll for writability, then do TLS handshake in callback
-    lp: UVLoop = UVLoop();
-    lp.loop_ptr = _NB_LOOP_PTR;
-    ph: UVHandle = uvpoll_create(lp, sock.fd);
-    uvpoll_start(ph, UV_WRITABLE, _nb_poll_cb);
-    _nb_add_poll(
-        ph.handle_ptr, sock.fd, cb, _NB_TYPE_TLS_CONNECT, tcp_hid, verify, host, alpn
+    _nb_watch(
+        UV_WRITABLE, sock.fd, cb, _NB_TYPE_TLS_CONNECT, tcp_hid, verify, host, alpn
     );
     return js_undefined();
 }
@@ -1392,22 +1502,13 @@ def:pub net_tls_read_nb(args: list[JSValue]) -> JSValue {
         _nb_wake();
         return js_undefined();
     }
-    # Check if it's a clean EOF vs WANT_READ
-    err_code: int = sock.last_error;
-    if err_code == SSL_ERROR_ZERO_RETURN {
+    # WANT_READ / WANT_WRITE: wait and retry; close_notify or an error is EOF
+    if not _nb_tls_rearm_read(sock, cb, _NB_TYPE_TLS_READ, h, max_n) {
         eof_val: JSValue = jsv_from_string_id(str_intern(""));
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([eof_val, js_true()]);
         _nb_wake();
-        return js_undefined();
     }
-    # SSL_ERROR_WANT_READ or other — poll for readability and retry
-    fd: int = sock.tcp_fd;
-    lp: UVLoop = UVLoop();
-    lp.loop_ptr = _NB_LOOP_PTR;
-    ph: UVHandle = uvpoll_create(lp, fd);
-    uvpoll_start(ph, UV_READABLE, _nb_poll_cb);
-    _nb_add_poll(ph.handle_ptr, fd, cb, _NB_TYPE_TLS_READ, h, max_n, "", "");
     return js_undefined();
 }
 
@@ -1487,11 +1588,7 @@ def:pub net_tcp_read_binary_nb(args: list[JSValue]) -> JSValue {
         return js_undefined();
     }
     # EAGAIN — poll and retry
-    lp2: UVLoop = UVLoop();
-    lp2.loop_ptr = _NB_LOOP_PTR;
-    ph2: UVHandle = uvpoll_create(lp2, fd);
-    uvpoll_start(ph2, UV_READABLE, _nb_poll_cb);
-    _nb_add_poll(ph2.handle_ptr, fd, cb, _NB_TYPE_READ_BINARY, h, max_n, "", "");
+    _nb_watch(UV_READABLE, fd, cb, _NB_TYPE_READ_BINARY, h, max_n, "", "");
     return js_undefined();
 }
 
@@ -1517,8 +1614,10 @@ def _nb_handle_tls_read_binary_ready(
     if nr > 0 {
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([js_number(float(buf_ptr)), js_int(nr), js_false()]);
-    } else {
-        io_free(buf_ptr);
+        return;
+    }
+    io_free(buf_ptr);
+    if not _nb_tls_rearm_read(sock, cb, _NB_TYPE_TLS_READ_BINARY, hid, max_n) {
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([js_int(0), js_int(0), js_true()]);
     }
@@ -1558,22 +1657,12 @@ def:pub net_tls_read_binary_nb(args: list[JSValue]) -> JSValue {
         return js_undefined();
     }
     io_free(buf_ptr);
-    # Check for clean EOF vs WANT_READ
-    if sock.last_error == SSL_ERROR_ZERO_RETURN {
+    # WANT_READ / WANT_WRITE: wait and retry; close_notify or an error is EOF
+    if not _nb_tls_rearm_read(sock, cb, _NB_TYPE_TLS_READ_BINARY, h, max_n) {
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([js_int(0), js_int(0), js_true()]);
         _nb_wake();
-        return js_undefined();
     }
-    # SSL_ERROR_WANT_READ — poll for readability
-    tls_fd: int = sock.tcp_fd;
-    lp3: UVLoop = UVLoop();
-    lp3.loop_ptr = _NB_LOOP_PTR;
-    ph3: UVHandle = uvpoll_create(lp3, tls_fd);
-    uvpoll_start(ph3, UV_READABLE, _nb_poll_cb);
-    _nb_add_poll(
-        ph3.handle_ptr, tls_fd, cb, _NB_TYPE_TLS_READ_BINARY, h, max_n, "", ""
-    );
     return js_undefined();
 }
 
@@ -1609,6 +1698,152 @@ def:pub net_tcp_write_raw(args: list[JSValue]) -> JSValue {
     sock: TCPSocket = _TCP_HANDLES[h];
     written: int = tcp_write_bytes(sock, ptr, n);
     return js_int(written);
+}
+
+"""Integer value of a JS number argument (int32 or double), 0 otherwise."""
+def _nb_num_arg(v: JSValue) -> int {
+    if jsv_is_int32(v) {
+        return jsv_to_int32(v);
+    }
+    if jsv_is_double(v) {
+        return int(jsv_to_double(v));
+    }
+    return 0;
+}
+
+"""__net.tcpTryWrite(handle, ptr, len) → bytes sent (> 0), 0, or -errno.
+
+One non-blocking send() of the `len` bytes at native `ptr`. 0 means the kernel
+send buffer is full (EAGAIN): the caller keeps the bytes queued, arms
+__net.waitIo(handle, UV_WRITABLE, cb) and retries — net.js's write queue.
+MSG_NOSIGNAL turns a reset peer into an EPIPE return instead of a signal."""
+def:pub net_tcp_try_write(args: list[JSValue]) -> JSValue {
+    if len(args) < 3 {
+        return js_int(0 - 22);
+    }
+    h: int = _nb_num_arg(args[0]);
+    ptr: int = _nb_num_arg(args[1]);
+    n: int = _nb_num_arg(args[2]);
+    if h < 1 or h >= len(_TCP_HANDLES) {
+        return js_int(0 - 9);
+    }
+    sock: TCPSocket = _TCP_HANDLES[h];
+    if sock.fd <= 0 {
+        return js_int(0 - 9);
+    }
+    if ptr == 0 or n <= 0 {
+        return js_int(0);
+    }
+    buf: str = ptr;  # jac:ignore[E1001] pointer reinterpreted as str
+    rc: int = send(sock.fd, buf, n, _NB_MSG_NOSIGNAL);
+    # -1 arrives sign-extended (ssize_t), or zero-extended from a C int (WA-6.1-A)
+    if rc < 0 or rc > 2147483647 {
+        e: int = get_errno();
+        if e == EAGAIN or e == EWOULDBLOCK or e == 4 {
+            return js_int(0);
+        }  # EINTR (4) too: just retry once writable
+        return js_int(0 - e);
+    }
+    return js_int(rc);
+}
+
+"""__net.tlsTryWrite(handle, ptr, len) → bytes written (> 0), 0, -1000, or < 0.
+
+One SSL_write of the `len` bytes at native `ptr`, with partial writes and a
+moving write buffer enabled so it behaves like send(): it reports how much
+went out, and the caller retries the remainder from its new offset. 0 means
+SSL_ERROR_WANT_WRITE (wait for UV_WRITABLE), -1000 SSL_ERROR_WANT_READ (wait
+for UV_READABLE); any other negative value is a fatal SSL error."""
+def:pub net_tls_try_write(args: list[JSValue]) -> JSValue {
+    if len(args) < 3 {
+        return js_int(0 - 22);
+    }
+    h: int = _nb_num_arg(args[0]);
+    ptr: int = _nb_num_arg(args[1]);
+    n: int = _nb_num_arg(args[2]);
+    idx: int = 0 - h;
+    if idx < 1 or idx >= len(_TLS_HANDLES) {
+        return js_int(0 - 9);
+    }
+    sock: TLSSocket = _TLS_HANDLES[idx];
+    if sock.ssl_ptr == 0 {
+        return js_int(0 - 9);
+    }
+    if ptr == 0 or n <= 0 {
+        return js_int(0);
+    }
+    SSL_ctrl(sock.ssl_ptr, _NB_SSL_CTRL_MODE, _NB_SSL_MODE_PARTIAL_MOVING, "");
+    buf: str = ptr;  # jac:ignore[E1001] pointer reinterpreted as str
+    rc: int = SSL_write(sock.ssl_ptr, buf, n);
+    if rc > 0 and rc <= 2147483647 {
+        return js_int(rc);
+    }
+    # rc 0, or -1 (sign-extended, or zero-extended from a C int: WA-6.1-A)
+    ret: int = 0;
+    if rc < 0 or rc > 2147483647 {
+        ret = 0 - 1;
+    }
+    err: int = SSL_get_error(sock.ssl_ptr, ret);
+    sock.last_error = err;
+    if err == SSL_ERROR_WANT_WRITE {
+        return js_int(0);
+    }
+    if err == SSL_ERROR_WANT_READ {
+        return js_int(_NB_TLS_WANT_READ_RC);
+    }
+    return js_int(0 - 32);  # EPIPE: the TLS connection is unusable
+}
+
+"""__net.waitIo(handle, events, callback) → undefined
+
+One-shot: callback(status) once the socket's fd is readable (events
+UV_READABLE = 1) or writable (UV_WRITABLE = 2). TCP handles are > 0; TLS handles
+(< 0) wait on their underlying TCP fd. status < 0 is a poll error (a dead
+socket). Shares the fd's poll handle with the read loop (see _nb_watch)."""
+def:pub net_wait_io(args: list[JSValue]) -> JSValue {
+    if len(args) < 3 {
+        return js_undefined();
+    }
+    h: int = _nb_num_arg(args[0]);
+    events: int = _nb_num_arg(args[1]);
+    cb: JSValue = args[2];
+    fd: int = 0;
+    if h > 0 and h < len(_TCP_HANDLES) {
+        fd = _TCP_HANDLES[h].fd;
+    } elif h < 0 and 0 - h < len(_TLS_HANDLES) {
+        fd = _TLS_HANDLES[0 - h].tcp_fd;
+    }
+    if fd <= 0 or (events != UV_READABLE and events != UV_WRITABLE) {
+        _NB_FIRED_FNS.append(cb);
+        _NB_FIRED_ARGS.append([js_int(0 - 9)]);
+        _nb_wake();
+        return js_undefined();
+    }
+    _nb_watch(events, fd, cb, _NB_TYPE_WAIT, h, 0, "", "");
+    return js_undefined();
+}
+
+"""__net.tcpShutdown(handle) → 0 or -1
+
+Half-close: shutdown(SHUT_WR) sends FIN once the kernel has sent everything
+queued, while the read side stays open (net.Socket end() with allowHalfOpen)."""
+def:pub net_tcp_shutdown(args: list[JSValue]) -> JSValue {
+    if len(args) < 1 {
+        return js_int(0 - 1);
+    }
+    h: int = _nb_num_arg(args[0]);
+    if h < 1 or h >= len(_TCP_HANDLES) {
+        return js_int(0 - 1);
+    }
+    sock: TCPSocket = _TCP_HANDLES[h];
+    if sock.fd <= 0 {
+        return js_int(0 - 1);
+    }
+    rc: int = tcp_shutdown(sock, 1);
+    if rc != 0 {
+        return js_int(0 - 1);
+    }
+    return js_int(0);
 }
 
 """Unref the async handle after draining fired items.
@@ -1664,11 +1899,7 @@ def:pub net_tcp_accept_nb(args: list[JSValue]) -> JSValue {
     }
 
     # Poll for readability on the listener fd
-    lp: UVLoop = UVLoop();
-    lp.loop_ptr = _NB_LOOP_PTR;
-    ph: UVHandle = uvpoll_create(lp, listener.fd);
-    uvpoll_start(ph, UV_READABLE, _nb_poll_cb);
-    _nb_add_poll(ph.handle_ptr, listener.fd, cb, _NB_TYPE_ACCEPT, h, 0, "", "");
+    _nb_watch(UV_READABLE, listener.fd, cb, _NB_TYPE_ACCEPT, h, 0, "", "");
     return js_undefined();
 }
 
@@ -2030,14 +2261,8 @@ def:pub net_tls_accept_nb(args: list[JSValue]) -> JSValue {
             ev = UV_WRITABLE;
         }
 
-        lp: UVLoop = UVLoop();
-        lp.loop_ptr = _NB_LOOP_PTR;
-        ph: UVHandle = uvpoll_create(lp, fd);
-        uvpoll_start(ph, ev, _nb_poll_cb);
         # Store: hid=tls_hid (negative), read_n=tcp_h (for cleanup), host="" (unused)
-        _nb_add_poll(
-            ph.handle_ptr, fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid, tcp_h, "", ""
-        );
+        _nb_watch(ev, fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid, tcp_h, "", "");
         return js_undefined();
     }
 
@@ -2084,13 +2309,7 @@ def _nb_handle_tls_accept_ready(
         if hs_err == SSL_ERROR_WANT_WRITE {
             ev = UV_WRITABLE;
         }
-        lp: UVLoop = UVLoop();
-        lp.loop_ptr = _NB_LOOP_PTR;
-        ph: UVHandle = uvpoll_create(lp, fd);
-        uvpoll_start(ph, ev, _nb_poll_cb);
-        _nb_add_poll(
-            ph.handle_ptr, fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid, tcp_h, "", ""
-        );
+        _nb_watch(ev, fd, cb, _NB_TYPE_TLS_ACCEPT, tls_hid, tcp_h, "", "");
         # Don't wake — continue polling, no callback yet
         return;
     }
@@ -2135,18 +2354,7 @@ def _udp_cancel_polls(fd: int) -> None {
     if fd <= 0 {
         return;
     }
-    pi: int = 0;
-    while pi < len(_NB_POLL_FD) {
-        if _NB_POLL_FD[pi] == fd {
-            eph: UVHandle = UVHandle();
-            eph.handle_ptr = _NB_POLL_UVPTR[pi];
-            uvpoll_stop(eph);
-            uvpoll_close(eph);
-            _nb_remove_poll(pi);
-        } else {
-            pi = pi + 1;
-        }
-    }
+    _nb_unwatch_fd(fd);
 }
 
 """Fire UDP recv callback: callback(errCode, data, address, port)."""
@@ -2198,11 +2406,7 @@ def _nb_handle_udp_recv_ready(
     done: bool = _nb_try_udp_recv(cb, hid, fd, max_n);
     if not done {
         # Spurious wakeup — re-arm
-        lp: UVLoop = UVLoop();
-        lp.loop_ptr = _NB_LOOP_PTR;
-        ph: UVHandle = uvpoll_create(lp, fd);
-        uvpoll_start(ph, UV_READABLE, _nb_poll_cb);
-        _nb_add_poll(ph.handle_ptr, fd, cb, _NB_TYPE_UDP_RECV, hid, max_n, "", "");
+        _nb_watch(UV_READABLE, fd, cb, _NB_TYPE_UDP_RECV, hid, max_n, "", "");
     }
 }
 
@@ -2225,12 +2429,8 @@ def _nb_handle_udp_send_ready(
     if sent < 0 {
         errn: int = sock.last_error;
         if errn == EAGAIN or errn == EWOULDBLOCK {
-            lp: UVLoop = UVLoop();
-            lp.loop_ptr = _NB_LOOP_PTR;
-            ph: UVHandle = uvpoll_create(lp, sock.fd);
-            uvpoll_start(ph, UV_WRITABLE, _nb_poll_cb);
-            _nb_add_poll(
-                ph.handle_ptr, sock.fd, cb, _NB_TYPE_UDP_SEND, hid, port, address, data
+            _nb_watch(
+                UV_WRITABLE, sock.fd, cb, _NB_TYPE_UDP_SEND, hid, port, address, data
             );
             return;
         }
@@ -2332,12 +2532,8 @@ def:pub net_udp_send_nb(args: list[JSValue]) -> JSValue {
     if sent < 0 {
         errn: int = sock.last_error;
         if errn == EAGAIN or errn == EWOULDBLOCK {
-            lp: UVLoop = UVLoop();
-            lp.loop_ptr = _NB_LOOP_PTR;
-            ph: UVHandle = uvpoll_create(lp, sock.fd);
-            uvpoll_start(ph, UV_WRITABLE, _nb_poll_cb);
-            _nb_add_poll(
-                ph.handle_ptr, sock.fd, cb, _NB_TYPE_UDP_SEND, h, port, address, data
+            _nb_watch(
+                UV_WRITABLE, sock.fd, cb, _NB_TYPE_UDP_SEND, h, port, address, data
             );
             return js_undefined();
         }
@@ -2350,12 +2546,8 @@ def:pub net_udp_send_nb(args: list[JSValue]) -> JSValue {
     if sent > 2147483647 {
         errn2: int = get_errno();
         if errn2 == EAGAIN or errn2 == EWOULDBLOCK {
-            lp2: UVLoop = UVLoop();
-            lp2.loop_ptr = _NB_LOOP_PTR;
-            ph2: UVHandle = uvpoll_create(lp2, sock.fd);
-            uvpoll_start(ph2, UV_WRITABLE, _nb_poll_cb);
-            _nb_add_poll(
-                ph2.handle_ptr, sock.fd, cb, _NB_TYPE_UDP_SEND, h, port, address, data
+            _nb_watch(
+                UV_WRITABLE, sock.fd, cb, _NB_TYPE_UDP_SEND, h, port, address, data
             );
             return js_undefined();
         }
@@ -2396,11 +2588,7 @@ def:pub net_udp_recv_nb(args: list[JSValue]) -> JSValue {
         _nb_wake();
         return js_undefined();
     }
-    lp: UVLoop = UVLoop();
-    lp.loop_ptr = _NB_LOOP_PTR;
-    ph: UVHandle = uvpoll_create(lp, fd);
-    uvpoll_start(ph, UV_READABLE, _nb_poll_cb);
-    _nb_add_poll(ph.handle_ptr, fd, cb, _NB_TYPE_UDP_RECV, h, max_n, "", "");
+    _nb_watch(UV_READABLE, fd, cb, _NB_TYPE_UDP_RECV, h, max_n, "", "");
     return js_undefined();
 }
 

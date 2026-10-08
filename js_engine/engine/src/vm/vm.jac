@@ -108,7 +108,7 @@ import from engine.src.runtime.js_bigint {
     js_bigint_from_decimal_str,
     js_bigint_get_proto
 }
-import from engine.src.runtime.spec_ops { spec_is_callable }
+import from engine.src.runtime.spec_ops { spec_is_callable, spec_is_promise_fn_marker }
 import from engine.src.runtime.binary_state {
     binary_is_typed_array,
     binary_view_witness,
@@ -22342,6 +22342,44 @@ obj VM {
                 self, self.realm, icv_ck, this_val, args
             );
         }
+        # Promise resolving functions and combinator element functions are
+        # marker objects that the CALL opcode special-cases; reached here
+        # through fn.call() / fn.apply() — e.g. `emitter.once("x", resolve)`,
+        # since events.js invokes every listener with .call().
+        if jsv_is_object_cell(fn) and jsv_to_table_id(fn) > 0 {
+            icv_pv: JSValue = js_undefined();
+            if len(args) > 0 {
+                icv_pv = args[0];
+            }
+            if js_is_resolve_fn(fn) {
+                icv_rp: JSValue = js_object_get(fn, _KEY_PROMISE_REF);
+                if js_is_promise(icv_rp) {
+                    self._promise_resolve_value(icv_rp, icv_pv);
+                }
+                return js_undefined();
+            }
+            if js_is_reject_fn(fn) {
+                icv_jp: JSValue = js_object_get(fn, _KEY_PROMISE_REF);
+                if js_is_promise(icv_jp) {
+                    self._promise_settle_and_drain(icv_jp, PROMISE_REJECTED, icv_pv);
+                }
+                return js_undefined();
+            }
+            if js_is_promise_all_resolve_elem(fn) {
+                _vm_promise_all_resolve_call(self, fn, icv_pv);
+                return js_undefined();
+            }
+            if js_is_promise_all_reject_elem(fn) {
+                _vm_promise_all_reject_call(self, fn, icv_pv);
+                return js_undefined();
+            }
+            if js_is_promise_allsettled_resolve_elem(fn)
+                or js_is_promise_allsettled_reject_elem(fn)
+                or js_is_promise_any_reject_elem(fn) {
+                _vm_promise_combinator_elem_call(self, fn, icv_pv);
+                return js_undefined();
+            }
+        }
         if not self.had_exception {
             self.had_exception = True;
             self.pending_exc = make_type_error(_not_fn_desc(fn) + " is not a function");
@@ -24498,6 +24536,25 @@ obj VM {
                         self.pending_exc = exc_ccl;
                         st.running = False;
                     }
+                } elif spec_is_promise_fn_marker(this_m) {
+                    # resolve.call(thisArg, v) — a promise resolve / reject (or
+                    # combinator element) function: a marker object, run as the
+                    # CALL opcode runs it.
+                    res_pmc: JSValue = self._invoke_callable_value(
+                        this_m, fncall_this, fncall_args
+                    );
+                    if self.had_exception {
+                        exc_pmc: JSValue = self.pending_exc;
+                        self.had_exception = False;
+                        self.pending_exc = js_undefined();
+                        if not self._unwind_in_frame(frame, exc_pmc) {
+                            self.had_exception = True;
+                            self.pending_exc = exc_pmc;
+                            st.running = False;
+                        }
+                    } else {
+                        self._push(res_pmc);
+                    }
                 } elif js_is_proxy(this_m) {
                     # Proxy.call(thisArg, ...) — [[Call]] via apply trap
                     res_pxy_fc: JSValue = self._proxy_trap_apply(
@@ -24781,6 +24838,23 @@ obj VM {
                         self.had_exception = True;
                         self.pending_exc = exc_cap;
                         st.running = False;
+                    }
+                } elif ap_args_ok and spec_is_promise_fn_marker(this_m) {
+                    # resolve.apply(thisArg, [v]) — see the fn.call() case
+                    res_pma: JSValue = self._invoke_callable_value(
+                        this_m, fnapply_this, fnapply_args
+                    );
+                    if self.had_exception {
+                        exc_pma: JSValue = self.pending_exc;
+                        self.had_exception = False;
+                        self.pending_exc = js_undefined();
+                        if not self._unwind_in_frame(frame, exc_pma) {
+                            self.had_exception = True;
+                            self.pending_exc = exc_pma;
+                            st.running = False;
+                        }
+                    } else {
+                        self._push(res_pma);
                     }
                 } elif ap_args_ok and js_is_proxy(this_m) {
                     # Proxy.apply(thisArg, argsArray) — [[Call]] via apply trap
@@ -41715,6 +41789,9 @@ def _vm_invoke_callback(
             "Class constructor cannot be invoked without 'new'"
         );
         return js_undefined();
+    }
+    if spec_is_promise_fn_marker(fn) {
+        return vm._invoke_callable_value(fn, this_arg, args);
     }
     vm.had_exception = True;
     vm.pending_exc = make_type_error("is not a function");

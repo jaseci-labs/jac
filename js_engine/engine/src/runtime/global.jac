@@ -665,6 +665,10 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_ZLIB_STREAM_FEED,
     NATIVE_KIND_ZLIB_STREAM_CLOSE,
     NATIVE_KIND_NET_TCP_WRITE_RAW,
+    NATIVE_KIND_NET_TCP_TRY_WRITE,
+    NATIVE_KIND_NET_TLS_TRY_WRITE,
+    NATIVE_KIND_NET_WAIT_IO,
+    NATIVE_KIND_NET_TCP_SHUTDOWN,
     NATIVE_KIND_ZLIB_INFLATE_ONESHOT,
     NATIVE_KIND_ZLIB_DEFLATE_STREAM_OPEN,
     NATIVE_KIND_ZLIB_DEFLATE_STREAM_FEED,
@@ -4297,6 +4301,26 @@ def:pub init_global(ctx: GlobalContext) {
         net_obj,
         str_intern("tcpWriteRaw"),
         js_native_create("tcpWriteRaw", 3, NATIVE_KIND_NET_TCP_WRITE_RAW)
+    );
+    js_object_set(
+        net_obj,
+        str_intern("tcpTryWrite"),
+        js_native_create("tcpTryWrite", 3, NATIVE_KIND_NET_TCP_TRY_WRITE)
+    );
+    js_object_set(
+        net_obj,
+        str_intern("tlsTryWrite"),
+        js_native_create("tlsTryWrite", 3, NATIVE_KIND_NET_TLS_TRY_WRITE)
+    );
+    js_object_set(
+        net_obj,
+        str_intern("waitIo"),
+        js_native_create("waitIo", 3, NATIVE_KIND_NET_WAIT_IO)
+    );
+    js_object_set(
+        net_obj,
+        str_intern("tcpShutdown"),
+        js_native_create("tcpShutdown", 1, NATIVE_KIND_NET_TCP_SHUTDOWN)
     );
     # Phase 6.14 — TLS server operations
     js_object_set(

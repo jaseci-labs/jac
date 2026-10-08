@@ -7,10 +7,11 @@ var EventEmitter = require("events");
 var _nb = __net; // native bridge
 
 // ── Byte-exact socket I/O ───────────────────────────────────────────────────
-// The string path (tcpWriteNb / tcpReadNb) carries text: write() used to turn
-// a Buffer into String(buf), i.e. UTF-8-decode it, so every byte >= 0x80 went
-// out as U+FFFD (a WebSocket frame header 0x81 … never survived). Binary data
-// goes through tcpWriteRaw / tcpReadBinaryNb instead.
+// Writes are always bytes (strings are encoded by write(), see the write queue
+// below): a Buffer turned into String(buf) is UTF-8-decoded, so every byte
+// >= 0x80 went out as U+FFFD (a WebSocket frame header 0x81 … never survived).
+// Reads deliver text (tcpReadNb) unless _useBinaryReads() switched the socket
+// to Buffers (tcpReadBinaryNb) — the HTTP server and client always do.
 function _bufCtor() {
     return globalThis.Buffer || require("buffer").Buffer;
 }
@@ -43,6 +44,275 @@ function _bufferFromPtr(ptr, len) {
 }
 function _isBinaryData(d) {
     return d !== null && typeof d === "object" && typeof d.byteLength === "number";
+}
+
+// ── Write queue (net.Socket and tls.TLSSocket) ──────────────────────────────
+// write() queues the bytes and _flushWrites pushes the queue through
+// __net.tcpTryWrite / tlsTryWrite — one non-blocking send each. When the kernel
+// send buffer is full the socket parks on __net.waitIo until the fd is
+// writable again, so a slow reader gets every byte instead of the tail being
+// dropped. A chunk's callback fires once all of its bytes have left, 'drain'
+// fires when the queue empties after write() returned false, and end()
+// finishes — then destroys a non-half-open socket — only after the queue drains.
+var _UV_READABLE = 1;
+var _UV_WRITABLE = 2;
+var _TLS_WANT_READ = -1000; // __net.tlsTryWrite: SSL needs the fd readable first
+var _DEFAULT_WRITABLE_HWM = 16384;
+
+function _nextTick(fn) {
+    if (typeof process !== "undefined" && process && typeof process.nextTick === "function") {
+        process.nextTick(fn);
+    } else {
+        Promise.resolve().then(fn);
+    }
+}
+// The bytes a write() hands over: strings are encoded once, binary data is
+// queued as-is (like Node, write(buf) keeps a reference rather than a copy).
+function _toWriteView(data, encoding) {
+    if (typeof data === "string") {
+        return _bufCtor().from(data, encoding || "utf8");
+    }
+    if (_isBinaryData(data)) {
+        return data;
+    }
+    return _bufCtor().from(String(data));
+}
+// Native address of a view's bytes, or 0 when the backing store has none.
+function _viewPtr(view) {
+    var ab = view.buffer !== undefined ? view.buffer : view;
+    if (ab && typeof ab._ptr === "number" && ab._ptr > 0) {
+        return ab._ptr + (view.byteOffset || 0);
+    }
+    return 0;
+}
+function _writeError(rc) {
+    var code = rc === -104 ? "ECONNRESET" : "EPIPE";
+    var err = new Error("write " + code);
+    err.code = code;
+    err.errno = rc < 0 ? rc : -32;
+    err.syscall = "write";
+    return err;
+}
+function _destroyedError() {
+    var err = new Error("Cannot call write after a stream was destroyed");
+    err.code = "ERR_STREAM_DESTROYED";
+    return err;
+}
+
+var _writeQueueMethods = {
+    _wqInit: function () {
+        if (!this._wq) {
+            this._wq = [];
+            this._wqBytes = 0;
+            this._wqWaiting = false;
+            this._wqNeedDrain = false;
+        }
+    },
+    /** Queue `view` (an ArrayBufferView / ArrayBuffer) and start flushing. */
+    _enqueueWrite: function (view, cb) {
+        this._wqInit();
+        var len = view.byteLength;
+        var p = 0;
+        var owned = false;
+        if (len > 0) {
+            p = _viewPtr(view);
+            if (p === 0) {
+                p = _bytesToPtr(view, len);
+                owned = true;
+            }
+        }
+        this._wq.push({ view: view, p: p, owned: owned, len: len, off: 0, cb: cb || null });
+        this._wqBytes = this._wqBytes + len;
+        this._flushWrites();
+        var ok = this._wqBytes < this.writableHighWaterMark;
+        if (!ok) {
+            this._wqNeedDrain = true;
+        }
+        return ok;
+    },
+    _flushWrites: function () {
+        var self = this;
+        self._wqInit();
+        if (self._wqWaiting || self._wqFlushing || self._destroyed || self._handle === 0) {
+            return;
+        }
+        self._wqFlushing = true;
+        var done = [];
+        while (self._wq.length > 0) {
+            var e = self._wq[0];
+            if (e.off < e.len) {
+                var n = e.len - e.off;
+                var rc = self._handle < 0
+                    ? _nb.tlsTryWrite(self._handle, e.p + e.off, n)
+                    : _nb.tcpTryWrite(self._handle, e.p + e.off, n);
+                if (rc > 0) {
+                    e.off = e.off + rc;
+                    self._wqBytes = self._wqBytes - rc;
+                    self.bytesWritten = self.bytesWritten + rc;
+                    self._resetTimeout();
+                    continue;
+                }
+                if (rc === 0 || rc === _TLS_WANT_READ) {
+                    // Kernel buffer full (or TLS needs a read first): resume once
+                    // the fd is ready. The poll is shared with the read loop.
+                    self._wqWaiting = true;
+                    _nb.waitIo(self._handle, rc === 0 ? _UV_WRITABLE : _UV_READABLE, function (status) {
+                        self._wqWaiting = false;
+                        if (status < 0) {
+                            if (!self._destroyed) { self.destroy(_writeError(-32)); }
+                            return;
+                        }
+                        self._flushWrites();
+                    });
+                    break;
+                }
+                self._wqFlushing = false;
+                self.destroy(_writeError(rc));
+                return;
+            }
+            self._wq.shift();
+            if (e.owned) {
+                globalThis.__buf.free(e.p);
+            }
+            if (e.cb) {
+                done.push(e.cb);
+            }
+        }
+        self._wqFlushing = false;
+        if (done.length > 0 || self._wq.length === 0) {
+            _nextTick(function () {
+                // Node's order: 'drain' (never once end() was called), then
+                // the write callbacks, then 'finish'.
+                var empty = self._wq.length === 0 && !self._destroyed;
+                if (empty && self._wqNeedDrain && !self._wqEnding) {
+                    self._wqNeedDrain = false;
+                    self.emit("drain");
+                }
+                for (var i = 0; i < done.length; i++) {
+                    done[i](null);
+                }
+                if (empty && self._wqEnding && self._wq.length === 0) {
+                    self._wqFinish();
+                }
+            });
+        }
+    },
+    /** All queued bytes are in the kernel after end(): FIN, 'finish', close. */
+    _wqFinish: function () {
+        if (this._wqFinished) {
+            return;
+        }
+        this._wqFinished = true;
+        this._wqEnding = false;
+        if (this._handle > 0 && !this._destroyed) {
+            _nb.tcpShutdown(this._handle);
+        }
+        this.emit("finish");
+        if (this._ended || !this.allowHalfOpen) {
+            this.destroy();
+        }
+    },
+    /** destroy(): drop what was never sent; its callbacks get an error. */
+    _wqDiscard: function (err) {
+        if (!this._wq || this._wq.length === 0) {
+            return;
+        }
+        var q = this._wq;
+        this._wq = [];
+        this._wqBytes = 0;
+        this._wqNeedDrain = false;
+        var cbs = [];
+        for (var i = 0; i < q.length; i++) {
+            if (q[i].owned) {
+                globalThis.__buf.free(q[i].p);
+            }
+            if (q[i].cb) {
+                cbs.push(q[i].cb);
+            }
+        }
+        if (cbs.length > 0) {
+            var e = err || _destroyedError();
+            _nextTick(function () {
+                for (var j = 0; j < cbs.length; j++) {
+                    cbs[j](e);
+                }
+            });
+        }
+    },
+    /** write(data, encoding, cb) — queue; false once over the high-water mark. */
+    write: function (data, encoding, cb) {
+        if (typeof encoding === "function") {
+            cb = encoding;
+            encoding = undefined;
+        }
+        if (this._destroyed || this._writableEnded || (this._handle === 0 && !this._connecting)) {
+            var err = new Error("This socket has been ended by the other party");
+            err.code = "EPIPE";
+            if (cb) {
+                _nextTick(function () { cb(err); });
+            }
+            return false;
+        }
+        return this._enqueueWrite(_toWriteView(data, encoding), cb);
+    },
+    /** end(data, encoding, cb) — no more writes; finish once flushed. */
+    end: function (data, encoding, cb) {
+        var self = this;
+        if (typeof data === "function") {
+            cb = data;
+            data = undefined;
+        }
+        if (typeof encoding === "function") {
+            cb = encoding;
+            encoding = undefined;
+        }
+        if (self._writableEnded) {
+            if (cb) {
+                if (self._wqFinished) { _nextTick(cb); } else { self.once("finish", cb); }
+            }
+            return self;
+        }
+        if (data !== undefined && data !== null) {
+            self.write(data, encoding);
+        }
+        self._writableEnded = true;
+        self.writable = false;
+        if (cb) {
+            self.once("finish", cb);
+        }
+        self._wqInit();
+        self._wqEnding = true;
+        if (self._wq.length === 0 && !self._connecting) {
+            _nextTick(function () {
+                if (!self._destroyed && self._wq.length === 0) { self._wqFinish(); }
+            });
+        }
+        return self;
+    }
+};
+var _writeQueueGetters = {
+    writableLength: function () { return this._wqBytes || 0; },
+    bufferSize: function () { return this._wqBytes || 0; },
+    writableNeedDrain: function () { return !!this._wqNeedDrain; },
+    writableFinished: function () { return !!this._wqFinished; },
+    writableEnded: function () { return !!this._writableEnded; }
+};
+function _installWriteQueue(proto) {
+    var names = Object.keys(_writeQueueMethods);
+    for (var i = 0; i < names.length; i++) {
+        Object.defineProperty(proto, names[i], {
+            value: _writeQueueMethods[names[i]], writable: true, configurable: true
+        });
+    }
+    var gnames = Object.keys(_writeQueueGetters);
+    for (var g = 0; g < gnames.length; g++) {
+        Object.defineProperty(proto, gnames[g], { get: _writeQueueGetters[gnames[g]], configurable: true });
+    }
+    Object.defineProperty(proto, "writableHighWaterMark", {
+        get: function () { return this._writableHWM || _DEFAULT_WRITABLE_HWM; },
+        set: function (v) { this._writableHWM = v; },
+        configurable: true
+    });
 }
 
 function _errSocketBadPort(name, port, allowZero) {
@@ -346,6 +616,7 @@ class Socket extends EventEmitter {
             }
             if (errCode !== 0 || handle === 0) {
                 self._connecting = false;
+                self._wqDiscard();
                 var err = new Error("connect ECONNREFUSED " + host + ":" + port);
                 err.code = "ECONNREFUSED";
                 err.syscall = "connect";
@@ -371,6 +642,8 @@ class Socket extends EventEmitter {
             self.emit("ready");
             // Start reading
             self._startReading();
+            // Send what was written while connecting (and finish a pending end())
+            self._flushWrites();
         });
         return self;
     }
@@ -479,128 +752,6 @@ class Socket extends EventEmitter {
         }
     }
     /**
-     * write(data, encoding, cb) — sends data through the socket.
-     * Returns false if buffered (drain will fire), true if flushed immediately.
-     */
-    write(data, encoding, cb) {
-        var self = this;
-        if (typeof encoding === "function") {
-            cb = encoding;
-            encoding = undefined;
-        }
-        if (self._destroyed || self._writableEnded || self._handle === 0) {
-            var err = new Error("This socket has been ended by the other party");
-            err.code = "EPIPE";
-            if (cb) {
-                cb(err);
-            }
-            return false;
-        }
-        if (self._handle > 0) {
-            if (_isBinaryData(data)) {
-                return self._writeBytes(data, cb);
-            }
-            if (typeof data === "string" && encoding && encoding !== "utf8" && encoding !== "utf-8") {
-                return self._writeBytes(_bufCtor().from(data, encoding), cb);
-            }
-        }
-        if (typeof data !== "string") {
-            data = String(data);
-        }
-        self._resetTimeout();
-        _nb.tcpWriteNb(self._handle, data, function(bytesWritten, errCode) {
-            if (errCode !== 0) {
-                var writeErr = new Error("write EPIPE");
-                writeErr.code = "EPIPE";
-                self.emit("error", writeErr);
-                if (cb) {
-                    cb(writeErr);
-                }
-                return;
-            }
-            self.bytesWritten = self.bytesWritten + bytesWritten;
-            self.emit("drain");
-            if (cb) {
-                cb(null);
-            }
-        });
-        return true;
-    }
-    /**
-     * Byte-exact write of an ArrayBufferView / ArrayBuffer (tcpWriteRaw is a
-     * single send(): loop over partial writes). Same completion contract as the
-     * string path: callback and 'drain' fire asynchronously.
-     */
-    _writeBytes(view, cb) {
-        var self = this;
-        var len = view.byteLength;
-        var werr = null;
-        var sent = 0;
-        if (len > 0) {
-            var p = _bytesToPtr(view, len);
-            while (sent < len) {
-                var rc = _nb.tcpWriteRaw(self._handle, p + sent, len - sent);
-                if (rc <= 0) {
-                    werr = new Error("write EPIPE");
-                    werr.code = "EPIPE";
-                    break;
-                }
-                sent = sent + rc;
-            }
-            globalThis.__buf.free(p);
-        }
-        self._resetTimeout();
-        self.bytesWritten = self.bytesWritten + sent;
-        setTimeout(function () {
-            if (werr) {
-                self.emit("error", werr);
-                if (cb) { cb(werr); }
-                return;
-            }
-            self.emit("drain");
-            if (cb) { cb(null); }
-        }, 0);
-        return werr === null;
-    }
-    /**
-     * end(data, encoding, cb) — signals that no more data will be written.
-     */
-    end(data, encoding, cb) {
-        var self = this;
-        if (typeof data === "function") {
-            cb = data;
-            data = undefined;
-        }
-        if (typeof encoding === "function") {
-            cb = encoding;
-            encoding = undefined;
-        }
-        if (self._writableEnded) {
-            return self;
-        }
-        self._writableEnded = true;
-        self.writable = false;
-        if (data !== undefined && data !== null) {
-            self.write(data, encoding, function() {
-                self._finishEnd(cb);
-            });
-        } else {
-            self._finishEnd(cb);
-        }
-        return self;
-    }
-    _finishEnd(cb) {
-        var self = this;
-        self.emit("finish");
-        if (cb) {
-            cb();
-        }
-        // If remote already ended or if not half-open, destroy
-        if (self._ended || !self.allowHalfOpen) {
-            self.destroy();
-        }
-    }
-    /**
      * destroy(err) — forcefully closes the socket.
      */
     destroy(err) {
@@ -612,6 +763,7 @@ class Socket extends EventEmitter {
         self._reading = false;
         self.readable = false;
         self.writable = false;
+        self._wqDiscard(err);
         if (self._timeoutTimer !== null) {
             clearTimeout(self._timeoutTimer);
             self._timeoutTimer = null;
@@ -737,6 +889,7 @@ class Socket extends EventEmitter {
         return this._corked || 0;
     }
 } // class Socket
+_installWriteQueue(Socket.prototype);
 // ── Server ───────────────────────────────────────────────────────────────────
 /**
  * net.Server — a TCP server that accepts incoming connections.
@@ -1522,3 +1675,8 @@ module.exports = {
     getDefaultAutoSelectFamilyAttemptTimeout: getDefaultAutoSelectFamilyAttemptTimeout,
     setDefaultAutoSelectFamilyAttemptTimeout: setDefaultAutoSelectFamilyAttemptTimeout
 };
+// For tls.js (TLSSocket shares the write queue and the Buffer reads); kept off
+// the enumerable surface of require("net").
+Object.defineProperty(module.exports, "_internals", {
+    value: { installWriteQueue: _installWriteQueue, bufferFromPtr: _bufferFromPtr }
+});

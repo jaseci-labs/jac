@@ -514,7 +514,9 @@ def:pub tls_read_into(sock: TLSSocket, buf: int, n: int) -> int {
         sock.last_error = SSL_get_error(sock.ssl_ptr, 0 - 1);
         return 0;
     }
-    if nread < 0 {
+    if nread <= 0 {
+        # 0: close_notify (ZERO_RETURN) or an unexpected EOF — callers tell it
+        # apart from WANT_READ by last_error, so it must be set here too.
         sock.last_error = SSL_get_error(sock.ssl_ptr, nread);
         return 0;
     }

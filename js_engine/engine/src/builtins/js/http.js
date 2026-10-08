@@ -10,6 +10,31 @@ var core = require("http_core");
 var proxyMod = require("http_proxy");
 
 var CRLF = core.CRLF;
+
+// ── Byte-exact bodies ───────────────────────────────────────────────────────
+// HTTP sockets deliver Buffers (_useBinaryReads). The parsers run on latin1
+// text — one char per byte, the encoding Node uses for HTTP heads — so every
+// body byte survives, and bodies are handed out as Buffers again. Outgoing
+// bodies are written as bytes; Content-Length and chunk sizes count bytes.
+function _Buf() {
+    return globalThis.Buffer || require("buffer").Buffer;
+}
+function _latin1(chunk) {
+    if (typeof chunk === "string") { return chunk; }
+    if (chunk.buffer === undefined) { chunk = new Uint8Array(chunk); }
+    return _Buf().from(chunk.buffer, chunk.byteOffset, chunk.byteLength).toString("latin1");
+}
+// write()/end() argument → bytes (strings in `encoding`, default UTF-8)
+function _bodyBytes(chunk, encoding) {
+    if (typeof chunk === "string") { return _Buf().from(chunk, encoding || "utf8"); }
+    if (chunk !== null && typeof chunk === "object" && typeof chunk.byteLength === "number") {
+        return chunk.buffer !== undefined ? chunk : new Uint8Array(chunk);
+    }
+    return _Buf().from(String(chunk));
+}
+function _useBinarySocket(socket) {
+    if (socket && typeof socket._useBinaryReads === "function") { socket._useBinaryReads(); }
+}
 var _maxIdleHTTPParsers = core.getMaxIdleHTTPParsers();
 
 // Symbol used by Node's _http_server / connections-checking interval.
@@ -302,6 +327,23 @@ class IncomingMessage extends EventEmitter {
         return this;
     }
 
+    /** Emit a body chunk given as latin1 text: a Buffer, or a string decoded
+     * with setEncoding()'s encoding (a StringDecoder keeps multi-byte
+     * characters split across chunks intact). */
+    _pushBody(text) {
+        if (!text || text.length === 0) { return; }
+        var buf = _Buf().from(text, "latin1");
+        if (this._encoding) {
+            if (!this._decoder) {
+                var SD = require("string_decoder").StringDecoder;
+                this._decoder = new SD(this._encoding);
+            }
+            this.emit("data", this._decoder.write(buf));
+            return;
+        }
+        this.emit("data", buf);
+    }
+
     setTimeout(ms, cb) {
         if (this.socket) { this.socket.setTimeout(ms, cb); }
         return this;
@@ -371,7 +413,12 @@ class ServerResponse extends OutgoingMessage {
 
     flushHeaders() {
         if (this.headersSent) { return; }
-        this._sendHeaders();
+        // The head goes out now; without a length the body that follows is chunked.
+        if (!this._headers["transfer-encoding"] && !this._headers["content-length"] &&
+            !this._bodyless()) {
+            this.setHeader("Transfer-Encoding", "chunked");
+        }
+        this._writeHead();
     }
 
     _sendHeaders() {
@@ -399,14 +446,47 @@ class ServerResponse extends OutgoingMessage {
         this._headerBuf = head;
     }
 
+    /** HEAD responses and 1xx/204/304 carry no body (headers only). */
+    _bodyless() {
+        if (this.req && this.req.method === "HEAD") { return true; }
+        return this.statusCode === 204 || this.statusCode === 304 ||
+            (this.statusCode >= 100 && this.statusCode < 200);
+    }
+
+    _isChunked() {
+        var te = this._headers["transfer-encoding"];
+        return te !== undefined && String(te).toLowerCase().indexOf("chunked") !== -1;
+    }
+
+    /** Write the head once; latin1 keeps header bytes as given (Node's rule). */
+    _writeHead() {
+        this._sendHeaders();
+        this.socket.write(_Buf().from(this._headerBuf + CRLF, "latin1"));
+    }
+
+    /** Socket write with backpressure surfaced as res 'drain' (pipe() relies
+     * on write() returning false and 'drain' following). */
+    _socketWrite(data, cb) {
+        var self = this;
+        var ok = this.socket.write(data, cb);
+        if (!ok && !this._drainHooked) {
+            this._drainHooked = true;
+            this.socket.once("drain", function() {
+                self._drainHooked = false;
+                self.emit("drain");
+            });
+        }
+        return ok;
+    }
+
     write(chunk, encoding, cb) {
         if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
-        if (typeof chunk !== "string") { chunk = String(chunk); }
+        var bytes = _bodyBytes(chunk, encoding);
 
         if (this.rejectNonStandardBodyWrites) {
             var noBody = this.statusCode === 204 || this.statusCode === 304 ||
                 (this.statusCode >= 100 && this.statusCode < 200);
-            if (noBody && chunk.length > 0) {
+            if (noBody && bytes.byteLength > 0) {
                 var err = new Error("write after end");
                 err.code = "ERR_HTTP_BODY_NOT_ALLOWED";
                 throw err;
@@ -415,23 +495,23 @@ class ServerResponse extends OutgoingMessage {
 
         if (!this.headersSent) {
             // Streaming — send headers first without Content-Length
-            if (!this._headers["transfer-encoding"] && !this._headers["content-length"]) {
+            if (!this._headers["transfer-encoding"] && !this._headers["content-length"] &&
+                !this._bodyless()) {
                 this.setHeader("Transfer-Encoding", "chunked");
             }
-            this._sendHeaders();
-            this.socket.write(this._headerBuf + CRLF);
+            this._writeHead();
         }
 
-        if (this._headers["transfer-encoding"] === "chunked") {
-            // Send as chunked
-            var hexLen = chunk.length.toString(16);
-            this.socket.write(hexLen + CRLF + chunk + CRLF);
-        } else {
-            this.socket.write(chunk);
+        if (this._bodyless() || bytes.byteLength === 0) {
+            if (cb) { this.socket.write(_Buf().alloc(0), cb); }
+            return true;
         }
-
-        if (cb) { cb(); }
-        return true;
+        if (this._isChunked()) {
+            this.socket.write(_Buf().from(bytes.byteLength.toString(16) + CRLF, "latin1"));
+            this.socket.write(bytes);
+            return this._socketWrite(CRLF, cb);
+        }
+        return this._socketWrite(bytes, cb);
     }
 
     writeContinue() {
@@ -478,47 +558,60 @@ class ServerResponse extends OutgoingMessage {
         if (typeof data === "function") { cb = data; data = undefined; encoding = undefined; }
         if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
 
-        if (this._ended) { return; }
+        if (this._ended) { return this; }
         this._ended = true;
+        var self = this;
 
         if (!this.headersSent) {
-            // Non-streaming: send headers + body at once
-            var bodyStr = "";
-            if (data !== undefined && data !== null) {
-                bodyStr = typeof data === "string" ? data : String(data);
+            // Non-streaming: headers + body at once, Content-Length in bytes
+            var body = (data !== undefined && data !== null)
+                ? _bodyBytes(data, encoding) : _Buf().alloc(0);
+            if (!this._headers["content-length"] && !this._isChunked() && !this._bodyless()) {
+                this.setHeader("Content-Length", String(body.byteLength));
             }
-
-            if (!this._headers["content-length"]) {
-                this.setHeader("Content-Length", String(bodyStr.length));
+            this._writeHead();
+            if (body.byteLength > 0 && !this._bodyless()) {
+                if (this._isChunked()) {
+                    this.socket.write(_Buf().from(body.byteLength.toString(16) + CRLF, "latin1"));
+                    this.socket.write(body);
+                    this.socket.write(CRLF);
+                } else {
+                    this.socket.write(body);
+                }
             }
-
-            this._sendHeaders();
-            var full = this._headerBuf + CRLF + bodyStr;
-            this.socket.write(full);
+            if (this._isChunked() && !this._bodyless()) {
+                this.socket.write("0" + CRLF + CRLF);
+            }
         } else {
             // Headers already sent (streaming mode)
             if (data !== undefined && data !== null) {
-                this.write(data);
+                this.write(data, encoding);
             }
-            if (this._headers["transfer-encoding"] === "chunked") {
+            if (this._isChunked() && !this._bodyless()) {
                 // Send final chunk
                 this.socket.write("0" + CRLF + CRLF);
             }
         }
 
         this.finished = true;
-        var self = this;
-        // Emit finish asynchronously
-        setTimeout(function() {
+        if (cb) { this.once("finish", cb); }
+        // 'finish' once every byte of the response has left the process: the
+        // keep-alive timer and Connection: close hang off it.
+        var done = function() {
+            self._writableFinished = true;
             self.emit("finish");
             self.emit("close");
-        }, 0);
-
-        if (cb) { cb(); }
+        };
+        if (this.socket && !this.socket._destroyed) {
+            this.socket.write(_Buf().alloc(0), done);
+        } else {
+            setTimeout(done, 0);
+        }
+        return this;
     }
 
     get writableEnded() { return this._ended; }
-    get writableFinished() { return this.finished; }
+    get writableFinished() { return !!this._writableFinished; }
 }
 
 // ── Server ───────────────────────────────────────────────────────────────────
@@ -680,6 +773,8 @@ Server.prototype._onConnection = function(socket) {
     self._connections = self._connections + 1;
     self._activeSockets.push(socket);
 
+    // Buffers, not text: request bodies (uploads) must arrive byte-exact.
+    _useBinarySocket(socket);
     self.emit("connection", socket);
 
     var buffer = "";
@@ -735,17 +830,19 @@ Server.prototype._onConnection = function(socket) {
         if (socket._httpUpgraded) { return; }
         _clearKeepAliveTimer(socket);
         socket._httpIdle = false;
-        buffer = buffer + chunk;
+        buffer = buffer + _latin1(chunk);
 
         // Try to parse a request from the buffer
         while (buffer.length > 0) {
-            if (buffer.length > self.maxHeaderSize) {
+            var parsed = _parseRequestHead(buffer, self.joinDuplicateHeaders);
+            // maxHeaderSize bounds the head only: `buffer` also holds the body
+            // received so far, which may be any size (uploads).
+            if (parsed === null ? buffer.length > self.maxHeaderSize
+                : parsed.headerSize > self.maxHeaderSize) {
                 socket.destroy();
                 self.emit("clientError", new Error("Parse Error: Header overflow"), socket);
                 return;
             }
-
-            var parsed = _parseRequestHead(buffer, self.joinDuplicateHeaders);
             if (parsed === null) { break; } // need more data
 
             _clearHeaderTimer();
@@ -817,8 +914,7 @@ Server.prototype._onConnection = function(socket) {
                 if (typeof socket._useBinaryReads === "function") {
                     socket._useBinaryReads();
                 }
-                var headBuf = typeof head === "string"
-                    ? (globalThis.Buffer || require("buffer").Buffer).from(head) : head;
+                var headBuf = typeof head === "string" ? _Buf().from(head, "latin1") : head;
                 self.emit("upgrade", req, socket, headBuf);
                 return;
             }
@@ -834,7 +930,7 @@ Server.prototype._onConnection = function(socket) {
 
             if (body.length > 0) {
                 setTimeout(function() {
-                    req.emit("data", body);
+                    req._pushBody(body);
                     req.emit("end");
                 }, 0);
             } else {
@@ -1055,11 +1151,20 @@ class ClientRequest extends OutgoingMessage {
         return this;
     }
 
+    /** Buffer a body chunk as bytes (sent with the head in _flushRequest). */
+    _addBody(chunk, encoding) {
+        var bytes = _bodyBytes(chunk, encoding);
+        if (bytes.byteLength === 0) { return; }
+        if (!this._bodyChunks) { this._bodyChunks = []; this._bodyBytes = 0; }
+        this._bodyChunks.push(bytes);
+        this._bodyBytes = this._bodyBytes + bytes.byteLength;
+        this._body = "*"; // non-empty marker for code that tests _body.length
+    }
+
     write(chunk, encoding, cb) {
         if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
-        if (typeof chunk !== "string") { chunk = String(chunk); }
-        this._body = this._body + chunk;
-        if (cb) { cb(); }
+        this._addBody(chunk, encoding);
+        if (cb) { setTimeout(cb, 0); }
         return true;
     }
 
@@ -1068,7 +1173,7 @@ class ClientRequest extends OutgoingMessage {
         if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
 
         if (data !== undefined && data !== null) {
-            this._body = this._body + (typeof data === "string" ? data : String(data));
+            this._addBody(data, encoding);
         }
 
         this._ended = true;
@@ -1096,8 +1201,9 @@ class ClientRequest extends OutgoingMessage {
     }
 
     _resetForReuse() {
+        // The request has not been sent yet (it waited for a free socket):
+        // keep its body.
         this.headersSent = false;
-        this._body = "";
         this._aborted = false;
         this._finishedFlag = false;
         this._response = null;
@@ -1139,6 +1245,8 @@ class ClientRequest extends OutgoingMessage {
         if (statusCode === 301 || statusCode === 302 || statusCode === 303) {
             self.method = "GET";
             self._body = "";
+            self._bodyChunks = null;
+            self._bodyBytes = 0;
             self.removeHeader("content-length");
             self.removeHeader("transfer-encoding");
         }
@@ -1205,9 +1313,11 @@ class ClientRequest extends OutgoingMessage {
         headerStr = headerStr + originalName + ": " + self._headers[keys[i]] + CRLF;
     }
 
-    // Add Content-Length for bodies
-    if (self._body.length > 0 && !self._headers["content-length"]) {
-        headerStr = headerStr + "Content-Length: " + self._body.length + CRLF;
+    // Add Content-Length for bodies (in bytes)
+    var bodyChunks = self._bodyChunks || [];
+    var bodyLen = self._bodyBytes || 0;
+    if (bodyLen > 0 && !self._headers["content-length"]) {
+        headerStr = headerStr + "Content-Length: " + bodyLen + CRLF;
     }
 
     // Add Connection header based on agent keepAlive setting
@@ -1219,10 +1329,17 @@ class ClientRequest extends OutgoingMessage {
         }
     }
 
-    var raw = requestLine + headerStr + CRLF + self._body;
-    self._socket.write(raw);
-    self._finishedFlag = true;
-    self.emit("finish");
+    // Responses are parsed from latin1 text of the socket's Buffers.
+    _useBinarySocket(self._socket);
+    self._socket.write(_Buf().from(requestLine + headerStr + CRLF, "latin1"));
+    for (var bci = 0; bci < bodyChunks.length; bci++) {
+        self._socket.write(bodyChunks[bci]);
+    }
+    // 'finish' once the request has left the process
+    self._socket.write(_Buf().alloc(0), function() {
+        self._finishedFlag = true;
+        self.emit("finish");
+    });
 
     // Read response
     var responseBuf = "";
@@ -1235,6 +1352,7 @@ class ClientRequest extends OutgoingMessage {
     var bodyBuf = "";
 
     self._socket.on("data", function(chunk) {
+        chunk = _latin1(chunk);
         responseBuf = responseBuf + chunk;
 
         if (!headParsed) {
@@ -1314,8 +1432,12 @@ class ClientRequest extends OutgoingMessage {
         if (expectedLength >= 0) {
             // Content-Length mode
             if (bodyBuf.length > 0) {
-                res.emit("data", bodyBuf);
-                bodyReceived = bodyReceived + bodyBuf.length;
+                var take = bodyBuf;
+                if (bodyReceived + take.length > expectedLength) {
+                    take = take.substring(0, expectedLength - bodyReceived);
+                }
+                res._pushBody(take);
+                bodyReceived = bodyReceived + take.length;
                 bodyBuf = "";
             }
             if (bodyReceived >= expectedLength) {
@@ -1335,7 +1457,7 @@ class ClientRequest extends OutgoingMessage {
         } else {
             // Connection-close mode: emit data as it arrives
             if (bodyBuf.length > 0) {
-                res.emit("data", bodyBuf);
+                res._pushBody(bodyBuf);
                 bodyBuf = "";
             }
         }
@@ -1367,7 +1489,7 @@ class ClientRequest extends OutgoingMessage {
             if (chunkEnd + 2 > bodyBuf.length) { break; } // incomplete
 
             var chunkData = bodyBuf.substring(chunkStart, chunkEnd);
-            res.emit("data", chunkData);
+            res._pushBody(chunkData);
             bodyBuf = bodyBuf.substring(chunkEnd + 2);
         }
     }
