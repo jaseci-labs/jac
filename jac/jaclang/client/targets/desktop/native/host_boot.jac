@@ -154,6 +154,10 @@ def _pinned_port -> int {
 }
 
 
+def _port_recorder(bound: list[int]) -> Callable[[int], None] {
+    return lambda (p: int) { bound.append(p); };
+}
+
 def serve_program(
     entry_file: str,
     data_dir: str,
@@ -195,7 +199,7 @@ def serve_program(
         bound: list[int] = [];
         try {
             stop = runtime.server.serve_background(
-                on_ready=lambda (p: int) { bound.append(p); }, port_retries=retries
+                on_ready=_port_recorder(bound), port_retries=retries
             );
         } except OSError as e {
             last_error = e;

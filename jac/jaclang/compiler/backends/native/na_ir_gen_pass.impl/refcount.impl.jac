@@ -1991,6 +1991,36 @@ impl NaIRGenPass._nogc_drop_fn_for(
     return None;
 }
 
+impl NaIRGenPass._emit_slot_drop_walk(
+    fn: ir.Function,
+    b: ir.IRBuilder,
+    cont: ir.Value,
+    layout: dict[str, any],
+    field: tuple[int, ir.Type],
+    kind: str,
+    drop_fn: ir.Value
+) -> ir.IRBuilder {
+    i8p = ir.IntType(8).as_pointer();
+    fi = field[0];
+
+    def _drop_slot(
+        bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
+    ) -> ir.IRBuilder {
+        if kind == "jacval" {
+            bl.call(
+                drop_fn, [bl.bitcast(elem_ptrs[0], i8p, name=f"edrop{fi}.slot.i8")]
+            );
+        } else {
+            _ev = bl.load(elem_ptrs[0], name=f"edrop{fi}.elem");
+            bl.call(drop_fn, [bl.bitcast(_ev, i8p, name=f"edrop{fi}.elem.i8")]);
+        }
+        return bl;
+    }
+    return self._emit_live_slot_loop(
+        fn, b, cont, layout, f"edrop{fi}", _drop_slot, fields=[field], reverse=True
+    );
+}
+
 impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None) {
     if cont_name in self.container_drop_fns {
         return self.container_drop_fns[cont_name];
@@ -2052,31 +2082,8 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
             _walk_bb = fn.append_basic_block(f"edrop{_fi}.walk");
             _next_bb = fn.append_basic_block(f"edrop{_fi}.next");
             b.cbranch(_have, _walk_bb, _next_bb);
-            bw = ir.IRBuilder(_walk_bb);
-
-            def _drop_slot(
-                bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
-            ) -> ir.IRBuilder {
-                if _fkind == "jacval" {
-                    bl.call(
-                        _sfn,
-                        [bl.bitcast(elem_ptrs[0], i8p, name=f"edrop{_fi}.slot.i8")]
-                    );
-                } else {
-                    _ev = bl.load(elem_ptrs[0], name=f"edrop{_fi}.elem");
-                    bl.call(_sfn, [bl.bitcast(_ev, i8p, name=f"edrop{_fi}.elem.i8")]);
-                }
-                return bl;
-            }
-            bw = self._emit_live_slot_loop(
-                fn,
-                bw,
-                cont,
-                layout,
-                f"edrop{_fi}",
-                _drop_slot,
-                fields=[_fpair],
-                reverse=True
+            bw = self._emit_slot_drop_walk(
+                fn, ir.IRBuilder(_walk_bb), cont, layout, _fpair, _fkind, _sfn
             );
             bw.branch(_next_bb);
             b = ir.IRBuilder(_next_bb);

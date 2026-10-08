@@ -2463,6 +2463,16 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, type_name: str, _dobj: ir.Value
     ) -> None;
 
+    def _emit_slot_drop_walk(
+        fn: ir.Function,
+        b: ir.IRBuilder,
+        cont: ir.Value,
+        layout: dict[str, any],
+        field: tuple[int, ir.Type],
+        kind: str,
+        drop_fn: ir.Value
+    ) -> ir.IRBuilder;
+
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
     def _nogc_elem_drop_slot_ty -> ir.Type;
     def _nogc_stamp_elem_drops(cont: ir.Value | None, elem_mangles: list[str]) -> None;
