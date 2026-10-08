@@ -959,7 +959,7 @@ class IRBuilder {
         tail: any = False,
         fastmath: any = None,
         attrs: any = None,
-        arg_attrs: dict[int, any] | None = None
+        arg_attrs: dict[int, values.ArgumentAttributes] | None = None
     ) -> instructions.CallInstr {
         if fn is None {
             raise TypeError(MISSING_OPERAND);

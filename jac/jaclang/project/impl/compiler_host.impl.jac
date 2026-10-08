@@ -326,10 +326,9 @@ impl ProjectHost.native_dep_iface(
 impl ProjectHost.held_native_iface(
     program: JacProgram, path: str, options: CompileOptions
 ) -> str {
-    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     ent = program.native_units().ensure(
         path,
-        compile_on_miss=is_compiler_source_path(path),
+        compile_on_miss=False,
         options=options,
         check_deps=False,
         products=not options.no_cgen

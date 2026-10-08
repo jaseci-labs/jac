@@ -223,7 +223,7 @@ class CallInstr(Instruction) {
         tail: any = None,
         fastmath: any = None,
         attrs: any = None,
-        arg_attrs: dict[int, any] | None = None
+        arg_attrs: dict[int, ArgumentAttributes] | None = None
     ) {
         if (cconv is None) and isinstance(func, Function) {
             self.cconv = func.calling_convention;
@@ -258,7 +258,11 @@ class CallInstr(Instruction) {
                 if not (0 <= idx < len(call_args)) {
                     raise ValueError(f"Invalid argument index {idx}");
                 }
-                self.arg_attributes[idx] = ArgumentAttributes(one_attrs);
+                copied = ArgumentAttributes();
+                for attr_name in sorted(one_attrs._items) {
+                    copied.add(attr_name);
+                }
+                self.arg_attributes[idx] = copied;
             }
         }
         fnty = func.function_type;
