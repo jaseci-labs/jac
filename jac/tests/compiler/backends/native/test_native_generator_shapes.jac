@@ -41,3 +41,12 @@ test "a name unpacked from enumerate compares through __eq__" {
     assert "str int ptr" in out , out;
     assert "str other other" in out , out;
 }
+
+test "an archetype whose body is an impl block has its fields and methods" {
+    out = assert_native_identity(
+        fixture("archetype_impl_body.jac"), profiles=["rc", "managed"]
+    );
+    assert "5 k=5" in out , out;
+    assert "1 c=1" in out , out;
+    assert "9 4 5" in out , out;
+}

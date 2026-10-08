@@ -204,7 +204,7 @@ impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None)
         if not isinstance(arch, uni.Archetype) or arch.body is None {
             continue;
         }
-        for stmt in arch.body {
+        for stmt in (ModuleFacts.unwrap_body(arch) or []) {
             if isinstance(stmt, uni.Ability)
                 and stmt.name_ref is not None
                 and stmt.name_ref.sym_name in ("init", "__init__")

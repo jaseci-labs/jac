@@ -109,7 +109,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     for arch in archetypes {
         arch_name = self._arch_key(arch);
         if arch.body is not None {
-            for stmt in arch.body {
+            for stmt in (ModuleFacts.unwrap_body(arch) or []) {
                 if isinstance(stmt, uni.Ability) {
                     if stmt.signature is not None
                         and isinstance(stmt.signature, uni.FuncSignature) {
@@ -214,7 +214,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                 }
                 child_arch = self.arch_ast_map.get(child_name);
                 if child_arch is not None and child_arch.body is not None {
-                    for stmt in child_arch.body {
+                    for stmt in (ModuleFacts.unwrap_body(child_arch) or []) {
                         if isinstance(stmt, uni.Ability) {
                             mn = stmt.name_ref.sym_name if stmt.name_ref else None;
                             if mn == method_name {
@@ -263,7 +263,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     for arch in archetypes {
         arch_name = self._arch_key(arch);
         if arch.body is not None {
-            for stmt in arch.body {
+            for stmt in (ModuleFacts.unwrap_body(arch) or []) {
                 if isinstance(stmt, uni.Ability) {
                     if stmt.signature is not None
                         and isinstance(stmt.signature, uni.FuncSignature) {
@@ -300,7 +300,7 @@ impl NaIRGenPass._constructor_ability_for(cls: str, slot: str) -> (uni.Ability |
         if _arch is None or _arch.body is None {
             continue;
         }
-        for _st in _arch.body {
+        for _st in (ModuleFacts.unwrap_body(_arch) or []) {
             if isinstance(_st, uni.Ability)
                 and _st.name_ref is not None
                 and _st.name_ref.sym_name == slot {
@@ -373,7 +373,7 @@ impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) ->
         if arch.body is None {
             continue;
         }
-        for stmt in arch.body {
+        for stmt in (ModuleFacts.unwrap_body(arch) or []) {
             if isinstance(stmt, uni.Ability)
                 and isinstance(stmt.signature, uni.FuncSignature)
                 and stmt.name_ref is not None
@@ -438,7 +438,7 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
         if ancestor_arch is None or ancestor_arch.body is None {
             continue;
         }
-        for stmt in ancestor_arch.body {
+        for stmt in (ModuleFacts.unwrap_body(ancestor_arch) or []) {
             if isinstance(stmt, uni.Ability)
                 and stmt.signature is not None
                 and isinstance(stmt.signature, uni.FuncSignature) {
@@ -628,7 +628,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
 
     if (nd).body is not None {
         _owner = nd.find_parent_of_type(uni.Module);
-        for stmt in (nd).body {
+        for stmt in (ModuleFacts.unwrap_body(nd) or []) {
             if isinstance(stmt, uni.ArchHas) and stmt.is_static {
                 self._register_static_fields(arch_name, stmt, _owner, imported);
             } elif isinstance(stmt, uni.ModuleCode) {
@@ -709,7 +709,7 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]]
     if nd.body is None {
         return out;
     }
-    for stmt in nd.body {
+    for stmt in (ModuleFacts.unwrap_body(nd) or []) {
         if not isinstance(stmt, uni.Ability)
             or not isinstance(stmt.signature, uni.FuncSignature) {
             continue;
@@ -1631,7 +1631,7 @@ impl NaIRGenPass._class_const_declarer(
         if _arch is None or _arch.body is None {
             continue;
         }
-        for stmt in _arch.body {
+        for stmt in (ModuleFacts.unwrap_body(_arch) or []) {
             if not isinstance(stmt, uni.ModuleCode) {
                 continue;
             }
@@ -2529,7 +2529,7 @@ impl NaIRGenPass._codegen_instantiation(
         }
         _pi_own_init = False;
         if _pi_arch.body is not None {
-            for _pi_stmt in _pi_arch.body {
+            for _pi_stmt in (ModuleFacts.unwrap_body(_pi_arch) or []) {
                 if isinstance(_pi_stmt, uni.Ability)
                     and _pi_stmt.name_ref is not None
                     and _pi_stmt.name_ref.sym_name in ("init", "__init__") {
@@ -4646,19 +4646,19 @@ impl NaIRGenPass._receiver_routed_method_fn(
             if _spec_key not in self.method_funcs
                 and _spec_key not in self._native_skipped_methods {
                 _anc_arch = self.arch_ast_map.get(_owner_cls);
-                _anc_meth: (uni.Ability | None) = None;
+                _anc_meths: list[uni.Ability] = [];
                 if _anc_arch is not None and _anc_arch.body is not None {
-                    for _ab in _anc_arch.body {
+                    for _ab in (ModuleFacts.unwrap_body(_anc_arch) or []) {
                         if isinstance(_ab, uni.Ability)
                             and _ab.name_ref is not None
                             and _ab.name_ref.sym_name in _mnames
                             and _ab.signature is not None {
-                            _anc_meth = _ab;
+                            _anc_meths.append(_ab);
                             break;
                         }
                     }
                 }
-                if _anc_meth is None {
+                if not _anc_meths {
                     self.emit(
                         E5092,
                         node_override=nd,
@@ -4693,7 +4693,9 @@ impl NaIRGenPass._receiver_routed_method_fn(
                     }
                 }
                 self.method_funcs[_spec_key] = _spec_fn;
-                self._codegen_method(_recv_cls, _anc_meth, symbol_override=_spec_key);
+                self._codegen_method(
+                    _recv_cls, _anc_meths[0], symbol_override=_spec_key
+                );
             }
             _spec_ready = self.method_funcs.get(_spec_key);
             if _spec_ready is None {
@@ -4743,7 +4745,7 @@ impl NaIRGenPass._emit_class_routed_call(
     _sdefaults: dict[str, uni.UniNode] = {};
     _sarch_nd = self.arch_ast_map.get(_sfull.split(".")[0]);
     if _sarch_nd is not None and _sarch_nd.body is not None {
-        for _sb in _sarch_nd.body {
+        for _sb in (ModuleFacts.unwrap_body(_sarch_nd) or []) {
             if isinstance(_sb, uni.Ability)
                 and _sb.name_ref is not None
                 and _sb.name_ref.sym_name in _mnames

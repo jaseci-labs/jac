@@ -1393,7 +1393,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             continue;
         }
         _ia_name = self._arch_key(_imp_arch);
-        for _imp_stmt in _imp_arch.body {
+        for _imp_stmt in (ModuleFacts.unwrap_body(_imp_arch) or []) {
             if (
                 isinstance(_imp_stmt, uni.Ability)
                 and _imp_stmt.name_ref
@@ -1452,7 +1452,7 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
     if aname is None or arch.body is None {
         return;
     }
-    for stmt in arch.body {
+    for stmt in (ModuleFacts.unwrap_body(arch) or []) {
         if isinstance(stmt, uni.Ability) {
             if stmt.signature is not None
                 and isinstance(stmt.signature, uni.FuncSignature) {

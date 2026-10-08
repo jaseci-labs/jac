@@ -132,7 +132,7 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
             continue;
         }
         if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
-            for stmt in (base_arch.body or []) {
+            for stmt in (ModuleFacts.unwrap_body(base_arch) or []) {
                 if isinstance(stmt, uni.Ability)
                     and stmt.name_ref is not None
                     and stmt.name_ref.sym_name in ("postinit", "__post_init__") {
@@ -213,7 +213,7 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
         }
 
         if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
-            for stmt in (base_arch.body or []) {
+            for stmt in (ModuleFacts.unwrap_body(base_arch) or []) {
                 if not isinstance(stmt, uni.Ability) {
                     continue;
                 }
