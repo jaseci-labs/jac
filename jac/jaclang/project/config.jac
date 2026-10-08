@@ -48,7 +48,10 @@ obj RunConfig {
     has session: str = "",
         main: bool = True,
         cache: bool = True,
-        diagnostics: str = "error";
+        diagnostics: str = "error",
+        graphmend: bool = True,
+        graphmend_claim_imports: bool = False,
+        graphmend_disable: str = "";
 }
 
 obj NativeConfig {
@@ -406,6 +409,8 @@ def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> Jac
 def _parse_persons(raw: list[object]) -> list[PersonConfig];
 
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
+
+def _graphmend_gate(raw: any) -> bool;
 
 def _interpolate_recursive(`obj: any) -> any;
 

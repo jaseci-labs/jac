@@ -24,6 +24,9 @@ import from jaclang.compiler.driver.jir {
     compute_content_sha256,
     get_module_cache_path,
     is_module_cache_valid,
+    is_module_cache_valid_gm_noop,
+    swap_graphmend_cache_variant,
+    SEC_GM_NOOP,
     precompiled_jir_matches_source,
     cache_mode,
     read_bytecode_only,
@@ -237,7 +240,10 @@ obj JacCompiler(SessionHooks) {
 
     static def _check_native_abi(layout: NativeModuleLayout, full_target: str) -> None;
     def get_bytecode(
-        full_target: str, target_program: JacProgram, skip_analysis: bool = False
+        full_target: str,
+        target_program: JacProgram,
+        skip_analysis: bool = False,
+        options: (CompileOptions | None) = None
     ) -> (types.CodeType | None);
 
     def get_client_artifact(
@@ -245,7 +251,10 @@ obj JacCompiler(SessionHooks) {
     ) -> (ClientArtifact | None);
 
     def _get_bytecode(
-        full_target: str, target_program: JacProgram, skip_analysis: bool = False
+        full_target: str,
+        target_program: JacProgram,
+        skip_analysis: bool = False,
+        gm_active: bool = False
     ) -> (types.CodeType | None);
 
     def _get_client_artifact(
@@ -294,7 +303,10 @@ obj JacCompiler(SessionHooks) {
     ) -> None;
 
     def _persist_module_cache(
-        full_target: str, result: uni.Module, actual_program: JacProgram
+        full_target: str,
+        result: uni.Module,
+        actual_program: JacProgram,
+        gm_noop_variant: (str | None) = None
     ) -> None;
 
     def _persist_native_unit(

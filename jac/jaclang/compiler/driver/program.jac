@@ -41,7 +41,10 @@ class JacProgram {
         context_root: JacProgram | None,
         context_key: str,
         contexts: dict[str, JacProgram],
-        internal: bool;
+        internal: bool,
+        graphmend_claimed: set[str],
+        graphmend_claim_walked: set[str],
+        graphmend_claim_parent: dict[str, str];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;

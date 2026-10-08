@@ -205,7 +205,10 @@ def project_defaults_of(cfg: any) -> ProjectDefaults {
         memory_enforce=list(memory.enforce),
         memory_exempt=list(memory.exempt),
         check=check_settings_of(cfg.check),
-        client_framework=cfg.client.framework if cfg.client else "react"
+        client_framework=cfg.client.framework if cfg.client else "react",
+        graphmend=bool(cfg.run.graphmend),
+        graphmend_claim_imports=bool(cfg.run.graphmend_claim_imports),
+        graphmend_disable=str(cfg.run.graphmend_disable or "")
     );
 }
 

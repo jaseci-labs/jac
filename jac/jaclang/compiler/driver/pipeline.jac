@@ -46,7 +46,11 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
          'DeclImplMatchPass': PassContract(
              (AnalysisFact.SYM_OF, ), (AnalysisFact.IMPL_OF, )
          ),
+         'DeferSideEffectPass': PassContract(
+             (AnalysisFact.GRAPH_BREAKS, AnalysisFact.PREDICATED_BRANCHES, ), ()
+         ),
          'FreezeStructurePass': PassContract((), (AnalysisFact.FROZEN, )),
+         'GraphBreakDetectPass': PassContract((), (AnalysisFact.GRAPH_BREAKS, )),
          'ImportWiringPass': PassContract((AnalysisFact.SYM_OF, ), ()),
          'PackageBoundaryPass': PassContract((AnalysisFact.SYM_OF, ), ()),
          'NaIRGenPass': PassContract(
@@ -74,11 +78,18 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              )
          ),
          'PortabilityWarnPass': PassContract((), (AnalysisFact.PORTABILITY, )),
+         'PredicateCtrlFlowPass': PassContract(
+             (AnalysisFact.GRAPH_BREAKS, AnalysisFact.LOWERED_GUARDS, ),
+             (AnalysisFact.PREDICATED_BRANCHES, )
+         ),
          'RcFactsPass': PassContract(
              (AnalysisFact.CFG_SUCC, ), (AnalysisFact.RC_FACTS, )
          ),
          'RegionInferPass': PassContract((), (AnalysisFact.REGION_INFER, )),
          'StaticAnalysisPass': PassContract((), (AnalysisFact.STATIC_CHECKS, )),
+         'TrapLoweringPass': PassContract(
+             (AnalysisFact.GRAPH_BREAKS, ), (AnalysisFact.LOWERED_GUARDS, )
+         ),
          'SymTabBuildPass': PassContract(
              (),
              (

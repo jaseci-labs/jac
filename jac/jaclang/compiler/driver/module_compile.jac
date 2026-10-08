@@ -42,6 +42,10 @@ glob CODEGEN_SCHED_DEPS: tuple[str, ...] = (
          'jaclang.compiler.backends.native.na_ir_gen_pass',
 
      ),
+     GRAPHMEND_CODEGEN_DEPS: tuple[str, ...] = (
+         'jaclang.compiler.passes.graphmend.backend',
+
+     ),
      _native_sched_failure: list[str] = [];
 
 obj ModuleCompilation {
@@ -191,6 +195,15 @@ obj ModuleCompilation {
             and native_codegen() is None {
             return;
         }
+        graphmend = False;
+        if options.graphmend is not None and options.graphmend {
+            graphmend = binds_torch_import(module);
+        }
+        if graphmend
+            and self.session.defers_native_codegen()
+            and graphmend_codegen() is None {
+            return;
+        }
         if needs_native
             and not product_ready(program, module, CompilationProduct.ANALYSIS)
             and not require_product(
@@ -206,7 +219,8 @@ obj ModuleCompilation {
             mod=module,
             passes=get_py_code_gen(
                 native=needs_native,
-                provided=program.analysis.analyses_run.provided(module)
+                provided=program.analysis.analyses_run.provided(module),
+                graphmend=graphmend
             ),
             cancel_token=options.cancel_token
         );
@@ -399,12 +413,41 @@ def native_codegen -> (PassSchedule | None) {
     return codegen_backend_passes("native");
 }
 
+def binds_torch_import(module: uni.Module) -> bool {
+    for mp in module.get_all_sub_nodes(uni.ModulePath) {
+        if mp.level != 0 {
+            continue;
+        }
+        p = mp.dot_path_str;
+        if (p == 'torch') or p.startswith('torch.') {
+            return True;
+        }
+    }
+    return False;
+}
+
+def graphmend_codegen -> (PassSchedule | None) {
+    found = codegen_backend_passes("graphmend");
+    if found is not None {
+        return found;
+    }
+    try {
+        active_host().load_modules(list(GRAPHMEND_CODEGEN_DEPS));
+    } except ImportError as e {
+        active_host().schedule_import_failed(e);
+        return None;
+    }
+    return codegen_backend_passes("graphmend");
+}
+
 def get_bootstrap_code_gen -> PassSchedule {
     return [NativeImportFactsPass, JcirGenPass];
 }
 
 def get_py_code_gen(
-    native: bool = True, provided: (set[AnalysisFact] | None) = None
+    native: bool = True,
+    provided: (set[AnalysisFact] | None) = None,
+    graphmend: bool = False
 ) -> PassSchedule {
     if _codegen_tier_reason() {
         return get_bootstrap_code_gen();
@@ -425,6 +468,14 @@ def get_py_code_gen(
                     passes.append(step);
                 }
                 _note_native_schedule_failure("");
+            }
+        }
+        if graphmend {
+            schedule = graphmend_codegen();
+            if schedule is not None {
+                for step in schedule {
+                    passes.append(step);
+                }
             }
         }
         passes.extend(get_bootstrap_code_gen());
