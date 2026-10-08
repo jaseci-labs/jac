@@ -3798,7 +3798,45 @@ impl NaIRGenPass._emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value {
     self.builder.branch(merge_bb);
     self.builder.position_at_start(bits_bb);
     pay_eq = self.builder.icmp_signed("==", lpay, rpay, name="jv.eq.pay");
-    bits_eq = self.builder.and_(tag_eq, pay_eq, name="jv.eq.bitseq");
+    same_kind_eq = self.builder.and_(tag_eq, pay_eq, name="jv.eq.samekind");
+    f64 = ir.DoubleType();
+    sides: list[tuple[ir.Value, ir.Value]] = [];
+    for (side, tag, pay) in [("l", ltag, lpay), ("r", rtag, rpay)] {
+        is_float = self.builder.icmp_signed(
+            "==", tag, ir.Constant(i8, 1), name=f"jv.eq.{side}flt"
+        );
+        is_number = self.builder.or_(
+            self.builder.or_(
+                self.builder.icmp_signed(
+                    "==", tag, ir.Constant(i8, 0), name=f"jv.eq.{side}int"
+                ),
+                is_float,
+                name=f"jv.eq.{side}intflt"
+            ),
+            self.builder.icmp_signed(
+                "==", tag, ir.Constant(i8, 7), name=f"jv.eq.{side}bool"
+            ),
+            name=f"jv.eq.{side}num"
+        );
+        as_double = self.builder.select(
+            is_float,
+            self.builder.bitcast(pay, f64, name=f"jv.eq.{side}bits"),
+            self.builder.sitofp(pay, f64, name=f"jv.eq.{side}conv"),
+            name=f"jv.eq.{side}dbl"
+        );
+        sides.append((is_number, as_double));
+    }
+    mixed_numbers = self.builder.and_(
+        self.builder.and_(sides[0][0], sides[1][0], name="jv.eq.bothnum"),
+        self.builder.not_(tag_eq, name="jv.eq.mixed"),
+        name="jv.eq.mixednum"
+    );
+    mixed_eq = self.builder.and_(
+        mixed_numbers,
+        self.builder.fcmp_ordered("==", sides[0][1], sides[1][1], name="jv.eq.numeq"),
+        name="jv.eq.mixedeq"
+    );
+    bits_eq = self.builder.or_(same_kind_eq, mixed_eq, name="jv.eq.bitseq");
     self.builder.branch(merge_bb);
     self.builder.position_at_start(merge_bb);
     res = self.builder.phi(i1, name="jv.eq");

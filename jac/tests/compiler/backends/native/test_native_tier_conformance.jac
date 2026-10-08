@@ -35,3 +35,15 @@ test "a tuple assignment to module globals writes the globals" {
     assert "y1 y2 3" in out , out;
     assert "['p', 'q'] q lr" in out , out;
 }
+
+"""`3 == 3.0` and `True == 1` hold whatever the static types are. Two untyped
+values were equal on the native tier only when they were the same kind of
+number, so `x as int as float == 3.0` was false for `x: any = 3`."""
+test "untyped numbers of different kinds compare by value" {
+    out = assert_native_identity(
+        fixture("any_number_equality.jac"), profiles=["rc", "managed"]
+    );
+    assert "True True True True True" in out , out;
+    assert "False False False False True" in out , out;
+    assert "True True True False" in out , out;
+}
