@@ -392,6 +392,78 @@ test "every write path is held to the policy and existing accounts are grandfath
 
             internal = manager.create_internal_user(unique('svc'), '__no_password__');
             assert 'error' not in internal;
+
+            configure_identity(
+                AuthSettings(
+                    identifiers=IdentifierSettings(email='off'),
+                    password=PasswordSettings(hash_cost=10),
+                    lockout=LockoutSettings(max_attempts=0)
+                ),
+                tmpdir
+            );
+            assert manager.add_identity(old_id, 'email', 'old@corp.example')[
+                'violations'
+            ]
+                == ['IDENTIFIER_NOT_ALLOWED'];
+            configure_identity(
+                AuthSettings(
+                    email=EmailSettings(allowed_domains=['corp.example']),
+                    password=PasswordSettings(hash_cost=10),
+                    lockout=LockoutSettings(max_attempts=0)
+                ),
+                tmpdir
+            );
+            assert manager.add_identity(old_id, 'email', 'old@other.example')[
+                'violations'
+            ]
+                == ['EMAIL_DOMAIN_NOT_ALLOWED'];
+            added = manager.add_identity(
+                old_id, 'email', unique('old') + '@corp.example'
+            );
+            assert added == {'status': 'added', 'verified': False};
+            assert manager.open_session(old_id).token , (
+                'an email added to a signed-in account must not hold its sessions'
+            );
+            manager.close();
+        } finally {
+            configure_identity(AuthSettings(), '');
+        }
+    }
+}
+
+
+test "an expired password flags the account at login and a change clears the flag" {
+    with TemporaryDirectory() as tmpdir {
+        try {
+            configure_identity(
+                AuthSettings(
+                    password=PasswordSettings(max_age_days=30, hash_cost=10),
+                    lockout=LockoutSettings(max_attempts=0)
+                ),
+                tmpdir
+            );
+            manager = UserManager(base_path=tmpdir);
+            name = unique('frank');
+            user_id = str(
+                manager.create_internal_user(name, 'correct horse battery')['user_id']
+            );
+            fresh = manager.authenticate(name, 'correct horse battery');
+            assert fresh is not None and not fresh.get('requires_password_reset');
+
+            credentials = manager._identity_storage._get_credentials(user_id);
+            credentials[0]['changed_at'] = '2020-01-01T00:00:00+00:00';
+            manager._identity_storage._update_credentials(user_id, credentials);
+            stale = manager.authenticate(name, 'correct horse battery');
+            assert stale is not None and stale['requires_password_reset'];
+            assert manager.requires_password_reset(user_id);
+
+            assert 'error'
+                not in manager.update_password(
+                    user_id, 'correct horse battery', 'another horse battery'
+                );
+            assert not manager.requires_password_reset(user_id);
+            renewed = manager.authenticate(name, 'another horse battery');
+            assert renewed is not None and not renewed.get('requires_password_reset');
             manager.close();
         } finally {
             configure_identity(AuthSettings(), '');
