@@ -41,7 +41,7 @@ glob CLASSES: list[str] = [
      ],
      SKIPPED: str = "skipped",
      BASELINE: str = "tier_census.json",
-     RUN_SECONDS: int = 120,
+     RUN_SECONDS: int = 60,
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent),
      CORPUS: list[str] = ["tests/language/fixtures", "examples"],
      EXCLUDED_DIRS: tuple[str, ...] = ("jaclang_org", "node_modules", ".jac"),
@@ -54,6 +54,8 @@ glob CLASSES: list[str] = [
      ),
      REFUSAL: str = r"error\[(E\d+)\]: ([^\n]*)",
      QUOTED: str = r"'[^']*'",
+     UNCAUGHT: str = r"Uncaught exception: ([^\n]*)",
+     LOCATION: str = r" at \S+:\d+$",
      CASCADE_KINDS: tuple[str, ...] = (
          "function",
          "method",
@@ -215,6 +217,12 @@ def classify(program: str) -> Outcome {
     native = run_tier(program, "native");
     if native.timed_out {
         return Outcome(kind="hangs");
+    }
+    uncaught = re.search(UNCAUGHT, native.err);
+    if uncaught is not None {
+        return Outcome(
+            kind="fails", reason=re.sub(LOCATION, "", uncaught.group(1)).strip()[:120]
+        );
     }
     if native.code < 0 or "died with signal" in native.err {
         where = "the compiler" if "died with signal" in native.err else "the program";
