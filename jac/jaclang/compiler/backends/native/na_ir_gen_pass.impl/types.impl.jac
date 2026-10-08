@@ -4064,11 +4064,75 @@ impl NaIRGenPass._emit_jacval_sign(op: str, operand: ir.Value) -> (ir.Value | No
     return b.select(is_flt, flt_box, int_box, name="jv.s.res");
 }
 
+impl NaIRGenPass._emit_any_arch_eq(
+    op: str, typed: ir.Value, boxed: ir.Value
+) -> (ir.Value | None) {
+    arch = self._infer_type_name(typed);
+    if arch is None or not isinstance(typed.type, ir.PointerType) {
+        return None;
+    }
+    mfn = self._resolve_method(arch, "__eq__");
+    if mfn is None or len(mfn.args) != 2 or not self._is_jacval_ty(mfn.args[1].type) {
+        return None;
+    }
+    b = self.builder;
+    fn = b.basic_block.function;
+    ask_bb = fn.append_basic_block(name="any.eq.ask");
+    null_bb = fn.append_basic_block(name="any.eq.null");
+    done_bb = fn.append_basic_block(name="any.eq.done");
+    b.cbranch(
+        b.icmp_unsigned(
+            "==", typed, ir.Constant(typed.type, None), name="any.eq.typed.none"
+        ),
+        null_bb,
+        ask_bb
+    );
+    b.position_at_end(null_bb);
+    both_none = self._jacval_is_none(boxed, False);
+    null_end = b.basic_block;
+    b.branch(done_bb);
+    b.position_at_end(ask_bb);
+    typed_owned = typed.is_owned;
+    boxed_owned = boxed.is_owned;
+    typed.is_owned = False;
+    boxed.is_owned = False;
+    answer: (ir.Value | None) = None;
+    if self._arch_has_vtable(arch) {
+        answer = self._codegen_virtual_call(typed, "__eq__", [typed, boxed], arch);
+    }
+    if answer is None {
+        answer = b.call(
+            mfn, [self._coerce_type(typed, mfn.args[0].type), boxed], name="any.eq.call"
+        );
+    }
+    typed.is_owned = typed_owned;
+    boxed.is_owned = boxed_owned;
+    asked = self._to_bool(answer);
+    ask_end = b.basic_block;
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    res = b.phi(ir.IntType(1), name="any.eq");
+    res.add_incoming(both_none, null_end);
+    res.add_incoming(asked, ask_end);
+    if op == Tok.NE {
+        return b.not_(res, name="any.ne");
+    }
+    return res;
+}
+
 impl NaIRGenPass._emit_mixed_jacval_comparison(
     op: str, left: ir.Value, right: ir.Value
 ) -> (ir.Value | None) {
     _left_boxed = self._is_jacval_ty(left.type);
     _peer = right.type if _left_boxed else left.type;
+    if op in (Tok.EE, Tok.NE) {
+        _mx_arch = self._emit_any_arch_eq(
+            op, right if _left_boxed else left, left if _left_boxed else right
+        );
+        if _mx_arch is not None {
+            return _mx_arch;
+        }
+    }
     if op in (Tok.EE, Tok.NE) and self._is_jacval_boxable(_peer) {
         if _left_boxed {
             right = self._coerce_type(right, self.jacval_type);
