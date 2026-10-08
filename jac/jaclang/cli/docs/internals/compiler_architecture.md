@@ -276,7 +276,7 @@ parse time and the type checker never asks which codespace it is in.
    `[placement.pins]` entries feed `ElementSummary.pinned` exactly like the
    old source markers did: pinned elements never propagate and are never
    overridden.
-3. **Program stage** (in `_compile_once`, after the ir schedule and before
+4. **Program stage** (in `_compile_once`, after the ir schedule and before
    type checking / codegen): client-context plain imports pull their
    pullable target closures dual (`codespace_dual`) across module
    boundaries to a program-wide fixpoint, materializing missing `.jac`
