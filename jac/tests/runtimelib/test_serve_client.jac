@@ -1748,20 +1748,20 @@ test "serve sync skips write access check on unchanged anchors" {
         # so a subsequent sync() should detect no drift and skip the
         # write-access check.
         import from typing { cast }
-        import from jaclang.server.session { Session }
+        import from jaclang.server.session { RowState, Session }
         serialized = cast(dict, Serializer.serialize(sys_root, include_type=True));
         sys_root_copy = Serializer.deserialize(serialized);
         if sys_root_copy is not None {
             sys_root.__dict__.update(sys_root_copy.__dict__);
         }
         sys_root.persistent = True;
-        sys_root.hash = Serializer._compute_hash(sys_root);
+        sys_root.hash = Serializer.stored_hash(sys_root);
         # Seed the session exactly as a load would: identity-mapped, flushed
         # hash recorded, not dirty -- i.e. an unchanged anchor.
         sess = cast(Session, ctx.mem);
         sys_root_id = sys_root.ensure_id();
         sess.__mem__[sys_root_id] = sys_root;
-        sess._flushed_hash[sys_root_id] = sys_root.hash;
+        sess._rows.loaded(sys_root_id, RowState(hash=sys_root.hash, version=0));
         sess._dirty.pop(sys_root_id, None);
         # Capture logs
         logger = logging.getLogger("jaclang.runtime.runtime");
