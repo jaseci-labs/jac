@@ -236,7 +236,7 @@ impl NativeLegality.settle -> None {
                 cause = self.reached[cause];
             }
             first = self.units[cause][0];
-            reach = NativeRefusal(
+            reaching = NativeRefusal(
                 kind=first.kind,
                 name=first.name,
                 site=first.site,
@@ -248,8 +248,8 @@ impl NativeLegality.settle -> None {
                 help=f"This element reaches '{blocker}', which is placed in Python "
                 f"and cannot be called from native code."
             );
-            self.elements[eid] = reach;
-            self.reach.append(reach);
+            self.elements[eid] = reaching;
+            self.reach.append(reaching);
             break;
         }
     }
@@ -510,9 +510,7 @@ impl top_element_of(mod: Module, nd: UniNode) -> (UniNode | None) {
     return cur;
 }
 
-impl element_requirements(
-    mod: Module, prog: JacProgram
-) -> dict[int, tuple[str, str]] {
+impl element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]] {
     import from jaclang.compiler.capability_notes { TARGET_NATIVE, capability_notes_of }
     import from jaclang.compiler.placement.placement { element_display_name }
     import from jaclang.compiler.placement.placement_pins { config_pin_for }
@@ -683,7 +681,9 @@ impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> No
         node_override=refusal.site,
         kind=refusal.kind,
         name=refusal.name,
-        help_text=f"{refusal.help} {note}" if refusal.help and note else (refusal.help or note)
+        help_text=f"{refusal.help} {note}"
+            if refusal.help and note
+            else (refusal.help or note)
     );
 }
 
@@ -776,7 +776,9 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
     } else {
         first = legality.module[0]
             if legality.module
-            else (next(iter(legality.elements.values())) if legality.elements else None);
+            else (
+                next(iter(legality.elements.values())) if legality.elements else None
+            );
         active_host().record_native_coverage(
             mod_path,
             'server',
