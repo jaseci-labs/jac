@@ -188,7 +188,6 @@ def project_defaults_of(cfg: any) -> ProjectDefaults {
     memory = cfg.memory;
     return ProjectDefaults(
         default_codespace=cfg.placement.default_codespace,
-        native_closure_cap=cfg.build.native_closure_cap,
         native_require=list(native.require),
         native_target=native.target,
         native_debug=native.debug,

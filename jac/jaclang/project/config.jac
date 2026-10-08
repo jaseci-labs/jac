@@ -79,8 +79,7 @@ obj PlacementConfig {
 }
 
 obj BuildConfig {
-    has dir: str = ".jac",
-        native_closure_cap: int = 256;
+    has dir: str = ".jac";
 }
 
 obj TestConfig {

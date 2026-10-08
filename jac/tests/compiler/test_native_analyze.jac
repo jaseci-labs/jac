@@ -171,7 +171,6 @@ test "kernel inputs carry the client framework and the seam-warning setting" {
     inputs = KernelInputs(
         project_defaults=ProjectDefaults(
             default_codespace="",
-            native_closure_cap=0,
             native_require=[],
             native_target="",
             native_debug=False,

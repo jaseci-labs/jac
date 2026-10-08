@@ -1659,23 +1659,14 @@ def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
             );
         }
     }
-    _builtin_cap = BuildConfig().native_closure_cap;
-    try {
-        _cap = int(build_data.get("native_closure_cap", _builtin_cap));
-    } except (TypeError, ValueError) {
-        _cap = 0;
-    }
-    if _cap < 1 {
-        console.warning(
-            f"[build] native_closure_cap="
-            f"'{build_data.get('native_closure_cap')}' must be a positive "
-            f"integer; defaulting to {_builtin_cap}."
+    if "native_closure_cap" in build_data {
+        console.error(
+            "jac.toml: [build] native_closure_cap was retired; placement is "
+            "decided per element after analysis and no longer walks an import "
+            "closure. Remove the key."
         );
-        _cap = _builtin_cap;
     }
-    cfg.build = BuildConfig(
-        dir=str(build_data.get("dir", BuildConfig().dir)), native_closure_cap=_cap
-    );
+    cfg.build = BuildConfig(dir=str(build_data.get("dir", BuildConfig().dir)));
 }
 
 def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
