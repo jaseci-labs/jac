@@ -77,16 +77,6 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
     return annex_files_of(host_layout_tables(), source_path, suffix, _dir_entries);
 }
 
-def discover_style_annex(source_path: str) -> (str | None) {
-    src = Path(source_path).resolve();
-    if not src.name.endswith('.jac') {
-        return None;
-    }
-    base = src.stem;
-    candidate = src.parent / (base + '.style.css');
-    return str(candidate) if candidate.is_file() else None;
-}
-
 def discover_base_file(annex_path: str) -> (str | None) {
     return base_file_of(host_layout_tables(), annex_path);
 }

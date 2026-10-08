@@ -20,20 +20,25 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
             mod_dir = from_path.parent if not from_path.is_dir() else from_path;
             for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
                 candidate_paths = [
-                    (mod_dir / f"{item_name}{ext}").resolve(),
-                    (mod_dir / item_name / f"__init__{ext}").resolve(),
-                    (mod_dir / f"__init__{ext}").resolve(),
+                    mod_dir / f"{item_name}{ext}",
+                    mod_dir / item_name / f"__init__{ext}",
+                    mod_dir / f"__init__{ext}",
 
                 ];
 
-                for path in candidate_paths {
-                    if not path.exists() {
+                for (slot, spelled) in enumerate(candidate_paths) {
+                    if not spelled.exists() {
                         continue;
                     }
 
-                    if path.name not in {e.name for e in path.parent.iterdir()} {
+                    if spelled.name not in {e.name for e in spelled.parent.iterdir()} {
                         continue;
                     }
+                    if slot == 1
+                        and item_name not in {e.name for e in mod_dir.iterdir()} {
+                        continue;
+                    }
+                    path = spelled.resolve();
                     path_str = str(path);
 
                     if (not path_str.endswith((".jac", ".py", ".pyi")))
@@ -444,18 +449,22 @@ impl TypeEvaluator._resolve_submodule_attr(
     mod_dir = base_path if is_pkg_dir else base_path.parent;
     for ext in (".jac", ".py", ".pyi") {
         candidates = [
-            (mod_dir / f"{attr_name}{ext}").resolve(),
-            (mod_dir / attr_name / f"__init__{ext}").resolve(),
+            mod_dir / f"{attr_name}{ext}",
+            mod_dir / attr_name / f"__init__{ext}",
 
         ];
-        for path in candidates {
-            if not path.exists() {
+        for (slot, spelled) in enumerate(candidates) {
+            if not spelled.exists() {
                 continue;
             }
 
-            if path.name not in {e.name for e in path.parent.iterdir()} {
+            if spelled.name not in {e.name for e in spelled.parent.iterdir()} {
                 continue;
             }
+            if slot == 1 and attr_name not in {e.name for e in mod_dir.iterdir()} {
+                continue;
+            }
+            path = spelled.resolve();
             path_str = str(path);
             if path_str in self._module_type_cache {
                 cached = self._module_type_cache[path_str];

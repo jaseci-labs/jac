@@ -380,6 +380,7 @@ secret = ""              # JWT signing secret. JAC_SERVE_AUTH_SECRET. Required i
 algorithm = "HS256"
 token_ttl_days = 7
 password_hash_cost = 14  # log2 of the scrypt work factor, 10..17
+session_cookie = false   # Also set an HttpOnly jac_session cookie that authorizes GET/HEAD, for <img>/<video>/downloads. JAC_SERVE_AUTH_SESSION_COOKIE
 ```
 
 The served app's client is at `/`. Other client-capable apps in the workspace whose bundle exists (`jac build --all` writes `dist/<app>/`) are served at `/cl/<app-name>/` -- a fixed prefix with no config key. Serving apps answer under their `route` (default `/api/<name>`, see [`[apps]`](#apps)).

@@ -5,11 +5,11 @@ def boundary_audit(program: any, artifacts: list[dict[str, any]]) -> dict[str, a
     boundaries: dict[str, dict[str, any]] = {};
     effects: dict[str, dict[str, any]] = {};
     host_imports: dict[str, dict[str, any]] = {};
+    import from jaclang.compiler.driver.unit_products { interop_record }
     manifests = list(artifacts);
-    compiler = program._get_compiler();
     for module in program.mod.hub.values() {
         if module is not None and module.gen is not None {
-            manifests.append(compiler._build_interop_dict(module));
+            manifests.append(interop_record(module));
         }
     }
     surface: dict[str, dict[str, any]] = {};

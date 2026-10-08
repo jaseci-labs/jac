@@ -24,7 +24,7 @@ import from jaclang.compiler.driver.pipeline {
     get_ir_gen_sched,
     providers_of
 }
-import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
+import from jaclang.compiler.driver.module_compile { get_py_code_gen }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -48,8 +48,8 @@ test "the native codegen schedule carries the native passes" {
     assert NaIRGenPass in sched , (
         f"native codegen schedule lost NaIRGenPass: {names}"
     );
-    assert NativeCompilePass in sched , (
-        f"native codegen schedule lost NativeCompilePass: {names}"
+    assert NativeCompilePass not in sched , (
+        f"machine code is the host's assembly step, not a scheduled pass: {names}"
     );
 }
 

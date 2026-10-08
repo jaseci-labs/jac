@@ -398,11 +398,10 @@ impl NodeAnchor.all_edges -> list[EdgeAnchor] {
     me = self.archetype;
     if out is not None {
         self.out_light = None;
-        back = weakref.ref(me);
         for (cls, lst) in out.items() {
             for other in lst {
                 oa = other.__jac__;
-                _drop_entry(oa.in_light, cls, back);
+                _drop_back(oa.in_light, cls, me);
                 JacRuntimeInterface.heavy_edge(self, oa, cls, False, None);
             }
         }

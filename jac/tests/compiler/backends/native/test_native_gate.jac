@@ -20,7 +20,7 @@ import from jaclang.compiler.driver.pipeline {
     get_ir_gen_sched,
     providers_of
 }
-import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
+import from jaclang.compiler.driver.module_compile { get_py_code_gen }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
@@ -64,7 +64,7 @@ test "get_py_code_gen schedules the native passes when native=True" {
         )
     );
     assert NaIRGenPass in with_native;
-    assert NativeCompilePass in with_native;
+    assert NativeCompilePass not in with_native;
 }
 
 

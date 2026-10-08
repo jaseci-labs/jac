@@ -25,7 +25,7 @@ nineteen files exist, CI runs them, and what they run is the container.
 
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.pipeline_runner { get_py_code_gen }
+import from jaclang.compiler.driver.module_compile { get_py_code_gen }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 
@@ -123,8 +123,9 @@ test "the lane the canaries measure is the container, with no alternative" {
     assert JcirGenPass in sched , (
         f"the codegen schedule does not emit JCIR: {[p.__name__ for p in sched]}"
     );
-    assert JcirBytecodeGenPass in sched , (
-        "the codegen schedule emits JCIR but never transcribes it"
+    assert JcirBytecodeGenPass not in sched , (
+        "the codegen schedule transcribes JCIR itself; transcription is the "
+        "host's assembly step, after the compiler hands JCIR over"
     );
     for `entry in sched {
         assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (

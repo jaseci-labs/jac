@@ -1996,6 +1996,10 @@ impl TypeCheckPass.exit_match_as with MatchAs exit {
     self._check_immutable_write(here.name, rebind_scope=here);
 }
 
+impl TypeCheckPass.exit_match_arch with MatchArch exit {
+    self.evaluator.get_type_of_expression(here.name);
+}
+
 impl TypeCheckPass.exit_while_stmt with WhileStmt exit {
     self.evaluator.get_type_of_expression(here.condition);
 }

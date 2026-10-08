@@ -20,6 +20,14 @@ impl InteropManifest.native_imports.getter -> list[InteropBinding] {
     ];
 }
 
+impl InteropManifest.callable_native_imports.getter -> list[InteropBinding] {
+    return [
+        b
+        for b in self.native_imports
+        if b.kind == 'function'
+    ];
+}
+
 impl InteropManifest.native_exports.getter -> list[InteropBinding] {
     return [
         b
