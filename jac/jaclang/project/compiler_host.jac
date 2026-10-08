@@ -18,6 +18,7 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.driver.native_iface { NativeIface }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 import type from jaclang.compiler.frontend.kernel_inputs { KernelInputs }
@@ -62,6 +63,17 @@ obj ProjectHost(HostServices) {
     def in_typeshed_tree(path: str) -> bool;
     def sibling_declaration(js_path: str) -> (str | None);
     def client_pulls(path: str) -> str;
+    def native_dep_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (NativeIface | None);
+
+    def held_native_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> str;
+
+    def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def native_fact(kind: str, key: str) -> str;
+    def save_native_debug_ir(path: str, text: str);
     def has_npm_package(spec: str, base_path: str) -> bool;
     def resolve_npm_package(spec: str, base_path: str) -> (str | None);
     def npm_declarations(spec: str, base_path: str) -> (str | None);
