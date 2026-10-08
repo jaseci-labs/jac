@@ -82,7 +82,7 @@ LLHTTP_SRCDIR   := /tmp/llhttp-release-v$(LLHTTP_VERSION)
 LLHTTP_BUILDDIR := /tmp/llhttp-build-$(LLHTTP_VERSION)
 LLHTTP_INSTDIR  := $(CURDIR)/lib/llhttp
 
-.PHONY: all build scrub scrub-engine clean run dist napi_shim tz_shim icu_shim tzdata wasmtime install_deps js_compiler builtins-bytecode check-bytecode js_engine_select
+.PHONY: all build scrub scrub-engine clean run dist test_language test_builtins napi_shim tz_shim icu_shim tzdata wasmtime install_deps js_compiler builtins-bytecode check-bytecode js_engine_select
 
 # ── Default (incremental build) ──────────────────────────────────────────────
 all: build
@@ -299,6 +299,28 @@ check-bytecode: $(JSC)
 run: $(BIN)
 	$(BIN) $(FILE)
 
+# ── test262 conformance (engine/tests/test262) ──────────────────────────────
+# Runs one test262 directory against bin/js_engine and fails on any test that
+# passes in its saved baseline but not now (newly passing tests are reported).
+# Needs the test262 checkout in engine/tests/test262/vendor:
+#   git clone --depth 1 https://github.com/tc39/test262 engine/tests/test262/vendor
+# Extra runner flags via T262_ARGS, e.g. T262_ARGS="--jobs 4 -v", or
+# T262_ARGS="--save-baseline engine/tests/test262/language_baseline.json".
+T262      := engine/tests/test262
+T262_ARGS ?=
+define run_test262
+	@test -d $(T262)/vendor/test || { \
+	    echo "test262 checkout missing: git clone --depth 1 https://github.com/tc39/test262 $(T262)/vendor"; \
+	    exit 1; }
+	jac $(T262)/run_test262.jac --gc --filter $(1) --check-baseline $(T262)/$(2) $(T262_ARGS)
+endef
+
+test_language: $(BIN) $(BIN_PACK)
+	$(call run_test262,language,language_baseline.json)
+
+test_builtins: $(BIN) $(BIN_PACK)
+	$(call run_test262,built-ins,builtins_baseline.json)
+
 # ── Relocatable runtime tree (what the jac binary bundles) ───────────────────
 # Everything sits in bin/: the engine finds its builtins next to itself
 # (bin/builtins.jsbc — bytecode only, no builtin .js) and its shims through
@@ -384,6 +406,8 @@ help:
 	@echo "  scrub            Full recompile from scratch (jac clean --cache, then build)"
 	@echo "  run FILE=<path>  Run a JS file with the compiled engine"
 	@echo "  dist             Stage a relocatable runtime tree in dist/ (what the jac binary bundles)"
+	@echo "  test_language    Run test262 language/ tests; fail on regressions vs language_baseline.json"
+	@echo "  test_builtins    Run test262 built-ins/ tests; fail on regressions vs builtins_baseline.json"
 	@echo "  napi_shim        Build lib/libnapi_shim.so (NAPI ABI surface)"
 	@echo "  tz_shim          Build lib/libtz_shim.so (IANA TZif timezone shim)"
 	@echo "  icu_shim         Build lib/libicu_shim.so (ICU Intl shim)"

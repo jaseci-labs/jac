@@ -11,6 +11,8 @@ profile = "rc"
 "engine.src.*" = "native"
 "napi.src.*" = "native"
 "tools.*" = "server"
+"engine.tests.test262.run_test262" = "server"
+"engine.tests.test262.analyze_builtins_failures" = "server"
 
 [native]
 link_mode = "bitcode"

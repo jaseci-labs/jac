@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "_comment": "Skip entries for run_test262.py. See engine/tests/test262/README.md for format docs.",
+  "built_ins_exempt_from_bulk_skips": true,
+  "bulk_skips": [
+  ],
+  "tests": [
+    {
+      "path": "test/built-ins/RegExp/property-escapes/generated/",
+      "skip_type": "skip",
+      "reason": "Auto-generated Unicode property-escape tests (~469) — full Unicode property database not implemented"
+    }
+  ]
+}
