@@ -9,6 +9,11 @@ compiler (verified import-clean in Phase 0.2).
 
 Usage:
     js_compiler <in.js> <out.jsbc>
+    js_compiler --pack <builtins.jsbc> <a.jsbc> <b.jsbc> ...
+
+`--pack` joins already-compiled per-module .jsbc into the single builtins pack
+the engine loads (format: "Builtins pack" in bytecode/jsbc.jac). Each module's
+key is its path under builtins/js/ without ".jsbc" (e.g. "fs/promises").
 
 The Makefile `builtins-bytecode` target shell-loops this over every
 engine/src/builtins/js/*.js to (re)generate the sibling .jsbc files, which are
@@ -42,10 +47,28 @@ import from engine.src.bytecode.regisa {
     reg_isa_debug_set,
     reg_translate_fn
 }
-import from engine.src.bytecode.jsbc { jsbc_encode, _cjs_wrap_source, JSBCBlob }
+import from engine.src.bytecode.jsbc {
+    jsbc_encode,
+    jsbc_pack_header,
+    _cjs_wrap_source,
+    JSBCBlob
+}
 import from engine.src.runtime.jsstring { str_hash }
-import from engine.src.ffi.libc { fflush, _exit, stack_expand, fopen, fwrite, fclose }
+import from engine.src.runtime.mem { io_alloc }
+import from engine.src.ffi.libc {
+    fflush,
+    _exit,
+    stack_expand,
+    fopen,
+    fread,
+    fwrite,
+    fclose
+}
 import sys;
+
+# Staging cap for --pack: every input blob is read into ONE fixed buffer (all
+# builtins together are ~2 MB).
+glob JSBC_PACK_CAP: int = 67108864;  # 64 MB
 
 """Compile one .js file to .jsbc. Returns 0 on success, non-zero on error."""
 def compile_one(in_path: str, out_path: str) -> int {
@@ -120,13 +143,85 @@ def compile_one(in_path: str, out_path: str) -> int {
     return 0;
 }
 
+"""Join per-module .jsbc files into one builtins pack. Returns 0 on success."""
+def pack_all(out_path: str, in_paths: list[str]) -> int {
+    keys: list[str] = [];
+    sizes: list[int] = [];
+    # Read every input into ONE fixed staging buffer, appending at the running
+    # offset (fread into buf+used never reallocates).
+    buf: int = io_alloc(JSBC_PACK_CAP + 1);
+    used: int = 0;
+    for p in in_paths {
+        k: int = p.find("builtins/js/");
+        if k < 0 or not p.endswith(".jsbc") {
+            print("js_compiler: --pack input is not a builtins/js/*.jsbc: " + p);
+            return 1;
+        }
+        keys.append(p[k + 12:len(p) - 5]);
+        f: int = fopen(p, "rb");
+        if f == 0 {
+            print("js_compiler: cannot read " + p);
+            return 1;
+        }
+        start: int = used;
+        reading: bool = True;
+        while reading and used < JSBC_PACK_CAP {
+            n: int = fread(buf + used, 1, 65536, f);
+            if n <= 0 {
+                reading = False;
+            } else {
+                used = used + n;
+            }
+        }
+        fclose(f);
+        if used >= JSBC_PACK_CAP {
+            print("js_compiler: --pack inputs exceed " + str(JSBC_PACK_CAP) + " bytes");
+            return 1;
+        }
+        if used == start {
+            print("js_compiler: empty input " + p);
+            return 1;
+        }
+        sizes.append(used - start);
+    }
+    hdr: JSBCBlob = jsbc_pack_header(keys, sizes);
+    fo: int = fopen(out_path, "wb");
+    if fo == 0 {
+        print("js_compiler: cannot write " + out_path);
+        return 1;
+    }
+    w1: int = fwrite(hdr.ptr, 1, hdr.size, fo);
+    w2: int = fwrite(buf, 1, used, fo);
+    fclose(fo);
+    if w1 != hdr.size or w2 != used {
+        print("js_compiler: short write " + out_path);
+        return 1;
+    }
+    print(
+        "js_compiler: packed "
+            + str(len(keys))
+            + " modules -> "
+            + out_path
+            + " ("
+            + str(hdr.size + used)
+            + " bytes)"
+    );
+    return 0;
+}
+
 with entry {
     # Compiling large builtins (stream.js, crypto.js) recurses deeply in the
     # parser/compiler — expand the stack like main.na.jac does.
     stack_expand();
     exit_code: int = 0;
-    if len(sys.argv) < 3 {
+    if len(sys.argv) >= 3 and sys.argv[1] == "--pack" {
+        exit_code = pack_all(sys.argv[2], sys.argv[3:]);
+        if exit_code != 0 {
+            print("js_compiler: FAILED (" + str(exit_code) + ")");
+        }
+    } elif len(sys.argv) < 3 {
         print("usage: js_compiler <in.js> <out.jsbc>");
+        print("       js_compiler --pack <builtins.jsbc> <a.jsbc> ...");
         exit_code = 2;
     } else {
         in_path: str = sys.argv[1];

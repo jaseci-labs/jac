@@ -19,13 +19,17 @@ export JAC_NATIVE_FLOOR_DIR ?= $(abspath $(NO_FLOOR_DIR))
 SOURCES       := $(shell find engine/src/ napi/src/ -name '*.jac' 2>/dev/null)
 
 # ── Precompiled builtin bytecode (.jsbc) — see docs/jsbc_bytecode_cache_plan.md ─
-# NOTE: recursive — builtins live in subdirs too (e.g. fs/promises.js). The
-# runtime demands a sibling .jsbc for EVERY builtins/js/**/*.js it loads, so this
-# glob must match the runtime's `_jsbc_path_for` reach exactly.
+# NOTE: recursive — builtins live in subdirs too (e.g. fs/promises.js). Every
+# builtins/js/**/*.js compiles to a sibling .jsbc; those are intermediates joined
+# into BUILTIN_PACK, the one bytecode file the engine loads (keyed by path under
+# builtins/js/, see the runtime's `_builtin_key_for`). Sorted so the pack is
+# byte-identical whatever order `find` returns.
 JSC           := bin/js_compiler
 JSC_MAIN      := engine/src/js_compiler.jac
-BUILTIN_JS    := $(shell find engine/src/builtins/js -name '*.js' 2>/dev/null)
+BUILTIN_JS    := $(sort $(shell find engine/src/builtins/js -name '*.js' 2>/dev/null))
 BUILTIN_JSBC  := $(BUILTIN_JS:.js=.jsbc)
+BUILTIN_PACK  := engine/src/builtins/builtins.jsbc
+BIN_PACK      := bin/builtins.jsbc
 NAPI_SHIM_SRC := napi/shim/napi_shim.c
 NAPI_SHIM_VER := napi/shim/napi.ver
 NAPI_SHIM_SO  := lib/libnapi_shim.so
@@ -97,9 +101,9 @@ js_engine_select:
 
 # ── Build (incremental — reuses cached IR for unchanged modules) ─────────────
 # Runs install_deps first (it skips every dependency that is already present).
-# Also (re)generates builtin .jsbc bytecode. These are a build artifact (not
-# committed — see .gitignore `*jsbc`); the engine loads them for speed and falls
-# back to parsing any builtin whose .jsbc is missing.
+# Also (re)generates the builtin bytecode pack. It is a build artifact (not
+# committed — see .gitignore `*jsbc`); the engine loads it for speed and parses
+# the builtin .js only when there is no pack.
 build: install_deps $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) $(BIN) builtins-bytecode js_engine_select
 	$(call print_build_stats)
 
@@ -253,25 +257,42 @@ engine/src/builtins/js/%.jsbc: engine/src/builtins/js/%.js $(JSC)
 	    $(JSC) $< $@ >/dev/null
 	@echo "  recompiled $(<:engine/src/builtins/js/%=%)"
 
-# Regenerate every builtin's .jsbc (only stale ones recompile). The committed
-# .jsbc are the shipped artifacts; run this after editing any builtins/js/*.js.
-builtins-bytecode: $(JSC) $(BUILTIN_JSBC)
-	@echo "builtins-bytecode: $(words $(BUILTIN_JSBC)) .jsbc up to date"
+# Join every builtin's .jsbc into the single pack the engine loads.
+$(BUILTIN_PACK): $(BUILTIN_JSBC) $(JSC)
+	@LD_LIBRARY_PATH="$(CURDIR)/lib:$(CURDIR)/lib/llhttp/lib:$$LD_LIBRARY_PATH" \
+	    $(JSC) --pack $@ $(BUILTIN_JSBC) >/dev/null
+	@echo "  packed $(words $(BUILTIN_JSBC)) modules into $@"
+
+# A copy next to the binary — where the engine looks for the pack first.
+$(BIN_PACK): $(BUILTIN_PACK)
+	@mkdir -p bin
+	@cp $< $@
+	@echo "  copied $< to $@"
+
+# Regenerate every builtin's .jsbc (only stale ones recompile) and the pack.
+# Run this after editing any builtins/js/*.js.
+builtins-bytecode: $(JSC) $(BUILTIN_JSBC) $(BUILTIN_PACK) $(BIN_PACK)
+	@echo "builtins-bytecode: $(words $(BUILTIN_JSBC)) .jsbc + $(BUILTIN_PACK) ($(BIN_PACK)) up to date"
 
 # CI guard: recompile all builtins to a temp dir and diff against the committed
-# .jsbc — fails if a .js was edited without regenerating (enforces the dev duty).
+# .jsbc, then re-pack and diff against the pack — fails if a .js was edited
+# without regenerating (enforces the dev duty).
 check-bytecode: $(JSC)
 	@set -e; tmp=$$(mktemp -d); rc=0; \
+	export LD_LIBRARY_PATH="$(CURDIR)/lib:$(CURDIR)/lib/llhttp/lib:$$LD_LIBRARY_PATH"; \
 	for js in $(BUILTIN_JS); do \
 	    committed=$${js%.js}.jsbc; \
-	    LD_LIBRARY_PATH="$(CURDIR)/lib:$(CURDIR)/lib/llhttp/lib:$$LD_LIBRARY_PATH" \
-	        $(JSC) $$js $$tmp/out.jsbc >/dev/null; \
+	    $(JSC) $$js $$tmp/out.jsbc >/dev/null; \
 	    if ! cmp -s $$tmp/out.jsbc $$committed; then \
 	        echo "STALE: $$committed differs — run 'make builtins-bytecode'"; rc=1; \
 	    fi; \
 	done; \
+	$(JSC) --pack $$tmp/pack.jsbc $(BUILTIN_JSBC) >/dev/null || rc=1; \
+	if ! cmp -s $$tmp/pack.jsbc $(BUILTIN_PACK); then \
+	    echo "STALE: $(BUILTIN_PACK) differs — run 'make builtins-bytecode'"; rc=1; \
+	fi; \
 	rm -rf $$tmp; \
-	if [ $$rc -eq 0 ]; then echo "check-bytecode: all $(words $(BUILTIN_JS)) .jsbc match"; fi; \
+	if [ $$rc -eq 0 ]; then echo "check-bytecode: all $(words $(BUILTIN_JS)) .jsbc and the pack match"; fi; \
 	exit $$rc
 
 # ── Run a JS file (usage: make run FILE=path/to/script.js) ────────────────────
@@ -279,16 +300,17 @@ run: $(BIN)
 	$(BIN) $(FILE)
 
 # ── Relocatable runtime tree (what the jac binary bundles) ───────────────────
-# The engine finds its builtins relative to its own path (<root>/engine/src/
-# builtins/js) and its shims through $$ORIGIN, so this tree runs from anywhere.
+# Everything sits in bin/: the engine finds its builtins next to itself
+# (bin/builtins.jsbc — bytecode only, no builtin .js) and its shims through
+# $$ORIGIN, so this tree runs from anywhere.
 # `zig build -Djs-engine=../js_engine/dist` packs it into the jac payload.
 DIST := dist
 dist: build
 	rm -rf $(DIST)
-	mkdir -p $(DIST)/bin $(DIST)/engine/src/builtins
+	mkdir -p $(DIST)/bin
 	cp $(BIN) $(DIST)/bin/
 	cp -L $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) $(LLHTTP_SO) $(DIST)/bin/
-	cp -r engine/src/builtins/js $(DIST)/engine/src/builtins/
+	cp $(BUILTIN_PACK) $(DIST)/bin/
 	@echo "Staged: $(DIST)/"
 
 # ── Clean ─────────────────────────────────────────────────────────────────────

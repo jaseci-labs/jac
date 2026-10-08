@@ -626,3 +626,106 @@ def:pub jsbc_decode(buf: int, blen: int) -> JSBCModule {
     mod.ok = True;
     return mod;
 }
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Builtins pack (builtins.jsbc) — every builtin's .jsbc blob in ONE file, so a
+# runtime tree ships no builtin .js and no per-module .jsbc. Built by
+# `js_compiler --pack`; read once by the engine, which then decodes each module
+# from its slice on first require.
+#
+#   magic        : 4 raw bytes 'J','S','B','P'
+#   format_ver   : i64   (the blobs' JSBC_FORMAT_VER / JSBC_OPCODE_COUNT, so a
+#   opcode_count : i64    stale pack is rejected once, before any lookup)
+#   count        : i64
+#   count × { key: bstr, size: i64 }   key = path under builtins/js/ without
+#                                        ".js" ("fs", "fs/promises", …)
+#   the count blobs, unchanged, back to back in index order
+# ══════════════════════════════════════════════════════════════════════════════
+
+"""A parsed pack index: `index` maps a key to its slot in `offs`/`sizes`; `offs`
+are absolute byte offsets into the pack buffer."""
+obj JSBCPack {
+    has index: dict[str, int],
+        offs: list[int],
+        sizes: list[int],
+        format_ver: int = 0,
+        opcode_count: int = 0,
+        ok: bool = False,
+        err: str = "";
+}
+
+"""Encode a pack's header + index (everything before the blobs). The caller
+writes it, then each blob's raw bytes in the same order."""
+def:pub jsbc_pack_header(keys: list[str], sizes: list[int]) -> JSBCBlob {
+    w: JSBCWriter = _make_writer();
+    w.w_u8(74);  # 'J'
+    w.w_u8(83);  # 'S'
+    w.w_u8(66);  # 'B'
+    w.w_u8(80);  # 'P'
+    w.w_i64(JSBC_FORMAT_VER);
+    w.w_i64(JSBC_OPCODE_COUNT);
+    w.w_i64(len(keys));
+    i: int = 0;
+    while i < len(keys) {
+        w.w_bstr(keys[i]);
+        w.w_i64(sizes[i]);
+        i = i + 1;
+    }
+    return _finish(w);
+}
+
+"""Parse a pack's header + index from a FIXED raw buffer the caller keeps for the
+life of the process. Blobs are NOT decoded here: callers jsbc_decode(buf + off,
+size) per module. ok=False with err set on a bad magic, a version mismatch, or an
+index that runs past the end of the buffer."""
+def:pub jsbc_pack_open(buf: int, blen: int) -> JSBCPack {
+    r: JSBCReader = _make_reader(buf, blen);
+    idx: dict[str, int] = {};
+    offs: list[int] = [];
+    sizes: list[int] = [];
+    pack: JSBCPack = JSBCPack(index=idx, offs=offs, sizes=sizes);
+    m0: int = r.r_u8();
+    m1: int = r.r_u8();
+    m2: int = r.r_u8();
+    m3: int = r.r_u8();
+    if m0 != 74 or m1 != 83 or m2 != 66 or m3 != 80 {
+        pack.err = "bad magic: expected JSBP";
+        return pack;
+    }
+    pack.format_ver = r.r_i64();
+    pack.opcode_count = r.r_i64();
+    if pack.format_ver != JSBC_FORMAT_VER or pack.opcode_count != JSBC_OPCODE_COUNT {
+        pack.err = "format/opcode-count mismatch (stale pack)";
+        return pack;
+    }
+    count: int = r.r_i64();
+    if count < 0 {
+        pack.err = "negative module count";
+        return pack;
+    }
+    keys: list[str] = [];
+    i: int = 0;
+    while i < count and r.ok {
+        keys.append(r.r_bstr());
+        sizes.append(r.r_i64());
+        i = i + 1;
+    }
+    if not r.ok {
+        pack.err = "truncated/corrupt pack index";
+        return pack;
+    }
+    off: int = r.pos;
+    i = 0;
+    while i < count {
+        if sizes[i] <= 0 or off + sizes[i] > blen {
+            pack.err = "truncated/corrupt pack (blob " + keys[i] + " past end)";
+            return pack;
+        }
+        idx[keys[i]] = i;
+        offs.append(off);
+        off = off + sizes[i];
+        i = i + 1;
+    }
+    pack.ok = True;
+    return pack;
+}

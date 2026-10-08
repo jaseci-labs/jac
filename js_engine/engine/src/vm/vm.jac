@@ -544,7 +544,9 @@ import from engine.src.bytecode.compiler { make_compiler, Compiler }
 import from engine.src.bytecode.jsbc {
     _cjs_wrap_source,
     jsbc_decode,
+    jsbc_pack_open,
     JSBCModule,
+    JSBCPack,
     JSBC_FORMAT_VER,
     JSBC_OPCODE_COUNT
 }
@@ -1048,7 +1050,11 @@ import from engine.src.builtins.modules {
     esm_export_meta_delete,
     esm_validate_indirect_exports
 }
-import from engine.src.builtins.path_utils { path_dirname, path_abspath }
+import from engine.src.builtins.path_utils {
+    path_dirname,
+    path_abspath,
+    path_normalize
+}
 import from engine.src.builtins.module_bindings {
     require_bind_parent,
     require_bind_set,
@@ -1188,6 +1194,7 @@ import from engine.src.builtins.native_kinds {
 import from engine.src.builtins.process {
     _KEY_IS_ENV_OBJ,
     process_get_builtin_module,
+    process_get_exec_path,
     process_get_uncaught_listeners,
     process_get_uncaught_once,
     process_get_preserve_symlinks,
@@ -4112,6 +4119,17 @@ def _is_arr_callback_kind(kind: int) -> bool {
         or kind == NATIVE_KIND_ARRAY_SORT
         or kind == NATIVE_KIND_ARRAY_FLATMAP;
 }
+
+# Builtins bytecode pack (builtins.jsbc next to the binary, else under
+# <engine_root>/src/builtins/), read once by VM._jsbc_pack_slot. The buffer is a
+# raw io_alloc (never freed), kept for the life of the process because modules
+# are decoded from it lazily, on first require.
+glob _JSBC_PACK_STATE: int = 0,  # 0 = not read yet, 1 = loaded, -1 = no pack
+     _JSBC_PACK_PATH: str = "",  # the pack that was loaded
+     _JSBC_PACK_BUF: int = 0,
+     _JSBC_PACK_IDX: dict[str, int] = {},  # key ("fs/promises") → slot
+     _JSBC_PACK_OFF: list[int] = [],  # slot → byte offset into _JSBC_PACK_BUF
+     _JSBC_PACK_SIZE: list[int] = [];  # slot → blob size
 
 """
 Bytecode interpreter — owns all mutable JS execution state for one context.
@@ -10250,37 +10268,128 @@ obj VM {
     }
 
     """
-    Sibling `.jsbc` path for a JS-builtin source file, or "" if `filename` is not
-    a builtin under `src/builtins/js/*.js`. Only builtins ship precompiled
-    bytecode — user CJS/ESM modules always parse.
+    Key of a JS builtin in the bytecode pack — its path under `src/builtins/js/`
+    without ".js" ("fs", "fs/promises", "internal/errors") — or "" if `filename`
+    is not a builtin. Only builtins ship precompiled bytecode — user CJS/ESM
+    modules always parse.
     """
-    def _jsbc_path_for(filename: str) -> str {
+    def _builtin_key_for(filename: str) -> str {
         n: int = len(filename);
-        if n < 3 {
+        if n < 3 or str_substr(filename, n - 3, n) != ".js" {
             return "";
         }
-        # must end in ".js"
-        if str_substr(filename, n - 3, n) != ".js" {
+        k: int = filename.find("/src/builtins/js/");
+        if k < 0 {
             return "";
         }
-        # must live under the builtins/js directory
-        if not ("/src/builtins/js/" in filename) {
-            return "";
-        }
-        return str_substr(filename, 0, n - 3) + ".jsbc";
+        return str_substr(filename, k + 17, n - 3);
     }
 
     """
-    Load a JS builtin's precompiled `.jsbc` into (top_fn, all_fns) when the JSBC
-    cache is enabled and `filename` is a builtin. Returns a JSBCModule with
-    ok=True on success, or ok=False to fall through to normal JS parse+compile.
+    Slot of `key` in the builtins bytecode pack, or -1 when the pack has no such
+    module or there is no pack (a dev tree before the bytecode is built: builtins
+    then parse from their .js). The pack (`make builtins-bytecode`) is looked up
+    next to the engine binary (symlinks resolved), then as `<engine_root>/src/
+    builtins/builtins.jsbc`; the first one found is read on first use into a
+    buffer kept for the life of the process. A present-but-broken pack (bad
+    magic, or a format/opcode-version mismatch vs this engine) is fatal: it means
+    a stale build shipped incompatible bytecode, which must be surfaced loudly
+    rather than silently masked by parsing.
+    """
+    def _jsbc_pack_slot(key: str) -> int {
+        if _JSBC_PACK_STATE == 0 {
+            _JSBC_PACK_STATE = -1;
+            exe: str = process_get_exec_path();
+            exe_rp: str = path_realpath_str(exe);
+            if exe_rp != "" {
+                exe = exe_rp;
+            }
+            pack_paths: list[str] = [
+                path_dirname(exe) + "/builtins.jsbc",
+                self.engine_root + "/src/builtins/builtins.jsbc"
+            ];
+            pack_path: str = "";
+            # Binary-safe raw read (NEVER interned into a Jac str, which would
+            # truncate at the first embedded NUL).
+            fb: FileBytes = FileBytes(ptr=0, size=0, ok=False);
+            pi: int = 0;
+            while pi < len(pack_paths) and not fb.ok {
+                pack_path = pack_paths[pi];
+                fb = _read_file_bytes(pack_path);
+                pi = pi + 1;
+            }
+            if fb.ok {
+                pack: JSBCPack = jsbc_pack_open(fb.ptr, fb.size);
+                if not pack.ok {
+                    print(
+                        "FATAL: bad bytecode pack "
+                            + pack_path
+                            + ": "
+                            + pack.err
+                            + " (pack v"
+                            + str(pack.format_ver)
+                            + "/opc "
+                            + str(pack.opcode_count)
+                            + " vs engine v"
+                            + str(JSBC_FORMAT_VER)
+                            + "/opc "
+                            + str(JSBC_OPCODE_COUNT)
+                            + ") — run `make builtins-bytecode`"
+                    );
+                    fflush(0);
+                    abort();
+                }
+                _JSBC_PACK_PATH = pack_path;
+                _JSBC_PACK_BUF = fb.ptr;
+                _JSBC_PACK_IDX = pack.index;
+                _JSBC_PACK_OFF = pack.offs;
+                _JSBC_PACK_SIZE = pack.sizes;
+                _JSBC_PACK_STATE = 1;
+            }
+        }
+        if _JSBC_PACK_STATE != 1 or not (key in _JSBC_PACK_IDX) {
+            return -1;
+        }
+        return _JSBC_PACK_IDX[key];
+    }
 
-    `.jsbc` files are a build artifact (`make build` regenerates them; not
-    committed). A **missing** `.jsbc` is NOT an error — we simply parse the `.js`
-    (so a fresh checkout / partial build still runs). A **present-but-broken**
-    `.jsbc` (bad magic, or a format/opcode-version mismatch vs this engine) IS a
-    hard error: it means a stale build shipped incompatible bytecode, which must
-    be surfaced loudly rather than silently masked by parsing.
+    """
+    Absolute path of the builtin that `specifier` names when its bytecode is in
+    the pack, else "". `specifier` is either the builtin path _require_module
+    substituted for a bare builtin name, or a relative require (`./fs/streams.js`)
+    issued from a builtin file. A hit means the module loads entirely from the
+    pack: _require_module skips resolution and the source read, so a runtime tree
+    needs no builtin .js. Relative requires between builtins name their `.js`
+    explicitly; anything else (or JSBC=0) takes the normal file path.
+    """
+    def _packed_builtin_path(specifier: str, parent_file: str) -> str {
+        if getenv("JSBC") == "0" {
+            return "";
+        }
+        bi_dir: str = self.engine_root + "/src/builtins/js/";
+        path: str = "";
+        if specifier.startswith(bi_dir) {
+            path = specifier;
+        } elif (specifier.startswith("./") or specifier.startswith("../"))
+            and parent_file.startswith(bi_dir) {
+            path = path_normalize(path_dirname(parent_file) + "/" + specifier);
+        }
+        if path == "" or not path.startswith(bi_dir) {
+            return "";
+        }
+        key: str = self._builtin_key_for(path);
+        if key == "" or self._jsbc_pack_slot(key) < 0 {
+            return "";
+        }
+        return path;
+    }
+
+    """
+    Load a JS builtin's precompiled bytecode from the pack into (top_fn, all_fns)
+    when the JSBC cache is enabled and `filename` is a packed builtin. Returns a
+    JSBCModule with ok=True on success, or ok=False to fall through to normal JS
+    parse+compile (JSBC=0, not a builtin, or no pack yet). A module that fails to
+    decode is fatal (see _jsbc_pack_slot).
     """
     def _load_builtin_jsbc(filename: str) -> JSBCModule {
         miss: JSBCModule = JSBCModule(
@@ -10296,45 +10405,26 @@ obj VM {
         if getenv("JSBC") == "0" {
             return miss;
         }
-        jsbc_path: str = self._jsbc_path_for(filename);
-        if jsbc_path == "" {
+        key: str = self._builtin_key_for(filename);
+        if key == "" {
             return miss;
         }  # not a builtin → parse path
-
-        # Read the .jsbc into a single fixed raw byte buffer (binary-safe — NEVER
-        # interned into a Jac str, which would truncate at the first embedded NUL).
-        # A missing/unreadable/empty .jsbc is NOT fatal → parse fallback. `fb` stays
-        # in scope for the whole decode, keeping fb.ptr referenced.
-        fb: FileBytes = _read_file_bytes(jsbc_path);
-        if not fb.ok {
-            # No .jsbc yet (not built) → fall back to parsing the .js.
+        slot: int = self._jsbc_pack_slot(key);
+        if slot < 0 {
             return miss;
-        }
-        mod: JSBCModule = jsbc_decode(fb.ptr, fb.size);
+        }  # no pack / not packed → parse the .js
+        mod: JSBCModule = jsbc_decode(
+            _JSBC_PACK_BUF + _JSBC_PACK_OFF[slot], _JSBC_PACK_SIZE[slot]
+        );
         if not mod.ok {
             print(
-                "FATAL: corrupt bytecode "
-                    + jsbc_path
+                "FATAL: corrupt bytecode for builtin "
+                    + key
+                    + " in "
+                    + _JSBC_PACK_PATH
                     + ": "
                     + mod.err
                     + " — run `make builtins-bytecode`"
-            );
-            fflush(0);
-            abort();
-        }
-        if mod.format_ver != JSBC_FORMAT_VER or mod.opcode_count != JSBC_OPCODE_COUNT {
-            print(
-                "FATAL: stale bytecode "
-                    + jsbc_path
-                    + " (format v"
-                    + str(mod.format_ver)
-                    + "/opc "
-                    + str(mod.opcode_count)
-                    + " vs engine v"
-                    + str(JSBC_FORMAT_VER)
-                    + "/opc "
-                    + str(JSBC_OPCODE_COUNT)
-                    + "): run `make builtins-bytecode`"
             );
             fflush(0);
             abort();
@@ -11359,7 +11449,16 @@ obj VM {
 
         # 1. Try built-in module (fs, process, console, timers, etc.)
         #    Skip native dispatch for JS-implemented builtins → they load from file below
-        if not self._is_js_builtin(bare_spec) {
+        #    A relative require between builtins (fs.js → ./fs/errors.js) that the
+        #    pack holds goes straight to step 2 as that builtin's path: the native
+        #    probe would resolve it against the disk.
+        packed_rel: str = "";
+        if specifier.startswith("./") or specifier.startswith("../") {
+            packed_rel = self._packed_builtin_path(specifier, parent_file);
+        }
+        if packed_rel != "" {
+            specifier = packed_rel;
+        } elif not self._is_js_builtin(bare_spec) {
             builtin_result: JSValue = module_require_builtin(
                 specifier, from_dir, self.globals
             );
@@ -11383,43 +11482,51 @@ obj VM {
             specifier = js_builtin_path;
         }
 
-        # 2. Canonical resolution (package.json, node_modules, extensions)
-        rerr: JSValue = module_resolve_error(
-            specifier, from_dir, parent_file, is_esm_import
-        );
-        if not jsv_is_undefined(rerr) {
-            self.had_exception = True;
-            self.pending_exc = rerr;
-            return js_undefined();
-        }
-        resolved: str = module_resolve(specifier, from_dir, parent_file, is_esm_import);
-        resolved_before_rp: str = resolved;
-        # --preserve-symlinks: keep the symlink path as the module identity so
-        # require('./real') and require('./link') are distinct cache entries.
-        if not process_get_preserve_symlinks() {
-            if len(resolved) > 0 and resolved[0] == "/" {
-                rp_res: str = path_realpath_str(resolved);
-                if rp_res != "" {
-                    resolved = rp_res;
+        # 2. Canonical resolution (package.json, node_modules, extensions). A
+        # builtin whose bytecode is in the pack skips it, and step 5's source
+        # read: it never touches the disk, so a runtime tree ships no builtin .js.
+        # Builtins are CJS by contract and ignore require.extensions overrides.
+        resolved: str = self._packed_builtin_path(specifier, parent_file);
+        bi_packed: bool = resolved != "";
+        mod_format: str = "cjs-js";
+        if not bi_packed {
+            rerr: JSValue = module_resolve_error(
+                specifier, from_dir, parent_file, is_esm_import
+            );
+            if not jsv_is_undefined(rerr) {
+                self.had_exception = True;
+                self.pending_exc = rerr;
+                return js_undefined();
+            }
+            resolved = module_resolve(specifier, from_dir, parent_file, is_esm_import);
+            resolved_before_rp: str = resolved;
+            # --preserve-symlinks: keep the symlink path as the module identity so
+            # require('./real') and require('./link') are distinct cache entries.
+            if not process_get_preserve_symlinks() {
+                if len(resolved) > 0 and resolved[0] == "/" {
+                    rp_res: str = path_realpath_str(resolved);
+                    if rp_res != "" {
+                        resolved = rp_res;
+                    }
                 }
             }
-        }
-        mod_format: str = module_resolve_format(
-            specifier, from_dir, parent_file, is_esm_import
-        );
-        # Symlink targets: format follows the realpath (e.g. foo.json → bar.mjs),
-        # unless --preserve-symlinks keeps the link path.
-        if (
-            not process_get_preserve_symlinks()
-            and resolved != resolved_before_rp
-            and len(resolved) > 0
-            and resolved[0] == "/"
-        ) {
-            fmt_rp: str = module_resolve_format(
-                resolved, path_dirname(resolved), resolved, is_esm_import
+            mod_format = module_resolve_format(
+                specifier, from_dir, parent_file, is_esm_import
             );
-            if fmt_rp != "" {
-                mod_format = fmt_rp;
+            # Symlink targets: format follows the realpath (e.g. foo.json → bar.mjs),
+            # unless --preserve-symlinks keeps the link path.
+            if (
+                not process_get_preserve_symlinks()
+                and resolved != resolved_before_rp
+                and len(resolved) > 0
+                and resolved[0] == "/"
+            ) {
+                fmt_rp: str = module_resolve_format(
+                    resolved, path_dirname(resolved), resolved, is_esm_import
+                );
+                if fmt_rp != "" {
+                    mod_format = fmt_rp;
+                }
             }
         }
         # Canonical module id for ESM namespace / builtin interop (package #imports → "path", etc.)
@@ -11526,7 +11633,10 @@ obj VM {
         }
 
         # Extension loader routing (Vite §4.2 — custom require.extensions override)
-        if mod_format == "cjs-json" or mod_format == "napi" or mod_format == "cjs-js" {
+        if not bi_packed
+            and (
+                mod_format == "cjs-json" or mod_format == "napi" or mod_format == "cjs-js"
+            ) {
             ext_loader: JSValue = _lookup_ext_loader(resolved);
             if _is_custom_ext_loader(ext_loader, mod_format) {
                 return self._load_via_extension_loader(
@@ -11675,16 +11785,19 @@ obj VM {
             return wasm_ns;
         }
 
-        # 5. Read JS source
-        file_content: JSValue = _read_file_sync_str(resolved);
-        if jsv_is_undefined(file_content) {
-            self.had_exception = True;
-            self.pending_exc = module_resolve_error(
-                specifier, from_dir, parent_file, is_esm_import
-            );
-            return js_undefined();
+        # 5. Read JS source (a packed builtin runs from bytecode — no source)
+        source: str = "";
+        if not bi_packed {
+            file_content: JSValue = _read_file_sync_str(resolved);
+            if jsv_is_undefined(file_content) {
+                self.had_exception = True;
+                self.pending_exc = module_resolve_error(
+                    specifier, from_dir, parent_file, is_esm_import
+                );
+                return js_undefined();
+            }
+            source = str_from_id(jsv_to_table_id(file_content));
         }
-        source: str = str_from_id(jsv_to_table_id(file_content));
 
         # Ambiguous files resolve to `cjs-js` by default (no package `type:module`),
         # but when source is actually an ES module (top-level import/export), they
