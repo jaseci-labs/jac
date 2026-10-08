@@ -195,10 +195,6 @@ obj KernelSession(SessionHooks) {
         return self.closure;
     }
 
-    def defers_native_codegen -> bool {
-        return self.host.fallback is None and not self.host.inputs.native_codegen;
-    }
-
     def run_module(
         file_path: str,
         target_program: JacProgram,

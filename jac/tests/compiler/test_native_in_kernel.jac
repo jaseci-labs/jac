@@ -92,23 +92,6 @@ test "a kernel session returns a native module's IR, interface and layout" {
     }
 }
 
-test "a session with native generation off leaves a native module to the host" {
-    with TemporaryDirectory() as td {
-        base = Path(os.path.realpath(td));
-        (base / 'jac.toml').write_text(CONFIG);
-        (base / 'fib.jac').write_text(FIB);
-        entry_file = str(base / 'fib.jac');
-        session = kernel_snapshot(
-            active_host(), JacProgram(), entry_file, native_options(), emit_closure=True
-        );
-        session.seed.native_codegen = False;
-        outcome = run_kernel_compile(session.text(), entry_file, None, session);
-        assert outcome.unit(entry_file) is None , "a deferred native module emitted a unit";
-        entry_report = outcome.analysis.module(entry_file);
-        assert entry_report is not None and entry_report.native;
-    }
-}
-
 test "a native dependency is lowered in the session and emitted as its own unit" {
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));

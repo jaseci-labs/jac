@@ -348,12 +348,7 @@ impl JacCompiler._adopt_kernel_compile(
     }
     target = compiled.unit(full_target);
     if target is None {
-        import from jaclang.project.kernel_compile { kernel_generates_native }
-        entry_report = compiled.analysis.module(full_target);
-        deferred = entry_report is not None
-            and entry_report.native
-            and not kernel_generates_native(program, full_target);
-        return (bool(compiled.analysis.errors) and not deferred, None);
+        return (bool(compiled.analysis.errors), None);
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     adopted: (bytes | None) = None;

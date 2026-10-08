@@ -145,12 +145,6 @@ def kernel_compile_reported(
     );
     import from jaclang.compiler.frontend.kernel_host { replay_event_rows }
     replay_event_rows(host, compiled.analysis.events);
-    entry_report = compiled.analysis.module(path);
-    if entry_report is not None
-        and entry_report.native
-        and not (in_process or native_generation_enabled()) {
-        return compiled;
-    }
     import from jaclang.project.kernel_check { alert_of }
     for diag in compiled.analysis.errors {
         program.errors_had.append(alert_of(diag));
@@ -161,35 +155,8 @@ def kernel_compile_reported(
     return compiled;
 }
 
-def native_generation_enabled -> bool {
-    import from jaclang.project.kernel_snapshot { KERNEL_NATIVE_ENV }
-    return kernel_compile_in_process() or bool(os.environ.get(KERNEL_NATIVE_ENV));
-}
-
 def kernel_generates_native(program: JacProgram, path: str) -> bool {
-    return native_generation_enabled() and kernel_route(program, path)[0];
-}
-
-def last_compiled_native(path: str) -> bool {
-    import from jaclang.compiler.driver.jir {
-        HEADER_SIZE,
-        SEC_NBITCODE,
-        SEC_NOBJ,
-        SECTIONS_MAGIC,
-        get_module_cache_path,
-        read_sections
-    }
-    try {
-        data = get_module_cache_path(path).read_bytes();
-        found = data.find(SECTIONS_MAGIC, HEADER_SIZE);
-        if found < 0 {
-            return False;
-        }
-        held = read_sections(data, found + len(SECTIONS_MAGIC));
-    } except Exception {
-        return False;
-    }
-    return SEC_NBITCODE in held or SEC_NOBJ in held;
+    return kernel_route(program, path)[0];
 }
 
 def host_kernel_compile(
@@ -198,14 +165,6 @@ def host_kernel_compile(
     (routed, in_process) = kernel_route(program, path);
     if not routed or options.skip_analysis {
         return None;
-    }
-    if last_compiled_native(path) and not native_generation_enabled() {
-        return CompileReport(
-            analysis=AnalysisReport(
-                entry_path=path,
-                modules=[ModuleReport(path=os.path.realpath(path), native=True)]
-            )
-        );
     }
     ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
     if ready is not None {
