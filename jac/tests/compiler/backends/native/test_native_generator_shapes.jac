@@ -25,3 +25,11 @@ test "an untyped value compares with an object through the object's __eq__" {
     assert "ne elem-eq rev-eq typed-eq" in out , out;
     assert "total 800 a" in out , out;
 }
+
+test "a caught exception reports its class name" {
+    out = assert_native_identity(
+        fixture("caught_exception_class_name.jac"), profiles=["rc", "managed"]
+    );
+    assert "ValueError/boom Trouble/custom IndexError/" in out , out;
+    assert "RuntimeError/late none" in out , out;
+}
