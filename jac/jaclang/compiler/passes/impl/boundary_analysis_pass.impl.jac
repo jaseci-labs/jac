@@ -1372,10 +1372,10 @@ impl BoundaryAnalysisPass.finish with exit {
         return;
     }
     import from jaclang.compiler.frontend.diagnostics { E5093 }
-    import from jaclang.runtime.scalars { sized_scalar_names }
+    import from jaclang.compiler.boundary_rules { signature_crossings }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
     manifest = self.module.gen.interop_manifest;
 
-    ctypes_wire: set[str] = {'int', 'float', 'bool', 'str'} | set(sized_scalar_names());
     for binding in manifest.bindings.values() {
         crosses_ctypes = (
             binding.source_context == InteropContext.SERVER
@@ -1388,26 +1388,18 @@ impl BoundaryAnalysisPass.finish with exit {
         err_node = binding.ast_node
             if isinstance(binding.ast_node, UniNode)
             else self.module;
-        for (i, pt) in enumerate(binding.param_types) {
-            if pt not in ctypes_wire {
-                pname = binding.param_names[i]
-                    if i < len(binding.param_names)
-                    else str(i);
-                self.ctx.emit(
-                    E5093,
-                    node_override=err_node,
-                    type=pt,
-                    what=f"parameter '{pname}'",
-                    name=binding.name
-                );
-            }
-        }
-        if binding.ret_type not in ctypes_wire and binding.ret_type != 'None' {
+        for (what, spelled, _why) in signature_crossings(
+            list(binding.param_names),
+            list(binding.param_types),
+            binding.ret_type,
+            TARGET_NATIVE,
+            TARGET_SERVER
+        ) {
             self.ctx.emit(
                 E5093,
                 node_override=err_node,
-                type=binding.ret_type,
-                what="the return",
+                type=spelled,
+                what=what,
                 name=binding.name
             );
         }
