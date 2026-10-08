@@ -175,6 +175,7 @@ test "the identifier and registration policy governs accounts SSO creates" {
     import from jaclang.server.identity.config { configure_identity }
     import from jaclang.server.settings {
         AuthSettings,
+        EmailSettings,
         IdentifierSettings,
         RegistrationSettings
     }
@@ -200,6 +201,23 @@ test "the identifier and registration policy governs accounts SSO creates" {
         assert complete_identity(manager, verified, "github").ok;
         assert manager.create_federated_user.call_args.args[0]
             == [{"type": "email", "value": "alice@corp.example", "verified": True}];
+
+        configure_identity(
+            AuthSettings(email=EmailSettings(allowed_domains=["corp.example"])), ""
+        );
+        manager = fake_users();
+        outsider = SSOUserInfo(
+            email="mallory@other.example",
+            email_verified=True,
+            external_id="999",
+            username="mallory"
+        );
+        barred = complete_identity(manager, outsider, "google");
+        assert not barred.ok and barred.code == "EMAIL_DOMAIN_NOT_ALLOWED";
+        manager.create_federated_user.assert_not_called();
+        manager.open_session.assert_not_called();
+        manager = fake_users();
+        assert complete_identity(manager, verified, "google").ok;
 
         configure_identity(
             AuthSettings(registration=RegistrationSettings(enabled=False)), ""

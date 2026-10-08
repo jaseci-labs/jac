@@ -10,6 +10,7 @@ import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.identity.identity_storage { primary_username }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
 import from jaclang.server.identity.config { auth_settings }
+import from jaclang.server.identity.policy { check_email }
 import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
 
 obj OAuthStart {
@@ -44,6 +45,12 @@ def federated_identities(
     email = info.verified_email();
     if not policy.registration.enabled {
         return OAuthLogin(code="REGISTRATION_CLOSED", error="Registration is closed.");
+    }
+    if email and check_email(email) {
+        return OAuthLogin(
+            code="EMAIL_DOMAIN_NOT_ALLOWED",
+            error="This email domain is not accepted here."
+        );
     }
     if policy.identifiers.email == "required" and not email {
         return OAuthLogin(

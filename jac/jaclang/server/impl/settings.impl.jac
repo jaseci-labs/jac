@@ -175,7 +175,7 @@ impl IdentifierSettings.enabled -> list[str] {
 }
 
 impl IdentifierSettings.login_identifiers -> list[str] {
-    return list(self.login_with) if self.login_with else self.enabled();
+    return list(self.login_with) if self.login_with else list(IDENTIFIER_KINDS);
 }
 
 
@@ -214,10 +214,6 @@ impl AuthSettings.problems -> list[str] {
             out.append(
                 f"[serve.auth.identifiers] login_with names {name!r}; it may "
                 f"name only {', '.join(IDENTIFIER_KINDS)}"
-            );
-        } elif name not in enabled {
-            out.append(
-                f"[serve.auth.identifiers] login_with names {name!r}, which is 'off'"
             );
         }
     }

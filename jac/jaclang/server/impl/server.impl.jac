@@ -1535,9 +1535,14 @@ impl JacAPIServer._validate_or_raise -> None {
     import from jaclang.server.settings { ServeConfigError }
     settings = self.resolved_settings();
     problems = settings.validate();
+    transport: any = None;
     for ext in (self.extensions or []) {
         problems.extend(ext.validate(self));
+        if transport is None {
+            transport = ext.mail_transport();
+        }
     }
+    problems.extend(verification_problems(settings.auth.email.verification, transport));
     if not settings.static_only {
         import from jaclang.server.task_scheduler { schedule_problems }
         for (name, spec, _is_walker) in self._scheduled_targets() {

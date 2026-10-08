@@ -126,7 +126,7 @@ The policy is declared in `jac.toml` and enforced at every write (register, pass
 [serve.auth.identifiers]
 username = "optional"       # "required" | "optional" | "off"; an account needs at least one identifier
 email = "optional"          # username "off" + email "required" = the email is the login
-login_with = []             # [] = every identifier that is not "off"
+login_with = []             # kinds that may log in; [] = both. "off" stops NEW identifiers only
 
 [serve.auth.email]
 verification = "none"       # "optional": mail a link, do not block. "required": no session until it is used (needs [scale.emailer])
@@ -147,7 +147,7 @@ max_attempts = 10           # failed logins per source address + identity per wi
 ```
 
 - A new username may not contain `@`. Register an email as `{"type": "email", ...}`, not as a username.
-- `GET /user/auth-policy` (public) returns the rules a form needs; `jacSignup` / `jacLogin` read it to type a bare string as a username or an email.
+- `GET /user/auth-policy` (public) returns the rules a form needs; `jacSignup` reads it to type a bare string as a username or an email (`jacLogin` types by shape: `@` means email).
 - With `verification = "required"`, `/user/register` returns `verification_required: true` and no token, and `/user/login` answers `403 EMAIL_NOT_VERIFIED` (re-sending the link) until `POST /user/verify-identity` succeeds.
 - Every key takes an env override named `JAC_SERVE_AUTH_<TABLE>_<KEY>` (`JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH`). An unknown key under `[serve.auth]` stops the server at startup.
 - The bootstrap admin has no default password: a dev server mints one and logs it once; a cluster needs `[scale.admin] default_password` or `JAC_SCALE_ADMIN_PASSWORD` (`jac scale deploy` mints one into the app Secret).

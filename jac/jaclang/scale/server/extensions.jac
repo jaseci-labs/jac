@@ -18,10 +18,7 @@ import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
 import from jaclang.scale.config.config_loader { ADMIN_PASSWORD_ENV, get_scale_config }
 import from jaclang.server.identity.policy { check_password }
 import from jaclang.scale.emailer.emailer { Emailer }
-import from jaclang.scale.emailer.factory {
-    configured as configured_emailer,
-    verification_problems
-}
+import from jaclang.scale.emailer.factory { configured as configured_emailer }
 import from jaclang.server.endpoints.auth { register_mail_endpoints }
 import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale.server.jobs_ext { JobsExtension }
@@ -232,10 +229,8 @@ obj MailExtension(ServerExtension) {
         return self.emailer;
     }
 
-    def validate(server: JacAPIServer) -> list[str] {
-        return verification_problems(
-            server.resolved_settings().auth.email.verification, self.transport()
-        );
+    def mail_transport -> any {
+        return self.transport();
     }
 
     def register(server: JacAPIServer) {
@@ -322,14 +317,12 @@ obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry,
     def validate(server: JacAPIServer) -> list[str] {
         admin = get_scale_config().get_admin_config();
         password = str(admin.get('default_password') or '');
-        if not admin.get('enabled', True)
-            or not password
-            or os.environ.get(ADMIN_PASSWORD_ENV) {
+        if not admin.get('enabled', True) or not password {
             return [];
         }
         violations = check_password(password, [str(admin.get('username') or '')]);
         return [
-            "[scale.admin] default_password does not meet [serve.auth.password]: "
+            f"The bootstrap admin password ([scale.admin] default_password or {ADMIN_PASSWORD_ENV}) does not meet [serve.auth.password]: "
                 + ', '.join([v.value for v in violations])
         ]
             if violations

@@ -1108,10 +1108,8 @@ impl MicroserviceGateway._install_admin_api -> None {
     import from jaclang.server.middleware { jwt_middleware }
     import from jaclang.server.identity.config { configure_identity }
     import from jaclang.server.settings { ServeConfigError, ServeSettings }
-    import from jaclang.scale.emailer.factory {
-        configured as configured_emailer,
-        verification_problems
-    }
+    import from jaclang.scale.emailer.factory { configured as configured_emailer }
+    import from jaclang.server.identity.mail { verification_problems }
 
     settings = ServeSettings.load(self.base_path);
     configure_identity(settings.auth, self.base_path);

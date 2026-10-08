@@ -99,7 +99,8 @@ test "the username is the email" {
         client = make_client();
         try {
             policy = client.get("/user/auth-policy").json()["data"];
-            assert policy["identifiers"]["login_with"] == ["email"];
+            assert policy["identifiers"]["username"] == "off";
+            assert policy["identifiers"]["login_with"] == ["username", "email"];
 
             tag = uuid.uuid4().hex[:10];
             address = tag + "@corp.example";
@@ -194,6 +195,31 @@ test "closed registration and the login limit answer their own codes" {
             assert limited.status_code == 429;
             assert limited.json()["error"]["code"] == "RATE_LIMITED";
             assert int(limited.headers.get("Retry-After")) > 0;
+        } finally {
+            client.close();
+        }
+    }
+}
+
+
+test "required verification stops startup with or without a mail extension" {
+    import from jaclang.server.settings { ServeConfigError }
+    with patch.dict(os.environ, setup()) {
+        client = make_client();
+        try {
+            server = client.server;
+            server._validate_or_raise();
+            server.resolved_settings().auth.email.verification = "required";
+            for extensions in [list(server.extensions or []), []] {
+                server.extensions = extensions;
+                try {
+                    server._validate_or_raise();
+                    assert False , f"started with {len(extensions)} extensions";
+                } except ServeConfigError as refused {
+                    assert "[serve.auth.email] verification = 'required'"
+                        in str(refused) , str(refused);
+                }
+            }
         } finally {
             client.close();
         }

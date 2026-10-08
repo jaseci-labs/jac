@@ -12,7 +12,7 @@ Client auth uses four helpers from `@jac/runtime`. **Return types differ - get t
 | `jacLogout()` | no | `None` | - (call it, no assign) |
 | `jacIsLoggedIn()` | no | `bool` | - (use inline) |
 
-The first argument is a bare string or an explicit identity. A bare string is typed by the server's auth policy (`GET /user/auth-policy`, fetched once): it is sent as an `email` identity when it contains `@` or when the project turns usernames off, and as a `username` identity otherwise. Pass `{"type": "email" | "username", "value": ...}` to choose yourself, or a list of them to `jacSignup` to register both. A password the policy rejects comes back as `signup_result.error` (for example "the password is too short"); the default policy needs 8 characters and refuses common passwords.
+The first argument is a bare string or an explicit identity. `jacSignup` types a bare string from the server's auth policy (`GET /user/auth-policy`, fetched once): it is sent as an `email` identity when it contains `@` or when the project turns usernames off, and as a `username` identity otherwise. `jacLogin` types by shape alone (`@` means email); the server finds the account by value either way. Pass `{"type": "email" | "username", "value": ...}` to choose yourself, or a list of them to `jacSignup` to register both. A password the policy rejects comes back as `signup_result.error` (for example "the password is too short"); the default policy needs 8 characters and refuses common passwords.
 
 These patterns apply in any client code - plain `.jac` components inferred client (the `@jac/runtime` import itself is a string-path npm import, which is client-only syntax - see `jac-codespaces`).
 

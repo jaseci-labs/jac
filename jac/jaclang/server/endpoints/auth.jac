@@ -27,7 +27,7 @@ import from jaclang.server.identity.identity_storage { primary_username }
 import from jaclang.server.identity.mail { MailOutcome, RESET_PURPOSE, VERIFY_PURPOSE }
 import from jaclang.server.identity.policy { public_policy }
 import from jaclang.server.identity.session_cookie { end_session, start_session }
-import from jaclang.server.identity.user_manager { UserManager, UserRole }
+import from jaclang.server.identity.user_manager { UserRole }
 import from jaclang.server.middleware { bearer_token, require_user }
 import from jaclang.server.serving.datatypes { Request }
 import from jaclang.server.serving.endpoint {
@@ -106,20 +106,6 @@ def registration_limit(
 ) -> TransportResponse | None {
     retry = consume_limit(scope, client_ip(request), cap, seconds);
     return throttled(retry, 'Registration') if retry != 0 else None;
-}
-
-def announce_emails(
-    server: EndpointHost, users: UserManager, user_id: str, request: Request
-) -> None {
-    if auth_settings().email.verification == 'none' {
-        return;
-    }
-    user = users.get_user(user_id) or {};
-    for identity in (user.get('identities') or []) {
-        if identity.get('type') == 'email' and not identity.get('verified') {
-            server.mailer().send_verification(user_id, identity, client_ip(request));
-        }
-    }
 }
 
 def register_auth_endpoints(server: EndpointHost) {
@@ -205,7 +191,7 @@ def register_auth_endpoints(server: EndpointHost) {
             return refused(result, 'REGISTRATION_FAILED');
         }
         user_id = str(result.get('user_id', ''));
-        announce_emails(server, users, user_id, request);
+        server.mailer().announce(users.get_user(user_id) or {}, client_ip(request));
         grant = users.open_session(user_id);
         if grant.unverified is not None {
             result['verification_required'] = True;
@@ -555,7 +541,9 @@ def register_auth_endpoints(server: EndpointHost) {
                 result, 'UPDATE_FAILED', {'IDENTITY_TAKEN': 409, 'NOT_FOUND': 404}
             );
         }
-        announce_emails(server, users, str(user_id), request);
+        server.mailer().announce(
+            users.get_user(str(user_id)) or {}, client_ip(request)
+        );
         return ok(result);
     }
     server.add_endpoint(

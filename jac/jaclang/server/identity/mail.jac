@@ -1,9 +1,11 @@
+import logging;
 import from jaclang.server.identity.audit { emit as audit }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.identity.rate_limit { consume_limit }
 
-glob VERIFY_PURPOSE: str = 'verify',
+glob logger = logging.getLogger(__name__),
+     VERIFY_PURPOSE: str = 'verify',
      RESET_PURPOSE: str = 'reset',
      VERIFY_SCOPE: str = 'send-verification',
      RESET_SCOPE: str = 'forgot-password',
@@ -23,6 +25,20 @@ obj MailResult {
     def sent -> bool {
         return self.outcome == MailOutcome.SENT;
     }
+}
+
+
+def verification_problems(mode: str, emailer: any) -> list[str] {
+    if mode == 'none' or IdentityMailer(emailer=emailer).ready() {
+        return [];
+    }
+    problem = f"[serve.auth.email] verification = '{mode}' needs a mail "
+    "transport, and [scale.emailer] configures none";
+    if mode == 'required' {
+        return [problem];
+    }
+    logger.warning(problem + '; verification mail will not be sent');
+    return [];
 }
 
 
@@ -108,6 +124,19 @@ obj IdentityMailer {
             )
         );
         return MailResult(outcome=MailOutcome.SENT if sent else MailOutcome.FAILED);
+    }
+
+    def announce(user: dict[str, any], source_ip: str = '') {
+        if auth_settings().email.verification == 'none' {
+            return;
+        }
+        for identity in (user.get('identities') or []) {
+            if identity.get('type') == 'email' and not identity.get('verified') {
+                self.send_verification(
+                    str(user.get('user_id') or ''), identity, source_ip
+                );
+            }
+        }
     }
 
     def send_reset(user: dict[str, any], source_ip: str = '') -> MailResult {

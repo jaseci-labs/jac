@@ -106,8 +106,12 @@ impl UserManager.authenticate(
     return result;
 }
 
+impl UserManager.unverified_email(user_id: str) -> dict[str, any] | None {
+    return awaiting_verification(self.get_user(user_id) or {});
+}
+
 impl UserManager.open_session(user_id: str) -> SessionGrant {
-    unverified = awaiting_verification(self.get_user(user_id) or {});
+    unverified = self.unverified_email(user_id);
     if unverified is not None {
         return SessionGrant(unverified=unverified);
     }
@@ -576,7 +580,7 @@ impl UserManager.bootstrap_admin_user(
                 'Secret)'
             };
         }
-        password = secrets.token_urlsafe(18);
+        password = minted_password(24);
     }
     result = self.create_internal_user(admin_username, password, UserRole.ADMIN.value);
     if 'error' in result {

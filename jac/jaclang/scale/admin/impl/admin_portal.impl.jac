@@ -636,10 +636,9 @@ impl JacAPIServerAdmin.admin_login(
             meta=Meta(extra={'http_status': 400})
         );
     }
+    source = client_ip(request) if request is not None else '';
     try {
-        result = self._require_user_manager().authenticate(
-            username, password, client_ip(request) if request is not None else ''
-        );
+        result = self._require_user_manager().authenticate(username, password, source);
     } except AttemptsExhausted as limit {
         return throttled(limit.retry_after, 'Sign-in');
     }
@@ -656,6 +655,17 @@ impl JacAPIServerAdmin.admin_login(
         return TransportResponse.fail(
             code='FORBIDDEN',
             message='Admin access required',
+            meta=Meta(extra={'http_status': 403})
+        );
+    }
+    unverified = self._require_user_manager().unverified_email(user_id);
+    if unverified is not None {
+        if self.server is not None {
+            self.server.mailer().send_verification(user_id, unverified, source);
+        }
+        return TransportResponse.fail(
+            code='EMAIL_NOT_VERIFIED',
+            message='Verify your email address to sign in. A new link has been sent.',
             meta=Meta(extra={'http_status': 403})
         );
     }
@@ -839,6 +849,12 @@ impl JacAPIServerAdmin.admin_create_user(
     );
     if 'error' in result {
         return refused(result, 'CREATE_FAILED');
+    }
+    if self.server is not None {
+        self.server.mailer().announce(
+            self._require_user_manager().get_user(str(result.get('user_id') or ''))
+                or {}
+        );
     }
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 201})

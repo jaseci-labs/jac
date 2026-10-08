@@ -261,18 +261,23 @@ test "every target's compiled AuthGuard actually renders its children" {
     }
 }
 
-test "sign-up and sign-in type a bare identifier from the server's auth policy" {
+test "sign-up types a bare identifier from the server's auth policy" {
     # A username may not contain `@`, so a helper that always sent a bare string
     # as a `username` identity would fail every `jacSignup(email, password)`.
     # Both cores must ask the server which identifiers it accepts and type the
     # string from that, and the signature alone cannot show that they do.
+    # Sign-in types by shape alone: the server finds the account by value, so an
+    # account whose identifier kind was later turned off still signs in.
     for (target, path) in _RUNTIME_CORES.items() {
-        for helper in ["jacSignup", "jacLogin"] {
-            body = _compiled_body(path, ReactBackend(), helper);
-            assert "__authPolicy()" in body , (
-                f"{target}'s compiled {helper} never reads the auth policy:\n{body}"
-            );
-        }
+        signup = _compiled_body(path, ReactBackend(), "jacSignup");
+        assert "__authPolicy()" in signup , (
+            f"{target}'s compiled jacSignup never reads the auth policy:\n{signup}"
+        );
+        signin = _compiled_body(path, ReactBackend(), "jacLogin");
+        assert "__authPolicy()" not in signin , (
+            f"{target}'s compiled jacLogin types its identifier from the policy, "
+            f"which locks out accounts holding a kind that was turned off:\n{signin}"
+        );
         typed = _compiled_body(path, ReactBackend(), "__normalizeIdentity");
         for needle in ['"email"', '"username"', 'indexOf("@")', '"off"'] {
             assert needle in typed , (

@@ -384,7 +384,7 @@ session_cookie = false   # Also set an HttpOnly jac_session cookie that authoriz
 [serve.auth.identifiers]
 username = "optional"    # "required" | "optional" | "off". An account always needs at least one identifier
 email = "optional"       # "required" | "optional" | "off"
-login_with = []          # Identifiers that may log in; [] = every identifier that is not "off"
+login_with = []          # Identifier kinds that may log in; [] = both. "off" only stops new identifiers of a kind
 
 [serve.auth.username]
 min_length = 1

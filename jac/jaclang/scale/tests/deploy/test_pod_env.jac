@@ -1295,6 +1295,22 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
             k8s_config=KubernetesConfig(app_name="app", namespace="ns")
         )._build_user_secret_manifest()["stringData"];
     }
+    with mock.patch.dict(
+        os.environ, {"JAC_SCALE_ADMIN_PASSWORD": "From-The-Shell-1!"}
+    ) {
+        from_shell = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+        )._build_user_secret_manifest()["stringData"];
+        assert from_shell["JAC_SCALE_ADMIN_PASSWORD"] == "From-The-Shell-1!" , (
+            "a password given only in the deploy shell must reach the pods, or "
+            "nothing is minted and the cluster never gets an admin"
+        );
+        kept = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns"),
+            secrets={"JAC_SCALE_ADMIN_PASSWORD": "From-Scale-Secrets-1!"}
+        )._build_user_secret_manifest()["stringData"];
+        assert kept["JAC_SCALE_ADMIN_PASSWORD"] == "From-Scale-Secrets-1!";
+    }
     assert rendered["JAC_SERVE_AUTH_SECRET"] == PLACEHOLDER_JWT_SECRET , (
         "a rendered manifest must never carry a random value the apply will not use"
     );

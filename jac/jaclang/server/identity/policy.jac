@@ -1,10 +1,11 @@
 import hashlib;
 import logging;
 import re;
+import secrets;
 import from jaclang.server.identity.common_passwords { COMMON_PASSWORDS }
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.serving.client { request_sync }
-import from jaclang.server.settings { IDENTIFIER_KINDS }
+import from jaclang.server.settings { IDENTIFIER_KINDS, PASSWORD_CLASSES }
 
 glob logger = logging.getLogger(__name__),
      POLICY_VIOLATION: str = 'POLICY_VIOLATION',
@@ -142,6 +143,16 @@ def character_classes(password: str) -> set[str] {
         }
     }
     return found;
+}
+
+
+def minted_password(length: int = 48) -> str {
+    while True {
+        candidate = secrets.token_urlsafe(length)[:length];
+        if character_classes(candidate) == set(PASSWORD_CLASSES) {
+            return candidate;
+        }
+    }
 }
 
 

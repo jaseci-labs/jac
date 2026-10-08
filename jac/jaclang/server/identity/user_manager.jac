@@ -14,6 +14,7 @@ import from jaclang.server.identity.policy {
     check_identifiers,
     check_identity,
     check_password,
+    minted_password,
     refusal
 }
 import from jaclang.server.identity.rate_limit {
@@ -81,6 +82,7 @@ obj UserManager {
         identifier: str, password: str, source: str = ''
     ) -> dict[str, any] | None;
 
+    def unverified_email(user_id: str) -> dict[str, any] | None;
     def open_session(user_id: str) -> SessionGrant;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def user_exists(user_id: str) -> bool;

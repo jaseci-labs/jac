@@ -10,7 +10,7 @@ Not a test module: the runner collects `test_*.jac` only.
 
 import os;
 
-glob ADMIN_BOOTSTRAP_PASSWORD: str = "Bootstrap-Admin-1!",
+glob ADMIN_BOOTSTRAP_PASSWORD: str = "Bootstrap-Root-Pw-1!",
      FIXTURE_AUTH_ENV: dict[str, str] = {
          # Minimum scrypt cost, so hashing does not dominate test time.
          "JAC_SERVE_AUTH_PASSWORD_HASH_COST": "10",

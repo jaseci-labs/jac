@@ -509,7 +509,7 @@ impl resolve_minted_secret(
     key: str
 ) -> bool {
     import base64;
-    import secrets;
+    import from jaclang.server.identity.policy { minted_password }
     import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
     if secret_data.get(key) != PLACEHOLDER_JWT_SECRET {
         return False;
@@ -535,7 +535,7 @@ impl resolve_minted_secret(
         secret_data[key] = kept;
         return False;
     }
-    secret_data[key] = secrets.token_urlsafe(48);
+    secret_data[key] = minted_password();
     return True;
 }
 

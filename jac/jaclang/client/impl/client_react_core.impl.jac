@@ -375,7 +375,7 @@ impl jacLogin(
     credential_or_password: (str | dict[str, any])
 ) -> bool {
     base_url = globalThis.__jacGetApiBaseUrl__();
-    identity = __normalizeIdentity(identity_or_username, await __authPolicy());
+    identity = __normalizeIdentity(identity_or_username);
     credential = __normalizeCredential(credential_or_password);
     response = await fetch(
         f"{base_url}/user/login",

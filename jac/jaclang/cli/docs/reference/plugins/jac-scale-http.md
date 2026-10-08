@@ -478,7 +478,7 @@ A project declares its auth policy under `[serve.auth]` in `jac.toml`. The serve
 [serve.auth.identifiers]
 username = "optional"    # "required" | "optional" | "off"
 email = "optional"       # "required" | "optional" | "off"
-login_with = []          # [] = every identifier that is not "off"
+login_with = []          # kinds that may log in; [] = both
 ```
 
 | Setup | `username` | `email` |
@@ -490,9 +490,11 @@ login_with = []          # [] = every identifier that is not "off"
 
 An account always needs at least one identifier.
 
+`"off"` is a rule about new values: registration and add-identity refuse that kind. An account that already holds an identifier of that kind keeps logging in with it, so turning a kind off never locks anyone out. To stop a kind from logging in as well, leave it out of `login_with` (for example `login_with = ["email"]`); that is an explicit choice, and the server refuses a `login_with` that would leave a newly registered account with no way in.
+
 A new username may not contain `@`, so a username can never be mistaken for, or block, an email address. `[serve.auth.username]` adds `min_length`, `max_length` and an optional `pattern`.
 
-**Email verification.** `[serve.auth.email] verification` is `"none"` (the default: nothing is mailed unless the client asks), `"optional"` (registration and add-identity mail a verification link; login is not blocked) or `"required"` (the same mail is sent, `/user/register` answers `201` with `verification_required: true` and no token, and login answers `403 EMAIL_NOT_VERIFIED` and re-sends the link until it is used). `"required"` needs a configured [emailer](#emailer); the server refuses to start without one. `allowed_domains` limits which email domains may register.
+**Email verification.** `[serve.auth.email] verification` is `"none"` (the default: nothing is mailed unless the client asks), `"optional"` (registration and add-identity mail a verification link; login is not blocked) or `"required"` (the same mail is sent, `/user/register` answers `201` with `verification_required: true` and no token, and login answers `403 EMAIL_NOT_VERIFIED` and re-sends the link until it is used). `"required"` needs a configured [emailer](#emailer); the server refuses to start without one. `allowed_domains` limits which email domains may register, including the provider-verified email of an account created by SSO.
 
 **Passwords.** `[serve.auth.password]` sets the rules a new password must meet:
 
@@ -1314,7 +1316,7 @@ session_expiry_hours = 24
 |--------|------|---------|-------------|
 | `enabled` | bool | `true` | Enable/disable admin portal |
 | `username` | string | `"admin"` | Admin username |
-| `default_password` | string | unset | Initial admin password. It must meet `[serve.auth.password]`, or the server refuses to start |
+| `default_password` | string | unset | Initial admin password. Whether it comes from here or from `JAC_SCALE_ADMIN_PASSWORD`, it must meet `[serve.auth.password]`, or the server refuses to start |
 | `session_expiry_hours` | int | `24` | Admin session duration in hours |
 | `require_password_reset` | bool | `true` | Force admin to change the default password on first login |
 
@@ -1322,7 +1324,7 @@ session_expiry_hours = 24
 
 | Variable | Description |
 |----------|-------------|
-| `JAC_SCALE_ADMIN_PASSWORD` | Initial admin password (overrides `default_password`) |
+| `JAC_SCALE_ADMIN_PASSWORD` | Initial admin password (overrides `default_password`). Set in the shell that runs `jac scale deploy`, it is written into the app Secret so the pods receive it |
 
 ### User Roles
 

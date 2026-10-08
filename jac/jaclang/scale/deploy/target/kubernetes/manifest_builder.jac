@@ -1169,11 +1169,15 @@ obj ManifestBuilder {
     def _build_user_secret_manifest -> dict[str, any] | None {
         data: dict[str, str] = {k: str(v) for (k, v) in self.secrets.items()};
         data[SIGNING_SECRET_ENV] = self._signing_secret();
+        import os;
         admin = get_scale_config().get_admin_config();
-        if admin.get('enabled', True)
-            and not admin.get('default_password')
-            and ADMIN_PASSWORD_ENV not in data {
-            data[ADMIN_PASSWORD_ENV] = PLACEHOLDER_JWT_SECRET;
+        if admin.get('enabled', True) and ADMIN_PASSWORD_ENV not in data {
+            from_shell = str(os.environ.get(ADMIN_PASSWORD_ENV) or '').strip();
+            if from_shell {
+                data[ADMIN_PASSWORD_ENV] = from_shell;
+            } elif not admin.get('default_password') {
+                data[ADMIN_PASSWORD_ENV] = PLACEHOLDER_JWT_SECRET;
+            }
         }
         return {
             "apiVersion": "v1",

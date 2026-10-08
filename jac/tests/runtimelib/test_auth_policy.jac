@@ -116,7 +116,11 @@ test "auth settings load nested tables and env, and name moved or unknown keys" 
     );
     assert loaded.token_ttl_days == 3;
     assert loaded.identifiers.username == 'off';
-    assert loaded.identifiers.login_identifiers() == ['email'];
+    assert loaded.identifiers.enabled() == ['email'];
+    assert loaded.identifiers.login_identifiers() == ['username', 'email'] , (
+        "'off' stops new identifiers of a kind; it must not cut off the accounts "
+        "that already hold one"
+    );
     assert loaded.password.min_length == 12 and loaded.password.require == ['digit'];
     assert loaded.password.hash_cost == 17;
     assert AuthSettings.from_table({}).password.min_length == 8;
@@ -169,12 +173,6 @@ test "startup validation names each contradiction in the policy" {
         (
             AuthSettings(identifiers=IdentifierSettings(username='maybe')),
             "must be 'required', 'optional' or 'off'"
-        ),
-        (
-            AuthSettings(
-                identifiers=IdentifierSettings(email='off', login_with=['email'])
-            ),
-            "which is 'off'"
         ),
         (
             AuthSettings(identifiers=IdentifierSettings(login_with=['email'])),
@@ -269,7 +267,11 @@ test "the identifier setups accept and refuse the right registrations" {
         assert codes(check_identifiers([username]))
             == ['IDENTIFIER_REQUIRED', 'IDENTIFIER_NOT_ALLOWED'];
         assert public_policy()['identifiers']
-            == {'username': 'off', 'email': 'required', 'login_with': ['email']};
+            == {
+                'username': 'off',
+                'email': 'required',
+                'login_with': ['username', 'email']
+            };
 
         configure_identity(
             AuthSettings(
@@ -621,12 +623,32 @@ test "required verification holds the session until the emailed link is used" {
                 ),
                 tmpdir
             );
-            service = unique('svc');
-            host.users.create_internal_user(service, 'correct horse battery');
-            assert host.users.authenticate(service, 'correct horse battery')
-                is not None;
+            # Turning usernames off stops new ones; an account that already
+            # holds one keeps logging in until login_with says otherwise.
+            earlier = unique('early');
+            host.users.create_internal_user(earlier, 'correct horse battery');
+            refused = host.routes['/user/register'](
+                register_body({'username': unique('late')}, 'correct horse battery'),
+                Request(client_host='192.0.2.9')
+            );
+            assert 'IDENTIFIER_NOT_ALLOWED' in refused.error.details['violations'];
+            kept = host.routes['/user/login'](
+                login_body('username', earlier, 'correct horse battery'),
+                Request(client_host='192.0.2.9')
+            );
+            assert kept.ok and kept.data['token'];
+
+            configure_identity(
+                AuthSettings(
+                    identifiers=IdentifierSettings(
+                        username='off', email='required', login_with=['email']
+                    ),
+                    password=PasswordSettings(hash_cost=10)
+                ),
+                tmpdir
+            );
             closed_to_usernames = host.routes['/user/login'](
-                login_body('username', service, 'correct horse battery'),
+                login_body('username', earlier, 'correct horse battery'),
                 Request(client_host='192.0.2.9')
             );
             assert closed_to_usernames.error.code == 'UNAUTHORIZED';

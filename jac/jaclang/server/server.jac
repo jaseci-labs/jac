@@ -6,7 +6,7 @@ import from pathlib { Path }
 import from typing { AsyncGenerator, Generator, TypeAlias }
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.runtime.context { CallState, ExecutionContext }
-import from jaclang.server.identity.mail { IdentityMailer }
+import from jaclang.server.identity.mail { IdentityMailer, verification_problems }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.serving.app { ServingApp }
 import from jaclang.server.serving.drain { DrainState }
@@ -30,6 +30,10 @@ glob JsonValue: TypeAlias = None
 obj ServerExtension {
     def validate(server: JacAPIServer) -> list[str] {
         return [];
+    }
+
+    def mail_transport -> any {
+        return None;
     }
 
     def register(server: JacAPIServer) -> None abst;
