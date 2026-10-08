@@ -11,6 +11,7 @@ impl StaticAnalysisPass._run_impl(ir_in: Module) -> Module {
     self._check_redundant_imports(self.module);
     self._check_client_imports(self.module);
     self._check_placement_warnings(self.module);
+    self._check_loop_closure_captures(self.module);
     return ir_in;
 }
 
@@ -634,4 +635,210 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
 
 impl StaticAnalysisPass.run_walk with Module entry {
     self.module = self._run_impl(here);
+}
+
+impl StaticAnalysisPass._check_loop_closure_captures(mod: Module) -> None {
+    closures: list[Closure] = [];
+    for lam in mod.get_all_sub_nodes(typ=LambdaExpr) {
+        closures.append(lam);
+    }
+    for nd in mod.get_all_sub_nodes(typ=Ability) {
+        if is_nested_function(nd) {
+            closures.append(nd);
+        }
+    }
+    for closure in closures {
+        if self._runs_in_place(closure) {
+            continue;
+        }
+        loops = self._loops_outlived_by(closure);
+        if not loops {
+            continue;
+        }
+        reported: set[int] = set();
+        for name_nd in closure.get_all_sub_nodes(typ=Name) {
+            sym = name_nd.sym;
+            if sym is None
+                or sym.sym_type != SymbolType.VAR
+                or id(sym) in reported
+                or is_identifier_slot(name_nd) {
+                continue;
+            }
+            owner = sym.parent_tab;
+            if owner is None or self._read_when_created(name_nd, closure) {
+                continue;
+            }
+            for loop in loops {
+                if not scope_encloses(owner, loop) {
+                    continue;
+                }
+                rebind = self._rebound_each_iteration(sym, loop);
+                if rebind is None {
+                    continue;
+                }
+                reported.add(id(sym));
+                self.ctx.emit(
+                    E2097,
+                    node_override=name_nd,
+                    related=[
+                        (
+                            f"'{sym.sym_name}' is assigned here on every iteration",
+                            rebind
+                        )
+                    ],
+                    name=sym.sym_name
+                );
+                break;
+            }
+        }
+    }
+}
+
+impl StaticAnalysisPass._runs_in_place(closure: Closure) -> bool {
+    key = id(closure);
+    known = self._in_place.get(key);
+    if known is not None {
+        return known;
+    }
+    self._in_place[key] = True;
+    verdict = False;
+    if isinstance(closure, LambdaExpr) {
+        verdict = self._consumed_by_its_call(closure);
+        holder = closure.parent;
+        if not verdict
+            and isinstance(holder, Assignment)
+            and holder.aug_op is None
+            and len(holder.target) == 1 {
+            target = holder.target[0];
+            if isinstance(target, Name) and target.sym is not None {
+                verdict = self._only_called_where_bound(closure, target.sym);
+            }
+        }
+    } elif is_nested_function(closure) and not closure.decorators {
+        name_ref = closure.name_ref;
+        if name_ref is not None and name_ref.sym is not None {
+            verdict = self._only_called_where_bound(closure, name_ref.sym);
+        }
+    }
+    self._in_place[key] = verdict;
+    return verdict;
+}
+
+impl StaticAnalysisPass._consumed_by_its_call(closure: LambdaExpr) -> bool {
+    value: UniNode = closure;
+    holder = closure.parent;
+    while isinstance(holder, AtomUnit) {
+        value = holder;
+        holder = holder.parent;
+    }
+    if isinstance(holder, FuncCall) {
+        return holder.target is value or callee_name(holder) in ITERATION_COMBINATORS;
+    }
+    return isinstance(holder, KWPair)
+        and holder.key is not None
+        and holder.key.sym_name == 'key'
+        and isinstance(holder.parent, FuncCall);
+}
+
+impl StaticAnalysisPass._only_called_where_bound(
+    closure: Closure, binding: Symbol
+) -> bool {
+    home = self._frame_of(closure);
+    for use in binding.uses {
+        if use.expr_ctx != ExprCtx.LOAD {
+            continue;
+        }
+        inner: (UniNode | None) = use.parent;
+        while inner is not None and inner is not closure {
+            inner = inner.parent;
+        }
+        if inner is closure {
+            continue;
+        }
+        call = use.parent;
+        if not (isinstance(call, FuncCall) and call.target is use) {
+            return False;
+        }
+        if not same_lexical_scope(self._frame_of(use), home) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl StaticAnalysisPass._is_frame(nd: UniNode) -> bool {
+    return UniScopeNode.is_python_scoping(nd)
+        and not (isinstance(nd, (Ability, LambdaExpr)) and self._runs_in_place(nd));
+}
+
+impl StaticAnalysisPass._frame_of(nd: UniNode) -> (UniScopeNode | None) {
+    cur = nd.parent;
+    while cur is not None {
+        if isinstance(cur, UniScopeNode) and self._is_frame(cur) {
+            return cur;
+        }
+        cur = cur.parent;
+    }
+    return None;
+}
+
+impl StaticAnalysisPass._loops_outlived_by(closure: Closure) -> list[LoopStmt] {
+    loops: list[LoopStmt] = [];
+    part: UniNode = closure;
+    cur = closure.parent;
+    returning = False;
+    while cur is not None {
+        if isinstance(cur, ReturnStmt) {
+            returning = True;
+        } elif isinstance(cur, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
+            if not returning and loop_repeats(cur, part) {
+                loops.append(cur);
+            }
+        } elif UniScopeNode.is_python_scoping(cur) {
+            if self._is_frame(cur) {
+                break;
+            }
+            returning = False;
+        }
+        part = cur;
+        cur = cur.parent;
+    }
+    return loops;
+}
+
+impl StaticAnalysisPass._rebound_each_iteration(
+    sym: Symbol, loop: LoopStmt
+) -> (NameAtom | None) {
+    for name_nd in (list(sym.defn) + list(sym.uses)) {
+        if name_nd.expr_ctx != ExprCtx.STORE {
+            continue;
+        }
+        part: UniNode = name_nd;
+        cur = name_nd.parent;
+        while cur is not None and cur is not loop and not self._is_frame(cur) {
+            part = cur;
+            cur = cur.parent;
+        }
+        if cur is loop and loop_repeats(loop, part) {
+            return name_nd;
+        }
+    }
+    return None;
+}
+
+impl StaticAnalysisPass._read_when_created(name_nd: Name, closure: Closure) -> bool {
+    part: UniNode = name_nd;
+    cur = name_nd.parent;
+    while cur is not None and cur is not closure {
+        if isinstance(cur, ParamVar) and cur.value is part {
+            owner: (UniNode | None) = cur.parent;
+            while owner is not None and not UniScopeNode.is_python_scoping(owner) {
+                owner = owner.parent;
+            }
+            return owner is closure;
+        }
+        part = cur;
+        cur = cur.parent;
+    }
+    return False;
 }

@@ -7,6 +7,34 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### A closure kept past its loop iteration cannot capture a local the loop assigns ([#8168](https://github.com/jaseci-labs/jac/issues/8168), unreleased)
+
+A local assigned in a loop body is owned by the enclosing function, so every closure the loop creates over it shares one binding and sees the value the last iteration assigned. That was accepted silently: in a JSX `for` slot every per-item handler acted on the last item. It is now `E2097`, reported by `jac check` in every codespace.
+
+Scoping is unchanged. A type annotation is not a scoping construct, so the annotated form is reported exactly like the bare one:
+
+<!-- jac-skip -->
+```jac
+{for item in items {
+    row_id = str(item.id);            # also E2097 as `row_id: str = str(item.id);`
+    <li onClick={lambda { show(row_id); }}>{row_id}</li>;
+}}
+```
+
+Bind the value through a parameter, which is bound per call:
+
+```jac
+def opener(row_id: str, show: Callable[[str], None]) -> Callable[[], None] {
+    return lambda { show(row_id); };
+}
+```
+
+and write `<li onClick={opener(row_id, show)}>` in the loop. The same applies to server code that stores or passes on a closure built in a loop (`handlers.append(lambda { ... })`).
+
+Closures that cannot outlive their iteration are not reported (called on the spot, a local helper that is only called, the callback of `map` / `filter` / `sorted(key=...)` and similar, or one in a `return`), and neither is a capture of the loop target. See [E2097](../reference/diagnostics.md#closures-created-in-a-loop).
+
+---
+
 ### `[dependencies]` lists Jac packages; Python moves to `[dependencies.pypi]` (unreleased)
 
 Jac now has its own packages (`org/name`, see [Packages](../reference/packages.md)), and `[dependencies]` in `jac.toml` lists them. Python packages move to a `pypi` subtable:

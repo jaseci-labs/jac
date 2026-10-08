@@ -723,6 +723,29 @@ RIGHT (Jac list comprehension):
 {[<Item key={item.id} item={item} /> for item in items]}
 ```
 
+### 33b. A per-item handler cannot close over a local assigned in the loop (`E2097`)
+
+A local assigned in a loop body belongs to the enclosing function, not to one iteration, annotated or not. A handler created in the loop reads it when it runs, so every handler would see the last item's value. The compiler rejects the capture.
+
+WRONG (`E2097`; `row_id: str = ...` is rejected the same way):
+
+```
+{for item in items {
+    row_id = str(item.id);
+    <li onClick={lambda { show(row_id); }}>{row_id}</li>;
+}}
+```
+
+RIGHT (a parameter is bound per call):
+
+```jac
+def opener(row_id: str, show: Callable[[str], None]) -> Callable[[], None] {
+    return lambda { show(row_id); };
+}
+```
+
+then `<li onClick={opener(row_id, show)}>{row_id}</li>` in the loop. Reading the loop target itself in a client handler (`lambda { show(item.id); }`) is fine. The same rule applies to any closure kept past its iteration in server code (`handlers.append(lambda ...)`).
+
 ## Server-Client Communication Gotchas
 
 ### 34. Importing server code into client is a plain import (mind the dots)

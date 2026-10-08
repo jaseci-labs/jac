@@ -485,6 +485,48 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `W2002` | Unreachable code detected |
 | `W2003` | '{name}' is defined but never used |
 
+### Closures Created in a Loop
+
+| Code | Message |
+|------|---------|
+| `E2097` | Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value |
+
+A local assigned in a loop body belongs to the enclosing function, not to one iteration, with or without a type annotation (see [Variables and Scope](language/variables-and-scope.md#4-scope-rules)). A `lambda` or nested `def` created in the loop only reads that local when it is called, so if it is kept past its iteration (stored, passed on, used as an event handler) every one of them reads whatever the last iteration assigned:
+
+<!-- jac-skip -->
+```jac
+for item in items {
+    item_id = item.id;
+    handlers.append(lambda { open(item_id); });   # E2097: every handler opens the last item
+}
+```
+
+Bind the value through a parameter, which is bound per call:
+
+```jac
+def opener_for(item_id: str, open: Callable[[str], None]) -> Callable[[], None] {
+    return lambda { open(item_id); };
+}
+
+def build(ids: list[str], open: Callable[[str], None]) -> list[Callable[[], None]] {
+    handlers: list[Callable[[], None]] = [];
+    for raw in ids {
+        item_id = raw.strip();
+        handlers.append(opener_for(item_id, open));
+    }
+    return handlers;
+}
+```
+
+`E2097` is reported from `jac check` in every codespace. It is not reported when the closure cannot outlive the iteration that created it or the loop does not share the binding:
+
+- the closure is called on the spot (`(lambda { ... })()`), or is a local `def` or named `lambda` that is only ever called, never passed or stored
+- the closure is the callback of an iteration combinator that runs it before returning (`map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `flatMap`, `reduceRight`, `sort`, `toSorted`) or a `key=` argument; a closure created inside such a callback is still checked
+- the closure is part of a `return` statement, which ends the loop
+- the name is a parameter of the closure, a local of its own, or is read in a parameter default (evaluated when the closure is created)
+- the loop does not assign the binding (it was assigned before the loop), or the binding is a `glob`
+- the binding belongs to the loop itself: the `for` target, or a `def` declared in the loop body
+
 ### Semantic Errors
 
 | Code | Message |

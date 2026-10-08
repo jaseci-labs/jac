@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     Assignment,
     AtomTrailer,
+    AtomUnit,
     AwaitExpr,
     BinaryExpr,
     Bool,
@@ -24,6 +25,7 @@ import from jaclang.compiler.frontend.unitree {
     Float,
     ForeverStmt,
     FormattedValue,
+    FuncCall,
     IfStmt,
     ImplDef,
     ImplImport,
@@ -38,16 +40,21 @@ import from jaclang.compiler.frontend.unitree {
     ModuleItem,
     ModulePath,
     Name,
+    NameAtom,
     Null,
+    ParamVar,
     RaiseStmt,
     ReturnStmt,
     Semi,
+    Symbol,
     Test,
     Token,
     UniNode,
     UniScopeNode,
     WhileStmt,
-    in_type_position
+    in_type_position,
+    is_identifier_slot,
+    same_lexical_scope
 }
 
 import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType }
@@ -69,7 +76,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E2055,
     E2083,
     E2085,
-    E2086
+    E2086,
+    E2097
 }
 
 glob BUILTIN_NAMES: set[str] = {
@@ -240,7 +248,26 @@ glob BUILTIN_NAMES: set[str] = {
          'Set': 'set',
          'Tuple': 'tuple',
          'Type': 'type'
+     },
+     ITERATION_COMBINATORS: set[str] = {
+         'every',
+         'filter',
+         'find',
+         'findIndex',
+         'findLast',
+         'findLastIndex',
+         'flatMap',
+         'forEach',
+         'map',
+         'reduce',
+         'reduceRight',
+         'some',
+         'sort',
+         'toSorted'
      };
+
+type LoopStmt = InForStmt | IterForStmt | WhileStmt | ForeverStmt;
+type Closure = Ability | LambdaExpr;
 
 def is_bootstrap_compiled_module(mod_path: str) -> bool {
     import from jaclang.compiler.frontend.host { active_host }
@@ -261,6 +288,45 @@ def is_ambient_provider_module(mod_path: str) -> bool {
         and "runtime" in mod_path;
 }
 
+def is_nested_function(nd: Ability) -> bool {
+    return not nd.is_method and not isinstance(nd.parent, Module);
+}
+
+def scope_encloses(owner: UniScopeNode, nd: UniNode) -> bool {
+    outer = nd.parent;
+    while outer is not None {
+        if same_lexical_scope(outer, owner) {
+            return True;
+        }
+        outer = outer.parent;
+    }
+    return False;
+}
+
+def loop_repeats(loop: LoopStmt, part: UniNode) -> bool {
+    if isinstance(loop, ForeverStmt) {
+        return True;
+    }
+    if part is loop.else_body {
+        return False;
+    }
+    if isinstance(loop, InForStmt) {
+        return part is not loop.collection;
+    }
+    if isinstance(loop, IterForStmt) {
+        return part is not loop.iter;
+    }
+    return True;
+}
+
+def callee_name(call: FuncCall) -> str {
+    target = call.target;
+    if isinstance(target, AtomTrailer) and target.is_attr {
+        target = target.right;
+    }
+    return target.value if isinstance(target, Name) else '';
+}
+
 walker UnusedSymbolWalker(ScopeWalker) {
     has analysis: StaticAnalysisPass;
 
@@ -270,6 +336,8 @@ walker UnusedSymbolWalker(ScopeWalker) {
 }
 
 walker StaticAnalysisPass(CompilerPass) {
+    has _in_place: dict[int, bool] = {};
+
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_unused_symbols(scope: UniScopeNode) -> None;
@@ -284,4 +352,13 @@ walker StaticAnalysisPass(CompilerPass) {
     def _check_redundant_imports(mod: Module) -> None;
     def _check_client_imports(mod: Module) -> None;
     def _check_placement_warnings(mod: Module) -> None;
+    def _check_loop_closure_captures(mod: Module) -> None;
+    def _runs_in_place(closure: Closure) -> bool;
+    def _consumed_by_its_call(closure: LambdaExpr) -> bool;
+    def _only_called_where_bound(closure: Closure, binding: Symbol) -> bool;
+    def _is_frame(nd: UniNode) -> bool;
+    def _frame_of(nd: UniNode) -> (UniScopeNode | None);
+    def _loops_outlived_by(closure: Closure) -> list[LoopStmt];
+    def _rebound_each_iteration(sym: Symbol, loop: LoopStmt) -> (NameAtom | None);
+    def _read_when_created(name_nd: Name, closure: Closure) -> bool;
 }

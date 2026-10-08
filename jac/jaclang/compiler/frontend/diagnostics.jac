@@ -1869,6 +1869,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " exports in its jac.toml ({exports}). Import one of those modules, or"
          " ask the package to export this one."
      ),
+     E2097 = _err(
+         "E2097",
+         Category.SEMANTIC,
+         "Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value",
+         help="'{name}' belongs to the scope around the loop, not to one iteration,"
+         " so the loop assigns the same binding each time round. Pass the value"
+         " through a parameter, which is bound per call: declare"
+         " `def handler_for({name}: T) -> Callable[[], None] {{ return lambda {{ ... }}; }}`"
+         " outside the loop and use `handler_for({name})` inside it. A type"
+         " annotation on the assignment does not change which scope owns the binding."
+     ),
      W3001 = _warn(
          "W3001",
          Category.LINT,
