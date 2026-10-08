@@ -139,7 +139,29 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.es.backends.react"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.backends.registry"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.backends.solid"),
-         NativeScopeEntry(module="jaclang.client.client_surface")
+         NativeScopeEntry(module="jaclang.client.client_surface"),
+         NativeScopeEntry(module="jaclang.runtime.scalars"),
+         NativeScopeEntry(module="jaclang.runtime.osp_tag"),
+         NativeScopeEntry(module="jaclang.compiler.driver.native_iface"),
+         NativeScopeEntry(module="jaclang.compiler.driver.na_coverage"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.__init__"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.__init__"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir._utils"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.types"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.values"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.context"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.module"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.ir.instructions"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.builder"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.lowering"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.na_constants"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.foreign"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.abi"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.region_abi"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.primitives_native"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.na_ir_gen_pass")
      ),
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (

@@ -28,10 +28,43 @@ def parse_assembly(llvmir: any, context: any = None) -> ModuleRef {
         mod = ModuleRef(ffi.lib.LLVMPY_ParseAssembly(context, strbuf, errmsg), context);
         if errmsg {
             mod.close();
-            raise RuntimeError("LLVM IR parsing error\n{0}".format(errmsg));
+            raise RuntimeError(
+                "LLVM IR parsing error\n{0}{1}".format(
+                    errmsg, _parse_error_context(llvmir, str(errmsg))
+                )
+            );
         }
     }
     return mod;
+}
+
+"""The IR lines a parse error points at.
+
+LLVM reports `<string>:LINE:COL`. A unit's IR runs to millions of lines and is
+not kept once the parse fails, so the message quotes the line and its two
+neighbours: that is what names the function or global at fault."""
+def _parse_error_context(llvmir: bytes, message: str) -> str {
+    import re;
+    found = re.search(r"<string>:(\d+):(\d+)", message);
+    if found is None {
+        return "";
+    }
+    wanted = int(found.group(1));
+    start = 0;
+    for _ in range(max(wanted - 2, 0)) {
+        nxt = llvmir.find(b"\n", start);
+        if nxt < 0 {
+            return "";
+        }
+        start = nxt + 1;
+    }
+    picked = llvmir[start:start + 4000].split(b"\n")[:3];
+    first = max(wanted - 1, 1);
+    rows = [
+        f"  {first + i}: {row[:400].decode('utf-8', 'replace')}"
+        for (i, row) in enumerate(picked)
+    ];
+    return "\nIR at that position:\n" + "\n".join(rows);
 }
 
 """

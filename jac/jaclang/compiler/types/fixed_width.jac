@@ -26,6 +26,128 @@ obj AssignVerdict {
         diagnosed: bool = False;
 }
 
+glob I64_TOP: int = 9223372036854775807,
+     I64_BOTTOM: int = -9223372036854775807 - 1;
+
+def value_in_range(value: int, t_lo: int, t_hi: int, wide: bool) -> bool {
+    if wide {
+        return value >= 0;
+    }
+    return t_lo <= value and value <= t_hi;
+}
+
+def unbounded_interval_in_range(
+    op: str,
+    left: tuple[int, int],
+    right: tuple[int, int],
+    t_lo: int,
+    t_hi: int,
+    wide: bool
+) -> bool {
+    unsigned_top = 2 * I64_TOP + 1;
+    (a_lo, a_hi) = left;
+    (b_lo, b_hi) = right;
+    if a_hi < a_lo {
+        (a_lo, a_hi) = (0, unsigned_top);
+    }
+    if b_hi < b_lo {
+        (b_lo, b_hi) = (0, unsigned_top);
+    }
+    if wide {
+        (t_lo, t_hi) = (0, unsigned_top);
+    }
+    lo = 0;
+    hi = 0;
+    if op == "+" {
+        (lo, hi) = (a_lo + b_lo, a_hi + b_hi);
+    } elif op == "-" {
+        (lo, hi) = (a_lo - b_hi, a_hi - b_lo);
+    } elif op == "*" {
+        ends = [a_lo * b_lo, a_lo * b_hi, a_hi * b_lo, a_hi * b_hi];
+        (lo, hi) = (min(ends), max(ends));
+    } else {
+        (lo, hi) = (-a_hi, -a_lo);
+    }
+    return t_lo <= lo and hi <= t_hi;
+}
+
+def corner_in_range(op: str, x: int, y: int, t_lo: int, t_hi: int, wide: bool) -> bool {
+    if op == "neg" {
+        if x == I64_BOTTOM {
+            return wide;
+        }
+        return value_in_range(-x, t_lo, t_hi, wide);
+    }
+    if op == "+" {
+        if y > 0 and x > I64_TOP - y {
+            return wide;
+        }
+        if y < 0 and x < I64_BOTTOM - y {
+            return False;
+        }
+        return value_in_range(x + y, t_lo, t_hi, wide);
+    }
+    if op == "-" {
+        if y < 0 and x > I64_TOP + y {
+            return wide;
+        }
+        if y > 0 and x < I64_BOTTOM + y {
+            return False;
+        }
+        return value_in_range(x - y, t_lo, t_hi, wide);
+    }
+    if op != "*" {
+        return False;
+    }
+    if x == 0 or y == 0 {
+        return value_in_range(0, t_lo, t_hi, wide);
+    }
+    if x == I64_BOTTOM or y == I64_BOTTOM {
+        other = y if x == I64_BOTTOM else x;
+        if other == 1 {
+            return value_in_range(I64_BOTTOM, t_lo, t_hi, wide);
+        }
+        return wide and other == -1;
+    }
+    ax = x if x > 0 else -x;
+    ay = y if y > 0 else -y;
+    quotient = I64_TOP // ay;
+    rest = I64_TOP - quotient * ay;
+    if ax <= quotient {
+        return value_in_range(x * y, t_lo, t_hi, wide);
+    }
+    if (x < 0) != (y < 0) {
+        return ax == quotient + 1
+            and rest == ay - 1
+            and value_in_range(I64_BOTTOM, t_lo, t_hi, wide);
+    }
+
+    reach = 2 * quotient + (1 if 2 * rest + 1 >= ay else 0);
+    return wide and ax <= reach;
+}
+
+def unsigned_top_in_range(
+    op: str, top_left: bool, o_lo: int, o_hi: int, wide: bool, signed_wide: bool
+) -> bool {
+    zero = o_lo == 0 and o_hi == 0;
+    if op == "*" {
+        return (o_lo >= 0 and o_hi <= 1) if wide else zero;
+    }
+    if op == "+" {
+        if wide {
+            return zero;
+        }
+        return signed_wide and o_lo == I64_BOTTOM and o_hi == I64_BOTTOM;
+    }
+    if op == "-" {
+        if top_left {
+            return wide and zero;
+        }
+        return signed_wide and o_lo == I64_TOP and o_hi == I64_TOP;
+    }
+    return False;
+}
+
 def interval_of_op(
     op: str,
     left: (tuple[int, int] | None),
@@ -42,22 +164,41 @@ def interval_of_op(
     if `entry is None or `entry.is_float {
         return False;
     }
-    (a_lo, a_hi) = left;
-    (b_lo, b_hi) = right;
-    if op == "+" {
-        (lo, hi) = (a_lo + b_lo, a_hi + b_hi);
-    } elif op == "-" {
-        (lo, hi) = (a_lo - b_hi, a_hi - b_lo);
-    } elif op == "*" {
-        ends = [a_lo * b_lo, a_lo * b_hi, a_hi * b_lo, a_hi * b_hi];
-        (lo, hi) = (min(ends), max(ends));
-    } elif op == "neg" {
-        (lo, hi) = (-a_hi, -a_lo);
-    } else {
+    if op not in ("+", "-", "*", "neg") {
         return False;
     }
-    (t_lo, t_hi) = JAC_TYPE_REGISTRY.range_of(target);
-    return t_lo <= lo and hi <= t_hi;
+    (a_lo, a_hi) = left;
+    (b_lo, b_hi) = right;
+    wide = `entry.width >= 64 and not `entry.signed;
+    t_lo = 0;
+    t_hi = 0;
+    if not wide {
+        (t_lo, t_hi) = JAC_TYPE_REGISTRY.range_of(target);
+    }
+    for bound in [a_lo, a_hi, b_lo, b_hi] {
+        if bound > I64_TOP or bound < I64_BOTTOM {
+            return unbounded_interval_in_range(op, left, right, t_lo, t_hi, wide);
+        }
+    }
+    a_top = a_hi < a_lo;
+    b_top = b_hi < b_lo;
+    if a_top and b_top {
+        return False;
+    }
+    if a_top or b_top {
+        (o_lo, o_hi) = right if a_top else left;
+        return unsigned_top_in_range(
+            op, a_top, o_lo, o_hi, wide, `entry.width >= 64 and `entry.signed
+        );
+    }
+    for x in [a_lo, a_hi] {
+        for y in [b_lo, b_hi] {
+            if not corner_in_range(op, x, y, t_lo, t_hi, wide) {
+                return False;
+            }
+        }
+    }
+    return True;
 }
 
 def interval_of_expr(expr: (Expr | None)) -> (tuple[int, int] | None) {
@@ -75,6 +216,9 @@ def interval_of_expr(expr: (Expr | None)) -> (tuple[int, int] | None) {
     `entry = JAC_TYPE_REGISTRY.get(name);
     if `entry is None or `entry.is_float {
         return None;
+    }
+    if `entry.width >= 64 and not `entry.signed {
+        return (0, -1);
     }
     return JAC_TYPE_REGISTRY.range_of(name);
 }

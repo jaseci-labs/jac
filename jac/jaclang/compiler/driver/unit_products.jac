@@ -31,7 +31,11 @@ obj UnitProducts {
         app: str = "",
         persistence: list[str] = [],
         import_edges: list[str] = [],
-        client_manifest: str = "";
+        client_manifest: str = "",
+        native_ir: str = "",
+        native_iface: str = "",
+        native_layout: str = "",
+        native_deps: list[str] = [];
 }
 
 def definition_span_rows(tree: uni.Module) -> list[str] {
@@ -502,7 +506,25 @@ def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
             manifest_record(module.gen.client_manifest)
         );
     }
+    native_products(module, products);
     return products;
+}
+
+def native_products(module: uni.Module, products: UnitProducts) {
+    import from jaclang.compiler.driver.native_iface { native_layout_to_dict }
+    gen = module.gen;
+    built = gen.ir_module;
+    iface = gen.native_iface;
+    if built is None or iface is None {
+        return;
+    }
+    products.native_ir = str(built);
+    products.native_iface = iface.to_bytes().decode("utf-8");
+    layout = gen.native_layout;
+    if layout is not None {
+        products.native_layout = json.dumps(native_layout_to_dict(layout));
+    }
+    products.native_deps = list(gen.native_deps);
 }
 
 def products_record(products: UnitProducts) -> dict[str, any] {
@@ -520,7 +542,11 @@ def products_record(products: UnitProducts) -> dict[str, any] {
         "app": products.app,
         "persistence": list(products.persistence),
         "import_edges": list(products.import_edges),
-        "client_manifest": products.client_manifest
+        "client_manifest": products.client_manifest,
+        "native_ir": products.native_ir,
+        "native_iface": products.native_iface,
+        "native_layout": products.native_layout,
+        "native_deps": list(products.native_deps)
     };
 }
 
@@ -540,7 +566,11 @@ def products_from_record(raw: dict[str, any]) -> UnitProducts {
         app=str(raw.get("app", "")),
         persistence=json_str_list(raw.get("persistence")),
         import_edges=json_str_list(raw.get("import_edges")),
-        client_manifest=str(raw.get("client_manifest", ""))
+        client_manifest=str(raw.get("client_manifest", "")),
+        native_ir=str(raw.get("native_ir", "")),
+        native_iface=str(raw.get("native_iface", "")),
+        native_layout=str(raw.get("native_layout", "")),
+        native_deps=json_str_list(raw.get("native_deps"))
     );
 }
 

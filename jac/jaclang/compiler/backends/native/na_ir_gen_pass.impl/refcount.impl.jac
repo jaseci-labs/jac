@@ -34,9 +34,16 @@ glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
          "ba_aug"
      );
 
+def _named_struct_name(t: (ir.Type | None)) -> str {
+    if isinstance(t, ir.IdentifiedStructType) {
+        return t.name;
+    }
+    return "";
+}
+
 impl NaIRGenPass._gc_mode -> str {
-    _mode = getattr(self.prog.options, "na_gc_mode", "cycles");
-    if _mode not in ("cycles", "rc", "none") {
+    _mode = self.prog.options.na_gc_mode;
+    if _mode is None or _mode not in ("cycles", "rc", "none") {
         return "cycles";
     }
     return _mode;
@@ -227,7 +234,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self.rc_alloc_id_gv = alloc_id_gv;
 
     _raw_tag_str = self._get_snprintf_fmt("raw");
-    _raw_tag_gep = ir.GlobalVariable.__new__(ir.GlobalVariable);
 
     alloc_fnty = ir.FunctionType(i8_ptr, [i64]);
     alloc_fn = self._define_function("__rc_alloc", alloc_fnty);
@@ -701,7 +707,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 }
 
 impl NaIRGenPass._rc_call_with_ctx(
-    fn: ir.Function, args: list[any], op: str, loc: str = "", name: str = ""
+    fn: ir.Function, args: list[ir.Value], op: str, loc: str = "", name: str = ""
 ) -> ir.Value {
     self._set_rc_ctx(op, loc);
     result = self.builder.call(fn, args, name=name);
@@ -892,7 +898,8 @@ impl NaIRGenPass._release_owned_args(
             and self._gc_mode() != "none" {
             owned = _arg.na_tuple_owned;
             if owned is not None {
-                for (index, is_owned) in enumerate(owned) {
+                _owned_flags: list[bool] = owned;
+                for (index, is_owned) in enumerate(_owned_flags) {
                     if is_owned {
                         value = self.builder.extract_value(
                             _arg, index, name="arg.tuple.field"
@@ -1813,8 +1820,7 @@ impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
 }
 
 impl NaIRGenPass._nogc_headerless -> bool {
-    return getattr(self.module.gen, "nogc_enforced", False)
-        and self._gc_mode() == "none";
+    return self.module.gen.nogc_enforced and self._gc_mode() == "none";
 }
 
 impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
@@ -1886,7 +1892,7 @@ impl NaIRGenPass._emit_nogc_field_drops(
         }
         if fname in self.struct_field_inline.get(type_name, set()) {
             _in_idx = field_indices.get(fname, -1);
-            _in_name = getattr(ftype, "name", "") or "";
+            _in_name = _named_struct_name(ftype);
             _in_dropf = self._emit_struct_drop_fields_fn(_in_name)
                 if _in_name
                 else None;
@@ -1979,8 +1985,8 @@ impl NaIRGenPass._drop_member_of(owner: str) -> (uni.Ability | None) {
 impl NaIRGenPass._nogc_drop_fn_for(
     ptr_ty: ir.PointerType, self_type: str = ""
 ) -> (ir.Function | None) {
-    _pname = getattr(ptr_ty.pointee, "name", "") or "";
-    if _pname in self.struct_types or (_pname and _pname == self_type) {
+    _pname = _named_struct_name(ptr_ty.pointee);
+    if _pname in self.struct_types or (_pname != "" and _pname == self_type) {
         return self._emit_struct_drop_fn(_pname);
     }
     if _pname.startswith("List.")
@@ -2030,16 +2036,38 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
     cont = b.bitcast(fn.args[0], _struct.as_pointer(), name="drop.cont");
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     _elems = list(_struct.elements);
-    _has_slots = layout["drop_base"] < len(_elems);
-    for (_bk, _fpair) in enumerate(layout["data_fields"]) {
+    _drop_base = _layout_index(layout, "drop_base");
+    _has_slots = _drop_base < len(_elems);
+    _elem_kinds = _layout_elem_kinds(layout);
+    _slot_kind = "";
+    _slot_field = 0;
+    _slot_drop: (ir.Value | None) = None;
+
+    def _drop_slot(
+        bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
+    ) -> ir.IRBuilder {
+        _drop = _slot_drop;
+        assert _drop is not None;
+        if _slot_kind == "jacval" {
+            bl.call(
+                _drop,
+                [bl.bitcast(elem_ptrs[0], i8p, name=f"edrop{_slot_field}.slot.i8")]
+            );
+        } else {
+            _ev = bl.load(elem_ptrs[0], name=f"edrop{_slot_field}.elem");
+            bl.call(_drop, [bl.bitcast(_ev, i8p, name=f"edrop{_slot_field}.elem.i8")]);
+        }
+        return bl;
+    }
+    for (_bk, _fpair) in enumerate(_layout_data_fields(layout)) {
         (_fi, _fty) = _fpair;
-        _fkind = layout["elem_kinds"][_bk];
+        _fkind = _elem_kinds[_bk];
         dp = b.gep(
             cont, [ir.Constant(i32, 0), ir.Constant(i32, _fi)], name=f"drop.data{_fi}.p"
         );
         dv = b.load(dp, name=f"drop.data{_fi}");
         if _has_slots and _fkind != "raw" {
-            _si = layout["drop_base"] + _bk;
+            _si = _drop_base + _bk;
             _sp = b.gep(
                 cont,
                 [ir.Constant(i32, 0), ir.Constant(i32, _si)],
@@ -2053,21 +2081,9 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
             _next_bb = fn.append_basic_block(f"edrop{_fi}.next");
             b.cbranch(_have, _walk_bb, _next_bb);
             bw = ir.IRBuilder(_walk_bb);
-
-            def _drop_slot(
-                bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
-            ) -> ir.IRBuilder {
-                if _fkind == "jacval" {
-                    bl.call(
-                        _sfn,
-                        [bl.bitcast(elem_ptrs[0], i8p, name=f"edrop{_fi}.slot.i8")]
-                    );
-                } else {
-                    _ev = bl.load(elem_ptrs[0], name=f"edrop{_fi}.elem");
-                    bl.call(_sfn, [bl.bitcast(_ev, i8p, name=f"edrop{_fi}.elem.i8")]);
-                }
-                return bl;
-            }
+            _slot_kind = _fkind;
+            _slot_field = _fi;
+            _slot_drop = _sfn;
             bw = self._emit_live_slot_loop(
                 fn,
                 bw,
@@ -2157,7 +2173,7 @@ impl NaIRGenPass._drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | No
     }
 
     if mangle in ("any", "Any") {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if mangle == "float" {
         return ("f64", ir.DoubleType());
@@ -2236,15 +2252,15 @@ impl NaIRGenPass._nogc_stamp_elem_drops(
     if _layout is None {
         return;
     }
-    _base = _layout["drop_base"];
+    _base = _layout_index(_layout, "drop_base");
+    _n_data = len(_layout_data_fields(_layout));
     _cont_elems = _cont_struct.elements;
-    if _cont_elems is not None
-        and _base + len(_layout["data_fields"]) > len(_cont_elems) {
+    if _cont_elems is not None and _base + _n_data > len(_cont_elems) {
         return;
     }
     _slot_specs: list[tuple[int, str]] = [
         (_base + _k, elem_mangles[_k])
-        for _k in range(len(_layout["data_fields"]))
+        for _k in range(_n_data)
         if _k < len(elem_mangles)
     ];
     for (_idx, _em) in _slot_specs {
@@ -2487,8 +2503,10 @@ impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> 
     if _tn is not None and _tn in self.struct_types {
         _fn = self._emit_struct_drop_fn(_tn);
     } else {
-        _pointee = val.type?.pointee;
-        _pname = getattr(_pointee, "name", "") or "";
+        _vt = val.type;
+        _pname = _named_struct_name(_vt.pointee)
+            if isinstance(_vt, ir.PointerType)
+            else "";
         if _pname.startswith("List.")
             or _pname.startswith("Dict.")
             or _pname.startswith("Set.") {
@@ -2527,7 +2545,7 @@ impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
 }
 
 impl NaIRGenPass._nogc_osp_skip(val: ir.Value) -> bool {
-    if not getattr(self.module.gen, "nogc_enforced", False) {
+    if not self.module.gen.nogc_enforced {
         return False;
     }
     import os;
@@ -2841,7 +2859,7 @@ impl NaIRGenPass._rc_strdup(
         else self._call_str_len(self.builder, ptr, name="str.len");
 
     alloc_size = self.builder.add(slen, ir.Constant(i64, 1), name="str.alloc.size");
-    _strdup_loc = getattr(ptr, 'jac_loc', '');
+    _strdup_loc = ptr.jac_loc;
     self._set_rc_ctx("strdup", _strdup_loc);
     new_str = self._rc_alloc(alloc_size, name="rc.str.raw");
     self._clear_rc_ctx();

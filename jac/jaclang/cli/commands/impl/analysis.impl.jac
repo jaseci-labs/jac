@@ -208,8 +208,8 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             result['placements'] = collect_placement_rows(prog);
         }
         if opts.get("native_coverage") {
-            import from jaclang.compiler.driver.na_coverage { _na_coverage }
-            result['coverage'] = dict(_na_coverage);
+            import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
+            result['coverage'] = na_coverage_snapshot();
         }
         for m in prog.mod.hub.values() {
             m.terminals = [];

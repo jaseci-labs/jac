@@ -173,7 +173,7 @@ def build_openapi(app: ServingApp) -> dict[str, any] {
         body_props: dict[str, any] = {};
         body_required: list[str] = [];
         has_file = False;
-        for param in (ep.parameters or []) {
+        for param in ep.declared_parameters() {
             kind = param.kind;
             if kind
                 in (ParameterType.QUERY, ParameterType.PATH, ParameterType.HEADER) {

@@ -271,49 +271,13 @@ impl RaisesContext.`match(regexp: str) -> bool {
 }
 
 impl restspec(**specs: any) -> Callable {
-    import logging;
     import from jaclang { JacRuntimeInterface as Jac }
-    import from jaclang.server.serving.endpoint { HTTPMethod }
     import type from jaclang.server.server { JacAPIServer }
     ServerCls: type[JacAPIServer] = Jac.get_api_server_class();
     SpecsCls = ServerCls.RestSpecs;
 
-    protocol = specs.get('protocol');
-    if protocol is not None and not isinstance(protocol, APIProtocol) {
-        raw_p = str(protocol).strip().lower();
-        try {
-            specs['protocol'] = APIProtocol('websocket' if raw_p == 'ws' else raw_p);
-        } except ValueError {
-            raise ValueError(
-                f"@restspec protocol={protocol!r} is not recognized. Expected "
-                "APIProtocol.HTTP / WEBHOOK / WEBSOCKET (or the strings "
-                "'http', 'webhook', 'websocket'/'ws')."
-            );
-        }
-    }
-    method = specs.get('method');
-    if method is not None and not isinstance(method, HTTPMethod) {
-        try {
-            specs['method'] = HTTPMethod(str(method).strip().upper());
-        } except ValueError {
-            raise ValueError(
-                f"@restspec method={method!r} is not routable. Expected one "
-                f"of: {', '.join([m.value for m in HTTPMethod])}."
-            );
-        }
-    }
-    scheme = specs.get('scheme');
-    if scheme is not None {
-        raw_s = str(scheme).strip().lower();
-        if raw_s not in ('', 'jac', 'github') {
-            raise ValueError(
-                f"@restspec scheme={scheme!r} is not recognized. Expected "
-                "'jac' (api key plus timestamped HMAC, the default) or "
-                "'github' (X-Hub-Signature-256 over the raw body)."
-            );
-        }
-        specs['scheme'] = '' if raw_s == 'jac' else raw_s;
-    }
+    import from jaclang.server.server { restspec_fields }
+    specs = restspec_fields(specs);
 
     def decorator(cls: type) -> type {
         spec = SpecsCls(**specs);
