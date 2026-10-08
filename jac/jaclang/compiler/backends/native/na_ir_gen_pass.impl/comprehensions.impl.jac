@@ -282,8 +282,10 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
                         pointee = ftype.pointee;
                         if isinstance(pointee, ir.LiteralStructType) {
                             total = 0;
-                            for el in pointee.elements {
-                                total += el.width // 8 if el?.width else 8;
+                            for el in pointee.members() {
+                                total += el.width // 8
+                                    if isinstance(el, ir.IntType) and el.width
+                                    else 8;
                             }
                             elem_size = total;
                             elem_type_name = f"tuple{elem_size}";
@@ -426,13 +428,7 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 val = self.builder.bitcast(val, i8p, name="compr.cast");
             }
             val = self._coerce_type(val, helpers["elem_type"]);
-            _compr_loc_raw = getattr(_compr_append_orig, 'jac_loc', key_expr?.loc);
-            _compr_loc: str = "";
-            if isinstance(_compr_loc_raw, str) {
-                _compr_loc = _compr_loc_raw;
-            } elif _compr_loc_raw is not None {
-                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{_compr_loc_raw.first_line}";
-            }
+            _compr_loc: str = _compr_append_orig.jac_loc;
             if not _compr_loc {
                 _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
             }
@@ -716,7 +712,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     if not isinstance(collection, uni.FuncCall) {
         return;
     }
-    params: Sequence[any] = collection.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = collection.params or [];
     start_val: (ir.Value | None) = None;
     stop_val: (ir.Value | None) = None;
     if len(params) == 1 {

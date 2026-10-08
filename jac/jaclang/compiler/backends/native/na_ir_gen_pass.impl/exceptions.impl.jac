@@ -51,10 +51,10 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
     lowering matches the names.
     """;
     triple = str(self.llvm_module.triple or "").lower();
-    if any(
-        os_name in triple for os_name in ("wasm", "windows", "win32", "mingw", "msvc")
-    ) {
-        return ("setjmp", "longjmp");
+    for os_name in ["wasm", "windows", "win32", "mingw", "msvc"] {
+        if os_name in triple {
+            return ("setjmp", "longjmp");
+        }
     }
     return ("_setjmp", "_longjmp");
 }
@@ -584,9 +584,10 @@ impl NaIRGenPass._exc_bound_struct(ex: (uni.Expr | None)) -> (str | None) {
 
 impl NaIRGenPass._reraise_caught(values: tuple[ir.Value, ir.Value, ir.Value]) -> None {
     if self._slot_lowering_active() {
-        for (slot, value) in zip(self._nogc_err_slot(), values) {
-            self.builder.store(value, slot);
-        }
+        (_slot_t, _slot_o, _slot_m) = self._nogc_err_slot();
+        self.builder.store(values[0], _slot_t);
+        self.builder.store(values[1], _slot_o);
+        self.builder.store(values[2], _slot_m);
         self._emit_err_propagate(loc="reraise");
     } else {
         self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
@@ -1171,10 +1172,7 @@ impl NaIRGenPass._codegen_try_unwind(
 }
 
 impl NaIRGenPass._slot_lowering_active -> bool {
-    return (
-        bool(getattr(self.module.gen, "nogc_enforced", False))
-        or "wasm" in str(self.llvm_module.triple)
-    )
+    return (self.module.gen.nogc_enforced or "wasm" in str(self.llvm_module.triple))
         and self._gen_ctx is None;
 }
 
@@ -1352,7 +1350,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     }
     self.builder.position_at_end(dispatch_bb);
     err_type = self.builder.load(tglob, name="err.type");
-    for (i, except_node) in enumerate(nd.excepts or []) {
+    for (i, except_node) in enumerate(nd.excepts) {
         ex = except_node.ex_type;
         caught = self._exc_bound_struct(ex);
         targets = self._exception_handler_targets(ex);
@@ -1437,9 +1435,10 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
         prop_bb = func.append_basic_block("try.propagate");
         self.builder.cbranch(is_prop, prop_bb, merge_bb);
         self.builder.position_at_end(prop_bb);
-        for (slot, value) in zip(self._nogc_err_slot(), pending) {
-            self.builder.store(value, slot);
-        }
+        (_slot_t, _slot_o, _slot_m) = self._nogc_err_slot();
+        self.builder.store(pending[0], _slot_t);
+        self.builder.store(pending[1], _slot_o);
+        self.builder.store(pending[2], _slot_m);
         self._emit_err_propagate(loc="try.propagate");
     }
     self.builder.position_at_end(merge_bb);
@@ -1562,7 +1561,7 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
     self.builder.call(self._exc_pop_fn, []);
     _spill: list[ir.Value] = [];
     if _in_gen {
-        for (_si, _sv) in enumerate(values) {
+        for (_si, _sv) in enumerate([values[0], values[1], values[2]]) {
             _slot = self._entry_alloca(_sv.type, f"finally.exc.{_si}");
             self.builder.store(_sv, _slot);
             _spill.append(_slot);

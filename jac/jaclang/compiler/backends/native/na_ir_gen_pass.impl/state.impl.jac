@@ -1,4 +1,4 @@
-import from jaclang.compiler.backends.native.llvm { ir }
+import jaclang.compiler.backends.native.llvm.ir as ir;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
 

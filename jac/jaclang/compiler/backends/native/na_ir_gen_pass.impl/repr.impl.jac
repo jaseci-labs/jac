@@ -67,10 +67,10 @@ impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple[str, ir.Type] |
     i8p = ir.IntType(8).as_pointer();
     _parts = self._split_type_args(elem_key, "|");
     if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if len(_parts) > 1 or elem_key in ("any", "Any") {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if elem_key in ("int", "bool") {
         return ("i64", i64);
@@ -165,7 +165,7 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     fnty = ir.FunctionType(i8p, [i64]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(kind)}"
     );
     fn.linkage = "private";
@@ -209,7 +209,7 @@ impl NaIRGenPass._repr_str_fn -> ir.Function {
     i8p: any = i8.as_pointer();
     i64 = ir.IntType(64);
     fnty = ir.FunctionType(i8p, [i8p]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym('str')}"
     );
     fn.linkage = "private";
@@ -361,10 +361,10 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     }
     import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     i8p: any = ir.IntType(8).as_pointer();
-    _pst: any = self.struct_types[arch_name];
+    _pst = self.struct_types[arch_name];
     pty = _pst.as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(arch_name)}"
     );
     fn.linkage = "private";
@@ -381,7 +381,7 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     b.position_at_end(null_bb);
     b.ret(self._repr_const_str("None"));
     b.position_at_end(live_bb);
-    _m: any = self._resolve_method(arch_name, "__repr__");
+    _m = self._resolve_method(arch_name, "__repr__");
     _res: any = None;
     if _m is None {
         _res = self._emit_default_obj_repr(o, arch_name);
@@ -413,7 +413,7 @@ impl NaIRGenPass._repr_seq_fn(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     fnty = ir.FunctionType(i8p, [cont_ptr_ty]);
-    fn: any = ir.Function(self.llvm_module, fnty, name=fn_name);
+    fn: ir.Function = ir.Function(self.llvm_module, fnty, name=fn_name);
     fn.linkage = "private";
     fn.args[0].name = "cont";
     c_arg = fn.args[0];
@@ -494,7 +494,7 @@ impl NaIRGenPass._repr_list_fn(type_key: str) -> (ir.Function | None) {
         return None;
     }
     self._emit_list_helpers(_spec[0], _spec[1]);
-    _st: any = self.list_types.get(_spec[0]);
+    _st = self.list_types.get(_spec[0]);
     if _st is None {
         return None;
     }
@@ -520,7 +520,7 @@ impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
         return None;
     }
     self._emit_set_helpers(_spec[0], _spec[1]);
-    _st: any = self.set_types.get(_spec[0]);
+    _st = self.set_types.get(_spec[0]);
     if _st is None {
         return None;
     }
@@ -552,7 +552,7 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
         return None;
     }
     self._emit_dict_helpers(_kspec[0], _vspec[0], _kspec[1], _vspec[1]);
-    _st: any = self.dict_types.get(f"{_kspec[0]}:{_vspec[0]}");
+    _st = self.dict_types.get(f"{_kspec[0]}:{_vspec[0]}");
     if _st is None {
         return None;
     }
@@ -561,7 +561,7 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     i64 = ir.IntType(64);
     pty = _st.as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(type_key)}"
     );
     fn.linkage = "private";
@@ -648,7 +648,7 @@ impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
     i32 = ir.IntType(32);
     pty = ir.LiteralStructType(_ftys).as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(type_key)}"
     );
     fn.linkage = "private";
@@ -697,10 +697,11 @@ impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._runtime_repr_key(val: ir.Value) -> (str | None) {
-    if not isinstance(val.type, ir.PointerType) {
+    _vt = val.type;
+    if not isinstance(_vt, ir.PointerType) {
         return None;
     }
-    _pname: str = getattr(val.type.pointee, "name", "") or "";
+    _pname = _named_struct_name(_vt.pointee);
     _elem_names = {"i64": "int", "f64": "float", "jacval": "any", "ptr": "str"};
     if _pname.startswith("List.") {
         _spec = _pname[5:];
@@ -767,12 +768,13 @@ impl NaIRGenPass._emit_container_repr(
         self._emit_rc_release_simple(boxed, op="mstr_val", loc="");
         return res;
     }
-    if not isinstance(val.type, ir.PointerType) {
+    _vt = val.type;
+    if not isinstance(_vt, ir.PointerType) {
         return None;
     }
-    _pointee = val.type.pointee;
-    _pname: any = getattr(_pointee, "name", "") or "";
-    ok: any = False;
+    _pointee = _vt.pointee;
+    _pname = _named_struct_name(_pointee);
+    ok = False;
     if base.startswith("list[") {
         ok = _pname.startswith("List.");
     } elif base.startswith("dict[") {
@@ -818,7 +820,7 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
     i64 = ir.IntType(64);
     f64 = ir.DoubleType();
     fnty = ir.FunctionType(i8p, [self.jacval_type]);
-    fn: any = ir.Function(self.llvm_module, fnty, name="__jac_repr_jacval");
+    fn: ir.Function = ir.Function(self.llvm_module, fnty, name="__jac_repr_jacval");
     fn.linkage = "private";
     fn.args[0].name = "jv";
     self._repr_fns["jacval"] = fn;
@@ -914,7 +916,7 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
     i8p: any = i8.as_pointer();
     f64 = ir.DoubleType();
     fnty = ir.FunctionType(i8p, [self.jacval_type]);
-    fn: any = ir.Function(self.llvm_module, fnty, name="__jac_str_jacval");
+    fn: ir.Function = ir.Function(self.llvm_module, fnty, name="__jac_str_jacval");
     fn.linkage = "private";
     fn.args[0].name = "jv";
     self._repr_fns["jacval_str"] = fn;

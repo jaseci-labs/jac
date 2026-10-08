@@ -42,3 +42,13 @@ obj ReadOnlyRetry(WriteConflict) {
         );
     }
 }
+
+
+obj TransactionLost(WriteConflict) {
+    def message -> str {
+        return (
+            'TransactionLost: the transaction was rolled back and its writes '
+            'cannot be replayed; re-run the unit'
+        );
+    }
+}

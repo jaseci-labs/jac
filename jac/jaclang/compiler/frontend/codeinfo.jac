@@ -24,10 +24,7 @@ import type from jaclang.compiler.frontend.unitree { CommentToken, Module, UniNo
 import type from jaclang.compiler.passes.layout_pass { LayoutRegistry }
 import type from jaclang.compiler.passes.osp_analysis { OspModel }
 import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
-import type from jaclang.compiler.backends.native.llvm.binding {
-    ModuleRef,
-    ExecutionEngine
-}
+import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 import type from jaclang.compiler.driver.native_iface { NativeIface }
 
 obj ClientManifest {
@@ -1155,7 +1152,8 @@ obj CodeGenTarget {
         py_bytecode: (bytes | None) = None,
         jcir: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
-        llvm_ir: (ModuleRef | IRModule | None) = None,
+        llvm_ir: any = None,
+        ir_module: (IRModule | None) = None,
         native_engine: (ExecutionEngine | SharedNativeEngine | None) = None,
         native_bitcode: (bytes | None) = None,
         native_object: (bytes | None) = None,
@@ -1182,6 +1180,15 @@ obj CodeGenTarget {
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
+
+    def has_native_ir -> bool {
+        return self.ir_module is not None or self.llvm_ir is not None;
+    }
+
+    def drop_native_ir {
+        self.ir_module = None;
+        self.llvm_ir = None;
+    }
 }
 
 def endpoint_descriptor(module: Module, kind: str, name: str) -> dict[str, str] {

@@ -204,7 +204,7 @@ impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None)
         if not isinstance(arch, uni.Archetype) or arch.body is None {
             continue;
         }
-        for stmt in arch.body {
+        for stmt in (ModuleFacts.unwrap_body(arch) or []) {
             if isinstance(stmt, uni.Ability)
                 and stmt.name_ref is not None
                 and stmt.name_ref.sym_name in ("init", "__init__")
@@ -289,11 +289,15 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if (_tup_ptr or _tup_val) and _tv is not None {
                 _sp32 = ir.IntType(32);
-                _tup_elems: tuple[ir.Type, ...] = ();
+                _tup_elems: list[ir.Type] = [];
                 if _tup_ptr and isinstance(_tt, ir.PointerType) {
-                    _tup_elems = _tt.pointee.elements;
+                    _tup_struct = _tt.pointee;
+                    if not isinstance(_tup_struct, ir.Aggregate) {
+                        raise TypeError(f"spread source {_tt} is not a tuple");
+                    }
+                    _tup_elems = _tup_struct.members();
                 } elif isinstance(_tt, ir.LiteralStructType) {
-                    _tup_elems = _tt.elements;
+                    _tup_elems = _tt.members();
                 }
                 for (_ei, _et) in enumerate(_tup_elems) {
                     if _tup_ptr {
@@ -518,7 +522,8 @@ impl NaIRGenPass._codegen_bound_args(
             }
         }
     } else {
-        _fixed = list(callee_sig.posonly_params or []) + list(callee_sig.params or []);
+        _fixed: list[uni.ParamVar] = list(callee_sig.posonly_params or [])
+            + list(callee_sig.params or []);
         _n_posonly = len(callee_sig.posonly_params or []);
         if _self_skip and _fixed {
             _fixed = _fixed[1:];
@@ -1733,9 +1738,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    import from jaclang.compiler.types { types as jtypes }
     _callee_t = nd.target?.type;
-    if isinstance(_callee_t, jtypes.ClassType)
+    if isinstance(_callee_t, ClassType)
         and _callee_t.private.distinct_key is not None {
         _cast_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
         if len(_cast_params) == 1 {
@@ -2288,8 +2292,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             buf = self._stack_entry_alloca(buf_type, "input.buf");
             buf_ptr = self.builder.bitcast(buf, i8p, name="input.ptr");
 
-            import platform;
-            stdin_name = "__stdinp" if platform.system() == "Darwin" else "stdin";
+            stdin_name = "__stdinp"
+                if active_host().native_fact(FACT_OS, "") == "Darwin"
+                else "stdin";
             if stdin_name not in self.llvm_module.globals {
                 stdin_type = i8p;
                 stdin_global = ir.GlobalVariable(
@@ -3866,7 +3871,10 @@ impl NaIRGenPass._empty_ctor_args_of(nd: uni.FuncCall) -> list[TypeBase] {
     if isinstance(_par, uni.IfElseExpr) {
         _sib = _par.else_value if _par.value is _cur else _par.value;
         if _sib is not _cur {
-            return self._container_type_args(self._unwrap_cfg_expr(_sib)?.type);
+            _sib_e = self._unwrap_cfg_expr(_sib);
+            return self._container_type_args(
+                _sib_e.type if isinstance(_sib_e, uni.Expr) else None
+            );
         }
     }
     return [];
@@ -3933,13 +3941,18 @@ impl NaIRGenPass._spec_from_container_ptr(t: (ir.Type | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._container_type_args(t: any) -> list[TypeBase] {
-    if t is None {
-        return [];
+    _cands: list[TypeBase] = [];
+    if isinstance(t, UnionType) and t.types {
+        _cands = list(t.types);
+    } elif isinstance(t, TypeBase) {
+        _cands = [t];
     }
-    for _cand in (t?.types or [t]) {
-        _priv = _cand?.private;
-        if _priv is not None and (_priv?.type_args or []) {
-            return list(_priv.type_args);
+    for _cand in _cands {
+        if isinstance(_cand, ClassType) {
+            _targs = _cand.private.type_args;
+            if _targs {
+                return list(_targs);
+            }
         }
     }
     return [];
@@ -4185,8 +4198,16 @@ impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
-    params_l = list(nd.params or []);
-    if len(params_l) != 2 or any([isinstance(_p, uni.KWPair) for _p in params_l]) {
+    params_l: list[uni.Expr] = [];
+    _kw_seen = False;
+    for _q in (nd.params or []) {
+        if isinstance(_q, uni.KWPair) {
+            _kw_seen = True;
+        } else {
+            params_l.append(_q);
+        }
+    }
+    if len(params_l) != 2 or _kw_seen {
         self.emit(E5092, node_override=nd, kind="swap() call", name="swap");
         return None;
     }
