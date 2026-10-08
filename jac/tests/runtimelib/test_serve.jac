@@ -284,6 +284,19 @@ test "jac run --dev auto-installs watchdog even when not in jac.toml" {
     assert mock_provider.install_specs.call_args.args[1] == ["watchdog>=3.0.0"];
 }
 
+# `jac run --platform web <mobile app>` falls through to this serve path; it
+# must compile the client it is about to serve, like it does for a web app.
+test "a mobile app served on the web platform gets its client prepared" {
+    assert execution._serves_web_client(None, "");
+    assert execution._serves_web_client("web-app", "");
+    assert execution._serves_web_client("mobile", "web");
+    assert execution._serves_web_client("mobile", " Web ");
+    assert not execution._serves_web_client("mobile", "");
+    assert not execution._serves_web_client("mobile", "android");
+    assert not execution._serves_web_client("service", "web");
+    assert not execution._serves_web_client("desktop", None);
+}
+
 test "dev banner headlines vite port not api port" {
     with TemporaryDirectory() as tmpdir {
         captured_output = io.StringIO();
