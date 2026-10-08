@@ -236,6 +236,63 @@ test "a default run lowers a bundled native import the way the host does" {
     }
 }
 
+"""A compile on the host places a module by the default codespace in effect
+around it, which an enclosing compile or the command may have set for the
+process. A session has no surroundings of its own, so the host sends that
+codespace along; otherwise the two would place the same module differently."""
+test "a session places a module by the default codespace in effect around it" {
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    import from jaclang.project.kernel_compile {
+        kernel_compile,
+        with_ambient_codespace
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'fib.jac').write_text(FIB);
+        entry_file = str(base / 'fib.jac');
+        plain = CompileOptions(skip_native_engine=True, no_ir_cache=True);
+        before = get_effective_default_codespace_override();
+        placed: dict[str, bool] = {};
+        try {
+            set_effective_default_codespace("");
+            assert with_ambient_codespace(plain) is plain;
+            set_effective_default_codespace("server");
+            assert with_ambient_codespace(plain).default_codespace == "server";
+            assert not plain.default_codespace , "the caller's options were changed";
+            asked = CompileOptions(default_codespace="native");
+            assert with_ambient_codespace(asked) is asked , (
+                "a codespace the compile names itself is not replaced"
+            );
+            for ambient in ("", "server") {
+                set_effective_default_codespace(ambient);
+                with patch.dict(os.environ, SWITCHES) {
+                    outcome = kernel_compile(
+                        active_host(),
+                        JacProgram(),
+                        entry_file,
+                        plain,
+                        in_process=True,
+                        emit_closure=True
+                    );
+                }
+                emitted = outcome.unit(entry_file);
+                assert emitted is not None , [u.path for u in outcome.units];
+                placed[ambient] = bool(emitted.native_ir);
+            }
+        } finally {
+            set_effective_default_codespace(before);
+        }
+        assert placed[""] , "with no codespace in effect the module is inferred native";
+        assert not placed["server"] , (
+            "the session ignored the server codespace in effect around the compile"
+        );
+    }
+}
+
 """The host can still fail after the kernel has lowered a module: the IR may
 not link, because a dependency turned out not to be a native unit. Where
 placement only inferred native, that is a demotion like any other. The host
