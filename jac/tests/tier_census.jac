@@ -31,7 +31,14 @@ import sys;
 import from concurrent.futures { ThreadPoolExecutor }
 import from pathlib { Path }
 
-glob CLASSES: list[str] = ["same", "refused", "fails", "differs", "hangs", "crashes"],
+glob CLASSES: list[str] = [
+         "same",
+         "refused",
+         "fails",
+         "differs",
+         "hangs",
+         "crashes"
+     ],
      SKIPPED: str = "skipped",
      BASELINE: str = "tier_census.json",
      RUN_SECONDS: int = 120,
@@ -47,6 +54,14 @@ glob CLASSES: list[str] = ["same", "refused", "fails", "differs", "hangs", "cras
      ),
      REFUSAL: str = r"error\[(E\d+)\]: ([^\n]*)",
      QUOTED: str = r"'[^']*'",
+     CASCADE_KINDS: tuple[str, ...] = (
+         "function",
+         "method",
+         "constructor",
+         "ability",
+         "function signature",
+         "call through a value"
+     ),
      NOISE: tuple[str, ...] = (
          "jac dev mode",
          "Preparing application",
@@ -87,7 +102,13 @@ def corpus_programs(roots: (list[str] | None) = None) -> list[str] {
     for start in (roots or CORPUS) {
         top = os.path.join(JAC_ROOT, start);
         for (folder, subdirs, files) in os.walk(top) {
-            subdirs[:] = sorted([d for d in subdirs if d not in EXCLUDED_DIRS]);
+            subdirs[:] = sorted(
+                [
+                    d
+                    for d in subdirs
+                    if d not in EXCLUDED_DIRS
+                ]
+            );
             for name in sorted(files) {
                 if not name.endswith(".jac") or name.endswith(ANNEX_SUFFIXES) {
                     continue;
@@ -144,19 +165,38 @@ def printed(text: str) -> str {
     );
 }
 
-"""Why a program was refused: the diagnostic's code and its message with the
-names taken out, so programs refused for the same construct share a reason."""
+"""Why a program was refused: the code and message of the diagnostic that
+names the construct.
+
+A refusal cascades: the expression that cannot be lowered refuses its
+function, which refuses every caller. The first diagnostic that is not about
+a callable is the cause; a callable's own name says nothing, so it is taken
+out, and programs refused for the same construct share a reason."""
 def refusal_reason(err: str) -> str {
-    hit = re.search(REFUSAL, err);
-    if hit is None {
+    found = re.findall(REFUSAL, err);
+    if not found {
         return "";
     }
-    message = re.sub(QUOTED, "'_'", hit.group(2)).strip();
-    return f"{hit.group(1)} {message}"[:120];
+    chosen = found[0];
+    for (code, message) in found {
+        if not any(f" for {kind} '" in message for kind in CASCADE_KINDS) {
+            chosen = (code, message);
+            break;
+        }
+    }
+    (code, message) = chosen;
+    if any(f" for {kind} '" in message for kind in CASCADE_KINDS) {
+        message = re.sub(QUOTED, "'_'", message);
+    }
+    return f"{code} {message.strip()}"[:140];
 }
 
 def last_line(text: str) -> str {
-    lines = [line.strip() for line in text.split("\n") if line.strip()];
+    lines = [
+        line.strip()
+        for line in text.split("\n")
+        if line.strip()
+    ];
     return re.sub(QUOTED, "'_'", lines[-1])[:120] if lines else "";
 }
 
@@ -193,9 +233,7 @@ def classify(program: str) -> Outcome {
     return Outcome(kind="fails", reason=last_line(native.err));
 }
 
-def take_census(
-    programs: list[str], jobs: int = 0
-) -> dict[str, Outcome] {
+def take_census(programs: list[str], jobs: int = 0) -> dict[str, Outcome] {
     workers = jobs or max(1, (os.cpu_count() or 2) // 2);
     with ThreadPoolExecutor(max_workers=workers) as pool {
         outcomes = list(pool.map(classify, programs));
@@ -214,8 +252,9 @@ def read_baseline -> dict[str, Outcome] {
         return {};
     }
     return {
-        program: Outcome(kind=str(rec.get("class", "")), reason=str(rec.get("reason", "")))
-        for (program, rec) in raw.get("programs", {}).items()
+        program: Outcome(
+            kind=str(rec.get("class", "")), reason=str(rec.get("reason", ""))
+        ) for (program, rec) in raw.get("programs", {}).items()
     };
 }
 
@@ -300,12 +339,18 @@ def summarize(census: dict[str, Outcome]) -> str {
         }
     }
     for kind in ("differs", "hangs", "crashes") {
-        named = sorted(p for (p, o) in census.items() if o.kind == kind);
+        named = sorted(
+            p
+            for (p, o) in census.items()
+            if o.kind == kind
+        );
         if named {
             lines.append("");
             lines.append(f"{kind}:");
             for program in named {
-                note = f"  ({census[program].reason})" if census[program].reason else "";
+                note = f"  ({census[program].reason})"
+                    if census[program].reason
+                    else "";
                 lines.append(f"  {program}{note}");
             }
         }
@@ -314,8 +359,16 @@ def summarize(census: dict[str, Outcome]) -> str {
 }
 
 with entry:__main__ {
-    flags = [arg for arg in sys.argv[1:] if arg.startswith("--")];
-    roots = [arg for arg in sys.argv[1:] if not arg.startswith("--")];
+    flags = [
+        arg
+        for arg in sys.argv[1:]
+        if arg.startswith("--")
+    ];
+    roots = [
+        arg
+        for arg in sys.argv[1:]
+        if not arg.startswith("--")
+    ];
     programs = corpus_programs(roots or None);
     census = take_census(programs);
     print(summarize(census));
