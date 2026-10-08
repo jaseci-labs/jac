@@ -76,6 +76,48 @@ def target_schedule_spec(target: any) -> any {
     return target.schedule_spec if target?.schedule_spec else None;
 }
 
+def restspec_fields(specs: dict[str, any]) -> dict[str, any] {
+    import from jaclang.server.serving.endpoint { HTTPMethod }
+    specs = dict(specs);
+    protocol = specs.get('protocol');
+    if protocol is not None and not isinstance(protocol, APIProtocol) {
+        raw_p = str(protocol).strip().lower();
+        try {
+            specs['protocol'] = APIProtocol('websocket' if raw_p == 'ws' else raw_p);
+        } except ValueError {
+            raise ValueError(
+                f"@restspec protocol={protocol!r} is not recognized. Expected "
+                "APIProtocol.HTTP / WEBHOOK / WEBSOCKET (or the strings "
+                "'http', 'webhook', 'websocket'/'ws')."
+            );
+        }
+    }
+    method = specs.get('method');
+    if method is not None and not isinstance(method, HTTPMethod) {
+        try {
+            specs['method'] = HTTPMethod(str(method).strip().upper());
+        } except ValueError {
+            raise ValueError(
+                f"@restspec method={method!r} is not routable. Expected one "
+                f"of: {', '.join([m.value for m in HTTPMethod])}."
+            );
+        }
+    }
+    scheme = specs.get('scheme');
+    if scheme is not None {
+        raw_s = str(scheme).strip().lower();
+        if raw_s not in ('', 'jac', 'github') {
+            raise ValueError(
+                f"@restspec scheme={scheme!r} is not recognized. Expected "
+                "'jac' (api key plus timestamped HMAC, the default) or "
+                "'github' (X-Hub-Signature-256 over the raw body)."
+            );
+        }
+        specs['scheme'] = '' if raw_s == 'jac' else raw_s;
+    }
+    return specs;
+}
+
 
 obj ExecutionManager {
     has base_path: str,
@@ -139,7 +181,7 @@ obj ModuleIntrospector {
         _bundle_builder: any = None,
         _bundle_lock: threading.Lock postinit,
         _surface: dict[(str, any)] = {},
-        _served_walkers: int = 0,
+        _complete: bool = False,
         _manifest_root: str = "",
         _spa_routes_loaded: bool = False,
         discover_endpoints: bool = True,
@@ -150,13 +192,18 @@ obj ModuleIntrospector {
     def load(force_reload: bool = False) -> None;
     def _load_manifest -> None;
     def _load_surface -> None;
-    def _collect_functions -> dict[str, Callable[(..., any)]];
-    def _collect_walkers -> dict[str, type[WalkerArchetype]];
+    def _reset_targets -> None;
+    def _collect_client_functions -> None;
     def _resolve_declared(rel: str, name: str) -> any;
+    def served(kind: str) -> list[any];
+    def target(name: str) -> any;
+    def route_spec(name: str) -> any;
+    def is_scheduled(name: str) -> bool;
     def scheduled_members -> list[tuple[str, any, bool]];
     def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
+    def _resolve_all -> None;
     def find_target(name: str) -> any;
     def get_client_functions -> dict[str, Callable[(..., any)]];
     def resolve_root_app(configured: str = "") -> str;

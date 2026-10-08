@@ -806,21 +806,9 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
     if self._codec_lookup_function is not None {
         return self._codec_lookup_function;
     }
-    import encodings;
-    import encodings.aliases;
-    import pkgutil;
-    supported = {"utf_8": 1, "latin_1": 2, "ascii": 3};
-    aliases = encodings.aliases.aliases;
-    alias_rows = bytearray();
-    for key in sorted(aliases) {
-        alias_rows += bytes([supported.get(aliases[key], 4)]) + key.encode() + b"\x00";
-    }
-    module_rows = bytearray();
-    for mod in sorted(m.name for m in pkgutil.iter_modules(encodings.__path__)) {
-        if mod != "aliases" and mod not in aliases {
-            module_rows += bytes([supported.get(mod, 4)]) + mod.encode() + b"\x00";
-        }
-    }
+    codec_tables = active_host().native_fact(FACT_CODEC_TABLES, "").split(FACT_SEP);
+    alias_rows = bytes.fromhex(codec_tables[0]);
+    module_rows = bytes.fromhex(codec_tables[1]);
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -832,8 +820,8 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
     fn.linkage = "private";
     name = fn.args[0];
     name.name = "name";
-    alias_table = self._private_cstr(bytes(alias_rows) + b"\x00", ".codec.aliases");
-    module_table = self._private_cstr(bytes(module_rows) + b"\x00", ".codec.modules");
+    alias_table = self._private_cstr(alias_rows + b"\x00", ".codec.aliases");
+    module_table = self._private_cstr(module_rows + b"\x00", ".codec.modules");
     lookup = self._name_lookup_fn();
     entry_bb = fn.append_basic_block("entry");
     loop = fn.append_basic_block("loop");
@@ -1292,7 +1280,6 @@ impl NaIRGenPass._emit_bytes_decode(
     Other arguments resolve at run time. Empty input decodes to "" without
     looking the codec up, as CPython does.
     """;
-    import codecs;
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1322,9 +1309,11 @@ impl NaIRGenPass._emit_bytes_decode(
         ];
     }
     specs: list[tuple[(str | None), (ir.Value | None)]] = [];
-    for (idx, (key, fallback)) in enumerate(
-        [("encoding", "utf-8"), ("errors", "strict")]
-    ) {
+    spec_keys: list[str] = ["encoding", "errors"];
+    spec_fallbacks: list[str] = ["utf-8", "strict"];
+    for idx in range(2) {
+        key = spec_keys[idx];
+        fallback = spec_fallbacks[idx];
         if idx < len(args) {
             arg_node = positional[idx] if len(positional) == len(args) else None;
             specs.append((self._decode_literal(arg_node), args[idx]));
@@ -1343,7 +1332,8 @@ impl NaIRGenPass._emit_bytes_decode(
             specs.append((fallback, None));
         }
     }
-    ((enc_literal, enc_value), (err_literal, err_value)) = (specs[0], specs[1]);
+    (enc_literal, enc_value) = specs[0];
+    (err_literal, err_value) = specs[1];
     for (literal, value) in specs {
         if literal is None and (value is None or value.type != i8p) {
             return None;
@@ -1356,17 +1346,17 @@ impl NaIRGenPass._emit_bytes_decode(
     n = self._bytes_len_val(target);
     nonempty = b.icmp_signed("!=", n, ir.Constant(i64, 0), name="dec.nonempty");
     if enc_literal is not None {
-        codec_name: (str | None) = None;
-        try {
-            codec_name = codecs.lookup(enc_literal).name;
-        } except LookupError {
+        codec_name: (str | None) = active_host().native_fact(
+            FACT_CODEC_NAME, enc_literal
+        );
+        if not codec_name {
             self._emit_runtime_raise(
                 nonempty, "LookupError", f"unknown encoding: {enc_literal}"
             );
             codec_name = "utf-8";
         }
         codec_ids = {"utf-8": 0, "iso8859-1": 1, "ascii": 2};
-        if codec_name not in codec_ids {
+        if codec_name is None or codec_name not in codec_ids {
             return None;
         }
         codec = ir.Constant(i64, codec_ids[codec_name]);

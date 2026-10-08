@@ -448,19 +448,13 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
         return;
     }
 
+    bind_payload: dict[str, any] = {"exports": contracts, "imports": host_imports};
     bind_call = self.sync_loc(
         es.CallExpression(
             callee=es.Identifier(name=bind_local),
             arguments=[
                 self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
-                self.sync_loc(
-                    es.Literal(
-                        value=json.dumps(
-                            {"exports": contracts, "imports": host_imports}
-                        )
-                    ),
-                    jac_node=nd
-                ),
+                self.sync_loc(es.Literal(value=json.dumps(bind_payload)), jac_node=nd),
 
             ]
         ),

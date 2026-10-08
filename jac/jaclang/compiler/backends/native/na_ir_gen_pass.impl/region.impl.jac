@@ -188,7 +188,7 @@ impl NaIRGenPass._emit_region_handle_drop(alloca: ir.Value, var_name: str) -> No
     );
     slot_ty = alloca.type;
     assert isinstance(slot_ty, ir.PointerType) , "a region handle slot is always a pointer";
-    self.builder.store(ir.Constant(slot_ty.pointee, None), alloca);
+    self.builder.store(ir.Constant(slot_ty.pointee_type, None), alloca);
 }
 
 impl NaIRGenPass._register_region_handle_var(

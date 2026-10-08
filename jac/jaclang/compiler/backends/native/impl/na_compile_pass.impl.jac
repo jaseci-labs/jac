@@ -129,9 +129,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             module.gen.native_object = cached.object_bytes;
         } else {
             unit_ir = module.gen.llvm_ir;
-            mod = unit_ir.clone()
-                if isinstance(unit_ir, llvm.ModuleRef)
-                else llvm.parse_assembly(str(unit_ir));
+            mod = llvm.parse_assembly(str(unit_ir), llvm.create_context());
             mod.verify();
             opt_level = 0 if native_debug else int(options.opt_level or 0);
             optimize_unit(mod, target_machine, opt_level);
@@ -299,6 +297,7 @@ impl settle_unit_ir(module: uni.Module) -> None {
     } except RuntimeError {
         return;
     }
+    module.gen.ir_module = None;
 }
 
 impl native_linked_ir_text(module: uni.Module) -> str {

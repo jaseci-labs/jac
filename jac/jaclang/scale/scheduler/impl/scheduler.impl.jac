@@ -629,7 +629,7 @@ impl JacScaleScheduler.create_job(
     now_str = _utc_now_iso();
 
     introspector = self._server.introspector if self._server else None;
-    is_walker = name in (introspector._walkers or {}) if introspector else False;
+    is_walker = isinstance(introspector.target(name), type) if introspector else False;
 
     job_data: dict[str, any] = {
         'job_id': job_id,
@@ -815,12 +815,8 @@ impl JacScaleScheduler._target(name: str, is_walker: bool) -> any {
     if self._server is None {
         return None;
     }
-    introspector = self._server.introspector;
-    registry: dict[str, any] = (
-        introspector._walkers if is_walker else introspector._functions
-    )
-        or {};
-    return registry.get(name);
+    target = self._server.introspector.target(name);
+    return target if isinstance(target, type) == is_walker else None;
 }
 
 impl JacScaleScheduler._serves(job: dict[str, any]) -> bool {

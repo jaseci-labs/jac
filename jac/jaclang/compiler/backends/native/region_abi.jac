@@ -39,21 +39,44 @@ def _region_layout_facts -> dict[str, int] {
     };
 }
 
+def _declared_int(source: str, name: str) -> (str | None) {
+    lead = f"{name}: int = ";
+    at = source.find(lead);
+    while at >= 0 {
+        before = source[at - 1] if at > 0 else " ";
+        if not (before.isalnum() or before == "_") {
+            start = at + len(lead);
+            stop = start;
+            if source[stop:stop + 1] == "-" {
+                stop += 1;
+            }
+            digits = stop;
+            while stop < len(source) and source[stop] in "0123456789" {
+                stop += 1;
+            }
+            if stop > digits {
+                return source[start:stop];
+            }
+        }
+        at = source.find(lead, at + 1);
+    }
+    return None;
+}
+
 def verify_region_layout(source: str) {
-    import re;
     facts = _region_layout_facts();
     for (name, want) in facts.items() {
-        m = re.search(rf"\b{name}: int = (-?\d+)", source);
-        if m is None {
+        declared = _declared_int(source, name);
+        if declared is None {
             raise RuntimeError(
                 f"region kernel unit does not declare {name}; the header layout "
                 f"is defined once in compiler/frontend/codeinfo.jac and restated "
                 f"in runtime/region_native.jac"
             );
         }
-        if int(m.group(1)) != want {
+        if int(declared) != want {
             raise RuntimeError(
-                f"region kernel unit declares {name} = {m.group(1)} but "
+                f"region kernel unit declares {name} = {declared} but "
                 f"compiler/frontend/codeinfo.jac says {want}; update "
                 f"runtime/region_native.jac to match"
             );

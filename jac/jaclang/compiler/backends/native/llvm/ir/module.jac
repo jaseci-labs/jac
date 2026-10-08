@@ -1,58 +1,93 @@
-import collections;
-import from jaclang.compiler.backends.native.llvm.ir { context, values, types, _utils }
-class Module(object) {
-    has globals: dict[str, values.GlobalValue] = {};
+import jaclang.compiler.backends.native.llvm.ir.values as values;
+import jaclang.compiler.backends.native.llvm.ir.types as types;
+import jaclang.compiler.backends.native.llvm.ir._utils as _utils;
+import from jaclang.compiler.backends.native.llvm.ir.context { Context, global_context }
 
-    def init(
-        self: Module, name: any = '', context: any = context.global_context
-    ) -> object {
-        self.context = context;
+"""The cache key of one metadata operand: equal operands share a key.
+
+Constants compare by their text and metadata strings by their string; every
+other value (a metadata node is already unique per module) is itself."""
+def _operand_key(op: values.Value) -> str {
+    if isinstance(op, values.Constant) {
+        text = str(op);
+        return f"C{len(text)}:{text}";
+    }
+    if isinstance(op, values.MetaDataString) {
+        return f"S{len(op.string)}:{op.string}";
+    }
+    return f"I{id(op)}:";
+}
+
+"""The cache key of one debug-info operand value."""
+def _di_value_key(name: str, value: any) -> str {
+    if value is None {
+        return "N:";
+    }
+    if isinstance(value, bool) {
+        return "n1:" if value else "n0:";
+    }
+    if isinstance(value, int) {
+        return f"n{value}:";
+    }
+    if isinstance(value, str) {
+        return f"s{len(value)}:{value}";
+    }
+    if isinstance(value, values.DIToken) {
+        if name == 'encoding' {
+            return f"s{len(value.value)}:{value.value}";
+        }
+        return f"T{id(value)}:";
+    }
+    if isinstance(value, values.Value) {
+        return _operand_key(value);
+    }
+    return f"O{id(value)}:";
+}
+
+class Module {
+    has context: Context,
+        name: str = '',
+        data_layout: str = "",
+        scope: _utils.NameScope,
+        triple: str = 'unknown-unknown-unknown',
+        globals: dict[str, values.GlobalValue],
+        metadata: list[values.NamedValue],
+        namedmetadata: dict[str, values.NamedMetaData],
+        _metadatacache: dict[str, values.MDValue],
+        _debuginfocache: dict[str, values.DIValue];
+
+    def init(self: Module, name: str = '', context: Context | None = None) {
+        self.context = context if context is not None else global_context;
         self.name = name;
         self.data_layout = "";
         self.scope = _utils.NameScope();
         self.triple = 'unknown-unknown-unknown';
-        self.globals = collections.OrderedDict();
-        self.metadata: list[values.MDValue | values.DIValue] = [];
-        self.namedmetadata: dict[str, any] = {};
-        self._metadatacache: dict[tuple[object, ...], any] = {};
+        self.globals = {};
+        self.metadata = [];
+        self.namedmetadata = {};
+        self._metadatacache = {};
+        self._debuginfocache = {};
     }
 
-    def _fix_metadata_operands(self: Module, operands: any) -> list[any] {
-        fixed_ops: list[any] = [];
+    def _fix_metadata_operands(self: Module, operands: any) -> list[values.Value] {
+        fixed_ops: list[values.Value] = [];
+        if not isinstance(operands, (`list, `tuple)) {
+            return fixed_ops;
+        }
         for raw_op in operands {
-            op: any = raw_op;
-            if (op is None) {
-                op = types.MetaDataType()(None);
-            } elif isinstance(op, str) {
-                op = values.MetaDataString(self, op);
-            } elif isinstance(op, (`list, `tuple)) {
-                op = self.add_metadata(op);
+            if (raw_op is None) {
+                fixed_ops.append(values.Constant(types.MetaDataType(), None));
+            } elif isinstance(raw_op, str) {
+                fixed_ops.append(values.MetaDataString(self, raw_op));
+            } elif isinstance(raw_op, (`list, `tuple)) {
+                fixed_ops.append(self.add_metadata(raw_op));
+            } elif isinstance(raw_op, values.Value) {
+                fixed_ops.append(raw_op);
+            } else {
+                raise TypeError(f"not a metadata operand: {raw_op!r}");
             }
-            fixed_ops.append(op);
         }
         return fixed_ops;
-    }
-
-    def _fix_di_operands(self: Module, operands: any) -> list[tuple[str, any]] {
-        fixed_ops: list[tuple[str, any]] = [];
-        for (name, op) in operands {
-            if isinstance(op, (`list, `tuple)) {
-                op = self.add_metadata(op);
-            }
-            fixed_ops.append((name, op));
-        }
-        return fixed_ops;
-    }
-
-    def str_ditok_operands(self: Module, operands: any) -> list[tuple[str, any]] {
-        str_ops: list[tuple[str, any]] = [];
-        for (name, op) in operands {
-            if ((name == 'encoding') and isinstance(op, values.DIToken)) {
-                op = op.value;
-            }
-            str_ops.append((name, op));
-        }
-        return str_ops;
     }
 
     """
@@ -64,20 +99,16 @@ class Module(object) {
     def add_metadata(self: Module, operands: any) -> values.MDValue {
         if not isinstance(operands, (`list, `tuple)) {
             raise TypeError(
-                (
-                    "expected a list or tuple of metadata values, " "got %r"
-                    % (operands, )
-                )
+                f"expected a list or tuple of metadata values, got {operands!r}"
             );
         }
-        operands = self._fix_metadata_operands(operands);
-        key = `tuple(operands);
-        if (key not in self._metadatacache) {
+        fixed = self._fix_metadata_operands(operands);
+        key = "".join([_operand_key(op) for op in fixed]);
+        md = self._metadatacache.get(key);
+        if md is None {
             n = len(self.metadata);
-            md = values.MDValue(self, operands, name=str(n));
+            md = values.MDValue(self, fixed, str(n));
             self._metadatacache[key] = md;
-        } else {
-            md = self._metadatacache[key];
         }
         return md;
     }
@@ -92,17 +123,33 @@ class Module(object) {
         an instruction.
         """
     def add_debug_info(
-        self: Module, kind: any, operands: any, is_distinct: any = False
+        self: Module, kind: str, operands: dict[str, any], is_distinct: bool = False
     ) -> values.DIValue {
-        operands = `tuple(sorted(self._fix_di_operands(operands.items())));
-        str_op_key = `tuple(sorted(self.str_ditok_operands(operands)));
-        key = (kind, str_op_key, is_distinct);
-        if (key not in self._metadatacache) {
+        nodes: dict[str, values.MDValue] = {};
+        for (name, op) in operands.items() {
+            if isinstance(op, (`list, `tuple)) {
+                nodes[name] = self.add_metadata(op);
+            }
+        }
+        fixed: list[values.DIOperand] = [];
+        parts: list[str] = [f"{len(kind)}:{kind}", "d1" if is_distinct else "d0"];
+        for name in sorted(operands.keys()) {
+            op = operands[name];
+            made = nodes.get(name);
+            if made is not None {
+                fixed.append(values.DIOperand(name, made));
+                parts.append(f"{len(name)}:{name}={_operand_key(made)}");
+            } else {
+                fixed.append(values.DIOperand(name, op));
+                parts.append(f"{len(name)}:{name}={_di_value_key(name, op)}");
+            }
+        }
+        key = "".join(parts);
+        di = self._debuginfocache.get(key);
+        if di is None {
             n = len(self.metadata);
-            di = values.DIValue(self, is_distinct, kind, operands, name=str(n));
-            self._metadatacache[key] = di;
-        } else {
-            di = self._metadatacache[key];
+            di = values.DIValue(self, is_distinct, kind, fixed, str(n));
+            self._debuginfocache[key] = di;
         }
         return di;
     }
@@ -121,21 +168,22 @@ class Module(object) {
     def add_named_metadata(
         self: Module, name: str, element: any = None
     ) -> values.NamedMetaData {
-        if (name in self.namedmetadata) {
-            nmd = self.namedmetadata[name];
-        } else {
-            nmd = self.namedmetadata[name]=values.NamedMetaData(self);
+        nmd = self.namedmetadata.get(name);
+        if nmd is None {
+            nmd = values.NamedMetaData(self);
+            self.namedmetadata[name] = nmd;
         }
         if (element is not None) {
-            if not isinstance(element, values.Value) {
-                element = self.add_metadata(element);
+            if isinstance(element, values.Value) {
+                if not isinstance(element.type, types.MetaDataType) {
+                    raise TypeError(
+                        "wrong type for metadata element: got " + element.__repr__()
+                    );
+                }
+                nmd.add(element);
+            } else {
+                nmd.add(self.add_metadata(element));
             }
-            if not isinstance(element.type, types.MetaDataType) {
-                raise TypeError(
-                    ("wrong type for metadata element: got %r" % (element, ))
-                );
-            }
-            nmd.add(element);
         }
         return nmd;
     }
@@ -143,34 +191,38 @@ class Module(object) {
     """
         A list of functions declared or defined in this module.
         """
-    @property
-    def functions(self: Module) -> list[values.Function] {
-        return [
-            v
-            for v in self.globals.values()
-            if isinstance(v, values.Function)
-        ];
+    has functions: list[values.Function] {
+        getter {
+            found: list[values.Function] = [];
+            for v in self.globals.values() {
+                if isinstance(v, values.Function) {
+                    found.append(v);
+                }
+            }
+            return found;
+        }
     }
 
     """
-        An iterable of global values in this module.
+        The global values in this module.
         """
-    @property
-    def global_values(self: Module) -> Iterable[values.GlobalValue] {
-        return self.globals.values();
+    has global_values: list[values.GlobalValue] {
+        getter {
+            return [v for v in self.globals.values()];
+        }
     }
 
     """
         Get a global value by name.
         """
-    def get_global(self: Module, name: any) -> values.GlobalValue {
+    def get_global(self: Module, name: str) -> values.GlobalValue {
         return self.globals[name];
     }
 
     """
         Add a new global value.
         """
-    def add_global(self: Module, globalvalue: any) -> object {
+    def add_global(self: Module, globalvalue: values.GlobalValue) {
         assert (globalvalue.name not in self.globals);
         self.globals[globalvalue.name] = globalvalue;
     }
@@ -181,18 +233,17 @@ class Module(object) {
 
     def _get_body_lines(self: Module) -> list[str] {
         lines = [it.get_declaration() for it in self.get_identified_types().values()];
-        lines += [str(v) for v in self.globals.values()];
+        for v in self.globals.values() {
+            lines.append(str(v));
+        }
         return lines;
     }
 
     def _get_metadata_lines(self: Module) -> list[str] {
-        mdbuf = [];
+        mdbuf: list[str] = [];
         for (k, v) in self.namedmetadata.items() {
-            mdbuf.append(
-                "!{name} = !{{ {operands} }}".format(
-                    name=k, operands=', '.join(i.get_reference() for i in v.operands)
-                )
-            );
+            operands = ', '.join([i.get_reference() for i in v.operands]);
+            mdbuf.append("!" + k + " = !{ " + operands + " }");
         }
         for md in self.metadata {
             mdbuf.append(str(md));
@@ -200,24 +251,27 @@ class Module(object) {
         return mdbuf;
     }
 
-    def _stringify_body(self: Module) -> object {
+    def _stringify_body(self: Module) -> str {
         return "\n".join(self._get_body_lines());
     }
 
-    def _stringify_metadata(self: Module) -> object {
+    def _stringify_metadata(self: Module) -> str {
         return "\n".join(self._get_metadata_lines());
     }
 
-    def __repr__(self: Module) -> object {
-        lines = [];
-        lines += [
-            ('; ModuleID = "%s"' % (self.name, )),
-            ('target triple = "%s"' % (self.triple, )),
-            ('target datalayout = "%s"' % (self.data_layout, )),
+    def __repr__(self: Module) -> str {
+        lines: list[str] = [
+            '; ModuleID = "' + self.name + '"',
+            'target triple = "' + self.triple + '"',
+            'target datalayout = "' + self.data_layout + '"',
             ''
         ];
         lines += self._get_body_lines();
         lines += self._get_metadata_lines();
         return "\n".join(lines);
+    }
+
+    def __str__(self: Module) -> str {
+        return self.__repr__();
     }
 }

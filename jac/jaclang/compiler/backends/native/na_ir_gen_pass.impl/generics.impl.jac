@@ -1,15 +1,62 @@
 import from jaclang.compiler.passes.layout_pass { native_type_key }
+
+def _mangle_word_char(ch: str) -> bool {
+    return (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or (ch >= "0" and ch <= "9")
+        or ch == "_"
+        or ch > "\x7f";
+}
+
+def _replace_mangle_word(text: str, word: str, repl: str) -> str {
+    n = len(word);
+    if n == 0 {
+        return text;
+    }
+    head_word = _mangle_word_char(word[0]);
+    tail_word = _mangle_word_char(word[n - 1]);
+    out = "";
+    i = 0;
+    size = len(text);
+    while i < size {
+        if text[i:i + n] == word
+            and (i > 0 and _mangle_word_char(text[i - 1])) != head_word
+            and (i + n < size and _mangle_word_char(text[i + n])) != tail_word {
+            out += repl;
+            i += n;
+        } else {
+            out += text[i];
+            i += 1;
+        }
+    }
+    return out;
+}
+
+def _mangle_symbol_text(text: str) -> str {
+    out = "";
+    for ch in text {
+        if (ch >= "a" and ch <= "z")
+            or (ch >= "A" and ch <= "Z")
+            or (ch >= "0" and ch <= "9")
+            or ch == "_" {
+            out += ch;
+        } else {
+            out += "_";
+        }
+    }
+    return out;
+}
+
 impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
-    if t is None or not t?.mangle {
+    if not isinstance(t, TypeBase) {
         return None;
     }
     import from jaclang.compiler.passes.layout_pass { native_type_key }
     m = native_type_key(t);
     _map = self._mono_mangle_map;
     if _map {
-        import re;
         for (tv, repl) in _map.items() {
-            m = re.sub(rf"\b{re.escape(tv)}\b", repl, m);
+            m = _replace_mangle_word(m, tv, repl);
         }
     }
     if m == "Sequence" or m.startswith("Sequence[") {
@@ -424,9 +471,8 @@ impl NaIRGenPass._instantiate_generic(
     if _hit is not None {
         return _hit;
     }
-    import re;
     import hashlib as _mono_hash;
-    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    safe = _mangle_symbol_text("_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
@@ -547,9 +593,8 @@ impl NaIRGenPass._instantiate_generic_for_target(
     if _hit is not None {
         return _hit;
     }
-    import re;
     import hashlib as _mono_hash;
-    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    safe = _mangle_symbol_text("_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
@@ -590,9 +635,8 @@ impl NaIRGenPass._instantiate_generic_method(
     if _hit is not None {
         return _hit;
     }
-    import re;
     import hashlib as _mono_hash;
-    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    safe = _mangle_symbol_text("_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{owner_arch}_{method_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;

@@ -3118,3 +3118,60 @@ test "client bundles are rebuilt by content, not by timestamp" {
         assert builder.bundles == 3 , "an annex deletion reused the stale bundle";
     }
 }
+
+"""Boot used to resolve every served walker class only to read its `@restspec`,
+so readiness grew with the program instead of the route count. Routes now come
+from the surface manifest: boot resolves only targets whose decorator arguments
+are not literals, and a walker class is resolved on the first request to it."""
+test "routes come from the manifest and a walker resolves on its first request" {
+    import sys;
+    with TemporaryDirectory() as tmp {
+        app = os.path.join(tmp, "main.jac");
+        walkers = ''.join(
+            f'walker:pub w{i} {{\n    can go with Root entry {{\n        report {i};\n    }}\n}}\n\n'
+            for i in range(20)
+        );
+        Path(app).write_text(
+            'import from http { HTTPMethod }\n\n'
+                + 'glob DYNAMIC_PATH = "/dynamic";\n\n'
+                + walkers
+                + '@restspec(method=HTTPMethod.GET, path="/hello")\n'
+                + 'walker:pub Hello {\n    can go with Root entry {\n        report "hi";\n    }\n}\n\n'
+                + '@restspec(path=DYNAMIC_PATH)\n'
+                + 'walker:pub Dynamic {\n    can go with Root entry {\n        report "dyn";\n    }\n}\n'
+        );
+        resolved: list[str] = [];
+        def tally(frame: any, event: str, arg: any) {
+            if event == 'call' and frame.f_code.co_name == '_resolve_declared' {
+                resolved.append(str(frame.f_locals.get('name')));
+            }
+        }
+        client = JacTestClient.from_file(app, base_path=tmp);
+        sys.setprofile(tally);
+        try {
+            client.server;
+        } finally {
+            sys.setprofile(None);
+        }
+        try {
+            assert resolved == ['Dynamic'] , f"boot resolved {resolved}";
+            resolved.clear();
+            sys.setprofile(tally);
+            try {
+                response = client.post("/walker/w3", json={});
+            } finally {
+                sys.setprofile(None);
+            }
+            assert response.status_code == 200 , response.text;
+            assert set(resolved) == {'w3'} , f"the first request resolved {resolved}";
+            hello = client.get("/hello");
+            assert hello.status_code == 200 , hello.text;
+            assert "hi" in hello.text;
+            dynamic = client.post("/dynamic", json={});
+            assert dynamic.status_code == 200 , dynamic.text;
+            assert "dyn" in dynamic.text;
+        } finally {
+            client.close();
+        }
+    }
+}
