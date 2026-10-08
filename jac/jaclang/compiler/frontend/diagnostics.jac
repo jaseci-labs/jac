@@ -1880,6 +1880,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " outside the loop and use `handler_for({name})` inside it. A type"
          " annotation on the assignment does not change which scope owns the binding."
      ),
+     W2084 = _warn(
+         "W2084",
+         Category.SEMANTIC,
+         "Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value if the callee keeps them past the iteration",
+         help="The closure is handed to a call the compiler cannot see into. If that"
+         " callee runs it before returning, each closure sees its own iteration's"
+         " value; if it keeps it (stores it, schedules it, registers it as a"
+         " handler), every one reads what the last iteration assigned to '{name}'."
+         " Pass the value through a parameter, which is bound per call: declare"
+         " `def handler_for({name}: T) -> Callable[[], None] {{ return lambda {{ ... }}; }}`"
+         " outside the loop and pass `handler_for({name})`."
+     ),
      W3001 = _warn(
          "W3001",
          Category.LINT,

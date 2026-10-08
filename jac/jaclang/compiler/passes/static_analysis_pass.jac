@@ -4,21 +4,26 @@ import from jaclang.compiler.passes.scope_walk { ScopeWalker }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
+    AssertStmt,
     Assignment,
     AtomTrailer,
     AtomUnit,
     AwaitExpr,
     BinaryExpr,
     Bool,
+    BoolExpr,
     CompareExpr,
     ConnectOp,
     CtrlStmt,
+    DictCompr,
+    DictVal,
     DisconnectOp,
     DisengageStmt,
     EdgeOpRef,
     ElseIf,
     ElseStmt,
     EventSignature,
+    ExprStmt,
     FString,
     FilterCompr,
     FinallyStmt,
@@ -26,15 +31,23 @@ import from jaclang.compiler.frontend.unitree {
     ForeverStmt,
     FormattedValue,
     FuncCall,
+    IfElseExpr,
     IfStmt,
     ImplDef,
     ImplImport,
     Import,
     InForStmt,
+    InnerCompr,
     Int,
     IterForStmt,
+    JsxExpression,
+    JsxNormalAttribute,
+    JsxSpreadAttribute,
+    KVPair,
     KWPair,
     LambdaExpr,
+    ListCompr,
+    ListVal,
     MatchPattern,
     Module,
     ModuleItem,
@@ -46,12 +59,16 @@ import from jaclang.compiler.frontend.unitree {
     RaiseStmt,
     ReturnStmt,
     Semi,
+    SetVal,
     Symbol,
     Test,
     Token,
+    TupleVal,
+    UnaryExpr,
     UniNode,
     UniScopeNode,
     WhileStmt,
+    YieldExpr,
     in_type_position,
     is_identifier_slot,
     same_lexical_scope
@@ -68,6 +85,7 @@ import from jaclang.compiler.frontend.diagnostics {
     W2070,
     W2074,
     W2075,
+    W2084,
     E1122,
     E1123,
     E1125,
@@ -264,7 +282,18 @@ glob BUILTIN_NAMES: set[str] = {
          'some',
          'sort',
          'toSorted'
+     },
+     KEEPING_METHODS: dict[str, set[str]] = {
+         'list': {'append', 'extend', 'insert'},
+         'set': {'add'}
      };
+
+enum ClosureFate {
+    IN_PLACE = 'in place',
+    ENDS_LOOP = 'ends loop',
+    OPAQUE = 'opaque',
+    HELD = 'held'
+}
 
 type LoopStmt = InForStmt | IterForStmt | WhileStmt | ForeverStmt;
 type Closure = Ability | LambdaExpr;
@@ -327,6 +356,78 @@ def callee_name(call: FuncCall) -> str {
     return target.value if isinstance(target, Name) else '';
 }
 
+def worse_fate(left: ClosureFate, right: ClosureFate) -> ClosureFate {
+    if left == ClosureFate.HELD or right == ClosureFate.HELD {
+        return ClosureFate.HELD;
+    }
+    if left == ClosureFate.OPAQUE or right == ClosureFate.OPAQUE {
+        return ClosureFate.OPAQUE;
+    }
+    if left == ClosureFate.ENDS_LOOP or right == ClosureFate.ENDS_LOOP {
+        return ClosureFate.ENDS_LOOP;
+    }
+    return ClosureFate.IN_PLACE;
+}
+
+def keeping_receiver(call: FuncCall) -> (UniNode | None) {
+    target = call.target;
+    if not (isinstance(target, AtomTrailer) and target.is_attr) {
+        return None;
+    }
+    method = target.right;
+    if not isinstance(method, Name) or method.sym is None {
+        return None;
+    }
+    owner = method.sym.parent_tab;
+    if owner is None {
+        return None;
+    }
+    kept = KEEPING_METHODS.get(owner.scope_name);
+    if kept is None or method.value not in kept {
+        return None;
+    }
+    home = owner.parent_scope;
+    if isinstance(home, Module) and home.name == 'builtins' {
+        return target.target;
+    }
+    return None;
+}
+
+def carries_over(sym: Symbol, store: Assignment) -> bool {
+    if store.aug_op is not None {
+        return True;
+    }
+    value = store.value;
+    if value is None {
+        return False;
+    }
+    for use in sym.uses {
+        if use.expr_ctx == ExprCtx.LOAD and is_within(use, value) {
+            return True;
+        }
+    }
+    return False;
+}
+
+def store_root(target: UniNode) -> UniNode {
+    base = target;
+    while isinstance(base, AtomTrailer) {
+        base = base.target;
+    }
+    return base;
+}
+
+def is_within(nd: UniNode, outer: UniNode) -> bool {
+    cur: (UniNode | None) = nd;
+    while cur is not None {
+        if cur is outer {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
 walker UnusedSymbolWalker(ScopeWalker) {
     has analysis: StaticAnalysisPass;
 
@@ -354,11 +455,47 @@ walker StaticAnalysisPass(CompilerPass) {
     def _check_placement_warnings(mod: Module) -> None;
     def _check_loop_closure_captures(mod: Module) -> None;
     def _runs_in_place(closure: Closure) -> bool;
-    def _consumed_by_its_call(closure: LambdaExpr) -> bool;
-    def _only_called_where_bound(closure: Closure, binding: Symbol) -> bool;
+    def _closure_fate(
+        closure: Closure, loop: (LoopStmt | None), seen: list[int]
+    ) -> ClosureFate;
+
+    def _binding_fate(
+        binding: Symbol,
+        origin: (Closure | None),
+        home: (UniScopeNode | None),
+        direct: bool,
+        loop: (LoopStmt | None),
+        seen: list[int]
+    ) -> ClosureFate;
+
+    def _use_fate(
+        use: UniNode,
+        home: (UniScopeNode | None),
+        direct: bool,
+        loop: (LoopStmt | None),
+        seen: list[int]
+    ) -> ClosureFate;
+
+    def _value_fate(
+        value: UniNode, direct: bool, loop: (LoopStmt | None), seen: list[int]
+    ) -> ClosureFate;
+
+    def _stored_fate(
+        target: UniNode, loop: (LoopStmt | None), seen: list[int]
+    ) -> ClosureFate;
+
+    def _returned_fate(
+        leave: (ReturnStmt | LambdaExpr), loop: (LoopStmt | None), seen: list[int]
+    ) -> ClosureFate;
+
+    def _calls_of(closure: Closure) -> list[FuncCall];
     def _is_frame(nd: UniNode) -> bool;
     def _frame_of(nd: UniNode) -> (UniScopeNode | None);
-    def _loops_outlived_by(closure: Closure) -> list[LoopStmt];
-    def _rebound_each_iteration(sym: Symbol, loop: LoopStmt) -> (NameAtom | None);
+    def _outlives(nd: UniNode, loop: LoopStmt) -> bool;
+    def _loops_outlived_by(nd: UniNode) -> list[LoopStmt];
+    def _rebound_each_iteration(
+        sym: Symbol, loop: LoopStmt, afresh: bool
+    ) -> (NameAtom | None);
+
     def _read_when_created(name_nd: Name, closure: Closure) -> bool;
 }

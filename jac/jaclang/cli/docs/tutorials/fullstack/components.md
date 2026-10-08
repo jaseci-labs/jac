@@ -386,7 +386,9 @@ def:pub Picker(items: list[str], onPick: Callable[[str], None]) -> JsxElement {
 }
 ```
 
-Reading the local for the row's own content (`{label}` above) is fine: that runs during the iteration. See [Variables and Scope](../../reference/language/variables-and-scope.md#4-scope-rules) for the rule.
+Reading the local for the row's own content (`{label}` above) is fine: that runs during the iteration.
+
+If the handler goes through a call before it reaches the element (`onClick={debounce(lambda { onPick(label); })}`, or a props dict passed to a helper), the compiler cannot see whether that call keeps it, so it reports a warning (`W2084`) instead of the error. The fix is the same. See [Variables and Scope](../../reference/language/variables-and-scope.md#4-scope-rules) for the rule.
 
 ### `has`-fields and Handlers
 

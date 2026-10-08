@@ -744,7 +744,7 @@ def opener(row_id: str, show: Callable[[str], None]) -> Callable[[], None] {
 }
 ```
 
-then `<li onClick={opener(row_id, show)}>{row_id}</li>` in the loop. Reading the loop target itself in a client handler (`lambda { show(item.id); }`) is fine. The same rule applies to any closure kept past its iteration in server code (`handlers.append(lambda ...)`).
+then `<li onClick={opener(row_id, show)}>{row_id}</li>` in the loop. Reading the loop target itself in a client handler (`lambda { show(item.id); }`) is fine. The same rule applies to any closure kept past its iteration in server code (`handlers.append(lambda ...)`, `table[key] = lambda ...`). When the closure is only passed to a call the compiler cannot see into (`register(lambda ...)`), it is a warning (`W2084`) instead: fix it the same way, since the callee may keep it.
 
 ## Server-Client Communication Gotchas
 

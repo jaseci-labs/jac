@@ -97,9 +97,8 @@ def created_inside_a_combinator(xs: list[int]) -> list[Callable[[], int]] {
         out.extend(
             list(
                 map(
-                    lambda (v: int) -> Callable[[], int] {
-                        return lambda -> int { return v + mapOuter; };
-                    },
+                    lambda (v: int) -> Callable[[], int] { return lambda -> int { return v
+                        + mapOuter; }; },
                     xs
                 )
             )

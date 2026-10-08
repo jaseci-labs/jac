@@ -115,7 +115,7 @@ def:pub Kept(items: any, pick: Callable[[str], None]) -> JsxElement {
             {for it in items {
                 spreadId = str(it.id);
                 attrs = {"onClick": lambda { pick(spreadId); }};
-                <li key={spreadId} {...attrs}>{spreadId}</li>;
+                <li key={spreadId} {**attrs}>{spreadId}</li>;
             }}
         </ul>;
 }

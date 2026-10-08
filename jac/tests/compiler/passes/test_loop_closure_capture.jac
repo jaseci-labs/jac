@@ -54,10 +54,13 @@ def captures(prog: JacProgram) -> list[Alert] {
         for a in prog.errors_had + prog.warnings_had
         if a.code is not None and a.code.code in (HELD, PASSED_ON)
     ];
-    return sorted(hits, key=lambda (a: Alert) -> tuple[int, int] { return (
-        a.loc.first_line,
-        a.loc.col_start
-    ); });
+    return sorted(
+        hits,
+        key=lambda (a: Alert) -> tuple[int, int] { return (
+            a.loc.first_line,
+            a.loc.col_start
+        ); }
+    );
 }
 
 """The variable a loop-capture message names."""
@@ -69,7 +72,11 @@ def captured_name(msg: str) -> str {
 
 """Every loop-capture report as (code, variable), in source order."""
 def reported(prog: JacProgram) -> list[tuple[str, str]] {
-    return [(a.code.code, captured_name(str(a.msg))) for a in captures(prog) if a.code];
+    return [
+        (a.code.code, captured_name(str(a.msg)))
+        for a in captures(prog)
+        if a.code
+    ];
 }
 
 """Every error that is not a loop capture, rendered for an assertion message."""

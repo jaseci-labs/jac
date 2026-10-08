@@ -673,13 +673,17 @@ impl StaticAnalysisPass._check_loop_closure_captures(mod: Module) -> None {
                 if not scope_encloses(owner, loop) {
                     continue;
                 }
-                rebind = self._rebound_each_iteration(sym, loop);
+                rebind = self._rebound_each_iteration(sym, loop, False);
                 if rebind is None {
+                    continue;
+                }
+                fate = self._closure_fate(closure, loop, []);
+                if fate != ClosureFate.HELD and fate != ClosureFate.OPAQUE {
                     continue;
                 }
                 reported.add(id(sym));
                 self.ctx.emit(
-                    E2097,
+                    E2097 if fate == ClosureFate.HELD else W2084,
                     node_override=name_nd,
                     related=[
                         (
@@ -696,75 +700,286 @@ impl StaticAnalysisPass._check_loop_closure_captures(mod: Module) -> None {
 }
 
 impl StaticAnalysisPass._runs_in_place(closure: Closure) -> bool {
+    if isinstance(closure, Ability) and not is_nested_function(closure) {
+        return False;
+    }
     key = id(closure);
     known = self._in_place.get(key);
     if known is not None {
         return known;
     }
     self._in_place[key] = True;
-    verdict = False;
-    if isinstance(closure, LambdaExpr) {
-        verdict = self._consumed_by_its_call(closure);
-        holder = closure.parent;
-        if not verdict
-            and isinstance(holder, Assignment)
-            and holder.aug_op is None
-            and len(holder.target) == 1 {
-            target = holder.target[0];
-            if isinstance(target, Name) and target.sym is not None {
-                verdict = self._only_called_where_bound(closure, target.sym);
-            }
-        }
-    } elif is_nested_function(closure) and not closure.decorators {
-        name_ref = closure.name_ref;
-        if name_ref is not None and name_ref.sym is not None {
-            verdict = self._only_called_where_bound(closure, name_ref.sym);
-        }
-    }
+    verdict = self._closure_fate(closure, None, []) == ClosureFate.IN_PLACE;
     self._in_place[key] = verdict;
     return verdict;
 }
 
-impl StaticAnalysisPass._consumed_by_its_call(closure: LambdaExpr) -> bool {
-    value: UniNode = closure;
-    holder = closure.parent;
-    while isinstance(holder, AtomUnit) {
-        value = holder;
+impl StaticAnalysisPass._closure_fate(
+    closure: Closure, loop: (LoopStmt | None), seen: list[int]
+) -> ClosureFate {
+    if id(closure) in seen {
+        return ClosureFate.IN_PLACE;
+    }
+    seen.append(id(closure));
+    fate: ClosureFate = ClosureFate.OPAQUE;
+    if isinstance(closure, LambdaExpr) {
+        fate = self._value_fate(closure, True, loop, seen);
+    } elif not closure.decorators {
+        name_ref = closure.name_ref;
+        if name_ref is not None and name_ref.sym is not None {
+            fate = self._binding_fate(
+                name_ref.sym, closure, self._frame_of(closure), True, loop, seen
+            );
+        }
+    }
+    seen.pop();
+    return fate;
+}
+
+impl StaticAnalysisPass._binding_fate(
+    binding: Symbol,
+    origin: (Closure | None),
+    home: (UniScopeNode | None),
+    direct: bool,
+    loop: (LoopStmt | None),
+    seen: list[int]
+) -> ClosureFate {
+    if id(binding) in seen {
+        return ClosureFate.IN_PLACE;
+    }
+    seen.append(id(binding));
+    fate: ClosureFate = ClosureFate.IN_PLACE;
+    for use in binding.uses {
+        if use.expr_ctx != ExprCtx.LOAD
+            or (origin is not None and is_within(use, origin)) {
+            continue;
+        }
+        fate = worse_fate(fate, self._use_fate(use, home, direct, loop, seen));
+        if fate == ClosureFate.HELD {
+            break;
+        }
+    }
+    seen.pop();
+    return fate;
+}
+
+impl StaticAnalysisPass._use_fate(
+    use: UniNode,
+    home: (UniScopeNode | None),
+    direct: bool,
+    loop: (LoopStmt | None),
+    seen: list[int]
+) -> ClosureFate {
+    frame = self._frame_of(use);
+    if not same_lexical_scope(frame, home) {
+        while frame is not None
+            and not same_lexical_scope(self._frame_of(frame), home) {
+            frame = self._frame_of(frame);
+        }
+        if not isinstance(frame, LambdaExpr)
+            and not (isinstance(frame, Ability) and is_nested_function(frame)) {
+            return ClosureFate.OPAQUE;
+        }
+        if loop is not None and not self._outlives(frame, loop) {
+            return ClosureFate.IN_PLACE;
+        }
+        return self._closure_fate(frame, loop, seen);
+    }
+    if loop is not None and not self._outlives(use, loop) {
+        return ClosureFate.IN_PLACE;
+    }
+    return self._value_fate(use, direct, loop, seen);
+}
+
+impl StaticAnalysisPass._value_fate(
+    value: UniNode, direct: bool, loop: (LoopStmt | None), seen: list[int]
+) -> ClosureFate {
+    cur = value;
+    holder = cur.parent;
+    while holder is not None {
+        if isinstance(holder, IfElseExpr) and holder.condition is cur {
+            return ClosureFate.IN_PLACE;
+        }
+        if isinstance(
+            holder,
+            (
+                ListVal,
+                TupleVal,
+                SetVal,
+                DictVal,
+                KVPair,
+                IfElseExpr,
+                BoolExpr,
+                BinaryExpr,
+                UnaryExpr,
+                ListCompr,
+                DictCompr
+            )
+        ) {
+            direct = False;
+        } elif not isinstance(holder, AtomUnit) {
+            break;
+        }
+        cur = holder;
         holder = holder.parent;
     }
     if isinstance(holder, FuncCall) {
-        return holder.target is value or callee_name(holder) in ITERATION_COMBINATORS;
+        if holder.target is cur {
+            return ClosureFate.IN_PLACE;
+        }
+        if direct and callee_name(holder) in ITERATION_COMBINATORS {
+            return ClosureFate.IN_PLACE;
+        }
+        receiver = keeping_receiver(holder);
+        if receiver is not None {
+            return self._stored_fate(receiver, loop, seen);
+        }
+        return ClosureFate.OPAQUE;
     }
-    return isinstance(holder, KWPair)
-        and holder.key is not None
-        and holder.key.sym_name == 'key'
-        and isinstance(holder.parent, FuncCall);
+    if isinstance(holder, KWPair) {
+        if direct and holder.key is not None and holder.key.sym_name == 'key' {
+            return ClosureFate.IN_PLACE;
+        }
+        return ClosureFate.OPAQUE;
+    }
+    if isinstance(
+        holder, (JsxNormalAttribute, JsxSpreadAttribute, JsxExpression, YieldExpr)
+    ) {
+        return ClosureFate.HELD;
+    }
+    if isinstance(holder, ReturnStmt) {
+        return self._returned_fate(holder, loop, seen);
+    }
+    if isinstance(holder, LambdaExpr) {
+        return self._returned_fate(holder, loop, seen)
+            if holder.body is cur
+            else ClosureFate.OPAQUE;
+    }
+    if isinstance(holder, ExprStmt) {
+        owner = holder.parent;
+        if isinstance(owner, LambdaExpr) and owner.tail_return_expr() is cur {
+            return self._returned_fate(owner, loop, seen);
+        }
+        return ClosureFate.IN_PLACE;
+    }
+    if isinstance(holder, Assignment) {
+        if holder.value is not cur {
+            return ClosureFate.IN_PLACE;
+        }
+        fate: ClosureFate = ClosureFate.IN_PLACE;
+        for target in holder.target {
+            if not isinstance(target, Name) or holder.aug_op is not None {
+                fate = worse_fate(fate, self._stored_fate(target, loop, seen));
+            } elif target.sym is None {
+                fate = worse_fate(fate, ClosureFate.OPAQUE);
+            } elif id(target.sym) in seen {
+                if loop is None
+                    or self._rebound_each_iteration(target.sym, loop, True) is None {
+                    fate = ClosureFate.HELD;
+                }
+            } else {
+                fate = worse_fate(
+                    fate,
+                    self._binding_fate(
+                        target.sym, None, self._frame_of(holder), direct, loop, seen
+                    )
+                );
+            }
+        }
+        return fate;
+    }
+    if isinstance(
+        holder,
+        (
+            AtomTrailer,
+            CompareExpr,
+            InnerCompr,
+            IfStmt,
+            WhileStmt,
+            AssertStmt,
+            FormattedValue,
+            InForStmt
+        )
+    ) {
+        return ClosureFate.IN_PLACE;
+    }
+    return ClosureFate.OPAQUE;
 }
 
-impl StaticAnalysisPass._only_called_where_bound(
-    closure: Closure, binding: Symbol
-) -> bool {
-    home = self._frame_of(closure);
-    for use in binding.uses {
-        if use.expr_ctx != ExprCtx.LOAD {
-            continue;
-        }
-        inner: (UniNode | None) = use.parent;
-        while inner is not None and inner is not closure {
-            inner = inner.parent;
-        }
-        if inner is closure {
-            continue;
-        }
-        call = use.parent;
-        if not (isinstance(call, FuncCall) and call.target is use) {
-            return False;
-        }
-        if not same_lexical_scope(self._frame_of(use), home) {
-            return False;
+impl StaticAnalysisPass._stored_fate(
+    target: UniNode, loop: (LoopStmt | None), seen: list[int]
+) -> ClosureFate {
+    base = store_root(target);
+    if not isinstance(base, Name) {
+        return ClosureFate.OPAQUE;
+    }
+    sym = base.sym;
+    if sym is None
+        or loop is None
+        or self._rebound_each_iteration(sym, loop, True) is None {
+        return ClosureFate.HELD;
+    }
+    return self._binding_fate(sym, None, self._frame_of(base), False, loop, seen);
+}
+
+impl StaticAnalysisPass._returned_fate(
+    leave: (ReturnStmt | LambdaExpr), loop: (LoopStmt | None), seen: list[int]
+) -> ClosureFate {
+    owner: (UniNode | None) = leave;
+    while owner is not None and not UniScopeNode.is_python_scoping(owner) {
+        owner = owner.parent;
+    }
+    if not isinstance(owner, (Ability, LambdaExpr))
+        or not self._runs_in_place(owner)
+        or id(owner) in seen {
+        return ClosureFate.ENDS_LOOP;
+    }
+    seen.append(id(owner));
+    fate: ClosureFate = ClosureFate.IN_PLACE;
+    for call in self._calls_of(owner) {
+        if loop is None or self._outlives(call, loop) {
+            fate = worse_fate(fate, self._value_fate(call, False, loop, seen));
         }
     }
-    return True;
+    seen.pop();
+    return fate;
+}
+
+impl StaticAnalysisPass._calls_of(closure: Closure) -> list[FuncCall] {
+    binding: (Symbol | None) = None;
+    if isinstance(closure, LambdaExpr) {
+        site: UniNode = closure;
+        while isinstance(site.parent, AtomUnit) {
+            site = site.parent;
+        }
+        holder = site.parent;
+        if isinstance(holder, KWPair) {
+            holder = holder.parent;
+        }
+        if isinstance(holder, FuncCall) {
+            return [holder];
+        }
+        if isinstance(holder, Assignment) and len(holder.target) == 1 {
+            target = holder.target[0];
+            if isinstance(target, Name) {
+                binding = target.sym;
+            }
+        }
+    } elif closure.name_ref is not None {
+        binding = closure.name_ref.sym;
+    }
+    calls: list[FuncCall] = [];
+    if binding is not None {
+        for use in binding.uses {
+            call = use.parent;
+            if isinstance(call, FuncCall)
+                and call.target is use
+                and not is_within(use, closure) {
+                calls.append(call);
+            }
+        }
+    }
+    return calls;
 }
 
 impl StaticAnalysisPass._is_frame(nd: UniNode) -> bool {
@@ -783,10 +998,19 @@ impl StaticAnalysisPass._frame_of(nd: UniNode) -> (UniScopeNode | None) {
     return None;
 }
 
-impl StaticAnalysisPass._loops_outlived_by(closure: Closure) -> list[LoopStmt] {
+impl StaticAnalysisPass._outlives(nd: UniNode, loop: LoopStmt) -> bool {
+    for outlived in self._loops_outlived_by(nd) {
+        if outlived is loop {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl StaticAnalysisPass._loops_outlived_by(nd: UniNode) -> list[LoopStmt] {
     loops: list[LoopStmt] = [];
-    part: UniNode = closure;
-    cur = closure.parent;
+    part: UniNode = nd;
+    cur = nd.parent;
     returning = False;
     while cur is not None {
         if isinstance(cur, ReturnStmt) {
@@ -808,7 +1032,7 @@ impl StaticAnalysisPass._loops_outlived_by(closure: Closure) -> list[LoopStmt] {
 }
 
 impl StaticAnalysisPass._rebound_each_iteration(
-    sym: Symbol, loop: LoopStmt
+    sym: Symbol, loop: LoopStmt, afresh: bool
 ) -> (NameAtom | None) {
     for name_nd in (list(sym.defn) + list(sym.uses)) {
         if name_nd.expr_ctx != ExprCtx.STORE {
@@ -816,6 +1040,9 @@ impl StaticAnalysisPass._rebound_each_iteration(
         }
         part: UniNode = name_nd;
         cur = name_nd.parent;
+        if afresh and isinstance(cur, Assignment) and carries_over(sym, cur) {
+            continue;
+        }
         while cur is not None and cur is not loop and not self._is_frame(cur) {
             part = cur;
             cur = cur.parent;

@@ -197,7 +197,9 @@ obj Watcher {
     }
 }
 
-def inside_a_stored_literal(names: list[str]) -> dict[str, dict[str, Callable[[], str]]] {
+def inside_a_stored_literal(
+    names: list[str]
+) -> dict[str, dict[str, Callable[[], str]]] {
     table: dict[str, dict[str, Callable[[], str]]] = {};
     for nm in names {
         literalVal = nm.upper();

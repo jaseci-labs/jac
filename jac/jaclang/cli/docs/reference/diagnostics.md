@@ -490,8 +490,9 @@ Emitted by static analysis and declaration-implementation matching passes.
 | Code | Message |
 |------|---------|
 | `E2097` | Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value |
+| `W2084` | Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value if the callee keeps them past the iteration |
 
-A local assigned in a loop body belongs to the enclosing function, not to one iteration, with or without a type annotation (see [Variables and Scope](language/variables-and-scope.md#4-scope-rules)). A `lambda` or nested `def` created in the loop only reads that local when it is called, so if it is kept past its iteration (stored, passed on, used as an event handler) every one of them reads whatever the last iteration assigned:
+A local assigned in a loop body belongs to the enclosing function, not to one iteration, with or without a type annotation (see [Variables and Scope](language/variables-and-scope.md#4-scope-rules)). A `lambda` or nested `def` created in the loop only reads that local when it is called, so if it is kept past its iteration every one of them reads whatever the last iteration assigned:
 
 <!-- jac-skip -->
 ```jac
@@ -518,11 +519,34 @@ def build(ids: list[str], open: Callable[[str], None]) -> list[Callable[[], None
 }
 ```
 
-`E2097` is reported from `jac check` in every codespace. It is not reported when the closure cannot outlive the iteration that created it or the loop does not share the binding:
+Both codes are reported from `jac check` in every codespace. Which one depends on what the code in front of the compiler proves about the closure.
 
-- the closure is called on the spot (`(lambda { ... })()`), or is a local `def` or named `lambda` that is only ever called, never passed or stored
+**`E2097`, an error: the loop keeps the closure.** Nothing the compiler cannot see stands between the closure and the place that holds it past the iteration:
+
+- it is the value of a JSX attribute, a spread attribute or a JSX child (`<li onClick={lambda { ... }}>`)
+- it is assigned to a field or a subscript of something that outlives the iteration (`self.on_done = ...`, `table[key] = ...`), on its own or inside a list, tuple, set or dict literal
+- it is stored by `append`, `extend` or `insert` on a `list`, or `add` on a `set`, when the checker has resolved the receiver to that builtin type and the container outlives the iteration
+- it is carried from one iteration to the next by a rebinding (`rows = rows + [lambda { ... }]`, `rows += [...]`)
+- it is yielded
+- it is captured by another closure that is kept in one of these ways
+
+A named closure (a `def` in the loop body, or a `lambda` assigned to a name) is followed to where the name is used, so `handler = lambda { ... }; handlers.append(handler);` is the same error.
+
+**`W2084`, a warning: the closure is handed to a callee the compiler cannot see into.** It is written as an argument of a call (directly, by keyword, or inside a literal that is passed), or it is a named closure whose only use as a value is being passed to one. The callee may run it before returning, in which case the code is correct, or keep it, in which case every closure sees the last value. The warning does not fail `jac check`. Binding through a parameter removes it; so does `# jac:ignore[W2084]` on the line when the callee is known to run the closure in place.
+
+<!-- jac-skip -->
+```jac
+for item in items {
+    item_id = item.id;
+    register(lambda { open(item_id); });   # W2084: does register() keep it?
+}
+```
+
+**Not reported: the closure runs within its iteration, or the loop does not share the binding.**
+
+- the closure is called on the spot (`(lambda { ... })()`), or is a local `def` or named `lambda` that is only ever called
 - the closure is the callback of an iteration combinator that runs it before returning (`map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `flatMap`, `reduceRight`, `sort`, `toSorted`) or a `key=` argument; a closure created inside such a callback is still checked
-- the closure is part of a `return` statement, which ends the loop
+- the closure is part of a `return` statement, which ends the loop, or is only used after the loop
 - the name is a parameter of the closure, a local of its own, or is read in a parameter default (evaluated when the closure is created)
 - the loop does not assign the binding (it was assigned before the loop), or the binding is a `glob`
 - the binding belongs to the loop itself: the `for` target, or a `def` declared in the loop body

@@ -406,7 +406,7 @@ glob add_five = make_adder(5);  # add_five(10) returns 15
 
     Captured values are read freely. To mutate state across calls, prefer returning a configured object (see [IIFE & Anonymous Factories](#8-iife-anonymous-factories) below) over rebinding a captured local.
 
-    A closure captures the *binding*, not the value it holds at that moment. A local assigned in a loop body is one binding for the whole function, so a closure created in the loop and kept past its iteration would see the last value assigned; the compiler rejects that (**E2097**). Bind the value through a parameter, as `make_adder` does. See [Variables and Scope](variables-and-scope.md#4-scope-rules).
+    A closure captures the *binding*, not the value it holds at that moment. A local assigned in a loop body is one binding for the whole function, so a closure created in the loop and kept past its iteration would see the last value assigned; the compiler rejects that (**E2097**), and warns (**W2084**) when the closure is handed to a callee that may keep it. Bind the value through a parameter, as `make_adder` does. See [Variables and Scope](variables-and-scope.md#4-scope-rules).
 
 ### 8 IIFE & Anonymous Factories
 
