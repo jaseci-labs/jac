@@ -707,7 +707,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 }
 
 impl NaIRGenPass._rc_call_with_ctx(
-    fn: ir.Function, args: list[any], op: str, loc: str = "", name: str = ""
+    fn: ir.Function, args: list[ir.Value], op: str, loc: str = "", name: str = ""
 ) -> ir.Value {
     self._set_rc_ctx(op, loc);
     result = self.builder.call(fn, args, name=name);

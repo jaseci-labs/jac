@@ -2530,7 +2530,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _release_owned_args(call_args: list[ir.Value], op: str = "call_arg") -> None;
     def _rc_call_with_ctx(
-        fn: ir.Function, args: list[any], op: str, loc: str = "", name: str = ""
+        fn: ir.Function, args: list[ir.Value], op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
 
     def _is_raw_int_ptr(value: ir.Value) -> bool;
@@ -3034,6 +3034,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_jacval_sign(op: str, operand: ir.Value) -> (ir.Value | None);
+    def _emit_any_arch_eq(
+        op: str, typed: ir.Value, boxed: ir.Value
+    ) -> (ir.Value | None);
+
     def _emit_mixed_jacval_comparison(
         op: str, left: ir.Value, right: ir.Value
     ) -> (ir.Value | None);
