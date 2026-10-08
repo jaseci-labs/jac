@@ -5,7 +5,7 @@ Provides the encoding, registry, and dispatch switch for all native Jac
 functions exposed as callable JS values through the VM.
 
 Encoding scheme (must not collide with vm.vm and builtins.function):
-  NATIVE_BASE = 2_000_000
+  FN_NATIVE_BASE = 2^30 + 2^29 (runtime/encoding.jac)
   js_native_val(idx)  → JSValue{tag=Object, as_ptr=-(NATIVE_BASE + idx + 1)}
   is_native_val(v)    → v.tag == Object and jsv_to_table_id(v) < 0
                         and -(jsv_to_table_id(v)+1) >= NATIVE_BASE
@@ -78,7 +78,7 @@ import from engine.src.runtime.js_bigint {
     js_bigint_from_decimal_str,
     js_bigint_to_string
 }
-import from engine.src.runtime.encoding { NATIVE_BASE }
+import from engine.src.runtime.encoding { FN_NATIVE_BASE }
 import from engine.src.builtins.native_registry {
     NativeFn,
     js_native_val,
@@ -2444,7 +2444,7 @@ def _dn_native_kind_string(
         if jsv_is_cell(str_fn_arg)
             and jsv_cell_kind(str_fn_arg) == JS_CELL_KIND_NATIVE {
             str_fn_cid: int = jsv_to_table_id(str_fn_arg);
-            if str_fn_cid >= 0 and str_fn_cid < NATIVE_BASE {
+            if str_fn_cid >= 0 and str_fn_cid < FN_NATIVE_BASE {
                 str_is_fn = True;
                 if str_fn_cid < len(realm.closures) {
                     # Prefer the preserved source text (ES §20.2.3.5) so String(fn)
@@ -3930,7 +3930,7 @@ def _dn_native_kind_obj_proto_tostring(
         ts_tag = "[object Symbol]";
     } elif jsv_is_cell(this_val)
         and jsv_cell_kind(this_val) == JS_CELL_KIND_NATIVE
-        and jsv_to_table_id(this_val) < NATIVE_BASE {
+        and jsv_to_table_id(this_val) < FN_NATIVE_BASE {
         # User closure — distinguish async / generator per ECMAScript §20.1.3.6
         ts_cl_id: int = jsv_to_table_id(this_val);
         if ts_cl_id >= 0 and ts_cl_id < len(realm.closures) {

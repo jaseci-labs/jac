@@ -7,7 +7,7 @@ module, which breaks the circular dependency that would otherwise exist
 between them.
 
 Encoding scheme:
-  NATIVE_BASE = 2_000_000
+  FN_NATIVE_BASE = 2^30 + 2^29 (runtime/encoding.jac)
   js_native_val(idx)  → JSValue{tag=Object, as_ptr=-(NATIVE_BASE + idx + 1)}
   is_native_val(v)    → v.tag == Object and jsv_to_table_id(v) < 0
                         and -(jsv_to_table_id(v)+1) >= NATIVE_BASE
@@ -39,7 +39,7 @@ import from engine.src.runtime.jsobject {
     KEY_CTOR_KIND
 }
 import from engine.src.runtime.realm { Realm }
-import from engine.src.runtime.encoding { NATIVE_BASE }
+import from engine.src.runtime.encoding { FN_NATIVE_BASE }
 import from engine.src.runtime.wk_keys { WK_NAME, WK_LENGTH }
 import from engine.src.builtins.native_type { NativeFn }
 
@@ -65,7 +65,7 @@ def:pub native_set_realm(r: Realm) {
 
 """Encode a _NR_REALM.natives index as a JSValue function."""
 def:pub js_native_val(idx: int) -> JSValue {
-    return jsv_from_cell_kind(NATIVE_BASE + idx, JS_CELL_KIND_NATIVE);
+    return jsv_from_cell_kind(FN_NATIVE_BASE + idx, JS_CELL_KIND_NATIVE);
 }
 
 """
@@ -80,12 +80,12 @@ def:pub is_native_val(v: JSValue) -> bool {
     if jsv_cell_kind(v) != JS_CELL_KIND_NATIVE {
         return False;
     }
-    return jsv_to_table_id(v) >= NATIVE_BASE;
+    return jsv_to_table_id(v) >= FN_NATIVE_BASE;
 }
 
 """Decode the _NR_REALM.natives index from a native JSValue."""
 def:pub get_native_idx(v: JSValue) -> int {
-    return jsv_to_table_id(v) - NATIVE_BASE;
+    return jsv_to_table_id(v) - FN_NATIVE_BASE;
 }
 
 """Return the dispatch kind for a native JSValue."""

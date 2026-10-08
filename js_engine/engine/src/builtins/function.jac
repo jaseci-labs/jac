@@ -25,7 +25,7 @@ import from engine.src.vm.vm {
     get_fn_idx,
     js_fn_val
 }
-import from engine.src.runtime.encoding { BUILTIN_BASE, NATIVE_BASE }
+import from engine.src.runtime.encoding { FN_BUILTIN_BASE, FN_NATIVE_BASE }
 import from engine.src.bytecode.op { CompiledFunction, make_compiled_fn }
 import from engine.src.bytecode.compiler { Compiler, make_compiler }
 import from engine.src.parser.parser { parse }
@@ -84,17 +84,17 @@ def:pub is_builtin_val(v: JSValue) -> bool {
         return False;
     }
     id: int = jsv_to_table_id(v);
-    return id >= BUILTIN_BASE and id < NATIVE_BASE;
+    return id >= FN_BUILTIN_BASE and id < FN_NATIVE_BASE;
 }
 
 """Return the _FN_REALM.builtins index for a built-in function value."""
 def:pub get_builtin_idx(v: JSValue) -> int {
-    return jsv_to_table_id(v) - BUILTIN_BASE;
+    return jsv_to_table_id(v) - FN_BUILTIN_BASE;
 }
 
 """Encode a _FN_REALM.builtins index as a JSValue."""
 def:pub js_builtin_val(idx: int) -> JSValue {
-    return jsv_from_cell_kind(BUILTIN_BASE + idx, JS_CELL_KIND_NATIVE);
+    return jsv_from_cell_kind(FN_BUILTIN_BASE + idx, JS_CELL_KIND_NATIVE);
 }
 
 # ══════════════════════════════════════════════════════════════════════════════

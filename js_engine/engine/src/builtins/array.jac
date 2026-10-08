@@ -1101,7 +1101,7 @@ def _is_fn_val_local(v: JSValue) -> bool {
     if jsv_cell_kind(v) != JS_CELL_KIND_NATIVE {
         return False;
     }
-    return jsv_to_table_id(v) < 1000000;
+    return jsv_to_table_id(v) < 1073741824;  # FN_BUILTIN_BASE (runtime/encoding.jac)
 }
 
 """Return True if v is a callable (function, native, or callable JSObject)."""

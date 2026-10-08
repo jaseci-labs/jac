@@ -60,7 +60,7 @@ import from engine.src.runtime.jsobject {
     js_object_gc_push_children,
     js_object_get
 }
-import from engine.src.runtime.encoding { BUILTIN_BASE, NATIVE_BASE }
+import from engine.src.runtime.encoding { FN_BUILTIN_BASE, FN_NATIVE_BASE }
 import from engine.src.builtins.markers {
     _KEY_IS_MAP,
     _KEY_IS_SET,
@@ -400,7 +400,7 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
         }
     } elif kind == JS_CELL_KIND_NATIVE {
         table_id: int = jsv_to_table_id(v);
-        if table_id < BUILTIN_BASE {
+        if table_id < FN_BUILTIN_BASE {
             # Closure — 0-based index
             cl_idx: int = table_id;
             if cl_idx < 0 or cl_idx >= len(realm.closures) {
@@ -450,15 +450,15 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
             if cl_idx < len(realm.functions_mark_epoch) {
                 gc_mark(realm, CELL_KIND_FUNCTION, cl_idx);
             }
-        } elif table_id < NATIVE_BASE {
+        } elif table_id < FN_NATIVE_BASE {
             # Builtin — mark only, no JSValue children
-            bi_idx: int = table_id - BUILTIN_BASE;
+            bi_idx: int = table_id - FN_BUILTIN_BASE;
             if bi_idx >= 0 and bi_idx < len(realm.builtins) {
                 gc_mark(realm, CELL_KIND_BUILTIN, bi_idx);
             }
         } else {
             # Native registry — mark + trace lazy own-property store (R3).
-            na_idx: int = table_id - NATIVE_BASE;
+            na_idx: int = table_id - FN_NATIVE_BASE;
             if na_idx >= 0 and na_idx < len(realm.natives) {
                 if gc_is_marked(realm, CELL_KIND_NATIVE, na_idx) {
                     return;
@@ -1005,7 +1005,7 @@ def _gc_value_marked(realm: Realm, v: JSValue) -> bool {
         return gc_is_marked(realm, CELL_KIND_OBJECT, oidx);
     } elif vk == JS_CELL_KIND_NATIVE {
         tid: int = jsv_to_table_id(v);
-        if tid < BUILTIN_BASE {
+        if tid < FN_BUILTIN_BASE {
             if tid < 0 or tid >= len(realm.closures) {
                 return True;
             }

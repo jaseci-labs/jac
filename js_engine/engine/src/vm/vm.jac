@@ -2650,7 +2650,7 @@ def make_closure(
 }
 
 """
-Function values are stored with kind=NATIVE, id in [0, BUILTIN_BASE).
+Function values are stored with kind=NATIVE, id in [0, FN_BUILTIN_BASE).
 Builtin and native-registry values share the same kind but use higher ids.
 """
 def js_fn_val(idx: int) -> JSValue {
@@ -2664,9 +2664,9 @@ def is_fn_val(v: JSValue) -> bool {
     if jsv_cell_kind(v) != JS_CELL_KIND_NATIVE {
         return False;
     }
-    # Closures have table id in [0, BUILTIN_BASE=1_000_000)
-    # Builtins: [1M, 2M), Native registry: [2M, ∞). Exclude both.
-    return jsv_to_table_id(v) < 1000000;
+    # Closures have table id in [0, FN_BUILTIN_BASE = 2^30) (runtime/encoding.jac);
+    # builtins and the native registry sit above it. Exclude both.
+    return jsv_to_table_id(v) < 1073741824;
 }
 
 """True when `v` is an Object in the ECMAScript sense (§6.1.7).

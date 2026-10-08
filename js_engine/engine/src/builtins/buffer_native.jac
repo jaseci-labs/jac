@@ -597,7 +597,7 @@ def _bn_is_closure(v: JSValue) -> bool {
     if jsv_cell_kind(v) != JS_CELL_KIND_NATIVE {
         return False;
     }
-    return jsv_to_table_id(v) < 1000000;
+    return jsv_to_table_id(v) < 1073741824;  # FN_BUILTIN_BASE (runtime/encoding.jac)
 }
 
 def _bn_copy_own(src: JSValue, dst: JSValue, key: int) {
