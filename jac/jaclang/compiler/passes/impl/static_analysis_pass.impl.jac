@@ -472,8 +472,9 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
         report_dead_client_import,
         resolve_import_source_module
     }
+    client_tops: dict[str, bool] = {};
     for nd in mod.get_all_sub_nodes(typ=Import) {
-        if is_client_native_edge_import(nd, self.prog) {
+        if is_client_native_edge_import(nd, self.prog, client_tops) {
             continue;
         }
         if nd.code_context != CodeContext.CLIENT {
