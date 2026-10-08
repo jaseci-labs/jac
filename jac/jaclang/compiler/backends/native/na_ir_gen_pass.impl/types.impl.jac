@@ -693,14 +693,9 @@ impl NaIRGenPass._typed_elem_llvm_of(
     if _ty is None {
         return None;
     }
-    try {
-        import from jaclang.compiler.types.types { TypeVarType as _TeTypeVar }
-    } except ImportError {
-        _TeTypeVar = None;
-    }
+    import from jaclang.compiler.types.types { TypeVarType as _TeTypeVar }
     if (
-        _TeTypeVar is not None
-        and isinstance(_ty, _TeTypeVar)
+        isinstance(_ty, _TeTypeVar)
         and self._mono_solution is not None
         and _ty.name in self._mono_solution
     ) {

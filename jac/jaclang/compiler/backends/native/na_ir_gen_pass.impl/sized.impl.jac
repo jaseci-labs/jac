@@ -159,11 +159,15 @@ impl NaIRGenPass._emit_checked_int_cast(
             if src.signed
             else self.builder.zext(val, wide, name="cast.wide")
     );
-    (lo, hi) = range_of(dst.name);
-    too_small = self.builder.icmp_signed(
-        "<", ext, ir.Constant(wide, lo), name="cast.lo"
-    );
-    too_big = self.builder.icmp_signed(">", ext, ir.Constant(wide, hi), name="cast.hi");
+    lo_bound = ir.Constant(wide, 0);
+    hi_bound = ir.Constant(wide, "18446744073709551615");
+    if dst.signed or dst.width < 64 {
+        (lo, hi) = range_of(dst.name);
+        lo_bound = ir.Constant(wide, lo);
+        hi_bound = ir.Constant(wide, hi);
+    }
+    too_small = self.builder.icmp_signed("<", ext, lo_bound, name="cast.lo");
+    too_big = self.builder.icmp_signed(">", ext, hi_bound, name="cast.hi");
     bad = self.builder.or_(too_small, too_big, name="cast.bad");
     self._emit_runtime_raise(bad, "OverflowError", OVERFLOW_MSG);
     return self.builder.trunc(ext, dst_ty, name="cast.val");
@@ -176,26 +180,44 @@ impl NaIRGenPass._emit_float_to_int_cast(
     if isinstance(val.type, ir.FloatType) {
         val = self.builder.fpext(val, f64, name="cast.fpext");
     }
-    (lo, hi) = range_of(dst.name);
-    lo_m1 = lo - 1;
-    hi_p1 = hi + 1;
-    if float(lo_m1) == lo_m1 {
+    above: ir.Value;
+    below: ir.Value;
+    if dst.width >= 64 and dst.signed {
         above = self.builder.fcmp_ordered(
-            ">", val, ir.Constant(f64, float(lo_m1)), name="cast.f.lo"
+            ">=", val, ir.Constant(f64, -9223372036854775808.0), name="cast.f.lo"
+        );
+        below = self.builder.fcmp_ordered(
+            "<", val, ir.Constant(f64, 9223372036854775808.0), name="cast.f.hi"
+        );
+    } elif dst.width >= 64 {
+        above = self.builder.fcmp_ordered(
+            ">", val, ir.Constant(f64, -1.0), name="cast.f.lo"
+        );
+        below = self.builder.fcmp_ordered(
+            "<", val, ir.Constant(f64, 18446744073709551616.0), name="cast.f.hi"
         );
     } else {
-        above = self.builder.fcmp_ordered(
-            ">=", val, ir.Constant(f64, float(lo)), name="cast.f.lo"
-        );
-    }
-    if float(hi_p1) == hi_p1 {
-        below = self.builder.fcmp_ordered(
-            "<", val, ir.Constant(f64, float(hi_p1)), name="cast.f.hi"
-        );
-    } else {
-        below = self.builder.fcmp_ordered(
-            "<=", val, ir.Constant(f64, float(hi)), name="cast.f.hi"
-        );
+        (lo, hi) = range_of(dst.name);
+        lo_m1 = lo - 1;
+        hi_p1 = hi + 1;
+        if float(lo_m1) == lo_m1 {
+            above = self.builder.fcmp_ordered(
+                ">", val, ir.Constant(f64, float(lo_m1)), name="cast.f.lo"
+            );
+        } else {
+            above = self.builder.fcmp_ordered(
+                ">=", val, ir.Constant(f64, float(lo)), name="cast.f.lo"
+            );
+        }
+        if float(hi_p1) == hi_p1 {
+            below = self.builder.fcmp_ordered(
+                "<", val, ir.Constant(f64, float(hi_p1)), name="cast.f.hi"
+            );
+        } else {
+            below = self.builder.fcmp_ordered(
+                "<=", val, ir.Constant(f64, float(hi)), name="cast.f.hi"
+            );
+        }
     }
     ok = self.builder.and_(above, below, name="cast.f.ok");
     bad = self.builder.not_(ok, name="cast.f.bad");
@@ -294,6 +316,9 @@ impl NaIRGenPass._codegen_sized_bound(name: str, attr: str) -> (ir.Value | None)
     shape = self._scalar_shape_named(name);
     if shape is None or shape.is_float or attr not in ("MIN", "MAX") {
         return None;
+    }
+    if not shape.signed and shape.width >= 64 {
+        return ir.Constant(ir.IntType(shape.width), 0 if attr == "MIN" else -1);
     }
     (lo, hi) = range_of(name);
     value = lo if attr == "MIN" else hi;
