@@ -50,6 +50,13 @@ def native_options -> CompileOptions {
     );
 }
 
+"""Options of a default run: native placement, but not ahead of time."""
+def run_options -> CompileOptions {
+    return CompileOptions(
+        default_codespace="native", skip_native_engine=True, no_ir_cache=True
+    );
+}
+
 """What the host's own generator produces for `entry_file`, as a unit record."""
 def host_native(entry_file: str) -> UnitProducts {
     program = JacProgram();
@@ -183,6 +190,118 @@ test "a module that cannot be lowered is demoted inside the session" {
             if row and row[0] == "note"
         ];
         assert any("did not lower" in note for note in notes) , outcome.analysis.events;
+    }
+}
+
+"""A bundled native module (`math`, `json`, `os`) belongs to the compiler
+package, and a session is handed package modules as interfaces. The generator
+needs the tree: a call is lowered from the callee's declaration. So a session
+compiles these modules from source, whatever the options, and a default run
+lowers the same IR the host does. Held as an interface, `floor` here bound to
+libm's `floor` and returned a float."""
+test "a default run lowers a bundled native import the way the host does" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'rounding.jac').write_text(
+            'import math;\nimport from math { floor, sqrt }\n\n'
+                + 'with entry {\n    print(floor(2.5), sqrt(16.0), math.floor(7.5));\n}\n'
+        );
+        entry_file = str(base / 'rounding.jac');
+        program = JacProgram();
+        module = program.compile(entry_file, options=run_options());
+        assert not program.errors_had , [str(e) for e in program.errors_had];
+        expected = unit_products(module, program);
+        assert expected.native_ir , "the host generated no IR for the fixture";
+        with patch.dict(os.environ, SWITCHES) {
+            session = kernel_snapshot(
+                active_host(),
+                JacProgram(),
+                entry_file,
+                run_options(),
+                emit_closure=True
+            );
+            outcome = run_kernel_compile(session.text(), entry_file, None, session);
+        }
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
+        emitted = outcome.unit(entry_file);
+        assert emitted is not None , [u.path for u in outcome.units];
+        assert emitted.native_ir == expected.native_ir , (
+            "the kernel session's IR differs from the host generator's"
+        );
+        assert "__jac_mono_floor" in emitted.native_ir , (
+            "floor was not lowered from the bundled module's own definition"
+        );
+    }
+}
+
+"""The host can still fail after the kernel has lowered a module: the IR may
+not link, because a dependency turned out not to be a native unit. Where
+placement only inferred native, that is a demotion like any other. The host
+holds the verdict and asks the kernel again, and the second session compiles
+the module for the server."""
+test "a module the host cannot link is demoted and compiled again for the server" {
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'fib.jac').write_text(FIB);
+        entry_file = str(base / 'fib.jac');
+        program = JacProgram();
+        builder = program._get_compiler();
+        refusal = LinkPlanError("helper.jac is not a native unit");
+        with patch.dict(os.environ, SWITCHES) {
+            with patch.object(
+                JacCompiler, "_load_native_from_cache", side_effect=refusal
+            ) as link {
+                code = builder.get_bytecode(
+                    full_target=entry_file, target_program=program
+                );
+            }
+        }
+        assert link.call_count == 1 , (
+            "the module came back native after its verdict was held"
+        );
+        assert code is not None , "the demoted module has no server code";
+        verdict = program.native_units().verdict_for(entry_file);
+        assert verdict is not None and verdict.demoted , verdict;
+        assert verdict.code == "E5020" , verdict.code;
+        assert "helper.jac is not a native unit" in verdict.detail , verdict.detail;
+    }
+}
+
+test "a link failure stays an error when native was asked for outright" {
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'fib.jac').write_text(FIB);
+        entry_file = str(base / 'fib.jac');
+        program = JacProgram();
+        builder = program._get_compiler();
+        refusal = LinkPlanError("helper.jac is not a native unit");
+        raised = False;
+        with patch.dict(os.environ, SWITCHES) {
+            with patch.object(
+                JacCompiler, "_load_native_from_cache", side_effect=refusal
+            ) {
+                try {
+                    builder.kernel_native_entry(
+                        entry_file,
+                        program,
+                        CompileOptions(
+                            default_codespace="native", force_codespace="native"
+                        )
+                    );
+                } except LinkPlanError {
+                    raised = True;
+                }
+            }
+        }
+        assert raised , "a forced native module was demoted instead of failing";
     }
 }
 

@@ -1050,6 +1050,15 @@ obj KernelHost(HostServices) {
             opts.no_cgen = False;
             program.options = opts;
             set_effective_default_codespace("native");
+            import from jaclang.compiler.driver.pipeline {
+                product_ready,
+                require_product
+            }
+            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+            if not product_ready(program, module, CompilationProduct.ANALYSIS)
+                and not require_product(program, module, CompilationProduct.ANALYSIS) {
+                return None;
+            }
             program.run_schedule(module, [RcFactsPass, NaIRGenPass]);
             if len(program.errors_had) > mark {
                 return None;
@@ -1283,7 +1292,19 @@ obj KernelHost(HostServices) {
         options: CompileOptions
     ) -> Module {
         owned = program.internal or package_owned(file_path, program, options);
-        if self.in_kernel() {
+        tree_wanted = False;
+        if file_path.endswith(".jac") and not program.internal {
+            import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
+            stdlib_dir = native_stdlib_root();
+            tree_wanted = stdlib_dir is not None
+                and os.path.realpath(file_path).startswith(
+                    os.path.realpath(stdlib_dir) + os.sep
+                );
+        }
+        if tree_wanted {
+            owned = False;
+        }
+        if self.in_kernel() and not tree_wanted {
             served = self.python_module(program, file_path);
             if served is None and (owned or not file_path.endswith(".jac")) {
                 if self.ask("compile_module", file_path) {

@@ -367,11 +367,20 @@ impl JacCompiler._adopt_kernel_compile(
             sections = unit_sections(unit, bytecode);
             self._adopt_native_verdict(unit, program, sections);
             if unit.native_ir {
-                sections.update(
-                    self._adopt_native_unit(
-                        unit, program, options, sections.get(SEC_CTDEPS, b"")
-                    )
-                );
+                try {
+                    sections.update(
+                        self._adopt_native_unit(
+                            unit, program, options, sections.get(SEC_CTDEPS, b"")
+                        )
+                    );
+                } except Exception as failure {
+                    if not self._demote_adopted_native(
+                        unit.path, program, options, failure
+                    ) {
+                        raise;
+                    }
+                    return self._adopt_kernel_compile(full_target, program, options);
+                }
             }
             try {
                 write_module_cache(unit.path, bytecode, extra_sections=sections);
@@ -379,11 +388,22 @@ impl JacCompiler._adopt_kernel_compile(
             if unit is target {
                 if unit.native_ir and self._wants_native_engine(full_target, program) {
                     import json;
-                    self._load_native_from_cache(
-                        full_target,
-                        program,
-                        json.loads(unit.interop) if unit.interop else None
-                    );
+                    try {
+                        self._load_native_from_cache(
+                            full_target,
+                            program,
+                            json.loads(unit.interop) if unit.interop else None
+                        );
+                    } except Exception as failure {
+                        if not self._demote_adopted_native(
+                            unit.path, program, options, failure
+                        ) {
+                            raise;
+                        }
+                        return self._adopt_kernel_compile(
+                            full_target, program, options
+                        );
+                    }
                     sections = {
                         sec: raw
                         for (sec, raw) in sections.items()
@@ -398,6 +418,32 @@ impl JacCompiler._adopt_kernel_compile(
         }
     }
     return (True, adopted);
+}
+
+impl JacCompiler._demote_adopted_native(
+    unit_path: str, program: JacProgram, options: CompileOptions, failure: Exception
+) -> bool {
+    if options.aot_mode or options.force_codespace {
+        return False;
+    }
+    resolved = os.path.realpath(unit_path);
+    registry = program.native_units();
+    if registry.is_demoted(resolved) {
+        return False;
+    }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.session_compile { na_demotion_note }
+    import from jaclang.compiler.frontend.host { active_host }
+    detail = f"Native compilation failed: {failure}".split("\n")[0];
+    host = active_host();
+    host.record_native_coverage(resolved, "demoted", "E5020", detail);
+    registry.record_verdict(resolved, "E5020", detail);
+    try {
+        get_module_cache_path(resolved).unlink();
+    } except OSError {}
+    (note, style) = na_demotion_note(unit_path, detail, False);
+    host.note(note, style);
+    return True;
 }
 
 impl JacCompiler.kernel_native_entry(
