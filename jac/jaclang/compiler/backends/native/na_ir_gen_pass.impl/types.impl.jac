@@ -222,7 +222,7 @@ impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         UnionType
     }
     t = self._flow_narrowed_type_of(expr);
-    if not isinstance(t, TypeBase) {
+    if t is None {
         return None;
     }
     pending: list[TypeBase] = [t];
@@ -233,8 +233,18 @@ impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
             pending.extend(member.types);
             continue;
         }
-        candidate = member.enum_class if isinstance(member, EnumMemberType) else member;
-        if not isinstance(candidate, EnumClassType) or not candidate.is_enum_class() {
+        candidate: TypeBase = member;
+        if isinstance(member, EnumMemberType) {
+            owner = member.enum_class;
+            if owner is None {
+                return None;
+            }
+            candidate = owner;
+        }
+        if not isinstance(candidate, EnumClassType) {
+            return None;
+        }
+        if not candidate.is_enum_class() {
             return None;
         }
         if enum_class is not None and candidate.shared is not enum_class.shared {
