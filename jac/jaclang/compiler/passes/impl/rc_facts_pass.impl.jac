@@ -313,7 +313,8 @@ impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {
         use = uses[0];
         if use.find_parent_of_type(WhileStmt) is not None
             or use.find_parent_of_type(InForStmt) is not None
-            or use.find_parent_of_type(IterForStmt) is not None {
+            or use.find_parent_of_type(IterForStmt) is not None
+            or self._repeats_in_comprehension(use) {
             continue;
         }
         if sym.defn
@@ -324,6 +325,37 @@ impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {
         out.add(id(use));
     }
     ir_in.rc_move_in = out;
+}
+
+impl RcFactsPass._repeats_in_comprehension(use: NameAtom) -> bool {
+    came_from: UniNode = use;
+    cur = use.parent;
+    while cur is not None {
+        if isinstance(cur, (ListCompr, DictCompr)) {
+            once = cur.compr[0].collection if cur.compr else None;
+            if once is None or came_from is not cur.compr[0] {
+                return True;
+            }
+            inner: UniNode = use;
+            in_once = False;
+            while inner is not cur {
+                if inner is once {
+                    in_once = True;
+                    break;
+                }
+                if inner.parent is None {
+                    break;
+                }
+                inner = inner.parent;
+            }
+            if not in_once {
+                return True;
+            }
+        }
+        came_from = cur;
+        cur = cur.parent;
+    }
+    return False;
 }
 
 impl RcFactsPass._stamp_param_rebound(ir_in: Module) -> None {

@@ -485,10 +485,11 @@ def _answering(canned: CompileReport) -> Callable[..., CompileReport] {
 
 """A kernel compile can come back with no unit for the entry. If the kernel
 reported errors, the module is compiled and failed, and the host must not
-compile it again. Otherwise the kernel emitted nothing because the module is
-not its to emit (one placed in the native codespace, whose code the host
-generates) or has nothing to emit (an empty package `__init__`), and the
-host compiles it."""
+compile it again, whichever codespace it was placed in: a native module's
+code is generated in the kernel too. Otherwise the kernel emitted nothing
+because it handed the module back (an integer literal past a native int) or
+there is nothing to emit (an empty package `__init__`), and the host
+compiles it."""
 test "a kernel compile with no unit is final only when it reported errors" {
     import from unittest.mock { patch }
     import from jaclang.compiler.frontend.kernel_analyze {
@@ -508,7 +509,7 @@ test "a kernel compile with no unit is final only when it reported errors" {
             (True, [], False),
             (False, [], False),
             (False, failed, True),
-            (True, failed, False)
+            (True, failed, True)
         ] {
             canned = CompileReport(
                 analysis=AnalysisReport(
@@ -531,9 +532,10 @@ test "a kernel compile with no unit is final only when it reported errors" {
 }
 
 """A module placed in the native codespace resolves `import time` to the
-module the native stdlib ships, which the snapshot does not carry: native
-code is the host's to generate. A kernel compile that stops only for want
-of answers about native stdlib modules hands the module to the host."""
+module the native stdlib ships. A kernel run with no host to ask cannot
+answer for those modules, and one that stops only for want of such answers
+hands the module to the host, as does one that meets an integer literal
+past a native int or third-party Python source."""
 test "a kernel compile that misses only native stdlib answers defers to the host" {
     import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
     import from jaclang.project.kernel_snapshot { native_stdlib_misses }
@@ -992,48 +994,6 @@ test "an empty package init compiles in the session that reaches it" {
         assert named == ["main.jac", "pkg/__init__.jac", "pkg/util.jac"] , named;
         init_unit = outcome.unit(str(pkg / '__init__.jac'));
         assert init_unit is not None and init_unit.jcir;
-    }
-}
-
-"""A module placed native is compiled by the host, where the native backend
-runs, and whether a module ends up native is only known once it has been
-analysed. A module whose last compile produced native code is therefore
-handed to the host without a kernel session first: the kernel's analysis of
-it would be thrown away and done again."""
-test "a module that last compiled to native code skips the kernel session" {
-    import jaclang.project.kernel_compile as kernel_compile_mod;
-    import from unittest.mock { patch }
-    with TemporaryDirectory() as td {
-        base = Path(os.path.realpath(td));
-        write_project(base);
-        entry_file = str(base / 'main.jac');
-        assert not kernel_compile_mod.last_compiled_native(entry_file);
-        sessions: list[str] = [];
-        def counted(*args: any, **kwargs: any) -> any {
-            sessions.append(str(args[2]));
-            raise AssertionError("a kernel session ran");
-        }
-        def routed(program: JacProgram, path: str) -> tuple[bool, bool] {
-            return (True, True);
-        }
-        def was_native(path: str) -> bool {
-            return os.path.realpath(path) == entry_file;
-        }
-        with patch.object(kernel_compile_mod, "kernel_route", routed) {
-            with patch.object(kernel_compile_mod, "kernel_compile_reported", counted) {
-                with patch.object(
-                    kernel_compile_mod, "last_compiled_native", was_native
-                ) {
-                    outcome = kernel_compile_mod.host_kernel_compile(
-                        active_host(), JacProgram(), entry_file, compile_options()
-                    );
-                }
-            }
-        }
-        assert not sessions , sessions;
-        assert outcome is not None and not outcome.units;
-        placed = outcome.analysis.module(entry_file);
-        assert placed is not None and placed.native;
     }
 }
 

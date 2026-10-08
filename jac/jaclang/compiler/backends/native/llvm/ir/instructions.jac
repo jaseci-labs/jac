@@ -1,7 +1,7 @@
 """
 Implementation of LLVM IR instructions.
 """
-import from jaclang.compiler.backends.native.llvm.ir { types }
+import jaclang.compiler.backends.native.llvm.ir.types as types;
 import from jaclang.compiler.backends.native.llvm.ir.values {
     Block,
     Function,
@@ -11,140 +11,264 @@ import from jaclang.compiler.backends.native.llvm.ir.values {
     MetaDataString,
     AttributeSet,
     ArgumentAttributes,
-    Value
+    Value,
+    _value_list,
+    _str_list
 }
-import from jaclang.compiler.backends.native.llvm.ir._utils { _HasMetadata }
 import from jaclang.compiler.backends.native.llvm.ir.module { Module }
-class Instruction(NamedValue, _HasMetadata) {
+
+glob TailMarkerOptions: frozenset[str] = frozenset(['tail', 'musttail', 'notail']),
+     _CALL_ATTRS: frozenset[str] = frozenset(
+         [
+             'convergent',
+             'noreturn',
+             'nounwind',
+             'readonly',
+             'readnone',
+             'noinline',
+             'alwaysinline'
+         ]
+     ),
+     _FAST_MATH_FLAGS: frozenset[str] = frozenset(
+         ['fast', 'nnan', 'ninf', 'nsz', 'arcp', 'contract', 'afn', 'reassoc']
+     ),
+     _ICMP_OPS: frozenset[str] = frozenset(
+         ['eq', 'ne', 'ugt', 'uge', 'ult', 'ule', 'sgt', 'sge', 'slt', 'sle']
+     ),
+     _FCMP_OPS: frozenset[str] = frozenset(
+         [
+             'false',
+             'oeq',
+             'ogt',
+             'oge',
+             'olt',
+             'ole',
+             'one',
+             'ord',
+             'ueq',
+             'ugt',
+             'uge',
+             'ult',
+             'ule',
+             'une',
+             'uno',
+             'true'
+         ]
+     );
+
+"""The member type an aggregate index selects, or None when it selects none."""
+def _member_type(typ: types.Type, index: int) -> types.Type | None {
+    if isinstance(typ, types.ArrayType) {
+        return typ.element if (0 <= index < typ.count) else None;
+    }
+    if isinstance(typ, types.VectorType) {
+        return typ.element if (0 <= index < typ.count) else None;
+    }
+    if isinstance(typ, types.BaseStructType) {
+        members = typ._elements;
+        if members is None {
+            return None;
+        }
+        if index < 0 {
+            index += len(members);
+        }
+        return members[index] if (0 <= index < len(members)) else None;
+    }
+    return None;
+}
+
+"""The type reached by walking aggregate indices from a value's type."""
+def _indexed_type(agg: Value, indices: list[int]) -> types.Type {
+    typ = agg.type;
+    for i in indices {
+        found = _member_type(typ, i);
+        if found is None {
+            raise TypeError(f"Can't index at {indices!r} in {agg.type}");
+        }
+        typ = found;
+    }
+    return typ;
+}
+
+"""A copy of an index sequence handed in as one index or a list or tuple."""
+def _index_list(indices: any) -> list[int] {
+    out: list[int] = [];
+    if isinstance(indices, int) {
+        out.append(indices);
+    } elif isinstance(indices, (`list, `tuple)) {
+        for item in indices {
+            if isinstance(item, int) {
+                out.append(item);
+            } else {
+                raise TypeError(f"not an aggregate index: {item!r}");
+            }
+        }
+    } else {
+        raise TypeError(f"not an aggregate index: {indices!r}");
+    }
+    return out;
+}
+
+"""The type a load through a pointer value yields when none is given."""
+def _loaded_type(ptr: Value) -> types.Type {
+    if isinstance(ptr, AllocaInstr) {
+        return ptr.allocated_type;
+    }
+    ptr_type = ptr.type;
+    if isinstance(ptr_type, types.PointerType) {
+        target = ptr_type.pointee;
+        if target is not None {
+            return target;
+        }
+    }
+    raise ValueError("Load lacks type.");
+}
+
+class Instruction(NamedValue) {
+    has parent: Block,
+        opname: str = '',
+        operands: list[Value],
+        flags: list[str];
+
     def init(
         self: Instruction,
-        parent: any,
-        typ: any,
-        opname: any,
-        operands: any,
-        name: any = '',
-        flags: any = ()
-    ) -> object {
-        super.init(parent, typ, name=name);
+        parent: Block,
+        typ: types.Type,
+        opname: str,
+        operands: list[Value],
+        name: str = '',
+        flags: any = None
+    ) {
         assert isinstance(parent, Block);
-        assert isinstance(flags, (`tuple, `list));
+        self.parent = parent;
+        super.init(parent.scope, typ, name);
         self.opname = opname;
         self.operands = operands;
-        self.flags: list[str] = `list(flags);
-        self.metadata: dict[str, any] = {};
+        self.flags = _str_list(flags);
     }
 
-    @property
-    def function(self: Instruction) -> object {
-        return self.parent.function;
+    has function: Function {
+        getter {
+            return self.parent.function;
+        }
     }
 
-    @property
-    def module(self: Instruction) -> Module {
-        return self.parent.function.module;
+    has module: Module {
+        getter {
+            return self.parent.function.module;
+        }
     }
 
-    def descr(self: Instruction, buf: any) -> object {
+    def descr(self: Instruction, buf: list[str]) {
         opname = self.opname;
         if self.flags {
             opname = ' '.join(([opname] + self.flags));
         }
         operands = ', '.join([op.get_reference() for op in self.operands]);
-        typ = self.type;
         metadata = self._stringify_metadata(leading_comma=True);
-        buf.append("{0} {1} {2}{3}\n".format(opname, typ, operands, metadata));
+        buf.append(f"{opname} {self.type} {operands}{metadata}\n");
     }
 
-    def replace_usage(self: Instruction, old: any, new: any) -> object {
-        if (old in self.operands) {
-            ops = [];
+    def replace_usage(self: Instruction, old: Value, new: Value) {
+        used = False;
+        for op in self.operands {
+            if op is old or op == old {
+                used = True;
+                break;
+            }
+        }
+        if used {
+            ops: list[Value] = [];
             for op in self.operands {
                 ops.append(new if (op is old) else op);
             }
-            self.operands = `tuple(ops);
+            self.operands = ops;
             self._clear_string_cache();
         }
     }
 
-    def __repr__(self: Instruction) -> object {
-        return (
-            "<ir.%s %r of type '%s', opname %r, operands %r>"
-            % (
-                self.__class__.__name__,
-                self.name,
-                self.type,
-                self.opname,
-                self.operands
-            )
-        );
+    def __repr__(self: Instruction) -> str {
+        shown = ', '.join([op.__repr__() for op in self.operands]);
+        return f"<ir.{self.__class__.__name__} {self._name!r} of type '{self.type}', "
+        f"opname {self.opname!r}, operands [{shown}]>";
     }
 }
 
 class CallInstrAttributes(AttributeSet) {
-    with entry {
-        _known = frozenset(
-            [
-                'convergent',
-                'noreturn',
-                'nounwind',
-                'readonly',
-                'readnone',
-                'noinline',
-                'alwaysinline'
-            ]
-        );
+    def _is_known(self: CallInstrAttributes, name: str) -> bool {
+        return name in _CALL_ATTRS;
     }
 }
 
-with entry {
-    TailMarkerOptions = frozenset(['tail', 'musttail', 'notail']);
-}
-
 class FastMathFlags(AttributeSet) {
-    with entry {
-        _known = frozenset(
-            ['fast', 'nnan', 'ninf', 'nsz', 'arcp', 'contract', 'afn', 'reassoc']
-        );
+    def _is_known(self: FastMathFlags, name: str) -> bool {
+        return name in _FAST_MATH_FLAGS;
     }
 }
 
 class CallInstr(Instruction) {
+    has cconv: str | None = None,
+        tail: str = '',
+        fastmath: FastMathFlags,
+        attributes: CallInstrAttributes,
+        arg_attributes: dict[int, ArgumentAttributes];
+
     def init(
         self: CallInstr,
-        parent: any,
-        func: any,
+        parent: Block,
+        func: Value,
         args: any,
-        name: any = '',
-        cconv: any = None,
+        name: str = '',
+        cconv: str | None = None,
         tail: any = None,
-        fastmath: any = (),
-        attrs: any = (),
-        arg_attrs: any = None
-    ) -> object {
-        self.cconv = func.calling_convention
-            if ((cconv is None) and isinstance(func, Function))
-            else cconv;
-        if (isinstance(tail, str) and (tail in TailMarkerOptions)) {} elif tail {
-            tail = "tail";
+        fastmath: any = None,
+        attrs: any = None,
+        arg_attrs: dict[int, ArgumentAttributes] | None = None
+    ) {
+        if (cconv is None) and isinstance(func, Function) {
+            self.cconv = func.calling_convention;
         } else {
-            tail = "";
+            self.cconv = cconv;
         }
-        self.tail = tail;
+        marker = '';
+        if isinstance(tail, str) {
+            if tail in TailMarkerOptions {
+                marker = tail;
+            } elif tail {
+                marker = "tail";
+            }
+        } elif isinstance(tail, bool) {
+            if tail {
+                marker = "tail";
+            }
+        } elif isinstance(tail, int) {
+            if tail != 0 {
+                marker = "tail";
+            }
+        } elif tail is not None {
+            marker = "tail";
+        }
+        self.tail = marker;
         self.fastmath = FastMathFlags(fastmath);
         self.attributes = CallInstrAttributes(attrs);
-        self.arg_attributes: dict[int, ArgumentAttributes] = {};
-        if arg_attrs {
-            for (idx, attrs) in arg_attrs.items() {
-                if not (0 <= idx < len(args)) {
-                    raise ValueError("Invalid argument index {}".format(idx));
+        self.arg_attributes = {};
+        call_args = _value_list(args);
+        if arg_attrs is not None {
+            for (idx, one_attrs) in arg_attrs.items() {
+                if not (0 <= idx < len(call_args)) {
+                    raise ValueError(f"Invalid argument index {idx}");
                 }
-                self.arg_attributes[idx] = ArgumentAttributes(attrs);
+                copied = ArgumentAttributes();
+                for attr_name in sorted(one_attrs._items) {
+                    copied.add(attr_name);
+                }
+                self.arg_attributes[idx] = copied;
             }
         }
-        args = `list(args);
-        for i in range(len(func.function_type.args)) {
-            arg = args[i];
-            expected_type = func.function_type.args[i];
+        fnty = func.function_type;
+        for i in range(len(fnty.args)) {
+            arg = call_args[i];
+            expected_type = fnty.args[i];
             if (
                 isinstance(expected_type, types.MetaDataType)
                 and (arg.type != expected_type)
@@ -152,38 +276,33 @@ class CallInstr(Instruction) {
                 arg = MetaDataArgument(arg);
             }
             if (arg.type != expected_type) {
-                msg = "Type of #{0} arg mismatch: {1} != {2}".format(
-                    (1 + i), expected_type, arg.type
+                raise TypeError(
+                    f"Type of #{1 + i} arg mismatch: {expected_type} != {arg.type}"
                 );
-                raise TypeError(msg);
             }
-            args[i] = arg;
+            call_args[i] = arg;
         }
-        super.init(
-            parent,
-            func.function_type.return_type,
-            "call",
-            ([func] + `list(args)),
-            name=name
-        );
+        operands: list[Value] = [func];
+        operands += call_args;
+        super.init(parent, fnty.return_type, "call", operands, name);
     }
 
-    @property
-    def callee(self: CallInstr) -> NamedValue {
-        return self.operands[0];
+    has callee: Value {
+        getter {
+            return self.operands[0];
+        }
+        setter(self: CallInstr, newcallee: Value) {
+            self.operands[0] = newcallee;
+        }
     }
 
-    @callee.setter
-    def callee(self: CallInstr, newcallee: any) -> object {
-        self.operands[0] = newcallee;
+    has args: list[Value] {
+        getter {
+            return self.operands[1:];
+        }
     }
 
-    @property
-    def args(self: CallInstr) -> list[Value] {
-        return self.operands[1:];
-    }
-
-    def replace_callee(self: CallInstr, newfunc: any) -> object {
+    def replace_callee(self: CallInstr, newfunc: Value) {
         if (newfunc.function_type != self.callee.function_type) {
             raise TypeError("New function has incompatible type");
         }
@@ -191,78 +310,75 @@ class CallInstr(Instruction) {
     }
 
     """The callee function"""
-    @property
-    def called_function(self: CallInstr) -> object {
-        return self.callee;
+    has called_function: Value {
+        getter {
+            return self.operands[0];
+        }
     }
 
-    def _descr(self: CallInstr, buf: any, add_metadata: any) -> object {
-        def descr_arg(i: any, a: any) -> str {
-            if (i in self.arg_attributes) {
-                attrs = ' '.join(self.arg_attributes[i]._to_list(a.type)) + ' ';
+    def _descr(self: CallInstr, buf: list[str], add_metadata: bool) {
+        shown: list[str] = [];
+        for i in range(1, len(self.operands)) {
+            a = self.operands[i];
+            one_attrs = self.arg_attributes.get(i - 1);
+            if one_attrs is not None {
+                attrs = ' '.join(one_attrs._to_list(a.type)) + ' ';
             } else {
                 attrs = '';
             }
-            return '{0} {1}{2}'.format(a.type, attrs, a.get_reference());
+            shown.append(f"{a.type} {attrs}{a.get_reference()}");
         }
-        args = ', '.join([descr_arg(i, a) for (i, a) in enumerate(self.args)]);
-        fnty = self.callee.function_type;
+        args = ', '.join(shown);
+        target = self.operands[0];
+        fnty = target.function_type;
         if fnty.var_arg {
-            ty = fnty;
+            callee_ref = f"{fnty} {target.get_reference()}";
         } else {
-            ty = fnty.return_type;
+            callee_ref = f"{fnty.return_type} {target.get_reference()}";
         }
-        callee_ref = "{0} {1}".format(ty, self.callee.get_reference());
-        if self.cconv {
-            callee_ref = "{0} {1}".format(self.cconv, callee_ref);
+        convention = self.cconv;
+        if convention is not None and convention != '' {
+            callee_ref = f"{convention} {callee_ref}";
         }
         tail_marker = "";
         if self.tail {
-            tail_marker = "{0} ".format(self.tail);
+            tail_marker = self.tail + " ";
         }
-        fn_attrs = (' ' + ' '.join(self.attributes._to_list(fnty.return_type)))
-            if self.attributes
-            else '';
-        fm_attrs = (' ' + ' '.join(self.fastmath._to_list(fnty.return_type)))
-            if self.fastmath
-            else '';
+        fn_attrs = '';
+        if not self.attributes.is_empty() {
+            fn_attrs = ' ' + ' '.join(self.attributes._to_list(fnty.return_type));
+        }
+        fm_attrs = '';
+        if not self.fastmath.is_empty() {
+            fm_attrs = ' ' + ' '.join(self.fastmath._to_list(fnty.return_type));
+        }
+        meta = self._stringify_metadata(leading_comma=True) if add_metadata else "";
         buf.append(
-            "{tail}{op}{fastmath} {callee}({args}){attr}{meta}\n".format(
-                tail=tail_marker,
-                op=self.opname,
-                callee=callee_ref,
-                fastmath=fm_attrs,
-                args=args,
-                attr=fn_attrs,
-                meta=self._stringify_metadata(leading_comma=True)
-                    if add_metadata
-                    else ""
-            )
+            f"{tail_marker}{self.opname}{fm_attrs} {callee_ref}({args}){fn_attrs}{meta}\n"
         );
     }
 
-    def descr(self: CallInstr, buf: any) -> object {
+    def descr(self: CallInstr, buf: list[str]) {
         self._descr(buf, add_metadata=True);
     }
 }
 
 class Terminator(Instruction) {
-    def init(self: Terminator, parent: any, opname: any, operands: any) -> object {
+    def init(self: Terminator, parent: Block, opname: str, operands: list[Value]) {
         super.init(parent, types.VoidType(), opname, operands);
     }
 
-    def descr(self: Terminator, buf: any) -> object {
-        opname = self.opname;
+    def descr(self: Terminator, buf: list[str]) {
         operands = ', '.join(
-            ["{0} {1}".format(op.type, op.get_reference()) for op in self.operands]
+            [f"{op.type} {op.get_reference()}" for op in self.operands]
         );
         metadata = self._stringify_metadata(leading_comma=True);
-        buf.append("{0} {1}{2}".format(opname, operands, metadata));
+        buf.append(f"{self.opname} {operands}{metadata}");
     }
 }
 
-class PredictableInstr(Instruction) {
-    def set_weights(self: PredictableInstr, weights: any) -> object {
+class PredictableInstr(Terminator) {
+    def set_weights(self: PredictableInstr, weights: list[int]) {
         operands: list[Value] = [MetaDataString(self.module, "branch_weights")];
         for w in weights {
             if (w < 0) {
@@ -276,79 +392,82 @@ class PredictableInstr(Instruction) {
 }
 
 class Ret(Terminator) {
-    def init(self: Ret, parent: any, opname: any, return_value: any = None) -> object {
-        operands = [return_value] if (return_value is not None) else [];
+    def init(self: Ret, parent: Block, opname: str, return_value: Value | None = None) {
+        operands: list[Value] = [];
+        if return_value is not None {
+            operands.append(return_value);
+        }
         super.init(parent, opname, operands);
     }
 
-    @property
-    def return_value(self: Ret) -> (Value | None) {
-        if self.operands {
-            return self.operands[0];
-        } else {
-            return None;
+    has return_value: Value | None {
+        getter {
+            if self.operands {
+                return self.operands[0];
+            } else {
+                return None;
+            }
         }
     }
 
-    def descr(self: Ret, buf: any) -> object {
-        return_value = self.return_value;
+    def descr(self: Ret, buf: list[str]) {
         metadata = self._stringify_metadata(leading_comma=True);
-        if (return_value is not None) {
+        if self.operands {
+            returned = self.operands[0];
             buf.append(
-                "{0} {1} {2}{3}\n".format(
-                    self.opname,
-                    return_value.type,
-                    return_value.get_reference(),
-                    metadata
-                )
+                f"{self.opname} {returned.type} {returned.get_reference()}{metadata}\n"
             );
         } else {
-            buf.append("{0}{1}\n".format(self.opname, metadata));
+            buf.append(f"{self.opname}{metadata}\n");
         }
     }
 }
 
 class Branch(Terminator) {}
-class ConditionalBranch(PredictableInstr, Terminator) {}
-class SwitchInstr(PredictableInstr, Terminator) {
+
+class ConditionalBranch(PredictableInstr) {}
+
+class SwitchInstr(PredictableInstr) {
+    has default_bb: Block,
+        cases: list[tuple[Value, Block]];
+
     def init(
-        self: SwitchInstr, parent: any, opname: any, val: any, default_bb: any
-    ) -> object {
+        self: SwitchInstr, parent: Block, opname: str, val: Value, default_bb: Block
+    ) {
         super.init(parent, opname, [val]);
         self.default_bb = default_bb;
         self.cases = [];
     }
 
-    @property
-    def value(self: SwitchInstr) -> Value {
-        return self.operands[0];
-    }
-
-    def add_case(self: SwitchInstr, val: any, block: any) -> object {
-        assert isinstance(block, Block);
-        if not isinstance(val, Constant) {
-            val = Constant(self.value.type, val);
+    has value: Value {
+        getter {
+            return self.operands[0];
         }
-        self.cases.append((val, block));
     }
 
-    def descr(self: SwitchInstr, buf: any) -> object {
-        cases = [];
-        for cs in self.cases {
+    def add_case(self: SwitchInstr, val: any, block: Block) {
+        assert isinstance(block, Block);
+        if isinstance(val, Constant) {
+            self.cases.append((val, block));
+        } else {
+            self.cases.append((Constant(self.operands[0].type, val), block));
+        }
+    }
+
+    def descr(self: SwitchInstr, buf: list[str]) {
+        cases: list[str] = [];
+        for (case_val, case_bb) in self.cases {
             cases.append(
-                "{0} {1}, label {2}".format(
-                    cs[0].type, cs[0].get_reference(), cs[1].get_reference()
-                )
+                f"{case_val.type} {case_val.get_reference()}, "
+                f"label {case_bb.get_reference()}"
             );
         }
+        switched = self.operands[0];
+        joined = ' '.join(cases);
         buf.append(
-            "switch {0} {1}, label {2} [{3}]  {4}\n".format(
-                self.value.type,
-                self.value.get_reference(),
-                self.default_bb.get_reference(),
-                ' '.join(cases),
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"switch {switched.type} {switched.get_reference()}, "
+            f"label {self.default_bb.get_reference()} [{joined}]  "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
@@ -356,46 +475,44 @@ class SwitchInstr(PredictableInstr, Terminator) {
 class SelectInstr(Instruction) {
     def init(
         self: SelectInstr,
-        parent: any,
-        cond: any,
-        lhs: any,
-        rhs: any,
-        name: any = '',
-        flags: any = ()
-    ) -> object {
+        parent: Block,
+        cond: Value,
+        lhs: Value,
+        rhs: Value,
+        name: str = '',
+        flags: any = None
+    ) {
         assert (lhs.type == rhs.type);
-        super.init(
-            parent, lhs.type, "select", [cond, lhs, rhs], name=name, flags=flags
-        );
+        super.init(parent, lhs.type, "select", [cond, lhs, rhs], name, flags);
     }
 
-    @property
-    def cond(self: SelectInstr) -> Value {
-        return self.operands[0];
+    has cond: Value {
+        getter {
+            return self.operands[0];
+        }
     }
 
-    @property
-    def lhs(self: SelectInstr) -> Value {
-        return self.operands[1];
+    has lhs: Value {
+        getter {
+            return self.operands[1];
+        }
     }
 
-    @property
-    def rhs(self: SelectInstr) -> Value {
-        return self.operands[2];
+    has rhs: Value {
+        getter {
+            return self.operands[2];
+        }
     }
 
-    def descr(self: SelectInstr, buf: any) -> object {
+    def descr(self: SelectInstr, buf: list[str]) {
+        cond = self.operands[0];
+        lhs = self.operands[1];
+        rhs = self.operands[2];
+        flags = ' '.join(self.flags);
         buf.append(
-            "select {0} {1} {2}, {3} {4}, {5} {6} {7}\n".format(
-                ' '.join(self.flags),
-                self.cond.type,
-                self.cond.get_reference(),
-                self.lhs.type,
-                self.lhs.get_reference(),
-                self.rhs.type,
-                self.rhs.get_reference(),
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"select {flags} {cond.type} {cond.get_reference()}, "
+            f"{lhs.type} {lhs.get_reference()}, {rhs.type} {rhs.get_reference()} "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
@@ -403,48 +520,53 @@ class SelectInstr(Instruction) {
 class CompareInstr(Instruction) {
     with entry {
         OPNAME = 'invalid-compare';
-        VALID_OP = {};
-        VALID_FLAG: `set[str];
+    }
+
+    has op: str = '';
+
+    def _valid_op(self: CompareInstr, op: str) -> bool {
+        return False;
+    }
+
+    def _valid_flag(self: CompareInstr, flag: str) -> bool {
+        return False;
     }
 
     def init(
         self: CompareInstr,
-        parent: any,
-        op: any,
-        lhs: any,
-        rhs: any,
-        name: any = '',
-        flags: any = []
-    ) -> object {
-        if (op not in self.VALID_OP) {
-            raise ValueError(("invalid comparison %r for %s" % (op, self.OPNAME)));
+        parent: Block,
+        op: str,
+        lhs: Value,
+        rhs: Value,
+        name: str = '',
+        flags: any = None
+    ) {
+        if not self._valid_op(op) {
+            raise ValueError(f"invalid comparison {op!r} for {self.OPNAME}");
         }
-        for flag in flags {
-            if (flag not in self.VALID_FLAG) {
-                raise ValueError(("invalid flag %r for %s" % (flag, self.OPNAME)));
+        checked = _str_list(flags);
+        for flag in checked {
+            if not self._valid_flag(flag) {
+                raise ValueError(f"invalid flag {flag!r} for {self.OPNAME}");
             }
         }
         opname = self.OPNAME;
-        if isinstance(lhs.type, types.VectorType) {
-            typ: types.Type = types.VectorType(types.IntType(1), lhs.type.count);
-        } else {
-            typ = types.IntType(1);
+        lhs_type = lhs.type;
+        typ: types.Type = types.IntType(1);
+        if isinstance(lhs_type, types.VectorType) {
+            typ = types.VectorType(types.IntType(1), lhs_type.count);
         }
-        super.init(parent, typ, opname, [lhs, rhs], flags=flags, name=name);
+        super.init(parent, typ, opname, [lhs, rhs], name, checked);
         self.op = op;
     }
 
-    def descr(self: CompareInstr, buf: any) -> object {
+    def descr(self: CompareInstr, buf: list[str]) {
+        flags = ''.join([(' ' + it) for it in self.flags]);
+        lhs = self.operands[0];
+        rhs = self.operands[1];
         buf.append(
-            "{opname}{flags} {op} {ty} {lhs}, {rhs} {meta}\n".format(
-                opname=self.opname,
-                flags=''.join((' ' + it) for it in self.flags),
-                op=self.op,
-                ty=self.operands[0].type,
-                lhs=self.operands[0].get_reference(),
-                rhs=self.operands[1].get_reference(),
-                meta=self._stringify_metadata(leading_comma=True)
-            )
+            f"{self.opname}{flags} {self.op} {lhs.type} {lhs.get_reference()}, "
+            f"{rhs.get_reference()} {self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
@@ -452,225 +574,188 @@ class CompareInstr(Instruction) {
 class ICMPInstr(CompareInstr) {
     with entry {
         OPNAME = 'icmp';
-        VALID_OP = {
-            'eq': 'equal',
-            'ne': 'not equal',
-            'ugt': 'unsigned greater than',
-            'uge': 'unsigned greater or equal',
-            'ult': 'unsigned less than',
-            'ule': 'unsigned less or equal',
-            'sgt': 'signed greater than',
-            'sge': 'signed greater or equal',
-            'slt': 'signed less than',
-            'sle': 'signed less or equal'
-        };
-        VALID_FLAG = `set();
+    }
+
+    def _valid_op(self: ICMPInstr, op: str) -> bool {
+        return op in _ICMP_OPS;
     }
 }
 
 class FCMPInstr(CompareInstr) {
     with entry {
         OPNAME = 'fcmp';
-        VALID_OP = {
-            'false': 'no comparison, always returns false',
-            'oeq': 'ordered and equal',
-            'ogt': 'ordered and greater than',
-            'oge': 'ordered and greater than or equal',
-            'olt': 'ordered and less than',
-            'ole': 'ordered and less than or equal',
-            'one': 'ordered and not equal',
-            'ord': 'ordered (no nans)',
-            'ueq': 'unordered or equal',
-            'ugt': 'unordered or greater than',
-            'uge': 'unordered or greater than or equal',
-            'ult': 'unordered or less than',
-            'ule': 'unordered or less than or equal',
-            'une': 'unordered or not equal',
-            'uno': 'unordered (either nans)',
-            'true': 'no comparison, always returns true'
-        };
-        VALID_FLAG = {
-            'nnan',
-            'ninf',
-            'nsz',
-            'arcp',
-            'contract',
-            'afn',
-            'reassoc',
-            'fast'
-        };
+    }
+
+    def _valid_op(self: FCMPInstr, op: str) -> bool {
+        return op in _FCMP_OPS;
+    }
+
+    def _valid_flag(self: FCMPInstr, flag: str) -> bool {
+        return flag in _FAST_MATH_FLAGS;
     }
 }
 
 class CastInstr(Instruction) {
     def init(
-        self: CastInstr, parent: any, op: any, val: any, typ: any, name: any = ''
-    ) -> object {
-        super.init(parent, typ, op, [val], name=name);
+        self: CastInstr,
+        parent: Block,
+        op: str,
+        val: Value,
+        typ: types.Type,
+        name: str = ''
+    ) {
+        super.init(parent, typ, op, [val], name);
     }
 
-    def descr(self: CastInstr, buf: any) -> object {
+    def descr(self: CastInstr, buf: list[str]) {
+        val = self.operands[0];
         buf.append(
-            "{0} {1} {2} to {3} {4}\n".format(
-                self.opname,
-                self.operands[0].type,
-                self.operands[0].get_reference(),
-                self.type,
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"{self.opname} {val.type} {val.get_reference()} to {self.type} "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class LoadInstr(Instruction) {
+    has align: int | None = None;
+
     def init(
-        self: LoadInstr, parent: any, ptr: any, name: any = '', typ: any = None
-    ) -> object {
-        if (typ is None) {
-            if isinstance(ptr, AllocaInstr) {
-                typ = ptr.allocated_type;
-            } elif not ptr.type.is_opaque {
-                typ = ptr.type.pointee;
-            } else {
-                raise ValueError("Load lacks type.");
-            }
-        }
-        super.init(parent, typ, "load", [ptr], name=name);
+        self: LoadInstr,
+        parent: Block,
+        ptr: Value,
+        name: str = '',
+        typ: types.Type | None = None
+    ) {
+        loaded = typ if typ is not None else _loaded_type(ptr);
+        super.init(parent, loaded, "load", [ptr], name);
         self.align = None;
     }
 
-    def descr(self: LoadInstr, buf: any) -> object {
-        [val] = self.operands;
-        if (self.align is not None) {
-            align = ', align %d' % self.align;
+    def descr(self: LoadInstr, buf: list[str]) {
+        val = self.operands[0];
+        alignment = self.align;
+        if (alignment is not None) {
+            align = f", align {alignment}";
         } else {
             align = '';
         }
         buf.append(
-            "load {0}, {1} {2}{3}{4}\n".format(
-                self.type,
-                val.type,
-                val.get_reference(),
-                align,
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"load {self.type}, {val.type} {val.get_reference()}{align}"
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class StoreInstr(Instruction) {
-    def init(self: StoreInstr, parent: any, val: any, ptr: any) -> object {
+    has align: int | None = None;
+
+    def init(self: StoreInstr, parent: Block, val: Value, ptr: Value) {
         super.init(parent, types.VoidType(), "store", [val, ptr]);
         self.align = None;
     }
 
-    def descr(self: StoreInstr, buf: any) -> object {
-        (val, ptr) = self.operands;
-        if (self.align is not None) {
-            align = ', align %d' % self.align;
+    def descr(self: StoreInstr, buf: list[str]) {
+        val = self.operands[0];
+        ptr = self.operands[1];
+        alignment = self.align;
+        if (alignment is not None) {
+            align = f", align {alignment}";
         } else {
             align = '';
         }
         buf.append(
-            "store {0} {1}, {2} {3}{4}{5}\n".format(
-                val.type,
-                val.get_reference(),
-                ptr.type,
-                ptr.get_reference(),
-                align,
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"store {val.type} {val.get_reference()}, {ptr.type} {ptr.get_reference()}"
+            f"{align}{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class LoadAtomicInstr(Instruction) {
+    has ordering: str = '',
+        align: int = 0;
+
     def init(
         self: LoadAtomicInstr,
-        parent: any,
-        ptr: any,
+        parent: Block,
+        ptr: Value,
         ordering: str,
         align: int,
-        name: any = '',
-        typ: any = None
-    ) -> object {
-        if (typ is None) {
-            if isinstance(ptr, AllocaInstr) {
-                typ = ptr.allocated_type;
-            } elif not ptr.type.is_opaque {
-                typ = ptr.type.pointee;
-            } else {
-                raise ValueError("Load lacks type.");
-            }
-        }
-        super.init(parent, typ, "load atomic", [ptr], name=name);
+        name: str = '',
+        typ: types.Type | None = None
+    ) {
+        loaded = typ if typ is not None else _loaded_type(ptr);
+        super.init(parent, loaded, "load atomic", [ptr], name);
         self.ordering = ordering;
         self.align = align;
     }
 
-    def descr(self: LoadAtomicInstr, buf: any) -> object {
-        [val] = self.operands;
+    def descr(self: LoadAtomicInstr, buf: list[str]) {
+        val = self.operands[0];
         buf.append(
-            "load atomic {0}, {1} {2} {3}, align {4}{5}\n".format(
-                self.type,
-                val.type,
-                val.get_reference(),
-                self.ordering,
-                self.align,
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"load atomic {self.type}, {val.type} {val.get_reference()} "
+            f"{self.ordering}, align {self.align}"
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class StoreAtomicInstr(Instruction) {
+    has ordering: str = '',
+        align: int = 0;
+
     def init(
         self: StoreAtomicInstr,
-        parent: any,
-        val: any,
-        ptr: any,
+        parent: Block,
+        val: Value,
+        ptr: Value,
         ordering: str,
         align: int
-    ) -> object {
+    ) {
         super.init(parent, types.VoidType(), "store atomic", [val, ptr]);
         self.ordering = ordering;
         self.align = align;
     }
 
-    def descr(self: StoreAtomicInstr, buf: any) -> object {
-        (val, ptr) = self.operands;
+    def descr(self: StoreAtomicInstr, buf: list[str]) {
+        val = self.operands[0];
+        ptr = self.operands[1];
         buf.append(
-            "store atomic {0} {1}, {2} {3} {4}, align {5}{6}\n".format(
-                val.type,
-                val.get_reference(),
-                ptr.type,
-                ptr.get_reference(),
-                self.ordering,
-                self.align,
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"store atomic {val.type} {val.get_reference()}, "
+            f"{ptr.type} {ptr.get_reference()} {self.ordering}, align {self.align}"
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class AllocaInstr(Instruction) {
+    has allocated_type: types.Type,
+        align: int | None = None;
+
     def init(
-        self: AllocaInstr, parent: any, typ: any, count: any, name: any
-    ) -> object {
-        operands = [count] if count else ();
+        self: AllocaInstr,
+        parent: Block,
+        typ: types.Type,
+        count: Value | None,
+        name: str
+    ) {
+        operands: list[Value] = [];
+        if count is not None {
+            operands.append(count);
+        }
         super.init(parent, typ.as_pointer(), "alloca", operands, name);
         self.allocated_type = typ;
         self.align = None;
     }
 
-    def descr(self: AllocaInstr, buf: any) -> object {
-        buf.append("{0} {1}".format(self.opname, self.allocated_type));
+    def descr(self: AllocaInstr, buf: list[str]) {
+        buf.append(f"{self.opname} {self.allocated_type}");
         if self.operands {
-            (op, ) = self.operands;
-            buf.append(", {0} {1}".format(op.type, op.get_reference()));
+            op = self.operands[0];
+            buf.append(f", {op.type} {op.get_reference()}");
         }
-        if (self.align is not None) {
-            buf.append(", align {0}".format(self.align));
+        alignment = self.align;
+        if (alignment is not None) {
+            buf.append(f", align {alignment}");
         }
         if self.metadata {
             buf.append(self._stringify_metadata(leading_comma=True));
@@ -679,241 +764,246 @@ class AllocaInstr(Instruction) {
 }
 
 class GEPInstr(Instruction) {
+    has source_etype: types.Type | None = None,
+        pointer: Value,
+        indices: list[Value],
+        inbounds: bool = False;
+
     def init(
         self: GEPInstr,
-        parent: any,
-        ptr: any,
+        parent: Block,
+        ptr: Value,
         indices: any,
-        inbounds: any,
-        name: any,
-        source_etype: any = None
-    ) -> object {
+        inbounds: bool,
+        name: str,
+        source_etype: types.Type | None = None
+    ) {
+        steps = _value_list(indices);
+        typ: types.Type = ptr.type;
+        ptr_type = ptr.type;
         if (source_etype is not None) {
-            typ = ptr.type;
             self.source_etype = source_etype;
-        } elif not ptr.type.is_opaque {
-            typ = ptr.type;
-            lasttyp = None;
+        } elif isinstance(ptr_type, types.PointerType)
+            and ptr_type.pointee is not None {
+            lasttyp: types.Type | None = None;
             lastaddrspace = 0;
-            for i in indices {
-                (lasttyp, typ) = (typ, typ.gep(i));
+            for i in steps {
+                lasttyp = typ;
+                typ = typ.gep(i);
                 if isinstance(lasttyp, types.PointerType) {
                     lastaddrspace = lasttyp.addrspace;
                 }
             }
             if (
                 not isinstance(typ, types.PointerType)
+                and lasttyp is not None
                 and isinstance(lasttyp, types.PointerType)
             ) {
                 typ = lasttyp;
             } else {
                 typ = typ.as_pointer(lastaddrspace);
             }
-            self.source_etype = ptr.type.pointee;
+            self.source_etype = ptr_type.pointee;
         } else {
             raise ValueError("GEP lacks type.");
         }
-        super.init(parent, typ, "getelementptr", ([ptr] + `list(indices)), name=name);
+        operands: list[Value] = [ptr];
+        operands += steps;
+        super.init(parent, typ, "getelementptr", operands, name);
         self.pointer = ptr;
-        self.indices = indices;
-        self.inbounds = inbounds;
+        self.indices = steps;
+        self.inbounds = bool(inbounds);
     }
 
-    def descr(self: GEPInstr, buf: any) -> object {
-        indices = ['{0} {1}'.format(i.type, i.get_reference()) for i in self.indices];
+    def descr(self: GEPInstr, buf: list[str]) {
+        indices = ', '.join([f"{i.type} {i.get_reference()}" for i in self.indices]);
         op = "getelementptr inbounds" if self.inbounds else "getelementptr";
         buf.append(
-            "{0} {1}, {2} {3}, {4} {5}\n".format(
-                op,
-                self.source_etype,
-                self.pointer.type,
-                self.pointer.get_reference(),
-                ', '.join(indices),
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"{op} {self.source_etype}, {self.pointer.type} "
+            f"{self.pointer.get_reference()}, {indices} "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class PhiInstr(Instruction) {
+    has incomings: list[tuple[Value, Block]];
+
     def init(
-        self: PhiInstr, parent: any, typ: any, name: any, flags: any = ()
-    ) -> object {
-        super.init(parent, typ, "phi", (), name=name, flags=flags);
-        self.incomings: list[tuple[Value, Block]] = [];
+        self: PhiInstr, parent: Block, typ: types.Type, name: str, flags: any = None
+    ) {
+        super.init(parent, typ, "phi", [], name, flags);
+        self.incomings = [];
     }
 
-    def descr(self: PhiInstr, buf: any) -> object {
-        incs = ', '.join(
-            '[{0}, {1}]'.format(v.get_reference(), b.get_reference())
-            for (v, b) in self.incomings
-        );
+    def descr(self: PhiInstr, buf: list[str]) {
+        shown: list[str] = [];
+        for (v, b) in self.incomings {
+            shown.append(f"[{v.get_reference()}, {b.get_reference()}]");
+        }
+        flags = ' '.join(self.flags);
+        incs = ', '.join(shown);
         buf.append(
-            "phi {0} {1} {2} {3}\n".format(
-                ' '.join(self.flags),
-                self.type,
-                incs,
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"phi {flags} {self.type} {incs} "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 
-    def add_incoming(self: PhiInstr, value: any, block: any) -> object {
+    def add_incoming(self: PhiInstr, value: Value | None, block: Block) {
         assert isinstance(block, Block);
+        if value is None {
+            raise TypeError("a phi incoming value is missing (None)");
+        }
         self.incomings.append((value, block));
     }
 
-    def replace_usage(self: PhiInstr, old: any, new: any) -> object {
-        self.incomings = [
-            (new if (val is old) else val, blk) for (val, blk) in self.incomings
-        ];
+    def replace_usage(self: PhiInstr, old: Value, new: Value) {
+        swapped: list[tuple[Value, Block]] = [];
+        for (val, blk) in self.incomings {
+            if val is old {
+                swapped.append((new, blk));
+            } else {
+                swapped.append((val, blk));
+            }
+        }
+        self.incomings = swapped;
     }
 }
 
 class ExtractValue(Instruction) {
+    has aggregate: Value,
+        indices: list[int];
+
     def init(
-        self: ExtractValue, parent: any, agg: any, indices: any, name: any = ''
-    ) -> object {
-        typ = agg.type;
-        try {
-            for i in indices {
-                typ = typ.elements[i];
-            }
-        } except (AttributeError, IndexError) {
-            raise TypeError(("Can't index at %r in %s" % (`list(indices), agg.type)));
-        }
-        super.init(parent, typ, "extractvalue", [agg], name=name);
+        self: ExtractValue, parent: Block, agg: Value, indices: any, name: str = ''
+    ) {
+        path = _index_list(indices);
+        typ = _indexed_type(agg, path);
+        super.init(parent, typ, "extractvalue", [agg], name);
         self.aggregate = agg;
-        self.indices = indices;
+        self.indices = path;
     }
 
-    def descr(self: ExtractValue, buf: any) -> object {
-        indices = [str(i) for i in self.indices];
+    def descr(self: ExtractValue, buf: list[str]) {
+        indices = ', '.join([str(i) for i in self.indices]);
         buf.append(
-            "extractvalue {0} {1}, {2} {3}\n".format(
-                self.aggregate.type,
-                self.aggregate.get_reference(),
-                ', '.join(indices),
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"extractvalue {self.aggregate.type} {self.aggregate.get_reference()}, "
+            f"{indices} {self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class InsertValue(Instruction) {
+    has aggregate: Value,
+        value: Value,
+        indices: list[int];
+
     def init(
         self: InsertValue,
-        parent: any,
-        agg: any,
-        elem: any,
+        parent: Block,
+        agg: Value,
+        elem: Value,
         indices: any,
-        name: any = ''
-    ) -> object {
-        typ = agg.type;
-        try {
-            for i in indices {
-                typ = typ.elements[i];
-            }
-        } except (AttributeError, IndexError) {
-            raise TypeError(("Can't index at %r in %s" % (`list(indices), agg.type)));
-        }
+        name: str = ''
+    ) {
+        path = _index_list(indices);
+        typ = _indexed_type(agg, path);
         if (elem.type != typ) {
             raise TypeError(
-                (
-                    "Can only insert %s at %r in %s: got %s"
-                    % (typ, `list(indices), agg.type, elem.type)
-                )
+                f"Can only insert {typ} at {path!r} in {agg.type}: got {elem.type}"
             );
         }
-        super.init(parent, agg.type, "insertvalue", [agg, elem], name=name);
+        super.init(parent, agg.type, "insertvalue", [agg, elem], name);
         self.aggregate = agg;
         self.value = elem;
-        self.indices = indices;
+        self.indices = path;
     }
 
-    def descr(self: InsertValue, buf: any) -> object {
-        indices = [str(i) for i in self.indices];
+    def descr(self: InsertValue, buf: list[str]) {
+        indices = ', '.join([str(i) for i in self.indices]);
         buf.append(
-            "insertvalue {0} {1}, {2} {3}, {4} {5}\n".format(
-                self.aggregate.type,
-                self.aggregate.get_reference(),
-                self.value.type,
-                self.value.get_reference(),
-                ', '.join(indices),
-                self._stringify_metadata(leading_comma=True)
-            )
+            f"insertvalue {self.aggregate.type} {self.aggregate.get_reference()}, "
+            f"{self.value.type} {self.value.get_reference()}, {indices} "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }
 
 class Unreachable(Instruction) {
-    def init(self: Unreachable, parent: any) -> object {
-        super.init(parent, types.VoidType(), "unreachable", (), name='');
+    def init(self: Unreachable, parent: Block) {
+        super.init(parent, types.VoidType(), "unreachable", [], '');
     }
 
-    def descr(self: Unreachable, buf: list[str]) -> object {
-        buf += (self.opname, "\n");
+    def descr(self: Unreachable, buf: list[str]) {
+        buf.append(self.opname);
+        buf.append("\n");
     }
 }
 
-class InlineAsm(object) {
+"""An inline assembly callee. It stands where a function value stands in a
+call, so it is a value whose type is the assembly's return type."""
+class InlineAsm(Value) {
+    has asm: str = '',
+        constraint: str = '',
+        side_effect: bool = False;
+
     def init(
-        self: InlineAsm, ftype: any, asm: any, constraint: any, side_effect: any = False
-    ) -> object {
+        self: InlineAsm,
+        ftype: types.FunctionType,
+        asm: str,
+        constraint: str,
+        side_effect: bool = False
+    ) {
         self.type = ftype.return_type;
-        self.function_type = ftype;
+        self._callee_type = ftype;
         self.asm = asm;
         self.constraint = constraint;
         self.side_effect = side_effect;
     }
 
-    def descr(self: InlineAsm, buf: any) -> object {
+    def descr(self: InlineAsm, buf: list[str]) {
         sideeffect = 'sideeffect' if self.side_effect else '';
-        fmt = 'asm {sideeffect} "{asm}", "{constraint}"';
         buf.append(
-            fmt.format(sideeffect=sideeffect, asm=self.asm, constraint=self.constraint)
+            'asm ' + sideeffect + ' "' + self.asm + '", "' + self.constraint + '"'
         );
     }
 
-    def get_reference(self: InlineAsm) -> object {
-        buf = [];
+    def _get_reference(self: InlineAsm) -> str {
+        buf: list[str] = [];
         self.descr(buf);
         return "".join(buf);
     }
 
-    def __str__(self: InlineAsm) -> object {
-        return "{0} {1}".format(self.type, self.get_reference());
+    def __str__(self: InlineAsm) -> str {
+        return f"{self.type} {self.get_reference()}";
     }
 }
 
 class AtomicRMW(Instruction) {
+    has operation: str = '',
+        ordering: str = '';
+
     def init(
         self: AtomicRMW,
-        parent: any,
-        op: any,
-        ptr: any,
-        val: any,
-        ordering: any,
-        name: any
-    ) -> object {
-        super.init(parent, val.type, "atomicrmw", (ptr, val), name=name);
+        parent: Block,
+        op: str,
+        ptr: Value,
+        val: Value,
+        ordering: str,
+        name: str
+    ) {
+        super.init(parent, val.type, "atomicrmw", [ptr, val], name);
         self.operation = op;
         self.ordering = ordering;
     }
 
-    def descr(self: AtomicRMW, buf: any) -> object {
-        (ptr, val) = self.operands;
-        fmt = "atomicrmw {op} {ptrty} {ptr}, {valty} {val} {ordering} " "{metadata}\n";
+    def descr(self: AtomicRMW, buf: list[str]) {
+        ptr = self.operands[0];
+        val = self.operands[1];
         buf.append(
-            fmt.format(
-                op=self.operation,
-                ptrty=ptr.type,
-                ptr=ptr.get_reference(),
-                valty=val.type,
-                val=val.get_reference(),
-                ordering=self.ordering,
-                metadata=self._stringify_metadata(leading_comma=True)
-            )
+            f"atomicrmw {self.operation} {ptr.type} {ptr.get_reference()}, "
+            f"{val.type} {val.get_reference()} {self.ordering} "
+            f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
 }

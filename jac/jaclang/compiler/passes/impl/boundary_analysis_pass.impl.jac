@@ -445,9 +445,13 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
             continue;
         }
         contract = function_contract(decl).to_dict();
-        manifest.native_host_imports[stem] = host_contract_dicts(
+        host_side: dict[str, any] = {};
+        for (host_name, host_contract) in host_contract_dicts(
             decl.find_parent_of_type(Module), self.prog
-        );
+        ).items() {
+            host_side[host_name] = host_contract;
+        }
+        manifest.native_host_imports[stem] = host_side;
         (ret_type, param_types, param_names) = self._signature_of_decl(decl);
         manifest.bindings[local_name] = InteropBinding(
             name=sym_name,

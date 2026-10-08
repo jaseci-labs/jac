@@ -181,9 +181,10 @@ impl NaIRGenPass._codegen_with_recursive(
     );
     self.builder.position_at_end(propagate);
     if slot_mode {
-        for (slot, value) in zip(self._nogc_err_slot(), values) {
-            self.builder.store(value, slot);
-        }
+        (_slot_t, _slot_o, _slot_m) = self._nogc_err_slot();
+        self.builder.store(values[0], _slot_t);
+        self.builder.store(values[1], _slot_o);
+        self.builder.store(values[2], _slot_m);
         self._emit_err_propagate(loc="with.propagate");
     } else {
         self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);

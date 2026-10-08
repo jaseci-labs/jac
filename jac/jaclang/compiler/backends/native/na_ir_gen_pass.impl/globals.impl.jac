@@ -5,7 +5,7 @@ impl NaIRGenPass._quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type |
     if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
         return self._quiet_glob_type(type_expr.tag);
     }
-    _ptb = type_expr?.type;
+    _ptb = _node_sem_type(type_expr);
     if _ptb is None {
         return None;
     }
@@ -42,8 +42,9 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
+    import from jaclang.compiler.frontend.constant { SymbolStorage }
     candidates: dict[str, ir.Type] = {};
-    dropped: set = set();
+    dropped: set[str] = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if not isinstance(stmt, uni.ModuleCode) {
             continue;
@@ -52,14 +53,11 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             if assign.aug_op is not None {
                 continue;
             }
-            targets = assign.target
-                if isinstance(assign.target, (list, tuple))
-                else [(assign.target)];
-            for target in targets {
+            for target in assign.target {
                 if (
                     not isinstance(target, uni.NameAtom)
                     or target.sym is None
-                    or target.sym.storage != uni.SymbolStorage.MODULE_GLOBAL
+                    or target.sym.storage != SymbolStorage.MODULE_GLOBAL
                 ) {
                     continue;
                 }
