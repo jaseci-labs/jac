@@ -402,9 +402,8 @@ impl NaIRGenPass._binding_function_active -> bool {
     }
     _fn = self.builder.function;
     for _slot in self.local_vars.values() {
-        _blk = _slot?.parent;
-        if isinstance(_blk, ir.Block) {
-            return _blk.parent is _fn;
+        if isinstance(_slot, ir.Instruction) {
+            return _slot.parent.parent is _fn;
         }
     }
     return False;
@@ -980,9 +979,7 @@ impl NaIRGenPass._codegen_dict_set(
     _orig_value = value;
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
-    _dset_ctx_loc = getattr(
-        _orig_value, 'jac_loc', f"{os.path.basename(self.module.loc.mod_path)}:0"
-    );
+    _dset_ctx_loc = _orig_value.jac_loc;
     (_set_fn, _kh) = self._static_key_op(helpers, "set", key_node);
     _set_args = [target_val, key_val, value];
     if _kh is not None {

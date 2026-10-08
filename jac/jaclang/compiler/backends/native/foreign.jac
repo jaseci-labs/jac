@@ -39,9 +39,14 @@ def declared_type_name(type_expr: (uni.UniNode | None)) -> (str | None) {
     if isinstance(type_expr, uni.Name) {
         return type_expr.value;
     }
-    val = type_expr?.value;
-    if isinstance(val, str) {
-        return val;
+    if isinstance(type_expr, uni.Token) {
+        return type_expr.value;
+    }
+    if isinstance(type_expr, uni.JsxText) {
+        text = type_expr.value;
+        if isinstance(text, str) {
+            return text;
+        }
     }
     return None;
 }

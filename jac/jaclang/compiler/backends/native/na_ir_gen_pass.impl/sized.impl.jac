@@ -10,6 +10,12 @@ glob OVERFLOW_MSG: str = "integer overflow",
      SHIFT_MSG: str = "shift count out of range";
 
 def _signed_repr(width: int, value: int) -> int {
+    if width >= 64 {
+        if value > 0x7FFFFFFFFFFFFFFF {
+            return value - 0x7FFFFFFFFFFFFFFF - 0x7FFFFFFFFFFFFFFF - 2;
+        }
+        return value;
+    }
     mask = (1 << width) - 1;
     out = value & mask;
     if out >= (1 << (width - 1)) {
@@ -109,11 +115,21 @@ impl NaIRGenPass._lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value {
         return val;
     }
     dst_ty = self._scalar_llvm(dst);
-    if isinstance(val, ir.Constant) and isinstance(val.constant, (int, float)) {
-        if isinstance(dst_ty, ir.IntType) {
-            return ir.Constant(dst_ty, _signed_repr(dst.width, int(val.constant)));
+    if isinstance(val, ir.Constant) {
+        _cv = val.constant;
+        if isinstance(_cv, float) {
+            if isinstance(dst_ty, ir.IntType) {
+                return ir.Constant(dst_ty, _signed_repr(dst.width, int(_cv)));
+            }
+            return ir.Constant(dst_ty, _cv);
         }
-        return ir.Constant(dst_ty, float(val.constant));
+        if isinstance(_cv, (bool, int)) {
+            _ci = int(_cv);
+            if isinstance(dst_ty, ir.IntType) {
+                return ir.Constant(dst_ty, _signed_repr(dst.width, _ci));
+            }
+            return ir.Constant(dst_ty, float(_ci));
+        }
     }
     src = self._scalar_shape_named(primitive_type_name_of(nd.type));
     if src is None {
@@ -143,11 +159,15 @@ impl NaIRGenPass._emit_checked_int_cast(
             if src.signed
             else self.builder.zext(val, wide, name="cast.wide")
     );
-    (lo, hi) = range_of(dst.name);
-    too_small = self.builder.icmp_signed(
-        "<", ext, ir.Constant(wide, lo), name="cast.lo"
-    );
-    too_big = self.builder.icmp_signed(">", ext, ir.Constant(wide, hi), name="cast.hi");
+    lo_bound = ir.Constant(wide, 0);
+    hi_bound = ir.Constant(wide, "18446744073709551615");
+    if dst.signed or dst.width < 64 {
+        (lo, hi) = range_of(dst.name);
+        lo_bound = ir.Constant(wide, lo);
+        hi_bound = ir.Constant(wide, hi);
+    }
+    too_small = self.builder.icmp_signed("<", ext, lo_bound, name="cast.lo");
+    too_big = self.builder.icmp_signed(">", ext, hi_bound, name="cast.hi");
     bad = self.builder.or_(too_small, too_big, name="cast.bad");
     self._emit_runtime_raise(bad, "OverflowError", OVERFLOW_MSG);
     return self.builder.trunc(ext, dst_ty, name="cast.val");
@@ -160,26 +180,44 @@ impl NaIRGenPass._emit_float_to_int_cast(
     if isinstance(val.type, ir.FloatType) {
         val = self.builder.fpext(val, f64, name="cast.fpext");
     }
-    (lo, hi) = range_of(dst.name);
-    lo_m1 = lo - 1;
-    hi_p1 = hi + 1;
-    if float(lo_m1) == lo_m1 {
+    above: ir.Value;
+    below: ir.Value;
+    if dst.width >= 64 and dst.signed {
         above = self.builder.fcmp_ordered(
-            ">", val, ir.Constant(f64, float(lo_m1)), name="cast.f.lo"
+            ">=", val, ir.Constant(f64, -9223372036854775808.0), name="cast.f.lo"
+        );
+        below = self.builder.fcmp_ordered(
+            "<", val, ir.Constant(f64, 9223372036854775808.0), name="cast.f.hi"
+        );
+    } elif dst.width >= 64 {
+        above = self.builder.fcmp_ordered(
+            ">", val, ir.Constant(f64, -1.0), name="cast.f.lo"
+        );
+        below = self.builder.fcmp_ordered(
+            "<", val, ir.Constant(f64, 18446744073709551616.0), name="cast.f.hi"
         );
     } else {
-        above = self.builder.fcmp_ordered(
-            ">=", val, ir.Constant(f64, float(lo)), name="cast.f.lo"
-        );
-    }
-    if float(hi_p1) == hi_p1 {
-        below = self.builder.fcmp_ordered(
-            "<", val, ir.Constant(f64, float(hi_p1)), name="cast.f.hi"
-        );
-    } else {
-        below = self.builder.fcmp_ordered(
-            "<=", val, ir.Constant(f64, float(hi)), name="cast.f.hi"
-        );
+        (lo, hi) = range_of(dst.name);
+        lo_m1 = lo - 1;
+        hi_p1 = hi + 1;
+        if float(lo_m1) == lo_m1 {
+            above = self.builder.fcmp_ordered(
+                ">", val, ir.Constant(f64, float(lo_m1)), name="cast.f.lo"
+            );
+        } else {
+            above = self.builder.fcmp_ordered(
+                ">=", val, ir.Constant(f64, float(lo)), name="cast.f.lo"
+            );
+        }
+        if float(hi_p1) == hi_p1 {
+            below = self.builder.fcmp_ordered(
+                "<", val, ir.Constant(f64, float(hi_p1)), name="cast.f.hi"
+            );
+        } else {
+            below = self.builder.fcmp_ordered(
+                "<=", val, ir.Constant(f64, float(hi)), name="cast.f.hi"
+            );
+        }
     }
     ok = self.builder.and_(above, below, name="cast.f.ok");
     bad = self.builder.not_(ok, name="cast.f.bad");
@@ -216,7 +254,7 @@ impl NaIRGenPass._emit_wrap_to(
 
 impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
     dst = self._scalar_shape_named(name);
-    params: Sequence[any] = nd.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
     if dst is None or len(params) != 1 {
         self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
         return None;
@@ -250,7 +288,7 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
 
 impl NaIRGenPass._codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
     dst = self._scalar_shape_named(name);
-    params: Sequence[any] = nd.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
     if dst is None or dst.is_float or len(params) != 1 {
         self.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
         return None;
@@ -279,6 +317,9 @@ impl NaIRGenPass._codegen_sized_bound(name: str, attr: str) -> (ir.Value | None)
     if shape is None or shape.is_float or attr not in ("MIN", "MAX") {
         return None;
     }
+    if not shape.signed and shape.width >= 64 {
+        return ir.Constant(ir.IntType(shape.width), 0 if attr == "MIN" else -1);
+    }
     (lo, hi) = range_of(name);
     value = lo if attr == "MIN" else hi;
     return ir.Constant(ir.IntType(shape.width), _signed_repr(shape.width, value));
@@ -289,7 +330,7 @@ impl NaIRGenPass._codegen_type_name_str(name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    params: Sequence[any] = nd.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
     vals: list[ir.Value] = [];
     for p in params {
         v = self._codegen_expr(p);

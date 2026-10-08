@@ -60,6 +60,9 @@ impl NaIRGenPass._is_runtime_class_value(target: (uni.UniNode | None)) -> bool {
             if sym is None or sym.sym_type in CLASS_REFERENCE_SYMBOLS {
                 return False;
             }
+            if self._module_class_name(target) is not None {
+                return False;
+            }
         } elif self._class_expr_bound(target.target) is not None {
             return False;
         }
@@ -162,7 +165,8 @@ impl NaIRGenPass._class_ctor_params(type_name: str) -> (list[NativeCtorParam] | 
     field_types = self.struct_field_types.get(type_name, {});
     defaults = self.struct_field_defaults.get(type_name, {});
     foreign = self.struct_field_foreign.get(type_name, set());
-    inline = self.struct_field_inline.get(type_name, None) or set();
+    _no_inline: set[str] = set();
+    inline = self.struct_field_inline.get(type_name) or _no_inline;
     positional = self.struct_constructor_order.get(type_name, []);
     params: list[NativeCtorParam] = [];
     for field in layout.fields {
@@ -712,12 +716,14 @@ impl NaIRGenPass._class_tagless_record -> ir.GlobalVariable {
 }
 
 impl NaIRGenPass._emit_class_ctor(
-    arch: uni.Archetype, params: list[NativeCtorParam]
+    arch: uni.Archetype, params: list[NativeCtorParam], symbol: str = ""
 ) -> (ir.Function | None) {
     name = self._arch_key(arch);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    fn = self._define_function(f"{name}.__ctor", self._class_ctor_fn_type(params));
+    fn = self._define_function(
+        symbol or f"{name}.__ctor", self._class_ctor_fn_type(params)
+    );
     fn.linkage = "internal";
     mark = len(self.ctx.errors_had);
     warning_mark = len(self.ctx.warnings_had);
@@ -799,6 +805,42 @@ impl NaIRGenPass._emit_class_ctor(
     del self.ctx.warnings_had[warning_mark:];
     self.llvm_module.globals.pop(fn.name, None);
     return None;
+}
+
+impl NaIRGenPass._emit_wide_class_ctor(
+    arch: uni.Archetype, bound: str, signature: list[NativeCtorParam]
+) -> (ir.Function | None) {
+    name = self._arch_key(arch);
+    params = self._class_ctor_params(bound);
+    if params is None or len(params) > CLASS_CTOR_MAX_PARAMS {
+        return None;
+    }
+    by_name: dict[str, NativeCtorParam] = {};
+    for p in signature {
+        by_name[p.name] = p;
+    }
+    narrowed: list[NativeCtorParam] = [];
+    taken: set[str] = set();
+    for p in params {
+        mine = by_name.get(p.name);
+        if mine is None {
+            return None;
+        }
+        narrowed.append(mine);
+        taken.add(p.name);
+    }
+    for p in signature {
+        if p.fallback is None and p.name not in taken {
+            return None;
+        }
+    }
+    fn = self._emit_class_ctor(
+        arch, narrowed, f"{name}.__ctor.wide.{self._arch_display(bound)}"
+    );
+    if fn is None {
+        return None;
+    }
+    return self._emit_class_ctor_bridge(name, bound, narrowed, fn);
 }
 
 impl NaIRGenPass._emit_class_ctor_bridge(
@@ -896,14 +938,22 @@ impl NaIRGenPass._emit_class_ctor_entries(archetypes: list[uni.Archetype]) -> No
         }
         entries: list[ir.Constant] = [];
         signature = self._class_ctor_params(name);
+        wide = signature is not None and len(signature) > CLASS_CTOR_MAX_PARAMS;
         fn = self._emit_class_ctor(arch, signature)
-            if signature is not None and len(signature) <= CLASS_CTOR_MAX_PARAMS
+            if signature is not None and not wide
             else None;
-        if signature is not None and fn is not None {
+        if signature is not None and (fn is not None or wide) {
             for bound in self._class_ancestors(name) {
-                target = fn
-                    if bound == name
-                    else self._emit_class_ctor_bridge(name, bound, signature, fn);
+                target: (ir.Function | None) = None;
+                if fn is None {
+                    if bound != name {
+                        target = self._emit_wide_class_ctor(arch, bound, signature);
+                    }
+                } elif bound == name {
+                    target = fn;
+                } else {
+                    target = self._emit_class_ctor_bridge(name, bound, signature, fn);
+                }
                 if target is None {
                     continue;
                 }

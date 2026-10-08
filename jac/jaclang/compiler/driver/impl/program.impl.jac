@@ -900,6 +900,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
         }
     }
 
+    client_tops: dict[str, bool] = {};
     for nd in mod.get_all_sub_nodes(uni.Import) {
         facts = uni.ImportBoundaryFacts();
         nd.boundary_facts = facts;
@@ -911,7 +912,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                 module_name = '.'.join(p.value for p in nd.from_loc.path);
             }
             if module_name {
-                cl_na_edge = is_client_native_edge_import(nd, self);
+                cl_na_edge = is_client_native_edge_import(nd, self, client_tops);
                 facts.client_native_edge = cl_na_edge;
                 na_intent = (
                     native_ctx

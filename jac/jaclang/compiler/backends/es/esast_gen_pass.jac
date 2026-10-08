@@ -678,6 +678,16 @@ walker EsastGenPass(TreePass) {
     def _pos_params_from_ability(ability_node: uni.Ability) -> list[uni.ParamVar];
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];
+    def _builtin_param_names(nd: uni.FuncCall) -> (list[str] | None);
+    def _slot_builtin_kwargs(
+        nd: uni.FuncCall,
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)],
+        func_name: str
+    ) -> (
+        tuple[(list[(es.Expression | es.SpreadElement)], (es.Expression | None))] | None
+    );
+
     def _wrap_to_wire_if_boundary(
         expr: es.Expression,
         type_name: str,

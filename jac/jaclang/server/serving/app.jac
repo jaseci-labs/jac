@@ -100,7 +100,7 @@ def _slash_alternate(path: str) -> (str | None) {
 
 
 def _declares_body(ep: JEndPoint) -> bool {
-    for param in (ep.parameters or []) {
+    for param in ep.declared_parameters() {
         kind_name = str(param.kind.value) if param.kind?.value else str(param.kind);
         if kind_name in ('body', 'file') {
             return True;

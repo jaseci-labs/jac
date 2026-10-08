@@ -3,13 +3,7 @@ import logging;
 import time;
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.server.identity.user_manager { SYSTEM_USER }
-import from jaclang.server.server {
-    JacAPIServer,
-    JsonValue,
-    ServerExtension,
-    target_protocol,
-    target_restspec
-}
+import from jaclang.server.server { JacAPIServer, JsonValue, ServerExtension }
 import from jaclang.server.serving.datatypes { Request }
 import from jaclang.server.serving.endpoint {
     APIParameter,
@@ -39,7 +33,7 @@ def _fail(code: str, message: str, status: int) -> TransportResponse {
 
 
 def walker_scheme(server: JacAPIServer, walker_name: str) -> str {
-    spec = target_restspec(server.get_walkers()[walker_name]);
+    spec = server.introspector.route_spec(walker_name);
     return str(getattr(spec, 'scheme', '') or '');
 }
 
@@ -121,7 +115,7 @@ obj WebhookExtension(ServerExtension) {
             ];
         }
         fields = server.introspector.introspect_walker(
-            server.get_walkers()[walker_name]
+            server.introspector.target(walker_name)
         )['fields'];
         for field_name in fields {
             if field_name == '_jac_spawn_node' {
@@ -139,6 +133,15 @@ obj WebhookExtension(ServerExtension) {
             );
         }
         return parameters;
+    }
+
+    def parameter_source(
+        server: JacAPIServer, walker_name: str
+    ) -> Callable[[], list[APIParameter]] {
+        def source -> list[APIParameter] {
+            return self.webhook_parameters(server, walker_name);
+        }
+        return source;
     }
 
     def github_gate(
@@ -174,7 +177,7 @@ obj WebhookExtension(ServerExtension) {
             body_data = {};
         }
         fields = server.introspector.introspect_walker(
-            server.get_walkers()[walker_name]
+            server.introspector.target(walker_name)
         )['fields'];
         walker_kwargs: dict[str, any] = {};
         if isinstance(body_data, dict) {
@@ -190,7 +193,7 @@ obj WebhookExtension(ServerExtension) {
             }
         }
         result = await server.execution_manager.spawn_walker(
-            server.get_walkers()[walker_name], walker_kwargs, user_id
+            server.introspector.target(walker_name), walker_kwargs, user_id
         );
         if isinstance(result, dict) and 'error' in result {
             if result.get('error_code') != 'execution_error' {
@@ -379,9 +382,11 @@ obj WebhookExtension(ServerExtension) {
 
     def register(server: JacAPIServer) {
         needs_keys = False;
-        walkers = server.get_walkers();
-        for walker_name in list(walkers) {
-            if target_protocol(walkers[walker_name]) != APIProtocol.WEBHOOK {
+        for rec in server.introspector.served('walker') {
+            walker_name = rec.name;
+            if server.introspector.is_scheduled(walker_name)
+                or server.introspector.walker_protocol(walker_name)
+                    != APIProtocol.WEBHOOK {
                 continue;
             }
             scheme = walker_scheme(server, walker_name);
@@ -397,7 +402,7 @@ obj WebhookExtension(ServerExtension) {
                     method=HTTPMethod.POST,
                     path=f"/webhook/{walker_name}",
                     callback=self.webhook_callback(server, walker_name),
-                    parameters=self.webhook_parameters(server, walker_name),
+                    parameter_source=self.parameter_source(server, walker_name),
                     tags=['Webhooks'],
                     summary=f"Webhook endpoint for {walker_name}",
                     description=description
