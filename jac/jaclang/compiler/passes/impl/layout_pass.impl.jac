@@ -449,14 +449,14 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
 }
 
 impl LayoutPass._build_enum_layouts(module: Module) -> None {
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     for nd in module.get_all_sub_nodes(Enum) {
         ename = nd.name.value if nd.name else None;
-        if ename is None or ename in self.registry.enums or nd.body is None {
+        body = ModuleFacts.unwrap_body(nd);
+        if ename is None or ename in self.registry.enums or body is None {
             continue;
         }
         raw_members: list[tuple[(str, (UniNode | None))]] = [];
-        for stmt in (ModuleFacts.unwrap_body(nd) or []) {
+        for stmt in body {
             if isinstance(stmt, Assignment) {
                 targets = stmt.target
                     if isinstance(stmt.target, (list, tuple))
