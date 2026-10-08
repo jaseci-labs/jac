@@ -35,20 +35,6 @@ def kernel_compile_in_process -> bool {
     return raw in ("inprocess", "in-process");
 }
 
-def with_ambient_codespace(options: CompileOptions) -> CompileOptions {
-    import from jaclang.compiler.frontend.codeinfo {
-        get_effective_default_codespace_override
-    }
-    ambient = get_effective_default_codespace_override();
-    if options.default_codespace or not ambient {
-        return options;
-    }
-    import copy;
-    bound = copy.copy(options);
-    bound.default_codespace = ambient;
-    return bound;
-}
-
 def kernel_compile(
     host: HostServices,
     program: JacProgram,
@@ -62,7 +48,6 @@ def kernel_compile(
 ) -> CompileReport {
     import time;
     started = time.monotonic();
-    options = with_ambient_codespace(options);
     snapshot = kernel_snapshot(
         host, program, path, options, emit_closure=emit_closure, emit_cached=emit_cached
     );
