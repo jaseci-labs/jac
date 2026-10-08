@@ -382,11 +382,11 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     return response;
 }
 
-def _body_without_timeout(payload: dict[str, any]) -> dict[str, any] {
+def _direct_http_body(payload: dict[str, any]) -> dict[str, any] {
     return {
         k: v
         for (k, v) in payload.items()
-        if k != "timeout"
+        if k != "timeout" and k != "metadata"
     };
 }
 
@@ -396,7 +396,7 @@ impl Model.model_call_http(
 ) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
-    body = _body_without_timeout(payload);
+    body = _direct_http_body(payload);
     client = httpx.Client(
         verify=ca_bundle or True, timeout=payload.get("timeout", 60.0)
     );
@@ -493,7 +493,7 @@ impl Model.model_call_http_async(
 ) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
-    body = _body_without_timeout(payload);
+    body = _direct_http_body(payload);
     client = httpx.AsyncClient(
         verify=ca_bundle or True, timeout=payload.get("timeout", 60.0)
     );

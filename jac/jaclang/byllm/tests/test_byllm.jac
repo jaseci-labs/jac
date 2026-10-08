@@ -1034,7 +1034,37 @@ test "model_call_with_stream_async raises and logs RateLimitError" {
     );
 }
 
-test "model_call_http_async returns json response" {
+test "model_call_http omits transport-only fields" {
+    mock_response = unittest.mock.MagicMock();
+    mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]};
+    mock_client = unittest.mock.MagicMock();
+    mock_client.__enter__.return_value = mock_client;
+    mock_client.post.return_value = mock_response;
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [],
+        "metadata": {"jac_parent_invocation_id": None},
+        "timeout": 12.0
+    };
+    with unittest.mock.patch("httpx.Client", return_value=mock_client) {
+        model = Model(model_name="gpt-4o-mini");
+        result = model.model_call_http(
+            url="https://example.com/v1/chat/completions",
+            token="test-token",
+            payload=payload,
+            ca_bundle=None
+        );
+    }
+    assert result == {"choices": [{"message": {"content": "ok"}}]};
+    sent = mock_client.post.call_args.kwargs["json"];
+    assert sent == {"model": "gpt-4o-mini", "messages": []};
+    assert "metadata" in payload and "timeout" in payload , (
+        "building the direct request body must not mutate the caller's payload"
+    );
+}
+
+
+test "model_call_http_async omits transport-only fields" {
     mock_response = unittest.mock.MagicMock();
     mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]};
     async def _run_http_async -> any {
@@ -1046,14 +1076,20 @@ test "model_call_http_async returns json response" {
             result = await model.model_call_http_async(
                 url="https://example.com/v1/chat/completions",
                 token="test-token",
-                payload={"model": "gpt-4o-mini", "messages": []},
+                payload={
+                    "model": "gpt-4o-mini",
+                    "messages": [],
+                    "metadata": {"jac_parent_invocation_id": None},
+                    "timeout": 12.0
+                },
                 ca_bundle=None
             );
-            return result;
+            return (result, mock_client.post.call_args.kwargs["json"]);
         }
     }
-    result = asyncio.run(_run_http_async());
+    (result, sent) = asyncio.run(_run_http_async());
     assert result == {"choices": [{"message": {"content": "ok"}}]};
+    assert sent == {"model": "gpt-4o-mini", "messages": []};
 }
 
 import ast as ast3;
