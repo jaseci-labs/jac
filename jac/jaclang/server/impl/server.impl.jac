@@ -40,8 +40,9 @@ async def _begin_request_context(
     user_root_id: str, target: object | None = None
 ) -> tuple[(ExecutionContext, any)] {
     import from jaclang.runtime.osp_kernel_sv { isolate_request_walk_stack }
-    parent = Jac.get_context();
-    req_ctx = await ExecutionContext.for_target(target, parent, user_root_id);
+    req_ctx = await ExecutionContext.for_target(
+        target, RequestScope.current(), user_root_id
+    );
     token = Jac.push_request_context(req_ctx);
 
     isolate_request_walk_stack();
@@ -1148,14 +1149,21 @@ impl JacAPIServer.add_shutdown_hook(fn: Callable[..., any]) -> None {
     self.require_app().add_shutdown_hook(fn);
 }
 
+impl JacAPIServer.request_scope -> RequestScope {
+    return RequestScope.open(
+        base_path_dir=self._context_base_path,
+        full_target_path=self._context_target_path
+    );
+}
+
 impl JacAPIServer._install_middleware -> None {
     import from jaclang.server.middleware { jwt_middleware, request_context_middleware }
 
+    self._context_base_path = Jac.get_base_path_dir() or self.base_path or None;
+    self._context_target_path = Jac.get_full_target_path() or self.module_file;
     self.add_middleware(
         request_context_middleware(
-            base_path_dir=Jac.get_base_path_dir() or self.base_path or None,
-            full_target_path=Jac.get_full_target_path() or self.module_file,
-            public_origin=self.resolved_settings().public_origin
+            self.request_scope, public_origin=self.resolved_settings().public_origin
         )
     );
     self.add_middleware(jwt_middleware(self.user_manager));
@@ -1475,9 +1483,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            ctx = Jac.create_j_context(user_root=None);
-            token = Jac.push_request_context(ctx);
-            try {
+            with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
@@ -1486,12 +1492,6 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 return await _self.execution_manager.execute_function(
                     registry[name], {}, SYSTEM_USER
                 );
-            } finally {
-                try {
-                    ctx.close();
-                } finally {
-                    Jac.reset_request_context(token);
-                }
             }
         }
         def target {

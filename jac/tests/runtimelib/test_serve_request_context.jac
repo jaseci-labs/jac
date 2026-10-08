@@ -60,6 +60,16 @@ glob _APP: str = (
          '    };\n'
          '}\n'
          '\n'
+         '@restspec(protocol=APIProtocol.WEBSOCKET)\n'
+         'def:protect ws_stream_note(text: str = "") {\n'
+         '    def chunks -> Generator[int, None, None] {\n'
+         '        yield len([root -->[?:Note]]);\n'
+         '        root ++> Note(text=text);\n'
+         '        yield len([root -->[?:Note]]);\n'
+         '    }\n'
+         '    report chunks();\n'
+         '}\n'
+         '\n'
          'walker:protect notes {\n'
          '    can go with Root entry {\n'
          '        report sorted([n.text for n in [here -->[?:Note]]]);\n'
@@ -206,6 +216,39 @@ test "a websocket function runs on a session of its own, not the process-global 
             assert probe["notes"] == 0 , f"got {probed}";
             assert probe["session"] != id(global_session) , (
                 "the websocket function ran on the process-global session"
+            );
+        } finally {
+            runtime.close();
+            _restore_env("JAC_SCALE_RUNTIME", prior);
+        }
+    }
+}
+
+
+test "a websocket stream runs inside its request scope and commits when it ends" {
+    prior = os.environ.get("JAC_SCALE_RUNTIME");
+    with TemporaryDirectory() as project {
+        runtime = _serve(project);
+        try {
+            token = _register_and_login(runtime, "stream_user");
+            frames: list[dict[str, any]] = [];
+            with _client(runtime).websocket_connect(
+                f"/ws/function/ws_stream_note?token={token}"
+            ) as ws {
+                ws.send_json({"text": "streamed"});
+                while not frames or frames[-1].get("type") != "done" {
+                    frames.append(dict(ws.receive_json()));
+                    assert len(frames) <= 3 , f"unexpected frames: {frames}";
+                }
+                # The connection's next frame is answered only after the
+                # stream's scope has closed, so no timing is involved below.
+                ws.send_json({"type": "ping"});
+                ws.receive_json();
+            }
+            assert frames[-1] == {"ok": True, "type": "done"} , f"got {frames}";
+            assert [f["data"] for f in frames[:-1]] == [0, 1] , f"got {frames}";
+            assert _http_notes(runtime, token) == ["streamed"] , (
+                "the stream's write was not committed when the stream ended"
             );
         } finally {
             runtime.close();

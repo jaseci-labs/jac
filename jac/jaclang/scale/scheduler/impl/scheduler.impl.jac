@@ -768,12 +768,7 @@ impl JacScaleScheduler._execute_task(
         }
 
         async def _run {
-            import from jaclang.scale.memory.context { JScaleExecutionContext }
-            import from jaclang { JacRuntime as Jac }
-
-            ctx = JScaleExecutionContext();
-            ctx_token = Jac.push_request_context(ctx);
-            try {
+            with self._server.request_scope() {
                 if is_walker {
                     result = await self._server.execution_manager.spawn_walker(
                         target, {}, user_id
@@ -789,14 +784,6 @@ impl JacScaleScheduler._execute_task(
                     self._mark_failed(job_id, err);
                 } elif job_id {
                     self._record_run(job_id, 'succeeded');
-                }
-            } finally {
-                try {
-                    ctx.mem.close();
-                } except Exception as ce {
-                    logger.warning(f"Scheduled job context close failed: {ce}");
-                } finally {
-                    Jac.reset_request_context(ctx_token);
                 }
             }
         }
