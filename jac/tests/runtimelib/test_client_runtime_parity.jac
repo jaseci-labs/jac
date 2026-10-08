@@ -260,3 +260,26 @@ test "every target's compiled AuthGuard actually renders its children" {
         }
     }
 }
+
+test "sign-up and sign-in type a bare identifier from the server's auth policy" {
+    # A username may not contain `@`, so a helper that always sent a bare string
+    # as a `username` identity would fail every `jacSignup(email, password)`.
+    # Both cores must ask the server which identifiers it accepts and type the
+    # string from that, and the signature alone cannot show that they do.
+    for (target, path) in _RUNTIME_CORES.items() {
+        for helper in ["jacSignup", "jacLogin"] {
+            body = _compiled_body(path, ReactBackend(), helper);
+            assert "__authPolicy()" in body , (
+                f"{target}'s compiled {helper} never reads the auth policy:\n{body}"
+            );
+        }
+        typed = _compiled_body(path, ReactBackend(), "__normalizeIdentity");
+        for needle in ['"email"', '"username"', 'indexOf("@")', '"off"'] {
+            assert needle in typed , (
+                f"{target}'s compiled __normalizeIdentity lost `{needle}`:\n{typed}"
+            );
+        }
+        fetched = _compiled_body(path, ReactBackend(), "__authPolicy");
+        assert "/user/auth-policy" in fetched , fetched;
+    }
+}

@@ -468,6 +468,74 @@ A user can have at most **one** identity of each non-SSO type (one username, one
 
 Passwords are hashed with [scrypt](https://en.wikipedia.org/wiki/Scrypt) (random salt per password, stdlib `hashlib.scrypt`). Plain-text passwords never leave the request handler.
 
+### Auth Policy
+
+A project declares its auth policy under `[serve.auth]` in `jac.toml`. The server checks it at every place a value is written: registration, password change and reset, add-identity, rename and admin user creation. A policy change never locks out an account that already exists, because rules apply when a value is written, not when it is read.
+
+**Identifiers.** Each identifier is set on its own:
+
+```toml
+[serve.auth.identifiers]
+username = "required"    # "required" | "optional" | "off"
+email = "optional"       # "required" | "optional" | "off"
+login_with = []          # [] = every identifier that is not "off"
+```
+
+| Setup | `username` | `email` |
+|-------|-----------|---------|
+| The username is the email | `"off"` | `"required"` |
+| A username, plus a required email | `"required"` | `"required"` |
+| No email needed (the default) | `"required"` | `"optional"` |
+
+A new username may not contain `@`, so a username can never be mistaken for, or block, an email address. `[serve.auth.username]` adds `min_length`, `max_length` and an optional `pattern`.
+
+**Email verification.** `[serve.auth.email] verification` is `"none"` (the default: nothing is mailed unless the client asks), `"optional"` (registration and add-identity mail a verification link; login is not blocked) or `"required"` (the same mail is sent, `/user/register` answers `201` with `verification_required: true` and no token, and login answers `403 EMAIL_NOT_VERIFIED` and re-sends the link until it is used). `"required"` needs a configured [emailer](#emailer); the server refuses to start without one. `allowed_domains` limits which email domains may register.
+
+**Passwords.** `[serve.auth.password]` sets the rules a new password must meet:
+
+| Key | Default | Rule |
+|-----|---------|------|
+| `min_length` / `max_length` | `8` / `128` | Length bounds |
+| `require` | `[]` | Character classes that must appear: any of `"lower"`, `"upper"`, `"digit"`, `"symbol"` |
+| `reject_common` | `true` | Not on the bundled common-password list |
+| `reject_identifiers` | `true` | Does not contain the account's username or email local part |
+| `breached_check` | `false` | Not in a known breach, checked by a k-anonymity range lookup (an outbound call; a failed lookup lets the password through) |
+| `history` | `0` | Not one of the last N passwords |
+| `max_age_days` | `0` | A password older than this sets `requires_password_reset` at login |
+
+Length and the common and breached lists do most of the work; `require`, `history` and `max_age_days` are off by default and exist for deployments whose compliance rules ask for them.
+
+**Registration and login limits.** `[serve.auth.registration] enabled = false` closes self-registration (`403 REGISTRATION_CLOSED`); accounts are then created by an admin. `[serve.auth.lockout]` limits failed logins to `max_attempts` (default `10`) per `window_seconds` (default `900`) for each source address and identity, answering `429 RATE_LIMITED`.
+
+**Refusals.** A value that breaks the policy is answered with `400 POLICY_VIOLATION`, and the error `details` list every rule it broke so a form can show them together:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "POLICY_VIOLATION",
+    "message": "Rejected by the auth policy: the password is too short; the password is too common",
+    "details": {"violations": ["PASSWORD_TOO_SHORT", "PASSWORD_COMMON"]}
+  }
+}
+```
+
+Violation codes: `IDENTIFIER_REQUIRED`, `IDENTIFIER_NOT_ALLOWED`, `USERNAME_INVALID`, `EMAIL_DOMAIN_NOT_ALLOWED`, `PASSWORD_TOO_SHORT`, `PASSWORD_TOO_LONG`, `PASSWORD_MISSING_CLASS`, `PASSWORD_COMMON`, `PASSWORD_CONTAINS_IDENTIFIER`, `PASSWORD_BREACHED`, `PASSWORD_REUSED`.
+
+**Reading the policy.** `GET /user/auth-policy` is public and returns what a sign-up or sign-in form needs:
+
+```json
+{
+  "identifiers": {"username": "required", "email": "optional", "login_with": ["username", "email"]},
+  "username": {"min_length": 1, "max_length": 64, "pattern": ""},
+  "email": {"verification": "none"},
+  "password": {"min_length": 8, "max_length": 128, "require": [], "reject_common": true, "reject_identifiers": true},
+  "registration": {"enabled": true, "challenge": false}
+}
+```
+
+The full key list, with environment overrides, is in the [configuration reference](../config/index.md#serve).
+
 ### Storage
 
 Identity data lives in the same Postgres database as the graph -- the project's database in the machine's shared embedded cluster locally, or whatever `[scale.database].url` / `JAC_DB_URL` points at:
@@ -495,7 +563,7 @@ curl -X POST http://localhost:8000/user/register \
       {"type": "username", "value": "myuser"},
       {"type": "email", "value": "user@example.com"}
     ],
-    "credential": {"type": "password", "password": "secret"},
+    "credential": {"type": "password", "password": "correct horse battery"},
     "profile": {"firstname": "Alice", "lastname": "Doe"}
   }'
 ```
@@ -712,8 +780,12 @@ jac-scale supports SSO with **Google**, **Apple**, and **GitHub**. SSO accounts 
 1. User is redirected to the provider's login page
 2. Provider calls back with an authorization code
 3. jac-scale exchanges the code for user info (email, external ID, plus optional `display_name`, `first_name`, `last_name`, `picture`)
-4. If a user with that email exists, the SSO identity is linked and a JWT is returned
-5. If no user exists, a new account is created with a verified email identity, the SSO identity is linked, and a JWT is returned
+4. If this provider account has signed in before, that account is used
+5. Otherwise, if the provider reports the email as verified and an existing account holds the same email as a **verified** identity, the SSO identity is linked to that account
+6. Otherwise a new account is created. It stores the provider-verified email as a verified email identity when `[serve.auth.identifiers] email` accepts one
+7. A JWT is returned, or the second-factor challenge when the account has a verified second factor
+
+An email the provider has not verified is never used to find an account. When the matching local email is itself unverified, nothing is linked and the login fails with `SSO_EMAIL_IN_USE`: sign in with the password and connect the provider from the account. Linking by email therefore only happens for accounts whose email was verified, so set `[serve.auth.email] verification` to `"optional"` or `"required"` if you want it to apply to password-registered accounts. With `email = "required"`, a provider that shares no verified email fails with `SSO_EMAIL_REQUIRED`; with `[serve.auth.registration] enabled = false`, SSO signs in existing accounts but creates none. GitHub sign-in asks for the public identity only and shares no email, so it never links by email; with `email = "required"` it requests the `user:email` scope and reads the verified primary address.
 
 **Profile population.** The optional fields the provider returns (`display_name`, `first_name`, `last_name`, `picture`) are written to `profile.sso.<platform>` on the user record. They are refreshed from the latest provider data on every SSO login, so display names and avatar URLs stay current. Developer-set fields outside the `sso` namespace (e.g. `profile.firstname` set during `/user/register`) are never overwritten by the SSO refresh.
 
@@ -853,18 +925,20 @@ In addition to the static identities supplied at registration, users can attach 
 Configure TTLs and the URLs the emails should point at:
 
 ```toml
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400    # 24h
 reset_token_ttl_seconds  = 1800     # 30min
 verify_url_template      = "https://app.example.com/verify?token={token}"
 reset_url_template       = "https://app.example.com/reset?token={token}"
+send_verification_per_hour = 5      # per user
+forgot_password_per_hour   = 3      # per recovery address
 ```
 
 The `{token}` placeholder in each template is replaced with the raw token before the email is sent. Leave a template empty to receive the bare token in the email body (useful in tests/dev).
 
 #### Add Identity
 
-Attach a new identity to the authenticated user. **This endpoint never sends mail** -- it just adds the identity (email identities are stored as `verified=false`). To dispatch a verification email afterwards, call `/user/send-verification`.
+Attach a new identity to the authenticated user. An email identity is stored as `verified=false`. With `[serve.auth.email] verification = "none"` (the default) no mail is sent, and `/user/send-verification` dispatches the verification email on request; with `"optional"` or `"required"` the verification link is mailed at once. The identity must be a kind `[serve.auth.identifiers]` accepts.
 
 ```bash
 curl -X POST http://localhost:8000/user/add-identity \
@@ -989,18 +1063,19 @@ Returns HTTP 200:
 }
 ```
 
-Errors: `400 INVALID_TOKEN`.
+Errors: `400 INVALID_TOKEN`, `400 POLICY_VIOLATION`. A password the policy rejects does not consume the token, so the user can retry with a stronger one.
 
 ### Auth Endpoint Summary
 
 | Method | Path | Auth Required | Description |
 |--------|------|--------------|-------------|
+| GET | `/user/auth-policy` | No | The identifier, password, verification and registration rules in force |
 | POST | `/user/register` | No | Create a new user |
 | POST | `/user/login` | No | Authenticate and get JWT |
 | POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
 | GET | `/user/me` | Yes (Bearer) | Get the authenticated user's profile |
 | PUT | `/user/password` | Yes (Bearer) | Update password |
-| POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user (no email sent) |
+| POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user |
 | POST | `/user/send-verification` | Yes (Bearer) | Dispatch a verification email for an unverified email identity |
 | POST | `/user/verify-identity` | No (token in body) | Confirm an email identity via the token sent by email |
 | POST | `/user/forgot-password` | No | Start the password-reset flow (always returns 200) |
@@ -1114,7 +1189,7 @@ port     = 587
 username = "no-reply@example.com"
 use_tls  = true
 
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds  = 1800
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -1197,7 +1272,7 @@ class SendGridEmailer(Emailer):
 provider     = "myapp.email:SendGridEmailer"
 from_address = "no-reply@example.com"
 
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds  = 1800
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -1221,7 +1296,7 @@ jac-scale includes a built-in admin portal for managing users, roles, and SSO co
 
 ### Accessing the Admin Portal
 
-Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped.
+Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped. There is no default password: with none configured, a dev server mints a one-time password and logs it once at startup, and a cluster does not create the admin until one is supplied (`jac scale deploy` mints one into the app Secret as `JAC_SCALE_ADMIN_PASSWORD`). The admin must change it at first login.
 
 ### Configuration
 
@@ -1236,6 +1311,7 @@ session_expiry_hours = 24
 |--------|------|---------|-------------|
 | `enabled` | bool | `true` | Enable/disable admin portal |
 | `username` | string | `"admin"` | Admin username |
+| `default_password` | string | unset | Initial admin password. It must meet `[serve.auth.password]`, or the server refuses to start |
 | `session_expiry_hours` | int | `24` | Admin session duration in hours |
 | `require_password_reset` | bool | `true` | Force admin to change the default password on first login |
 
@@ -1243,9 +1319,7 @@ session_expiry_hours = 24
 
 | Variable | Description |
 |----------|-------------|
-| `ADMIN_USERNAME` | Admin username (overrides jac.toml) |
-| `ADMIN_EMAIL` | Admin email (overrides jac.toml) |
-| `ADMIN_DEFAULT_PASSWORD` | Initial password (overrides jac.toml) |
+| `JAC_SCALE_ADMIN_PASSWORD` | Initial admin password (overrides `default_password`) |
 
 ### User Roles
 

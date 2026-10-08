@@ -1,3 +1,4 @@
+import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.serving.client { arequest }
 import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
 
@@ -10,8 +11,12 @@ obj GithubSSOProvider(OAuth2CodeProvider) {
         return 'https://github.com/login/oauth/access_token';
     }
 
+    def needs_email -> bool {
+        return auth_settings().identifiers.email == 'required';
+    }
+
     def scope -> str {
-        return 'user:email';
+        return 'user:email' if self.needs_email() else '';
     }
 
     async def _api_get(path: str, access_token: str) -> any {
@@ -54,7 +59,9 @@ obj GithubSSOProvider(OAuth2CodeProvider) {
         if external_id is None or not info.get('login') {
             raise RuntimeError('GitHub user info is missing login or id');
         }
-        email = await self.verified_primary_email(access_token);
+        email = await self.verified_primary_email(access_token)
+            if self.needs_email()
+            else '';
         return SSOUserInfo(
             email=email,
             email_verified=bool(email),

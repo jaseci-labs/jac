@@ -50,12 +50,12 @@ The jac client wraps this (`jacLogin` etc. - see `jac-cl-auth`); raw REST consum
 curl -X POST http://localhost:8000/user/register -H "Content-Type: application/json" -d '{
   "identities": [{"type": "username", "value": "alice"},
                  {"type": "email", "value": "a@example.com"}],
-  "credential": {"type": "password", "password": "secret123"},
+  "credential": {"type": "password", "password": "correct horse battery"},
   "profile": {"firstname": "Alice"}}'              # profile optional; response includes a token
 
 curl -X POST http://localhost:8000/user/login -H "Content-Type: application/json" -d '{
   "identity": {"type": "username", "value": "alice"},
-  "credential": {"type": "password", "password": "secret123"}}'
+  "credential": {"type": "password", "password": "correct horse battery"}}'
 # -> {"ok": true, "data": {"user_id": "...", "token": "eyJ...", "root_id": "...", "role": "user"}}
 
 curl -X POST http://localhost:8000/function/my_todos \
@@ -64,7 +64,7 @@ curl -X POST http://localhost:8000/function/my_todos \
 curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile, identities, role
 ```
 
-Identity types: `username`, `email` (max one of each; login works with either). Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
+Identity types: `username`, `email` (max one of each; login works with either unless `login_with` narrows it). Which ones an account needs, and how strong the password must be, is the project's **auth policy** (below); a value that breaks it gets `400 POLICY_VIOLATION` with every broken rule in `error.details.violations`. Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
 
 ## Media and downloads: the session cookie
 
@@ -117,6 +117,40 @@ def:protect rotate_keys -> dict[str, any] {
 ```
 
 `caller_assurance_level()` is `"aal2"`, `"aal1"`, or `""` when there is no signed-in HTTP caller (anonymous, scheduled, or a WebSocket call - gate those closed).
+
+## Auth policy (`[serve.auth]`)
+
+The policy is declared in `jac.toml` and enforced at every write (register, password change/reset, add-identity, rename, admin create). Existing accounts are never locked out by a change; rules apply to new values.
+
+```toml
+[serve.auth.identifiers]
+username = "required"       # "required" | "optional" | "off"
+email = "optional"          # username "off" + email "required" = the email is the login
+login_with = []             # [] = every identifier that is not "off"
+
+[serve.auth.email]
+verification = "none"       # "optional": mail a link, do not block. "required": no session until it is used (needs [scale.emailer])
+allowed_domains = []
+
+[serve.auth.password]
+min_length = 8              # default
+require = []                # any of "lower", "upper", "digit", "symbol"
+reject_common = true        # default: bundled common-password list
+history = 0                 # last N passwords may not be reused
+max_age_days = 0
+
+[serve.auth.registration]
+enabled = true              # false: 403 REGISTRATION_CLOSED, accounts come from an admin
+
+[serve.auth.lockout]
+max_attempts = 10           # failed logins per source address + identity per window_seconds (900); 429 RATE_LIMITED
+```
+
+- A new username may not contain `@`. Register an email as `{"type": "email", ...}`, not as a username.
+- `GET /user/auth-policy` (public) returns the rules a form needs; `jacSignup` / `jacLogin` read it to type a bare string as a username or an email.
+- With `verification = "required"`, `/user/register` returns `verification_required: true` and no token, and `/user/login` answers `403 EMAIL_NOT_VERIFIED` (re-sending the link) until `POST /user/verify-identity` succeeds.
+- Every key takes an env override named `JAC_SERVE_AUTH_<TABLE>_<KEY>` (`JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH`). An unknown key under `[serve.auth]` stops the server at startup.
+- The bootstrap admin has no default password: a dev server mints one and logs it once; a cluster needs `[scale.admin] default_password` or `JAC_SCALE_ADMIN_PASSWORD` (`jac scale deploy` mints one into the app Secret).
 
 ## JWT production footgun
 

@@ -1,5 +1,5 @@
 import logging;
-import from jaclang.server.endpoints.auth { fail, ok }
+import from jaclang.server.endpoints.auth { fail, ok, throttled }
 import from jaclang.server.identity.assurance {
     AAL1,
     AAL2,
@@ -43,13 +43,7 @@ def unavailable -> TransportResponse {
 def refused(result: dict[str, any], proof_status: int) -> TransportResponse {
     code = str(result.get('code') or 'INVALID_CODE');
     if code == 'RATE_LIMITED' {
-        retry = int(result.get('retry_after') or 1);
-        return fail(
-            'RATE_LIMITED',
-            f"Too many attempts. Try again in {retry} seconds.",
-            429,
-            {'retry_after_seconds': retry}
-        );
+        return throttled(int(result.get('retry_after') or 1), 'Sign-in');
     }
     if code == 'NOT_FOUND' {
         return fail('NOT_FOUND', 'Factor not found', 404);

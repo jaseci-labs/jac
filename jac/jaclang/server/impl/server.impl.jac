@@ -1124,10 +1124,6 @@ impl JacAPIServer.identity -> UserManager {
     return self.user_manager;
 }
 
-impl JacAPIServer.mailer -> IdentityMailer {
-    return IdentityMailer(emailer=self.emailer);
-}
-
 impl JacAPIServer.require_app -> ServingApp {
     if self.app is None {
         raise RuntimeError('build_app() has not run');

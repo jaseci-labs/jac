@@ -14,7 +14,6 @@ import from jaclang.project.config { JacConfig }
 import from jaclang.server.endpoints.auth { register_auth_endpoints }
 import from jaclang.server.identity.auth_models { LoginRequest, RegisterRequest }
 import from jaclang.server.identity.config { configure_identity }
-import from jaclang.server.identity.mail { IdentityMailer }
 import from jaclang.server.identity.policy {
     Violation,
     check_identifiers,
@@ -73,10 +72,6 @@ obj Host(EndpointHost) {
 
     def identity -> UserManager {
         return self.users;
-    }
-
-    def mailer -> IdentityMailer {
-        return IdentityMailer(emailer=self.emailer);
     }
 }
 
@@ -497,7 +492,7 @@ test "required verification holds the session until the emailed link is used" {
             register_auth_endpoints(host);
             address = unique('erin') + '@corp.example';
 
-            policy = host.routes['/user/auth-policy'](Request());
+            policy = host.routes['/user/auth-policy']();
             assert policy.data['email'] == {'verification': 'required'};
             assert policy.data['password']['min_length'] == 8;
 

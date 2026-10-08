@@ -61,7 +61,7 @@ test "user manager authentication" {
         auth_result = user_mgr.authenticate("testuser", "testpass");
         assert auth_result is not None;
         assert auth_result["user_id"] == created["user_id"];
-        assert auth_result["token"];
+        assert user_mgr.open_session(auth_result["user_id"]).token;
         assert user_mgr.authenticate("testuser", "wrongpass") is None;
         assert user_mgr.authenticate("nouser", "pass") is None;
         user_mgr.close();

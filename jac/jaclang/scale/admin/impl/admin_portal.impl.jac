@@ -20,11 +20,7 @@ import from jaclang.server.serving.endpoint {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.identity.user_manager { UserRole, UserManager }
-import from jaclang.server.identity.assurance {
-    METHOD_PASSWORD,
-    second_factor_claims,
-    token_assurance
-}
+import from jaclang.server.identity.assurance { METHOD_PASSWORD, second_factor_claims }
 import from jaclang.server.identity.second_factor { SecondFactorUnavailable }
 import from jaclang.server.identity.audit { client_ip }
 import from jaclang.server.identity.rate_limit { AttemptsExhausted }
@@ -742,11 +738,11 @@ impl JacAPIServerAdmin.reset_password(
     if 'error' in result {
         return refused(result, 'UPDATE_FAILED');
     }
-    new_token = self._require_user_manager().create_jwt_token(
-        user_id, assurance=token_assurance(token)
-    );
     return TransportResponse.success(
-        data={'message': 'Password updated successfully', 'token': new_token},
+        data={
+            'message': 'Password updated successfully',
+            'token': self._require_user_manager().refresh_jwt_token(token) or token
+        },
         meta=Meta(extra={'http_status': 200})
     );
 }

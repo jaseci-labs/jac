@@ -6,7 +6,6 @@ import from jaclang.server.identity.registration_challenge {
     issue_challenge,
     consume_challenge
 }
-import from jaclang.server.identity.assurance { token_assurance }
 import from jaclang.server.identity.audit { client_ip, emit as audit }
 import from jaclang.server.identity.auth_models {
     AddIdentityRequest,
@@ -401,10 +400,11 @@ def register_auth_endpoints(server: EndpointHost) {
         if 'error' in result {
             return refused(result, 'UPDATE_FAILED', {'NOT_FOUND': 404});
         }
-        result['token'] = users.create_jwt_token(
-            str(user_id), assurance=token_assurance(bearer_token(request))
-        );
-        start_session(request, str(result['token']));
+        renewed = users.refresh_jwt_token(bearer_token(request) or '');
+        if renewed {
+            result['token'] = renewed;
+            start_session(request, renewed);
+        }
         return ok(result);
     }
     server.add_endpoint(
@@ -799,7 +799,7 @@ def register_auth_endpoints(server: EndpointHost) {
         )
     );
 
-    def auth_policy_handler(request: Request) -> TransportResponse {
+    def auth_policy_handler -> TransportResponse {
         return ok(public_policy());
     }
     server.add_endpoint(

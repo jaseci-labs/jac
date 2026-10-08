@@ -42,7 +42,7 @@ obj EndpointHost {
     def add_endpoint(ep: JEndPoint) -> None abst;
     def identity -> UserManager abst;
     def mailer -> IdentityMailer {
-        return IdentityMailer();
+        return IdentityMailer(emailer=self?.emailer);
     }
 }
 
@@ -220,7 +220,6 @@ obj JacAPIServer(EndpointHost) {
     def postinit -> None;
     def resolved_settings -> ServeSettings;
     def identity -> UserManager;
-    def mailer -> IdentityMailer;
     def require_app -> ServingApp;
     def add_endpoint(ep: JEndPoint) -> None;
     def add_ws_endpoint(path: str, handler: Callable[..., any]) -> None;

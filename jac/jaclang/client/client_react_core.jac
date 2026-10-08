@@ -68,7 +68,8 @@ async def:pub __jacCallFunction(
     function_name: str, args: dict[str, any] = {}, opts: (dict[str, any] | None) = None
 ) -> any;
 
-def:pub __normalizeIdentity(x: any) -> dict[str, any];
+async def:pub __authPolicy -> any;
+def:pub __normalizeIdentity(x: any, policy: any = None) -> dict[str, any];
 def:pub __normalizeCredential(x: any) -> dict[str, any];
 async def:pub jacSignup(
     identities_or_username: (str | list[str | dict[str, any]]),

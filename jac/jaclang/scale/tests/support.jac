@@ -21,6 +21,11 @@ import requests;
 import from pathlib { Path }
 import from typing { cast }
 import from jaclang.testing.test_runner { STRICT_ENV, strict_mode }
+import from jaclang.scale.tests.fixture_policy { apply_fixture_policy }
+
+with entry {
+    apply_fixture_policy();
+}
 
 """A port nothing is listening on."""
 def get_free_port -> int {
@@ -147,6 +152,7 @@ def start_server(
     if env {
         proc_env.update(env);
     }
+    apply_fixture_policy(proc_env);
     server = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
