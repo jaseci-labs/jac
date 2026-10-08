@@ -2342,7 +2342,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5114 = _err(
          "E5114",
          Category.CODEGEN,
-         "Native library declaration does not conform to its Python interface: {reason}",
+         "Native library declaration does not conform to its interface: {reason}",
          help="A native standard-library module implements the interface the Python stubs declare for the module of the same name. Every public function, parameter and member it has must be one that interface declares, so a program typed against the interface means the same thing in every codespace. Make the extra name private with a leading underscore, rename it to match, or leave it out; a name the interface declares and this module lacks is fine, and is reported to callers as a native gap."
      ),
      E5112 = _err(

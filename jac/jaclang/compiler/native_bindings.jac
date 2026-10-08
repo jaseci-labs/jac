@@ -38,7 +38,15 @@ glob NATIVE_FILE_CLASSES: dict[str, str] = {
          "__enter__",
          "__exit__"
      },
-     NATIVE_LIBRARY_REL: str = "/runtime/na_stdlib/";
+     NATIVE_LIBRARY_REL: str = "/runtime/na_stdlib/",
+     PLATFORM_SUFFIXES: tuple[str, ...] = (
+         "linux",
+         "darwin",
+         "windows",
+         "aarch64",
+         "x86_64",
+         "wasm32"
+     );
 
 obj NativeBinding {
     has stub_module: str,
@@ -75,6 +83,9 @@ def call_gaps(call: FuncCall, binding: NativeBinding) -> list[str];
 def native_bindings_of(prog: JacProgram) -> NativeBindings;
 def native_library_module_name(path: str) -> (str | None);
 def typeshed_stub_path(name: str) -> (str | None);
+def variant_base(path: str) -> (str | None);
+def variant_siblings(path: str) -> list[str];
+def variant_mismatches(mod: Module, prog: JacProgram) -> list[tuple[UniNode, str]];
 def binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str];
 
 impl is_pub(nd: UniNode) -> bool {
@@ -374,8 +385,13 @@ impl native_library_module_name(path: str) -> (str | None) {
     }
     rel = posix[at + len(NATIVE_LIBRARY_REL):-len(".jac")];
     parts = rel.split("/");
+    (stem, _dot, suffix) = parts[-1].partition(".");
+    if suffix and suffix not in PLATFORM_SUFFIXES {
+        return None;
+    }
+    parts[-1] = stem;
     for part in parts {
-        if part.startswith("_") or "." in part {
+        if part.startswith("_") {
             return None;
         }
     }
@@ -395,4 +411,82 @@ impl typeshed_stub_path(name: str) -> (str | None) {
         }
     }
     return None;
+}
+
+impl variant_base(path: str) -> (str | None) {
+    if not path.endswith(".jac") {
+        return None;
+    }
+    stem = path[:-len(".jac")];
+    (head, dot, suffix) = stem.rpartition(".");
+    if dot and suffix in PLATFORM_SUFFIXES and os.sep not in suffix {
+        return head;
+    }
+    return None;
+}
+
+impl variant_siblings(path: str) -> list[str] {
+    base = variant_base(path);
+    if base is None {
+        return [];
+    }
+    out: list[str] = [];
+    for suffix in PLATFORM_SUFFIXES {
+        candidate = f"{base}.{suffix}.jac";
+        if candidate != path and os.path.isfile(candidate) {
+            out.append(candidate);
+        }
+    }
+    if os.path.isfile(base + ".jac") {
+        out.append(base + ".jac");
+    }
+    return out;
+}
+
+impl variant_mismatches(mod: Module, prog: JacProgram) -> list[tuple[UniNode, str]] {
+    out: list[tuple[UniNode, str]] = [];
+    path = os.path.realpath(mod.loc.mod_path) if mod.loc is not None else "";
+    siblings = variant_siblings(path) if path else [];
+    if not siblings {
+        return out;
+    }
+    mine = native_surface(mod, "");
+    for sibling in siblings {
+        other_mod = prog.load_dependency_module(sibling, need_tree=True);
+        other = native_surface(other_mod, "");
+        shown = os.path.basename(sibling);
+        for (name, binding) in mine.items() {
+            decl = binding.decl;
+            if decl is None {
+                continue;
+            }
+            theirs = other.get(name);
+            if theirs is None {
+                out.append(
+                    (
+                        decl,
+                        f"'{name}' is public in this platform variant but not in "
+                        f"{shown}; every variant of a module exposes the same names"
+                    )
+                );
+            } elif binding.params != theirs.params
+                or binding.variadic != theirs.variadic {
+                out.append(
+                    (
+                        decl,
+                        f"'{name}' takes ({', '.join(binding.params)}) here but "
+                        f"({', '.join(theirs.params)}) in {shown}"
+                    )
+                );
+            } elif binding.members != theirs.members {
+                extra = sorted(binding.members - theirs.members);
+                if extra {
+                    out.append(
+                        (decl, f"'{name}' has members {extra} here that {shown} lacks")
+                    );
+                }
+            }
+        }
+    }
+    return out;
 }
