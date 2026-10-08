@@ -757,13 +757,6 @@ impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | N
     );
 }
 
-"""The class name of an exception bound by `except ... as name`.
-
-A caught exception is its type code, an object when one was raised and its
-message. The name bound in the handler holds the message when the clause
-catches a builtin, so reading its class the usual way reads a string as an
-object. The builtin's name is picked by type code; an exception that is an
-object of another class answers with that class's name."""
 def _caught_exception_class_name(
     pass_ref: NaIRGenPass, var_name: str
 ) -> (ir.Value | None) {
@@ -811,7 +804,9 @@ def _caught_exception_class_name(
     raised_p = b.bitcast(raised, i8p, name="exc.name.obj");
     message_p = b.bitcast(message, i8p, name="exc.name.msg");
     is_object = b.and_(
-        b.icmp_unsigned("==", base_named, ir.Constant(i8p, None), name="exc.name.unknown"),
+        b.icmp_unsigned(
+            "==", base_named, ir.Constant(i8p, None), name="exc.name.unknown"
+        ),
         b.and_(
             b.icmp_unsigned("!=", raised_p, ir.Constant(i8p, None)),
             b.icmp_unsigned("!=", raised_p, message_p)

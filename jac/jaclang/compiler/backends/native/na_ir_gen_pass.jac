@@ -346,7 +346,7 @@ walker NaIRGenPass(CompilerPass) {
         parent_field_start: dict[str, dict[str, int]] = {},
         arch_ast_map: dict[str, uni.Archetype] = {},
         vtable_layouts: dict[str, list[str]] = {},
-        vtable_method_indices: dict[str, dict[str, any]] = {},
+        vtable_method_indices: dict[str, dict[str, int]] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
         _struct_source_mod: dict[str, str] = {},

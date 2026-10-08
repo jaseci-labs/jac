@@ -303,7 +303,7 @@ def classify_foreign_fn(
         if rcls["memory"] {
             sret = True;
             sig_ret = ("void", );
-            sig = [("sretptr", ret_tname)] + sig;
+            sig.insert(0, ("sretptr", ret_tname));
             for pp in param_plan {
                 shifted = pp["argpos"];
                 if isinstance(shifted, int) {

@@ -33,3 +33,11 @@ test "a caught exception reports its class name" {
     assert "ValueError/boom Trouble/custom IndexError/" in out , out;
     assert "RuntimeError/late none" in out , out;
 }
+
+test "a name unpacked from enumerate compares through __eq__" {
+    out = assert_native_identity(
+        fixture("enumerate_unpacked_eq.jac"), profiles=["rc", "managed"]
+    );
+    assert "str int ptr" in out , out;
+    assert "str other other" in out , out;
+}

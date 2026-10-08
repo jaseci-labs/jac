@@ -988,6 +988,24 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     return result;
 }
 
+def _class_typed_operand(
+    pass_ref: NaIRGenPass, value: ir.Value, origin: uni.UniNode
+) -> ir.Value {
+    if value.type != ir.IntType(8).as_pointer() or isinstance(value, ir.Constant) {
+        return value;
+    }
+    class_name = pass_ref._struct_name_of(origin);
+    if class_name is None {
+        return value;
+    }
+    class_type = pass_ref.struct_types.get(class_name);
+    if class_type is None {
+        return value;
+    }
+    typed = pass_ref.builder.bitcast(value, class_type.as_pointer(), name="cmp.typed");
+    return typed;
+}
+
 impl NaIRGenPass._codegen_compare_link(
     op: str,
     left: ir.Value,
@@ -998,6 +1016,10 @@ impl NaIRGenPass._codegen_compare_link(
 ) -> (ir.Value | None) {
     _cmp_left_orig = left;
     _cmp_right_orig = right;
+    if op in (Tok.EE, Tok.NE) {
+        left = _class_typed_operand(self, left, left_node);
+        right = _class_typed_operand(self, right, right_node);
+    }
 
     if self?.jacval_type and op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE) {
         _none_negate = op in (Tok.KW_ISN, Tok.NE);
