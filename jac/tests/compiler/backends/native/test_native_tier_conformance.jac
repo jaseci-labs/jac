@@ -47,3 +47,29 @@ test "untyped numbers of different kinds compare by value" {
     assert "False False False False True" in out , out;
     assert "True True True False" in out , out;
 }
+
+"""An archetype is a dataclass on the Python tier, so printing one writes
+`Name(field=value, ...)`. The native tier wrote `<Name object at 0x...>`,
+which is different text and a different one every run."""
+test "an object without its own repr prints its fields" {
+    out = assert_native_identity(
+        fixture("default_object_text.jac"), profiles=["rc", "managed"]
+    );
+    assert "Named(x=1, y=2.0, label=\"it's\", tags=['a', 'b'])" in out , out;
+    assert "Holder(inner=Point(x=3, y=1.5), maybe=None, flag=True)" in out , out;
+    assert "Link(name='a', nxt=Link(name='b', nxt=None))" in out , out;
+    assert "Bag(counts={'x': 1}, seen={1}, pair=(1, 'a'), anything='q', ratio=0.1)"
+        in out , out;
+    assert "Tour(depth=2) Road(km=9)" in out , out;
+}
+
+"""The text follows the object, not the type it is held as: a subclass
+instance held as its base prints the subclass's name and fields, or runs the
+subclass's own `__repr__`."""
+test "default object text follows the runtime class" {
+    out = assert_native_identity(
+        fixture("default_object_text_subclass.jac"), profiles=["rc", "managed"]
+    );
+    assert "Shape(sides=0) Square(sides=4, width=2) Named<q>" in out , out;
+    assert "[Square(sides=4, width=2), Shape(sides=0), Named<q>]" in out , out;
+}

@@ -1,7 +1,7 @@
 """`str()` of a value typed as a base class runs the subclass's `__str__`.
 
 When only subclasses define `__str__`, the base has no vtable slot for it and
-the lowering fell back to the default `<Base object at ...>` text. It now
+the lowering fell back to the base's default text. It now
 compares the object's vtable against each subclass that defines `__str__` and
 calls the match, keeping the default text for subclasses without one.
 """

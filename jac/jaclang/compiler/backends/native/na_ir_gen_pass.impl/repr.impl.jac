@@ -400,6 +400,198 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     return fn;
 }
 
+impl NaIRGenPass._default_repr_piece(
+    value: ir.Value, arch_name: str, field_name: str, decl: uni.HasVar
+) -> (ir.Value | None) {
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    value = self._str_norm(value);
+    shape = value.type;
+    if isinstance(shape, (ir.IntType, ir.FloatType, ir.DoubleType))
+        or shape == i8p
+        or (self.jacval_type is not None and shape == self.jacval_type) {
+        return self._emit_value_repr(value, decl.name);
+    }
+    payload_type = self._opt_payload_of(shape);
+    if payload_type is not None {
+        fn = b.function;
+        none_bb = fn.append_basic_block(f"rp.d.{field_name}.none");
+        some_bb = fn.append_basic_block(f"rp.d.{field_name}.some");
+        done_bb = fn.append_basic_block(f"rp.d.{field_name}.done");
+        tag = b.extract_value(value, 0, name=f"rp.d.{field_name}.tag");
+        b.cbranch(
+            b.icmp_signed(
+                "==", tag, ir.Constant(i8, 0), name=f"rp.d.{field_name}.isnone"
+            ),
+            none_bb,
+            some_bb
+        );
+        b.position_at_end(none_bb);
+        absent = self._rc_strdup(
+            self._make_global_string("None", name_prefix=".repr.none"),
+            name=f"rp.d.{field_name}.nonetext"
+        );
+        b.branch(done_bb);
+        b.position_at_end(some_bb);
+        present = self._default_repr_piece(
+            b.extract_value(value, 1, name=f"rp.d.{field_name}.payload"),
+            arch_name,
+            field_name,
+            decl
+        );
+        if present is None {
+            return None;
+        }
+        present = self._coerce_type(present, i8p);
+        some_end = b.block;
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        merged = b.phi(i8p, name=f"rp.d.{field_name}.text");
+        merged.add_incoming(self._coerce_type(absent, i8p), none_bb);
+        merged.add_incoming(present, some_end);
+        return self._mark_owned(merged);
+    }
+    for (cls, cls_type) in self.struct_types.items() {
+        if shape == cls_type {
+            held = b.alloca(shape, name=f"rp.d.{field_name}.inline");
+            b.store(value, held);
+            value = held;
+            shape = value.type;
+            break;
+        }
+    }
+    keys = self.struct_field_elem_keys.get(arch_name, {}).get(field_name);
+    typed_keys = bool(keys) and all(k is not None for k in (keys or []));
+    if isinstance(shape, ir.LiteralStructType) and typed_keys {
+        held = b.alloca(shape, name=f"rp.d.{field_name}.tuple");
+        b.store(value, held);
+        value = held;
+        shape = value.type;
+    }
+    if not isinstance(shape, ir.PointerType) {
+        return None;
+    }
+    piece_fn: (ir.Function | None) = None;
+    for (cls, cls_type) in self.struct_types.items() {
+        if shape == cls_type.as_pointer() {
+            piece_fn = self._repr_obj_fn(cls);
+            break;
+        }
+    }
+    if piece_fn is None and typed_keys and keys is not None {
+        layout = _named_struct_name(shape.pointee);
+        type_key = "";
+        if isinstance(shape.pointee, ir.LiteralStructType) {
+            type_key = "tuple[" + ",".join([str(k) for k in keys]) + "]";
+        } elif layout.startswith("List.") {
+            type_key = f"list[{keys[0]}]";
+        } elif layout.startswith("Set.") {
+            type_key = f"set[{keys[0]}]";
+        } elif layout.startswith("Dict.") and len(keys) == 2 {
+            type_key = f"dict[{keys[0]},{keys[1]}]";
+        }
+        if type_key {
+            piece_fn = self._repr_fn_for_type_key(type_key);
+        }
+    }
+    if piece_fn is None {
+        return None;
+    }
+    return self._repr_call_elem_fn(piece_fn, value);
+}
+
+impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
+    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    cache_key = "default:" + arch_name;
+    cached = self._repr_fns.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    struct_type = self.struct_types.get(arch_name);
+    if struct_type is None or self._builder is None {
+        return None;
+    }
+    fields: list[tuple[str, str, uni.HasVar]] = [];
+    for cls in reversed(self._mro_of(arch_name)) {
+        declared = self.arch_ast_map.get(cls);
+        if declared is None {
+            continue;
+        }
+        for var in declared.get_has_vars() {
+            owner = var.find_parent_of_type(uni.ArchHas);
+            if var.name is None
+                or var.accessors
+                or (owner is not None and owner.is_static) {
+                continue;
+            }
+            fields = [
+                f
+                for f in fields
+                if f[0] != var.name.value
+            ];
+            fields.append((var.name.value, cls, var));
+        }
+    }
+    i8p = ir.IntType(8).as_pointer();
+    fn: ir.Function = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(i8p, [struct_type.as_pointer()]),
+        name=f"__jac_default_repr_{native_safe_sym(arch_name)}"
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "obj";
+    self._repr_fns[cache_key] = fn;
+    saved_builder = self._builder;
+    saved_locals = self.local_vars;
+    self.local_vars = {};
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    self._builder = b;
+    cur: any = self._rc_strdup(
+        self._make_global_string(
+            self._arch_display(arch_name) + "(", name_prefix=".repr.open"
+        ),
+        name="rp.d.acc0"
+    );
+    complete = True;
+    for (position, (field_name, _owner, decl)) in enumerate(fields) {
+        value = self._read_field_or_refuse(decl, fn.args[0], field_name, arch_name);
+        piece = self._default_repr_piece(value, arch_name, field_name, decl)
+            if value is not None
+            else None;
+        if piece is None {
+            complete = False;
+            break;
+        }
+        label = self._make_global_string(
+            (", " if position else "") + field_name + "=", name_prefix=".repr.field"
+        );
+        labelled: any = self._emit_binary_op(Tok.PLUS, cur, label);
+        self._emit_rc_release_simple(cur, op="mstr_old", loc="");
+        joined: any = self._emit_binary_op(
+            Tok.PLUS, labelled, self._coerce_type(piece, i8p)
+        );
+        self._emit_rc_release_simple(labelled, op="mstr_old", loc="");
+        if self._is_owned(piece) {
+            self._emit_rc_release_simple(piece, op="mstr_val", loc="");
+        }
+        cur = joined;
+    }
+    closed: any = self._emit_binary_op(
+        Tok.PLUS, cur, self._make_global_string(")", name_prefix=".repr.close")
+    );
+    self._emit_rc_release_simple(cur, op="mstr_old", loc="");
+    self._emit_set_type_tag(self.builder, closed, "str");
+    self.builder.ret(closed);
+    self._builder = saved_builder;
+    self.local_vars = saved_locals;
+    if not complete {
+        self._repr_fns.pop(cache_key, None);
+        return None;
+    }
+    return fn;
+}
+
 impl NaIRGenPass._repr_seq_fn(
     fn_name: str,
     cont_ptr_ty: ir.Type,

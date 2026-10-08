@@ -3588,6 +3588,81 @@ impl NaIRGenPass._emit_subclass_str(val: ir.Value, type_name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value {
+    described = self._default_repr_fn(type_name);
+    if described is not None {
+        i8p_text = ir.IntType(8).as_pointer();
+        own_text = self.builder.call(
+            described,
+            [self._coerce_type(val, described.args[0].type)],
+            name="obj.repr.fields"
+        )
+            if not self._arch_has_vtable(type_name)
+            else None;
+        if own_text is not None {
+            return self._mark_owned(own_text);
+        }
+        import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+        subclasses: list[tuple[ir.GlobalVariable, ir.Function]] = [];
+        for cls in get_layout_registry(self.module, self.prog).mro_order {
+            if cls == type_name or type_name not in self._mro_of(cls) {
+                continue;
+            }
+            if cls not in self.struct_types {
+                continue;
+            }
+            sub_vtable = self._vtable_global_for(cls);
+            sub_fn = self._repr_obj_fn(cls);
+            if sub_vtable is not None {
+                subclasses.append((sub_vtable, sub_fn));
+            }
+        }
+        receiver = self._coerce_type(val, described.args[0].type);
+        if not subclasses {
+            return self._mark_owned(
+                self.builder.call(described, [receiver], name="obj.repr.fields")
+            );
+        }
+        zero = ir.Constant(ir.IntType(32), 0);
+        held_vtable = self.builder.load(
+            self.builder.gep(receiver, [zero, zero]), name="obj.repr.vt"
+        );
+        here = self.builder.function;
+        joined_bb = here.append_basic_block(name="obj.repr.done");
+        arrivals: list[tuple[ir.Value, ir.Block]] = [];
+        for (sub_vtable, sub_fn) in subclasses {
+            hit_bb = here.append_basic_block(name="obj.repr.sub");
+            miss_bb = here.append_basic_block(name="obj.repr.next");
+            self.builder.cbranch(
+                self.builder.icmp_unsigned(
+                    "==",
+                    held_vtable,
+                    self.builder.bitcast(sub_vtable, held_vtable.type)
+                ),
+                hit_bb,
+                miss_bb
+            );
+            self.builder.position_at_end(hit_bb);
+            sub_text = self.builder.call(
+                sub_fn,
+                [self._coerce_type(val, sub_fn.args[0].type)],
+                name="obj.repr.subtext"
+            );
+            arrivals.append(
+                (self._coerce_type(sub_text, i8p_text), self.builder.block)
+            );
+            self.builder.branch(joined_bb);
+            self.builder.position_at_end(miss_bb);
+        }
+        base_text = self.builder.call(described, [receiver], name="obj.repr.fields");
+        arrivals.append((self._coerce_type(base_text, i8p_text), self.builder.block));
+        self.builder.branch(joined_bb);
+        self.builder.position_at_end(joined_bb);
+        chosen = self.builder.phi(i8p_text, name="obj.repr.text");
+        for (text_value, from_bb) in arrivals {
+            chosen.add_incoming(text_value, from_bb);
+        }
+        return self._mark_owned(chosen);
+    }
     b = self.builder;
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
