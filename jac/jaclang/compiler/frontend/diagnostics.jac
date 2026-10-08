@@ -2345,6 +2345,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Native library declaration does not conform to its interface: {reason}",
          help="A native standard-library module implements the interface the Python stubs declare for the module of the same name. Every public function, parameter and member it has must be one that interface declares, so a program typed against the interface means the same thing in every codespace. Make the extra name private with a leading underscore, rename it to match, or leave it out; a name the interface declares and this module lacks is fine, and is reported to callers as a native gap."
      ),
+     E5115 = _err(
+         "E5115",
+         Category.CODEGEN,
+         "Type '{type}' on {what} of '{name}' has no wire form between client and server code: {reason}",
+         help="A client call to a server function is a request: arguments are bound from JSON and the result is serialized to JSON. What crosses is a scalar (str, int, float, bool, bytes, None), a list, tuple or set of types that cross, a dict with str keys, an enum, an archetype whose fields all cross, or a union of those. An upload crosses only as a parameter of a server function, and a generator only as a streamed result. Give the function a signature made of those, or keep the value on one side and pass an identifier for it."
+     ),
      E5112 = _err(
          "E5112",
          Category.CODEGEN,

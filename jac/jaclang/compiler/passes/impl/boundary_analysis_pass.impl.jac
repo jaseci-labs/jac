@@ -1372,8 +1372,17 @@ impl BoundaryAnalysisPass.finish with exit {
         return;
     }
     import from jaclang.compiler.frontend.diagnostics { E5093 }
-    import from jaclang.compiler.boundary_rules { signature_crossings }
-    import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
+    import from jaclang.compiler.frontend.diagnostics { E5115 }
+    import from jaclang.compiler.boundary_rules {
+        archetype_refusals,
+        signature_crossings,
+        signature_refusals
+    }
+    import from jaclang.compiler.capability_notes {
+        TARGET_CLIENT,
+        TARGET_NATIVE,
+        TARGET_SERVER
+    }
     manifest = self.module.gen.interop_manifest;
 
     for binding in manifest.bindings.values() {
@@ -1401,6 +1410,26 @@ impl BoundaryAnalysisPass.finish with exit {
                 type=spelled,
                 what=what,
                 name=binding.name
+            );
+        }
+    }
+
+    for binding in manifest.server_exports_to_client {
+        exported = binding.ast_node;
+        unsent: list[tuple[str, str, str]] = [];
+        if isinstance(exported, Ability) {
+            unsent = signature_refusals(exported, TARGET_CLIENT, TARGET_SERVER);
+        } elif isinstance(exported, Archetype) {
+            unsent = archetype_refusals(exported, TARGET_CLIENT, TARGET_SERVER);
+        }
+        for (what, spelled, why) in unsent {
+            self.ctx.emit(
+                E5115,
+                node_override=exported,
+                type=spelled,
+                what=what,
+                name=binding.name,
+                reason=why
             );
         }
     }
