@@ -127,16 +127,6 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._nogc_setup();
     self._emit_place_intrinsic_diagnostics();
     self._emit_c_view_diagnostics();
-    if not self.owned_decl
-        and not self.borrow_meta
-        and not self.imm_decl
-        and not self._has_region_blocks()
-        and not self.idx_concurrent
-        and not self._flow_for_stmts()
-        and self.nogc_prov is None {
-        return ir_in;
-    }
-
     cfg_nodes = [
         n
         for n in ir_in.flatten()
@@ -150,7 +140,9 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._emit_diagnostics();
     self._emit_linear_diagnostics(cfg_nodes);
     self._emit_receiver_diagnostics();
+    _raise_mark = len(self.ctx.errors_had);
     self._emit_raises_diagnostics();
+    self._memory_facts(_raise_mark);
     self._emit_place_move_diagnostics();
     self._emit_borrow_diagnostics();
     self._emit_element_space_conflicts();
@@ -166,7 +158,9 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._emit_marker_diagnostics();
     self._emit_freeze_diagnostics();
     self._emit_seal_warnings();
+    _enforce_mark = len(self.ctx.errors_had);
     self._emit_enforcement_diagnostics();
+    self._memory_facts(_enforce_mark);
     return ir_in;
 }
 

@@ -4,7 +4,8 @@ import type from jaclang.compiler.frontend.unitree { UniNode }
 
 glob TARGET_NATIVE: str = "native",
      TARGET_CLIENT: str = "client",
-     TARGET_SERVER: str = "server";
+     TARGET_SERVER: str = "server",
+     TARGET_HEADERLESS: str = "headerless";
 
 obj CapabilityNote {
     has site: UniNode,
@@ -31,7 +32,7 @@ def note_capability(
     if key not in table {
         table[key] = {};
     }
-    table[key][f"{id(site)}:{target}:{code}"] = CapabilityNote(
+    table[key][f"{id(site)}:{target}:{code}:{text}"] = CapabilityNote(
         site=site, target=target, code=code, text=text, requires=requires
     );
 }
