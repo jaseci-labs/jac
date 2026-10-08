@@ -2328,3 +2328,48 @@ test "e2e: mobile android build produces APK" {
         );
     }
 }
+
+
+test "mobile dev binds the backend to an interface the device can reach" {
+    # The phone reaches the API at the address written into app.json. With a
+    # loopback default for local serving, a LAN address has to bring a
+    # non-loopback bind with it; a loopback address (adb reverse, simulator)
+    # leaves the default alone. Popen is the only stub: the spawned
+    # process's env is built by the real helper.
+    import unittest.mock;
+    import tempfile;
+    import from jaclang.client.targets.react_native.dev { backend_bind_host }
+    import from jaclang.client.targets.client_dev_common { start_backend_server_common }
+
+    # (device-visible host, bind the backend must be given)
+    cases = [
+        ("192.168.1.7", "0.0.0.0"),
+        ("10.0.0.4", "0.0.0.0"),
+        ("my-laptop.local", "0.0.0.0"),
+        ("127.0.0.1", ""),
+        ("localhost", ""),
+        ("", "")
+    ];
+    inherited = os.environ.pop("JAC_SERVE_HOST", None);
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            for (visible, expected) in cases {
+                bind = backend_bind_host(visible);
+                assert bind == expected , f"{visible!r}: expected {expected!r}, got {bind!r}";
+                with unittest.mock.patch("subprocess.Popen") as popen {
+                    start_backend_server_common(
+                        Path(tmp) / "main.jac", Path(tmp), 8000, bind_host=bind
+                    );
+                }
+                env = popen.call_args.kwargs.get("env") or {};
+                assert env.get("JAC_SERVE_HOST") == (expected or None) , (
+                    f"{visible!r}: spawned env carried {env.get('JAC_SERVE_HOST')!r}"
+                );
+            }
+        }
+    } finally {
+        if inherited is not None {
+            os.environ["JAC_SERVE_HOST"] = inherited;
+        }
+    }
+}

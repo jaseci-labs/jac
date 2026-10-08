@@ -61,6 +61,9 @@ test "dev vite config registers the port reporter; build config does not" {
         # The plugin writes the bound port to .dev-port on "listening" —
         # the jac CLI reads it instead of parsing Vite's stdout.
         assert "jac-port-reporter" in dev_content;
+        # `host: true` would make Vite listen on every interface; binding past
+        # loopback has to be a choice the caller makes, not the config's default.
+        assert "host: true" not in dev_content;
         assert ".dev-port" in dev_content;
         # Build errors surface through Vite's native overlay in dev mode,
         # driven by the single status document the Jac process owns
@@ -283,6 +286,24 @@ test "vite commands address vite's js entry, not the bunx shim" {
         assert "x" not in dev_cmd;
         assert dev_cmd[1].endswith("vite.js");
         assert "--port" in dev_cmd;
+    }
+}
+
+test "a vite server host the project set wins over the serve host" {
+    import from jaclang.client.vite_bundler { _vite_host_arg }
+
+    # (the [client.vite] table, the host jac run resolved, host passed to vite)
+    cases = [
+        ({}, "127.0.0.1", "127.0.0.1"),
+        ({"server": {"port": 3000}}, "127.0.0.1", "127.0.0.1"),
+        ({"server": {"host": "0.0.0.0"}}, "127.0.0.1", ""),
+        ({"server": {"host": ""}}, "127.0.0.1", "127.0.0.1"),
+        ({"server": None}, "0.0.0.0", "0.0.0.0"),
+        ({"server": {"host": "0.0.0.0"}}, "", "")
+    ];
+    for (vite_config, serve_host, expected) in cases {
+        got = _vite_host_arg(vite_config, serve_host);
+        assert got == expected , f"{vite_config!r} serve={serve_host!r}: got {got!r}";
     }
 }
 

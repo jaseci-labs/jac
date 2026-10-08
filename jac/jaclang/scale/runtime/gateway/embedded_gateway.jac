@@ -13,7 +13,6 @@ import from jaclang.scale.runtime.gateway.dispatch {
 import from jaclang.scale.runtime.transport.transport { ServiceTransport }
 import from jaclang.scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,
-    DEFAULT_GATEWAY_HOST,
     DEFAULT_CLIENT_DIST_DIR
 }
 
@@ -24,7 +23,7 @@ obj EmbeddedGateway(Gateway) {
     has registry: ServiceRegistry,
         transport: ServiceTransport,
         port: int = DEFAULT_GATEWAY_PORT,
-        host: str = DEFAULT_GATEWAY_HOST,
+        host: str = "",
         client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
         port_pinned: bool = False,
         app: any = None;

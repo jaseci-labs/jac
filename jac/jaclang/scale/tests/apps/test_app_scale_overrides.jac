@@ -173,6 +173,9 @@ test "an explicit plugin directory without jac.toml uses defaults rather than it
 
 test "normalize_gateway_config fills every section with defaults" {
     gw = normalize_gateway_config({});
+    # Left unset so the serving process decides: a laptop must not inherit the
+    # pod's every-interface bind from a config normalized on the laptop.
+    assert gw["gateway_host"] == "";
     for key in [
         "colocate",
         "gateway_port",
@@ -590,5 +593,53 @@ test "an unknown project-level [scale] key still fails strict mode while serving
     } finally {
         reset_scale_config();
         shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "the local gateway binds loopback unless a host is chosen or it runs in a pod" {
+    import from jaclang.scale.runtime.orchestrator.orchestrator { FleetOrchestrator }
+
+    # (in a pod, [scale.gateway] gateway_host, JAC_SERVE_HOST the image sets, expected bind)
+    cases = [
+        (False, "", "", "127.0.0.1"),
+        (True, "", "", "0.0.0.0"),
+        (False, "0.0.0.0", "", "0.0.0.0"),
+        (False, "10.1.2.3", "", "10.1.2.3"),
+        (True, "127.0.0.1", "", "127.0.0.1"),
+        (False, "", "0.0.0.0", "0.0.0.0"),
+        (False, "10.1.2.3", "0.0.0.0", "10.1.2.3")
+    ];
+    saved = {
+        k: os.environ.get(k) for k in ["KUBERNETES_SERVICE_HOST", "JAC_SERVE_HOST"]
+    };
+    try {
+        for (in_pod, configured, image_host, expected) in cases {
+            os.environ.pop("KUBERNETES_SERVICE_HOST", None);
+            os.environ.pop("JAC_SERVE_HOST", None);
+            if in_pod {
+                os.environ["KUBERNETES_SERVICE_HOST"] = "10.96.0.1";
+            }
+            if image_host {
+                os.environ["JAC_SERVE_HOST"] = image_host;
+            }
+            orchestrator = FleetOrchestrator(
+                fleet=None,
+                gateway_config=normalize_gateway_config(
+                    {"gateway_host": configured} if configured else {}
+                )
+            );
+            got = orchestrator._gateway_host();
+            label = f"pod={in_pod} configured={configured!r} env={image_host!r}";
+            assert got == expected , f"{label}: expected {expected}, got {got}";
+        }
+    } finally {
+        for (k, v) in saved.items() {
+            if v is None {
+                os.environ.pop(k, None);
+            } else {
+                os.environ[k] = v;
+            }
+        }
     }
 }

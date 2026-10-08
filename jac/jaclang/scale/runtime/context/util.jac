@@ -36,7 +36,6 @@ glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0,
      _DEFAULT_BOOT_HEALTH_TIMEOUT: float = 60.0;
 
 glob DEFAULT_GATEWAY_PORT: int = 8000,
-     DEFAULT_GATEWAY_HOST: str = "0.0.0.0",
      DEFAULT_CLIENT_DIST_DIR: str = ".jac/client/dist",
      K8S_CLUSTER_DNS_SUFFIX: str = "svc.cluster.local",
      _RFC1123_MAX_LEN: int = 253;

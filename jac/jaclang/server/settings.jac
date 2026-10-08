@@ -97,7 +97,7 @@ obj AuthSettings {
 
 obj ServeSettings {
     has base_path: str = '',
-        host: str = '0.0.0.0',
+        host: str = '127.0.0.1',
         port: int = 8000,
         strict_port: bool = False,
         dev: bool = False,
@@ -137,6 +137,20 @@ def secret_home(base_path: str) -> str;
 
 def in_cluster -> bool {
     return bool(os.environ.get('KUBERNETES_SERVICE_HOST', '').strip());
+}
+
+
+def is_loopback_host(host: str) -> bool {
+    return host in ('localhost', '::1') or host.startswith('127.');
+}
+
+
+def default_host -> str {
+    return '0.0.0.0' if in_cluster() else '127.0.0.1';
+}
+
+def serve_host(configured: str = '') -> str {
+    return env_value('HOST') or configured or default_host();
 }
 
 def env_value(name: str) -> (str | None) {

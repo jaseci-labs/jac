@@ -204,6 +204,30 @@ test "build_env injects K8S_APP_NAME and K8S_NAMESPACE from k8s_config" {
     assert pairs.get("JAC_SV_NAME") == "orders";
     assert pairs.get("K8S_APP_NAME") == "jac-shop";
     assert pairs.get("K8S_NAMESPACE") == "jac-shop-dev";
+    # A pod is reached over the pod network, so its server must not rely on
+    # the local-run loopback default.
+    assert pairs.get("JAC_SERVE_HOST") == "0.0.0.0";
+    # A `[serve] host` pinned for a laptop must not ship to the pod: loopback
+    # there is unreachable by the Service and the probes. Only a real address
+    # the user chose survives.
+    import from jaclang.project.config { ServeConfig }
+    for (pinned, expected) in [
+        ("", "0.0.0.0"),
+        ("0.0.0.0", "0.0.0.0"),
+        ("127.0.0.1", "0.0.0.0"),
+        ("localhost", "0.0.0.0"),
+        ("::1", "0.0.0.0"),
+        ("10.1.2.3", "10.1.2.3")
+    ] {
+        pinned_builder = ManifestBuilder(k8s_config=cfg);
+        pinned_builder._serve_config_cache = ServeConfig(host=pinned);
+        got = {e["name"]: e["value"] for e in pinned_builder._build_env("orders", {})};
+        assert got.get("JAC_SERVE_HOST") == expected , (
+            f"pinned {pinned!r}: expected {expected!r}, got {got.get(
+                'JAC_SERVE_HOST'
+            )!r}"
+        );
+    }
 }
 
 

@@ -13,7 +13,6 @@ import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
 import from jaclang.scale.runtime.transport.http_forward { raw_forward }
 import from jaclang.scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,
-    DEFAULT_GATEWAY_HOST,
     DEFAULT_CLIENT_DIST_DIR
 }
 
@@ -43,7 +42,7 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     has registry: ServiceRegistry,
         app: any = None,
         port: int = DEFAULT_GATEWAY_PORT,
-        host: str = DEFAULT_GATEWAY_HOST,
+        host: str = "",
         client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
         admin_dist_dir: str = ".jac/admin",
         static_mounts: list[dict[str, str]] = [],

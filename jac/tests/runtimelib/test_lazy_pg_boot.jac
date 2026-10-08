@@ -383,6 +383,16 @@ test "the official image bakes the embedded postgres distribution" {
 }
 
 
+test "the official image serves on every interface" {
+    # `docker run -p` reaches a container over its own interface, never its
+    # loopback, and a local `jac run` now defaults to loopback.
+    text = DOCKERFILE.read_text();
+    bound = re.search(r"(?m)^ENV\s+JAC_SERVE_HOST=(\S+)", text);
+    assert bound is not None , "the image must set JAC_SERVE_HOST";
+    assert bound.group(1) == "0.0.0.0" , f"image binds {bound.group(1)}";
+}
+
+
 test "the official image defaults to a real non-root account" {
     text = DOCKERFILE.read_text();
     users = re.findall(r"(?m)^USER\s+(\S+)", text);

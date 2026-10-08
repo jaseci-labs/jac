@@ -43,6 +43,7 @@ import from jaclang.client.targets.react_native.config {
     _resolve_rn_release
 }
 import from jaclang.client.targets.react_native.dev {
+    backend_bind_host,
     inject_dev_api_base_url,
     resolve_metro_port,
     restore_app_json,
@@ -309,7 +310,9 @@ impl MobileTarget.dev(
         console.print(
             f"  Starting Jac API backend on port {api_eff}...", style="muted"
         );
-        backend_p = start_backend_server_common(entry_file, project_dir, api_eff);
+        backend_p = start_backend_server_common(
+            entry_file, project_dir, api_eff, bind_host=backend_bind_host(visible_host)
+        );
 
         if ensure_watchdog_common("the device") {
             import from jaclang.server.watcher { JacFileWatcher }

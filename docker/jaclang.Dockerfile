@@ -100,6 +100,10 @@ RUN groupadd --gid 1000 jac \
     && chown 1000:1000 /app \
     && chmod 1777 /opt/jac/state
 
+# A container is reached over its own interface, never its loopback, and a
+# local `jac run` now listens on loopback unless told otherwise.
+ENV JAC_SERVE_HOST=0.0.0.0
+
 WORKDIR /app
 USER jac
 

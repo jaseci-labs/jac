@@ -284,26 +284,45 @@ test "jac run --dev auto-installs watchdog even when not in jac.toml" {
     assert mock_provider.install_specs.call_args.args[1] == ["watchdog>=3.0.0"];
 }
 
-test "dev banner headlines vite port not api port" {
-    with TemporaryDirectory() as tmpdir {
-        captured_output = io.StringIO();
-        with patch(
-            "jaclang.cli.commands.execution._get_network_ips", return_value=[]
-        ) {
-            with redirect_stdout(captured_output) {
-                execution._print_startup_message(
-                    dev=True,
-                    no_client=False,
-                    primary_port=8000,
-                    api_port=8001,
-                    base_path=tmpdir
-                );
+test "dev banner headlines vite port not api port and lists only bound interfaces" {
+    ips = ["192.168.1.7", "10.0.0.4"];
+    # (bound host, network IPs that must be listed, IPs that must not appear)
+    cases = [
+        ("0.0.0.0", ["192.168.1.7", "10.0.0.4"], []),
+        ("::", ["192.168.1.7", "10.0.0.4"], []),
+        ("10.0.0.4", ["10.0.0.4"], ["192.168.1.7"]),
+        ("127.0.0.1", [], ["192.168.1.7", "10.0.0.4", "Network"]),
+        ("localhost", [], ["192.168.1.7", "10.0.0.4", "Network"]),
+        ("::1", [], ["192.168.1.7", "10.0.0.4", "Network"])
+    ];
+    for (bound, shown, hidden) in cases {
+        with TemporaryDirectory() as tmpdir {
+            captured_output = io.StringIO();
+            with patch(
+                "jaclang.cli.commands.execution._get_network_ips", return_value=ips
+            ) {
+                with redirect_stdout(captured_output) {
+                    execution._print_startup_message(
+                        dev=True,
+                        no_client=False,
+                        primary_port=8000,
+                        api_port=8001,
+                        base_path=tmpdir,
+                        host=bound
+                    );
+                }
+            }
+            output = captured_output.getvalue();
+            assert "Local:     http://localhost:8000/" in output , f"{bound}: {output}";
+            assert "App:  http://localhost:8000/" in output , f"{bound}: {output}";
+            assert "API:  http://localhost:8001/" in output , f"{bound}: {output}";
+            for ip in shown {
+                assert f"http://{ip}:8000/" in output , f"{bound}: {ip} missing:\n{output}";
+            }
+            for gone in hidden {
+                assert gone not in output , f"{bound}: {gone} advertised:\n{output}";
             }
         }
-        output = captured_output.getvalue();
-        assert "Local:     http://localhost:8000/" in output;
-        assert "App:  http://localhost:8000/" in output;
-        assert "API:  http://localhost:8001/" in output;
     }
 }
 

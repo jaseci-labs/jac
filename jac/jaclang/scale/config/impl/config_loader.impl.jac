@@ -116,7 +116,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'verify_url_template': '',
             'token_collection': 'auth_tokens'
         },
-        'gateway': {'gateway_port': 8000, 'gateway_host': '0.0.0.0', 'colocate': True}
+        'gateway': {'gateway_port': 8000, 'gateway_host': '', 'colocate': True}
     };
 }
 
@@ -561,7 +561,7 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
     normalized = {
         'colocate': bool(raw.get('colocate', True)),
         'gateway_port': int(raw.get('gateway_port', 8000)),
-        'gateway_host': str(raw.get('gateway_host', '0.0.0.0')),
+        'gateway_host': str(raw.get('gateway_host', '')),
         'gateway_port_pinned': bool(raw.get('gateway_port_pinned', False)),
         'http_forward_timeout': float(raw.get('http_forward_timeout', 30)),
         'rate_limit': {

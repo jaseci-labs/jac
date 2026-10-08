@@ -1083,7 +1083,7 @@ impl MicroserviceGateway.start(on_ready: any = None) -> None {
     import from functools { partial }
     ready: any = on_ready;
     if ready is None {
-        ready = partial(_log_gateway_ready, self.host);
+        ready = partial(_log_gateway_ready, settings.host);
     }
     serving.run(
         on_ready=ready, port_retries=0 if self.port_pinned else PORT_RETRY_LIMIT
