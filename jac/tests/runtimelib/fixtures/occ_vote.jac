@@ -9,10 +9,12 @@ that writes it. Two switches, each consumed by the run that honours it:
 - `rival_commits`: right after that commit, a second connection commits a
   change to the poll row, so this request's write of the poll is stale and
   the upsert reports a `WriteConflict` after the edge was already flushed.
-- `commit_faults`: this request's next COMMIT fails the way Postgres fails a
-  serializable transaction at commit (rolled back, SQLSTATE 40001).
+- `commit_faults`: each entry is taken by one run and makes that many of the
+  request's following COMMITs fail the way Postgres fails a serializable
+  transaction at commit (rolled back, SQLSTATE 40001).
 
-`runs` counts how many times the walker body ran.
+`runs` counts how many times the walker body ran, `failed_commits` how many
+COMMITs were made to fail.
 """
 
 import from jaclang.data.pgwire { PgWireError }
@@ -20,7 +22,8 @@ import from jaclang.runtime.runtime { JacRuntimeInterface as Jac }
 
 glob runs: list[int] = [],
      rival_commits: list[int] = [],
-     commit_faults: list[int] = [];
+     commit_faults: list[int] = [],
+     failed_commits: list[int] = [];
 
 node Poll {
     has total: int = 0;
@@ -53,13 +56,14 @@ def rival_bump(poll_id: str) {
 }
 
 
-def fail_next_commit {
+def fail_commits(times: int) {
     store: any = request_store();
     real_commit = store.commit;
-    armed = [True];
+    left = [times];
     def failing_commit {
-        if armed[0] and store.in_txn() {
-            armed[0] = False;
+        if left[0] > 0 and store.in_txn() {
+            left[0] -= 1;
+            failed_commits.append(1);
             store.rollback();
             raise PgWireError(
                 {
@@ -93,8 +97,7 @@ walker:pub Vote {
             rival_bump(jid(poll));
         }
         if commit_faults {
-            commit_faults.pop();
-            fail_next_commit();
+            fail_commits(commit_faults.pop());
         }
         for ballot in [edge here->:Ballot:->] {
             if not ballot.cast {

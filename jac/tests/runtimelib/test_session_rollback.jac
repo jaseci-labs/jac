@@ -150,6 +150,90 @@ test "consequence 1: a serialization failure at COMMIT is retried and the write 
 }
 
 
+test "consequence 1: after a real serialization failure the conflict names the row that moved" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        xid: UUID;
+        yid: UUID;
+        try {
+            # Root resolution stores the super-root the first time it runs;
+            # store it here so the two sessions below read it instead of both
+            # trying to create it.
+            _ = seed.user_root;
+            xid = _loose(seed, 1).ensure_id();
+            yid = _loose(seed, 2).ensure_id();
+            seed.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            # This session reads both rows, writes x, and flushes it.
+            x = ctx.mem.get(xid);
+            y = ctx.mem.get(yid);
+            assert x is not None and y is not None;
+            _as_any(x).archetype.n = 10;
+            ctx.mem.mark_dirty(x);
+            ctx.mem.flush();
+
+            # A second session commits a change to y.
+            rival = _ctx(td);
+            JacRuntime.exec_ctx = rival;
+            try {
+                theirs = rival.mem.get(yid);
+                assert theirs is not None;
+                _as_any(theirs).archetype.n = 99;
+                rival.mem.mark_dirty(theirs);
+                rival.mem.commit();
+            } finally {
+                rival.close();
+            }
+
+            # Writing y now fails serialization in Postgres; the retry runs in
+            # a new transaction, where x is unchanged and y is one version on.
+            JacRuntime.exec_ctx = ctx;
+            _as_any(y).archetype.n = 20;
+            ctx.mem.mark_dirty(y);
+            conflict: (WriteConflict | None) = None;
+            try {
+                ctx.mem.commit();
+            } except WriteConflict as wc {
+                conflict = wc;
+            }
+            assert conflict is not None , "a write over the rival's commit must conflict";
+            blamed = "x" if conflict.anchor_id == xid else str(conflict.anchor_id);
+            assert conflict.anchor_id == yid , (
+                "the rival moved y and nobody moved x, so y is the conflict; the "
+                f"session blamed {blamed} "
+                f"(expected v{conflict.expected_version}, found v{conflict.actual_version})"
+            );
+            assert conflict.actual_version == conflict.expected_version + 1;
+
+            # The re-run reads both again and commits on top of the rival.
+            ctx.mem.abort();
+            x2 = ctx.mem.get(xid);
+            y2 = ctx.mem.get(yid);
+            assert x2 is not None and y2 is not None;
+            assert _as_any(y2).archetype.n == 99;
+            _as_any(x2).archetype.n = 10;
+            ctx.mem.mark_dirty(x2);
+            _as_any(y2).archetype.n = 20;
+            ctx.mem.mark_dirty(y2);
+            ctx.mem.commit();
+            assert _stored(ctx, xid, "n") == "10";
+            assert _stored(ctx, yid, "n") == "20";
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
 test "consequence 1: the retry replays updates, inserts and deletes together" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
@@ -216,11 +300,26 @@ test "consequence 1: a COMMIT that keeps failing gives up as a conflict and lose
             );
             assert _stored(ctx, tid, "n") == "1";
 
+            # The unit is lost until it is aborted: whoever swallowed that
+            # conflict (the walk's own end-of-walk commit does) must not be
+            # able to commit it on a second try.
+            again = False;
+            try {
+                ctx.mem.commit();
+            } except WriteConflict {
+                again = True;
+            }
+            assert again , "a lost unit committed on the next call";
+            assert _stored(ctx, tid, "n") == "1";
+
+            # The re-run: abort, do the work again, commit.
+            ctx.mem.abort();
+            rerun = ctx.mem.get(tid);
+            assert rerun is not None;
+            _as_any(rerun).archetype.n = 2;
+            ctx.mem.mark_dirty(rerun);
             ctx.mem.commit();
-            assert _stored(ctx, tid, "n") == "2" , (
-                "the write the failed commits rolled back is still the session's "
-                "to make: the next commit must send it again"
-            );
+            assert _stored(ctx, tid, "n") == "2" , "the re-run did not commit";
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();
@@ -368,9 +467,11 @@ test "a transaction another writer joined is re-run, never replayed without that
             sess = _sess(ctx);
             fresh = _loose(ctx, 1);
             # What the outbox does to enqueue an effect atomically with the
-            # request: join the session's transaction and write a row of its own.
+            # request: take the session's store, join its transaction, and
+            # write a row of its own.
+            store = _as_any(sess.store);
             sess.ensure_writable_txn();
-            _as_any(sess.store).kv_put("rb_joined", "enqueued");
+            store.kv_put("rb_joined", "enqueued");
             left = _fail_commits(sess);
             raised = False;
             try {
@@ -387,7 +488,29 @@ test "a transaction another writer joined is re-run, never replayed without that
             assert _stored(ctx, fresh.ensure_id(), "n") is None , (
                 "the session's half was committed without the joined write"
             );
-            assert _as_any(sess.store).kv_get("rb_joined") is None;
+            assert store.kv_get("rb_joined") is None , (
+                "the joined write was rolled back with the transaction"
+            );
+
+            # A caller that swallows the conflict and commits again (the
+            # walk's own end-of-walk commit does) must not get the half either.
+            again = False;
+            try {
+                ctx.mem.commit();
+            } except WriteConflict {
+                again = True;
+            }
+            assert again , "a lost unit committed on the next call";
+            assert _stored(ctx, fresh.ensure_id(), "n") is None;
+
+            # The re-run: abort, do both writes again, commit.
+            ctx.mem.abort();
+            redo = _loose(ctx, 1);
+            sess.ensure_writable_txn();
+            store.kv_put("rb_joined", "enqueued");
+            ctx.mem.commit();
+            assert _stored(ctx, redo.ensure_id(), "n") == "1";
+            assert store.kv_get("rb_joined") == "enqueued";
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();
@@ -511,6 +634,7 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
     mod.runs.clear();
     mod.rival_commits.clear();
     mod.commit_faults.clear();
+    mod.failed_commits.clear();
     return (exec_mgr, walkers, mod);
 }
 
@@ -584,6 +708,41 @@ test "request loop: a COMMIT conflict the session retries does not cost a re-run
             );
             tally = _spawn(exec_mgr, walkers["Tally"]);
             assert tally.get("reports") == [{"cast": True, "total": 1}] , f"{tally}";
+        }
+    } finally {
+        _restore_read_tier(prior);
+    }
+}
+
+
+test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_attempts, then 409" {
+    import from jaclang.server.server { _occ_policy }
+    prior = _without_read_tier();
+    try {
+        with TemporaryDirectory() as td {
+            (exec_mgr, walkers, mod) = _vote_app(td);
+            seeded = _spawn(exec_mgr, walkers["Seed"]);
+            assert "error" not in seeded , f"seeding failed: {seeded}";
+            (mode, max_attempts, _backoff) = _occ_policy();
+            attempts = 1 if mode == "fail" else max(1, max_attempts);
+            # Every run spends the session's whole retry budget on its COMMIT.
+            mod.commit_faults.extend([MAX_RETRIES + 1] * attempts);
+            voted = _spawn(exec_mgr, walkers["Vote"]);
+            assert voted.get("error_code") == "write_conflict" , f"{voted}";
+            assert voted.get("http_status") == 409 , f"{voted}";
+            assert len(mod.runs) == attempts , (
+                f"the request loop owns the re-runs: {attempts} attempts allowed, "
+                f"the walker ran {len(mod.runs)} times"
+            );
+            assert len(mod.failed_commits) == attempts * (MAX_RETRIES + 1) , (
+                f"each attempt retries its COMMIT {MAX_RETRIES} times before the "
+                f"session hands the conflict to the request loop; "
+                f"{len(mod.failed_commits)} COMMITs failed in {attempts} attempts"
+            );
+            tally = _spawn(exec_mgr, walkers["Tally"]);
+            assert tally.get("reports") == [{"cast": False, "total": 0}] , (
+                f"a request answered 409 must leave nothing behind: {tally}"
+            );
         }
     } finally {
         _restore_read_tier(prior);
