@@ -97,7 +97,7 @@ obj WebSocketSettings {
 }
 
 obj IdentifierSettings {
-    has username: str = 'required',
+    has username: str = 'optional',
         email: str = 'optional',
         login_with: list[str] = [];
 

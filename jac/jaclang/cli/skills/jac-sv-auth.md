@@ -124,7 +124,7 @@ The policy is declared in `jac.toml` and enforced at every write (register, pass
 
 ```toml
 [serve.auth.identifiers]
-username = "required"       # "required" | "optional" | "off"
+username = "optional"       # "required" | "optional" | "off"; an account needs at least one identifier
 email = "optional"          # username "off" + email "required" = the email is the login
 login_with = []             # [] = every identifier that is not "off"
 

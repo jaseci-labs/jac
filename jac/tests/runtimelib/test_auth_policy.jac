@@ -120,7 +120,7 @@ test "auth settings load nested tables and env, and name moved or unknown keys" 
     assert loaded.password.min_length == 12 and loaded.password.require == ['digit'];
     assert loaded.password.hash_cost == 17;
     assert AuthSettings.from_table({}).password.min_length == 8;
-    assert AuthSettings.from_table({}).identifiers.username == 'required';
+    assert AuthSettings.from_table({}).identifiers.username == 'optional';
 
     with patch.dict(
         os.environ,
@@ -247,9 +247,15 @@ test "the identifier setups accept and refuse the right registrations" {
     try {
         configure_identity(AuthSettings(), '');
         assert codes(check_identifiers([username])) == [];
+        assert codes(check_identifiers([email])) == [];
         assert codes(check_identifiers([username, email])) == [];
-        assert codes(check_identifiers([email])) == ['IDENTIFIER_REQUIRED'];
         assert codes(check_username('victim@corp.example')) == ['USERNAME_INVALID'];
+
+        configure_identity(
+            AuthSettings(identifiers=IdentifierSettings(username='required')), ''
+        );
+        assert codes(check_identifiers([username])) == [];
+        assert codes(check_identifiers([email])) == ['IDENTIFIER_REQUIRED'];
 
         configure_identity(
             AuthSettings(

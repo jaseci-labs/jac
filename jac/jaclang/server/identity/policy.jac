@@ -1,7 +1,7 @@
 import hashlib;
 import logging;
 import re;
-import from pathlib { Path }
+import from jaclang.server.identity.common_passwords { COMMON_PASSWORDS }
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.serving.client { request_sync }
 import from jaclang.server.settings { IDENTIFIER_KINDS }
@@ -11,9 +11,7 @@ glob logger = logging.getLogger(__name__),
      VERIFY_BEFORE_LOGIN: str = 'verify_before_login',
      CONTAINED_IDENTIFIER_MIN: int = 4,
      BREACH_RANGE_URL: str = 'https://api.pwnedpasswords.com/range/',
-     BREACH_TIMEOUT: float = 3.0,
-     COMMON_PASSWORDS: Path = Path(__file__).parent / 'data' / 'common_passwords.txt',
-     _common: list[frozenset[str] | None] = [None];
+     BREACH_TIMEOUT: float = 3.0;
 
 enum Violation {
     IDENTIFIER_REQUIRED = 'IDENTIFIER_REQUIRED',
@@ -57,22 +55,6 @@ def refusal(violations: list[Violation]) -> dict[str, any] {
         'code': POLICY_VIOLATION,
         'violations': [v.value for v in ordered]
     };
-}
-
-
-def common_passwords -> frozenset[str] {
-    cached = _common[0];
-    if cached is None {
-        cached = frozenset(
-            [
-                line.strip()
-                for line in COMMON_PASSWORDS.read_text(encoding='utf-8').splitlines()
-                if line.strip()
-            ]
-        );
-        _common[0] = cached;
-    }
-    return cached;
 }
 
 
@@ -175,7 +157,7 @@ def check_password(password: str, identifiers: list[str]) -> list[Violation] {
         out.append(Violation.PASSWORD_MISSING_CLASS);
     }
     lowered = password.lower();
-    if rules.reject_common and lowered in common_passwords() {
+    if rules.reject_common and lowered in COMMON_PASSWORDS {
         out.append(Violation.PASSWORD_COMMON);
     }
     if rules.reject_identifiers {

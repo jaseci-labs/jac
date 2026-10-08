@@ -711,6 +711,31 @@ def register_auth_endpoints(server: EndpointHost) {
         )
     );
 
+    def auth_policy_handler -> TransportResponse {
+        return ok(public_policy());
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/user/auth-policy',
+            callback=auth_policy_handler,
+            parameters=[],
+            tags=['User APIs'],
+            summary='Auth policy',
+            description='The identifier, password, email verification and registration rules a sign-up or sign-in form needs. Public.'
+        )
+    );
+
+    import from jaclang.server.endpoints.second_factor {
+        register_second_factor_endpoints
+    }
+    register_second_factor_endpoints(server);
+}
+
+
+def register_mail_endpoints(server: EndpointHost) {
+    users = server.identity();
+
     async def send_verification_handler(
         request: Request, body_data: SendVerificationRequest
     ) -> TransportResponse {
@@ -798,24 +823,4 @@ def register_auth_endpoints(server: EndpointHost) {
             description="Mails a reset link to the account's recovery email when the account exists. Always answers 200."
         )
     );
-
-    def auth_policy_handler -> TransportResponse {
-        return ok(public_policy());
-    }
-    server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/user/auth-policy',
-            callback=auth_policy_handler,
-            parameters=[],
-            tags=['User APIs'],
-            summary='Auth policy',
-            description='The identifier, password, email verification and registration rules a sign-up or sign-in form needs. Public.'
-        )
-    );
-
-    import from jaclang.server.endpoints.second_factor {
-        register_second_factor_endpoints
-    }
-    register_second_factor_endpoints(server);
 }

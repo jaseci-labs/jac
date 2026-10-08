@@ -85,3 +85,21 @@ def create(config: dict[str, any]) -> Emailer | None {
     }
     return _instantiate(cls, provider, config, from_address, enabled);
 }
+
+def configured -> Emailer | None {
+    import from jaclang.scale.config.config_loader { get_scale_config }
+    return create(get_scale_config().get_emailer_config());
+}
+
+def verification_problems(mode: str, emailer: Emailer | None) -> list[str] {
+    if mode == 'none' or (emailer is not None and emailer.is_ready()) {
+        return [];
+    }
+    problem = f"[serve.auth.email] verification = '{mode}' needs a mail "
+    "transport, and [scale.emailer] configures none";
+    if mode == 'required' {
+        return [problem];
+    }
+    logger.warning(problem + '; verification mail will not be sent');
+    return [];
+}

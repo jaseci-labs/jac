@@ -18,6 +18,11 @@ import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
 import from jaclang.scale.config.config_loader { ADMIN_PASSWORD_ENV, get_scale_config }
 import from jaclang.server.identity.policy { check_password }
 import from jaclang.scale.emailer.emailer { Emailer }
+import from jaclang.scale.emailer.factory {
+    configured as configured_emailer,
+    verification_problems
+}
+import from jaclang.server.endpoints.auth { register_mail_endpoints }
 import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale.server.jobs_ext { JobsExtension }
 import from jaclang.scale.server.sso_ext { ApiKeyExtension, SSOExtension }
@@ -221,30 +226,21 @@ obj MailExtension(ServerExtension) {
 
     def transport -> Emailer | None {
         if not self.resolved {
-            import from jaclang.scale.emailer.factory { create as create_emailer }
-            self.emailer = create_emailer(get_scale_config().get_emailer_config());
+            self.emailer = configured_emailer();
             self.resolved = True;
         }
         return self.emailer;
     }
 
     def validate(server: JacAPIServer) -> list[str] {
-        mode = server.resolved_settings().auth.email.verification;
-        emailer = self.transport();
-        if mode == 'none' or (emailer is not None and emailer.is_ready()) {
-            return [];
-        }
-        problem = f"[serve.auth.email] verification = '{mode}' needs a mail "
-        "transport, and [scale.emailer] configures none";
-        if mode == 'required' {
-            return [problem];
-        }
-        logger.warning(problem + '; verification mail will not be sent');
-        return [];
+        return verification_problems(
+            server.resolved_settings().auth.email.verification, self.transport()
+        );
     }
 
     def register(server: JacAPIServer) {
         server.emailer = self.transport();
+        register_mail_endpoints(server);
     }
 }
 

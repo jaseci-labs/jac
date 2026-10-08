@@ -476,16 +476,19 @@ A project declares its auth policy under `[serve.auth]` in `jac.toml`. The serve
 
 ```toml
 [serve.auth.identifiers]
-username = "required"    # "required" | "optional" | "off"
+username = "optional"    # "required" | "optional" | "off"
 email = "optional"       # "required" | "optional" | "off"
 login_with = []          # [] = every identifier that is not "off"
 ```
 
 | Setup | `username` | `email` |
 |-------|-----------|---------|
+| Either one (the default): an account registers with a username, an email, or both | `"optional"` | `"optional"` |
 | The username is the email | `"off"` | `"required"` |
 | A username, plus a required email | `"required"` | `"required"` |
-| No email needed (the default) | `"required"` | `"optional"` |
+| A username, no email needed | `"required"` | `"optional"` |
+
+An account always needs at least one identifier.
 
 A new username may not contain `@`, so a username can never be mistaken for, or block, an email address. `[serve.auth.username]` adds `min_length`, `max_length` and an optional `pattern`.
 
@@ -526,7 +529,7 @@ Violation codes: `IDENTIFIER_REQUIRED`, `IDENTIFIER_NOT_ALLOWED`, `USERNAME_INVA
 
 ```json
 {
-  "identifiers": {"username": "required", "email": "optional", "login_with": ["username", "email"]},
+  "identifiers": {"username": "optional", "email": "optional", "login_with": ["username", "email"]},
   "username": {"min_length": 1, "max_length": 64, "pattern": ""},
   "email": {"verification": "none"},
   "password": {"min_length": 8, "max_length": 128, "require": [], "reject_common": true, "reject_identifiers": true},

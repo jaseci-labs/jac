@@ -382,7 +382,7 @@ token_ttl_days = 7
 session_cookie = false   # Also set an HttpOnly jac_session cookie that authorizes GET/HEAD, for <img>/<video>/downloads. JAC_SERVE_AUTH_SESSION_COOKIE
 
 [serve.auth.identifiers]
-username = "required"    # "required" | "optional" | "off"
+username = "optional"    # "required" | "optional" | "off". An account always needs at least one identifier
 email = "optional"       # "required" | "optional" | "off"
 login_with = []          # Identifiers that may log in; [] = every identifier that is not "off"
 
