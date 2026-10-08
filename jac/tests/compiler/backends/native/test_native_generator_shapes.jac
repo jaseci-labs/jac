@@ -77,3 +77,17 @@ test "an enum whose members come from an impl block has its layout" {
     assert "dark/1 light/7 True True" in out , out;
     assert "LIGHT HIGH 8" in out , out;
 }
+
+"""A name unpacked in a loop header (`for (i, item) in enumerate(items)`, and
+the same through `zip` and `dict.items`) was held as an untyped pointer. Passed
+to an untyped parameter it was boxed as a string, so `isinstance` on the other
+side failed. The compiler's own generic-call solver does this, which left a
+type variable unsolved."""
+test "an object unpacked in a loop header keeps its class when boxed" {
+    out = assert_native_identity(
+        fixture("unpacked_object_to_any.jac"), profiles=["rc", "managed"]
+    );
+    assert "['0:leaf:a', '1:base:b', '2:leaf:c']" in out , out;
+    assert "['leaf:a/str:p', 'base:b/str:q', 'leaf:c/str:r']" in out , out;
+    assert "['k1=leaf:a', 'k2=base:b']" in out , out;
+}

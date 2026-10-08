@@ -1422,6 +1422,17 @@ impl NaIRGenPass._retype_boxed_tuple_fields(
             and field.type != want {
             field = self.builder.bitcast(field, want, name=f"iterf.f{i}.tuple");
             changed = True;
+        } elif field.type == ir.IntType(8).as_pointer() {
+            class_name = self._struct_name_of(target);
+            class_type = self.struct_types.get(class_name)
+                if class_name is not None
+                else None;
+            if class_type is not None {
+                field = self.builder.bitcast(
+                    field, class_type.as_pointer(), name=f"iterf.f{i}.obj"
+                );
+                changed = True;
+            }
         }
         fields.append(field);
     }
