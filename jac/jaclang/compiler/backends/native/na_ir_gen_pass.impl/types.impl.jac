@@ -2958,6 +2958,45 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             );
             return val;
         }
+        _dc_src: (str | None) = None;
+        _dc_dst: (str | None) = None;
+        for (_dc_spec, _dc_ty) in self.dict_types.items() {
+            _dc_ptr = _dc_ty.as_pointer();
+            if _dc_ptr == val.type {
+                _dc_src = _dc_spec;
+            }
+            if _dc_ptr == target_type {
+                _dc_dst = _dc_spec;
+            }
+        }
+        if _dc_src is not None and _dc_dst is not None and _dc_src != _dc_dst {
+            _dc_from = self.dict_helpers.get(_dc_src);
+            _dc_to = self.dict_helpers.get(_dc_dst);
+            if _dc_from is not None and _dc_to is not None {
+                _dc_fk: ir.Type = _dc_from["key_type"];
+                _dc_tk: ir.Type = _dc_to["key_type"];
+                _dc_fv: ir.Type = _dc_from["val_type"];
+                _dc_tv: ir.Type = _dc_to["val_type"];
+                _dc_keys_fit = self._is_jacval_ty(_dc_fk) == self._is_jacval_ty(_dc_tk);
+                _dc_vals_fit = self._is_jacval_ty(_dc_fv) == self._is_jacval_ty(_dc_tv);
+                if not (_dc_keys_fit and _dc_vals_fit) {
+                    self.emit(
+                        E5092,
+                        node_override=self.ctx.current_node,
+                        kind="coercion",
+                        name=f"dict[{_dc_src}] -> dict[{_dc_dst}]",
+                        help_text=(
+                            "These dict layouts store their entries at different "
+                            "widths, so a cast would corrupt them. A dict display "
+                            "takes its layout from its own entries unless it is "
+                            "assigned or returned directly: bind it to a name "
+                            "annotated with the destination type first."
+                        )
+                    );
+                    return val;
+                }
+            }
+        }
         return self.builder.bitcast(val, target_type, name="ptrcast");
     }
 

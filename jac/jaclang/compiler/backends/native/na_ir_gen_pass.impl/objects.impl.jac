@@ -4847,7 +4847,10 @@ impl NaIRGenPass._jc_reference_schema(
         if semantic_name in self.struct_field_indices {
             return {"code": "obj", "class": semantic_name};
         }
-        return {"code": "str"} if semantic_name == "str" else None;
+        if semantic_name == "str" {
+            return {"code": "str"};
+        }
+        return None;
     }
     name = _ir_struct_name(ft.pointee);
     if name in self.struct_field_indices {

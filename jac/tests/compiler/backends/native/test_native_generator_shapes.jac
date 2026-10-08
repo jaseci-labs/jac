@@ -50,3 +50,22 @@ test "an archetype whose body is an impl block has its fields and methods" {
     assert "1 c=1" in out , out;
     assert "9 4 5" in out , out;
 }
+
+"""A `dict[str, str]` and a `dict[str, any]` have different layouts: one holds
+pointers, the other boxed values. A conditional expression gives its dict
+literal arm the literal's own type, and the result was then handed to the
+wider type by a pointer cast, so every later read took a string pointer for a
+box. Until that conversion exists the cast is refused by name; the same
+literal returned directly takes the wider type and lowers."""
+test "a dictionary is refused, not reinterpreted, where boxed values are expected" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from tests.support { native_force_opts }
+    options = native_force_opts();
+    options.skip_native_engine = True;
+    options.no_ir_cache = True;
+    program = JacProgram();
+    program.compile(file_path=fixture("dict_arm_boxed_values.jac"), options=options);
+    refusals = [str(e) for e in program.errors_had];
+    assert any("'arm'" in r for r in refusals) , refusals;
+    assert not any("'direct'" in r for r in refusals) , refusals;
+}
