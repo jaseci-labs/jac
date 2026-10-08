@@ -69,3 +69,11 @@ test "a dictionary is refused, not reinterpreted, where boxed values are expecte
     assert any("'arm'" in r for r in refusals) , refusals;
     assert not any("'direct'" in r for r in refusals) , refusals;
 }
+
+test "an enum whose members come from an impl block has its layout" {
+    out = assert_native_identity(
+        fixture("enum_impl_body.jac"), profiles=["rc", "managed"]
+    );
+    assert "dark/1 light/7 True True" in out , out;
+    assert "LIGHT HIGH 8" in out , out;
+}
