@@ -7,8 +7,6 @@ import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
 import type from jaclang.compiler.placement.placement { PlacementSummary }
 import type from jaclang.compiler.placement.placement_work { PlacementWork }
-import type from jaclang.compiler.capability_notes { CapabilityNote }
-import type from jaclang.compiler.native_bindings { NativeBindings }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
     CompilationProduct,
@@ -322,8 +320,8 @@ class AnalysisCaches {
     has placement_summaries: dict[str, PlacementSummary],
         placement_work: (PlacementWork | None),
         placement_evidence: dict[str, list[str]],
-        capability_notes: dict[str, dict[str, CapabilityNote]],
-        native_bindings: (NativeBindings | None),
+        capability_notes: dict[str, dict[str, any]],
+        native_bindings: any,
         native_placing: set[str],
         placement_refusals: dict[str, dict[str, set[int]]],
         analyses_run: AnalysisLedger,
@@ -343,8 +341,8 @@ class AnalysisCaches {
         self.placement_summaries: dict[str, PlacementSummary] = {};
         self.placement_work: (PlacementWork | None) = None;
         self.placement_evidence: dict[str, list[str]] = {};
-        self.capability_notes: dict[str, dict[str, CapabilityNote]] = {};
-        self.native_bindings: (NativeBindings | None) = None;
+        self.capability_notes: dict[str, dict[str, any]] = {};
+        self.native_bindings: any = None;
         self.native_placing: set[str] = set();
         self.placement_refusals: dict[str, dict[str, set[int]]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
