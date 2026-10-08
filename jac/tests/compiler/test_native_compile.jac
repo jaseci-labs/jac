@@ -477,10 +477,11 @@ test "a jaclang import in an impl folder annex compiles in the kernel" {
 
 """A kernel compile can come back with no unit for the entry. If the kernel
 reported errors, the module is compiled and failed, and the host must not
-compile it again. Otherwise the kernel emitted nothing because the module is
-not its to emit (one placed in the native codespace, whose code the host
-generates) or has nothing to emit (an empty package `__init__`), and the
-host compiles it."""
+compile it again, whichever codespace it was placed in: a native module's
+code is generated in the kernel too. Otherwise the kernel emitted nothing
+because it handed the module back (an integer literal past a native int) or
+there is nothing to emit (an empty package `__init__`), and the host
+compiles it."""
 test "a kernel compile with no unit is final only when it reported errors" {
     import from unittest.mock { patch }
     import from jaclang.compiler.frontend.kernel_analyze {
@@ -500,7 +501,7 @@ test "a kernel compile with no unit is final only when it reported errors" {
             (True, [], False),
             (False, [], False),
             (False, failed, True),
-            (True, failed, False)
+            (True, failed, True)
         ] {
             canned = CompileReport(
                 analysis=AnalysisReport(
@@ -524,9 +525,10 @@ test "a kernel compile with no unit is final only when it reported errors" {
 }
 
 """A module placed in the native codespace resolves `import time` to the
-module the native stdlib ships, which the snapshot does not carry: native
-code is the host's to generate. A kernel compile that stops only for want
-of answers about native stdlib modules hands the module to the host."""
+module the native stdlib ships. A kernel run with no host to ask cannot
+answer for those modules, and one that stops only for want of such answers
+hands the module to the host, as does one that meets an integer literal
+past a native int or third-party Python source."""
 test "a kernel compile that misses only native stdlib answers defers to the host" {
     import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
     import from jaclang.project.kernel_snapshot { native_stdlib_misses }
