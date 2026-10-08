@@ -23,3 +23,15 @@ test "a switch falls through to the next case until a break" {
     assert "3 many nine" in out , out;
     assert "5109" in out , out;
 }
+
+"""`(a, b) = pair` inside a function, where `a` and `b` are module globals,
+assigns the globals, as `a = x` does. The native lowering bound two locals
+and the globals kept their old values."""
+test "a tuple assignment to module globals writes the globals" {
+    out = assert_native_identity(
+        fixture("unpack_into_globals.jac"), profiles=["rc", "managed"]
+    );
+    assert "World Hello 1" in out , out;
+    assert "y1 y2 3" in out , out;
+    assert "['p', 'q'] q lr" in out , out;
+}

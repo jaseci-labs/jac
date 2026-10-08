@@ -2812,6 +2812,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _unpack_target_ok(target: uni.UniNode) -> bool;
+    def _unpack_store_global(
+        var_name: str, value: ir.Value, moved: bool, at: uni.UniNode
+    ) -> bool;
+
     def _codegen_tuple_index(
         tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
     ) -> (ir.Value | None);
