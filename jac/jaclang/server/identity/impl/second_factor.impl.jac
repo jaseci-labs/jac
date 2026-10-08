@@ -36,8 +36,8 @@ def _claim_attempt(user_id: str) -> int {
     retry = consume_limit(
         ATTEMPT_SCOPE,
         user_id,
-        max(1, int(settings.second_factor_attempts)),
-        max(1, int(settings.second_factor_lockout_seconds))
+        max(1, int(settings.second_factor.attempts)),
+        max(1, int(settings.second_factor.lockout_seconds))
     );
     if retry < 0 {
         raise SecondFactorUnavailable();
@@ -255,7 +255,7 @@ impl SecondFactorManager.enroll(
         }
     );
     self.storage._update_credentials(user_id, kept);
-    issuer = str(auth_settings().second_factor_issuer or '').strip() or DEFAULT_ISSUER;
+    issuer = str(auth_settings().second_factor.issuer or '').strip() or DEFAULT_ISSUER;
     return {
         'ok': True,
         'factor_id': factor_id,
@@ -370,7 +370,7 @@ impl SecondFactorManager.remove(
 }
 
 impl SecondFactorManager.begin_login(user_id: str) -> dict[str, any] {
-    ttl = max(30, int(auth_settings().second_factor_challenge_ttl_seconds));
+    ttl = max(30, int(auth_settings().second_factor.challenge_ttl_seconds));
     token = AuthTokenStore.instance().create_token(
         user_id, LOGIN_CHALLENGE_PURPOSE, ttl
     );

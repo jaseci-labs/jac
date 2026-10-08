@@ -16,29 +16,41 @@ impl UserManager.postinit -> None {
     self._identity_storage = PgIdentityStorage(store=store);
 }
 
-impl UserManager.create_user(username: str, password: str) -> dict[str, any] {
-    return self.create_user_with_identities(
-        identities=[{'type': 'username', 'value': username}],
-        credential={'type': 'password', 'password': password}
-    );
-}
-
 impl UserManager.create_user_with_identities(
     identities: list[dict[str, any]],
     credential: dict[str, any],
     profile: dict[str, any] | None = None
 ) -> dict[str, any] {
+    violations = check_identifiers(identities)
+        + check_password(
+            str(credential.get('password') or ''),
+            [str(identity.get('value') or '') for identity in identities]
+        );
+    if violations {
+        return refusal(violations);
+    }
     return self._identity_storage.create_user(identities, credential, profile);
 }
 
 impl UserManager.create_internal_user(
     username: str, password: str, role: str = 'user'
 ) -> dict[str, any] {
-    result = self.create_user(username, password);
+    result = self._identity_storage.create_user(
+        [{'type': 'username', 'value': username}],
+        {'type': 'password', 'password': password}
+    );
     if result.get('user_id') and role != 'user' {
         self.set_user_role(result['user_id'], role);
     }
     return result;
+}
+
+impl UserManager.create_federated_user(
+    identities: list[dict[str, any]]
+) -> dict[str, any] {
+    return self._identity_storage.create_user(
+        identities, {'type': 'password', 'password': secrets.token_urlsafe(48)}
+    );
 }
 
 impl UserManager.ensure_internal_user(
@@ -71,16 +83,39 @@ impl UserManager.update_user_fields(user_id: str, fields: dict[str, any]) -> boo
     return self._identity_storage.update_user_fields(user_id, fields);
 }
 
-impl UserManager.authenticate(identifier: str, password: str) -> dict[str, any] | None {
+impl UserManager.authenticate(
+    identifier: str, password: str, source: str = ''
+) -> dict[str, any] | None {
+    lockout = auth_settings().lockout;
+    actor = source + ':' + identifier.lower().strip();
+    retry = consume_limit(
+        LOGIN_SCOPE, actor, lockout.max_attempts, lockout.window_seconds
+    );
+    if retry != 0 {
+        raise AttemptsExhausted(retry_after=retry);
+    }
     result = self._identity_storage.authenticate(identifier, password);
     if result is not None {
-        if self.second_factors().required_for(str(result.get('user_id', ''))) {
-            result['second_factor_required'] = True;
-        } else {
-            result['token'] = self.create_jwt_token(result.get('user_id', ''));
+        if lockout.max_attempts > 0 {
+            refund_limit(LOGIN_SCOPE, actor);
         }
+        result['second_factor_required'] = self.second_factors().required_for(
+            str(result.get('user_id', ''))
+        );
     }
     return result;
+}
+
+impl UserManager.open_session(user_id: str) -> SessionGrant {
+    unverified = awaiting_verification(self.get_user(user_id) or {});
+    if unverified is not None {
+        return SessionGrant(unverified=unverified);
+    }
+    factors = self.second_factors();
+    if factors.required_for(user_id) {
+        return SessionGrant(challenge=factors.begin_login(user_id));
+    }
+    return SessionGrant(token=self.create_jwt_token(user_id));
 }
 
 impl UserManager.find_user_by_identity(value: str) -> dict[str, any] | None {
@@ -147,30 +182,85 @@ impl UserManager.ensure_user_root(user_id: str) -> str | None {
     return self._identity_storage.ensure_user_by_id(user_id);
 }
 
+impl UserManager.identifier_values(user_id: str) -> list[str] {
+    user = self.get_user(user_id) or {};
+    return [
+        str(identity.get('value_raw') or '')
+        for identity in (user.get('identities') or [])
+        if identity.get('type') in IDENTIFIER_KINDS
+    ];
+}
+
+impl UserManager.password_refusal(
+    user_id: str, new_password: str
+) -> dict[str, any] | None {
+    violations = check_password(new_password, self.identifier_values(user_id));
+    if not violations
+        and self._identity_storage.password_reused(
+            self._identity_storage._get_credentials(user_id), new_password
+        ) {
+        violations = [Violation.PASSWORD_REUSED];
+    }
+    return refusal(violations) if violations else None;
+}
+
 impl UserManager.update_password(
     user_id: str, current_password: str, new_password: str
-) -> dict[str, str] {
-    return self._identity_storage.update_password(
-        user_id, current_password, new_password
-    );
+) -> dict[str, any] {
+    return self.password_refusal(user_id, new_password)
+        or self._identity_storage.update_password(
+            user_id, current_password, new_password
+        );
 }
 
 impl UserManager.reset_password_by_user_id(
     user_id: str, new_password: str
-) -> dict[str, str] {
-    return self._identity_storage.reset_password(user_id, new_password);
+) -> dict[str, any] {
+    return self.password_refusal(user_id, new_password)
+        or self._identity_storage.reset_password(user_id, new_password);
 }
 
-impl UserManager.add_identity(user_id: str, identity: dict[str, any]) -> bool {
-    return self._identity_storage._add_identity(user_id, identity);
+impl UserManager.add_identity(
+    user_id: str, kind: str, value: str, is_recovery: bool = False
+) -> dict[str, any] {
+    normalized = value.lower().strip();
+    if not normalized {
+        return {'error': 'Identity value is required', 'code': 'VALIDATION_ERROR'};
+    }
+    violations = check_identity(kind, value);
+    if violations {
+        return refusal(violations);
+    }
+    taken = {'error': f"This {kind} is already registered", 'code': 'IDENTITY_TAKEN'};
+    if self._identity_storage.identity_taken(normalized) {
+        return taken;
+    }
+    try {
+        added = self._identity_storage._add_identity(
+            user_id,
+            {
+                'type': kind,
+                'value_raw': value,
+                'value_normalized': normalized,
+                'verified': False,
+                'is_recovery': is_recovery
+            }
+        );
+    } except IdentityTakenError {
+        return taken;
+    }
+    if not added {
+        return {'error': 'User not found', 'code': 'NOT_FOUND'};
+    }
+    return {'status': 'added', 'verified': False};
 }
 
 impl UserManager.rename_username(user_id: str, new_username: str) -> dict[str, any] {
+    violations = check_identity('username', str(new_username or ''));
+    if violations {
+        return refusal(violations);
+    }
     return self._identity_storage.rename_username(user_id, new_username);
-}
-
-impl UserManager.is_identity_taken(value: str) -> bool {
-    return self._identity_storage.identity_taken(value);
 }
 
 impl UserManager.set_identity_verified(user_id: str, value_normalized: str) -> bool {
@@ -233,7 +323,13 @@ impl UserManager.create_jwt_token(
             payload['role'] = role;
         }
     }
-    payload.update(carried_claims(assurance));
+    carried = carried_claims(assurance);
+    if not carried and self.second_factors().required_for(user_id) {
+        raise SecondFactorRequired(
+            f"user {user_id} has a verified second factor; a session needs its proof"
+        );
+    }
+    payload.update(carried);
     return jwt_encode(payload, signing_secret(), algorithm=signing_algorithm());
 }
 
@@ -336,11 +432,7 @@ impl UserManager.refresh_jwt_token(token: str) -> str | None {
         if not user_id {
             return None;
         }
-        carried = carried_claims(decoded);
-        if not carried and self.second_factors().required_for(str(user_id)) {
-            return None;
-        }
-        return self.create_jwt_token(user_id, assurance=carried);
+        return self.create_jwt_token(user_id, assurance=carried_claims(decoded));
     } except Exception as e {
         logger.debug(f"Failed to refresh JWT token: {str(e)}");
         return None;
@@ -464,7 +556,7 @@ impl UserManager.delete_user(user_id: str) -> dict[str, str] {
 }
 
 impl UserManager.bootstrap_admin_user(
-    admin_username: str = 'admin', default_password: str = 'changeme'
+    admin_username: str = 'admin', password: str = ''
 ) -> dict[str, str] {
     existing = self.find_user_by_identity(admin_username);
     if existing {
@@ -475,18 +567,29 @@ impl UserManager.bootstrap_admin_user(
         }
         return {'message': 'Admin user already exists', 'username': admin_username};
     }
-
-    result = self.create_internal_user(admin_username, default_password);
+    minted = not password;
+    if minted {
+        if in_cluster() {
+            return {
+                'error': 'no admin password is configured; set [scale.admin] '
+                'default_password (jac scale deploy mints one into the app '
+                'Secret)'
+            };
+        }
+        password = secrets.token_urlsafe(18);
+    }
+    result = self.create_internal_user(admin_username, password, UserRole.ADMIN.value);
     if 'error' in result {
         return result;
     }
     user_id = result.get('user_id', '');
-    self.set_user_role(user_id, 'admin');
     self.set_requires_password_reset(user_id, True);
-
-    logger.warning(
-        f"Admin user '{admin_username}' created with default password. Please change immediately!"
-    );
+    if minted {
+        logger.warning(
+            f"Admin user '{admin_username}' created with the one-time password "
+            f"{password} - it is shown once and must be changed at first login."
+        );
+    }
     return {
         'message': 'Admin user created successfully',
         'username': admin_username,
@@ -495,7 +598,7 @@ impl UserManager.bootstrap_admin_user(
 }
 
 impl UserManager.create_user_as_admin(
-    username: str,
+    identities: list[dict[str, any]],
     password: str,
     role: str = 'user',
     requires_password_reset: bool = True
@@ -504,16 +607,16 @@ impl UserManager.create_user_as_admin(
     if role not in valid_roles {
         return {'error': f"Invalid role. Must be one of: {', '.join(valid_roles)}"};
     }
-    result = self.create_internal_user(username, password);
+    result = self.create_user_with_identities(
+        identities, {'type': 'password', 'password': password}
+    );
     if 'error' in result {
         return result;
     }
-    user_id = result.get('user_id', '');
-
     self._identity_storage.update_user_fields(
-        user_id, {'role': role, 'requires_password_reset': requires_password_reset}
+        str(result.get('user_id', '')),
+        {'role': role, 'requires_password_reset': requires_password_reset}
     );
-    result['username'] = username;
     result['role'] = role;
     result['requires_password_reset'] = str(requires_password_reset);
     return result;

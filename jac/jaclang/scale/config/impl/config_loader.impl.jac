@@ -83,7 +83,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'enabled': True,
             'username': 'admin',
             'email': 'admin@localhost',
-            'default_password': 'changeme',
+            'default_password': '',
             'session_expiry_hours': 24,
             'require_password_reset': True
         },
@@ -108,13 +108,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
                 'use_tls': True,
                 'timeout': 10.0
             }
-        },
-        'auth': {
-            'reset_token_ttl_seconds': 1800,
-            'verify_token_ttl_seconds': 86400,
-            'reset_url_template': '',
-            'verify_url_template': '',
-            'token_collection': 'auth_tokens'
         },
         'gateway': {'gateway_port': 8000, 'gateway_host': '0.0.0.0', 'colocate': True}
     };
@@ -463,30 +456,6 @@ impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
-    config = self.load();
-    auth_config: any = config.get('auth', {}) or {};
-    return {
-        'reset_token_ttl_seconds': int(
-            auth_config.get('reset_token_ttl_seconds', 1800)
-        ),
-        'verify_token_ttl_seconds': int(
-            auth_config.get('verify_token_ttl_seconds', 86400)
-        ),
-        'reset_url_template': auth_config.get('reset_url_template', ''),
-        'verify_url_template': auth_config.get('verify_url_template', ''),
-        'token_collection': auth_config.get('token_collection', 'auth_tokens'),
-        'forgot_password_rate_per_hour': int(
-            auth_config.get('forgot_password_rate_per_hour', 3)
-        ),
-        'forgot_password_burst': int(auth_config.get('forgot_password_burst', 3)),
-        'send_verification_rate_per_hour': int(
-            auth_config.get('send_verification_rate_per_hour', 5)
-        ),
-        'send_verification_burst': int(auth_config.get('send_verification_burst', 5))
-    };
-}
-
 impl JacScaleConfig.get_gateway_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     return normalize_gateway_config(config.get('gateway', {}));
@@ -612,7 +581,11 @@ impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
         'enabled': admin_config.get('enabled', True),
         'username': admin_config.get('username', 'admin'),
         'email': admin_config.get('email', 'admin@localhost'),
-        'default_password': admin_config.get('default_password', 'changeme'),
+        'default_password': str(
+            os.environ.get(ADMIN_PASSWORD_ENV)
+                or admin_config.get('default_password')
+                or ''
+        ),
         'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
         'require_password_reset': admin_config.get('require_password_reset', True)
     };

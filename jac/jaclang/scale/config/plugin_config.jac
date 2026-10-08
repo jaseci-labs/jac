@@ -1205,8 +1205,8 @@ class JacScalePluginConfig {
                         },
                         "default_password": {
                             "type": "string",
-                            "default": "changeme",
-                            "description": "Initial admin password; must be rotated on first login by default"
+                            "default": "",
+                            "description": "Initial admin password, held to [serve.auth.password]. Unset: a dev server mints a one-time password and logs it once; a cluster needs one configured"
                         },
                         "session_expiry_hours": {
                             "type": "int",
@@ -1340,58 +1340,6 @@ class JacScalePluginConfig {
                                     "description": "SMTP connection timeout in seconds"
                                 }
                             }
-                        }
-                    }
-                },
-                "auth": {
-                    "type": "dict",
-                    "default": {},
-                    "description": "Password-auth token and rate-limit configuration",
-                    "nested": {
-                        "reset_token_ttl_seconds": {
-                            "type": "int",
-                            "default": 1800,
-                            "description": "Password-reset token lifetime in seconds"
-                        },
-                        "verify_token_ttl_seconds": {
-                            "type": "int",
-                            "default": 86400,
-                            "description": "Email-verification token lifetime in seconds"
-                        },
-                        "reset_url_template": {
-                            "type": "string",
-                            "default": "",
-                            "description": "URL template embedded in password-reset emails"
-                        },
-                        "verify_url_template": {
-                            "type": "string",
-                            "default": "",
-                            "description": "URL template embedded in verification emails"
-                        },
-                        "token_collection": {
-                            "type": "string",
-                            "default": "auth_tokens",
-                            "description": "Collection name where auth tokens are persisted"
-                        },
-                        "forgot_password_rate_per_hour": {
-                            "type": "int",
-                            "default": 3,
-                            "description": "Forgot-password requests allowed per hour per account"
-                        },
-                        "forgot_password_burst": {
-                            "type": "int",
-                            "default": 3,
-                            "description": "Forgot-password burst allowance"
-                        },
-                        "send_verification_rate_per_hour": {
-                            "type": "int",
-                            "default": 5,
-                            "description": "Verification emails allowed per hour per account"
-                        },
-                        "send_verification_burst": {
-                            "type": "int",
-                            "default": 5,
-                            "description": "Verification email burst allowance"
                         }
                     }
                 },

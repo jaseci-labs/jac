@@ -6,6 +6,16 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
     return _scrypt_verify(password, password_hash);
 }
 
+glob _decoy: list[str] = [];
+
+
+def decoy_hash -> str {
+    if not _decoy {
+        _decoy.append(IdentityStorage.hash_password(uuid.uuid4().hex));
+    }
+    return _decoy[0];
+}
+
 impl IdentityStorage.create_user(
     identities: list[dict[str, any]],
     credential: dict[str, any],
@@ -49,21 +59,28 @@ impl IdentityStorage.create_user(
         }
 
         is_verified = identity.get('verified', (id_type == 'username'));
-        normalized_identities.append(
-            {
-                'type': id_type,
-                'value_raw': raw_value,
-                'value_normalized': normalized,
-                'verified': is_verified,
-                'is_recovery': (id_type == 'email')
-            }
-        );
+        record: dict[str, any] = {
+            'type': id_type,
+            'value_raw': raw_value,
+            'value_normalized': normalized,
+            'verified': is_verified,
+            'is_recovery': (id_type == 'email')
+        };
+        if id_type == 'email' and not is_verified and verify_before_login() {
+            record[VERIFY_BEFORE_LOGIN] = True;
+        }
+        normalized_identities.append(record);
     }
 
     credentials: list[dict[str, any]] = [];
     if credential.get('type') == 'password' {
-        password_hash = IdentityStorage.hash_password(credential['password']);
-        credentials.append({'type': 'password', 'password_hash': password_hash});
+        credentials.append(
+            {
+                'type': 'password',
+                'password_hash': IdentityStorage.hash_password(credential['password']),
+                'changed_at': now
+            }
+        );
     }
 
     user_root = Root();
@@ -164,6 +181,7 @@ impl IdentityStorage.authenticate(
 ) -> dict[str, any] | None {
     user = self.find_user_by_identity(identifier);
     if user is None {
+        IdentityStorage.verify_password(password, decoy_hash());
         return None;
     }
 
@@ -184,6 +202,20 @@ impl IdentityStorage.authenticate(
                 'root_id': user['root_id'],
                 'role': user.get('role', 'user')
             };
+            if self.password_expired(user, cred)
+                and not user.get('requires_password_reset') {
+                self.update_user_fields(user_id, {'requires_password_reset': True});
+                user['requires_password_reset'] = True;
+            }
+            if user.get('requires_password_reset') {
+                result['requires_password_reset'] = True;
+            }
+            normalized = identifier.lower().strip();
+            for identity in (user.get('identities') or []) {
+                if identity.get('value_normalized') == normalized {
+                    result['identity_type'] = str(identity.get('type') or '');
+                }
+            }
             username = primary_username(user);
             if username {
                 result['username'] = username;
@@ -208,56 +240,101 @@ impl IdentityStorage.get_user_role(user_id: str) -> str | None {
     return user.get('role', 'user') or 'user';
 }
 
+impl IdentityStorage.password_reused(
+    credentials: list[dict[str, any]], new_password: str
+) -> bool {
+    kept = max(0, int(auth_settings().password.history));
+    if kept == 0 {
+        return False;
+    }
+    for cred in credentials {
+        if cred.get('type') != 'password' {
+            continue;
+        }
+        earlier = [str(h) for h in (cred.get('previous') or [])][-kept:];
+        for stored in [str(cred.get('password_hash') or '')] + earlier {
+            if stored and IdentityStorage.verify_password(new_password, stored) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+impl IdentityStorage.write_password(
+    user_id: str, credentials: list[dict[str, any]], new_password: str
+) -> None {
+    kept = max(0, int(auth_settings().password.history));
+    new_hash = IdentityStorage.hash_password(new_password);
+    now = datetime.now(UTC).isoformat();
+    written = False;
+    for cred in credentials {
+        if cred.get('type') != 'password' {
+            continue;
+        }
+        earlier = [str(h) for h in (cred.get('previous') or [])];
+        if cred.get('password_hash') {
+            earlier.append(str(cred['password_hash']));
+        }
+        cred['previous'] = earlier[-kept:] if kept else [];
+        cred['password_hash'] = new_hash;
+        cred['changed_at'] = now;
+        written = True;
+    }
+    if not written {
+        credentials.append(
+            {'type': 'password', 'password_hash': new_hash, 'changed_at': now}
+        );
+    }
+    self._update_credentials(user_id, credentials);
+    self._update_fields(user_id, {'requires_password_reset': False, 'updated_at': now});
+}
+
 impl IdentityStorage.update_password(
     user_id: str, current_password: str, new_password: str
-) -> dict[str, str] {
+) -> dict[str, any] {
     credentials = self._get_credentials(user_id);
     if not credentials {
         return {'error': 'User not found'};
     }
-
-    found = False;
-    for cred in credentials {
-        if cred.get('type') == 'password'
+    matched = any(
+        cred.get('type') == 'password'
             and IdentityStorage.verify_password(
                 current_password, cred.get('password_hash', '')
-            ) {
-            found = True;
-            break;
-        }
-    }
-    if not found {
+            ) for cred in credentials
+    );
+    if not matched {
         return {'error': 'Current password is incorrect'};
     }
-
-    new_hash = IdentityStorage.hash_password(new_password);
-    for cred in credentials {
-        if cred.get('type') == 'password' {
-            cred['password_hash'] = new_hash;
-        }
-    }
-    self._update_credentials(user_id, credentials);
+    self.write_password(user_id, credentials, new_password);
     return {'user_id': user_id, 'message': 'Password updated successfully'};
 }
 
-impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str, str] {
+impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str, any] {
     if not self.user_exists_by_id(user_id) {
         return {'error': 'User not found'};
     }
-    credentials = self._get_credentials(user_id);
-    new_hash = IdentityStorage.hash_password(new_password);
-    password_set = False;
-    for cred in credentials {
-        if cred.get('type') == 'password' {
-            cred['password_hash'] = new_hash;
-            password_set = True;
-        }
-    }
-    if not password_set {
-        credentials.append({'type': 'password', 'password_hash': new_hash});
-    }
-    self._update_credentials(user_id, credentials);
+    self.write_password(user_id, self._get_credentials(user_id), new_password);
     return {'user_id': user_id, 'message': 'Password updated successfully'};
+}
+
+impl IdentityStorage.password_expired(
+    user: dict[str, any], credential: dict[str, any]
+) -> bool {
+    limit = max(0, int(auth_settings().password.max_age_days));
+    stamp = str(credential.get('changed_at') or user.get('created_at') or '');
+    if limit == 0 or not stamp {
+        return False;
+    }
+    try {
+        changed = datetime.fromisoformat(stamp);
+    } except ValueError {
+        return False;
+    }
+    if changed.tzinfo is None {
+        changed = changed.replace(tzinfo=UTC);
+    }
+    return (datetime.now(UTC) - changed).days >= limit;
 }
 
 impl IdentityStorage.expire_legacy_credentials(

@@ -34,6 +34,10 @@ obj AppleSSOProvider(OAuth2CodeProvider) {
         if not email or not external_id {
             raise RuntimeError('Apple id_token is missing email or sub');
         }
-        return SSOUserInfo(email=str(email), external_id=str(external_id));
+        return SSOUserInfo(
+            email=str(email),
+            external_id=str(external_id),
+            email_verified=str(claims.get('email_verified')).lower() == 'true'
+        );
     }
 }

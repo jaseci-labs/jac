@@ -78,6 +78,7 @@ obj FirebaseSSOProvider(SSOProvider) {
         return SSOUserInfo(
             email=str(email),
             external_id=str(uid),
+            email_verified=decoded.get('email_verified') is True,
             display_name=str(display_name) if display_name else None,
             picture=str(picture) if picture else None
         );

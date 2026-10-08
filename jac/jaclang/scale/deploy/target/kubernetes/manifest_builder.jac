@@ -922,7 +922,7 @@ obj ManifestBuilder {
         if configured {
             return configured;
         }
-        from_project = self._serve_config().auth.secret.strip();
+        from_project = str(self._serve_config().auth.get('secret') or '').strip();
         if from_project {
             return from_project;
         }

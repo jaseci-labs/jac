@@ -1,5 +1,6 @@
 import from unittest.mock { MagicMock }
 import from jaclang.scale.sso.github { GithubSSOProvider }
+import from jaclang.server.identity.user_manager { SessionGrant }
 
 obj FakeTokens {
     has records: dict[str, any] = {},
@@ -36,9 +37,10 @@ def fake_users -> any {
     manager = MagicMock();
     manager.get_user_by_sso.return_value = None;
     manager.get_sso_accounts.return_value = [];
-    manager.create_user.return_value = {"user_id": "new-user"};
+    manager.find_user_by_identity.return_value = None;
+    manager.create_federated_user.return_value = {"user_id": "new-user"};
     manager.link_sso_account.return_value = {};
-    manager.create_jwt_token.return_value = "session-token";
+    manager.open_session.return_value = SessionGrant(token="session-token");
     manager.get_user.return_value = {
         "profile": {},
         "identities": [

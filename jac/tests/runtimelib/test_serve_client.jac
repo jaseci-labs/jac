@@ -1785,7 +1785,7 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         # Create a test user so spawn_walker can resolve a root
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
         # Each walker sleeps for 1 second. Launch 3 concurrently.
         # If they run in threads (concurrent): ~1s total.
         # If they run serially on event loop: ~3s total.
@@ -1859,7 +1859,7 @@ test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
         walker_cls = introspector.get_walkers()["slow_blocking"];
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
         async def run -> tuple[any, ...] {
             # Explicit sync path: must still run concurrently via to_thread.
             start = time();
@@ -1905,7 +1905,7 @@ test "concurrent async walkers run concurrently end-to-end" {
         assert getattr(walker_cls, "__jac_async__", False) , "slow_async walker must be async";
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
         async def run -> float {
             start = time();
             tasks = [
@@ -2125,7 +2125,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         users = [f"user_{i}" for i in range(3)];
         root_ids = {};
         for uname in users {
-            info = user_mgr.create_user(uname, "pw");
+            info = user_mgr.create_internal_user(uname, "pw");
             root_ids[uname] = info["root_id"];
         }
         # Sanity: each user got a unique root.

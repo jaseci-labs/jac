@@ -4,6 +4,24 @@ import from jaclang.project.config { JacConfig, ServeConfig }
 
 glob ENV_PREFIX: str = 'JAC_SERVE_',
      WORKERS_AUTO: str = 'auto',
+     IDENTIFIER_KINDS: tuple[str, ...] = ('username', 'email'),
+     IDENTIFIER_MODES: tuple[str, ...] = ('required', 'optional', 'off'),
+     VERIFICATION_MODES: tuple[str, ...] = ('none', 'optional', 'required'),
+     PASSWORD_CLASSES: tuple[str, ...] = ('lower', 'upper', 'digit', 'symbol'),
+     AUTH_MOVED_KEYS: dict[str, str] = {
+         'password_hash_cost': '[serve.auth.password] hash_cost',
+         'registration_challenge': '[serve.auth.registration] challenge',
+         'registration_attempts_per_hour': '[serve.auth.registration] attempts_per_hour',
+         'registration_challenges_per_10_minutes': '[serve.auth.registration] challenges_per_10_minutes'
+     },
+     SCALE_AUTH_MOVED_KEYS: dict[str, str] = {
+         'verify_token_ttl_seconds': '[serve.auth.email] verify_token_ttl_seconds',
+         'reset_token_ttl_seconds': '[serve.auth.email] reset_token_ttl_seconds',
+         'verify_url_template': '[serve.auth.email] verify_url_template',
+         'reset_url_template': '[serve.auth.email] reset_url_template',
+         'send_verification_rate_per_hour': '[serve.auth.email] send_verification_per_hour',
+         'forgot_password_rate_per_hour': '[serve.auth.email] forgot_password_per_hour'
+     },
      logger: logging.Logger = logging.getLogger(__name__);
 
 
@@ -78,20 +96,78 @@ obj WebSocketSettings {
         ping_timeout: float = 20.0;
 }
 
+obj IdentifierSettings {
+    has username: str = 'required',
+        email: str = 'optional',
+        login_with: list[str] = [];
+
+    def enabled -> list[str];
+    def login_identifiers -> list[str];
+}
+
+obj UsernameSettings {
+    has min_length: int = 1,
+        max_length: int = 64,
+        pattern: str = '';
+}
+
+obj EmailSettings {
+    has verification: str = 'none',
+        allowed_domains: list[str] = [],
+        verify_token_ttl_seconds: int = 86400,
+        reset_token_ttl_seconds: int = 1800,
+        verify_url_template: str = '',
+        reset_url_template: str = '',
+        send_verification_per_hour: int = 5,
+        forgot_password_per_hour: int = 3;
+}
+
+obj PasswordSettings {
+    has min_length: int = 8,
+        max_length: int = 128,
+        require: list[str] = [],
+        reject_common: bool = True,
+        reject_identifiers: bool = True,
+        breached_check: bool = False,
+        history: int = 0,
+        max_age_days: int = 0,
+        hash_cost: int = 14;
+}
+
+obj RegistrationSettings {
+    has enabled: bool = True,
+        challenge: bool = False,
+        attempts_per_hour: int = 0,
+        challenges_per_10_minutes: int = 0;
+}
+
+obj LockoutSettings {
+    has max_attempts: int = 10,
+        window_seconds: int = 900;
+}
+
+obj SecondFactorSettings {
+    has issuer: str = '',
+        attempts: int = 5,
+        lockout_seconds: int = 900,
+        challenge_ttl_seconds: int = 300;
+}
+
 obj AuthSettings {
     has secret: str = '',
         algorithm: str = 'HS256',
         token_ttl_days: int = 7,
-        password_hash_cost: int = 14,
-        registration_challenge: bool = False,
-        registration_attempts_per_hour: int = 0,
-        registration_challenges_per_10_minutes: int = 0,
-        second_factor_issuer: str = '',
-        second_factor_attempts: int = 5,
-        second_factor_lockout_seconds: int = 900,
-        second_factor_challenge_ttl_seconds: int = 300,
-        session_cookie: bool = False;
+        session_cookie: bool = False,
+        identifiers: IdentifierSettings = IdentifierSettings(),
+        username: UsernameSettings = UsernameSettings(),
+        email: EmailSettings = EmailSettings(),
+        password: PasswordSettings = PasswordSettings(),
+        registration: RegistrationSettings = RegistrationSettings(),
+        lockout: LockoutSettings = LockoutSettings(),
+        second_factor: SecondFactorSettings = SecondFactorSettings();
 
+    static def from_table(table: dict[str, any]) -> AuthSettings;
+    def problems -> list[str];
     def resolve_secret(base_path: str) -> str;
 }
 
@@ -133,6 +209,11 @@ obj ServeSettings {
 
 
 def secret_home(base_path: str) -> str;
+def overlay_table(
+    target: object, table: dict[str, any], env: str, section: str, moved: dict[str, str]
+) -> None;
+
+def removed_table(config: (JacConfig | None)) -> list[str];
 
 
 def in_cluster -> bool {

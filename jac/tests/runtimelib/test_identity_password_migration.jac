@@ -55,7 +55,7 @@ def _user_id(manager: UserManager, username: str) -> str {
 test "a new signup stores a scrypt hash" {
     with TemporaryDirectory() as tmpdir {
         manager = UserManager(base_path=tmpdir);
-        manager.create_user("alice", "hunter2");
+        manager.create_internal_user("alice", "hunter2");
         stored = _stored_hash(manager, "alice");
         assert stored.startswith("scrypt$");
         assert not is_legacy_sha256_hash(stored);
@@ -69,7 +69,7 @@ test "a new signup stores a scrypt hash" {
 test "a legacy sha256 row logs in once and is rehashed to scrypt" {
     with TemporaryDirectory() as tmpdir {
         manager = UserManager(base_path=tmpdir);
-        manager.create_user("bob", "hunter2");
+        manager.create_internal_user("bob", "hunter2");
         legacy = _write_legacy_hash(manager, "bob", "hunter2");
         assert is_legacy_sha256_hash(legacy);
         assert manager.authenticate("bob", "wrong") is None;
@@ -89,7 +89,7 @@ test "a legacy sha256 row logs in once and is rehashed to scrypt" {
 test "changing a password from a legacy row stores scrypt" {
     with TemporaryDirectory() as tmpdir {
         manager = UserManager(base_path=tmpdir);
-        manager.create_user("carol", "old-pass");
+        manager.create_internal_user("carol", "old-pass");
         _write_legacy_hash(manager, "carol", "old-pass");
         carol = _user_id(manager, "carol");
         failed = manager.update_password(carol, "not-it", "new-pass");

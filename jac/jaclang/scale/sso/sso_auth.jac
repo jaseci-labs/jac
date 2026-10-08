@@ -7,6 +7,7 @@ import from jaclang.server.identity.auth_tokens { AuthTokenStore }
 import from jaclang.server.serving.datatypes { RedirectResponse }
 import from jaclang.scale.sso.provider { OAuth2CodeProvider }
 import from jaclang.scale.sso.oauth_session {
+    OAuthLogin,
     OAuthSession,
     challenge_of,
     complete_identity
@@ -73,6 +74,14 @@ obj SSOAuth {
 
     async def sso_callback(request: Request, platform: str) -> TransportResponse;
     async def firebase_token_auth_with_id_token(id_token: str) -> TransportResponse;
+    def login_response(
+        result: OAuthLogin,
+        platform: str,
+        failure: str,
+        status: int,
+        extra: (dict[str, any] | None) = None
+    ) -> TransportResponse;
+
     def _complete_sso_login(
         platform: str, user_info: SSOUserInfo
     ) -> TransportResponse;
@@ -244,11 +253,27 @@ impl SSOAuth.sso_callback(request: Request, platform: str) -> TransportResponse 
     result = await oauth_session.finish(
         sso._callback_param(request, 'code') or '', state, verifier
     );
+    return self.login_response(
+        result, platform, 'AUTHENTICATION_FAILED', 401, {'client_callback': callback}
+    );
+}
+
+impl SSOAuth.login_response(
+    result: OAuthLogin,
+    platform: str,
+    failure: str,
+    status: int,
+    extra: (dict[str, any] | None) = None
+) -> TransportResponse {
+    meta = Meta(extra={'http_status': 200, ** (extra or {})});
+    if result.challenge {
+        return TransportResponse.success(data=result.challenge, meta=meta);
+    }
     if not result.ok {
         return TransportResponse.fail(
-            code='AUTHENTICATION_FAILED',
+            code=result.code or failure,
             message=result.error,
-            meta=Meta(extra={'http_status': 401})
+            meta=Meta(extra={'http_status': status})
         );
     }
     user_id = self.users.validate_jwt_token(result.token) or '';
@@ -261,7 +286,7 @@ impl SSOAuth.sso_callback(request: Request, platform: str) -> TransportResponse 
             'root_id': self.users.get_root_id(user_id) or '',
             'platform': platform
         },
-        meta=Meta(extra={'http_status': 200, 'client_callback': callback})
+        meta=meta
     );
 }
 
@@ -302,24 +327,10 @@ impl SSOAuth.firebase_token_auth_with_id_token(id_token: str) -> TransportRespon
 impl SSOAuth._complete_sso_login(
     platform: str, user_info: SSOUserInfo
 ) -> TransportResponse {
-    result = complete_identity(self.users, user_info, platform);
-    if not result.ok {
-        return TransportResponse.fail(
-            code='USER_CREATION_FAILED',
-            message=result.error,
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    user_id = self.users.validate_jwt_token(result.token) or '';
-    return TransportResponse.success(
-        data={
-            'message': 'Login successful',
-            'token': result.token,
-            'username': result.username,
-            'user_id': user_id,
-            'root_id': self.users.get_root_id(user_id) or '',
-            'platform': platform
-        },
-        meta=Meta(extra={'http_status': 200})
+    return self.login_response(
+        complete_identity(self.users, user_info, platform),
+        platform,
+        'USER_CREATION_FAILED',
+        400
     );
 }

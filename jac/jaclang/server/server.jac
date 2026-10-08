@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from typing { AsyncGenerator, Generator, TypeAlias }
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.runtime.context { CallState, ExecutionContext }
+import from jaclang.server.identity.mail { IdentityMailer }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.serving.app { ServingApp }
 import from jaclang.server.serving.drain { DrainState }
@@ -40,6 +41,9 @@ obj ServerExtension {
 obj EndpointHost {
     def add_endpoint(ep: JEndPoint) -> None abst;
     def identity -> UserManager abst;
+    def mailer -> IdentityMailer {
+        return IdentityMailer();
+    }
 }
 
 
@@ -216,6 +220,7 @@ obj JacAPIServer(EndpointHost) {
     def postinit -> None;
     def resolved_settings -> ServeSettings;
     def identity -> UserManager;
+    def mailer -> IdentityMailer;
     def require_app -> ServingApp;
     def add_endpoint(ep: JEndPoint) -> None;
     def add_ws_endpoint(path: str, handler: Callable[..., any]) -> None;

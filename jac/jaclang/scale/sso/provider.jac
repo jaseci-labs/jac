@@ -7,11 +7,16 @@ import from jaclang.server.serving.datatypes { RedirectResponse, Request, Respon
 obj SSOUserInfo {
     has email: str,
         external_id: str,
+        email_verified: bool = False,
         username: str = '',
         display_name: (str | None) = None,
         first_name: (str | None) = None,
         last_name: (str | None) = None,
         picture: (str | None) = None;
+
+    def verified_email -> str {
+        return self.email.lower().strip() if self.email_verified else '';
+    }
 
     def profile_fields -> dict[str, any] {
         fields: dict[str, any] = {};

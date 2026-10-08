@@ -5,9 +5,16 @@ import tempfile;
 import contextlib;
 import from pathlib { Path }
 
+glob ADMIN_BOOTSTRAP_PASSWORD: str = "Bootstrap-Admin-1!";
+
 # Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
+# The suite's fixtures register short throwaway passwords, so the password floor
+# and the common-password list are lowered here; the policy tests set their own.
 with entry {
     os.environ.setdefault('JAC_SERVE_AUTH_PASSWORD_HASH_COST', '10');
+    os.environ.setdefault('JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH', '1');
+    os.environ.setdefault('JAC_SERVE_AUTH_PASSWORD_REJECT_COMMON', 'false');
+    os.environ.setdefault('JAC_SCALE_ADMIN_PASSWORD', ADMIN_BOOTSTRAP_PASSWORD);
 }
 
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
@@ -208,7 +215,9 @@ obj ScaleTestClient {
         return self.login_user(username, password);
     }
 
-    def admin_login(username: str = "admin", password: str = "changeme") -> str {
+    def admin_login(
+        username: str = "admin", password: str = ADMIN_BOOTSTRAP_PASSWORD
+    ) -> str {
         response = self.post(
             "/admin/login", json={"username": username, "password": password}
         );

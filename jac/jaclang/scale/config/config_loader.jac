@@ -7,7 +7,8 @@ import from jaclang.scale.config.firebase_env {
 }
 import os;
 
-glob APP_SCALE_KEYS: tuple[str, ...] = (
+glob ADMIN_PASSWORD_ENV: str = "JAC_SCALE_ADMIN_PASSWORD",
+     APP_SCALE_KEYS: tuple[str, ...] = (
          "rpc_timeout",
          "http_forward_timeout",
          "replicas",
@@ -63,7 +64,6 @@ class JacScaleConfig(PluginConfigBase) {
     def get_scheduler_config(self: JacScaleConfig) -> dict[str, any];
     def get_telemetry_config(self: JacScaleConfig) -> dict[str, any];
     def get_emailer_config(self: JacScaleConfig) -> dict[str, any];
-    def get_auth_config(self: JacScaleConfig) -> dict[str, any];
     def get_gateway_config(self: JacScaleConfig) -> dict[str, any];
     def get_app_scale_config(self: JacScaleConfig, app_name: str) -> dict[str, any];
 }

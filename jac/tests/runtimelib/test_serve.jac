@@ -32,23 +32,23 @@ def get_free_port -> int {
 def _identity(tmpdir: str) -> any {
     import from jaclang.server.identity.config { configure_identity }
     import from jaclang.server.identity.user_manager { UserManager }
-    import from jaclang.server.settings { AuthSettings }
+    import from jaclang.server.settings { AuthSettings, PasswordSettings }
     Jac.set_base_path(tmpdir);
-    configure_identity(AuthSettings(password_hash_cost=10), tmpdir);
+    configure_identity(AuthSettings(password=PasswordSettings(hash_cost=10)), tmpdir);
     return UserManager(base_path=tmpdir);
 }
 
 test "user manager creation" {
     with TemporaryDirectory() as tmpdir {
         user_mgr = _identity(tmpdir);
-        result1 = user_mgr.create_user("user1", "pass1");
+        result1 = user_mgr.create_internal_user("user1", "pass1");
         assert "user_id" in result1 , f"{result1}";
         root1 = user_mgr.get_root_id(result1["user_id"]);
         assert root1;
-        result2 = user_mgr.create_user("user2", "pass2");
+        result2 = user_mgr.create_internal_user("user2", "pass2");
         assert "user_id" in result2;
         assert user_mgr.get_root_id(result2["user_id"]) != root1;
-        result3 = user_mgr.create_user("user1", "pass3");
+        result3 = user_mgr.create_internal_user("user1", "pass3");
         assert "error" in result3;
         user_mgr.close();
     }
@@ -57,7 +57,7 @@ test "user manager creation" {
 test "user manager authentication" {
     with TemporaryDirectory() as tmpdir {
         user_mgr = _identity(tmpdir);
-        created = user_mgr.create_user("testuser", "testpass");
+        created = user_mgr.create_internal_user("testuser", "testpass");
         auth_result = user_mgr.authenticate("testuser", "testpass");
         assert auth_result is not None;
         assert auth_result["user_id"] == created["user_id"];
@@ -71,7 +71,7 @@ test "user manager authentication" {
 test "user manager token validation" {
     with TemporaryDirectory() as tmpdir {
         user_mgr = _identity(tmpdir);
-        created = user_mgr.create_user("validuser", "validpass");
+        created = user_mgr.create_internal_user("validuser", "validpass");
         token = user_mgr.create_jwt_token(created["user_id"]);
         assert user_mgr.validate_token(token) == created["user_id"];
         assert user_mgr.validate_token("invalid_token") is None;

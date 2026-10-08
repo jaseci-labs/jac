@@ -17,7 +17,7 @@ use_tls = true
 # password supplied via EMAILER_SMTP_PASSWORD env var (preferred over plain text here)
 
 # Token TTLs + frontend URLs the framework drops into the email body.
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds = 1800
 verify_url_template = "https://app.example.com/verify?token={token}"
