@@ -609,6 +609,34 @@ test "a loaded anchor is hashed once (#9410)" {
 }
 
 
+test "run_request re-runs a unit that ended in a conflict" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            sess = _sess(ctx);
+            assert sess.store is not None;
+            calls: list[int] = [];
+            def body -> str {
+                calls.append(1);
+                if len(calls) == 1 {
+                    raise WriteConflict(anchor_id=UUID(int=0));
+                }
+                return "done";
+            }
+            assert sess.run_request(body) == "done" , (
+                "a conflict is what run_request exists to re-run"
+            );
+            assert len(calls) == 2;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
 """The vote fixture behind the server's own execution manager, so a walker
 runs through the real conflict loop. Returns the manager, the fixture's
 walkers by name, and the fixture module (for its switches and run counter)."""

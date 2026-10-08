@@ -1187,7 +1187,7 @@ impl Session.run_request(body: Callable) -> any {
         } except Exception as e {
             if (
                 self._store is not None
-                and (isinstance(e, TransactionLost) or _is_serialization_conflict(e))
+                and (isinstance(e, WriteConflict) or _is_serialization_conflict(e))
                 and attempt < MAX_RETRIES
             ) {
                 attempt += 1;
