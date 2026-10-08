@@ -11,20 +11,26 @@ had no root as far as the websocket walker could see (#9863).
 
 Pinned here: a websocket walker and a websocket function each run on a session
 that is not the process-global one, on the database the HTTP path uses, and see
-data committed after the process-global session began reading; and the executor
-refuses to run a call that no transport has given a request scope.
+data committed after the process-global session began reading; a stream whose
+delivery is cut off is closed before its scope ends, so the scope does not
+commit its unfinished work; and the executor refuses to run a call that no
+transport has given a request scope.
 """
 
 import asyncio;
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from unittest.mock { patch }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.scale.server.inprocess {
     PreparedInProcessRuntime,
     prepare_inprocess_runtime
 }
 import from jaclang.scale.server.websocket_ext { WebSocketExtension }
+import from jaclang.scale.websocket.websocket { _ws_stream_result }
+import from jaclang.server.serving.datatypes { WebSocketDisconnect }
 import from jaclang.testing.testkit { ServingTestClient }
 
 # Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
@@ -255,6 +261,52 @@ test "a websocket stream runs inside its request scope and commits when it ends"
             _restore_env("JAC_SCALE_RUNTIME", prior);
         }
     }
+}
+
+
+"""Deliver a bound stream to a client that is gone at the first chunk. Returns
+whether the stream's work had been aborted by the time delivery gave up, while
+the stream is still referenced, so a later garbage-collection close cannot
+stand in for the delivery code closing it."""
+async def _aborted_when_delivery_stops(context: ExecutionContext, source: any) -> bool {
+    async def gone(payload: dict[str, any]) {
+        raise WebSocketDisconnect(code=1006);
+    }
+    with patch.object(context.mem, 'abort') as abort {
+        stream: any = await context.bind_stream(source);
+        try {
+            await _ws_stream_result(gone, stream);
+        } except WebSocketDisconnect {
+            return bool(abort.called);
+        }
+        return False;
+    }
+}
+
+
+test "a websocket stream cut off mid-delivery is closed before its scope can commit it" {
+    def chunks -> Generator[str, None, None] {
+        yield 'first';
+        yield 'second';
+    }
+    context = ExecutionContext(base_path_dir='', full_target_path='');
+    assert asyncio.run(_aborted_when_delivery_stops(context, chunks())) , (
+        "the stream was left suspended; its scope would commit the work it "
+        "had done so far"
+    );
+}
+
+
+test "an async websocket stream cut off mid-delivery is closed before its scope can commit it" {
+    async def chunks -> AsyncGenerator[str, None] {
+        yield 'first';
+        yield 'second';
+    }
+    context = ExecutionContext(base_path_dir='', full_target_path='');
+    assert asyncio.run(_aborted_when_delivery_stops(context, chunks())) , (
+        "the stream was left suspended; its scope would commit the work it "
+        "had done so far"
+    );
 }
 
 

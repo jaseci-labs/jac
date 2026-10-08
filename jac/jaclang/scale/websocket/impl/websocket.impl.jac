@@ -271,6 +271,18 @@ impl _ws_stream_next(gen: any) -> any {
     }
 }
 
+impl _ws_close_stream(result: any) -> None {
+    try {
+        if isgenerator(result) {
+            await asyncio.get_running_loop().run_in_executor(None, result.close);
+        } else {
+            await result.aclose();
+        }
+    } except Exception as e {
+        logger.debug(f"WS stream close ignored: {e}");
+    }
+}
+
 impl _ws_stream_result(send_result: any, result: any) {
     stream_error: (str | None) = None;
     try {
@@ -293,6 +305,8 @@ impl _ws_stream_result(send_result: any, result: any) {
     } except Exception as e {
         logger.error(f"WS stream error: {e}");
         stream_error = str(e);
+    } finally {
+        await _ws_close_stream(result);
     }
     if stream_error is None {
         await send_result({'ok': True, 'type': 'done'});
