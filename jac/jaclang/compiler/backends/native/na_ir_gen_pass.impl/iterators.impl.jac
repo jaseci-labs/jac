@@ -164,6 +164,7 @@ impl NaIRGenPass._list_iter_next_fn(
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_list_" + elem_type_name);
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -238,6 +239,7 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_str");
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -297,6 +299,7 @@ impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_bytes");
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -358,6 +361,7 @@ impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
         self.llvm_module, nfty, name="__iter_next_dict_" + dict_key.replace(":", "_")
     );
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -411,6 +415,7 @@ impl NaIRGenPass._set_iter_next_fn(
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_set_" + elem_type_name);
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");
@@ -465,6 +470,7 @@ impl NaIRGenPass._range_iter_next_fn -> ir.Function {
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_range");
     fn.linkage = "private";
+    fn.attributes.add("nounwind");
     fn.args[0].name = "state";
     fn.args[1].name = "out";
     entry_bb = fn.append_basic_block("entry");

@@ -28,10 +28,8 @@ impl NaIRGenPass._emit_hash_order_compact_fn(
 ) -> ir.Function {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    fn = ir.Function(
-        self.llvm_module, ir.FunctionType(ir.VoidType(), [container_type]), name=name
-    );
-    fn.linkage = "private";
+    fn = self._emit_slow_path_helper(name, ir.VoidType(), [container_type]);
+    fn.args[0].name = "cont";
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     container = fn.args[0];
     capacity = b.load(b.gep(container, [ir.Constant(i32, 0), ir.Constant(i32, 1)]));

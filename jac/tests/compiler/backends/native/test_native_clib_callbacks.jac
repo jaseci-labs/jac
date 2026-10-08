@@ -96,7 +96,9 @@ test "Callback records survive managed field and container cleanup" {
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t
     );
     def allocate(count: int, size: int) -> int {
-        assert count * size <= mmap.PAGESIZE;
+        assert count * size <= mmap.PAGESIZE , (
+            f"calloc(count={count}, size={size}) exceeds one page"
+        );
         return address + mmap.PAGESIZE;
     }
     allocator = allocator_type(allocate);
