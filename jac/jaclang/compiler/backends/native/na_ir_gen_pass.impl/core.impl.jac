@@ -228,18 +228,23 @@ impl NaIRGenPass._refuse_split_bodies(mod: uni.Module) -> None {
     archetype or enum whose members come from a separate `impl` block. The
     layout pass and this backend read members off the declaration's own body,
     so such a declaration has no native layout yet.""";
-    _split: list[uni.UniNode] = [];
-    _split.extend(mod.get_all_sub_nodes(uni.Archetype));
-    _split.extend(mod.get_all_sub_nodes(uni.Enum));
-    for _decl in _split {
-        if isinstance(_decl.body, uni.ImplDef) {
-            _dname = _decl.name.value if _decl.name else "?";
-            raise NativeRefused(
-                f"'{_dname}' in {os.path.basename(mod.loc.mod_path)} takes its "
-                f"members from a separate impl block, which the native backend "
-                f"does not read yet"
-            );
+    _split: list[str] = [];
+    for _arch in mod.get_all_sub_nodes(uni.Archetype) {
+        if isinstance(_arch.body, uni.ImplDef) {
+            _split.append(_arch.name.value if _arch.name else "?");
         }
+    }
+    for _enum in mod.get_all_sub_nodes(uni.Enum) {
+        if isinstance(_enum.body, uni.ImplDef) {
+            _split.append(_enum.name.value if _enum.name else "?");
+        }
+    }
+    if _split {
+        raise NativeRefused(
+            f"'{_split[0]}' in {os.path.basename(mod.loc.mod_path)} takes its "
+            f"members from a separate impl block, which the native backend "
+            f"does not read yet"
+        );
     }
 }
 
