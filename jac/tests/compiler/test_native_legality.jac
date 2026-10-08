@@ -79,6 +79,26 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    print(1 in data);\n"
          "}\n"
      ),
+     STRICT_SRC = (
+         "def run(t: any, x: int) -> int {\n"
+         "    if x in t {\n"
+         "        return 1;\n"
+         "    }\n"
+         "    return 0;\n"
+         "}\n\n"
+         "def narrow(x: int | None) -> int {\n"
+         "    if x < 5 {\n"
+         "        return 1;\n"
+         "    }\n"
+         "    return 0;\n"
+         "}\n\n"
+         "def other(x: int) -> int {\n"
+         "    return x * 2;\n"
+         "}\n\n"
+         "with entry {\n"
+         "    print(other(2));\n"
+         "}\n"
+     ),
      NATIVE_ONLY_SRC = (
          "with entry {\n"
          "    a = [1];\n"
@@ -201,6 +221,35 @@ test "what only matters natively is a note on the typed module, never a type err
     assert parses == 1;
     assert mod.decided_codespace != 'native';
     assert "E1124" in [note.code for note in capability_notes_of(prog, path, "native")];
+}
+
+test "a finding that only matters natively keeps its own code where native is required" {
+    path = os.path.realpath(os.path.join(tempfile.mkdtemp(), "strict.jac"));
+    with open(path, "w", encoding="utf-8") as fh {
+        fh.write(STRICT_SRC);
+    }
+    forced = JacProgram();
+    forced.compile(
+        path, options=CompileOptions(force_codespace="native", no_cgen=True)
+    );
+    codes = [
+        e.code.code
+        for e in forced.errors_had
+        if e.code is not None
+    ];
+    assert "E1124" in codes and "E1121" in codes , (
+        f"forced native must report the recorded findings under their own "
+        f"codes: {[str(e) for e in forced.errors_had]}"
+    );
+    (prog, mod, soft_path, parses) = compile_native_default(STRICT_SRC);
+    assert not prog.errors_had , (
+        f"under the default the same findings are reasons, not errors: {[
+            str(e) for e in prog.errors_had
+        ]}"
+    );
+    placed = placed_by_name(mod);
+    assert placed["run"] == 'server' and placed["narrow"] == 'server' , placed;
+    assert placed["other"] == 'native' , placed;
 }
 
 test "a native-only construct in code that cannot be placed native is an error" {

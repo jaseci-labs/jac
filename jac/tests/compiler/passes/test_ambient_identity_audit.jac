@@ -43,7 +43,7 @@ Audit verdicts this file pins (2026-08-18):
 * The real spelling divergence lives in *placement*, not typing: an
   `import from typing { ... }` whose names are not all in the
   native-erased set (TypeVar/ParamSpec/TypeVarTuple/cast/TypeAlias/
-  ClassVar) makes native_default_verdict refuse the module
+  ClassVar) makes the placement pass refuse the module
   ("unresolved import 'typing'"), silently landing it in the server
   codespace. collections.abc imports are placement-neutral
   (NATIVE_SUPPORTED_STDLIB), as is the ambient spelling. A module off

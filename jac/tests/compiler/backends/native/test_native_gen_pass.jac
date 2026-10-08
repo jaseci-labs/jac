@@ -6001,10 +6001,10 @@ test "cross-pathway: glob scoping is identical in the na and sv pathways" {
 
 # ─── Finding 2 guard: native pointer-bitcast escape hatch stays native-only ──
 # The type checker permits a handful of pointer-shaped cross-type assignments
-# (int/str/obj) because in native code they are all 64-bit pointers. That
-# escape hatch is gated to native modules via `_in_native_context()`. This
-# test locks that gating in: the sv pathway must still reject the assignment,
-# so the escape hatch can never silently weaken sv type-checking.
+# (function/int) because in native code both are 64-bit pointers. That
+# assignment is typed the same everywhere and recorded as something only
+# native code can do. This test locks in the limit of it: int to obj is not
+# one of those shapes and stays a type error on every pathway.
 test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway" {
     code = (
         "obj Wrapper { has slot: int; }\n"

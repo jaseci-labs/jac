@@ -13,7 +13,7 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.diagnostics { E5090, E5114 }
+import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS, E5090, E5114 }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.placement.placement_facts { native_placement_soft }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -27,6 +27,7 @@ obj NativeRefusal {
         help: (str | None) = None,
         code: str = "E5090",
         late: bool = False,
+        noted: bool = False,
         text: str = "",
         brief: str = "",
         detail: str = "";
@@ -407,6 +408,7 @@ impl build_native_legality(
                 name=note.text,
                 site=note.site,
                 code=note.code,
+                noted=True,
                 text=f"error[{note.code}]: {note.text}"
             );
             if note.requires {
@@ -676,6 +678,24 @@ impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> No
     "rather than a reason to place it elsewhere."
         if required_by
         else None;
+    recorded = DIAGNOSTICS.get(refusal.code) if refusal.noted else None;
+    if recorded is not None {
+        policy = self.ctx.policy;
+        if policy is not None and policy.is_suppressed(recorded, refusal.site.loc) {
+            return;
+        }
+        self.ctx.errors_had.append(
+            Alert(
+                msg=refusal.name,
+                loc=refusal.site.loc.span(),
+                from_pass=self.ctx.from_pass,
+                code=recorded,
+                related=[],
+                help_text=note or recorded.help_text
+            )
+        );
+        return;
+    }
     self.ctx.emit(
         E5090,
         node_override=refusal.site,
