@@ -501,6 +501,162 @@ impl NaIRGenPass._default_repr_piece(
     return self._repr_call_elem_fn(piece_fn, value);
 }
 
+impl NaIRGenPass._repr_active_fns -> tuple[ir.Function, ir.Function] {
+    enter_name = "__jac_repr_enter";
+    leave_name = "__jac_repr_leave";
+    if enter_name in self.extern_funcs {
+        return (self.extern_funcs[enter_name], self.extern_funcs[leave_name]);
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    void = ir.VoidType();
+    zero = ir.Constant(i64, 0);
+    block_type = ir.LiteralStructType([i64, i64, i8p.as_pointer()]);
+    block_ptr = block_type.as_pointer();
+    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    free_fn = self._get_or_declare_extern("free", void, [i8p]);
+    field_at = [ir.Constant(i32, 0), ir.Constant(i32, 1), ir.Constant(i32, 2)];
+
+    drop_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(void, [i8p]), name="__jac_repr_tls_free"
+    );
+    drop_fn.linkage = "linkonce_odr";
+    db = ir.IRBuilder(drop_fn.append_basic_block("entry"));
+    dropped = db.bitcast(drop_fn.args[0], block_ptr, name="rp.t.block");
+    db.call(
+        free_fn,
+        [
+            db.bitcast(
+                db.load(
+                    db.gep(dropped, [field_at[0], field_at[2]], name="rp.t.items.p"),
+                    name="rp.t.items"
+                ),
+                i8p
+            )
+        ]
+    );
+    db.call(free_fn, [drop_fn.args[0]]);
+    db.ret_void();
+    (get_fn, set_fn) = self._emit_tls_slot(
+        "__jac_repr_tls", "__jac_repr_tls_get", "__jac_repr_tls_set", drop_fn
+    );
+
+    enter_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [i8p]), name=enter_name
+    );
+    enter_fn.linkage = "linkonce_odr";
+    enter_fn.args[0].name = "obj";
+    leave_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(void, [i64]), name=leave_name
+    );
+    leave_fn.linkage = "linkonce_odr";
+    leave_fn.args[0].name = "depth";
+    self.extern_funcs[enter_name] = enter_fn;
+    self.extern_funcs[leave_name] = leave_fn;
+
+    entry_bb = enter_fn.append_basic_block("entry");
+    make_bb = enter_fn.append_basic_block("make");
+    have_bb = enter_fn.append_basic_block("have");
+    scan_bb = enter_fn.append_basic_block("scan");
+    probe_bb = enter_fn.append_basic_block("probe");
+    cycle_bb = enter_fn.append_basic_block("cycle");
+    fresh_bb = enter_fn.append_basic_block("fresh");
+    grow_bb = enter_fn.append_basic_block("grow");
+    push_bb = enter_fn.append_basic_block("push");
+    eb = ir.IRBuilder(entry_bb);
+    scan_i = eb.alloca(i64, name="rp.t.i");
+    eb.store(zero, scan_i);
+    held = eb.call(get_fn, [], name="rp.t.held");
+    held_block = eb.inttoptr(held, block_ptr, name="rp.t.held.p");
+    eb.cbranch(eb.icmp_unsigned("==", held, zero, name="rp.t.none"), make_bb, have_bb);
+    eb.position_at_end(make_bb);
+    made = eb.call(malloc_fn, [ir.Constant(i64, 24)], name="rp.t.made");
+    made_block = eb.bitcast(made, block_ptr, name="rp.t.made.p");
+    eb.store(zero, eb.gep(made_block, [field_at[0], field_at[0]]));
+    eb.store(zero, eb.gep(made_block, [field_at[0], field_at[1]]));
+    eb.store(
+        ir.Constant(i8p.as_pointer(), None),
+        eb.gep(made_block, [field_at[0], field_at[2]])
+    );
+    eb.call(set_fn, [eb.ptrtoint(made, i64, name="rp.t.made.i")]);
+    eb.branch(have_bb);
+    eb.position_at_end(have_bb);
+    block = eb.phi(block_ptr, name="rp.t.block");
+    block.add_incoming(held_block, entry_bb);
+    block.add_incoming(made_block, make_bb);
+    depth_at = eb.gep(block, [field_at[0], field_at[0]], name="rp.t.depth.p");
+    room_at = eb.gep(block, [field_at[0], field_at[1]], name="rp.t.room.p");
+    items_at = eb.gep(block, [field_at[0], field_at[2]], name="rp.t.items.p");
+    depth = eb.load(depth_at, name="rp.t.depth");
+    items = eb.load(items_at, name="rp.t.items");
+    eb.branch(scan_bb);
+    eb.position_at_end(scan_bb);
+    at = eb.load(scan_i, name="rp.t.at");
+    eb.cbranch(eb.icmp_signed("<", at, depth, name="rp.t.more"), probe_bb, fresh_bb);
+    eb.position_at_end(probe_bb);
+    seen = eb.load(eb.gep(items, [at], name="rp.t.slot"), name="rp.t.seen");
+    eb.store(eb.add(at, ir.Constant(i64, 1), name="rp.t.next"), scan_i);
+    eb.cbranch(
+        eb.icmp_unsigned("==", seen, enter_fn.args[0], name="rp.t.same"),
+        cycle_bb,
+        scan_bb
+    );
+    eb.position_at_end(cycle_bb);
+    eb.ret(ir.Constant(i64, -1));
+    eb.position_at_end(fresh_bb);
+    room = eb.load(room_at, name="rp.t.room");
+    eb.cbranch(eb.icmp_signed("<", depth, room, name="rp.t.fits"), push_bb, grow_bb);
+    eb.position_at_end(grow_bb);
+    wider = eb.add(
+        eb.mul(room, ir.Constant(i64, 2), name="rp.t.double"),
+        ir.Constant(i64, 16),
+        name="rp.t.wider"
+    );
+    moved = eb.bitcast(
+        eb.call(
+            realloc_fn,
+            [
+                eb.bitcast(items, i8p, name="rp.t.items.raw"),
+                eb.mul(wider, ir.Constant(i64, 8), name="rp.t.bytes")
+            ],
+            name="rp.t.moved.raw"
+        ),
+        i8p.as_pointer(),
+        name="rp.t.moved"
+    );
+    eb.store(moved, items_at);
+    eb.store(wider, room_at);
+    eb.branch(push_bb);
+    eb.position_at_end(push_bb);
+    eb.store(
+        enter_fn.args[0],
+        eb.gep(eb.load(items_at, name="rp.t.items.now"), [depth], name="rp.t.mine")
+    );
+    eb.store(eb.add(depth, ir.Constant(i64, 1), name="rp.t.deeper"), depth_at);
+    eb.ret(depth);
+
+    lb = ir.IRBuilder(leave_fn.append_basic_block("entry"));
+    back_bb = leave_fn.append_basic_block("back");
+    done_bb = leave_fn.append_basic_block("done");
+    kept = lb.call(get_fn, [], name="rp.t.held");
+    lb.cbranch(lb.icmp_unsigned("==", kept, zero, name="rp.t.none"), done_bb, back_bb);
+    lb.position_at_end(back_bb);
+    lb.store(
+        leave_fn.args[0],
+        lb.gep(
+            lb.inttoptr(kept, block_ptr, name="rp.t.held.p"),
+            [field_at[0], field_at[0]],
+            name="rp.t.depth.p"
+        )
+    );
+    lb.branch(done_bb);
+    lb.position_at_end(done_bb);
+    lb.ret_void();
+    return (enter_fn, leave_fn);
+}
+
 impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
     import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     cache_key = "default:" + arch_name;
@@ -551,40 +707,17 @@ impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
     self.local_vars = {};
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     self._builder = b;
-    i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    depth_limit = 64;
-    active_type = ir.ArrayType(i8p, depth_limit);
-    if "__jac_repr_active" not in self.llvm_module.globals {
-        active_new = ir.GlobalVariable(
-            self.llvm_module, active_type, name="__jac_repr_active"
-        );
-        active_new.linkage = "weak";
-        active_new.initializer = ir.Constant(active_type, None);
-        depth_new = ir.GlobalVariable(self.llvm_module, i64, name="__jac_repr_depth");
-        depth_new.linkage = "weak";
-        depth_new.initializer = ir.Constant(i64, 0);
-    }
-    active_gv = self.llvm_module.get_global("__jac_repr_active");
-    depth_gv = self.llvm_module.get_global("__jac_repr_depth");
+    (enter_fn, leave_fn) = self._repr_active_fns();
     me = b.bitcast(fn.args[0], i8p, name="rp.d.me");
-    depth = b.load(depth_gv, name="rp.d.depth");
-    scan_i = b.alloca(i64, name="rp.d.scan.i");
-    b.store(ir.Constant(i64, 0), scan_i);
-    scan_bb = fn.append_basic_block("rp.d.scan");
-    probe_bb = fn.append_basic_block("rp.d.probe");
+    outer = b.call(enter_fn, [me], name="rp.d.outer");
     again_bb = fn.append_basic_block("rp.d.again");
     fresh_bb = fn.append_basic_block("rp.d.fresh");
-    b.branch(scan_bb);
-    b.position_at_end(scan_bb);
-    at = b.load(scan_i, name="rp.d.scan.at");
-    b.cbranch(b.icmp_signed("<", at, depth, name="rp.d.scan.more"), probe_bb, fresh_bb);
-    b.position_at_end(probe_bb);
-    seen = b.load(
-        b.gep(active_gv, [ir.Constant(i32, 0), at], name="rp.d.slot"), name="rp.d.seen"
+    b.cbranch(
+        b.icmp_signed("<", outer, ir.Constant(i64, 0), name="rp.d.cycle"),
+        again_bb,
+        fresh_bb
     );
-    b.store(b.add(at, ir.Constant(i64, 1), name="rp.d.scan.next"), scan_i);
-    b.cbranch(b.icmp_unsigned("==", seen, me, name="rp.d.cycle"), again_bb, scan_bb);
     b.position_at_end(again_bb);
     b.ret(
         self._rc_strdup(
@@ -593,17 +726,25 @@ impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
         )
     );
     b.position_at_end(fresh_bb);
-    tracked = b.icmp_signed(
-        "<", depth, ir.Constant(i64, depth_limit), name="rp.d.tracked"
-    );
-    push_bb = fn.append_basic_block("rp.d.push");
-    body_bb = fn.append_basic_block("rp.d.body");
-    b.cbranch(tracked, push_bb, body_bb);
-    b.position_at_end(push_bb);
-    b.store(me, b.gep(active_gv, [ir.Constant(i32, 0), depth], name="rp.d.mine"));
-    b.store(b.add(depth, ir.Constant(i64, 1), name="rp.d.deeper"), depth_gv);
-    b.branch(body_bb);
-    b.position_at_end(body_bb);
+    guarded = not self._slot_lowering_active();
+    if guarded {
+        if self._exc_raise_fn is None {
+            self._declare_exception_runtime();
+        }
+        fn.attributes.add("optnone");
+        fn.attributes.add("noinline");
+        raised_bb = fn.append_basic_block("rp.d.raised");
+        body_bb = fn.append_basic_block("rp.d.body");
+        (raised, region_depth) = self._push_exception_handler(raised_bb, body_bb);
+        b.position_at_end(raised_bb);
+        self._region_unwind(b.load(region_depth));
+        thrown = self._exception_values(raised);
+        b.call(self._exc_pop_fn, []);
+        b.call(leave_fn, [outer]);
+        b.call(self._exc_raise_fn, [thrown[1], thrown[0], thrown[2]]);
+        b.unreachable();
+        b.position_at_end(body_bb);
+    }
     cur: any = self._rc_strdup(
         self._make_global_string(
             self._arch_display(arch_name) + "(", name_prefix=".repr.open"
@@ -639,7 +780,10 @@ impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
     );
     self._emit_rc_release_simple(cur, op="mstr_old", loc="");
     self._emit_set_type_tag(self.builder, closed, "str");
-    self.builder.store(depth, depth_gv);
+    if guarded {
+        self.builder.call(self._exc_pop_fn, []);
+    }
+    self.builder.call(leave_fn, [outer]);
     self.builder.ret(closed);
     self._builder = saved_builder;
     self.local_vars = saved_locals;

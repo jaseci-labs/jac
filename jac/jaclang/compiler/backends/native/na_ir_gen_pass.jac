@@ -3148,6 +3148,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _emit_class_name_const(arch_name: str) -> ir.Constant;
     def _default_repr_fn(arch_name: str) -> (ir.Function | None);
+    def _repr_active_fns -> tuple[ir.Function, ir.Function];
     def _default_repr_piece(
         value: ir.Value, arch_name: str, field_name: str, decl: uni.HasVar
     ) -> (ir.Value | None);
