@@ -71,8 +71,8 @@ import from engine.src.builtins.markers {
     _KEY_GEN_IDX_MARK
 }
 import from engine.src.ffi.libpcre2 { pcre2_code_free_8 }  # G0.5: free swept regexp C-heap
-import from engine.src.builtins.map_type { JSMapNode }
-import from engine.src.builtins.set_type { JSSetNode }
+import from engine.src.builtins.map_type { MAP_NO_VALS, MAP_NO_INDEX }
+import from engine.src.builtins.set_type { SET_NO_VALS, SET_NO_INDEX }
 import from engine.src.builtins.generator_type { JSGeneratorState }
 import from engine.src.runtime.binary_state {
     BINARY_KIND_ARRAY_BUFFER,
@@ -88,7 +88,7 @@ import from engine.src.runtime.jsstring {
     HEAP_STRING_BASE,
     gc_str_bytes_reset
 }
-import from engine.src.runtime.shape { shape_keys }
+import from engine.src.runtime.shape { shape_keys, shape_key_count, shape_slot_count, shape_mem_stats, shape_deepest_leaves }
 import from engine.src.runtime.jsobj_type {
     JSObject,
     MAP_MODE_DICT,
@@ -105,6 +105,7 @@ import from engine.src.runtime.jsobj_type {
     BRAND_REGEXP
 }
 import from engine.src.ffi.libc { write, getenv }
+import from engine.src.ffi.libuv { uv_hrtime }
 # Pin registry lives in its own leaf module so any module can pin glob-held
 # singletons without an import cycle through this file.
 import from engine.src.runtime.gc_pin {
@@ -269,16 +270,13 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
             if mid >= 0 and mid < len(realm.maps) {
                 if not gc_is_marked(realm, CELL_KIND_MAP, mid) {
                     gc_mark(realm, CELL_KIND_MAP, mid);
-                    # Ordered Map nodes are authoritative; keys/vals remain for WeakMap.
-                    ms_ni: int = 0;
-                    ms_nn: int = len(realm.maps[mid].nodes);
-                    while ms_ni < ms_nn {
-                        mn: JSMapNode = realm.maps[mid].nodes[ms_ni];
-                        if not mn.tombstone {
-                            work.append(mn.key);
-                            work.append(mn.val);
-                        }
-                        ms_ni = ms_ni + 1;
+                    # Map entries (deleted keys are the hole — a no-op to
+                    # trace); keys/vals hold WeakMap entries.
+                    for me_k in realm.maps[mid].ekeys {
+                        work.append(me_k);
+                    }
+                    for me_v in realm.maps[mid].evals {
+                        work.append(me_v);
                     }
                     ms_keys: list[JSValue] = realm.maps[mid].keys;
                     ms_vals: list[JSValue] = realm.maps[mid].vals;
@@ -318,14 +316,8 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
             if sid >= 0 and sid < len(realm.sets) {
                 if not gc_is_marked(realm, CELL_KIND_SET, sid) {
                     gc_mark(realm, CELL_KIND_SET, sid);
-                    sn_i: int = 0;
-                    sn_n: int = len(realm.sets[sid].nodes);
-                    while sn_i < sn_n {
-                        sn: JSSetNode = realm.sets[sid].nodes[sn_i];
-                        if not sn.tombstone {
-                            work.append(sn.key);
-                        }
-                        sn_i = sn_i + 1;
+                    for se_k in realm.sets[sid].ekeys {
+                        work.append(se_k);
                     }
                     set_items: list[JSValue] = realm.sets[sid].items;
                     for sv in set_items {
@@ -730,22 +722,25 @@ def:pub gc_sweep_objects(realm: Realm) -> int {
                 # Release the extension record (dict maps, accessor table:
                 # P2/P3b) now, not when the slot is reused.
                 realm.objects[i].ext = None;
-                # A small slots list is emptied in place (a fresh `[]` per dead
-                # object was ~20M allocations + frees per vite build, and the
-                # reuse path keeps it); a large one is dropped so its memory
-                # is released now.
-                if realm.objects[i].slen() <= 16 {
+                # A minimal slot buffer (cap <= 4) is emptied in place for the
+                # slot's next tenant; a larger one is freed now — parked dead
+                # objects (millions at a vite build's peak) held up to 16
+                # slots each.
+                if realm.objects[i].scap() <= 4 {
                     realm.objects[i].sreset();
                 } else {
                     realm.objects[i].sclear();
                 }
                 realm.objects[i].shape_id = 0;
                 realm.objects[i].mode = 0;  # MAP_MODE_DICT
-                realm.objects[i].elems = None;  # release lazy elems (P4)
+                realm.objects[i].eclear();  # release dense elements (P4)
                 realm.objects[i].elems_kind = 0;  # ELEMS_NONE
                 realm.objects[i].brand = 0;  # its marker keys are gone
                 realm.free_object_slots.append(i + 1);  # push 1-based index
                 freed += 1;
+            } else {
+                realm.objects[i].strim();
+                realm.objects[i].etrim();
             }
         }
         i += 1;
@@ -799,12 +794,13 @@ def:pub gc_sweep_maps(realm: Realm) -> int {
         # duplicating it in free_map_slots (mirrors gc_sweep_objects).
         if realm.maps[i].cell_flags != CELL_FLAG_DEAD {
             if not gc_is_marked(realm, CELL_KIND_MAP, i) {
-                realm.maps[i].nodes = [];
-                realm.maps[i].key_index = {};
-                realm.maps[i].keys = [];
-                realm.maps[i].vals = [];
+                realm.maps[i].ekeys = MAP_NO_VALS;
+                realm.maps[i].evals = MAP_NO_VALS;
+                realm.maps[i].key_index = MAP_NO_INDEX;
+                realm.maps[i].keys = MAP_NO_VALS;
+                realm.maps[i].vals = MAP_NO_VALS;
+                realm.maps[i].owned = False;
                 realm.maps[i].head = -1;
-                realm.maps[i].tail = -1;
                 realm.maps[i].live_count = 0;
                 realm.maps[i].cell_flags = CELL_FLAG_DEAD;  # tombstone
                 realm.free_map_slots.append(i);  # G0.5: reusable slot
@@ -825,11 +821,11 @@ def:pub gc_sweep_sets(realm: Realm) -> int {
         # G0.5: sweep each live unmarked slot once, then tombstone (see gc_sweep_maps).
         if realm.sets[i].cell_flags != CELL_FLAG_DEAD {
             if not gc_is_marked(realm, CELL_KIND_SET, i) {
-                realm.sets[i].nodes = [];
-                realm.sets[i].key_index = {};
-                realm.sets[i].items = [];
+                realm.sets[i].ekeys = SET_NO_VALS;
+                realm.sets[i].key_index = SET_NO_INDEX;
+                realm.sets[i].items = SET_NO_VALS;
+                realm.sets[i].owned = False;
                 realm.sets[i].head = -1;
-                realm.sets[i].tail = -1;
                 realm.sets[i].live_count = 0;
                 realm.sets[i].cell_flags = CELL_FLAG_DEAD;  # tombstone
                 realm.free_set_slots.append(i);  # G0.5: reusable slot
@@ -1198,9 +1194,10 @@ def _gc_type_breakdown(realm: Realm) {
         }
         _picked[_best_sid] = 1;
         _keys: list[int] = shape_keys(_best_sid);
+        _keys_n: int = shape_key_count(_best_sid);
         _kstr: str = "";
         _ki: int = 0;
-        while _ki < len(_keys) and _ki < 8 {
+        while _ki < _keys_n and _ki < 8 {
             if _ki > 0 {
                 _kstr = _kstr + ",";
             }
@@ -1211,20 +1208,50 @@ def _gc_type_breakdown(realm: Realm) {
             _kstr = _kstr + _kn;
             _ki = _ki + 1;
         }
-        if len(_keys) > 8 {
-            _kstr = _kstr + ",+" + str(len(_keys) - 8);
+        if _keys_n > 8 {
+            _kstr = _kstr + ",+" + str(_keys_n - 8);
         }
         _line: str = "  shape#"
             + str(_best_sid)
             + " x"
             + str(_best_ct)
             + " nkeys="
-            + str(len(_keys))
+            + str(_keys_n)
             + " {"
             + _kstr
             + "}\n";
         write(2, _line, len(_line));
         _shown = _shown + 1;
+    }
+    _deep_live: int = 0;
+    for _s3 in shape_hist {
+        if shape_slot_count(_s3) >= 128 { _deep_live = _deep_live + shape_hist[_s3]; }
+    }
+    _ss: list[int] = shape_mem_stats();
+    _sl: str = "[GCSHAPE] shapes=" + str(_ss[0]) + " chainIdx=" + str(_ss[1])
+        + " idxEntries=" + str(_ss[2]) + " keysCache=" + str(_ss[3])
+        + " edges=" + str(_ss[4]) + " leaves>=128slots=" + str(_ss[5])
+        + " liveObjs>=128slots=" + str(_deep_live) + "\n";
+    write(2, _sl, len(_sl));
+    for _lsid in shape_deepest_leaves(12) {
+        _lk: list[int] = shape_keys(_lsid);
+        _lk_n: int = shape_key_count(_lsid);
+        _lks: str = "";
+        _lj: int = 0;
+        while _lj < _lk_n {
+            if _lj < 6 or _lj >= _lk_n - 2 {
+                _lkn: str = str_from_id(_lk[_lj]);
+                if len(_lkn) == 0 { _lkn = "#" + str(_lk[_lj]); }
+                if len(_lkn) > 24 { _lkn = _lkn[0:24]; }
+                _lks = _lks + _lkn + ",";
+            } elif _lj == 6 {
+                _lks = _lks + "…,";
+            }
+            _lj = _lj + 1;
+        }
+        _ll: str = "  leaf#" + str(_lsid) + " slots=" + str(shape_slot_count(_lsid))
+            + " live=" + str(shape_hist.get(_lsid, 0)) + " {" + _lks + "}\n";
+        write(2, _ll, len(_ll));
     }
 }
 
@@ -1324,6 +1351,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
         return 0;
     }
     realm.gc_in_progress = True;
+    gc_t0: int = uv_hrtime();
 
     # G1.3: reset per-cycle weak-scan scratch before the mark records into it.
     realm.gc_scan_weakmaps = [];
@@ -1380,6 +1408,8 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
             }
             _gc_msg: str = "[GCTRACE] cyc="
                 + str(gc_total_cycles)
+                + " ms="
+                + str((uv_hrtime() - gc_t0) // 1000000)
                 + " objspan="
                 + str(_gc_span)
                 + " objlive="

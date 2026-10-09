@@ -47,7 +47,7 @@ import from engine.src.runtime.jsvalue {
     JS_CELL_KIND_NATIVE
 }
 import from engine.src.runtime.jsstring { str_from_id, str_substr, HEAP_STRING_BASE }
-import from engine.src.builtins.map_type { JSMapStorage, JSMapNode }
+import from engine.src.builtins.map_type { JSMapStorage, MAP_NO_VALS, MAP_NO_INDEX }
 import from engine.src.runtime.realm { Realm, gc_note_alloc }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -220,7 +220,11 @@ def:pub js_map_create -> JSValue {
 """Create a Map whose [[Prototype]] is `proto` (OrdinaryCreateFromConstructor)."""
 def:pub js_map_create_with_proto(proto: JSValue) -> JSValue {
     ms: JSMapStorage = JSMapStorage(
-        nodes=[], head=-1, tail=-1, key_index={}, keys=[], vals=[], live_count=0
+        ekeys=MAP_NO_VALS,
+        evals=MAP_NO_VALS,
+        key_index=MAP_NO_INDEX,
+        keys=MAP_NO_VALS,
+        vals=MAP_NO_VALS
     );
     map_idx: int = -1;
     if len(_MAP_REALM.free_map_slots) > 0 {  # G0.5: reuse a swept Map slot
@@ -254,8 +258,14 @@ def:pub js_weakmap_create -> JSValue {
 
 """Create a WeakMap whose [[Prototype]] is `proto` (OrdinaryCreateFromConstructor)."""
 def:pub js_weakmap_create_with_proto(proto: JSValue) -> JSValue {
+    wkeys: list[JSValue] = [];
+    wvals: list[JSValue] = [];
     ms: JSMapStorage = JSMapStorage(
-        nodes=[], head=-1, tail=-1, key_index={}, keys=[], vals=[], live_count=0
+        ekeys=MAP_NO_VALS,
+        evals=MAP_NO_VALS,
+        key_index=MAP_NO_INDEX,
+        keys=wkeys,
+        vals=wvals
     );
     map_idx: int = -1;
     if len(_MAP_REALM.free_map_slots) > 0 {  # G0.5: reuse a swept Map slot
@@ -339,7 +349,7 @@ def _map_key_id(key: JSValue) -> int {
     return jsv_to_table_id(key);
 }
 
-def _map_find_node(ms: JSMapStorage, key: JSValue) -> int {
+def _map_find(ms: JSMapStorage, key: JSValue) -> int {
     # SameValueZero keys that do not share a stable table id need a scan:
     # NaN === NaN, and +0 (int32) === -0 (float64) across encodings.
     need_scan: bool = False;
@@ -353,61 +363,44 @@ def _map_find_node(ms: JSMapStorage, key: JSValue) -> int {
     }
     if need_scan {
         ni: int = 0;
-        nn: int = len(ms.nodes);
+        nn: int = len(ms.ekeys);
         while ni < nn {
-            nd: JSMapNode = ms.nodes[ni];
-            if not nd.tombstone and _same_value_zero(nd.key, key) {
+            nk: JSValue = ms.ekeys[ni];
+            if not jsv_is_hole(nk) and _same_value_zero(nk, key) {
                 return ni;
             }
             ni = ni + 1;
         }
         return -1;
     }
-    kid: int = _map_key_id(key);
-    if kid in ms.key_index {
-        idx: int = ms.key_index[kid];
-        if idx >= 0 and idx < len(ms.nodes) {
-            nd2: JSMapNode = ms.nodes[idx];
-            if not nd2.tombstone and _same_value_zero(nd2.key, key) {
-                return idx;
-            }
+    if len(ms.key_index) == 0 {
+        return -1;
+    }
+    idx: int = ms.key_index.get(_map_key_id(key), -1);
+    if idx >= 0 and idx < len(ms.ekeys) {
+        ik: JSValue = ms.ekeys[idx];
+        if not jsv_is_hole(ik) and _same_value_zero(ik, key) {
+            return idx;
         }
     }
     return -1;
 }
 
-def _map_link_tail(ms: JSMapStorage, idx: int) -> None {
-    if ms.head < 0 {
-        ms.head = idx;
-        ms.tail = idx;
-        return;
+"""Give the Map its own entry containers before its first insert."""
+def _map_own(ms: JSMapStorage) {
+    if not ms.owned {
+        ms.ekeys = [];
+        ms.evals = [];
+        ms.key_index = {};
+        ms.owned = True;
     }
-    ms.nodes[ms.tail].next = idx;
-    ms.nodes[idx].prev = ms.tail;
-    ms.tail = idx;
 }
 
-def _map_unlink(ms: JSMapStorage, idx: int) {
-    nd: JSMapNode = ms.nodes[idx];
-    if nd.prev >= 0 {
-        ms.nodes[nd.prev].next = nd.next;
-    } else {
-        ms.head = nd.next;
-    }
-    if nd.next >= 0 {
-        ms.nodes[nd.next].prev = nd.prev;
-    } else {
-        ms.tail = nd.prev;
-    }
-    nd.prev = -1;
-    nd.next = -1;
-}
-
-"""Drop the tombstones in front of the first live node once they are at least
-half of `nodes` (amortized O(1) per delete). A Map used as a queue deletes from
-the front, and every new iterator walked those tombstones again (quadratic)."""
+"""Drop the deleted entries in front of the first live one once they are at
+least half of the entries (amortized O(1) per delete). A Map used as a queue
+deletes from the front, and every new iterator walked them again (quadratic)."""
 def _map_compact_prefix(ms: JSMapStorage) -> None {
-    n: int = len(ms.nodes);
+    n: int = len(ms.ekeys);
     k: int = ms.head;
     if k < 0 {
         k = n;
@@ -415,21 +408,12 @@ def _map_compact_prefix(ms: JSMapStorage) -> None {
     if k < 32 or k * 2 < n {
         return;
     }
-    kept: list[JSMapNode] = [];
+    kk: list[JSValue] = [];
+    kv: list[JSValue] = [];
     i: int = k;
     while i < n {
-        nd: JSMapNode = ms.nodes[i];
-        if nd.prev >= k {
-            nd.prev = nd.prev - k;
-        } else {
-            nd.prev = -1;
-        }
-        if nd.next >= k {
-            nd.next = nd.next - k;
-        } else {
-            nd.next = -1;
-        }
-        kept.append(nd);
+        kk.append(ms.ekeys[i]);
+        kv.append(ms.evals[i]);
         i = i + 1;
     }
     kids: list[int] = [];
@@ -439,10 +423,10 @@ def _map_compact_prefix(ms: JSMapStorage) -> None {
     for kid2 in kids {
         ms.key_index[kid2] = ms.key_index[kid2] - k;
     }
-    ms.nodes = kept;
+    ms.ekeys = kk;
+    ms.evals = kv;
     if ms.head >= 0 {
         ms.head = ms.head - k;
-        ms.tail = ms.tail - k;
     }
     ms.base = ms.base + k;
 }
@@ -451,9 +435,9 @@ def _map_compact_prefix(ms: JSMapStorage) -> None {
 """Return the value for key in map, or undefined if not found."""
 def:pub js_map_get(m: JSValue, key: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find_node(ms, key);
+    fi: int = _map_find(ms, key);
     if fi >= 0 {
-        return ms.nodes[fi].val;
+        return ms.evals[fi];
     }
     return js_undefined();
 }
@@ -461,16 +445,19 @@ def:pub js_map_get(m: JSValue, key: JSValue) -> JSValue {
 """Set key→val in map; return the map (for chaining)."""
 def:pub js_map_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find_node(ms, key);
+    fi: int = _map_find(ms, key);
     if fi >= 0 {
-        ms.nodes[fi].val = val;
+        ms.evals[fi] = val;
         return m;
     }
-    ni: int = len(ms.nodes);
-    ms.nodes.append(JSMapNode(key=key, val=val, prev=-1, next=-1, tombstone=False));
-    _map_link_tail(ms, ni);
-    kid: int = _map_key_id(key);
-    ms.key_index[kid] = ni;
+    _map_own(ms);
+    ni: int = len(ms.ekeys);
+    ms.ekeys.append(key);
+    ms.evals.append(val);
+    if ms.head < 0 {
+        ms.head = ni;
+    }
+    ms.key_index[_map_key_id(key)] = ni;
     ms.live_count = ms.live_count + 1;
     return m;
 }
@@ -478,7 +465,7 @@ def:pub js_map_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
 """Return true if key exists in map."""
 def:pub js_map_has(m: JSValue, key: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find_node(ms, key);
+    fi: int = _map_find(ms, key);
     if fi >= 0 {
         return js_true();
     }
@@ -488,17 +475,26 @@ def:pub js_map_has(m: JSValue, key: JSValue) -> JSValue {
 """Delete key from map; return true if deleted, false if not found."""
 def:pub js_map_delete(m: JSValue, key: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    fi: int = _map_find_node(ms, key);
+    fi: int = _map_find(ms, key);
     if fi < 0 {
         return js_false();
     }
-    nd: JSMapNode = ms.nodes[fi];
-    nd.tombstone = True;
-    nd.val = js_undefined();
-    _map_unlink(ms, fi);
+    ms.ekeys[fi] = jsv_hole();
+    ms.evals[fi] = js_undefined();
     kid: int = _map_key_id(key);
-    if kid in ms.key_index and ms.key_index[kid] == fi {
+    if ms.key_index.get(kid, -1) == fi {
         del ms.key_index[kid];
+    }
+    if fi == ms.head {
+        nh: int = fi + 1;
+        nn: int = len(ms.ekeys);
+        while nh < nn and jsv_is_hole(ms.ekeys[nh]) {
+            nh = nh + 1;
+        }
+        if nh >= nn {
+            nh = -1;
+        }
+        ms.head = nh;
     }
     if ms.live_count > 0 {
         ms.live_count = ms.live_count - 1;
@@ -510,13 +506,14 @@ def:pub js_map_delete(m: JSValue, key: JSValue) -> JSValue {
 """Remove all entries from map."""
 def:pub js_map_clear(m: JSValue) {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    # Every node becomes a tombstone (ES MapClear), so drop them all; in-flight
+    # Every entry is deleted (ES MapClear), so drop them all; in-flight
     # iterators resume at the first entry added after the clear.
-    ms.base = ms.base + len(ms.nodes);
-    ms.nodes = [];
+    ms.base = ms.base + len(ms.ekeys);
+    ms.ekeys = MAP_NO_VALS;
+    ms.evals = MAP_NO_VALS;
+    ms.key_index = MAP_NO_INDEX;
+    ms.owned = False;
     ms.head = -1;
-    ms.tail = -1;
-    ms.key_index = {};
     ms.live_count = 0;
 }
 
@@ -531,10 +528,10 @@ def:pub js_map_keys_array(m: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
     result: list[JSValue] = [];
     i: int = 0;
-    n: int = len(ms.nodes);
+    n: int = len(ms.ekeys);
     while i < n {
-        if not ms.nodes[i].tombstone {
-            result.append(ms.nodes[i].key);
+        if not jsv_is_hole(ms.ekeys[i]) {
+            result.append(ms.ekeys[i]);
         }
         i = i + 1;
     }
@@ -546,10 +543,10 @@ def:pub js_map_values_array(m: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
     result: list[JSValue] = [];
     i: int = 0;
-    n: int = len(ms.nodes);
+    n: int = len(ms.ekeys);
     while i < n {
-        if not ms.nodes[i].tombstone {
-            result.append(ms.nodes[i].val);
+        if not jsv_is_hole(ms.ekeys[i]) {
+            result.append(ms.evals[i]);
         }
         i = i + 1;
     }
@@ -561,10 +558,10 @@ def:pub js_map_entries_array(m: JSValue) -> JSValue {
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
     entries: list[JSValue] = [];
     i: int = 0;
-    n: int = len(ms.nodes);
+    n: int = len(ms.ekeys);
     while i < n {
-        if not ms.nodes[i].tombstone {
-            pair: JSValue = js_array_create([ms.nodes[i].key, ms.nodes[i].val]);
+        if not jsv_is_hole(ms.ekeys[i]) {
+            pair: JSValue = js_array_create([ms.ekeys[i], ms.evals[i]]);
             entries.append(pair);
         }
         i = i + 1;
@@ -727,23 +724,24 @@ def:pub js_map_iterator_step(it: JSValue) -> JSValue {
         return jsv_hole();
     }
     ms: JSMapStorage = _MAP_REALM.maps[_map_idx(m)];
-    n: int = len(ms.nodes);
+    n: int = len(ms.ekeys);
     p: int = msi_cursor_get(it) - ms.base;
-    # Every node before head is a tombstone; no head means no live node.
+    # Every entry before head is deleted; no head means no live entry.
     if ms.head < 0 {
         p = n;
     } elif p < ms.head {
         p = ms.head;
     }
-    while p < n and ms.nodes[p].tombstone {
+    while p < n and jsv_is_hole(ms.ekeys[p]) {
         p = p + 1;
     }
     if p >= n {
         js_object_set(it, msi_done_slot_key(), js_true());
         return jsv_hole();
     }
-    nd: JSMapNode = ms.nodes[p];
-    _MSI_STEP_VAL = nd.val;
+    nd_key: JSValue = ms.ekeys[p];
+    nd_val: JSValue = ms.evals[p];
+    _MSI_STEP_VAL = nd_val;
     js_object_set(it, msi_idx_slot_key(), msi_cursor_value(ms.base + p + 1));
     kind_v: JSValue = js_object_get(it, msi_kind_slot_key());
     kind: int = MAP_SET_ITER_KIND_VALUE;
@@ -751,12 +749,12 @@ def:pub js_map_iterator_step(it: JSValue) -> JSValue {
         kind = jsv_to_int32(kind_v);
     }
     if kind == MAP_SET_ITER_KIND_KEY {
-        return nd.key;
+        return nd_key;
     }
     if kind == MAP_SET_ITER_KIND_VALUE {
-        return nd.val;
+        return nd_val;
     }
-    return js_array_create([nd.key, nd.val]);
+    return js_array_create([nd_key, nd_val]);
 }
 
 """Value of the entry the last js_map_iterator_step visited (read it before

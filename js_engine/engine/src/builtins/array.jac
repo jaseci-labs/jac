@@ -177,7 +177,7 @@ def:pub js_array_create(elements: list[JSValue]) -> JSValue {
             if jsv_is_hole(elements[di]) {
                 arr_raw.elems_kind = ELEMS_HOLEY;
             }
-            arr_raw.elems_rw().append(elements[di]);
+            arr_raw.epush(elements[di]);
             di = di + 1;
         }
     } else {
@@ -244,14 +244,14 @@ def:pub js_array_init_exotic_from_args(o: JSValue, args: list[JSValue]) {
     n: int = len(args);
     if dense_gate_enabled() {
         o_raw: JSObject = js_object_table_get(jsv_to_table_id(o));
-        if o_raw.elems_kind == ELEMS_NONE and len(o_raw.elems_ro()) == 0 {
+        if o_raw.elems_kind == ELEMS_NONE and o_raw.elen() == 0 {
             o_raw.elems_kind = ELEMS_DENSE;
             xi: int = 0;
             while xi < n {
                 if jsv_is_hole(args[xi]) {
                     o_raw.elems_kind = ELEMS_HOLEY;
                 }
-                o_raw.elems_rw().append(args[xi]);
+                o_raw.epush(args[xi]);
                 xi = xi + 1;
             }
             js_object_set_flags(o, KEY_LENGTH, js_array_len_value(n), PROP_WRITABLE);
@@ -280,8 +280,8 @@ def:pub js_array_get(arr: JSValue, idx: int) -> JSValue {
         if ag_id > 0 {
             ag_raw: JSObject = js_object_table_get(ag_id);
             if ag_raw.elems_kind != ELEMS_NONE {
-                if idx < len(ag_raw.elems_ro()) {
-                    ag_v: JSValue = ag_raw.elems_ro()[idx];
+                if idx < ag_raw.elen() {
+                    ag_v: JSValue = ag_raw.eget(idx);
                     if not jsv_is_hole(ag_v) {
                         return ag_v;
                     }
@@ -304,11 +304,11 @@ def:pub js_array_set(arr: JSValue, idx: int, val: JSValue) {
         if as_id > 0 {
             as_raw: JSObject = js_object_table_get(as_id);
             if as_raw.elems_kind != ELEMS_NONE
-                and idx < len(as_raw.elems_ro())
-                and not jsv_is_hole(as_raw.elems_ro()[idx]) {
+                and idx < as_raw.elen()
+                and not jsv_is_hole(as_raw.eget(idx)) {
                 # Own writable data element: no length change, no prototype
                 # consultation possible.
-                as_raw.elems_rw()[idx] = val;
+                as_raw.eset(idx, val);
                 return;
             }
         }
@@ -351,10 +351,10 @@ def:pub js_array_push(arr: JSValue, item: JSValue) -> None {
                     # Push appends at `length` — only a pure append when the
                     # dense range reaches exactly that far (no trailing holes).
                     if jsv_is_int32(ap_len_v)
-                        and jsv_to_int32(ap_len_v) == len(ap_raw.elems_ro()) {
-                        ap_raw.elems_rw().append(item);
+                        and jsv_to_int32(ap_len_v) == ap_raw.elen() {
+                        ap_raw.epush(item);
                         ap_raw.sset(ap_pk // 16, js_array_len_value(
-                            len(ap_raw.elems_ro())
+                            ap_raw.elen()
                         ));
                         return;
                     }
@@ -1746,14 +1746,14 @@ def:pub js_Array_push(arr: JSValue, items: list[JSValue]) -> JSValue {
                     and (jp_pk & 1) != 0 {
                     jp_lv: JSValue = jp_raw.sget(jp_pk // 16);
                     if jsv_is_int32(jp_lv)
-                        and jsv_to_int32(jp_lv) == len(jp_raw.elems_ro()) {
+                        and jsv_to_int32(jp_lv) == jp_raw.elen() {
                         for jp_itm in items {
-                            jp_raw.elems_rw().append(jp_itm);
+                            jp_raw.epush(jp_itm);
                         }
                         jp_raw.sset(jp_pk // 16, js_array_len_value(
-                            len(jp_raw.elems_ro())
+                            jp_raw.elen()
                         ));
-                        return js_array_len_value(len(jp_raw.elems_ro()));
+                        return js_array_len_value(jp_raw.elen());
                     }
                 }
             }

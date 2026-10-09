@@ -12,23 +12,19 @@ import from engine.src.runtime.jsvalue { JSValue }
 # JSSetStorage
 # ═══════════════════════════════════════════════════════════════════════════════
 
-"""Insertion-order node for Set (SameValueZero keys, tombstones for live iters)."""
-obj:pub JSSetNode {
-    has key: JSValue,
-        prev: int = -1,
-        next: int = -1,
-        tombstone: bool = False;
-}
-
 """Storage for a JS Set or WeakSet object.
-Set uses ordered nodes + live_count; WeakSet keeps a parallel `items` list."""
+
+A Set's members are `ekeys` in insertion order; a deleted member is the hole
+sentinel (live iterators step over it) and `head` is the first live one (-1:
+none). Until its first add a Set shares the empty SET_NO_* containers (`owned`
+False). WeakSet keeps its members in `items` instead."""
 obj:pub JSSetStorage {
-    has nodes: list[JSSetNode],
+    has ekeys: list[JSValue],
         key_index: dict[int, int],
         items: list[JSValue],
         head: int = -1,
-        tail: int = -1,
         live_count: int = 0,
+        owned: bool = False,
         cell_kind: int = 7,
         cell_flags: int = 0,
         structure_id: int = 0,
@@ -37,5 +33,9 @@ obj:pub JSSetStorage {
 # ── Cell header (A2.1) ─────────────────────────────────────────────────
 # CELL_KIND_SET
 
-# Iterator cursors count nodes from the Set's creation; nodes[0] is node
-# number `base` (leading tombstones are dropped, see _set_compact_prefix).
+# Iterator cursors count members from the Set's creation; ekeys[0] is member
+# number `base` (leading deleted members are dropped, see _set_compact_prefix).
+
+# Shared empty containers (never mutated: writers replace them first).
+glob:pub SET_NO_VALS: list[JSValue] = [],
+         SET_NO_INDEX: dict[int, int] = {};

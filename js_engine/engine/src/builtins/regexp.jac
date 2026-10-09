@@ -34,7 +34,7 @@ import from engine.src.ffi.libpcre2 {
     pcre2_pattern_info_8,
     pcre2_code_free_8
 }
-import from engine.src.runtime.mem { io_alloc, read_u64, read_u32, byte_chr }
+import from engine.src.runtime.mem { io_alloc, io_free, write_byte, read_u64, read_u32, byte_chr }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -58,6 +58,7 @@ import from engine.src.builtins.regexp_type { JSRegExpState }
 import from engine.src.runtime.realm { Realm }
 import from engine.src.runtime.jscell { CELL_FLAG_DEAD }  # G0.5: regexp slot tombstone
 import from engine.src.runtime.jsstring {
+    nul_sentinel,
     str_intern_index,
     str_intern,
     str_from_id,
@@ -1652,6 +1653,9 @@ def _re_is_hex4(pattern: str, pos: int) -> bool {
     return True;
 }
 
+# ECMAScript WhiteSpace + LineTerminator as a PCRE2 UTF class body (\s under /u).
+glob _RE_JS_WS: str = "\\t\\n\\x0B\\f\\r \\x{A0}\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}";
+
 def _normalize_unicode_pattern(
     pattern: str, use_unicode: bool, is_caseless: bool
 ) -> str {
@@ -1669,17 +1673,42 @@ def _normalize_unicode_pattern(
         # `\u`/`\u{}` still need the normalization below, so only fast-path
         # NON-`\u` escapes here (e.g. `\[`, `\]`, `\.`). This keeps `\]` from
         # closing a class and `\[` from opening one.
-        # U+0000 escapes (`\\0` not followed by a digit, `\\x00`, `\\u0000`) must
-        # match the engine's NUL sentinel, bytes C0 80 — engine strings never
-        # hold a NUL byte, so PCRE2's `\\0` matched nothing (byte mode; under
-        # /u, MATCH_INVALID_UTF steps over the sentinel instead):
-        # `/^\\0/.test("\\0id")` was false and `id.replace(/\\0/g, "")` a no-op
-        # (vite's virtual-module ids leaked into sourcemap `sources`). Top level
-        # only: inside a class the 4-char form has no meaning.
+        # U+0000: engine strings hold it as the sentinel C0 80, but a subject
+        # that has one is matched as a copy with real 0x00 bytes
+        # (_do_match_nul), so every NUL form compiles to PCRE2's `\\x00` — a
+        # literal NUL in the pattern (sentinel bytes) included. Inside a class
+        # `\\0` / `\\x00` are already PCRE2's NUL.
+        if ord(pattern[i]) == 192 and i + 1 < len(pattern) and ord(pattern[i + 1]) == 128 {
+            out = out + "\\x00";
+            i = i + 2;
+            continue;
+        }
         if not nz_in_class and _re_nul_escape_len(pattern, i) > 0 {
-            out = out + "\\xC0\\x80";
+            out = out + "\\x00";
             i = i + _re_nul_escape_len(pattern, i);
             continue;
+        }
+        # /u, /v: PCRE2's UCP `\\s` is Unicode White_Space (it adds U+0085 and
+        # lacks U+FEFF); spell out ECMAScript WhiteSpace + LineTerminator. A `\\S`
+        # inside a class has no set form there and stays PCRE2's.
+        if use_unicode
+            and pattern[i] == "\\"
+            and i + 1 < len(pattern)
+            and (pattern[i + 1] == "s" or pattern[i + 1] == "S") {
+            if not nz_in_class {
+                if pattern[i + 1] == "s" {
+                    out = out + "[" + _RE_JS_WS + "]";
+                } else {
+                    out = out + "[^" + _RE_JS_WS + "]";
+                }
+                i = i + 2;
+                continue;
+            }
+            if pattern[i + 1] == "s" {
+                out = out + _RE_JS_WS;
+                i = i + 2;
+                continue;
+            }
         }
         if pattern[i] == "\\" and i + 1 < len(pattern) and pattern[i + 1] != "u" {
             out = out + pattern[i] + pattern[i + 1];
@@ -2022,6 +2051,20 @@ actually contains a surrogate half (lead byte 0xED), instead of decoding and
 re-encoding the whole string on EVERY call (O(n) per match → quadratic loops).
 """
 glob _DM_ASCII: bool = False;
+# Subjects holding U+0000 (sentinel C0 80): the string cell the public entry
+# point is matching (_dm_subject_ascii), and a cache of the last one checked —
+# whether it has a NUL and, if so, its copy with real 0x00 bytes plus their
+# offsets. Keyed by cell id, length and GC epoch (a swept heap-string id is only
+# reused after a collection), so a /g loop converts its subject once.
+glob _DM_SUBJ_ID: int = -1,
+     _DM_NUL: str = "",
+     _DM_NUL_ID: int = -2,
+     _DM_NUL_LEN: int = -1,
+     _DM_NUL_EPOCH: int = -1,
+     _DM_NUL_HAS: bool = False,
+     _DM_NUL_BUF: int = 0,
+     _DM_NUL_BLEN: int = 0,
+     _DM_NUL_POS: list[int] = [];
 glob _DM_ED: str = "",
      _DM_MD: dict[int, int] = {},
      _DM_MCTX: int = 0;
@@ -2034,6 +2077,9 @@ def _do_match(re: JSRegExpState, s: str, start: int) -> list[int] {
     if re.pcre2_code_ptr == 0 {
         return [-1];
     }
+    if not _DM_ASCII and _dm_has_nul(s) {
+        return _do_match_nul(re, s, start);
+    }
     if (re.flag_u or re.flag_v) and not _DM_ASCII {
         if len(_DM_ED) == 0 {
             _DM_ED = byte_chr(237);
@@ -2043,6 +2089,101 @@ def _do_match(re: JSRegExpState, s: str, start: int) -> list[int] {
         }
     }
     return _do_match_raw(re, s, start);
+}
+
+"""Whether `s` (the subject of the current match) holds U+0000; builds its
+0x00-byte copy when it does. Cached per subject (see _DM_SUBJ_ID)."""
+def _dm_has_nul(s: str) -> bool {
+    n: int = len(s);
+    if _DM_SUBJ_ID >= 0
+        and _DM_SUBJ_ID == _DM_NUL_ID
+        and n == _DM_NUL_LEN
+        and _DM_NUL_EPOCH == _RE_REALM.gc_epoch {
+        return _DM_NUL_HAS;
+    }
+    if len(_DM_NUL) == 0 {
+        _DM_NUL = nul_sentinel();
+    }
+    if _DM_NUL_BUF != 0 {
+        io_free(_DM_NUL_BUF);
+        _DM_NUL_BUF = 0;
+    }
+    _DM_NUL_ID = _DM_SUBJ_ID;
+    _DM_NUL_LEN = n;
+    _DM_NUL_EPOCH = _RE_REALM.gc_epoch;
+    _DM_NUL_HAS = s.find(_DM_NUL) >= 0;
+    if not _DM_NUL_HAS {
+        return False;
+    }
+    buf: int = io_alloc(n + 1);
+    pos: list[int] = [];
+    i: int = 0;
+    o: int = 0;
+    while i < n {
+        b: int = ord(s[i]);
+        if b == 192 and i + 1 < n and ord(s[i + 1]) == 128 {
+            pos.append(o);
+            write_byte(buf, o, 0);
+            i = i + 2;
+        } else {
+            write_byte(buf, o, b);
+            i = i + 1;
+        }
+        o = o + 1;
+    }
+    _DM_NUL_BUF = buf;
+    _DM_NUL_BLEN = o;
+    _DM_NUL_POS = pos;
+    return True;
+}
+
+"""Sentinels before converted offset `v` (_DM_NUL_POS ascending), or — with
+`orig` — before original byte offset `v` (sentinel k sits at pos[k] + k)."""
+def _dm_nul_below(v: int, orig: bool) -> int {
+    lo: int = 0;
+    hi: int = len(_DM_NUL_POS);
+    while lo < hi {
+        mid: int = (lo + hi) // 2;
+        at: int = _DM_NUL_POS[mid];
+        if orig {
+            at = at + mid;
+        }
+        if at < v {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+"""Match a subject holding U+0000. Engine strings keep it as the sentinel
+C0 80, which byte-mode classes saw as two bytes (`[\\0-\\x1f]` missed it,
+`[^\\x00-\\x7f]` hit it) and /u could not match at all (invalid UTF-8 under
+MATCH_INVALID_UTF). PCRE2 runs on the cached copy with real 0x00 bytes (NUL
+forms compile to `\\x00`); offsets map back to the subject's bytes."""
+def _do_match_nul(re: JSRegExpState, s: str, start: int) -> list[int] {
+    cstart: int = start - _dm_nul_below(start, True);
+    res: list[int] = _do_match_buf(re, _DM_NUL_BUF, _DM_NUL_BLEN, cstart);
+    if res[0] < 0 {
+        return res;
+    }
+    k: int = 0;
+    while k < len(res) {
+        v: int = res[k];
+        if v >= 0 {
+            res[k] = v + _dm_nul_below(v, False);
+        }
+        k = k + 1;
+    }
+    return res;
+}
+
+"""_do_match_on over an io_alloc buffer. The str cast's scope ends here (its
+zeroed io_alloc header makes it unmanaged); the buffer outlives it."""
+def _do_match_buf(re: JSRegExpState, p: int, n: int, start: int) -> list[int] {
+    sb: str = p;  # jac:ignore[E1001] pointer reinterpret
+    return _do_match_on(re, sb, n, start);
 }
 
 """/u or /v subject holding CESU-8 surrogate halves: pair them into 4-byte astral
@@ -2058,6 +2199,10 @@ def _do_match_conv(re: JSRegExpState, s: str, start: int) -> list[int] {
 }
 
 def _do_match_raw(re: JSRegExpState, subj: str, start: int) -> list[int] {
+    return _do_match_on(re, subj, len(subj), start);
+}
+
+def _do_match_on(re: JSRegExpState, subj: str, slen: int, start: int) -> list[int] {
     md: int = 0;
     if re.pcre2_code_ptr in _DM_MD {
         md = _DM_MD[re.pcre2_code_ptr];
@@ -2074,7 +2219,6 @@ def _do_match_raw(re: JSRegExpState, subj: str, start: int) -> list[int] {
             pcre2_set_match_limit_8(_DM_MCTX, PCRE2_MATCH_LIMIT);
         }
     }
-    slen: int = len(subj);
     rc: int = pcre2_match_8(re.pcre2_code_ptr, subj, slen, start, 0, md, _DM_MCTX);
     if rc == 0 {
         # rc 0 = matched, but the ovector is too small for this pattern's groups:
@@ -2164,9 +2308,11 @@ def _re_input_value(v: JSValue, s: str) -> JSValue {
 surrogates possible, so /u matching can use the bytes as-is)."""
 def _dm_subject_ascii(v: JSValue) -> bool {
     if not jsv_is_string_cell(v) {
+        _DM_SUBJ_ID = -1;
         return False;
     }
-    return str_cell_ascii(jsv_to_table_id(v)) == 1;
+    _DM_SUBJ_ID = jsv_to_table_id(v);
+    return str_cell_ascii(_DM_SUBJ_ID) == 1;
 }
 
 """Byte offset → UTF-16 unit index (identity for a known-ASCII subject). JS

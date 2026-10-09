@@ -14,6 +14,7 @@ import from engine.src.runtime.jsvalue {
     jsv_is_any_object
 }
 import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.runtime.jsobject { js_object_create_null, js_object_get, js_object_has_own }
 
 glob _FN_META_CLOSURES: list[JSClosure] = [];
 
@@ -65,6 +66,30 @@ def:pub fn_meta_set_object_proto(v: JSValue, proto: JSValue) -> int {
     return 0;
 }
 
+"""A closure's own-property bag (user properties, materialised name/length,
+engine tags), created on first use: make_closure leaves fn_props undefined
+because most closures never get one. Writers and anything that hands the bag
+on use this; plain lookups use cl_props_get / cl_props_has_own."""
+def:pub cl_props(cl: JSClosure) -> JSValue {
+    if not jsv_is_object_cell(cl.fn_props) {
+        cl.fn_props = js_object_create_null();
+    }
+    return cl.fn_props;
+}
+
+"""Own data value of `key` in the closure's bag (undefined when it has none)."""
+def:pub cl_props_get(cl: JSClosure, key: int) -> JSValue {
+    if not jsv_is_object_cell(cl.fn_props) {
+        return js_undefined();
+    }
+    return js_object_get(cl.fn_props, key);
+}
+
+"""Whether the closure's bag has own `key` (False when it has none)."""
+def:pub cl_props_has_own(cl: JSClosure, key: int) -> bool {
+    return jsv_is_object_cell(cl.fn_props) and js_object_has_own(cl.fn_props, key);
+}
+
 """Return the closure's fn_props bag, or undefined if v is not a live closure."""
 def:pub fn_meta_get_fn_props(v: JSValue) -> JSValue {
     if not fn_meta_is_closure(v) {
@@ -74,7 +99,7 @@ def:pub fn_meta_get_fn_props(v: JSValue) -> JSValue {
     if idx < 0 or idx >= len(_FN_META_CLOSURES) {
         return js_undefined();
     }
-    return _FN_META_CLOSURES[idx].fn_props;
+    return cl_props(_FN_META_CLOSURES[idx]);
 }
 
 """Builtin [[Class]] tag for user closures (Object.prototype.toString)."""

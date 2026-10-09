@@ -20,7 +20,8 @@ import from engine.src.runtime.jsstring { gc_str_min_limit_set_mb }
 import from engine.src.runtime.realm {
     gc_min_threshold_set,
     gc_default_set,
-    gc_growth_pct_set
+    gc_growth_pct_set,
+    gc_floor_pct_set
 }
 import from engine.src.vm.vm { vm_ic_enable, vm_dump_pair_stats }
 import from engine.src.builtins.process {
@@ -893,6 +894,10 @@ with entry {
     gc_growth_env: str = getenv("JAC_GC_GROWTH");
     if gc_growth_env != None {
         gc_growth_pct_set(int(gc_growth_env));
+    }
+    gc_floor_env: str = getenv("JAC_GC_FLOOR");
+    if gc_floor_env != None {
+        gc_floor_pct_set(int(gc_floor_env));
     }
     gc_str_env: str = getenv("JAC_GC_STR_MB");
     if gc_str_env != None {

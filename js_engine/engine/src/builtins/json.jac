@@ -379,8 +379,9 @@ def _parse_string(p: JSONParser) -> str {
         # ES §25.5.1 JSONString grammar: a JSONStringCharacter is any code
         # point EXCEPT U+0000-U+001F, which must appear escaped. A literal
         # tab/newline inside a string is a SyntaxError, not content. (Bytes of a
-        # multi-byte UTF-8 character are all >= 0x80.)
-        if b < 32 {
+        # multi-byte UTF-8 character are all >= 0x80; U+0000 is stored as the
+        # sentinel C0 80.)
+        if b < 32 or (b == 192 and p.pos + 1 < n and ord(src[p.pos + 1]) == 128) {
             if p.pos > run_start {
                 parts.append(str_substr(src, run_start, p.pos));
             }

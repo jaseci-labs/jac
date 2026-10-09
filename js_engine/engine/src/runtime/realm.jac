@@ -48,20 +48,31 @@ def:pub gc_growth_pct_set(n: int) {
     }
 }
 
+# Floor the growth tapers to at 8M live objects (JAC_GC_FLOOR, main.jac).
+glob:pub _GC_FLOOR_PCT: int = 50;
+
+"""Set the taper floor percentage (see _GC_FLOOR_PCT). No-op for non-positive values."""
+def:pub gc_floor_pct_set(n: int) {
+    if n > 0 {
+        _GC_FLOOR_PCT = n;
+    }
+}
+
 """Growth percentage for the next collection, given the live object count.
 Up to 2M live objects it is the full _GC_GROWTH_PCT, so collections stay rare
 for ordinary programs. Past that, a heap allowed to triple between collections
 stops fitting in memory (a large vite build peaked at 22 GB with ~11M live
-objects), so the growth tapers linearly to 50% at 8M live objects: extra
+objects), so the growth tapers linearly to _GC_FLOOR_PCT at 8M live objects: extra
 collections happen only where the heap is huge. A pinned value is used as is."""
 def:pub gc_growth_pct_for(live: int) -> int {
-    if _GC_GROWTH_FIXED or live <= 2000000 or _GC_GROWTH_PCT <= 50 {
+    if _GC_GROWTH_FIXED or live <= 2000000 or _GC_GROWTH_PCT <= _GC_FLOOR_PCT {
         return _GC_GROWTH_PCT;
     }
     if live >= 8000000 {
-        return 50;
+        return _GC_FLOOR_PCT;
     }
-    return _GC_GROWTH_PCT - (_GC_GROWTH_PCT - 50) * (live - 2000000) // 6000000;
+    return _GC_GROWTH_PCT
+        - (_GC_GROWTH_PCT - _GC_FLOOR_PCT) * (live - 2000000) // 6000000;
 }
 
 """Whether new realms start with the collector on. On by default; `--nogc`

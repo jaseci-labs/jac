@@ -16,6 +16,7 @@ Encoding scheme (JSValue.tag == Object, as_ptr < 0):
 The VM dispatches `is_fn_val` closures in CALL/CALL_METHOD.
 """
 
+import from engine.src.runtime.fn_meta { cl_props }
 import from engine.src.vm.closure_type { JSClosure }
 import from engine.src.vm.vm {
     VM,
@@ -557,7 +558,7 @@ def:pub js_fn_get_fn_props(v: JSValue) -> JSValue {
     }
     idx: int = get_fn_idx(v);
     if idx < len(_FN_REALM.closures) {
-        return _FN_REALM.closures[idx].fn_props;
+        return cl_props(_FN_REALM.closures[idx]);
     }
     return js_undefined();
 }

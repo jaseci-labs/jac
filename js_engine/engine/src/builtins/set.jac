@@ -28,7 +28,7 @@ import from engine.src.runtime.jsvalue {
     jsv_to_double,
     jsv_is_string_cell
 }
-import from engine.src.builtins.set_type { JSSetStorage, JSSetNode }
+import from engine.src.builtins.set_type { JSSetStorage, SET_NO_VALS, SET_NO_INDEX }
 import from engine.src.runtime.realm { Realm, gc_note_alloc }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -157,15 +157,15 @@ def _set_key_id(key: JSValue) -> int {
     return jsv_to_table_id(key);
 }
 
-def _set_find_node(ss: JSSetStorage, key: JSValue) -> int {
+def _set_find(ss: JSSetStorage, key: JSValue) -> int {
     if jsv_is_double(key) {
         kd: float = jsv_to_double(key);
         if kd != kd {
             ni: int = 0;
-            nn: int = len(ss.nodes);
+            nn: int = len(ss.ekeys);
             while ni < nn {
-                nd: JSSetNode = ss.nodes[ni];
-                if not nd.tombstone and _same_value_zero(nd.key, key) {
+                nk: JSValue = ss.ekeys[ni];
+                if not jsv_is_hole(nk) and _same_value_zero(nk, key) {
                     return ni;
                 }
                 ni = ni + 1;
@@ -173,51 +173,33 @@ def _set_find_node(ss: JSSetStorage, key: JSValue) -> int {
             return -1;
         }
     }
-    kid: int = _set_key_id(key);
-    if kid in ss.key_index {
-        idx: int = ss.key_index[kid];
-        if idx >= 0 and idx < len(ss.nodes) {
-            nd2: JSSetNode = ss.nodes[idx];
-            if not nd2.tombstone and _same_value_zero(nd2.key, key) {
-                return idx;
-            }
+    if len(ss.key_index) == 0 {
+        return -1;
+    }
+    idx: int = ss.key_index.get(_set_key_id(key), -1);
+    if idx >= 0 and idx < len(ss.ekeys) {
+        ik: JSValue = ss.ekeys[idx];
+        if not jsv_is_hole(ik) and _same_value_zero(ik, key) {
+            return idx;
         }
     }
     return -1;
 }
 
-def _set_link_tail(ss: JSSetStorage, idx: int) -> None {
-    if ss.head < 0 {
-        ss.head = idx;
-        ss.tail = idx;
-        return;
+"""Give the Set its own member containers before its first add."""
+def _set_own(ss: JSSetStorage) {
+    if not ss.owned {
+        ss.ekeys = [];
+        ss.key_index = {};
+        ss.owned = True;
     }
-    ss.nodes[ss.tail].next = idx;
-    ss.nodes[idx].prev = ss.tail;
-    ss.tail = idx;
 }
 
-def _set_unlink(ss: JSSetStorage, idx: int) {
-    nd: JSSetNode = ss.nodes[idx];
-    if nd.prev >= 0 {
-        ss.nodes[nd.prev].next = nd.next;
-    } else {
-        ss.head = nd.next;
-    }
-    if nd.next >= 0 {
-        ss.nodes[nd.next].prev = nd.prev;
-    } else {
-        ss.tail = nd.prev;
-    }
-    nd.prev = -1;
-    nd.next = -1;
-}
-
-"""Drop the tombstones in front of the first live node once they are at least
-half of `nodes` (amortized O(1) per delete). A Set used as a queue deletes from
-the front, and every new iterator walked those tombstones again (quadratic)."""
+"""Drop the deleted members in front of the first live one once they are at
+least half of the members (amortized O(1) per delete). A Set used as a queue
+deletes from the front, and every new iterator walked them again (quadratic)."""
 def _set_compact_prefix(ss: JSSetStorage) -> None {
-    n: int = len(ss.nodes);
+    n: int = len(ss.ekeys);
     k: int = ss.head;
     if k < 0 {
         k = n;
@@ -225,21 +207,10 @@ def _set_compact_prefix(ss: JSSetStorage) -> None {
     if k < 32 or k * 2 < n {
         return;
     }
-    kept: list[JSSetNode] = [];
+    kk: list[JSValue] = [];
     i: int = k;
     while i < n {
-        nd: JSSetNode = ss.nodes[i];
-        if nd.prev >= k {
-            nd.prev = nd.prev - k;
-        } else {
-            nd.prev = -1;
-        }
-        if nd.next >= k {
-            nd.next = nd.next - k;
-        } else {
-            nd.next = -1;
-        }
-        kept.append(nd);
+        kk.append(ss.ekeys[i]);
         i = i + 1;
     }
     kids: list[int] = [];
@@ -249,10 +220,9 @@ def _set_compact_prefix(ss: JSSetStorage) -> None {
     for kid2 in kids {
         ss.key_index[kid2] = ss.key_index[kid2] - k;
     }
-    ss.nodes = kept;
+    ss.ekeys = kk;
     if ss.head >= 0 {
         ss.head = ss.head - k;
-        ss.tail = ss.tail - k;
     }
     ss.base = ss.base + k;
 }
@@ -264,7 +234,7 @@ def:pub js_set_create -> JSValue {
 """Create a Set whose [[Prototype]] is `proto` (OrdinaryCreateFromConstructor)."""
 def:pub js_set_create_with_proto(proto: JSValue) -> JSValue {
     ss: JSSetStorage = JSSetStorage(
-        nodes=[], key_index={}, items=[], head=-1, tail=-1, live_count=0
+        ekeys=SET_NO_VALS, key_index=SET_NO_INDEX, items=SET_NO_VALS
     );
     set_idx: int = -1;
     if len(_SET_REALM.free_set_slots) > 0 {  # G0.5: reuse a swept Set slot
@@ -297,8 +267,9 @@ def:pub js_weakset_create -> JSValue {
 
 """Create a WeakSet whose [[Prototype]] is `proto` (OrdinaryCreateFromConstructor)."""
 def:pub js_weakset_create_with_proto(proto: JSValue) -> JSValue {
+    witems: list[JSValue] = [];
     ss: JSSetStorage = JSSetStorage(
-        nodes=[], key_index={}, items=[], head=-1, tail=-1, live_count=0
+        ekeys=SET_NO_VALS, key_index=SET_NO_INDEX, items=witems
     );
     set_idx: int = -1;
     if len(_SET_REALM.free_set_slots) > 0 {  # G0.5: reuse a swept Set slot
@@ -327,13 +298,16 @@ def:pub js_weakset_create_with_proto(proto: JSValue) -> JSValue {
 
 def:pub js_set_add(s: JSValue, val: JSValue) -> JSValue {
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    fi: int = _set_find_node(ss, val);
+    fi: int = _set_find(ss, val);
     if fi >= 0 {
         return s;
     }
-    ni: int = len(ss.nodes);
-    ss.nodes.append(JSSetNode(key=val, prev=-1, next=-1, tombstone=False));
-    _set_link_tail(ss, ni);
+    _set_own(ss);
+    ni: int = len(ss.ekeys);
+    ss.ekeys.append(val);
+    if ss.head < 0 {
+        ss.head = ni;
+    }
     ss.key_index[_set_key_id(val)] = ni;
     ss.live_count = ss.live_count + 1;
     return s;
@@ -341,7 +315,7 @@ def:pub js_set_add(s: JSValue, val: JSValue) -> JSValue {
 
 def:pub js_set_has(s: JSValue, val: JSValue) -> JSValue {
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    if _set_find_node(ss, val) >= 0 {
+    if _set_find(ss, val) >= 0 {
         return js_true();
     }
     return js_false();
@@ -349,16 +323,25 @@ def:pub js_set_has(s: JSValue, val: JSValue) -> JSValue {
 
 def:pub js_set_delete(s: JSValue, val: JSValue) -> JSValue {
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    fi: int = _set_find_node(ss, val);
+    fi: int = _set_find(ss, val);
     if fi < 0 {
         return js_false();
     }
-    nd: JSSetNode = ss.nodes[fi];
-    nd.tombstone = True;
-    _set_unlink(ss, fi);
+    ss.ekeys[fi] = jsv_hole();
     kid: int = _set_key_id(val);
-    if kid in ss.key_index and ss.key_index[kid] == fi {
+    if ss.key_index.get(kid, -1) == fi {
         del ss.key_index[kid];
+    }
+    if fi == ss.head {
+        nh: int = fi + 1;
+        nn: int = len(ss.ekeys);
+        while nh < nn and jsv_is_hole(ss.ekeys[nh]) {
+            nh = nh + 1;
+        }
+        if nh >= nn {
+            nh = -1;
+        }
+        ss.head = nh;
     }
     if ss.live_count > 0 {
         ss.live_count = ss.live_count - 1;
@@ -369,13 +352,13 @@ def:pub js_set_delete(s: JSValue, val: JSValue) -> JSValue {
 
 def:pub js_set_clear(s: JSValue) {
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    # Every node becomes a tombstone, so drop them all; in-flight iterators
-    # resume at the first node added after the clear (SetData keeps its length).
-    ss.base = ss.base + len(ss.nodes);
-    ss.nodes = [];
+    # Every member is deleted, so drop them all; in-flight iterators resume at
+    # the first member added after the clear (SetData keeps its length).
+    ss.base = ss.base + len(ss.ekeys);
+    ss.ekeys = SET_NO_VALS;
+    ss.key_index = SET_NO_INDEX;
+    ss.owned = False;
     ss.head = -1;
-    ss.tail = -1;
-    ss.key_index = {};
     ss.live_count = 0;
 }
 
@@ -388,10 +371,10 @@ def:pub js_set_values_array(s: JSValue) -> JSValue {
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
     result: list[JSValue] = [];
     i: int = 0;
-    n: int = len(ss.nodes);
+    n: int = len(ss.ekeys);
     while i < n {
-        if not ss.nodes[i].tombstone {
-            result.append(ss.nodes[i].key);
+        if not jsv_is_hole(ss.ekeys[i]) {
+            result.append(ss.ekeys[i]);
         }
         i = i + 1;
     }
@@ -402,10 +385,10 @@ def:pub js_set_entries_array(s: JSValue) -> JSValue {
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
     result: list[JSValue] = [];
     i: int = 0;
-    n: int = len(ss.nodes);
+    n: int = len(ss.ekeys);
     while i < n {
-        if not ss.nodes[i].tombstone {
-            pair: JSValue = js_array_create([ss.nodes[i].key, ss.nodes[i].key]);
+        if not jsv_is_hole(ss.ekeys[i]) {
+            pair: JSValue = js_array_create([ss.ekeys[i], ss.ekeys[i]]);
             result.append(pair);
         }
         i = i + 1;
@@ -503,22 +486,22 @@ def:pub js_set_iterator_step(it: JSValue) -> JSValue {
         return jsv_hole();
     }
     ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    n: int = len(ss.nodes);
+    n: int = len(ss.ekeys);
     p: int = msi_cursor_get(it) - ss.base;
-    # Every node before head is a tombstone; no head means no live node.
+    # Every member before head is deleted; no head means no live member.
     if ss.head < 0 {
         p = n;
     } elif p < ss.head {
         p = ss.head;
     }
-    while p < n and ss.nodes[p].tombstone {
+    while p < n and jsv_is_hole(ss.ekeys[p]) {
         p = p + 1;
     }
     if p >= n {
         js_object_set(it, msi_done_slot_key(), js_true());
         return jsv_hole();
     }
-    key: JSValue = ss.nodes[p].key;
+    key: JSValue = ss.ekeys[p];
     js_object_set(it, msi_idx_slot_key(), msi_cursor_value(ss.base + p + 1));
     kind_v: JSValue = js_object_get(it, msi_kind_slot_key());
     if jsv_is_int32(kind_v) and jsv_to_int32(kind_v) == MAP_SET_ITER_KIND_ENTRY {

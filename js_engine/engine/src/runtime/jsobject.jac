@@ -79,6 +79,7 @@ import from engine.src.runtime.shape {
     shape_gate_enabled,
     shape_lookup,
     shape_keys,
+    shape_key_count,
     shape_transition_add,
     shape_change_attrs,
     SHAPE_ATTR_ACCESSOR
@@ -165,7 +166,7 @@ def _obj_alloc(prototype_idx: int) -> int {
                 # no index-key scan can prove it inert.
                 if pa_raw.class_id != 0 {
                     idx_protector_clear();
-                } elif pa_raw.elems_kind != ELEMS_NONE and len(pa_raw.elems_ro()) > 0 {
+                } elif pa_raw.elems_kind != ELEMS_NONE and pa_raw.elen() > 0 {
                     idx_protector_clear();
                 } else {
                     for pa_k in pa_raw.all_keys() {
@@ -216,7 +217,7 @@ def _obj_alloc(prototype_idx: int) -> int {
         # Release the lazy containers (P2/P3b/P4); sweep already nulled them, but
         # drop defensively so a reused slot can never inherit stale property state.
         ro.ext = None;  # dict maps, accessor table
-        ro.elems = None;
+        ro.eclear();
         ro.binary_kind = 0;
         ro.binary_slot = -1;
         ro.cell_flags = 0;  # clears FLAG_MODULE_NS (former is_module_namespace) too
@@ -325,7 +326,7 @@ def:pub js_object_dense_set_present(v: JSValue, i: int, val: JSValue) -> bool {
     if jsv_is_hole(_OBJ_REALM.objects[dp_id - 1].elem_or_hole(i)) {
         return False;
     }
-    _OBJ_REALM.objects[dp_id - 1].elems_rw()[i] = val;
+    _OBJ_REALM.objects[dp_id - 1].eset(i, val);
     return True;
 }
 
@@ -384,9 +385,9 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
     if (dp_raw.cell_flags & (FLAG_FROZEN | FLAG_SEALED | FLAG_NON_EXTENSIBLE)) != 0 {
         return False;
     }
-    dp_n: int = len(dp_raw.elems_ro());
+    dp_n: int = dp_raw.elen();
     if i < dp_n {
-        dp_raw.elems_rw()[i] = val;
+        dp_raw.eset(i, val);
         return True;
     }
     if i == dp_n and dp_raw.mode == MAP_MODE_SHAPE {
@@ -394,7 +395,7 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
         if dp_lk >= 0 and (dp_lk & SHAPE_ATTR_ACCESSOR) == 0 {
             dp_len: JSValue = dp_raw.sget(dp_lk // 16);
             if jsv_is_int32(dp_len) and i < jsv_to_int32(dp_len) {
-                dp_raw.elems_rw().append(val);
+                dp_raw.epush(val);
                 return True;
             }
             # At or past the length (filter's result starts at length 0):
@@ -404,7 +405,7 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
                 and i >= jsv_to_int32(dp_len)
                 and (dp_lk & PROP_WRITABLE) != 0
                 and i < 2147483647 {
-                dp_raw.elems_rw().append(val);
+                dp_raw.epush(val);
                 dp_raw.sset(dp_lk // 16, js_int(i + 1));
                 return True;
             }
@@ -805,8 +806,8 @@ def:pub js_object_get(jsobj: JSValue, key: int) -> JSValue {
         # dense — invariant) and continue up the prototype chain.
         if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dgi: int = _obj_array_index_sort_key(key);
-            if dgi < len(current.elems_ro()) {
-                dgv: JSValue = current.elems_ro()[dgi];
+            if dgi < current.elen() {
+                dgv: JSValue = current.eget(dgi);
                 if not jsv_is_hole(dgv) {
                     return dgv;
                 }
@@ -1149,9 +1150,9 @@ def:pub obj_stats_report {
             }
             if os_o.elems_kind != ELEMS_NONE {
                 arr_objs = arr_objs + 1;
-                selems = selems + len(os_o.elems_ro());
+                selems = selems + os_o.elen();
             }
-            if os_o.elems is not None {
+            if os_o.ep != 0 {
                 elem_objs = elem_objs + 1;
             }
             if os_o.class_id != 0 {
@@ -1286,22 +1287,21 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
     # dense; big gaps or non-extensible new indices degrade or reject.
     if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         dsi: int = _obj_array_index_sort_key(key);
-        el_w: list[JSValue] = raw.elems_rw();
-        dsn: int = len(el_w);
+        dsn: int = raw.elen();
         if dsi < dsn {
-            el_w[dsi] = val;
+            raw.eset(dsi, val);
             return 0;
         }
         if raw.is_ext() {
             if dsi == dsn {
-                el_w.append(val);
+                raw.epush(val);
                 return 0;
             }
             if dsi <= dsn + DENSE_GAP_MAX {
-                while len(el_w) < dsi {
-                    el_w.append(jsv_hole());
+                while raw.elen() < dsi {
+                    raw.epush(jsv_hole());
                 }
-                el_w.append(val);
+                raw.epush(val);
                 raw.elems_kind = ELEMS_HOLEY;
                 return 0;
             }
@@ -1520,9 +1520,8 @@ def:pub js_object_delete(jsobj: JSValue, key: int) -> bool {
     # Dense elements are configurable by construction: delete = punch a hole.
     if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         ddel: int = _obj_array_index_sort_key(key);
-        el_d: list[JSValue] = raw.elems_rw();
-        if ddel < len(el_d) and not jsv_is_hole(el_d[ddel]) {
-            el_d[ddel] = jsv_hole();
+        if ddel < raw.elen() and not jsv_is_hole(raw.eget(ddel)) {
+            raw.eset(ddel, jsv_hole());
             raw.elems_kind = ELEMS_HOLEY;
         }
         return True;
@@ -1659,7 +1658,7 @@ def:pub js_object_has_own(jsobj: JSValue, key: int) -> bool {
     raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
     if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         dho: int = _obj_array_index_sort_key(key);
-        if dho < len(raw.elems_ro()) and not jsv_is_hole(raw.elems_ro()[dho]) {
+        if dho < raw.elen() and not jsv_is_hole(raw.eget(dho)) {
             return True;
         }
     }
@@ -1727,8 +1726,8 @@ def:pub js_object_has(jsobj: JSValue, key: int) -> bool {
         current: JSObject = _obj_get(current_idx);
         if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dhp: int = _obj_array_index_sort_key(key);
-            if dhp < len(current.elems_ro())
-                and not jsv_is_hole(current.elems_ro()[dhp]) {
+            if dhp < current.elen()
+                and not jsv_is_hole(current.eget(dhp)) {
                 return True;
             }
         }
@@ -2010,12 +2009,15 @@ def:pub js_object_next_present_index_ge(jsobj: JSValue, from_idx: int, n: int) -
     raw: JSObject = _obj_get(jsv_to_table_id(jsobj));
     if raw.elems_kind != ELEMS_NONE {
         de_i: int = from_idx;
-        de_n: int = len(raw.elems_ro());
+        if de_i < 0 {
+            de_i = 0;
+        }
+        de_n: int = raw.elen();
         if de_n > n {
             de_n = n;
         }
         while de_i < de_n {
-            if not jsv_is_hole(raw.elems_ro()[de_i]) {
+            if not jsv_is_hole(raw.eget(de_i)) {
                 return de_i;
             }
             de_i = de_i + 1;
@@ -2065,7 +2067,7 @@ def:pub js_object_own_key_is_enumerable_now(jsobj: JSValue, kid: int) -> bool {
     raw_e: JSObject = _obj_get(jsv_to_table_id(jsobj));
     if raw_e.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(kid) {
         den: int = _obj_array_index_sort_key(kid);
-        return den < len(raw_e.elems_ro()) and not jsv_is_hole(raw_e.elems_ro()[den]);
+        return den < raw_e.elen() and not jsv_is_hole(raw_e.eget(den));
     }
     # Shape mode: data AND accessor entries answer from the packed attrs
     # (get_property reports accessors as not-found, so it can't be used here).
@@ -2220,8 +2222,9 @@ def:pub js_object_accessor_getter_keys(jsobj: JSValue) -> list[int] {
     result: list[int] = [];
     if raw.mode == MAP_MODE_SHAPE {
         agk: list[int] = shape_keys(raw.shape_id);
+        agk_n: int = shape_key_count(raw.shape_id);
         agi: int = 0;
-        while agi < len(agk) {
+        while agi < agk_n {
             agp: int = shape_lookup(raw.shape_id, agk[agi]);
             if agp >= 0
                 and (agp & SHAPE_ATTR_ACCESSOR) != 0
@@ -2255,8 +2258,8 @@ def:pub js_object_all_keys(jsobj: JSValue) -> list[int] {
     if raw.elems_kind != ELEMS_NONE {
         akd: list[int] = [];
         akd_i: int = 0;
-        while akd_i < len(raw.elems_ro()) {
-            if not jsv_is_hole(raw.elems_ro()[akd_i]) {
+        while akd_i < raw.elen() {
+            if not jsv_is_hole(raw.eget(akd_i)) {
                 akd.append(str_intern_index(akd_i));
             }
             akd_i = akd_i + 1;
@@ -2311,11 +2314,11 @@ def:pub js_object_gc_push_children(idx: int, work: list[JSValue]) -> None {
         }
         si = si + 1;
     }
-    if raw.elems is not None {
+    if raw.ep != 0 {
         ei: int = 0;
-        while ei < len(raw.elems_ro()) {
-            if jsv_is_cell(raw.elems_ro()[ei]) {
-                work.append(raw.elems_ro()[ei]);
+        while ei < raw.elen() {
+            if jsv_is_cell(raw.eget(ei)) {
+                work.append(raw.eget(ei));
             }
             ei = ei + 1;
         }
@@ -2376,8 +2379,8 @@ def:pub js_object_gc_children(idx: int) -> list[JSValue] {
     # Dense array elements likewise (hole sentinels are non-cells — the
     # tracer ignores them, so no filtering needed here).
     ei: int = 0;
-    while ei < len(raw.elems_ro()) {
-        out.append(raw.elems_ro()[ei]);
+    while ei < raw.elen() {
+        out.append(raw.eget(ei));
         ei = ei + 1;
     }
     ent_gc: dict[int, JSProperty] = raw.ent_ro();
@@ -2786,8 +2789,8 @@ def:pub js_object_is_frozen(jsobj: JSValue) -> bool {
     }
     if raw.elems_kind != ELEMS_NONE {
         ifd: int = 0;
-        while ifd < len(raw.elems_ro()) {
-            if not jsv_is_hole(raw.elems_ro()[ifd]) {
+        while ifd < raw.elen() {
+            if not jsv_is_hole(raw.eget(ifd)) {
                 return False;
             }
             ifd = ifd + 1;
@@ -2797,8 +2800,9 @@ def:pub js_object_is_frozen(jsobj: JSValue) -> bool {
     # so a non-frozen shape object answers from the packed attrs directly.
     if raw.mode == MAP_MODE_SHAPE {
         ifk: list[int] = shape_keys(raw.shape_id);
+        ifk_n: int = shape_key_count(raw.shape_id);
         ifi: int = 0;
-        while ifi < len(ifk) {
+        while ifi < ifk_n {
             ifp: int = shape_lookup(raw.shape_id, ifk[ifi]);
             if ifp >= 0 {
                 if (ifp & PROP_CONFIGURABLE) != 0 {
@@ -2857,8 +2861,8 @@ def:pub js_object_is_sealed(jsobj: JSValue) -> bool {
     }
     if raw.elems_kind != ELEMS_NONE {
         isd: int = 0;
-        while isd < len(raw.elems_ro()) {
-            if not jsv_is_hole(raw.elems_ro()[isd]) {
+        while isd < raw.elen() {
+            if not jsv_is_hole(raw.eget(isd)) {
                 return False;
             }
             isd = isd + 1;
@@ -2866,8 +2870,9 @@ def:pub js_object_is_sealed(jsobj: JSValue) -> bool {
     }
     if raw.mode == MAP_MODE_SHAPE {
         isk: list[int] = shape_keys(raw.shape_id);
+        isk_n: int = shape_key_count(raw.shape_id);
         isi: int = 0;
-        while isi < len(isk) {
+        while isi < isk_n {
             isp: int = shape_lookup(raw.shape_id, isk[isi]);
             if isp >= 0 and (isp & PROP_CONFIGURABLE) != 0 {
                 return False;
@@ -2999,7 +3004,7 @@ def:pub js_object_set_prototype(jsobj: JSValue, proto: JSValue) -> int {
         if idx_protector_ok() {
             if np_raw.class_id != 0 {
                 idx_protector_clear();
-            } elif np_raw.elems_kind != ELEMS_NONE and len(np_raw.elems_ro()) > 0 {
+            } elif np_raw.elems_kind != ELEMS_NONE and np_raw.elen() > 0 {
                 idx_protector_clear();
             } else {
                 for np_k in js_object_all_keys(proto) {
@@ -3087,14 +3092,13 @@ def:pub js_object_define_property(
     if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         if descriptor.writable and descriptor.enumerable and descriptor.configurable {
             ddi: int = _obj_array_index_sort_key(key);
-            el_dd: list[JSValue] = raw.elems_rw();
-            ddn: int = len(el_dd);
+            ddn: int = raw.elen();
             if ddi < ddn {
-                el_dd[ddi] = descriptor.value;
+                raw.eset(ddi, descriptor.value);
                 return 0;
             }
             if ddi == ddn and raw.is_ext() {
-                el_dd.append(descriptor.value);
+                raw.epush(descriptor.value);
                 return 0;
             }
         }
@@ -3211,14 +3215,13 @@ def:pub js_object_apply_validated_descriptor(
     if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         if descriptor.writable and descriptor.enumerable and descriptor.configurable {
             avi: int = _obj_array_index_sort_key(key);
-            el_av: list[JSValue] = raw.elems_rw();
-            avn: int = len(el_av);
+            avn: int = raw.elen();
             if avi < avn {
-                el_av[avi] = descriptor.value;
+                raw.eset(avi, descriptor.value);
                 return 0;
             }
             if avi == avn and raw.is_ext() {
-                el_av.append(descriptor.value);
+                raw.epush(descriptor.value);
                 return 0;
             }
         }
@@ -3297,10 +3300,10 @@ def:pub js_object_get_own_property_descriptor(jsobj: JSValue, key: int) -> JSPro
     # Dense element: a plain writable/enumerable/configurable data descriptor.
     if raw.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
         dgp: int = _obj_array_index_sort_key(key);
-        if dgp < len(raw.elems_ro()) and not jsv_is_hole(raw.elems_ro()[dgp]) {
+        if dgp < raw.elen() and not jsv_is_hole(raw.eget(dgp)) {
             return JSProperty(
                 key=key,
-                value=raw.elems_ro()[dgp],
+                value=raw.eget(dgp),
                 writable=True,
                 enumerable=True,
                 configurable=True,
@@ -3802,8 +3805,8 @@ def:pub js_object_lookup_getter(jsobj: JSValue, key: int) -> JSValue {
         current: JSObject = _obj_get(current_idx);
         if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dlg: int = _obj_array_index_sort_key(key);
-            if dlg < len(current.elems_ro())
-                and not jsv_is_hole(current.elems_ro()[dlg]) {
+            if dlg < current.elen()
+                and not jsv_is_hole(current.eget(dlg)) {
                 return js_undefined();  # own data element shadows prototypes
             }
         }
@@ -3853,8 +3856,8 @@ def:pub js_object_lookup_setter(jsobj: JSValue, key: int) -> JSValue {
         current: JSObject = _obj_get(current_idx);
         if current.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(key) {
             dls: int = _obj_array_index_sort_key(key);
-            if dls < len(current.elems_ro())
-                and not jsv_is_hole(current.elems_ro()[dls]) {
+            if dls < current.elen()
+                and not jsv_is_hole(current.eget(dls)) {
                 return js_undefined();
             }
         }

@@ -16,6 +16,7 @@ import from engine.src.runtime.shape {
     shape_transition_add,
     shape_lookup,
     shape_keys,
+    shape_key_count,
     shape_has,
     shape_change_attrs,
     SHAPE_ATTR_ACCESSOR
@@ -412,7 +413,7 @@ obj:pub JSObject {
         binary_slot: int = -1,
         cell_flags: int = 0,
         elems_kind: int = 0,
-        elems: list[JSValue] | None = None,
+        ep: int = 0,
         brand: int = 0,
         ext: JSObjectExt | None = None;  # -1 = null prototype
 
@@ -477,6 +478,38 @@ obj:pub JSObject {
         if self.sp != 0 {
             write_i64(self.sp, 0, 0);
         }
+    }
+
+    """Slot capacity of the buffer (0 when there is none)."""
+    def:pub scap -> int {
+        if self.sp == 0 {
+            return 0;
+        }
+        return read_u64(self.sp, 8);
+    }
+
+    """Give back unused slot capacity (GC sweep, live objects). Capacity grows
+    4, 8, 16, ... as properties are added, so a 9-property object carried 7
+    empty slots for as long as it lived; a later add just grows it again."""
+    def:pub strim -> None {
+        if self.sp == 0 {
+            return;
+        }
+        st_n: int = read_u64(self.sp, 0);
+        if read_u64(self.sp, 8) - st_n < 3 {
+            return;
+        }
+        if st_n == 0 {
+            free(self.sp);
+            self.sp = 0;
+            return;
+        }
+        st_new: int = realloc(self.sp, 16 + st_n * 8);
+        if st_new == 0 {
+            return;
+        }
+        write_i64(st_new, 8, st_n);
+        self.sp = st_new;
     }
 
     """Drop every slot and free the buffer."""
@@ -588,13 +621,10 @@ obj:pub JSObject {
     """Element `i` of the dense elements, or the hole when there are none or
     `i` is past them (a hole element is the hole too)."""
     def:pub elem_or_hole(i: int) -> JSValue {
-        if self.elems is None {
+        if self.ep == 0 or i < 0 or i >= read_u64(self.ep, 0) {
             return jsv_hole();
         }
-        if i >= len(self.elems) {
-            return jsv_hole();
-        }
-        return self.elems[i];
+        return read_u64(self.ep, 16 + i * 8);
     }
 
     """The property-IC hit test and read in one: slots[si] when this is an
@@ -623,23 +653,88 @@ obj:pub JSObject {
         return True;
     }
 
-    """Dense `elems` for READ access; shared empty list when the array has none
-    (or the object is not an array). Result must not be mutated (see elems_rw)."""
-    def:pub elems_ro -> list[JSValue] {
-        if self.elems is not None {
-            return self.elems;
+    # ── Dense elements (P4) ────────────────────────────────────────────────
+    # One raw buffer of 8-byte words, [len][cap][e0 .. e(cap-1)], laid out like
+    # the slots; ep = 0 means none. (A list[JSValue] cost a 64-byte list object
+    # plus a doubling buffer per array, ~2.4M arrays in a vite build.)
+
+    """Number of dense elements."""
+    def:pub elen -> int {
+        if self.ep == 0 {
+            return 0;
         }
-        return _ELEMS_EMPTY;
+        return read_u64(self.ep, 0);
     }
 
-    """Dense `elems` for WRITE access, materializing it on first densify (P4)."""
-    def:pub elems_rw -> list[JSValue] {
-        if self.elems is not None {
-            return self.elems;
+    """Element i, 0 <= i < elen(). Unchecked unless JAC_SLOT_CHECK=1."""
+    def:pub eget(i: int) -> JSValue {
+        if _SLOT_CHECK != 0 {
+            _slot_check(self.ep, i, "element read");
         }
-        el: list[JSValue] = [];
-        self.elems = el;
-        return el;
+        return read_u64(self.ep, 16 + i * 8);
+    }
+
+    """Store v as element i, 0 <= i < elen()."""
+    def:pub eset(i: int, v: JSValue) -> None {
+        if _SLOT_CHECK != 0 {
+            _slot_check(self.ep, i, "element write");
+        }
+        write_i64(self.ep, 16 + i * 8, v);
+    }
+
+    """Append v as the new last element; capacity grows 4, 8, 16, ..."""
+    def:pub epush(v: JSValue) -> None {
+        ep_n: int = 0;
+        ep_c: int = 0;
+        if self.ep != 0 {
+            ep_n = read_u64(self.ep, 0);
+            ep_c = read_u64(self.ep, 8);
+        }
+        if ep_n >= ep_c {
+            ep_nc: int = 4;
+            if ep_c > 0 {
+                ep_nc = ep_c * 2;
+            }
+            ep_new: int = realloc(self.ep, 16 + ep_nc * 8);
+            if ep_new == 0 {
+                _slot_oom(16 + ep_nc * 8);
+            }
+            write_i64(ep_new, 0, ep_n);
+            write_i64(ep_new, 8, ep_nc);
+            self.ep = ep_new;
+        }
+        write_i64(self.ep, 16 + ep_n * 8, v);
+        write_i64(self.ep, 0, ep_n + 1);
+    }
+
+    """Drop every element and free the buffer."""
+    def:pub eclear -> None {
+        if self.ep != 0 {
+            free(self.ep);
+            self.ep = 0;
+        }
+    }
+
+    """Give back unused element capacity (GC sweep, live arrays); see strim."""
+    def:pub etrim -> None {
+        if self.ep == 0 {
+            return;
+        }
+        et_n: int = read_u64(self.ep, 0);
+        if read_u64(self.ep, 8) - et_n < 3 {
+            return;
+        }
+        if et_n == 0 {
+            free(self.ep);
+            self.ep = 0;
+            return;
+        }
+        et_new: int = realloc(self.ep, 16 + et_n * 8);
+        if et_new == 0 {
+            return;
+        }
+        write_i64(et_new, 8, et_n);
+        self.ep = et_new;
     }
     # ── Packed cell_flags bool accessors (P5) ──────────────────────────────
     """[[Extensible]] — false once FLAG_NON_EXTENSIBLE is set (JS one-way)."""
@@ -690,8 +785,9 @@ obj:pub JSObject {
             proto_epoch_bump();
         }
         ks: list[int] = shape_keys(self.shape_id);
+        ks_n: int = shape_key_count(self.shape_id);
         ei: int = 0;
-        while ei < len(ks) {
+        while ei < ks_n {
             ek: int = ks[ei];
             packed: int = shape_lookup(self.shape_id, ek);
             if packed >= 0 {
@@ -961,8 +1057,9 @@ obj:pub JSObject {
         result: list[int] = [];
         if self.mode == MAP_MODE_SHAPE {
             ks_e: list[int] = shape_keys(self.shape_id);
+            ks_e_n: int = shape_key_count(self.shape_id);
             ei: int = 0;
-            while ei < len(ks_e) {
+            while ei < ks_e_n {
                 packed_k: int = shape_lookup(self.shape_id, ks_e[ei]);
                 # Accessor entries excluded — dict parity (keys() reads
                 # `entries` only; accessor-only keys never appear there).
@@ -997,8 +1094,9 @@ obj:pub JSObject {
             # Fresh copy — shape_keys() returns the shared shape cache, which
             # callers must never mutate.
             ks_a: list[int] = shape_keys(self.shape_id);
+            ks_a_n: int = shape_key_count(self.shape_id);
             ai: int = 0;
-            while ai < len(ks_a) {
+            while ai < ks_a_n {
                 result.append(ks_a[ai]);
                 ai = ai + 1;
             }
@@ -1029,11 +1127,10 @@ obj:pub JSObject {
             return;
         }
         self.pm_ensure_dict();
-        es_el: list[JSValue] = self.elems_ro();
         es_i: int = 0;
-        es_n: int = len(es_el);
+        es_n: int = self.elen();
         while es_i < es_n {
-            es_v: JSValue = es_el[es_i];
+            es_v: JSValue = self.eget(es_i);
             if not jsv_is_hole(es_v) {
                 es_k: int = _IDX_INTERN_CB(es_i);
                 if es_k >= 0 {
@@ -1042,7 +1139,7 @@ obj:pub JSObject {
             }
             es_i = es_i + 1;
         }
-        self.elems = None;
+        self.eclear();
         self.elems_kind = ELEMS_NONE;
     }
 
@@ -1081,8 +1178,9 @@ obj:pub JSObject {
             proto_epoch_bump();
         }
         pes: list[int] = shape_keys(self.shape_id);
+        pes_n: int = shape_key_count(self.shape_id);
         pi: int = 0;
-        while pi < len(pes) {
+        while pi < pes_n {
             pk: int = pes[pi];
             packed: int = shape_lookup(self.shape_id, pk);
             if packed >= 0 {

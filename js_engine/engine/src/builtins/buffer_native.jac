@@ -24,6 +24,7 @@ and astral characters are two 3-byte surrogate encodings (CESU-8), exactly
 what the JS loop's `String.fromCharCode(hi) + String.fromCharCode(lo)` built.
 """
 
+import from engine.src.runtime.fn_meta { cl_props }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -769,7 +770,7 @@ def _bn_default_species_proto(realm: Realm, view: JSValue) -> JSValue {
     if ci < 0 or ci >= len(realm.closures) {
         return js_undefined();
     }
-    fp: JSValue = realm.closures[ci].fn_props;
+    fp: JSValue = cl_props(realm.closures[ci]);
     sk: int = SYMBOL_KEY_BASE + SYMBOL_SPECIES;
     g: JSValue = js_object_get_own_accessor_getter(fp, sk);
     if jsv_is_undefined(g) {
@@ -786,7 +787,7 @@ def _bn_default_species_proto(realm: Realm, view: JSValue) -> JSValue {
         if oi < 0 or oi >= len(realm.closures) {
             return js_undefined();
         }
-        g = js_object_get_own_accessor_getter(realm.closures[oi].fn_props, sk);
+        g = js_object_get_own_accessor_getter(cl_props(realm.closures[oi]), sk);
     }
     if not is_native_val(g) or get_native_kind(g) != NATIVE_KIND_TA_SPECIES_GET {
         return js_undefined();

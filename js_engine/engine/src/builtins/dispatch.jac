@@ -25,6 +25,7 @@ Bun Zig mapping:
   ConsoleObject.call          — bun/src/bun.js/ConsoleObject.zig
 """
 
+import from engine.src.runtime.fn_meta { cl_props }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -4309,7 +4310,7 @@ def _dn_native_kind_obj_define_property(
                 if dp_key_id == str_intern("length") {
                     dp_cl.length_removed = False;
                 }
-                dp_target = dp_cl.fn_props;
+                dp_target = cl_props(dp_cl);
             } elif is_native_val(dp_target) {
                 # R3: native builtins — lazy props store + clear name/length tombstones.
                 dp_kid: int = 0;
@@ -4343,7 +4344,7 @@ def _dn_native_kind_obj_define_properties(
         dps_idx: int = jsv_to_table_id(dps_target);
         if dps_idx >= 0 and dps_idx < 1000000 and dps_idx < len(realm.closures) {
             dps_cl: JSClosure = realm.closures[dps_idx];
-            dps_target = dps_cl.fn_props;
+            dps_target = cl_props(dps_cl);
         } elif is_native_val(dps_target) {
             dps_target = native_props_ensure(dps_target);
         }
