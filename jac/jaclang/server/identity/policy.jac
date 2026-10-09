@@ -16,6 +16,12 @@ glob logger = logging.getLogger(__name__),
      VERIFY_BEFORE_LOGIN: str = 'verify_before_login',
      CONTAINED_IDENTIFIER_MIN: int = 4,
      MINTED_LENGTH: int = 32,
+     MINTED_ALPHABET: dict[str, str] = {
+         'lower': 'abcdefghijkmnopqrstuvwxyz',
+         'upper': 'ABCDEFGHJKLMNPQRSTUVWXYZ',
+         'digit': '23456789',
+         'symbol': '-_.~'
+     },
      BREACH_RANGE_URL: str = 'https://api.pwnedpasswords.com/range/',
      BREACH_TIMEOUT: float = 3.0;
 
@@ -154,13 +160,23 @@ def character_classes(password: str) -> set[str] {
 def minted_password(rules: (PasswordSettings | None) = None) -> str {
     bounds = rules or auth_settings().password;
     length = min(bounds.max_length, max(bounds.min_length, MINTED_LENGTH));
-    while True {
-        candidate = secrets.token_urlsafe(length)[:length];
-        if length < len(PASSWORD_CLASSES)
-            or character_classes(candidate) == set(PASSWORD_CLASSES) {
-            return candidate;
-        }
+    classes = [
+        name
+        for name in PASSWORD_CLASSES
+        if name in bounds.require
+    ]
+        + [
+            name
+            for name in PASSWORD_CLASSES
+            if name not in bounds.require
+        ];
+    everything = ''.join(MINTED_ALPHABET.values());
+    chars = [secrets.choice(MINTED_ALPHABET[name]) for name in classes[:length]];
+    while len(chars) < length {
+        chars.append(secrets.choice(everything));
     }
+    secrets.SystemRandom().shuffle(chars);
+    return ''.join(chars);
 }
 
 

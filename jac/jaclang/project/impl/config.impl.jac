@@ -1173,8 +1173,12 @@ impl _parse_toml_data(
         access_data: dict[str, any] = serve_data.get("access_log", {}) or {};
         compression_data: dict[str, any] = serve_data.get("compression", {}) or {};
         ws_data: dict[str, any] = serve_data.get("websocket", {}) or {};
-        auth_raw = serve_data.get("auth", {});
-        auth_data: dict[str, any] = auth_raw if isinstance(auth_raw, dict) else {};
+        auth_data = serve_data.get("auth", {});
+        if not isinstance(auth_data, dict) {
+            raise ValueError(
+                f"[serve.auth] must be a table, got {type(auth_data).__name__}"
+            );
+        }
         cors_raw = serve_data.get("cors_origins", ["*"]);
         config.serve = ServeConfig(
             host=str(serve_data.get("host", "0.0.0.0")),

@@ -248,6 +248,15 @@ test "jac.toml reaches the settings, profiles merge, and [scale.auth] is refused
     assert merged.password.min_length == 16;
     assert merged.token_ttl_days == 2 and merged.email.verification == 'optional';
 
+    for wrong in ['auth = "open"', 'auth = [{ registration = { enabled = false } }]'] {
+        try {
+            JacConfig.from_toml_str('[serve]\n' + wrong + '\n');
+            assert False , f"{wrong} was read as the default policy";
+        } except ValueError as refused {
+            assert '[serve.auth] must be a table' in str(refused) , str(refused);
+        }
+    }
+
     stale = JacConfig.from_toml_str(
         '[scale.auth]\nreset_token_ttl_seconds = 600\nsend_verification_burst = 9\n'
     );
@@ -596,6 +605,17 @@ test "a reset decides once, and a refused password keeps its link" {
                 weak = manager.redeem_reset(token, 'short');
             }
             assert weak['violations'] == ['PASSWORD_TOO_SHORT'];
+            assert manager.authenticate(name, 'correct horse battery') is not None;
+
+            # The link is claimed before anything is written: a request that
+            # loses the claim to a twin must leave the password alone.
+            with patch.object(AuthTokenStore, 'consume_token', return_value=None), patch(
+                check_password.__module__ + '.breached', return_value=False
+            ) {
+                lost = manager.redeem_reset(token, 'a twin horse battery');
+            }
+            assert lost['code'] == 'INVALID_TOKEN';
+            assert manager.authenticate(name, 'a twin horse battery') is None;
             assert manager.authenticate(name, 'correct horse battery') is not None;
 
             # One lookup per reset: a second, differing answer cannot arrive

@@ -123,7 +123,8 @@ test "a configured admin password is held to the password policy from any source
             PasswordSettings(
                 min_length=64, require=['lower', 'upper', 'digit', 'symbol']
             ),
-            PasswordSettings(min_length=12, max_length=20, require=['symbol'])
+            PasswordSettings(min_length=12, max_length=20, require=['symbol']),
+            PasswordSettings(min_length=3, max_length=3, require=['digit', 'symbol'])
         ] {
             configure_identity(AuthSettings(password=bounds), '');
             for attempt in range(30) {

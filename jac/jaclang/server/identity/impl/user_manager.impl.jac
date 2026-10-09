@@ -228,22 +228,29 @@ impl UserManager.reset_password_by_user_id(
 
 impl UserManager.redeem_reset(token: str, new_password: str) -> dict[str, any] {
     tokens = AuthTokenStore.instance();
+    invalid = {'error': 'Reset token is invalid or expired', 'code': 'INVALID_TOKEN'};
     record = tokens.peek_token(token, RESET_PURPOSE);
     user_id = str(record.get('user_id') or '') if record else '';
     if not user_id {
-        return {'error': 'Reset token is invalid or expired', 'code': 'INVALID_TOKEN'};
+        return invalid;
     }
-    result = self.reset_password_by_user_id(user_id, new_password);
-    if 'error' in result {
-        result['code'] = result.get('code') or 'NOT_FOUND';
-        result['user_id'] = user_id;
-        return result;
+    refused = self.password_refusal(user_id, new_password);
+    if refused is not None {
+        refused['user_id'] = user_id;
+        return refused;
     }
-    tokens.consume_token(token, RESET_PURPOSE);
+    claimed = tokens.consume_token(token, RESET_PURPOSE);
+    if claimed is None {
+        return invalid;
+    }
+    written = self._identity_storage.reset_password(user_id, new_password);
+    if 'error' in written {
+        return {'error': written['error'], 'code': 'NOT_FOUND', 'user_id': user_id};
+    }
     tokens.revoke_user_tokens(user_id, RESET_PURPOSE);
     return {
         'user_id': user_id,
-        'identity_value': str(record.get('identity_value') or '') if record else ''
+        'identity_value': str(claimed.get('identity_value') or '')
     };
 }
 
