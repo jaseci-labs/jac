@@ -26,6 +26,7 @@ impl Image.postinit -> None {
 
         image: any = open_image(s);
         fmt: str = image.format or "PNG";
+        image = exif_transpose(image);
 
         self.mime_type = self._format_to_mime(fmt);
         buffer = BytesIO();
@@ -40,6 +41,7 @@ impl Image.postinit -> None {
     if isinstance(value, PILImageCls) {
         pil: any = value;
         fmt: str = pil.format or "PNG";
+        pil = exif_transpose(pil);
         buffer = BytesIO();
         with buffer {
             pil.save(buffer, format=fmt);

@@ -181,6 +181,86 @@ test "every accepted image source becomes a usable url" {
 }
 
 
+test "local image inputs preserve exif display orientation" {
+    require_module("PIL");
+    import base64;
+    import io;
+    import tempfile;
+    import from pathlib { Path }
+    import from PIL { Image as PILImage, ImageOps }
+
+    def payload(source: any) -> bytes {
+        url = str(Image(source).url);
+        return base64.b64decode(url.split(",", 1)[1]);
+    }
+
+    def assert_same_display(actual: any, expected: any, label: str) {
+        assert actual.size == expected.size , (
+            f"{label}: expected {expected.size}, got {actual.size}"
+        );
+        (width, height) = expected.size;
+        for (x, y) in [
+            (width // 4, height // 4),
+            (3 * width // 4, height // 4),
+            (width // 4, 3 * height // 4),
+            (3 * width // 4, 3 * height // 4)
+        ] {
+            got = actual.getpixel((x, y));
+            want = expected.getpixel((x, y));
+            for channel in range(3) {
+                assert abs(got[channel] - want[channel]) < 20 , (
+                    f"{label}: pixel {(x, y)} differs: expected {want}, got {got}"
+                );
+            }
+        }
+    }
+
+    with tempfile.TemporaryDirectory() as directory {
+        path = Path(directory) / "oriented.jpg";
+        for orientation in range(2, 9) {
+            fixture = PILImage.new("RGB", (80, 40));
+            for (color, box) in [
+                ((255, 0, 0), (0, 0, 40, 20)),
+                ((0, 255, 0), (40, 0, 80, 20)),
+                ((0, 0, 255), (0, 20, 40, 40)),
+                ((255, 255, 0), (40, 20, 80, 40))
+            ] {
+                fixture.paste(color, box);
+            }
+            exif = PILImage.Exif();
+            exif[274] = orientation;
+            fixture.save(path, format="JPEG", quality=100, subsampling=0, exif=exif);
+            raw = path.read_bytes();
+
+            with PILImage.open(path) as opened {
+                expected = ImageOps.exif_transpose(opened).convert("RGB");
+                for (label, source) in [
+                    ("string path", str(path)),
+                    ("pathlike", path),
+                    ("pil image", opened),
+                    ("bytes", raw),
+                    ("stream", io.BytesIO(raw))
+                ] {
+                    encoded = payload(source);
+                    with PILImage.open(io.BytesIO(encoded)) as decoded {
+                        displayed = ImageOps.exif_transpose(decoded).convert("RGB");
+                        assert_same_display(
+                            displayed, expected, f"orientation {orientation}, {label}"
+                        );
+                        if label in ("string path", "pathlike", "pil image") {
+                            assert decoded.getexif().get(274) is None , (
+                                f"orientation {orientation}, {label}: orientation tag "
+                                "must be removed after normalizing pixels"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 test "an image return type is generated, not requested as chat" {
     require_module("PIL");
     import base64;
