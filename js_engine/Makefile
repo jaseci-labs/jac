@@ -253,7 +253,9 @@ scrub: install_deps $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) 
 # With JAC_SYMMAP set, the old binary and its link record go too: jac reuses a
 # link whose record (bin/js_engine.layout.json, which `jac clean --cache` does
 # not touch) still matches, and a reused link writes no bin/js_engine.symmap.
-scrub-engine: install_deps $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO)
+# It compiles the engine itself, so it regenerates the pm resources first, as
+# $(BIN) does.
+scrub-engine: install_deps $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) $(PM_RESOURCES_GEN)
 	@mkdir -p bin $(NO_FLOOR_DIR)
 	$(call archive_old_bin,$(BIN))
 	$(if $(JAC_SYMMAP),rm -f $(BIN) $(BIN).layout.json $(BIN).symmap)
@@ -347,14 +349,17 @@ test_builtins: $(BIN) $(BIN_PACK)
 # ── Relocatable runtime tree (what the jac binary bundles) ───────────────────
 # Everything sits in bin/: the engine finds its builtins next to itself
 # (bin/builtins.jsbc — bytecode only, no builtin .js) and its shims through
-# $$ORIGIN, so this tree runs from anywhere.
+# $$ORIGIN, so this tree runs from anywhere. That includes PCRE2: distros ship
+# releases older than 10.45 (no variable-length lookbehind), and $$ORIGIN puts
+# the copy here ahead of the system's, so the tree needs only the stock
+# libraries (libuv, OpenSSL, zlib, nghttp2, brotli, zstd, ICU).
 # `zig build -Djs-engine=../js_engine/dist` packs it into the jac payload.
 DIST := dist
 dist: build
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/bin
 	cp $(BIN) $(DIST)/bin/
-	cp -L $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) $(LLHTTP_SO) $(DIST)/bin/
+	cp -L $(NAPI_SHIM_SO) $(TZ_SHIM_SO) $(ICU_SHIM_SO) $(WASMTIME_SO) $(LLHTTP_SO) $(PCRE2_SO) $(DIST)/bin/
 	cp $(BUILTIN_PACK) $(DIST)/bin/
 	@echo "Staged: $(DIST)/"
 
