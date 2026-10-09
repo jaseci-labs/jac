@@ -89,10 +89,10 @@ def scaffold(arch: str, assets: list[str]) -> dict[(str, str)] {
 }
 
 def run_installer(
-    fx: dict[(str, str)], args: list[str] | None = None
+    fx: dict[(str, str)], args: list[str] | None = None, path: str | None = None
 ) -> subprocess.CompletedProcess[str] {
     env: dict[str, str] = dict(os.environ);
-    env["PATH"] = fx["bin"] + os.pathsep + env["PATH"];
+    env["PATH"] = fx["bin"] + os.pathsep + (path if path is not None else env["PATH"]);
     env["HOME"] = fx["base"];
     env["FAKE_OS"] = fx["os"];
     env["FAKE_ARCH"] = fx["arch"];
@@ -208,6 +208,32 @@ test "the installer downloads and verifies only the selected runtime" {
                 if "/releases/download/" in url
             ];
             assert downloads == [selected, selected + ".sha256"] , str(downloads);
+        } finally {
+            shutil.rmtree(fx["base"], ignore_errors=True);
+        }
+    }
+}
+
+test "initial setup runs the installed runtime when another jac shadows it on PATH" {
+    for args in [[], ["--jacpython"]] {
+        asset = "jac-0.37.1-macos-aarch64" + ("-jacpython" if args else "");
+        fx = scaffold("arm64", [asset, asset + ".sha256"]);
+        try {
+            body = '#!/usr/bin/env bash\necho "INSTALLED_RUNTIME_STARTED"\n';
+            Path(fx["downloads"], asset).write_text(body);
+            digest = hashlib.sha256(body.encode()).hexdigest();
+            Path(fx["downloads"], asset + ".sha256").write_text(f"{digest}  {asset}\n");
+            shadow = Path(fx["bin"], "jac");
+            shadow.write_text('#!/usr/bin/env bash\necho "SHADOW_RUNTIME_STARTED"\n');
+            shadow.chmod(0o755);
+            installed = Path(fx["base"], ".local", "bin", "jac");
+            path = str(installed.parent) + os.pathsep + os.environ["PATH"];
+            res = run_installer(fx, args, path);
+            out = res.stdout + res.stderr;
+            assert res.returncode == 0 , out;
+            assert installed.read_text() == body;
+            assert "INSTALLED_RUNTIME_STARTED" in res.stdout , out;
+            assert "SHADOW_RUNTIME_STARTED" not in res.stdout , out;
         } finally {
             shutil.rmtree(fx["base"], ignore_errors=True);
         }
