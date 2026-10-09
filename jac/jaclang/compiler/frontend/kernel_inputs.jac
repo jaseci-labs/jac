@@ -416,6 +416,7 @@ def check_from_dict(raw: dict[str, any]) -> CheckSettings {
 def defaults_to_dict(defaults: ProjectDefaults) -> dict[str, any] {
     return {
         "default_codespace": defaults.default_codespace,
+        "native_closure_cap": defaults.native_closure_cap,
         "native_require": list(defaults.native_require),
         "native_target": defaults.native_target,
         "native_debug": defaults.native_debug,
@@ -433,6 +434,7 @@ def defaults_to_dict(defaults: ProjectDefaults) -> dict[str, any] {
 def defaults_from_dict(raw: dict[str, any]) -> ProjectDefaults {
     return ProjectDefaults(
         default_codespace=str(raw.get("default_codespace", "")),
+        native_closure_cap=json_int(raw.get("native_closure_cap")),
         native_require=json_str_list(raw.get("native_require")),
         native_target=str(raw.get("native_target", "")),
         native_debug=bool(raw.get("native_debug", False)),

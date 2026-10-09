@@ -27,6 +27,7 @@ obj CheckSettings {
 
 obj ProjectDefaults {
     has default_codespace: str,
+        native_closure_cap: int,
         native_require: list[str],
         native_target: str,
         native_debug: bool,

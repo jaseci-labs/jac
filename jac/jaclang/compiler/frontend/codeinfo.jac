@@ -565,6 +565,7 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
      _effective_codespace_ctx: ContextVar[str] = ContextVar(
          "jac_effective_default_codespace"
      ),
+     _closure_cap_ctx: ContextVar[int] = ContextVar("jac_native_closure_cap"),
      _native_unit_ctx: ContextVar[bool] = ContextVar("jac_native_unit_compile"),
      _native_target_ctx: ContextVar[str | None] = ContextVar("jac_native_target");
 
@@ -629,6 +630,24 @@ def reset_native_unit_compile(prev: bool) {
 
 def native_unit_compile_active -> bool {
     return _native_unit_ctx.get(False);
+}
+
+def set_native_closure_cap(value: int) {
+    _closure_cap_ctx.set(value);
+}
+
+def get_native_closure_cap_override -> int {
+    return _closure_cap_ctx.get(0);
+}
+
+def effective_native_closure_cap -> int {
+    cur = _closure_cap_ctx.get(0);
+    if cur > 0 {
+        return cur;
+    }
+    import from jaclang.compiler.frontend.host { active_host }
+    project = active_host().project_defaults();
+    return project.native_closure_cap if project is not None else 256;
 }
 
 def native_stdlib_root -> (str | None) {

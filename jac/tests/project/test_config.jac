@@ -576,20 +576,32 @@ test "dev section parsing" {
     assert as_int.dev.test_jobs == "0";
 }
 
-test "build native_closure_cap is retired" {
-    import from unittest.mock { patch }
-    import from jaclang.cli.console { console }
+test "parse build native_closure_cap" {
     config_mod._config = None;
-    shown: list[str] = [];
-    def record(msg: str, *args: any, **kwargs: any) {
-        shown.append(msg);
+    cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
+    assert cfg.build.native_closure_cap == 8;
+
+    config_mod._config = None;
+    base = JacConfig.from_toml_str("\n[build]\ndir = \".jac\"\n");
+    assert base.build.native_closure_cap == 256;
+
+    config_mod._config = None;
+    bad = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 0\n");
+    assert bad.build.native_closure_cap == 256 , "invalid cap falls back to default";
+}
+
+test "closure cap override resolves through effective_native_closure_cap" {
+    import from jaclang.compiler.frontend.codeinfo {
+        set_native_closure_cap,
+        effective_native_closure_cap
     }
-    with patch.object(console, "error", record) {
-        cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
+    set_native_closure_cap(3);
+    try {
+        assert effective_native_closure_cap() == 3;
+    } finally {
+        set_native_closure_cap(0);
     }
-    assert cfg.build.dir == ".jac";
-    assert not hasattr(cfg.build, "native_closure_cap");
-    assert any("native_closure_cap was retired" in m for m in shown) , shown;
+    assert effective_native_closure_cap() == 256;
 }
 
 test "parse full config" {
