@@ -145,3 +145,15 @@ test "a connect with a list of nodes on one side connects each node" {
     assert "typed [10, 11, 12]" in out , out;
     assert "single and empty [20, 21]" in out , out;
 }
+
+"""An object reached again while its own text is being written prints as
+`...`, as a dataclass does on the Python tier, so a tree with parent links
+or two objects that hold each other still print and still terminate."""
+test "default object text stops at an object it is already writing" {
+    out = assert_native_identity(
+        fixture("default_object_text_cycle.jac"), profiles=["rc", "managed"]
+    );
+    assert "Tree(name='top', parent=None, kids=[Tree(name='kid', parent=..., kids=[])])"
+        in out , out;
+    assert "Pair(left=Pair(left=..., label='b'), label='a')" in out , out;
+}

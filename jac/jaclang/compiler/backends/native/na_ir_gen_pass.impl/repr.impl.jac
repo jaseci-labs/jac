@@ -508,10 +508,14 @@ impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
     if cached is not None {
         return cached;
     }
+    unwritable_key = "default-unwritable:" + arch_name;
     struct_type = self.struct_types.get(arch_name);
-    if struct_type is None or self._builder is None {
+    if struct_type is None
+        or self._builder is None
+        or unwritable_key in self._repr_fns {
         return None;
     }
+    diagnostics_before = len(self.ctx.errors_had);
     fields: list[tuple[str, str, uni.HasVar]] = [];
     for cls in reversed(self._mro_of(arch_name)) {
         declared = self.arch_ast_map.get(cls);
@@ -547,6 +551,59 @@ impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
     self.local_vars = {};
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     self._builder = b;
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    depth_limit = 64;
+    active_type = ir.ArrayType(i8p, depth_limit);
+    if "__jac_repr_active" not in self.llvm_module.globals {
+        active_new = ir.GlobalVariable(
+            self.llvm_module, active_type, name="__jac_repr_active"
+        );
+        active_new.linkage = "weak";
+        active_new.initializer = ir.Constant(active_type, None);
+        depth_new = ir.GlobalVariable(self.llvm_module, i64, name="__jac_repr_depth");
+        depth_new.linkage = "weak";
+        depth_new.initializer = ir.Constant(i64, 0);
+    }
+    active_gv = self.llvm_module.get_global("__jac_repr_active");
+    depth_gv = self.llvm_module.get_global("__jac_repr_depth");
+    me = b.bitcast(fn.args[0], i8p, name="rp.d.me");
+    depth = b.load(depth_gv, name="rp.d.depth");
+    scan_i = b.alloca(i64, name="rp.d.scan.i");
+    b.store(ir.Constant(i64, 0), scan_i);
+    scan_bb = fn.append_basic_block("rp.d.scan");
+    probe_bb = fn.append_basic_block("rp.d.probe");
+    again_bb = fn.append_basic_block("rp.d.again");
+    fresh_bb = fn.append_basic_block("rp.d.fresh");
+    b.branch(scan_bb);
+    b.position_at_end(scan_bb);
+    at = b.load(scan_i, name="rp.d.scan.at");
+    b.cbranch(b.icmp_signed("<", at, depth, name="rp.d.scan.more"), probe_bb, fresh_bb);
+    b.position_at_end(probe_bb);
+    seen = b.load(
+        b.gep(active_gv, [ir.Constant(i32, 0), at], name="rp.d.slot"), name="rp.d.seen"
+    );
+    b.store(b.add(at, ir.Constant(i64, 1), name="rp.d.scan.next"), scan_i);
+    b.cbranch(b.icmp_unsigned("==", seen, me, name="rp.d.cycle"), again_bb, scan_bb);
+    b.position_at_end(again_bb);
+    b.ret(
+        self._rc_strdup(
+            self._make_global_string("...", name_prefix=".repr.cycle"),
+            name="rp.d.cycletext"
+        )
+    );
+    b.position_at_end(fresh_bb);
+    tracked = b.icmp_signed(
+        "<", depth, ir.Constant(i64, depth_limit), name="rp.d.tracked"
+    );
+    push_bb = fn.append_basic_block("rp.d.push");
+    body_bb = fn.append_basic_block("rp.d.body");
+    b.cbranch(tracked, push_bb, body_bb);
+    b.position_at_end(push_bb);
+    b.store(me, b.gep(active_gv, [ir.Constant(i32, 0), depth], name="rp.d.mine"));
+    b.store(b.add(depth, ir.Constant(i64, 1), name="rp.d.deeper"), depth_gv);
+    b.branch(body_bb);
+    b.position_at_end(body_bb);
     cur: any = self._rc_strdup(
         self._make_global_string(
             self._arch_display(arch_name) + "(", name_prefix=".repr.open"
@@ -582,11 +639,14 @@ impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
     );
     self._emit_rc_release_simple(cur, op="mstr_old", loc="");
     self._emit_set_type_tag(self.builder, closed, "str");
+    self.builder.store(depth, depth_gv);
     self.builder.ret(closed);
     self._builder = saved_builder;
     self.local_vars = saved_locals;
+    del self.ctx.errors_had[diagnostics_before:];
     if not complete {
         self._repr_fns.pop(cache_key, None);
+        self._repr_fns[unwritable_key] = fn;
         return None;
     }
     return fn;
