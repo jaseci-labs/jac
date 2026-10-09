@@ -58,7 +58,7 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              ()
          ),
          'PlacementPass': PassContract(
-             (AnalysisFact.SYM_OF, AnalysisFact.TYPE_OF, ),
+             (AnalysisFact.TYPE_OF, ),
              (
                  AnalysisFact.CAPABILITY,
                  AnalysisFact.CLIENT_CAPABILITY,
