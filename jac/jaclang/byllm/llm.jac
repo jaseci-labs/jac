@@ -254,6 +254,7 @@ obj ModelPool(BaseLLM) {
         _fallback_model_names: list[str] = [];
 
     def postinit -> None;
+    override def make_model_params(mt_run: MTRuntime) -> dict[str, any];
     override def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     override def model_call_with_stream(params: dict[str, any]) -> Iterable[object];
     override def _get_ctx_window(call_params: dict[str, any]) -> int;

@@ -5,7 +5,8 @@ A pool dispatches through a litellm Router, never through its members. Fake
 """
 
 import from jaclang.byllm.lib { Model, ModelPool }
-import from support { text_chunk }
+import from support { mk_run, text_chunk }
+import unittest.mock;
 
 
 """The pool's litellm Router, as an untyped handle. ModelPool never exposes it
@@ -43,6 +44,25 @@ def _pool(strategy: str, names: list[str]) -> ModelPool {
         models=[Model(model_name=n, api_key="sk-test") for n in names],
         strategy=strategy
     );
+}
+
+
+"""Run one Router request through its real deployment-parameter merge while
+replacing only the provider call."""
+def _captured_request(pool: ModelPool, alias: str) -> dict[str, any] {
+    seen: list[dict[str, any]] = [];
+    def _completion(**kwargs: object) -> dict[str, any] {
+        seen.append(dict(kwargs));
+        return _pool_reply("ok")();
+    }
+    params = pool.make_model_params(mk_run());
+    messages = params.pop("messages");
+    params.pop("model", None);
+    with unittest.mock.patch("litellm.completion", side_effect=_completion) {
+        router(pool)._completion(model=alias, messages=messages, **params);
+    }
+    assert len(seen) == 1 , f"expected one provider request, got {len(seen)}";
+    return seen[0];
 }
 
 
@@ -136,6 +156,64 @@ test "router init aliases deployments by strategy" {
             m['model_name'] for m in lb_models
         ]}"
     );
+}
+
+
+test "pool members retain inference defaults and pool overrides win" {
+    primary = Model(
+        model_name="gpt-4o-mini",
+        api_key="sk-primary",
+        call_params={"temperature": 0.0, "max_tokens": 17, "max_output_retries": 9}
+    );
+    secondary = Model(
+        model_name="gpt-4o",
+        api_key="sk-secondary",
+        call_params={"temperature": 0.8, "max_tokens": 29}
+    );
+    pool = ModelPool(models=[primary, secondary], strategy="fallback");
+
+    primary_request = _captured_request(pool, "pool-primary");
+    secondary_request = _captured_request(pool, "pool-fallback-1");
+    assert primary_request["api_key"] == "sk-primary";
+    assert primary_request["temperature"] == 0.0;
+    assert primary_request["max_tokens"] == 17;
+    assert secondary_request["api_key"] == "sk-secondary";
+    assert secondary_request["temperature"] == 0.8;
+    assert secondary_request["max_tokens"] == 29;
+    assert "max_output_retries" not in router(pool).model_list[0]["litellm_params"] , (
+        "byllm control parameters must not leak into provider requests"
+    );
+
+    overridden = ModelPool(
+        models=[primary],
+        strategy="fallback",
+        call_params={"temperature": 0.2, "max_tokens": 11}
+    );
+    override_request = _captured_request(overridden, "pool-primary");
+    assert override_request["temperature"] == 0.2;
+    assert override_request["max_tokens"] == 11;
+}
+
+
+test "cost routing keeps member inference defaults on its async bridge" {
+    member = Model(
+        model_name="gpt-4o-mini",
+        api_key="sk-test",
+        call_params={"temperature": 0.1, "max_tokens": 23}
+    );
+    pool = ModelPool(models=[member], strategy="cost-based-routing");
+    seen: list[dict[str, any]] = [];
+    async def _acompletion(**kwargs: object) -> dict[str, any] {
+        seen.append(dict(kwargs));
+        return _pool_reply("ok")();
+    }
+    params = pool.make_model_params(mk_run());
+    with unittest.mock.patch("litellm.acompletion", side_effect=_acompletion) {
+        pool.model_call_no_stream(params);
+    }
+    assert len(seen) == 1 , f"expected one provider request, got {len(seen)}";
+    assert seen[0]["temperature"] == 0.1;
+    assert seen[0]["max_tokens"] == 23;
 }
 
 
