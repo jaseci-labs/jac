@@ -193,6 +193,7 @@ def _reserved_c_symbols -> frozenset[str] {
         "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
         "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
+        "fcntl ioctl poll tcgetattr tcsetattr cfgetispeed cfgetospeed "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
         "pthread_setspecific "
         "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
