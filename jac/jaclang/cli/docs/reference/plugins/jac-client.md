@@ -1474,8 +1474,13 @@ Override Vite build options via `[client.vite.build]`:
 [client.vite.build]
 sourcemap = true
 minify = "esbuild"
-outDir = "dist"
+
+# Split vendor libraries into their own chunk
+[client.vite.build.rollupOptions.output.manualChunks]
+vendor = ["react", "react-dom", "react-router-dom"]
 ```
+
+`rollupOptions` entries are merged into Jac's own build settings. Jac always sets `outDir`, `emptyOutDir`, `rollupOptions.input` and the `entryFileNames`, `assetFileNames` and `sourcemapPathTransform` outputs, because it needs them to find and serve the bundle; if you set them, they are ignored with a warning.
 
 #### Dev Server Options
 

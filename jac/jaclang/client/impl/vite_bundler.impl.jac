@@ -404,6 +404,47 @@ def _to_js_expr(value: any) -> str {
     }
 }
 
+def _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]] {
+    build = dict(build_config);
+    rollup = build.pop('rollupOptions', {});
+    if not isinstance(rollup, dict) {
+        raise ClientBundleError(
+            '[client.vite.build] rollupOptions must be a table'
+        ) from None;
+    }
+    rollup = dict(rollup);
+    output = rollup.pop('output', {});
+    if not isinstance(output, dict) {
+        raise ClientBundleError(
+            '[client.vite.build.rollupOptions] output must be a single table'
+        ) from None;
+    }
+    output = dict(output);
+    ignored: list[str] = [];
+    for key in ('outDir', 'emptyOutDir') {
+        if build.pop(key, None) is not None {
+            ignored.append(key);
+        }
+    }
+    if rollup.pop('input', None) is not None {
+        ignored.append('rollupOptions.input');
+    }
+    for key in ('entryFileNames', 'assetFileNames', 'sourcemapPathTransform') {
+        if output.pop(key, None) is not None {
+            ignored.append(f'rollupOptions.output.{key}');
+        }
+    }
+    if ignored {
+        names = ', '.join(ignored);
+        console.warning(
+            f"[client.vite.build] ignoring {names}: Jac sets these to find and serve the client bundle"
+        );
+    }
+    return (build, rollup, output);
+}
+
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
 ) -> str {
@@ -923,8 +964,17 @@ export default defineConfig({{
 }});
 ''';
     } else {
-        build_overrides_str = self._format_config_object(build_config, indent=2)
-            if (isinstance(build_config, dict) and build_config)
+        (build_overrides, rollup_overrides, output_overrides) = _split_build_overrides(
+            build_config if isinstance(build_config, dict) else {}
+        );
+        build_overrides_str = self._format_config_object(build_overrides, indent=2);
+        rollup_overrides_str = newline
+            + self._format_config_object(rollup_overrides, indent=4)
+            if rollup_overrides
+            else '';
+        output_overrides_str = newline
+            + self._format_config_object(output_overrides, indent=6)
+            if output_overrides
             else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
@@ -990,14 +1040,14 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages
 {build_overrides_str}
     rollupOptions: {{
-      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
+      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
       output: {{
         entryFileNames: "client.[hash].js", // name of the final js file
         assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css') ? 'styles.css' : '[name].[ext]',
         sourcemapPathTransform: (relativeSourcePath) => {{
           // Transform source map paths to point to original location
           return relativeSourcePath;
-        }},
+        }},{output_overrides_str}
       }},
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output

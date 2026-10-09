@@ -1302,6 +1302,60 @@ test "vite config generation" {
     }
 }
 
+"""rollupOptions overrides land inside the built-in block instead of replacing it."""
+test "vite build rollupOptions overrides are merged" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            toml_content = '\n[client.vite.build]\nminify = "esbuild"\noutDir = "elsewhere"\n\n[client.vite.build.rollupOptions]\nexternal = ["left-pad"]\ninput = "other.js"\n\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name]-[hash].js"\nentryFileNames = "app.js"\n\n[client.vite.build.rollupOptions.output.manualChunks]\nvendor = ["react", "react-dom"]\n';
+            with open(os.path.join(temp_dir, "jac.toml"), "w") as f {
+                f.write(toml_content);
+            }
+
+            import from jaclang.client.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry file");
+
+            content = bundler.create_vite_config(entry_file).read_text();
+            build = content[content.index("build: {"):content.index("publicDir:")];
+
+            # Each key appears once, so no later duplicate can discard the user's values
+            for key in (
+                "rollupOptions:",
+                "output:",
+                "input:",
+                "entryFileNames:",
+                "outDir:"
+            ) {
+                count = build.count(key);
+                assert count == 1 , f"{key} appears {count} times";
+            }
+            assert "minify: 'esbuild'" in build;
+            assert "external: ['left-pad']" in build;
+            assert "chunkFileNames: 'chunks/[name]-[hash].js'" in build;
+            assert "vendor: ['react', 'react-dom']" in build;
+            assert 'entryFileNames: "client.[hash].js"' in build;
+            assert "elsewhere" not in build;
+            assert "other.js" not in build;
+            assert "app.js" not in build;
+
+            # User output keys sit inside the built-in output block
+            output_end = build.index("\n      },\n    },");
+            for key in ("manualChunks:", "chunkFileNames:") {
+                assert build.index("sourcemapPathTransform:")
+                    < build.index(key)
+                    < output_end;
+            }
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
 """Test that [client.paths] aliases appear in generated vite config and tsconfig."""
 test "path aliases in generated vite and tsconfig" {
     with tempfile.TemporaryDirectory() as temp_dir {
