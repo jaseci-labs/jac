@@ -812,13 +812,14 @@ def _prepare_revision(
         }
         revision.code = record['code'];
         revision.manifests = record['manifests'];
+        validated = {os.path.realpath(p) for p in record['dependencies']};
         for (path, sections) in record['sections'].items() {
             import from jaclang.compiler.driver.compilation_context {
                 program_for,
                 cache_scope
             }
             actual = program_for(path, program);
-            compiler._restore_sections(path, actual, sections);
+            compiler._restore_sections(path, actual, sections, validated=validated);
         }
         for path in revision.code {
             revision.native[path] = compiler.get_native_interop_setup(path, program);

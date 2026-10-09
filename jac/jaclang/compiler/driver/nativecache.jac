@@ -241,12 +241,16 @@ obj NativeUnitRegistry {
         }
     }
 
-    def _entry_fresh(ent: NativeUnitEntry) -> bool {
+    def _entry_fresh(
+        ent: NativeUnitEntry, validated: (set[str] | None) = None
+    ) -> bool {
         """Use the shared source key, including annex membership and content.
         A deleted file differs from a unit that never had a source file.""";
         return ent.source_key == NativeUnitRegistry._source_key(ent.path)
             and ct_dep_text_fresh(
-                ent.compile_deps.decode("utf-8"), ent.compile_deps_base
+                ent.compile_deps.decode("utf-8"),
+                ent.compile_deps_base,
+                validated=validated
             );
     }
 
@@ -391,7 +395,8 @@ obj NativeUnitRegistry {
         resolved: str,
         stamp: NativeStamp,
         check_deps: bool,
-        options: (CompileOptions | None) = None
+        options: (CompileOptions | None) = None,
+        validated: (set[str] | None) = None
     ) -> (NativeUnitEntry | None) {
         found = self._module_jir(resolved, stamp);
         if found is None {
@@ -412,13 +417,17 @@ obj NativeUnitRegistry {
             self._miss(resolved, "no comptime dependency record for this codegen");
             return None;
         }
-        if not ct_dep_text_fresh(compile_deps.decode("utf-8"), base_dir) {
+        if not ct_dep_text_fresh(
+            compile_deps.decode("utf-8"), base_dir, validated=validated
+        ) {
             self._event("native_comptime_miss");
             self._miss(
                 resolved,
                 "comptime dependency changed: "
                     + ", ".join(
-                        stale_ct_dep_rows(compile_deps.decode("utf-8"), base_dir)
+                        stale_ct_dep_rows(
+                            compile_deps.decode("utf-8"), base_dir, validated=validated
+                        )
                     )
             );
             return None;
@@ -448,7 +457,8 @@ obj NativeUnitRegistry {
         compile_on_miss: bool = True,
         options: (CompileOptions | None) = None,
         check_deps: bool = True,
-        products: bool = True
+        products: bool = True,
+        validated: (set[str] | None) = None
     ) -> (NativeUnitEntry | None) {
         options = options if options is not None else self._options();
         resolved = os.path.realpath(path);
@@ -457,7 +467,9 @@ obj NativeUnitRegistry {
         }
         stamp = self.stamp_for(options, resolved);
         ent = self.entries.get(resolved);
-        if ent is not None and ent.stamp.matches(stamp) and self._entry_fresh(ent) {
+        if ent is not None
+            and ent.stamp.matches(stamp)
+            and self._entry_fresh(ent, validated) {
             return ent;
         }
         if ent is not None {
@@ -468,7 +480,7 @@ obj NativeUnitRegistry {
         }
         if resolved in self.checking and not options.no_ir_cache {
             return self._read_from_disk(
-                resolved, stamp, check_deps=False, options=options
+                resolved, stamp, check_deps=False, options=options, validated=validated
             );
         }
         (rebuild, _) = cache_mode();
@@ -476,7 +488,11 @@ obj NativeUnitRegistry {
             self.checking.add(resolved);
             try {
                 found = self._read_from_disk(
-                    resolved, stamp, check_deps=check_deps, options=options
+                    resolved,
+                    stamp,
+                    check_deps=check_deps,
+                    options=options,
+                    validated=validated
                 );
             } finally {
                 self.checking.discard(resolved);

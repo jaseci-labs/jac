@@ -1278,11 +1278,17 @@ def rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
 }
 
 def _stale_ct_rows(
-    rows: list[tuple[(str, str, str)]], base: str, first_only: bool = False
+    rows: list[tuple[(str, str, str)]],
+    base: str,
+    first_only: bool = False,
+    validated: (set[str] | None) = None
 ) -> list[str] {
     stale: list[str] = [];
     for (path, digest, flag) in rows {
         full = _ct_row_path(path, base);
+        if validated is not None and os.path.realpath(full) in validated {
+            continue;
+        }
         if not digest or _row_digest(full, flag) != digest {
             stale.append(f"{full} [{flag or 'file'}]");
             if first_only {
@@ -1293,16 +1299,26 @@ def _stale_ct_rows(
     return stale;
 }
 
-def ct_deps_fresh(data: bytes, base: str = "") -> bool {
-    return not _stale_ct_rows(read_ct_deps(data), base, first_only=True);
+def ct_deps_fresh(
+    data: bytes, base: str = "", validated: (set[str] | None) = None
+) -> bool {
+    return not _stale_ct_rows(
+        read_ct_deps(data), base, first_only=True, validated=validated
+    );
 }
 
-def ct_dep_text_fresh(text: str, base: str = "") -> bool {
-    return not _stale_ct_rows(_ct_dep_rows(text), base, first_only=True);
+def ct_dep_text_fresh(
+    text: str, base: str = "", validated: (set[str] | None) = None
+) -> bool {
+    return not _stale_ct_rows(
+        _ct_dep_rows(text), base, first_only=True, validated=validated
+    );
 }
 
-def stale_ct_dep_rows(text: str, base: str = "") -> list[str] {
-    return _stale_ct_rows(_ct_dep_rows(text), base);
+def stale_ct_dep_rows(
+    text: str, base: str = "", validated: (set[str] | None) = None
+) -> list[str] {
+    return _stale_ct_rows(_ct_dep_rows(text), base, validated=validated);
 }
 
 def module_ct_deps_text(mod: any) -> str {

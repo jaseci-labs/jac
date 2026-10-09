@@ -528,7 +528,8 @@ impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> 
 impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
-    cached_interop: (dict[str, any] | None)
+    cached_interop: (dict[str, any] | None),
+    validated: (set[str] | None) = None
 ) -> None {
     import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
     import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -538,7 +539,10 @@ impl JacCompiler._load_native_from_cache(
     if engine is None {
         import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
         engine = jit_engine_for_cached(
-            target_program, full_target, target_program.options or CompileOptions()
+            target_program,
+            full_target,
+            target_program.options or CompileOptions(),
+            validated=validated
         );
     }
     if engine is None {
@@ -590,7 +594,8 @@ impl JacCompiler._restore_sections(
     full_target: str,
     actual_program: JacProgram,
     secs: dict[int, bytes],
-    base_dir: str = ""
+    base_dir: str = "",
+    validated: (set[str] | None) = None
 ) -> None {
     if (SEC_NBITCODE in secs or SEC_NOBJ in secs)
         and self._wants_native_engine(full_target, actual_program) {
@@ -601,7 +606,9 @@ impl JacCompiler._restore_sections(
             if interop_bytes is not None {
                 cached_interop = json.loads(interop_bytes.decode('utf-8'));
             }
-            self._load_native_from_cache(full_target, actual_program, cached_interop);
+            self._load_native_from_cache(
+                full_target, actual_program, cached_interop, validated=validated
+            );
         } except Exception as e {
             import logging;
             logging.getLogger(__name__).debug(

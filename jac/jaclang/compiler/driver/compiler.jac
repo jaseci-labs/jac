@@ -315,7 +315,8 @@ obj JacCompiler(SessionHooks) {
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_interop: (dict[str, any] | None)
+        cached_interop: (dict[str, any] | None),
+        validated: (set[str] | None) = None
     ) -> None;
 
     def _sealed_native_engine(full_target: str) -> (SharedNativeEngine | None);
@@ -323,7 +324,8 @@ obj JacCompiler(SessionHooks) {
         full_target: str,
         actual_program: JacProgram,
         secs: dict[int, bytes],
-        base_dir: str = ""
+        base_dir: str = "",
+        validated: (set[str] | None) = None
     ) -> None;
 
     def _get_precompiled_jir_bytecode(
