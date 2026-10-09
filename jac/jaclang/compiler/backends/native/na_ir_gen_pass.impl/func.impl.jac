@@ -559,8 +559,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
     func = self.func_symtab.get(name);
     if func is None {
-        if id(nd) in self._capability_demotions {
-            self._claimed_capability_demotions.add(id(nd));
+        if self._static_refusals(nd) is not None {
+            self._claimed_units.add(id(nd));
         }
         return;
     }
@@ -572,10 +572,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         }
     }
 
-    _pre_viols = self._capability_demotions.get(id(nd));
+    _pre_viols = self._static_refusals(nd);
     if _pre_viols is not None {
-        self._claimed_capability_demotions.add(id(nd));
-        if self._predemote_capability_unit(name, func, _pre_viols) {
+        self._claimed_units.add(id(nd));
+        if self._stub_refused_unit(name, func, _pre_viols) {
             self._rename_demoted_symbol(name, func);
             return;
         }
@@ -593,21 +593,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             self._codegen_generator(nd, func);
         } except Exception as _gen_exc {
             _gen_raised = True;
-            if self._na_debug_on() {
-                import sys;
-                sys.stderr.write(
-                    f"NA_DEBUG raise {name}: {type(_gen_exc).__name__}: {_gen_exc}\n"
-                );
-            }
-            self.emit(
-                E5092,
-                node_override=nd,
-                kind="function (native emitter error in)",
-                name=name,
-                help_text=f"The native backend raised {type(_gen_exc).__name__} "
-                f"while lowering this function; it falls back to its Python "
-                f"implementation. Original error: {_gen_exc}"
-            );
+            self._internal_error(nd, "function", name, _gen_exc, _gen_mark);
         }
         if _gen_raised and self._demote_method_if_unlowerable(name, func, _gen_mark) {
             self._rename_demoted_symbol(name, func);
@@ -667,22 +653,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             func, self._func_loc.get(name, nd.loc.first_line if nd.loc else 1)
         );
     } except Exception as _codegen_exc {
-        if self._na_debug_on() {
-            import sys;
-            sys.stderr.write(
-                f"NA_DEBUG raise {name}: "
-                f"{type(_codegen_exc).__name__}: {_codegen_exc}\n"
-            );
-        }
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="function (native emitter error in)",
-            name=name,
-            help_text=f"The native backend raised {type(_codegen_exc).__name__} "
-            f"while lowering this function; it falls back to its Python "
-            f"implementation. Original error: {_codegen_exc}"
-        );
+        self._internal_error(nd, "function", name, _codegen_exc, _local_mark);
     } finally {
         self._leave_function(state);
     }
@@ -768,15 +739,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         self.builder.ret(exc_msg);
         self._finalize_di_locations(func, line);
     } except Exception as _codegen_exc {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="test (native emitter error in)",
-            name=test_name,
-            help_text=f"The native backend raised {type(_codegen_exc).__name__} "
-            f"while lowering this test; it runs in the server codespace "
-            f"instead. Original error: {_codegen_exc}"
-        );
+        self._internal_error(nd, "test", test_name, _codegen_exc, _local_mark);
     } finally {
         self._leave_function(state);
     }

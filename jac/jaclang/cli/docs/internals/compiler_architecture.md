@@ -116,7 +116,7 @@ graph TD
     end
 
     FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8 --> FE9 --> FE10
-    FE10 --> TYPECK["Analysis (unconditional)<br/>TypeCheckPass / StaticAnalysisPass / AccessCheckPass / OwnershipCheckPass /<br/>NativeCapabilityCheckPass / ClientCapabilityCheckPass / PortabilityWarnPass / JacLintCheckPass"]
+    FE10 --> TYPECK["Analysis (unconditional)<br/>TypeCheckPass / StaticAnalysisPass / AccessCheckPass / OwnershipCheckPass /<br/>NativeLegalityPass / ClientCapabilityCheckPass / PortabilityWarnPass / JacLintCheckPass"]
     TYPECK --> INTEROP["BoundaryAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[JcirGenPass + JcirBytecodeGenPass]
     INTEROP --> CL[EsastGenPass]
@@ -277,10 +277,17 @@ The solver owns every placement decision, in three cooperating stages:
    when stamps change.
 
 Every stamp records an evidence note (`jac check --placements` prints the
-chains). Lowering failures demote:
-inferred-native modules recompile server-side, and client-pulled (dual)
-elements that fail ES generation are un-stamped back to the server with a
-note, their call sites bridging instead.
+chains). A module that prefers native but cannot lower is placed on the
+server from a recorded refusal, never from a caught failure.
+`NativeLegalityPass` applies the static rules and propagates them over the
+module's reference graph: a unit (function, method or test) that references
+a refused unit is refused, and module-level code that reaches a refused unit
+refuses the module during analysis, before the native backend runs. A
+refusal only the backend can see is recorded on the same table as a late
+refusal and re-places the module once. A backend exception is a compiler
+error and is never absorbed as a refusal. Client-pulled (dual) elements that
+fail ES generation are un-stamped back to the server with a note, their call
+sites bridging instead.
 
 On the Python backend, inferred-native declarations in mixed modules are
 pruned from the server projection (mirroring the client pruning), with the
@@ -323,7 +330,7 @@ on every compile:
 | `StaticAnalysisPass` | [`compiler/passes/static_analysis_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/static_analysis_pass.jac) | Unreachable code, unused variables, import refusals (`E1122`-`E1125`) |
 | `AccessCheckPass` | [`compiler/passes/access_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/access_check_pass.jac) | Access-modifier (`:pub`/`:protect`/`:priv`) enforcement |
 | `OwnershipCheckPass` | [`compiler/passes/ownership_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ownership_check_pass.jac) | Ownership and borrow analysis (see the [Ownership Fact Schema](ownership-checker-spec.md)) |
-| `NativeCapabilityCheckPass` | [`compiler/passes/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/capability_check_pass.jac) | Stamps native capability facts (native-lowering eligibility for the placement verdict) on module nodes |
+| `NativeLegalityPass` | [`compiler/passes/native_legality.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/native_legality.jac) | Decides native lowerability from static rules: per-unit refusals, their propagation over the reference graph, and module-level refusals that place the module on the server before codegen |
 | `ClientCapabilityCheckPass` | [`compiler/passes/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/capability_check_pass.jac) | Stamps client capability facts on module nodes |
 | `PortabilityWarnPass` | [`compiler/passes/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/capability_check_pass.jac) | Emits portability warnings (W6001-W6004) for JS-idiom violations; diagnostic-only |
 | `JacLintCheckPass` | [`compiler/tools/jac_auto_lint_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/tools/jac_auto_lint_pass.jac) | Lint rules (W3xxx / E3xxx) |

@@ -3731,6 +3731,24 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             actual_elem_type = inner_type;
         }
     }
+    _for_len_fn = helpers["len"];
+    if isinstance(_for_len_fn, ir.Function)
+        and len(_for_len_fn.function_type.args) > 0
+        and _coll_memo.type != _for_len_fn.function_type.args[0] {
+        if len(self.ctx.errors_had) == _for_errs0 {
+            self.emit(
+                E5092,
+                node_override=nd.collection or nd,
+                kind="for-loop iterable",
+                name=(coll_name or "<expr>"),
+                help_text="The value iterated here has no list layout natively "
+                "(an `Iterable`/`Iterator`-typed value is an iterator handle, "
+                "not a list), so the indexed loop cannot read it. Annotate it "
+                "as a concrete `list[...]`, or iterate it from a Python context."
+            );
+        }
+        return;
+    }
     self._codegen_for_indexed(
         nd,
         kind="list",

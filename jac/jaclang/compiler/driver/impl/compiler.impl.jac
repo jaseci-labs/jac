@@ -432,7 +432,6 @@ impl JacCompiler._demote_adopted_native(
         return False;
     }
     import from jaclang.compiler.driver.jir { get_module_cache_path }
-    import from jaclang.compiler.driver.session_compile { na_demotion_note }
     import from jaclang.compiler.frontend.host { active_host }
     detail = f"Native compilation failed: {failure}".split("\n")[0];
     host = active_host();
@@ -441,8 +440,11 @@ impl JacCompiler._demote_adopted_native(
     try {
         get_module_cache_path(resolved).unlink();
     } except OSError {}
-    (note, style) = na_demotion_note(unit_path, detail, False);
-    host.note(note, style);
+    host.note(
+        f"note: {unit_path} preferred native but did not lower; "
+        f"compiled in the server codespace ({detail})",
+        "dim"
+    );
     return True;
 }
 

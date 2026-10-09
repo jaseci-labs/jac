@@ -1159,6 +1159,8 @@ obj CodeGenTarget {
         native_iface: (NativeIface | None) = None,
         native_deps: list[str] = [],
         native_codespace: bool = False,
+        native_refusal_code: str = "",
+        native_refusal: str = "",
         _interop_manifest: (InteropManifest | None) = None,
         interop_py_funcs: dict[(str, any)] = {},
         _interop_callbacks: list[any] = [],

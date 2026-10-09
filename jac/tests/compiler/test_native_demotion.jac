@@ -1,6 +1,8 @@
-"""Native demotion classification (#8030 B1): a pass crash is an ICE,
-not a placement decision. ICE demotions get a distinct coverage outcome
-and a loud (non-dim) note; diagnostic demotions stay dim.
+"""Native admission: a module that prefers native is placed in the server
+codespace when a legality refusal or its native-context analysis says it
+cannot lower. The decision is a recorded fact (the legality table, the
+verdict), never a caught failure: a backend crash is a compiler error and
+is covered by test_native_legality.jac.
 
 Demotion consequences for importers (#8374): once a module leaves the
 native lane the pin no longer wins any placement verdict -- not the
@@ -20,15 +22,7 @@ import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
-import from jaclang.compiler.driver.na_coverage {
-    na_coverage_begin,
-    na_coverage_end,
-    na_coverage_record
-}
-import from jaclang.compiler.driver.session_compile {
-    drop_demoted_native_bindings,
-    na_demotion_note
-}
+import from jaclang.compiler.driver.session_compile { drop_native_bindings }
 import from jaclang.compiler.driver.boundary_classify {
     import_declares_native_target,
     plain_native_import_target
@@ -101,33 +95,6 @@ def persist_verdict(path: str, code: str, detail: str) -> bool {
     return write_module_cache(
         path, None, extra_sections={SEC_PLACEMENT: summary_to_bytes(ps)}
     );
-}
-
-
-test "ICE note is loud and self-identifies as a compiler bug" {
-    (msg, style) = na_demotion_note("m.jac", "AttributeError: width", True);
-    assert style != "dim";
-    assert "internal" in msg;
-    assert "m.jac" in msg;
-}
-
-
-test "diagnostic demotion note stays dim" {
-    (msg, style) = na_demotion_note("m.jac", "error[E5092]: nope", False);
-    assert style == "dim";
-    assert "preferred native" in msg;
-}
-
-
-test "coverage records ice as a distinct sticky outcome" {
-    na_coverage_begin();
-    key = "/tmp/jac_test_ice_probe.jac";
-    na_coverage_record(key, "ice", "AttributeError", "boom");
-    na_coverage_record(key, "native");
-    snap = na_coverage_end();
-    rec = snap[os.path.realpath(key)];
-    assert rec["outcome"] == "ice";
-    assert rec["code"] == "AttributeError";
 }
 
 
@@ -232,7 +199,7 @@ test "importer invalidation clears ES output and NATIVE bindings" {
     assert app.gen.js == "" , "stale ES output must be cleared";
     assert app.gen.es_ast is None;
     for m in cleared {
-        drop_demoted_native_bindings(m, models_path);
+        drop_native_bindings(m, models_path);
     }
     assert "double" not in manifest.bindings , "the NATIVE binding naming the demoted module must be dropped";
     assert "unrelated" in manifest.bindings , "bindings in other contexts must survive";

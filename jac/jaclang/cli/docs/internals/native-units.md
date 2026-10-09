@@ -120,6 +120,13 @@ never reaches a user. Outside a demotion window a suppressed lowering error
 still withholds the unit: suppression silences the report, not the fact that
 the body did not lower, and the unit's failure names the diagnostic.
 
+Refusals live on one table, `NativeLegality`. The static rules fill it during
+analysis, and a unit they refuse is stubbed without lowering its body. A
+diagnostic the generator records while lowering a unit the static rules
+accepted is moved onto the same table as a late refusal: it is the list of
+what the static rules do not yet predict. An exception raised by the
+generator is not a refusal; it is reported as a compiler error.
+
 ## The link plan
 
 One plan produces every artifact: `jac build --native`, native app builds,
