@@ -1,8 +1,7 @@
 import logging;
 import smtplib;
-import from email.mime.multipart { MIMEMultipart }
-import from email.mime.text { MIMEText }
-import from jaclang.scale.emailer.emailer { Emailer }
+import from email.message { EmailMessage }
+import from jaclang.scale.emailer.emailer { Emailer, EmailAttachment }
 
 glob logger = logging.getLogger(__name__);
 
@@ -20,8 +19,19 @@ obj SMTPEmailer(Emailer) {
         subject: str,
         body_text: str,
         body_html: (str | None) = None,
-        from_addr: (str | None) = None
+        from_addr: (str | None) = None,
+        reply_to: (str | None) = None,
+        attachments: (list[EmailAttachment] | None) = None
     ) -> bool;
 
     override def is_ready -> bool;
+    def _build_message(
+        sender: str,
+        to_addr: str,
+        subject: str,
+        body_text: str,
+        body_html: (str | None),
+        reply_to: (str | None),
+        attachments: list[EmailAttachment]
+    ) -> EmailMessage;
 }

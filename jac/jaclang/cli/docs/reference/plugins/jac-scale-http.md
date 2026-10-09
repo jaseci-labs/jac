@@ -1067,6 +1067,46 @@ timeout  = 10.0
 | `use_tls` | STARTTLS upgrade after connect | `true` |
 | `timeout` | Connection timeout in seconds | `10.0` |
 
+### Reply-To and Attachments
+
+`send_email` also takes an optional `reply_to` address and a list of `EmailAttachment`s. An attachment with a `content_id` is shown inside the HTML body, where `cid:<content_id>` refers to it (an inline image, such as a QR code); one without is attached as a separate file. With no HTML body, every attachment is attached.
+
+```jac
+import from jaclang.scale.emailer.emailer { Emailer, EmailAttachment }
+
+def send_tickets(emailer: Emailer, qr_png: bytes, receipt_pdf: bytes) -> bool {
+    return emailer.send_email(
+        to_addr="guest@example.com",
+        subject="Your tickets",
+        body_text="Your tickets are attached.",
+        body_html='<p>Show this at the door:</p><img src="cid:ticket-1">',
+        reply_to="Box Office <boxoffice@example.com>",
+        attachments=[
+            EmailAttachment(
+                filename="ticket-1.png",
+                content=qr_png,
+                mime_type="image/png",
+                content_id="ticket-1"
+            ),
+            EmailAttachment(
+                filename="receipt.pdf", content=receipt_pdf, mime_type="application/pdf"
+            )
+        ]
+    );
+}
+```
+
+| `EmailAttachment` field | Description | Default |
+|-------------------------|-------------|---------|
+| `filename` | The file's name as the recipient sees it | required |
+| `content` | The file's bytes | required |
+| `mime_type` | Its type, e.g. `image/png`. Parameters such as `; charset=utf-8` are dropped, and a value that isn't `type/subtype` is sent as `application/octet-stream` (`media_type()` gives the type sent). | `application/octet-stream` |
+| `content_id` | Shows the file inside the HTML body as `cid:<content_id>`. Given with or without angle brackets (`qr-1` or `<qr-1>`); `bare_content_id()` gives it without. | `None` (attached) |
+
+A header value with a line break (the recipient, subject, `reply_to` or an attachment's filename) is refused: the SMTP emailer's `send_email` returns `False`, as for any failed send.
+
+A custom emailer's `send_email` must accept both parameters.
+
 ### Custom Emailer (Python or Jac)
 
 Subclass `Emailer` and point `provider` at your class. The factory imports it dynamically at server startup and instantiates it with the full emailer config dict.
@@ -1080,7 +1120,8 @@ class SendGridEmailer(Emailer):
     def postinit(self):
         self._client = sendgrid.SendGridAPIClient(api_key=os.environ["SENDGRID_API_KEY"])
 
-    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None):
+    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
+                   reply_to=None, attachments=None):
         # ... use self._client to send ...
         return True
 
@@ -1169,7 +1210,8 @@ class SendGridEmailer(Emailer):
         api_key = os.environ.get("SENDGRID_API_KEY", "")
         self._client = SendGridAPIClient(api_key=api_key) if api_key else None
 
-    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None):
+    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
+                   reply_to=None, attachments=None):
         if self._client is None:
             logger.warning("SendGrid client not configured; dropping email to %s", to_addr)
             return False
