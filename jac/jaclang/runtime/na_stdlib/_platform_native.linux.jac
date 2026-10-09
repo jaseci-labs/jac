@@ -1,5 +1,6 @@
 import from c { def uname(buf: int) -> i32;  }
-import from c { def strdup(s: int) -> str;  }
+import from c { def strlen(pointer: int) -> u64;  }
+import from c { def memcpy(target: bytes, source: int, length: u64) -> int;  }
 import from c { def malloc(size: int) -> int;  }
 import from c { def popen(cmd: str, mode: str) -> int;  }
 import from c { def pclose(stream: int) -> i32;  }
@@ -12,24 +13,34 @@ def:pub plat_uname_ok -> bool {
     return uname(_PLAT_UTS) == 0;
 }
 
+# Reads a NUL-terminated field out of the utsname buffer straight into
+# Jac-owned bytes; no C allocation, so nothing leaks on the way out.
+def _uts_str(offset: int) -> str {
+    address = _PLAT_UTS + offset;
+    length = strlen(address);
+    copied = b"\x00" * int(length);
+    memcpy(copied, address, length);
+    return copied.decode();
+}
+
 def:pub plat_sysname -> str {
-    return strdup(_PLAT_UTS + 0);
+    return _uts_str(0);
 }
 
 def:pub plat_nodename -> str {
-    return strdup(_PLAT_UTS + 65);
+    return _uts_str(65);
 }
 
 def:pub plat_release -> str {
-    return strdup(_PLAT_UTS + 130);
+    return _uts_str(130);
 }
 
 def:pub plat_version -> str {
-    return strdup(_PLAT_UTS + 195);
+    return _uts_str(195);
 }
 
 def:pub plat_machine -> str {
-    return strdup(_PLAT_UTS + 260);
+    return _uts_str(260);
 }
 
 def:pub plat_uname_p -> str {

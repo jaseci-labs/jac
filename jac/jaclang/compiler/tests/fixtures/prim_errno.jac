@@ -3,10 +3,12 @@
 The SAME `import from errno { ... }` binds CPython's ``errno`` on the sv
 (Python) backend and the bundled `na_stdlib/errno.<os>.jac` module on the na
 (native LLVM) backend. Pins a representative slice of the E* constants on the
-running host -- including every value-aliased pair (EAGAIN/EWOULDBLOCK,
-EDEADLK/EDEADLOCK, ENOTSUP/EOPNOTSUPP) and the extremes of the range -- the
-``errorcode`` dict lookups for those values, and the ``KeyError`` raised for
-a code with no name. ES/JS opts out.
+running host -- including the EAGAIN/EWOULDBLOCK alias and the extremes of
+the range -- the ``errorcode`` dict lookups for those values, and the
+``KeyError`` raised for a code with no name. ``EDEADLOCK`` exists only where
+the host exports it (Linux aliases it to EDEADLK; Darwin has EDEADLK alone),
+so it is pinned through a reverse ``errorcode`` lookup: the alias's code on
+hosts that have it, -1 where it does not. ES/JS opts out.
 """
 
 import from errno {
@@ -36,7 +38,6 @@ import from errno {
     EDOM,
     ERANGE,
     EDEADLK,
-    EDEADLOCK,
     EINPROGRESS,
     ENOTSOCK,
     EADDRINUSE,
@@ -64,6 +65,19 @@ import from errno {
     ENOTRECOVERABLE,
     EOWNERDEAD,
     errorcode
+}
+
+
+def _alias_code(name: str) -> int {
+    # `errorcode` maps code -> first-defined name, so aliased constants hide
+    # behind the shared code; scanning for a name recovers a host alias like
+    # EDEADLOCK without importing a symbol Darwin does not export.
+    for code in errorcode {
+        if errorcode[code] == name {
+            return code;
+        }
+    }
+    return -1;
 }
 
 
@@ -95,7 +109,7 @@ def errno_py -> dict[any, any] {
         "c_edom": EDOM,
         "c_erange": ERANGE,
         "c_edeadlk": EDEADLK,
-        "c_edeadlock": EDEADLOCK,
+        "c_edeadlock": _alias_code("EDEADLOCK"),
         "c_einprogress": EINPROGRESS,
         "c_enotsock": ENOTSOCK,
         "c_eaddrinuse": EADDRINUSE,
@@ -175,7 +189,7 @@ def errno_na -> dict[str, any] {
         "c_edom": EDOM,
         "c_erange": ERANGE,
         "c_edeadlk": EDEADLK,
-        "c_edeadlock": EDEADLOCK,
+        "c_edeadlock": _alias_code("EDEADLOCK"),
         "c_einprogress": EINPROGRESS,
         "c_enotsock": ENOTSOCK,
         "c_eaddrinuse": EADDRINUSE,

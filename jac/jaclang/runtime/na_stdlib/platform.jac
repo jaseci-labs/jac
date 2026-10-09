@@ -18,7 +18,6 @@ glob _PY_VERSION: str = "3.14.6";
 obj _UnameCache {
     has done: bool = False,
         pdone: bool = False,
-        udone: bool = False,
         ldone: bool = False,
         system: str = "",
         `node: str = "",
@@ -31,10 +30,7 @@ obj _UnameCache {
         pdone_f: bool = False,
         pdone_t: bool = False,
         pfull: str = "",
-        pterse: str = "",
-        ures: uname_result = uname_result(
-            system="", `node="", release="", version="", machine="", processor=""
-        );
+        pterse: str = "";
 }
 
 glob _UC: _UnameCache = _UnameCache();
@@ -70,17 +66,18 @@ def _processor -> str {
 }
 
 def:pub uname -> uname_result {
-    if not _UC.udone {
-        _load_uname();
-        _UC.ures.system = _UC.system;
-        _UC.ures.`node = _UC.node;
-        _UC.ures.release = _UC.release;
-        _UC.ures.version = _UC.version;
-        _UC.ures.machine = _UC.machine;
-        _UC.ures.processor = _processor();
-        _UC.udone = True;
-    }
-    return _UC.ures;
+    # The scalar fields stay cached, but each call builds a new result: the
+    # archetype's `has` fields are writable, and a shared instance would let
+    # one caller's mutation leak into every later uname()/platform() call.
+    _load_uname();
+    return uname_result(
+        system=_UC.system,
+        `node=_UC.node,
+        release=_UC.release,
+        version=_UC.version,
+        machine=_UC.machine,
+        processor=_processor()
+    );
 }
 
 def:pub system -> str {
@@ -126,11 +123,20 @@ def:pub architecture(
     return (b, l);
 }
 
-def:pub libc_ver -> tuple[(str, str)] {
+def:pub libc_ver(
+    executable: str = "", lib: str = "", version: str = ""
+) -> tuple[(str, str)] {
+    # CPython scans `executable` for embedded version strings; the native
+    # backend only probes the running host's libc, so `executable` is
+    # accepted for call compatibility and ignored. `lib`/`version` keep
+    # their CPython role as fallbacks when detection finds nothing.
     if not _UC.ldone {
         _UC.libc_n = plat_libc_name();
         _UC.libc_v = plat_libc_version();
         _UC.ldone = True;
+    }
+    if _UC.libc_n == "" {
+        return (lib, version);
     }
     return (_UC.libc_n, _UC.libc_v);
 }
