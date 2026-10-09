@@ -122,3 +122,14 @@ test "a walker ability that cannot be lowered refuses the module" {
     refusals = [str(e) for e in program.errors_had];
     assert any("event ability" in r and "look" in r for r in refusals) , refusals;
 }
+
+"""`print(f())` writes `None` when `f` returns nothing. The native tier
+refused the program instead, which made this the most common reason a
+program was not native in the first census."""
+test "printing the result of a call that returns nothing writes None" {
+    out = assert_native_identity(
+        fixture("print_none_result.jac"), profiles=["rc", "managed"]
+    );
+    assert "a None b None" in out , out;
+    assert "None 1 2" in out , out;
+}
