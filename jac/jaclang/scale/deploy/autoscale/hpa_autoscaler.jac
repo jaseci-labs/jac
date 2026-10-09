@@ -8,7 +8,8 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     normalize_conditions,
     tristate,
     DEFAULT_CPU_UTILIZATION_TARGET,
-    DEFAULT_MEMORY_UTILIZATION_TARGET
+    DEFAULT_MEMORY_UTILIZATION_TARGET,
+    RESOURCE_ONLY_TRIGGER_TYPES
 }
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {

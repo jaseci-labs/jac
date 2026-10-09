@@ -2,7 +2,7 @@ impl HPAAutoscaler._build_manifests{
     hpa_name = spec.autoscaler_name or f"{spec.scale_target_name}-hpa";
     metrics: list[dict[str, any]] = [];
     for trigger in spec.triggers {
-        if trigger.type not in ["cpu", "memory"] {
+        if trigger.type not in RESOURCE_ONLY_TRIGGER_TYPES {
             continue;
         }
         default_target = DEFAULT_CPU_UTILIZATION_TARGET
@@ -68,7 +68,7 @@ impl HPAAutoscaler._build_manifests{
 
 impl HPAAutoscaler.apply{
     for trigger in spec.triggers {
-        if trigger.type not in ["cpu", "memory"] {
+        if trigger.type not in RESOURCE_ONLY_TRIGGER_TYPES {
             raise ValueError(
                 f"Trigger '{trigger.name or trigger.type}' (type='{trigger.type}') requires KEDA. "
                 "Set autoscaler_engine = \"keda\" in [scale.kubernetes] in jac.toml."
