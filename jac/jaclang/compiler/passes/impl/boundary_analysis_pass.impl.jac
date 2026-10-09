@@ -1391,12 +1391,13 @@ impl BoundaryAnalysisPass.finish with exit {
         err_node = binding.ast_node
             if isinstance(binding.ast_node, UniNode)
             else self.module;
+        import from jaclang.compiler.boundary_rules { signature_crossings }
         for (what, spelled, _why) in signature_crossings(
             list(binding.param_names),
             list(binding.param_types),
             binding.ret_type,
-            TARGET_NATIVE,
-            TARGET_SERVER
+            'native',
+            'server'
         ) {
             self.ctx.emit(
                 E5093,
@@ -1411,10 +1412,14 @@ impl BoundaryAnalysisPass.finish with exit {
     for binding in manifest.server_exports_to_client {
         exported = binding.ast_node;
         unsent: list[tuple[str, str, str]] = [];
-        if isinstance(exported, Ability) {
-            unsent = signature_refusals(exported, TARGET_CLIENT, TARGET_SERVER);
-        } elif isinstance(exported, Archetype) {
-            unsent = archetype_refusals(exported, TARGET_CLIENT, TARGET_SERVER);
+        if isinstance(exported, (Ability, Archetype)) {
+            import from jaclang.compiler.boundary_rules {
+                archetype_refusals,
+                signature_refusals
+            }
+            unsent = signature_refusals(exported, 'client', 'server')
+                if isinstance(exported, Ability)
+                else archetype_refusals(exported, 'client', 'server');
         }
         for (what, spelled, why) in unsent {
             self.ctx.emit(

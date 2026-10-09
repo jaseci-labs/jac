@@ -40,16 +40,6 @@ import from jaclang.compiler.frontend.unitree {
     resolved_decl_of
 }
 import from jaclang.compiler.passes.context { CompileContext, TreePass }
-import from jaclang.compiler.boundary_rules {
-    archetype_refusals,
-    signature_crossings,
-    signature_refusals
-}
-import from jaclang.compiler.capability_notes {
-    TARGET_CLIENT,
-    TARGET_NATIVE,
-    TARGET_SERVER
-}
 import from jaclang.compiler.frontend.constant {
     CodeContext,
     SymbolType,
