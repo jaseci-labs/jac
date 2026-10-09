@@ -1223,6 +1223,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     import from jaclang.compiler.passes.layout_pass { adopt_imported_bases }
     adopt_imported_bases(self.module);
+    self._report_unreachable_overrides();
 
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
