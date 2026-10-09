@@ -3498,6 +3498,9 @@ impl NaIRGenPass._emit_str_concat_inplace(
     );
     ip_res: ir.Value = buf;
     if _desc_slot {
+        if _desc_ty is None {
+            return None;
+        }
         ip_res = self.builder.insert_value(
             self.builder.insert_value(
                 self.builder.insert_value(
@@ -3530,7 +3533,14 @@ impl NaIRGenPass._emit_str_concat_inplace(
     self.builder.branch(merge_bb);
 
     self.builder.position_at_end(merge_bb);
-    res = self.builder.phi(_desc_ty if _desc_slot else i8p, name="cat.res");
+    _phi_ty: ir.Type = i8p;
+    if _desc_slot {
+        if _desc_ty is None {
+            return None;
+        }
+        _phi_ty = _desc_ty;
+    }
+    res = self.builder.phi(_phi_ty, name="cat.res");
     res.add_incoming(ip_res, tail_bb);
     res.add_incoming(fr_res, fresh_bb);
     self._last_inplace_handled = True;
