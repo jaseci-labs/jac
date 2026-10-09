@@ -92,6 +92,14 @@ def interface_module_name(home: Module) -> str;
 def native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBinding];
 def signature_of(overloads: list[FunctionType]) -> InterfaceSig;
 def callable_sig(ty: (TypeBase | None)) -> (InterfaceSig | None);
+def merge_sigs(
+    into: (InterfaceSig | None), more: (InterfaceSig | None)
+) -> (InterfaceSig | None);
+
+def scope_sig(
+    scope: UniScopeNode, name: str, prog: JacProgram
+) -> (InterfaceSig | None);
+
 def interface_type(stub_mod: Module, name: str, prog: JacProgram) -> (TypeBase | None);
 def class_member_type(
     cls: ClassType, member: str, prog: JacProgram
@@ -242,6 +250,36 @@ impl callable_sig(ty: (TypeBase | None)) -> (InterfaceSig | None) {
     return None;
 }
 
+impl merge_sigs(
+    into: (InterfaceSig | None), more: (InterfaceSig | None)
+) -> (InterfaceSig | None) {
+    if into is None or more is None {
+        return into or more;
+    }
+    for pname in more.params {
+        if pname not in into.params {
+            into.params.append(pname);
+        }
+    }
+    into.variadic = into.variadic or more.variadic;
+    into.positional = max(into.positional, more.positional);
+    return into;
+}
+
+impl scope_sig(
+    scope: UniScopeNode, name: str, prog: JacProgram
+) -> (InterfaceSig | None) {
+    """How `name` is called in `scope`, over every declaration of it there:
+    a scope holds each overload of a function as its own symbol.""";
+    found: (InterfaceSig | None) = None;
+    for sym in scope.lookup_all(name, deep=False) {
+        found = merge_sigs(
+            found, callable_sig(prog.get_type_evaluator().get_type_of_symbol(sym))
+        );
+    }
+    return found;
+}
+
 impl interface_type(
     stub_mod: Module, name: str, prog: JacProgram
 ) -> (TypeBase | None) {
@@ -284,24 +322,7 @@ impl constructor_sig(cls: ClassType, prog: JacProgram) -> (InterfaceSig | None) 
         }
         made: (InterfaceSig | None) = None;
         for maker in ("__new__", "init", "__init__") {
-            sym = scope.lookup(maker, deep=False);
-            sig = callable_sig(prog.get_type_evaluator().get_type_of_symbol(sym))
-                if sym is not None
-                else None;
-            if sig is None {
-                continue;
-            }
-            if made is None {
-                made = sig;
-                continue;
-            }
-            for pname in sig.params {
-                if pname not in made.params {
-                    made.params.append(pname);
-                }
-            }
-            made.variadic = made.variadic or sig.variadic;
-            made.positional = max(made.positional, sig.positional);
+            made = merge_sigs(made, scope_sig(scope, maker, prog));
         }
         if made is not None {
             return made;
@@ -349,7 +370,7 @@ impl conformance_mismatches(
             );
             continue;
         }
-        called = callable_sig(want);
+        called = scope_sig(stub_mod, name, prog);
         if isinstance(decl, Ability) {
             against = called;
             if against is None and isinstance(want, ClassType) {
