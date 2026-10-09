@@ -424,14 +424,17 @@ def:pub shape_mem_stats -> list[int] {
         st[3] = st[3] + len(_GRP_KEYS[gi]);
         gi = gi + 1;
     }
-    for lsid in shape_deepest_leaves(1000000) {
-        if _SH_COUNT[lsid] >= 128 { st[5] = st[5] + 1; }
+    has_child: list[int] = _shape_has_child();
+    si: int = 0;
+    while si < len(_SH_PARENT) {
+        if has_child[si] == 0 and _SH_COUNT[si] >= 128 { st[5] = st[5] + 1; }
+        si = si + 1;
     }
     return st;
 }
 
-# TEMP diagnostic: the n leaf shapes (no outgoing edge) with the most slots.
-def:pub shape_deepest_leaves(n: int) -> list[int] {
+# TEMP diagnostic: 1 for each shape some other shape extends (one pass).
+def _shape_has_child -> list[int] {
     has_child: list[int] = [];
     si: int = 0;
     while si < len(_SH_PARENT) {
@@ -443,8 +446,14 @@ def:pub shape_deepest_leaves(n: int) -> list[int] {
         has_child[_SH_PARENT[si]] = 1;
         si = si + 1;
     }
+    return has_child;
+}
+
+# TEMP diagnostic: the n leaf shapes (no outgoing edge) with the most slots.
+def:pub shape_deepest_leaves(n: int) -> list[int] {
+    has_child: list[int] = _shape_has_child();
     top: list[int] = [];
-    si = 0;
+    si: int = 0;
     while si < len(_SH_PARENT) {
         if has_child[si] == 0 and _SH_COUNT[si] >= 64 {
             pos: int = len(top);

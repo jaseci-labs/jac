@@ -4,11 +4,11 @@ ECMAScript Proxy objects — creation, revocation, and type identification.
 Trap dispatch lives in src/vm/vm.na.jac (requires vm_call_js_fn).
 """
 
+import from engine.src.runtime.encoding { jsv_is_closure_cell }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
     js_int,
-    jsv_is_cell,
     jsv_is_object_cell,
     jsv_is_undefined,
     jsv_is_any_object,
@@ -16,8 +16,6 @@ import from engine.src.runtime.jsvalue {
     jsv_is_int32,
     jsv_to_int32,
     jsv_to_table_id,
-    jsv_cell_kind,
-    JS_CELL_KIND_NATIVE,
     jsv_from_string_id
 }
 import from engine.src.runtime.wk_keys { WK_IS_CLASS }
@@ -120,10 +118,8 @@ def _proxy_compute_callable(target: JSValue) -> bool {
     if is_native_val(target) {
         return True;
     }
-    if jsv_is_cell(target) and jsv_cell_kind(target) == JS_CELL_KIND_NATIVE {
-        if jsv_to_table_id(target) < 1000000 {
-            return True;
-        }
+    if jsv_is_closure_cell(target) {
+        return True;
     }
     if js_is_proxy(target) {
         # Revocation clears [[ProxyHandler]] but does not remove [[Call]].
@@ -164,10 +160,8 @@ def _proxy_compute_constructible(target: JSValue) -> bool {
     }
     # JS closures live in the native-cell low range; treat as constructible unless
     # the VM later clears the bit (ProxyCreate from VM path may refine).
-    if jsv_is_cell(target) and jsv_cell_kind(target) == JS_CELL_KIND_NATIVE {
-        if jsv_to_table_id(target) < 1000000 {
-            return True;
-        }
+    if jsv_is_closure_cell(target) {
+        return True;
     }
     return False;
 }

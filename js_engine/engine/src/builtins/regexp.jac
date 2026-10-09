@@ -68,9 +68,7 @@ import from engine.src.runtime.jsstring {
     js_string_byte_to_unit,
     js_string_unit_to_byte,
     js_string_utf16_len,
-    utf8_encode_scalar,
-    utf8_decode_str_to_codepoints,
-    utf16_units_to_scalars
+    utf8_encode_scalar
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -1675,7 +1673,7 @@ def _normalize_unicode_pattern(
         # closing a class and `\[` from opening one.
         # U+0000: engine strings hold it as the sentinel C0 80, but a subject
         # that has one is matched as a copy with real 0x00 bytes
-        # (_do_match_nul), so every NUL form compiles to PCRE2's `\\x00` — a
+        # (_dm_converted), so every NUL form compiles to PCRE2's `\\x00` — a
         # literal NUL in the pattern (sentinel bytes) included. Inside a class
         # `\\0` / `\\x00` are already PCRE2's NUL.
         if ord(pattern[i]) == 192 and i + 1 < len(pattern) and ord(pattern[i + 1]) == 128 {
@@ -2044,29 +2042,32 @@ Returns list[int]:
   [match_start, match_end, ov...]    — success; followed by raw ovector pairs
     cap group k: ov[2+k*2], ov[2+k*2+1]  (value < 0  →  group did not match)
 
-Public entry points set _DM_ASCII (from the subject's cell flag) right before
-calling, so a known-ASCII subject skips the surrogate scan entirely; otherwise a
-/u or /v pattern only pays the CESU-8 → UTF-8 conversion when the subject
-actually contains a surrogate half (lead byte 0xED), instead of decoding and
-re-encoding the whole string on EVERY call (O(n) per match → quadratic loops).
+Public entry points set _DM_ASCII (from the subject's cell flag) and
+_DM_SUBJ_ID right before calling. A non-ASCII subject is matched as a rewritten
+copy when PCRE2 cannot match its bytes as they are (_dm_converted): each U+0000
+(stored as the sentinel C0 80) becomes a real 0x00 byte, and under /u or /v each
+surrogate pair stored as two CESU-8 halves becomes its 4-byte UTF-8 scalar.
+Offsets map back to the subject's own bytes.
 """
 glob _DM_ASCII: bool = False;
-# Subjects holding U+0000 (sentinel C0 80): the string cell the public entry
-# point is matching (_dm_subject_ascii), and a cache of the last one checked —
-# whether it has a NUL and, if so, its copy with real 0x00 bytes plus their
-# offsets. Keyed by cell id, length and GC epoch (a swept heap-string id is only
-# reused after a collection), so a /g loop converts its subject once.
+# The string cell the public entry point is matching (_dm_subject_ascii), and a
+# cache of the last subject checked: whether it needs the rewritten copy and, if
+# so, the copy plus its offset breakpoints. Keyed by cell id, length, GC epoch (a
+# swept heap-string id is only reused after a collection) and whether pairs are
+# joined, so a /g loop rewrites its subject once.
 glob _DM_SUBJ_ID: int = -1,
      _DM_NUL: str = "",
-     _DM_NUL_ID: int = -2,
-     _DM_NUL_LEN: int = -1,
-     _DM_NUL_EPOCH: int = -1,
-     _DM_NUL_HAS: bool = False,
-     _DM_NUL_BUF: int = 0,
-     _DM_NUL_BLEN: int = 0,
-     _DM_NUL_POS: list[int] = [];
-glob _DM_ED: str = "",
-     _DM_MD: dict[int, int] = {},
+     _DM_ED: str = "",
+     _DM_CV_ID: int = -2,
+     _DM_CV_LEN: int = -1,
+     _DM_CV_EPOCH: int = -1,
+     _DM_CV_PAIRS: bool = False,
+     _DM_CV_ON: bool = False,
+     _DM_CV_BUF: int = 0,
+     _DM_CV_BLEN: int = 0,
+     _DM_CV_END: list[int] = [],
+     _DM_CV_CUM: list[int] = [];
+glob _DM_MD: dict[int, int] = {},
      _DM_MCTX: int = 0;
 
 # One match-data block per compiled pattern and one shared match context (4
@@ -2077,94 +2078,123 @@ def _do_match(re: JSRegExpState, s: str, start: int) -> list[int] {
     if re.pcre2_code_ptr == 0 {
         return [-1];
     }
-    if not _DM_ASCII and _dm_has_nul(s) {
-        return _do_match_nul(re, s, start);
-    }
-    if (re.flag_u or re.flag_v) and not _DM_ASCII {
-        if len(_DM_ED) == 0 {
-            _DM_ED = byte_chr(237);
-        }
-        if s.find(_DM_ED) >= 0 {
-            return _do_match_conv(re, s, start);
-        }
+    if not _DM_ASCII and _dm_converted(s, re.flag_u or re.flag_v) {
+        return _do_match_cv(re, start);
     }
     return _do_match_raw(re, s, start);
 }
 
-"""Whether `s` (the subject of the current match) holds U+0000; builds its
-0x00-byte copy when it does. Cached per subject (see _DM_SUBJ_ID)."""
-def _dm_has_nul(s: str) -> bool {
+"""Whether `s` (the subject of the current match) must be matched as a rewritten
+copy, building the copy when so. Engine strings keep U+0000 as the sentinel
+C0 80, which byte-mode classes saw as two bytes (`[\\0-\\x1f]` missed it,
+`[^\\x00-\\x7f]` hit it) and /u could not match at all (invalid UTF-8 under
+MATCH_INVALID_UTF); it becomes a real 0x00 byte (NUL forms compile to `\\x00`).
+With `pairs` (/u, /v) a surrogate pair stored as two CESU-8 halves (ED A0-AF xx
+ED B0-BF xx) becomes its 4-byte UTF-8 scalar, which PCRE2's UTF mode needs; a
+lone half stays as it is. Every rewrite shrinks the copy, so _DM_CV_END[k] (the
+copy's offset just past rewrite k) and _DM_CV_CUM[k] (original minus copy offset
+from there on) map offsets both ways. Cached per subject (see _DM_SUBJ_ID)."""
+def _dm_converted(s: str, pairs: bool) -> bool {
     n: int = len(s);
     if _DM_SUBJ_ID >= 0
-        and _DM_SUBJ_ID == _DM_NUL_ID
-        and n == _DM_NUL_LEN
-        and _DM_NUL_EPOCH == _RE_REALM.gc_epoch {
-        return _DM_NUL_HAS;
+        and _DM_SUBJ_ID == _DM_CV_ID
+        and n == _DM_CV_LEN
+        and pairs == _DM_CV_PAIRS
+        and _DM_CV_EPOCH == _RE_REALM.gc_epoch {
+        return _DM_CV_ON;
     }
     if len(_DM_NUL) == 0 {
         _DM_NUL = nul_sentinel();
+        _DM_ED = byte_chr(237);
     }
-    if _DM_NUL_BUF != 0 {
-        io_free(_DM_NUL_BUF);
-        _DM_NUL_BUF = 0;
+    if _DM_CV_BUF != 0 {
+        io_free(_DM_CV_BUF);
+        _DM_CV_BUF = 0;
     }
-    _DM_NUL_ID = _DM_SUBJ_ID;
-    _DM_NUL_LEN = n;
-    _DM_NUL_EPOCH = _RE_REALM.gc_epoch;
-    _DM_NUL_HAS = s.find(_DM_NUL) >= 0;
-    if not _DM_NUL_HAS {
+    _DM_CV_ID = _DM_SUBJ_ID;
+    _DM_CV_LEN = n;
+    _DM_CV_PAIRS = pairs;
+    _DM_CV_EPOCH = _RE_REALM.gc_epoch;
+    _DM_CV_ON = s.find(_DM_NUL) >= 0 or (pairs and s.find(_DM_ED) >= 0);
+    if not _DM_CV_ON {
         return False;
     }
     buf: int = io_alloc(n + 1);
-    pos: list[int] = [];
+    ends: list[int] = [];
+    cums: list[int] = [];
+    cum: int = 0;
     i: int = 0;
     o: int = 0;
     while i < n {
         b: int = ord(s[i]);
         if b == 192 and i + 1 < n and ord(s[i + 1]) == 128 {
-            pos.append(o);
             write_byte(buf, o, 0);
             i = i + 2;
-        } else {
-            write_byte(buf, o, b);
-            i = i + 1;
+            o = o + 1;
+            cum = cum + 1;
+            ends.append(o);
+            cums.append(cum);
+            continue;
         }
+        if pairs and b == 237 and i + 5 < n {
+            b1: int = ord(s[i + 1]);
+            b4: int = ord(s[i + 4]);
+            if b1 >= 160 and b1 <= 175 and ord(s[i + 3]) == 237 and b4 >= 176 and b4 <= 191 {
+                hs: int = 53248 | ((b1 & 63) << 6) | (ord(s[i + 2]) & 63);
+                ls: int = 53248 | ((b4 & 63) << 6) | (ord(s[i + 5]) & 63);
+                sc: int = 65536 + ((hs - 55296) << 10) + (ls - 56320);
+                write_byte(buf, o, 240 | (sc >> 18));
+                write_byte(buf, o + 1, 128 | ((sc >> 12) & 63));
+                write_byte(buf, o + 2, 128 | ((sc >> 6) & 63));
+                write_byte(buf, o + 3, 128 | (sc & 63));
+                i = i + 6;
+                o = o + 4;
+                cum = cum + 2;
+                ends.append(o);
+                cums.append(cum);
+                continue;
+            }
+        }
+        write_byte(buf, o, b);
+        i = i + 1;
         o = o + 1;
     }
-    _DM_NUL_BUF = buf;
-    _DM_NUL_BLEN = o;
-    _DM_NUL_POS = pos;
+    _DM_CV_BUF = buf;
+    _DM_CV_BLEN = o;
+    _DM_CV_END = ends;
+    _DM_CV_CUM = cums;
     return True;
 }
 
-"""Sentinels before converted offset `v` (_DM_NUL_POS ascending), or — with
-`orig` — before original byte offset `v` (sentinel k sits at pos[k] + k)."""
-def _dm_nul_below(v: int, orig: bool) -> int {
+"""How much the rewritten copy is shorter than the subject before offset `v`:
+of the copy (`orig` False — rewrites ending at or before it), or of the subject
+(`orig` True). Offsets are at character boundaries, never inside a rewrite."""
+def _dm_cv_shift(v: int, orig: bool) -> int {
     lo: int = 0;
-    hi: int = len(_DM_NUL_POS);
+    hi: int = len(_DM_CV_END);
     while lo < hi {
         mid: int = (lo + hi) // 2;
-        at: int = _DM_NUL_POS[mid];
+        at: int = _DM_CV_END[mid];
         if orig {
-            at = at + mid;
+            at = at + _DM_CV_CUM[mid];
         }
-        if at < v {
+        if at <= v {
             lo = mid + 1;
         } else {
             hi = mid;
         }
     }
-    return lo;
+    if lo == 0 {
+        return 0;
+    }
+    return _DM_CV_CUM[lo - 1];
 }
 
-"""Match a subject holding U+0000. Engine strings keep it as the sentinel
-C0 80, which byte-mode classes saw as two bytes (`[\\0-\\x1f]` missed it,
-`[^\\x00-\\x7f]` hit it) and /u could not match at all (invalid UTF-8 under
-MATCH_INVALID_UTF). PCRE2 runs on the cached copy with real 0x00 bytes (NUL
-forms compile to `\\x00`); offsets map back to the subject's bytes."""
-def _do_match_nul(re: JSRegExpState, s: str, start: int) -> list[int] {
-    cstart: int = start - _dm_nul_below(start, True);
-    res: list[int] = _do_match_buf(re, _DM_NUL_BUF, _DM_NUL_BLEN, cstart);
+"""Match the cached rewritten copy (_dm_converted), mapping the start offset
+in and every match / capture offset back to the subject's bytes."""
+def _do_match_cv(re: JSRegExpState, start: int) -> list[int] {
+    cstart: int = start - _dm_cv_shift(start, True);
+    res: list[int] = _do_match_buf(re, _DM_CV_BUF, _DM_CV_BLEN, cstart);
     if res[0] < 0 {
         return res;
     }
@@ -2172,7 +2202,7 @@ def _do_match_nul(re: JSRegExpState, s: str, start: int) -> list[int] {
     while k < len(res) {
         v: int = res[k];
         if v >= 0 {
-            res[k] = v + _dm_nul_below(v, False);
+            res[k] = v + _dm_cv_shift(v, False);
         }
         k = k + 1;
     }
@@ -2184,18 +2214,6 @@ zeroed io_alloc header makes it unmanaged); the buffer outlives it."""
 def _do_match_buf(re: JSRegExpState, p: int, n: int, start: int) -> list[int] {
     sb: str = p;  # jac:ignore[E1001] pointer reinterpret
     return _do_match_on(re, sb, n, start);
-}
-
-"""/u or /v subject holding CESU-8 surrogate halves: pair them into 4-byte astral
-scalars (PCRE2 UTF mode needs valid UTF-8), then match."""
-def _do_match_conv(re: JSRegExpState, s: str, start: int) -> list[int] {
-    cps: list[int] = utf8_decode_str_to_codepoints(s);
-    scalars: list[int] = utf16_units_to_scalars(cps);
-    parts: list[str] = [];
-    for sc in scalars {
-        parts.append(utf8_encode_scalar(sc));
-    }
-    return _do_match_raw(re, "".join(parts), start);
 }
 
 def _do_match_raw(re: JSRegExpState, subj: str, start: int) -> list[int] {
@@ -3658,8 +3676,8 @@ def:pub js_regexp_fast_str_match(s_val: JSValue, rx: JSValue) -> JSValue {
     if not fm_re.flag_g {
         return js_regexp_exec(rx, s_val);
     }
-    # sticky: the JS path; /u /v on a non-ASCII subject: positions in the
-    # surrogate-paired copy (_do_match_conv) — the JS path
+    # sticky, and /u /v on a non-ASCII subject (matched as a rewritten copy,
+    # _dm_converted): the JS path
     if fm_re.flag_y {
         return jsv_hole();
     }

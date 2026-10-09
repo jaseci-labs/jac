@@ -14,6 +14,7 @@ Bun reference: bun/src/bun.js/bindings/JSNativeFunction.zig
                bun/src/bun.js/bindings/ObjectConstructor.zig
 """
 
+import from engine.src.runtime.encoding { jsv_is_closure_cell }
 import from "lib/libnapi_shim.so" {
     def _napi_argv_i64(argv: int, idx: int) -> int;  def _napi_write_i64(
         p: int, v: int
@@ -67,8 +68,6 @@ import from engine.src.runtime.jsvalue {
     jsv_to_int32,
     jsv_from_cell_kind,
     jsv_to_table_id,
-    jsv_is_cell,
-    jsv_cell_kind,
     jsv_is_string_cell,
     jsv_is_symbol,
     JS_CELL_KIND_NATIVE
@@ -282,16 +281,10 @@ def:pub _napi_invoke_callback_from_vm(
     return raw_ret;
 }
 
-"""Return True iff v is a Jac closure (JS_CELL_KIND_NATIVE, table_id < 1M).
-Mirrors is_fn_val in vm.na.jac without importing vm."""
+"""Return True iff v is a Jac closure (JS_CELL_KIND_NATIVE, table id below
+FN_BUILTIN_BASE). Mirrors is_fn_val in vm.na.jac without importing vm."""
 def _is_fn_val(v: int) -> bool {
-    if not jsv_is_cell(v) {
-        return False;
-    }
-    if jsv_cell_kind(v) != JS_CELL_KIND_NATIVE {
-        return False;
-    }
-    return jsv_to_table_id(v) < 1000000;
+    return jsv_is_closure_cell(v);
 }
 
 # ── Op 70 — napi_create_function ──────────────────────────────────────────────

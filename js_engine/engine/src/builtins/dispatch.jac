@@ -79,7 +79,7 @@ import from engine.src.runtime.js_bigint {
     js_bigint_from_decimal_str,
     js_bigint_to_string
 }
-import from engine.src.runtime.encoding { FN_NATIVE_BASE }
+import from engine.src.runtime.encoding { FN_BUILTIN_BASE, FN_NATIVE_BASE }
 import from engine.src.builtins.native_registry {
     NativeFn,
     js_native_val,
@@ -3843,7 +3843,7 @@ def _dn_native_kind_mark_non_constructor(
         return js_undefined();
     }
     cid_mnc: int = jsv_to_table_id(fn_mnc);
-    if cid_mnc < 0 or cid_mnc >= 1000000 or cid_mnc >= len(realm.closures) {
+    if cid_mnc < 0 or cid_mnc >= FN_BUILTIN_BASE or cid_mnc >= len(realm.closures) {
         vm_throw_native(
             make_type_error("__jacMarkNonConstructor requires a JS function")
         );
@@ -4221,10 +4221,10 @@ def _dn_native_kind_obj_define_property(
         dp_orig: JSValue = dp_target;
         # ECMAScript: functions are objects — redirect onto the closure's
         # fn_props backing object when Object.defineProperty is called on a fn.
-        # A JS closure is JS_CELL_KIND_NATIVE with table-id < 1_000_000.
+        # A JS closure is JS_CELL_KIND_NATIVE with table-id < FN_BUILTIN_BASE.
         if jsv_is_cell(dp_target) and jsv_cell_kind(dp_target) == JS_CELL_KIND_NATIVE {
             dp_idx: int = jsv_to_table_id(dp_target);
-            if dp_idx >= 0 and dp_idx < 1000000 and dp_idx < len(realm.closures) {
+            if dp_idx >= 0 and dp_idx < FN_BUILTIN_BASE and dp_idx < len(realm.closures) {
                 dp_cl: JSClosure = realm.closures[dp_idx];
                 dp_key_id: int = 0;
                 if jsv_is_string_cell(args[1]) {
@@ -4342,7 +4342,7 @@ def _dn_native_kind_obj_define_properties(
     # definitions to the closure's fn_props bag (common.mustCall depends on this).
     if jsv_is_cell(dps_target) and jsv_cell_kind(dps_target) == JS_CELL_KIND_NATIVE {
         dps_idx: int = jsv_to_table_id(dps_target);
-        if dps_idx >= 0 and dps_idx < 1000000 and dps_idx < len(realm.closures) {
+        if dps_idx >= 0 and dps_idx < FN_BUILTIN_BASE and dps_idx < len(realm.closures) {
             dps_cl: JSClosure = realm.closures[dps_idx];
             dps_target = cl_props(dps_cl);
         } elif is_native_val(dps_target) {
