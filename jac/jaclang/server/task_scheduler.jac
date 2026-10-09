@@ -5,6 +5,8 @@ import datetime;
 import logging;
 import math;
 import os;
+import socket;
+import uuid;
 import from jaclang.runtime.builtin { ScheduleTrigger }
 import from jaclang.server.serving.drain { DrainState }
 
@@ -63,8 +65,17 @@ obj ScheduledTask {
         target: Callable,
         spec: ScheduleSpec,
         is_walker: bool,
-        next_run: (datetime.datetime | None) = None,
-        last_run: (datetime.datetime | None) = None;
+        next_run: (datetime.datetime | None) = None;
+}
+
+obj RunOutcome {
+    has task: str,
+        tick: datetime.datetime,
+        worker: str,
+        status: str,
+        duration: float = 0.0,
+        reason: str = "",
+        error: str = "";
 }
 
 obj Scheduler {
@@ -76,22 +87,39 @@ obj Scheduler {
         claim: (Callable[[str, int], bool] | None) = None,
         namespace: str = "",
         _failing_claims: set[str] = set(),
+        hold: (Callable[[str, int, str], bool] | None) = None,
+        release: (Callable[[str, str], bool] | None) = None,
+        hold_ttl: int = 30,
+        _owner: str = "",
         drain: (DrainState | None) = None,
         _in_flight: dict[int, tuple[str, threading.Thread]] = {},
         _flight_lock: threading.Lock = threading.Lock(),
-        _overlapping: set[str] = set();
+        _overlapping: set[str] = set(),
+        _listeners: dict[str, Callable[[RunOutcome], None]] = {};
 
     static def instance -> Scheduler;
     def register(
         name: str, target: Callable, spec: ScheduleSpec, is_walker: bool
     ) -> None;
 
+    def on_run(name: str, listener: Callable[[RunOutcome], None]) -> None;
     def start -> None;
     def start_if_pending -> None;
+    def _tick(task: ScheduledTask, due: datetime.datetime) -> None;
+    def _claim_key(task: ScheduledTask) -> str;
     def _may_fire(task: ScheduledTask, due: datetime.datetime) -> bool;
+    def _run_key(task: ScheduledTask) -> str;
+    def _hold_owner -> str;
+    def _take_hold(task: ScheduledTask) -> bool;
+    def _hold_run(task: ScheduledTask) -> bool;
+    def _keep_hold(task: ScheduledTask, beat: threading.Event) -> None;
+    def _release_run(task: ScheduledTask) -> None;
     def _still_running(task: ScheduledTask) -> bool;
-    def _launch(task: ScheduledTask) -> None;
-    def _run_tracked(task: ScheduledTask) -> None;
+    def _launch(task: ScheduledTask, due: datetime.datetime) -> None;
+    def _run_tracked(task: ScheduledTask, due: datetime.datetime) -> None;
+    def _worker -> str;
+    def _skip(task: ScheduledTask, due: datetime.datetime, reason: str) -> None;
+    def _report(outcome: RunOutcome) -> None;
     def stop(timeout: (float | None) = None) -> None;
     def `wait -> None;
     def has_pending -> bool;
@@ -105,5 +133,5 @@ obj Scheduler {
         date_str: str, now: datetime.datetime
     ) -> (datetime.datetime | None);
 
-    def _execute(task: ScheduledTask) -> None;
+    def _execute(task: ScheduledTask) -> str;
 }

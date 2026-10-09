@@ -26,6 +26,18 @@ glob logger = logging.getLogger(__name__),
          2.5,
          5.0,
          10.0
+     ),
+     SCHEDULED_RUN_BUCKETS: tuple[float, ...] = (
+         0.01,
+         0.1,
+         0.5,
+         1.0,
+         5.0,
+         15.0,
+         60.0,
+         300.0,
+         900.0,
+         3600.0
      );
 
 def _merges_across_workers -> bool {
@@ -53,6 +65,9 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         _ws_connections_active: any = None,
         _ws_broadcasts_total: any = None,
         _read_tier_retries: any = None,
+        _scheduled_runs: any = None,
+        _scheduled_run_latency: any = None,
+        _scheduled_skips: any = None,
         _jac_info: any = None;
 
     def postinit {
@@ -157,12 +172,52 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             "WebSocket broadcast publishes",
             registry=self._registry
         );
+
+        self._scheduled_runs = Counter(
+            f"{self._namespace}_scheduled_runs_total",
+            "Static @schedule runs this worker started, by outcome",
+            ["task", "status"],
+            registry=self._registry
+        );
+
+        self._scheduled_run_latency = Histogram(
+            f"{self._namespace}_scheduled_run_duration_seconds",
+            "Static @schedule run duration in seconds",
+            ["task"],
+            buckets=SCHEDULED_RUN_BUCKETS,
+            registry=self._registry
+        );
+
+        self._scheduled_skips = Counter(
+            f"{self._namespace}_scheduled_ticks_skipped_total",
+            "Static @schedule ticks this worker did not run, by reason",
+            ["task", "reason"],
+            registry=self._registry
+        );
     }
 
     def record_read_tier_retry(unit_key: str) {
         if self._read_tier_retries is not None {
             self._read_tier_retries.labels(unit=unit_key).inc();
         }
+    }
+
+    def record_scheduled_run(
+        task: str, status: str, reason: str, duration_seconds: float
+    ) {
+        if (
+            self._scheduled_runs is None
+            or self._scheduled_run_latency is None
+            or self._scheduled_skips is None
+        ) {
+            return;
+        }
+        if status == "skipped" {
+            self._scheduled_skips.labels(task=task, reason=reason).inc();
+            return;
+        }
+        self._scheduled_runs.labels(task=task, status=status).inc();
+        self._scheduled_run_latency.labels(task=task).observe(duration_seconds);
     }
 
     def record_ws_connection_opened {
