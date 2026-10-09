@@ -111,6 +111,20 @@ def forget(`entry: str) {
     }
 }
 
+glob NON_APPLICATION_DIRS: tuple[str, ...] = (
+         'node_modules',
+         'venv',
+         '__pycache__',
+         'site-packages'
+     );
+
+def holds_application_code(relative_path: str) -> bool {
+    return not any(
+        part.startswith('.') or part in NON_APPLICATION_DIRS
+        for part in relative_path.split(os.sep)
+    );
+}
+
 def containing_application(
     path: str, module_name: str = ""
 ) -> (PreparedApplication | None) {
@@ -129,10 +143,7 @@ def containing_application(
         a
         for a in _applications.values()
         if resolved.startswith((a.root + os.sep))
-            and not any(
-                part.startswith('.') or part in ('node_modules', 'venv', '__pycache__')
-                for part in os.path.relpath(resolved, a.root).split(os.sep)
-            )
+            and holds_application_code(os.path.relpath(resolved, a.root))
     ];
     return max(candidates, key=lambda (a: any) { len(a.root); }, `default=None);
 }

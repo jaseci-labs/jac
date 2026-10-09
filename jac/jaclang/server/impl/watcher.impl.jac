@@ -9,6 +9,7 @@ import from jaclang.cli.console { console }
 glob logger = logging.getLogger(__name__);
 
 impl watch_roots(base: str, app_root: str, sources: list[str]) -> list[str] {
+    import from jaclang.runtime.prepared { holds_application_code }
     base_real = os.path.realpath(base);
     root_real = os.path.realpath(app_root);
     roots: set[str] = set();
@@ -17,20 +18,23 @@ impl watch_roots(base: str, app_root: str, sources: list[str]) -> list[str] {
         if not path.startswith(root_real + os.sep) {
             continue;
         }
-        parts = os.path.relpath(path, root_real).split(os.sep);
-        if any(
-            p.startswith('.') or p in ('node_modules', 'venv', '__pycache__')
-            for p in parts
-        ) {
+        relative = os.path.relpath(path, root_real);
+        if not holds_application_code(relative) {
             continue;
         }
-        top = os.path.join(root_real, parts[0]);
+        top = os.path.join(root_real, relative.split(os.sep)[0]);
         if top != base_real and not top.startswith(base_real + os.sep) {
             roots.add(top);
         }
     }
     covered = any(base_real.startswith(r + os.sep) for r in roots);
     return ([] if covered else [base]) + sorted(roots);
+}
+
+impl application_watch_roots(base: str, application: any, program: any) -> list[str] {
+    return watch_roots(
+        base, application.`root, [str(key) for key in program.mod.hub.keys()]
+    );
 }
 
 impl JacFileWatcher.start -> None {
@@ -125,10 +129,30 @@ impl JacFileWatcher.remove_callback(
     }
 }
 
+impl JacFileWatcher._beside_watched_file(path: str) -> bool {
+    import from jaclang.jac0core.ext_registry { base_stem }
+    changed = os.path.realpath(path);
+    files: list[str] = [];
+    for watch_path in self.watch_paths {
+        watched = os.path.realpath(watch_path);
+        if os.path.isdir(watched) {
+            if changed == watched or changed.startswith(watched + os.sep) {
+                return False;
+            }
+        } elif os.path.dirname(watched) == os.path.dirname(changed) {
+            files.append(watched);
+        }
+    }
+    return bool(files) and not any(base_stem(f) == base_stem(changed) for f in files);
+}
+
 impl JacFileWatcher._on_change(
     path: str, change_type: ChangeType, is_directory: bool = False
 ) -> None {
     if '/.jac/' in path or '\\.jac\\' in path {
+        return;
+    }
+    if self._beside_watched_file(path) {
         return;
     }
 
