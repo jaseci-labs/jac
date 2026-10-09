@@ -143,6 +143,20 @@ def stored_through_an_alias(table: list[list[Callable[[], int]]], xs: list[int])
     }
 }
 
+obj Stepper {
+    has on_progress: Callable[[], str] | None = None;
+
+    def run(names: list[str]) -> list[str] {
+        done: list[str] = [];
+        for nm in names {
+            slotVal = nm.upper();
+            self.on_progress = lambda -> str { return slotVal; };
+            done.append(nm);
+        }
+        return done;
+    }
+}
+
 def created_inside_a_combinator(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
     for x in xs {

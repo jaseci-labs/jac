@@ -881,9 +881,12 @@ impl StaticAnalysisPass._value_fate(
         fate: ClosureFate = ClosureFate.IN_PLACE;
         for target in holder.target {
             if not isinstance(target, Name) or holder.aug_op is not None {
-                if not self._overwritten_each_iteration(holder, target, loop) {
-                    fate = worse_fate(fate, self._stored_fate(target, loop, seen));
+                stored = self._stored_fate(target, loop, seen);
+                if stored == ClosureFate.HELD
+                    and self._overwritten_each_iteration(holder, target, loop) {
+                    stored = ClosureFate.OPAQUE;
                 }
+                fate = worse_fate(fate, stored);
             } elif target.sym is None {
                 fate = worse_fate(fate, ClosureFate.OPAQUE);
             } elif id(target.sym) in seen {
@@ -944,11 +947,11 @@ impl StaticAnalysisPass._overwritten_each_iteration(
         or not loop_repeats(loop, store) {
         return False;
     }
-    slot = target;
-    while isinstance(slot, AtomTrailer) and slot.is_attr {
-        slot = slot.target;
+    if not (isinstance(target, AtomTrailer) and target.is_attr) {
+        return False;
     }
-    if slot is target or not isinstance(slot, Name) {
+    slot = target.target;
+    if not isinstance(slot, Name) {
         return False;
     }
     if slot.sym is not None

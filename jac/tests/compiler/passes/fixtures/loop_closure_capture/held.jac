@@ -295,6 +295,23 @@ async def coroutine_made_in_the_loop(xs: list[int]) -> list[int] {
     return [await p for p in pending];
 }
 
+obj Stage {
+    has handler: Callable[[], int] | None = None;
+}
+
+obj Pipeline {
+    has current: Stage,
+        stages: list[Stage];
+
+    def wire(xs: list[int]) {
+        for x in xs {
+            hopFieldVal = x + 1;
+            self.current = self.stages[x];
+            self.current.handler = lambda -> int { return hopFieldVal; };
+        }
+    }
+}
+
 glob entryHandlers: list[Callable[[], int]] = [];
 
 with entry {

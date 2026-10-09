@@ -140,6 +140,7 @@ glob HELD_NAMES = [
          "bumpVal",
          "genVal",
          "asyncVal",
+         "hopFieldVal",
          "entryLocal"
      ],
      PASSED_ON_NAMES = [
@@ -155,6 +156,7 @@ glob HELD_NAMES = [
          "pickVal",
          "targetVal",
          "aliasVal",
+         "slotVal",
          "mapOuter",
          "hopVal"
      ];
