@@ -31,7 +31,8 @@ import from jaclang.byllm.exceptions {
     OutputConversionError,
     FinishToolError,
     ConfigurationError,
-    McpError
+    McpError,
+    OutputTruncatedError
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.telemetry { register_agent_callback }
@@ -49,6 +50,7 @@ glob `by = JacRuntime.`by,
          'FinishToolError',
          'ConfigurationError',
          'McpError',
+         'OutputTruncatedError',
          'McpClient',
          'McpTool',
          'Image',
