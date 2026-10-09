@@ -62,6 +62,10 @@ def _on_grid(when: datetime.datetime, seconds: int) -> datetime.datetime {
 obj _Introspector {
     has _walkers: dict[str, any] = {},
         _functions: dict[str, any] = {};
+
+    def target(name: str) -> any {
+        return self._walkers.get(name) or self._functions.get(name);
+    }
 }
 
 

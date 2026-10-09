@@ -151,6 +151,7 @@ walker RcFactsPass(CompilerPass) {
     def _stamp_last_use(ir_in: Module) -> None;
     def _stamp_scope_cleanup(ir_in: Module) -> None;
     def _stamp_move_in(ir_in: Module) -> None;
+    def _repeats_in_comprehension(use: NameAtom) -> bool;
     def _collect_last_use(
         owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
     ) -> None;

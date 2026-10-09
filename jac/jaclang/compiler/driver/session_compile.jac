@@ -65,10 +65,6 @@ obj SessionHooks {
         return compile_once(self, file_path, target_program, use_str, options);
     }
 
-    def defers_native_codegen -> bool {
-        return False;
-    }
-
     def assemble_python(program: JacProgram, module: uni.Module) {}
     def assemble_native(program: JacProgram, module: uni.Module, checking: bool) {}
     def run_module(

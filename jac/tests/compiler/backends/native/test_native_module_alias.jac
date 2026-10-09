@@ -41,6 +41,14 @@ test "module aliases resolve native functions and globals" {
     assert probe() == 52;
 }
 
+test "a class-form archetype is constructed through a module alias" {
+    (engine, module) = compile_native("module_class_ctor.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    probe = get_func(engine, "module_class_ctor_probe", ctypes.c_int64);
+    assert probe() == 16 + 32 + 1 + 8;
+}
+
 test "module aliases preserve lexical shadowing and standard library dispatch" {
     (engine, module) = compile_native("native_module_alias.jac");
     issues = native_lowering_issues(str(module.gen.llvm_ir));

@@ -36,14 +36,11 @@ def bundle_keys_from_pod_spec(pod_spec: dict[str, any]) -> list[str] {
     keys: list[str] = [];
     for raw in list(pod_spec.get("initContainers") or []) {
         container = dict(raw);
-        if container.get("name") != PVC_BOOTSTRAP_NAME {
-            continue;
-        }
         for arg in list(container.get("args") or []) {
             for token in str(arg).replace(";", " ").split() {
                 if token.startswith(prefix) {
                     key = token[len(prefix):];
-                    if key and key not in keys {
+                    if key and not key.startswith(".") and key not in keys {
                         keys.append(key);
                     }
                 }
@@ -195,11 +192,40 @@ def build_loader_pod(
 }
 
 
+def _unpack_cmd(path: str, image_binary_sha256: str) -> str {
+    untar = "tar xzf " + path + " -C " + APP_MOUNT_PATH;
+    if not image_binary_sha256 {
+        return untar;
+    }
+    image_sha = "$(sha256sum /usr/local/bin/jac | cut -d' ' -f1)";
+    return (
+        "if [ -x /usr/local/bin/jac ] && [ \""
+        + image_sha
+        + "\" = \""
+        + image_binary_sha256
+        + "\" ]; then :; else "
+        + untar
+        + "; fi"
+    );
+}
+
+
+def pvc_unpack_script(
+    bundle_paths: list[str], skip_when_image_binary: (dict[str, str] | None) = None
+) -> str {
+    skips = skip_when_image_binary or {};
+    steps = [_unpack_cmd(p, skips.get(p, "")) for p in bundle_paths];
+    steps.append("{ " + ensure_jac_toml_cmd() + "; }");
+    return "set -eu; " + " && ".join(steps);
+}
+
+
 def build_pvc_init_container(
-    base_image: str, bundle_paths: list[str]
+    base_image: str,
+    bundle_paths: list[str],
+    skip_when_image_binary: (dict[str, str] | None) = None
 ) -> dict[str, any] {
-    untars = "".join([f"tar xzf {p} -C {APP_MOUNT_PATH}; " for p in bundle_paths]);
-    script = "set -eu; " + untars + ensure_jac_toml_cmd();
+    script = pvc_unpack_script(bundle_paths, skip_when_image_binary);
     return {
         "name": PVC_BOOTSTRAP_NAME,
         "image": base_image,
@@ -244,6 +270,10 @@ obj PvcInjector(Injector) {
 
     def _unpack_bundle_paths -> list[str] {
         return [bundle_pvc_path(self._object_key)];
+    }
+
+    def _skip_when_image_binary -> dict[str, str] {
+        return {};
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
@@ -382,7 +412,15 @@ obj PvcInjector(Injector) {
         }
     }
 
-    def mutate_pod_spec(pod_spec: dict[str, any], base_image: str) -> dict[str, any] {
+    def unpack_script -> str {
+        return pvc_unpack_script(
+            self._unpack_bundle_paths(), self._skip_when_image_binary()
+        );
+    }
+
+    def mutate_pod_spec(
+        pod_spec: dict[str, any], base_image: str, unpack_container: bool = True
+    ) -> dict[str, any] {
         metadata = pod_spec.get("_jac_meta");
         app_name = str(metadata.get("app_name", "")) if metadata is not None else "";
         if not app_name {
@@ -403,13 +441,19 @@ obj PvcInjector(Injector) {
             }
         );
 
-        init_containers: list[dict[str, any]] = list(
-            pod_spec.get("initContainers", [])
-        );
-        init_containers.append(
-            build_pvc_init_container(base_image, self._unpack_bundle_paths())
-        );
-        pod_spec["initContainers"] = init_containers;
+        if unpack_container {
+            init_containers: list[dict[str, any]] = list(
+                pod_spec.get("initContainers", [])
+            );
+            init_containers.append(
+                build_pvc_init_container(
+                    base_image,
+                    self._unpack_bundle_paths(),
+                    self._skip_when_image_binary()
+                )
+            );
+            pod_spec["initContainers"] = init_containers;
+        }
 
         for container in pod_spec.get("containers", []) {
             mounts: list[dict[str, any]] = list(container.get("volumeMounts", []));

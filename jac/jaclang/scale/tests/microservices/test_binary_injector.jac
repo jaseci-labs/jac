@@ -619,6 +619,124 @@ test "bootstrap reuses the image binary only on a checksum match" {
 }
 
 
+def _boot_rig(
+    image_payload: bytes, shipped_payload: bytes, bundle_payload: (bytes | None) = None
+) -> dict[str, str] {
+    import subprocess;
+    rig_dir = tempfile.mkdtemp();
+    image_bin = os.path.join(rig_dir, "image-jac");
+    with open(image_bin, "wb") as handle {
+        handle.write(image_payload);
+    }
+    os.chmod(image_bin, 0o755);
+    bundles = os.path.join(rig_dir, "jac-bundles");
+    app = os.path.join(rig_dir, "app");
+    home = os.path.join(rig_dir, "home");
+    os.makedirs(os.path.join(bundles, "bundles", "orders"));
+    os.makedirs(os.path.join(bundles, "toolchain", "orders"));
+    os.makedirs(app);
+    os.makedirs(home);
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+        info = tarfile.TarInfo(name="main.jac");
+        info.size = 5;
+        tar.addfile(info, io.BytesIO(b"pass\n"));
+    }
+    with open(os.path.join(bundles, "bundles", "orders", "aaa.jab"), "wb") as handle {
+        handle.write(buf.getvalue() if bundle_payload is None else bundle_payload);
+    }
+    with open(
+        os.path.join(bundles, "toolchain", "orders", "bbb.tar.gz"), "wb"
+    ) as handle {
+        handle.write(pack_binary_bytes(shipped_payload));
+    }
+    injector = BinaryInjector();
+    injector._object_key = "bundles/orders/aaa.jab";
+    injector._toolchain_object_key = "toolchain/orders/bbb.tar.gz";
+    injector._pod_binary_sha256 = hashlib.sha256(shipped_payload).hexdigest();
+
+    def localize(script: str) -> str {
+        return script.replace(BUNDLE_MOUNT_PATH, bundles).replace(
+            "/usr/local/bin/jac", image_bin
+        ).replace(
+            "/app", app
+        );
+    }
+
+    continued = os.path.join(rig_dir, "continued");
+    unpacked = subprocess.run(
+        [
+            "bash",
+            "-c",
+            "( " + localize(injector.unpack_script()) + " ) && touch " + continued
+        ]
+    );
+    if unpacked.returncode != 0 {
+        return {
+            "app": app,
+            "unpack_rc": str(unpacked.returncode),
+            "continued": str(os.path.exists(continued))
+        };
+    }
+    select_cmd = [
+        c
+        for c in build_runtime_install_commands(KubernetesConfig())
+        if "ln -sf" in c
+    ][0];
+    subprocess.run(
+        ["sh", "-c", "mkdir -p \"$HOME/.local/bin\" && " + localize(select_cmd)],
+        check=True,
+        env={** os.environ, "HOME": home}
+    );
+    return {
+        "app": app,
+        "image_bin": image_bin,
+        "pod_jac": os.path.join(home, ".local", "bin", "jac"),
+        "unpack_rc": "0",
+        "continued": str(os.path.exists(continued))
+    };
+}
+
+
+test "an image binary that matches the shipped one skips the toolchain unpack" {
+    payload = b"#!/bin/sh\necho jac\n";
+    rig = _boot_rig(payload, payload);
+    assert rig["continued"] == "True";
+    assert os.path.isfile(os.path.join(rig["app"], "main.jac"));
+    assert not os.path.exists(os.path.join(rig["app"], TOOLCHAIN_SUBDIR));
+    assert os.path.islink(rig["pod_jac"]);
+    assert os.path.realpath(rig["pod_jac"]) == os.path.realpath(rig["image_bin"]);
+}
+
+
+test "an image binary that differs still gets the shipped toolchain binary" {
+    rig = _boot_rig(b"#!/bin/sh\necho stale\n", b"#!/bin/sh\necho shipped\n");
+    assert os.path.isfile(os.path.join(rig["app"], "main.jac"));
+    assert os.path.isfile(os.path.join(rig["app"], TOOLCHAIN_SUBDIR, "bin", "jac"));
+    assert not os.path.islink(rig["pod_jac"]);
+    with open(rig["pod_jac"], "rb") as handle {
+        assert handle.read() == b"#!/bin/sh\necho shipped\n";
+    }
+}
+
+
+test "a bundle that fails to unpack stops the bootstrap chain" {
+    payload = b"#!/bin/sh\necho jac\n";
+    rig = _boot_rig(payload, payload, b"not a tarball");
+    assert rig["unpack_rc"] != "0";
+    assert rig["continued"] == "False";
+    assert not os.path.exists(os.path.join(rig["app"], "jac.toml"));
+}
+
+
+test "without a known binary digest the toolchain is always unpacked" {
+    injector = BinaryInjector();
+    injector._object_key = "bundles/orders/aaa.jab";
+    injector._toolchain_object_key = "toolchain/orders/bbb.tar.gz";
+    assert injector._skip_when_image_binary() == {};
+}
+
+
 test "pod dep installs are routed to the shared-volume venv" {
     script = str(
         build_bootstrap_init_container(KubernetesConfig(), "jaseci/jaclang:dev")["args"][

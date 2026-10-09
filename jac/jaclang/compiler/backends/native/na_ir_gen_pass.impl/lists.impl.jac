@@ -140,7 +140,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 }
 
 impl NaIRGenPass._cast_to_list_elem(
-    b: any, val: ir.Value, elem_type: ir.Type, name: str
+    b: ir.IRBuilder, val: ir.Value, elem_type: ir.Type, name: str
 ) -> ir.Value {
     if val.type == elem_type {
         return val;
@@ -709,9 +709,7 @@ impl NaIRGenPass._codegen_index_set(
     );
     elem_type = helpers["elem_type"];
 
-    _lset_ctx_loc = getattr(
-        value, 'jac_loc', f"{os.path.basename(self.module.loc.mod_path)}:0"
-    );
+    _lset_ctx_loc = value.jac_loc;
 
     if self._reject_ptr_into_raw_slot(
         None, value, elem_type, "list element assignment"

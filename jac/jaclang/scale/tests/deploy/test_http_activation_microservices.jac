@@ -8,7 +8,8 @@ import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 import from jaclang.scale.deploy.target.kubernetes.target {
     KubernetesTarget,
     apply_http_activations_for_bundle,
-    reap_stale_scaling_resources_for_bundle
+    reap_stale_scaling_resources_for_bundle,
+    replacing_init_containers
 }
 import unittest.mock;
 import from types { SimpleNamespace }
@@ -527,6 +528,31 @@ test "generate_manifests raises when two services inherit the shared catch-all r
 
 def _target -> KubernetesTarget {
     return KubernetesTarget(config=KubernetesConfig(app_name="t", namespace="t-ns"));
+}
+
+
+# A strategic-merge PATCH merges initContainers by name, so a container the
+# new manifest no longer has would survive every redeploy and keep running an
+# old image's script. The PATCH replaces the list outright instead.
+test "a redeploy replaces the init containers instead of merging them by name" {
+    manifest = {
+        "metadata": {"name": "svc-deployment"},
+        "spec": {
+            "replicas": 1,
+            "template": {"spec": {"initContainers": [{"name": "jac-bootstrap"}]}}
+        }
+    };
+    for mode in [ScalingMode.NONE, ScalingMode.METRIC, ScalingMode.HTTP_ACTIVATION] {
+        body = replacing_init_containers(
+            _target()._deployment_patch_body(manifest, {"mode": mode}) or manifest
+        );
+        inits = body["spec"]["template"]["spec"]["initContainers"];
+        assert inits == [{"name": "jac-bootstrap"}, {"$patch": "replace"}] , mode;
+    }
+    assert manifest["spec"]["template"]["spec"]["initContainers"]
+        == [{"name": "jac-bootstrap"}] , "the source manifest must not be mutated";
+    bare = {"metadata": {"name": "x"}, "spec": {"template": {"spec": {}}}};
+    assert replacing_init_containers(bare) is bare;
 }
 
 
