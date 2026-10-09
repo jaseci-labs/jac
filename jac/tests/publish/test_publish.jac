@@ -42,6 +42,7 @@ import from jaclang.dist.publish.sources {
 }
 import from jaclang.dist.publish.builder { WheelBuilder }
 import from jaclang.dist.publish.runtime_vendor { scan_jaclang_imports }
+import from jaclang.dist.publish.wheel_archive { write_wheel }
 
 
 # Helpers --------------------------------------------------------------------------
@@ -488,6 +489,20 @@ test "WheelBuilder.build is reproducible" {
     } finally {
         shutil.rmtree(tmpdir, ignore_errors=True);
     }
+}
+
+test "write_wheel writes each member before reading the next" {
+    out = io.BytesIO();
+    offsets: list[int] = [];
+    def members -> Iterator[tuple[str, bytes]] {
+        for i in range(3) {
+            offsets.append(out.tell());
+            yield (f"pkg/f{i}.txt", b"data " * 200);
+        }
+    }
+    write_wheel(out, members(), "pkg-1.0.dist-info", [], (2016, 1, 1, 0, 0, 0));
+    assert offsets[0] < offsets[1] < offsets[2] , f"a member was read before the one "
+    f"before it was written, so every file would sit in memory at once: {offsets}";
 }
 
 test "WheelBuilder.build deflates every entry and stays reproducible" {
