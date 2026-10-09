@@ -88,11 +88,11 @@ test "a Root trigger does not match every node" {
         in out , out;
 }
 
-"""Two graph forms the native tier does not lower yet were accepted and did
-nothing: a statement naming `root` was dropped whole, and `hub ++> [a, b]`
-connected `hub` to the list object. A walker then stopped early and the
-program printed less than the Python tier, with no error. Both are refused
-by name until they are lowered."""
+"""Two graph forms were accepted by the native tier and did nothing: a
+statement naming `root` was dropped whole, and a connect with a list as an
+operand connected to the list object. A walker then stopped early and the
+program printed less than the Python tier, with no error. What is still not
+lowered (`root`, and a list on both sides of a connect) is refused by name."""
 test "graph forms the native tier cannot lower are refused, not dropped" {
     import from jaclang.compiler.driver.program { JacProgram }
     import from tests.support { native_force_opts }
@@ -132,4 +132,16 @@ test "printing the result of a call that returns nothing writes None" {
     );
     assert "a None b None" in out , out;
     assert "None 1 2" in out , out;
+}
+
+"""`hub ++> [a, b]` connects `hub` to each node, and `[a, b] ++> sink` each
+node to `sink`, with a fresh edge per connection."""
+test "a connect with a list of nodes on one side connects each node" {
+    out = assert_native_identity(
+        fixture("connect_through_list.jac"), profiles=["rc", "managed"]
+    );
+    assert "fan out [1, 2, 3]" in out , out;
+    assert "fan in [5, 9] [6, 9]" in out , out;
+    assert "typed [10, 11, 12]" in out , out;
+    assert "single and empty [20, 21]" in out , out;
 }

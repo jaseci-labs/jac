@@ -713,22 +713,62 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         }
         return None;
     }
-    for (side, operand) in [(nd.left, left), (nd.right, right)] {
-        if self._spec_from_list_slot_type(operand.type) is not None {
+    i64 = ir.IntType(64);
+    left_spec = self._spec_from_list_slot_type(left.type);
+    right_spec = self._spec_from_list_slot_type(right.type);
+    many: (ir.Value | None) = None;
+    many_spec = "";
+    if left_spec is not None or right_spec is not None {
+        fanned = nd.right if right_spec is not None else nd.left;
+        many_spec = str(right_spec if right_spec is not None else left_spec);
+        if (left_spec is not None and right_spec is not None)
+            or many_spec != "ptr"
+            or co.capture_edges {
             self.emit(
                 E5092,
-                node_override=side,
+                node_override=fanned,
                 kind="connect operand",
                 name="list",
                 help_text=(
-                    "Connecting to or from a list of nodes is not lowered yet; "
-                    "connect each node in a loop."
+                    "A connect lowers with a list of nodes on one side only, "
+                    "and not where it also collects the edges; connect in a loop."
                 )
             );
             return None;
         }
+        many = right if right_spec is not None else left;
     }
-    i64 = ir.IntType(64);
+    loop_idx: (ir.Value | None) = None;
+    loop_cond: (ir.Block | None) = None;
+    loop_done: (ir.Block | None) = None;
+    if many is not None {
+        self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
+        many_helpers = self.list_helpers[many_spec];
+        here_fn = self.builder.function;
+        loop_idx = self._entry_alloca(i64, "conn.each.i");
+        self.builder.store(ir.Constant(i64, 0), loop_idx);
+        count = self.builder.call(many_helpers["len"], [many], name="conn.each.n");
+        loop_cond = here_fn.append_basic_block(name="conn.each.cond");
+        loop_body = here_fn.append_basic_block(name="conn.each.body");
+        loop_done = here_fn.append_basic_block(name="conn.each.done");
+        self.builder.branch(loop_cond);
+        self.builder.position_at_end(loop_cond);
+        at = self.builder.load(loop_idx, name="conn.each.at");
+        self.builder.cbranch(
+            self.builder.icmp_signed("<", at, count, name="conn.each.more"),
+            loop_body,
+            loop_done
+        );
+        self.builder.position_at_end(loop_body);
+        each = self.builder.call(
+            many_helpers["get"], [many, at], name="conn.each.node"
+        );
+        if right_spec is not None {
+            right = each;
+        } else {
+            left = each;
+        }
+    }
     dir_val = int(co.edge_dir.value);
     undirected = 1 if dir_val == 3 else 0;
     if dir_val == 1 {
@@ -838,6 +878,22 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
                 self._osp_handle_ptr(edge_obj, _pin_i8p), op="osp_conn_edge", loc=""
             );
         }
+    }
+    if many is not None
+        and loop_idx is not None
+        and loop_cond is not None
+        and loop_done is not None {
+        self.builder.store(
+            self.builder.add(
+                self.builder.load(loop_idx, name="conn.each.cur"),
+                ir.Constant(i64, 1),
+                name="conn.each.next"
+            ),
+            loop_idx
+        );
+        self.builder.branch(loop_cond);
+        self.builder.position_at_end(loop_done);
+        return many if right_spec is not None else tgt;
     }
     if co.capture_edges {
         i8p = ir.IntType(8).as_pointer();
