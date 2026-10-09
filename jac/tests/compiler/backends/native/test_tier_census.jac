@@ -9,7 +9,11 @@ recorded in the same change that makes it.
 The file is the Linux result. Elsewhere a program may be skipped or classed
 differently for reasons of the machine, so only a regression fails there."""
 import sys;
+import tests.tier_census as census_tool;
+import from unittest.mock { patch }
 import from tests.tier_census {
+    Run,
+    classify,
     compare,
     corpus_programs,
     read_baseline,
@@ -38,4 +42,34 @@ test "no program runs worse on the native tier than the census records" {
             + summarize(census)
         );
     }
+}
+
+"""A program is a reference only when the Python tier prints the same thing
+twice. A second run that does not finish has printed nothing to compare."""
+test "a reference run that times out the second time is no reference" {
+    runs = [
+        Run(code=0, out="", err=""),
+        Run(code=0, out="", err="", timed_out=True),
+        Run(code=0, out="", err="")
+    ];
+    with patch.object(census_tool, "run_tier", side_effect=runs) {
+        outcome = classify("examples/quiet.jac");
+    }
+    assert outcome.kind == "skipped" , outcome.record();
+    assert outcome.reason == "the Python tier is not repeatable" , outcome.record();
+}
+
+"""Everything a program prints is compared. Nothing the tool writes while it
+prepares a run goes to standard output, so no line is set aside as noise: a
+program that prints `Compiling ...` is held to it like any other line."""
+test "program output that looks like tool progress is still compared" {
+    runs = [
+        Run(code=0, out="Compiling a\nRestoring 1\n", err=""),
+        Run(code=0, out="Compiling a\nRestoring 1\n", err=""),
+        Run(code=0, out="Compiling b\nRestoring 2\n", err="")
+    ];
+    with patch.object(census_tool, "run_tier", side_effect=runs) {
+        outcome = classify("examples/talks_like_the_tool.jac");
+    }
+    assert outcome.kind == "differs" , outcome.record();
 }

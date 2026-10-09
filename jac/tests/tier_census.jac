@@ -67,15 +67,6 @@ glob CLASSES: list[str] = [
          "ability",
          "function signature",
          "call through a value"
-     ),
-     NOISE: tuple[str, ...] = (
-         "jac dev mode",
-         "Preparing application",
-         "Compiling ",
-         "Restoring ",
-         "Setting up Jac",
-         "Jac setup complete",
-         "Compiler sources changed"
      );
 
 obj Outcome {
@@ -161,16 +152,6 @@ def run_tier(program: str, tier: str) -> Run {
     return Run(code=done.returncode, out=done.stdout, err=done.stderr);
 }
 
-"""What a program printed, without the lines the tool itself writes while it
-prepares a run."""
-def printed(text: str) -> str {
-    return "\n".join(
-        line
-        for line in text.split("\n")
-        if not any(mark in line for mark in NOISE)
-    );
-}
-
 """Why a program was refused: the code and message of the diagnostic that
 names the construct.
 
@@ -219,7 +200,7 @@ def classify(program: str) -> Outcome {
         return Outcome(kind=SKIPPED, reason="the Python tier fails");
     }
     again = run_tier(program, "python");
-    if again.code != 0 or printed(again.out) != printed(reference.out) {
+    if again.timed_out or again.code != 0 or again.out != reference.out {
         return Outcome(kind=SKIPPED, reason="the Python tier is not repeatable");
     }
     native = run_tier(program, "native");
@@ -237,7 +218,7 @@ def classify(program: str) -> Outcome {
         return Outcome(kind="crashes", reason=where);
     }
     if native.code == 0 {
-        if printed(native.out) == printed(reference.out) {
+        if native.out == reference.out {
             return Outcome(kind="same");
         }
         return Outcome(kind="differs");
