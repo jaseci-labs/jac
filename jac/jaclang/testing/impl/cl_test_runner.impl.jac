@@ -370,7 +370,8 @@ impl run_cl_test_file(
     test_name: (str | None) = None,
     storage: (dict[str, any] | None) = None,
     serve: bool = True,
-    timeout: float = 120.0
+    timeout: float = 120.0,
+    selector: (Callable[[str], bool] | None) = None
 ) -> list[ClTestResult] {
     filepath = module_entry_for(filepath);
     (module_js, tests, imports, server_imports) = compile_cl_module(filepath);
@@ -379,6 +380,13 @@ impl run_cl_test_file(
             t
             for t in tests
             if t["name"] == test_name
+        ];
+    }
+    if selector is not None {
+        tests = [
+            t
+            for t in tests
+            if selector(t.get("description") or t["name"])
         ];
     }
     if not tests {

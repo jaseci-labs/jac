@@ -107,7 +107,8 @@ def run_cl_test_file(
     test_name: (str | None) = None,
     storage: (dict[str, any] | None) = None,
     serve: bool = True,
-    timeout: float = 120.0
+    timeout: float = 120.0,
+    selector: (Callable[[str], bool] | None) = None
 ) -> list[ClTestResult];
 
 def _run_harness(
