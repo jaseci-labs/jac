@@ -381,6 +381,32 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # js_engine's dist tree (`make dist`: the engine plus the shared libraries it
+  # loads from beside itself), built once per run with the kit's jac
+  # (setup-js-engine: cached on the engine and native-backend sources, built on
+  # a miss) and uploaded for the lanes that run JavaScript, which download it
+  # instead of each restoring or compiling their own. A separate job rather
+  # than part of build-kit, so a cold engine build (~15-20 min) holds up only
+  # those lanes. Its `if` is the union of theirs: it runs whenever one of them
+  # does.
+  build-js-engine:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+      - name: Upload the engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-engine
+          path: js_engine/dist
+          retention-days: 1
+          if-no-files-found: error
+
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -763,7 +789,7 @@ jobs:
 
   # Everything except the compiler tests.
   test-runtime:
-    needs: [changes, build-kit]
+    needs: [changes, build-kit, build-js-engine]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
@@ -783,6 +809,8 @@ jobs:
         with:
           node-version: "20"
       - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install the serve deps the plugin-integration test needs
         run: jac install "python-dotenv>=1.2.1,<2.0.0" "requests>=2.32.0,<3.0.0" --global
       # tests/client is test-client's lane (it needs the serial runner). The
@@ -867,7 +895,7 @@ jobs:
   # (tests/compiler/test_no_llvm_degradation.jac, via JAC_LLVM_SHIM=none).
 
   test-client:
-    needs: [changes, build-kit]
+    needs: [changes, build-kit, build-js-engine]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
@@ -882,6 +910,8 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install the scale dep the in-process dispatch tests import
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
       - name: Run all client tests
@@ -938,7 +968,7 @@ jobs:
             jac/tests/cli/test_docs_code_blocks.jac
 
   test-scale:
-    needs: [changes, build-kit]
+    needs: [changes, build-kit, build-js-engine]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
@@ -956,6 +986,8 @@ jobs:
       # Reroute lane for the same reason as test-packages-and-docs above.
       - uses: ./.github/actions/jac-kit
       - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install scale deps + test deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
@@ -1168,7 +1200,7 @@ jobs:
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
 
   test-jac-pack-smoke:
-    needs: [changes, build-kit]
+    needs: [changes, build-kit, build-js-engine]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # actions: read lets the performance report list main's runs and download
@@ -1190,6 +1222,8 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/jac-kit
       - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
 
       - name: Validate performance accounting
         timeout-minutes: 2
@@ -1716,7 +1750,7 @@ jobs:
           if-no-files-found: error
 
   test-jac-pack-eject:
-    needs: [changes, build-kit]
+    needs: [changes, build-kit, build-js-engine]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
@@ -1730,6 +1764,8 @@ jobs:
           node-version: '22'
       - uses: ./.github/actions/jac-kit
       - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install the C export toolchain
         run: |
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /usr/share/keyrings/llvm.asc >/dev/null
@@ -1888,6 +1924,7 @@ jobs:
     needs:
       - changes
       - build-kit
+      - build-js-engine
       - macos-native
       - jac-check
       - contribution-checks
