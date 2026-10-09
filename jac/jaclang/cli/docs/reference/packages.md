@@ -92,6 +92,8 @@ A bare name without a slash is not a Jac package: `jac install numpy` fails with
 
 `jac.lock` also records the Python distributions pip chose (`[pypi].resolved`). A later `jac install` with the same inputs replays those exact pins; `jac update` re-resolves them.
 
+If a Jac package appears in both `[dependencies]` and `[dev-dependencies]`, its version must satisfy both requirements. For example, runtime `"=1.0.0"` and dev `"^1"` select `1.0.0`; disjoint ranges fail with an error naming both requirements. The shared lock resolves both sections even with `--no-dev`, which controls which packages are mounted. Use `jac update` to recompute an existing lock's selections.
+
 ### Importing
 
 A package named `org/name` is imported as `org.name`:

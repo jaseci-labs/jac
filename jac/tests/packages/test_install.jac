@@ -86,6 +86,60 @@ def _versions(lock: Lockfile) -> dict[str, str] {
     return {p.name: p.version for p in lock.packages};
 }
 
+test "runtime and dev requirements select their intersection" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        for (runtime, dev, expected) in [
+            ("=1.0.0", "^1", "1.0.0"),
+            ("^1", "=1.0.0", "1.0.0"),
+            ("^1", "^1", "1.1.0"),
+            ("=1.0.0 || ^2", "^1", "1.0.0")
+        ] {
+            for include_dev in [True, False] {
+                (w.app / "jac.toml").write_text(
+                    "[project]\nname = \"app\"\n\n[dependencies]\n"
+                        + f"\"acme/core\" = \"{runtime}\"\n\n[dev-dependencies]\n"
+                        + f"\"acme/core\" = \"{dev}\"\n"
+                );
+                cfg = _config(w.app);
+                result = sync(cfg, update=[], include_dev=include_dev);
+                assert _versions(result.lock) == {"acme/core": expected};
+                assert not result.lock.by_name()["acme/core"].dev;
+                mount = w.app / ".jac" / "packages" / "acme" / "core";
+                assert _config(mount).project.version == expected;
+                write_lock(cfg, result.lock);
+                replay = sync(cfg, frozen=True, include_dev=include_dev);
+                assert _versions(replay.lock) == {"acme/core": expected};
+                assert not replay.resolved;
+            }
+        }
+    }
+}
+
+test "disjoint runtime and dev requirements fail before mounting" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        (w.app / "jac.toml").write_text(
+            "[project]\nname = \"app\"\n\n[dependencies]\n"
+                + "\"acme/core\" = \"^2\"\n\n[dev-dependencies]\n"
+                + "\"acme/core\" = \"^1\"\n"
+        );
+        for include_dev in [True, False] {
+            try {
+                sync(_config(w.app), include_dev=include_dev);
+                assert False , "disjoint requirements must fail";
+            } except InstallError as e {
+                message = str(e);
+                for expected in ["acme/core", "^1", "^2"] {
+                    assert expected in message , message;
+                }
+            }
+            assert not (w.app / "jac.lock").exists();
+            assert not (w.app / ".jac" / "packages" / "acme" / "core").exists();
+        }
+    }
+}
+
 test "a registry package resolves, locks, mounts and imports" {
     w = _world();
     with patch.dict(os.environ, w.env) {

@@ -321,6 +321,21 @@ def resolve_graph(
             raise ResolveError(f"jac.toml: {dep.name}: {e}");
         }
         source.note_requirement(dep.name, req);
+        if dep.name in root_deps {
+            runtime_req = root_deps[dep.name];
+            versions = runtime_req.versions.intersect(req.versions);
+            if versions.is_empty() {
+                raise ResolveError(
+                    f"jac.toml: {dep.name}: conflicting runtime requirement "
+                        + f"'{runtime_req.text}' and dev requirement '{req.text}'"
+                );
+            }
+            req = Requirement(
+                text=f"({runtime_req.text}) and ({req.text})",
+                versions=versions,
+                names_prerelease=runtime_req.names_prerelease or req.names_prerelease
+            );
+        }
         root_deps[dep.name] = req;
     }
     root_name = config.project.name
