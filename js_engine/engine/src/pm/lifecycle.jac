@@ -19,6 +19,7 @@ echo `$ <script>` on stderr; dependency scripts are captured and shown only
 when they fail.
 """
 
+import from engine.src.pm.resources_gen { pm_default_trusted_resource }
 import from engine.src.ffi.libc { write, getenv, getpid }
 import from engine.src.pm.json {
     JVal,
@@ -42,7 +43,6 @@ import from engine.src.pm.fsx {
     fsx_mkdir_p,
     fsx_symlink,
     fsx_readlink,
-    fsx_read_text,
     fsx_realpath
 }
 import from engine.src.pm.paths { pm_path_dirname }
@@ -134,10 +134,11 @@ def:pub lifecycle_install_script_count(pj: JVal) -> int {
     return n;
 }
 
-"""bun's default trusted list (engine/src/pm/data/default-trusted.txt)."""
-def:pub lifecycle_default_trusted(eroot: str) -> list[str] {
+"""bun's default trusted list (data/default-trusted.txt, compiled in:
+resources_gen.jac)."""
+def:pub lifecycle_default_trusted -> list[str] {
     out: list[str] = [];
-    text: str = fsx_read_text(eroot + "/src/pm/data/default-trusted.txt");
+    text: str = pm_default_trusted_resource();
     for line in text.split("\n") {
         t: str = line.strip();
         if t != "" and not t.startswith("#") {

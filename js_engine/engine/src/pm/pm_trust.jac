@@ -78,8 +78,8 @@ obj:pub Untrusted {
         selected: bool = False;
 }
 
-def:pub pm_cmd_default_trusted(eroot: str) -> int {
-    defaults: list[str] = lifecycle_default_trusted(eroot);
+def:pub pm_cmd_default_trusted -> int {
+    defaults: list[str] = lifecycle_default_trusted();
     _out("Default trusted dependencies (" + str(len(defaults)) + "):\n");
     for n in defaults {
         _out(" - " + n + "\n");
@@ -90,11 +90,11 @@ def:pub pm_cmd_default_trusted(eroot: str) -> int {
 """The lockfile's untrusted dependencies that have install scripts, in the
 lockfile's (depth, path) order — bun walks the node_modules tree the same way."""
 def:pub pm_collect_untrusted(
-    eroot: str, root_dir: str, pj: JVal, lf: Lockfile
+    root_dir: str, pj: JVal, lf: Lockfile
 ) -> list[Untrusted] {
     project_trusted: list[str] = jv_str_list(jv_get(pj, "trustedDependencies"));
     has_list: bool = jv_has(pj, "trustedDependencies");
-    defaults: list[str] = lifecycle_default_trusted(eroot);
+    defaults: list[str] = lifecycle_default_trusted();
     out: list[Untrusted] = [];
     for p in lf.packages {
         if p.kind == "workspace" or p.kind == "root" {
@@ -147,13 +147,13 @@ def _load(root_dir: str) -> tuple[bool, Lockfile, JVal] {
     return (True, lf, pj);
 }
 
-def:pub pm_cmd_untrusted(eroot: str, cfg: PmConfig, banner: str) -> int {
+def:pub pm_cmd_untrusted(cfg: PmConfig, banner: str) -> int {
     _err(banner + "\n");
     loaded: tuple[bool, Lockfile, JVal] = _load(cfg.cwd);
     if not loaded[0] {
         return 1;
     }
-    us: list[Untrusted] = pm_collect_untrusted(eroot, cfg.cwd, loaded[2], loaded[1]);
+    us: list[Untrusted] = pm_collect_untrusted(cfg.cwd, loaded[2], loaded[1]);
     if len(us) == 0 {
         _out(
             "Found 0 untrusted dependencies with scripts.\n\nThis means all packages with scripts are in \"trustedDependencies\" or none of your dependencies have scripts.\n\nFor more information, visit https://bun.com/docs/install/lifecycle#trusteddependencies\n"
@@ -215,7 +215,7 @@ def _plural(n: int, word: str) -> str {
     return word;
 }
 
-def:pub pm_cmd_trust(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> int {
+def:pub pm_cmd_trust(args: PmArgs, cfg: PmConfig, banner: str) -> int {
     start: int = uv_hrtime();
     _err(banner);
     names: list[str] = [];
@@ -236,7 +236,7 @@ def:pub pm_cmd_trust(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> in
     }
     lf: Lockfile = loaded[1];
     pj: JVal = loaded[2];
-    us: list[Untrusted] = pm_collect_untrusted(eroot, root_dir, pj, lf);
+    us: list[Untrusted] = pm_collect_untrusted(root_dir, pj, lf);
     if len(us) == 0 {
         return _zero_ran(trust_all, names);
     }

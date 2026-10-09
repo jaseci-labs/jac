@@ -26,9 +26,10 @@ Observed bun 1.3.13 behaviour reproduced here (tools/pm_diff records it):
   * `bun run <missing>` -> `error: Script not found "<missing>"`, exit 1.
 """
 
-import from engine.src.ffi.libc { write, getenv, getcwd, chdir }
-import from engine.src.builtins.path_utils { path_abspath, path_dirname }
+import from engine.src.ffi.libc { write, getenv, chdir }
+import from engine.src.builtins.path_utils { path_abspath }
 import from engine.src.version { JS_ENGINE_VERSION }
+import from engine.src.pm.resources_gen { pm_help_resource }
 import from engine.src.pm.config {
     PmArgs,
     PmConfig,
@@ -49,7 +50,7 @@ import from engine.src.pm.run {
     pm_x_local,
     pm_find_project_dir
 }
-import from engine.src.pm.fsx { fsx_cwd, fsx_readlink }
+import from engine.src.pm.fsx { fsx_cwd }
 import from engine.src.pm.lifecycle { lifecycle_force_node_shim }
 
 """The bun release whose behaviour and help texts this CLI reproduces."""
@@ -529,36 +530,7 @@ def:pub pm_parse_args(cmd: str, argv: list[str], start: int) -> PmArgs {
     return args;
 }
 
-# ── Help texts (engine/src/pm/help/<name>.txt, verbatim bun 1.3.13) ──────────
-
-"""The engine directory (…/js_engine/engine): $JAC_ENGINE_ROOT, else derived from
-the binary's location the same way vm/event_loop.jac does for the JS builtins."""
-def _pm_engine_root(argv0: str) -> str {
-    eroot: str = "";
-    env_root: str = getenv("JAC_ENGINE_ROOT");
-    if env_root != None and env_root != "" {
-        eroot = env_root;
-    } else {
-        exe: str = "";
-        if argv0.find("/") < 0 {
-            # exec'd through PATH (e.g. as the lifecycle `node` shim): argv0 is
-            # bare, so locate the real binary instead of guessing from the cwd
-            exe = fsx_readlink("/proc/self/exe");
-        }
-        if exe == "" {
-            cwd: str = getcwd(0, 0);
-            if cwd == None {
-                cwd = ".";
-            }
-            exe = path_abspath(argv0, cwd);
-        }
-        eroot = path_dirname(path_dirname(exe));
-    }
-    if eroot.endswith("/engine") {
-        return eroot;
-    }
-    return eroot + "/engine";
-}
+# ── Help texts (help/<name>.txt, verbatim bun 1.3.13, compiled in: resources_gen.jac) ─
 
 def _pm_is_word_char(c: str) -> bool {
     if c == "" {
@@ -636,22 +608,10 @@ def:pub pm_localize_help(text: str) -> str {
     return "".join(out);
 }
 
-def _pm_help_text(eroot: str, name: str) -> str {
-    path: str = eroot + "/src/pm/help/" + name + ".txt";
-    text: str = "";
-    try {
-        text = open(path).read();
-    } except Exception {
-        text = "";
-    }
+def _pm_help_text(name: str) -> str {
+    text: str = pm_help_resource(name);
     if text == "" {
-        text = "\nUsage: "
-            + PM_PROG
-            + " "
-            + name
-            + " [flags]\n\n(help text not found: "
-            + path
-            + ")\n";
+        text = "\nUsage: " + PM_PROG + " " + name + " [flags]\n\n(no help text for " + name + ")\n";
     }
     # root.txt carries js_engine's own tagline: "(v@VERSION@, bun-compat @BUN_COMPAT@)"
     text = text.replace("@VERSION@", JS_ENGINE_VERSION).replace(
@@ -697,9 +657,9 @@ def _pm_file_exists(path: str) -> bool {
 """`js_engine x` (bunx). bun prints the help on stderr with exit 1 both for
 `--help` and for a missing package name. A binary already installed in the
 project's node_modules/.bin runs directly; auto-install is not implemented."""
-def _pm_cmd_x(eroot: str, args: PmArgs) -> int {
+def _pm_cmd_x(args: PmArgs) -> int {
     if args.help or len(args.positionals) == 0 {
-        _err(_pm_help_text(eroot, "x"));
+        _err(_pm_help_text("x"));
         return 1;
     }
     cwd: str = fsx_cwd();
@@ -732,9 +692,9 @@ def _pm_cmd_x(eroot: str, args: PmArgs) -> int {
 the `run` token and continue as `js_engine <file>`); a package.json script runs
 pre/script/post through the shell. With nothing to run bun prints the help
 followed by the script list."""
-def _pm_cmd_run(eroot: str, args: PmArgs, cwd_override: str) -> int {
+def _pm_cmd_run(args: PmArgs, cwd_override: str) -> int {
     if args.help {
-        _out(_pm_help_text(eroot, "run"));
+        _out(_pm_help_text("run"));
         return 0;
     }
     target: str = "";
@@ -761,7 +721,7 @@ def _pm_cmd_run(eroot: str, args: PmArgs, cwd_override: str) -> int {
     cwd: str = fsx_cwd();
     proj: str = pm_find_project_dir(cwd);
     if target == "" {
-        _out(_pm_help_text(eroot, "run"));
+        _out(_pm_help_text("run"));
         if proj != "" {
             _out(pm_scripts_listing(proj, PM_PROG));
         }
@@ -790,26 +750,26 @@ def _pm_cmd_run(eroot: str, args: PmArgs, cwd_override: str) -> int {
     return 1;
 }
 
-def _pm_cmd_pm(eroot: str, args: PmArgs) -> int {
+def _pm_cmd_pm(args: PmArgs) -> int {
     if args.help or len(args.positionals) == 0 {
-        _out(_pm_help_text(eroot, "pm"));
+        _out(_pm_help_text("pm"));
         return 0;
     }
     sub: str = args.positionals[0];
     if not _pm_pm_subcommand_known(sub) {
-        _out(_pm_help_text(eroot, "pm"));
+        _out(_pm_help_text("pm"));
         _err("\nerror: \"" + sub + "\" unknown command\n");
         return 1;
     }
     if sub == "default-trusted" {
-        return pm_cmd_default_trusted(eroot);
+        return pm_cmd_default_trusted();
     }
     if sub == "untrusted" or sub == "trust" {
         cfg: PmConfig = pm_config_load(args);
         if sub == "untrusted" {
-            return pm_cmd_untrusted(eroot, cfg, _pm_banner("pm untrusted"));
+            return pm_cmd_untrusted(cfg, _pm_banner("pm untrusted"));
         }
-        return pm_cmd_trust(eroot, args, cfg, _pm_banner("pm trust"));
+        return pm_cmd_trust(args, cfg, _pm_banner("pm trust"));
     }
     return _pm_not_implemented("pm " + sub);
 }
@@ -822,7 +782,6 @@ def:pub pm_try_dispatch(argv: list[str]) -> int {
     if n < 2 {
         return -1;
     }
-    eroot: str = _pm_engine_root(argv[0]);
     # `js_engine [root flags] <command> …` (bun: `bun --silent run build`, `bun --cwd dir install`)
     g: PmGlobal = _pm_scan_root_flags(argv);
     if g.version {
@@ -831,7 +790,7 @@ def:pub pm_try_dispatch(argv: list[str]) -> int {
     }
     if g.next >= n {
         if g.help and not g.eval {
-            _out(_pm_help_text(eroot, "root"));
+            _out(_pm_help_text("root"));
             return 0;
         }
         return -1;  # -e / -p or nothing to run: main.jac decides
@@ -839,7 +798,7 @@ def:pub pm_try_dispatch(argv: list[str]) -> int {
     cmd: str = pm_canonical_command(argv[g.next]);
     if cmd == "" {
         if g.help and not g.eval {
-            _out(_pm_help_text(eroot, "root"));
+            _out(_pm_help_text("root"));
             return 0;
         }
         return -1;  # a file to run
@@ -858,7 +817,7 @@ def:pub pm_try_dispatch(argv: list[str]) -> int {
         _pm_set_flag(args, "config", g.config);
     }
     if cmd == "run" {
-        rc_run: int = _pm_cmd_run(eroot, args, g.cwd);
+        rc_run: int = _pm_cmd_run(args, g.cwd);
         if rc_run == -2 {
             del argv[g.next];
         }  # main.jac runs the file with the remaining argv
@@ -869,14 +828,14 @@ def:pub pm_try_dispatch(argv: list[str]) -> int {
         return 1;
     }
     if cmd == "x" {
-        return _pm_cmd_x(eroot, args);
+        return _pm_cmd_x(args);
     }
     if args.help {
-        _out(_pm_help_text(eroot, cmd));
+        _out(_pm_help_text(cmd));
         return 0;
     }
     if cmd == "pm" {
-        return _pm_cmd_pm(eroot, args);
+        return _pm_cmd_pm(args);
     }
     cfg: PmConfig = pm_config_load(args);
     if getenv("JS_PM_DEBUG") != None {
@@ -887,18 +846,18 @@ def:pub pm_try_dispatch(argv: list[str]) -> int {
     }
     if (cmd == "add" or cmd == "remove") and len(args.positionals) == 0 {
         _out(_pm_banner(cmd));
-        _out(_pm_help_text(eroot, cmd));
+        _out(_pm_help_text(cmd));
         _err("error: no package specified to " + cmd + "\n");
         return 0;
     }
     if cmd == "install" {
-        return pm_cmd_install(eroot, args, cfg, _pm_banner(cmd));
+        return pm_cmd_install(args, cfg, _pm_banner(cmd));
     }
     if cmd == "add" {
-        return pm_cmd_add(eroot, args, cfg, _pm_banner(cmd));
+        return pm_cmd_add(args, cfg, _pm_banner(cmd));
     }
     if cmd == "remove" {
-        return pm_cmd_remove(eroot, args, cfg, _pm_banner(cmd));
+        return pm_cmd_remove(args, cfg, _pm_banner(cmd));
     }
     return _pm_not_implemented(cmd);
 }

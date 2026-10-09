@@ -294,7 +294,6 @@ run are known to have install scripts (the text lockfile does not record it),
 which matches bun: installs from a lockfile run no dependency scripts and
 report nothing blocked. Returns (blocked packages, blocked scripts, exit code)."""
 def _run_lifecycle(
-    eroot: str,
     cfg: PmConfig,
     root_dir: str,
     pj: JVal,
@@ -331,7 +330,7 @@ def _run_lifecycle(
             project_trusted = trust.project_list;
             has_project_list = trust.has_project_list;
         }
-        defaults: list[str] = lifecycle_default_trusted(eroot);
+        defaults: list[str] = lifecycle_default_trusted();
         for key in summary.installed_keys {
             if not (key in lf.by_key) {
                 continue;
@@ -467,7 +466,6 @@ always resolve and save the lockfile). `added` are add's names (printed as
 "installed x@y"), `requests` remove's names and `removed_count` how many root
 dependencies of the previous lockfile went away (bun's summary.remove)."""
 def:pub pm_install_project(
-    eroot: str,
     cfg: PmConfig,
     root_dir: str,
     pj: JVal,
@@ -649,7 +647,7 @@ def:pub pm_install_project(
     }
 
     lc: tuple[int, int, int] = _run_lifecycle(
-        eroot, cfg, root_dir, pj, lf_install, summary, rr, resolved, trust, via
+        cfg, root_dir, pj, lf_install, summary, rr, resolved, trust, via
     );
     script_rc: int = lc[2];
     blocked_info: str = "\n";
@@ -773,7 +771,7 @@ def:pub pm_install_project(
     return 0;
 }
 
-def:pub pm_cmd_install(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> int {
+def:pub pm_cmd_install(args: PmArgs, cfg: PmConfig, banner: str) -> int {
     start: int = uv_hrtime();
     root_dir: str = cfg.cwd;
     pj_path: str = root_dir + "/package.json";
@@ -789,6 +787,6 @@ def:pub pm_cmd_install(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> 
     }
     _out(banner + "\n");
     return pm_install_project(
-        eroot, cfg, root_dir, m.json, False, start, [], [], 0, TrustCtx()
+        cfg, root_dir, m.json, False, start, [], [], 0, TrustCtx()
     );
 }

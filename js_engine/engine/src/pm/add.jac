@@ -261,7 +261,7 @@ def:pub pm_package_json_add(pj: JVal, group: str, name: str, spec: str) {
     pm_jv_sort_keys(g, False);
 }
 
-def:pub pm_cmd_add(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> int {
+def:pub pm_cmd_add(args: PmArgs, cfg: PmConfig, banner: str) -> int {
     start: int = uv_hrtime();
     root_dir: str = cfg.cwd;
     pj_path: str = root_dir + "/package.json";
@@ -355,7 +355,7 @@ def:pub pm_cmd_add(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> int 
         }
     }
     rc: int = pm_install_project(
-        eroot, cfg, root_dir, m.json, True, start, added, [], 0, trust
+        cfg, root_dir, m.json, True, start, added, [], 0, trust
     );
     # dependencies whose scripts ran through the request trust join the list afterwards (bun's second edit)
     if cfg.save and len(trust.ran_via) > 0 {

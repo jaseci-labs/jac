@@ -82,7 +82,7 @@ LLHTTP_SRCDIR   := /tmp/llhttp-release-v$(LLHTTP_VERSION)
 LLHTTP_BUILDDIR := /tmp/llhttp-build-$(LLHTTP_VERSION)
 LLHTTP_INSTDIR  := $(CURDIR)/lib/llhttp
 
-.PHONY: all build scrub scrub-engine clean run dist test_language test_builtins napi_shim tz_shim icu_shim tzdata wasmtime install_deps js_compiler builtins-bytecode check-bytecode js_engine_select
+.PHONY: all build scrub scrub-engine clean run dist test_language test_builtins napi_shim tz_shim icu_shim tzdata wasmtime install_deps js_compiler builtins-bytecode check-bytecode js_engine_select pm-resources check-pm-resources
 
 # ── Default (incremental build) ──────────────────────────────────────────────
 all: build
@@ -207,9 +207,32 @@ define archive_old_bin
 	fi
 endef
 
+# ── Package-manager resources (compiled into the engine) ─────────────────────
+# pm/help/*.txt (bun's help output, verbatim) and pm/data/default-trusted.txt
+# are the source of truth; tools/gen_pm_resources.jac turns them into the
+# committed pm/resources_gen.jac, so the binary reads no resource files and runs
+# from anywhere. Regenerated here whenever a text changes (the touch settles the
+# timestamp when the content was already current); `make check-pm-resources`
+# fails if the committed module is stale.
+PM_RESOURCE_SRCS := $(wildcard engine/src/pm/help/*.txt) engine/src/pm/data/default-trusted.txt
+PM_RESOURCES_GEN := engine/src/pm/resources_gen.jac
+$(PM_RESOURCES_GEN): $(PM_RESOURCE_SRCS) tools/gen_pm_resources.jac
+	$(JAC) tools/gen_pm_resources.jac $@
+	@touch $@
+
+pm-resources: $(PM_RESOURCES_GEN)
+
+check-pm-resources:
+	@tmp=$$(mktemp); \
+	$(JAC) tools/gen_pm_resources.jac $$tmp >/dev/null; \
+	if cmp -s $$tmp $(PM_RESOURCES_GEN); then rc=0; \
+	    echo "check-pm-resources: $(PM_RESOURCES_GEN) matches the .txt sources"; \
+	else rc=1; echo "STALE: $(PM_RESOURCES_GEN) differs — run 'make pm-resources'"; fi; \
+	rm -f $$tmp; exit $$rc
+
 # install_deps is order-only: it runs before the link (also under -j) but never
 # forces a relink by itself.
-$(BIN): $(SOURCES) | install_deps
+$(BIN): $(SOURCES) $(PM_RESOURCES_GEN) | install_deps
 	@mkdir -p bin $(NO_FLOOR_DIR)
 	$(call archive_old_bin,$(BIN))
 	/usr/bin/time -f "%e %M" -o $(BUILD_STATS) $(JAC) build --native $(MAIN) -o $(BIN)
@@ -406,6 +429,8 @@ help:
 	@echo "  scrub            Full recompile from scratch (jac clean --cache, then build)"
 	@echo "  run FILE=<path>  Run a JS file with the compiled engine"
 	@echo "  dist             Stage a relocatable runtime tree in dist/ (what the jac binary bundles)"
+	@echo "  pm-resources     Regenerate engine/src/pm/resources_gen.jac from pm/help/*.txt + pm/data/*.txt"
+	@echo "  check-pm-resources  Fail if the committed pm/resources_gen.jac is stale"
 	@echo "  test_language    Run test262 language/ tests; fail on regressions vs language_baseline.json"
 	@echo "  test_builtins    Run test262 built-ins/ tests; fail on regressions vs builtins_baseline.json"
 	@echo "  napi_shim        Build lib/libnapi_shim.so (NAPI ABI surface)"

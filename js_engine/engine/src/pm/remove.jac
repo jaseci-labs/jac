@@ -70,7 +70,7 @@ def:pub pm_package_json_remove(pj: JVal, names: list[str]) -> int {
     return matched;
 }
 
-def:pub pm_cmd_remove(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> int {
+def:pub pm_cmd_remove(args: PmArgs, cfg: PmConfig, banner: str) -> int {
     start: int = uv_hrtime();
     root_dir: str = cfg.cwd;
     pj_path: str = root_dir + "/package.json";
@@ -131,7 +131,6 @@ def:pub pm_cmd_remove(eroot: str, args: PmArgs, cfg: PmConfig, banner: str) -> i
         return 1;
     }
     rc: int = pm_install_project(
-        eroot,
         cfg,
         root_dir,
         m.json,
