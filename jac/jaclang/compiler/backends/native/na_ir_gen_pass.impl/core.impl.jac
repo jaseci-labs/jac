@@ -197,9 +197,7 @@ impl NaIRGenPass._internal_error(
     }
     if self._na_debug_on() {
         import sys;
-        import traceback;
-        sys.stderr.write(f"NA_DEBUG raise {name}\n");
-        traceback.print_exc(file=sys.stderr);
+        sys.stderr.write(f"NA_DEBUG raise {name}: {type(exc).__name__}: {exc}\n");
     }
     if len(self.ctx.errors_had) > mark {
         return;
