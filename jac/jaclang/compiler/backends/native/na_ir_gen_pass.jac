@@ -2813,7 +2813,11 @@ walker NaIRGenPass(CompilerPass) {
 
     def _unpack_target_ok(target: uni.UniNode) -> bool;
     def _unpack_store_global(
-        var_name: str, value: ir.Value, moved: bool, at: uni.UniNode
+        var_name: str,
+        value: ir.Value,
+        moved: bool,
+        at: uni.UniNode,
+        replaced: list[tuple[str, ir.Value]]
     ) -> bool;
 
     def _codegen_tuple_index(

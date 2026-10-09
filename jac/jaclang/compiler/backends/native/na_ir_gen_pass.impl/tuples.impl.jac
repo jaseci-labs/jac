@@ -118,6 +118,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
     import from jaclang.compiler.frontend.constant { SymbolStorage }
     rc_ok = (not is_value) or not self._nogc_headerless();
     pending_old: list[ir.Value] = [];
+    global_replaced: list[tuple[str, ir.Value]] = [];
     for (i, target) in enumerate(targets) {
         if struct_type is not None and i >= len(struct_type.members()) {
             break;
@@ -166,7 +167,9 @@ impl NaIRGenPass._codegen_tuple_unpack(
             and isinstance(target, uni.NameAtom)
             and target.sym is not None
             and target.sym.storage == SymbolStorage.MODULE_GLOBAL {
-            if not self._unpack_store_global(var_name, elem_val, moved, target) {
+            if not self._unpack_store_global(
+                var_name, elem_val, moved, target, global_replaced
+            ) {
                 return False;
             }
             continue;
@@ -201,6 +204,15 @@ impl NaIRGenPass._codegen_tuple_unpack(
     for old_val in pending_old {
         self._emit_slot_release(old_val, op="unpack_old");
     }
+    for (how, gone) in global_replaced {
+        if how == "typed" {
+            self._emit_rc_release_typed(gone, op="overwrite", loc="");
+        } elif how == "payload" {
+            self._emit_rc_release_simple(gone, op="overwrite", loc="");
+        } else {
+            self._emit_slot_release(gone, op="unpack_box");
+        }
+    }
     if (not is_value) and self._is_owned(_orig_tv) {
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
@@ -208,7 +220,11 @@ impl NaIRGenPass._codegen_tuple_unpack(
 }
 
 impl NaIRGenPass._unpack_store_global(
-    var_name: str, value: ir.Value, moved: bool, at: uni.UniNode
+    var_name: str,
+    value: ir.Value,
+    moved: bool,
+    at: uni.UniNode,
+    replaced: list[tuple[str, ir.Value]]
 ) -> bool {
     slot = self.global_vars[var_name];
     slot_type = slot.value_type;
@@ -231,8 +247,9 @@ impl NaIRGenPass._unpack_store_global(
         } else {
             self._emit_rc_retain(stored, op="unpack", loc=loc);
         }
-        replaced = self.builder.load(slot, name=f"glob.{var_name}.old");
-        self._emit_rc_release_typed(replaced, op="overwrite", loc=loc);
+        replaced.append(
+            ("typed", self.builder.load(slot, name=f"glob.{var_name}.old"))
+        );
     } elif self._opt_ptr_payload_of(slot_type) is not None and not raw {
         if self._nogc_headerless() {
             return False;
@@ -248,14 +265,22 @@ impl NaIRGenPass._unpack_store_global(
                 loc=loc
             );
         }
-        replaced = self.builder.load(slot, name=f"glob.{var_name}.opt.old");
-        self._emit_rc_release_simple(
-            self.builder.extract_value(replaced, 1, name=f"glob.{var_name}.opt.oldpv"),
-            op="overwrite",
-            loc=loc
+        before = self.builder.load(slot, name=f"glob.{var_name}.opt.old");
+        replaced.append(
+            (
+                "payload",
+                self.builder.extract_value(before, 1, name=f"glob.{var_name}.opt.oldpv")
+            )
         );
-    } elif boxed_slot {
-        self._emit_slot_rebind(slot, stored, owned=owned, op="unpack_box", loc=loc);
+    } elif boxed_slot and self._gc_mode() != "none" {
+        if owned {
+            self.rc_ops_elided += 1;
+        } else {
+            self._emit_take_ref(stored, op="unpack_box", loc=loc);
+        }
+        replaced.append(
+            ("box", self.builder.load(slot, name=f"glob.{var_name}.box.old"))
+        );
     }
     self.builder.store(stored, slot);
     return True;
