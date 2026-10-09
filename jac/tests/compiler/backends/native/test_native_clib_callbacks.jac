@@ -87,8 +87,6 @@ test "Callback records survive managed field and container cleanup" {
     library = ctypes.CDLL(None);
     library.mprotect.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int];
     library.mprotect.restype = ctypes.c_int;
-    library.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t];
-    library.calloc.restype = ctypes.c_void_p;
     storage = mmap.mmap(-1, mmap.PAGESIZE * 2);
     buffer: any = ctypes.c_char.from_buffer(storage);
     address = ctypes.addressof(buffer);
@@ -97,19 +95,15 @@ test "Callback records survive managed field and container cleanup" {
     allocator_type = ctypes.CFUNCTYPE(
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t
     );
+    library.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t];
+    library.calloc.restype = ctypes.c_void_p;
+    # Engine setup allocates larger runtime tables through the same symbol;
+    # those go to the real allocator, since a NULL here crashes the worker.
     def allocate(count: int, size: int) -> int {
-        total = count * size;
-        if total <= mmap.PAGESIZE {
-            return address + mmap.PAGESIZE;
+        if count * size > mmap.PAGESIZE {
+            return library.calloc(count, size);
         }
-        import sys;
-        print(
-            f"guard-page probe: serving a {total}-byte request "
-                + f"({count} x {size}) from libc; the guarded page only "
-                + "hosts callback records",
-            file=sys.stderr
-        );
-        return library.calloc(count, size);
+        return address + mmap.PAGESIZE;
     }
     allocator = allocator_type(allocate);
     original = ctypes.cast(library.calloc, ctypes.c_void_p).value;

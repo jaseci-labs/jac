@@ -117,6 +117,12 @@ def:pub AuthGuard(
 
 def:pub ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+def _changeTextHandler(on_change: any) -> Callable[[any], None];
+def _fieldSetter(form: any, field_name: str, value: any) -> Callable[[], None];
+def _passwordToggle(
+    field_name: str, is_visible: bool, visible: any, set_visible: any
+) -> Callable[[], None];
+
 def:pub JacForm(props: dict[str, any]) -> JsxElement;
 def:pub __jacInstallErrorHandlers -> None;
 def:pub __jacWirePlatformAdapters -> None;

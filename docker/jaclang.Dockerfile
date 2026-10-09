@@ -41,7 +41,7 @@ ENV JAC_CACHE_HOME=/opt/jac/state
 
 COPY ${TARGETARCH}/jac /usr/local/bin/jac
 
-# ca-certificates: jac downloads deps over TLS. git: [dependencies.git] installs.
+# ca-certificates: jac downloads deps over TLS. git: git-sourced [dependencies.pypi] installs.
 # The seed project carries scale intent, so its `jac install` resolves the
 # serve capability closure via jac's own logic. The standalone binary installs
 # into the seed project's .jac/venv (created from the runtime's bundled

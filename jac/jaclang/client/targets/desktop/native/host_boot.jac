@@ -195,7 +195,7 @@ def serve_program(
         bound: list[int] = [];
         try {
             stop = runtime.server.serve_background(
-                on_ready=lambda (p: int) { bound.append(p); }, port_retries=retries
+                on_ready=bound.append, port_retries=retries
             );
         } except OSError as e {
             last_error = e;

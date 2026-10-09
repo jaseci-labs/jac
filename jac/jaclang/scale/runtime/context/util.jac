@@ -79,10 +79,19 @@ def http_forward_timeout(app_name: str | None = None) -> float {
                 return float(app_cfg["http_forward_timeout"]);
             }
         }
-        gw_cfg = scale_cfg.get_gateway_config();
-        if "http_forward_timeout" in gw_cfg {
-            return float(gw_cfg["http_forward_timeout"]);
+        timeout = float(
+            scale_cfg.get_gateway_config().get(
+                "http_forward_timeout", _DEFAULT_HTTP_FORWARD_TIMEOUT
+            )
+        );
+        import from jaclang.scale.runtime.context.service_routing {
+            HTTP_ACTIVATED_WAKE_TIMEOUT,
+            is_http_activated
         }
+        if app_name and is_http_activated(app_name) {
+            return max(timeout, HTTP_ACTIVATED_WAKE_TIMEOUT);
+        }
+        return timeout;
     } except Exception {}
     return _DEFAULT_HTTP_FORWARD_TIMEOUT;
 }
