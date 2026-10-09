@@ -751,8 +751,10 @@ impl BaseLLM.ainvoke(mt_run: MTRuntime) -> any {
 
 
 impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
-    self.call_params = kwargs;
-    return self;
+    import copy;
+    configured = copy.copy(self);
+    configured.call_params = dict(self.call_params) | dict(kwargs);
+    return configured;
 }
 
 impl BaseLLM.invoke(mt_run: MTRuntime) -> any {

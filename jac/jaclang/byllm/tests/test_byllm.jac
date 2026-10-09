@@ -140,6 +140,50 @@ test "api key not overwritten on dispatch" {
     assert model.api_key == "sk-test-key";
 }
 
+test "configured model handles keep independent call parameters" {
+    base = Model(model_name="mockllm", config={"outputs": ["low", "high"]});
+    low = base(temperature=0.1, max_tokens=100);
+    high = base(temperature=0.9, max_tokens=900);
+
+    assert low is not base and high is not base and low is not high , (
+        "configuration must return independent handles"
+    );
+    assert base.call_params == {} , "configuring a handle must not mutate its source";
+
+    def ask_low(q: str) -> str by low();
+    def ask_high(q: str) -> str by high();
+    assert ask_low("first") == "low";
+    assert ask_high("second") == "high";
+
+    delegate = base._mock_delegate;
+    assert delegate is not None;
+    assert delegate.sent("temperature") == [0.1, 0.9] , (
+        f"each handle must retain its temperature, got {delegate.sent('temperature')}"
+    );
+    assert delegate.sent("max_tokens") == [100, 900] , (
+        f"each handle must retain its token limit, got {delegate.sent('max_tokens')}"
+    );
+
+    concurrent_base = Model(model_name="mockllm", config={"outputs": ["one", "two"]});
+    concurrent_low = concurrent_base(temperature=0.2, max_tokens=200);
+    concurrent_high = concurrent_base(temperature=0.8, max_tokens=800);
+    async def ask_concurrent_low -> str by concurrent_low();
+    async def ask_concurrent_high -> str by concurrent_high();
+    async def run_concurrently -> tuple[str, str] {
+        return await asyncio.gather(ask_concurrent_low(), ask_concurrent_high());
+    }
+    assert `set(asyncio.run(run_concurrently())) == {"one", "two"};
+    concurrent_delegate = concurrent_base._mock_delegate;
+    assert concurrent_delegate is not None;
+    observed = {
+        (params.get("temperature"), params.get("max_tokens"))
+        for params in concurrent_delegate.seen
+    };
+    assert observed == {(0.2, 200), (0.8, 800)} , (
+        f"overlapping calls must keep their own parameters, got {observed}"
+    );
+}
+
 test "format_prompt never prints the api key and leaves params intact" {
     model = Model(model_name="gpt-4o-mini");
     params = {

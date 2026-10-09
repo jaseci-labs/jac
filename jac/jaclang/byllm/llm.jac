@@ -269,6 +269,7 @@ obj Model(BaseLLM) {
         _async_proxy_client: AsyncOpenAI | None = None;
 
     def postinit -> None;
+    def _delegate_for_call -> BaseLLM | None;
     override def invoke(mt_run: MTRuntime) -> any;
     override async def ainvoke(mt_run: MTRuntime) -> object;
     def _raise_mapped_provider_error(e: Exception) -> None;

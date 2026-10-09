@@ -67,6 +67,17 @@ impl Model.postinit -> None {
     }
 }
 
+impl Model._delegate_for_call -> BaseLLM | None {
+    delegate = self._mock_delegate or self._local_delegate or self._so1_delegate;
+    if delegate is None {
+        return None;
+    }
+    import copy;
+    bound = copy.copy(delegate);
+    bound.call_params = dict(self.call_params);
+    return bound;
+}
+
 
 glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"];
 
@@ -91,14 +102,11 @@ impl Model.invoke(mt_run: MTRuntime) -> any {
     setattr(mt_run, "_invocation_id", _invocation_id);
     _ctx_token = _current_invocation_id.set(_invocation_id);
     _start = time.time();
+    delegate = self._delegate_for_call();
 
     try {
-        if self._mock_delegate {
-            result = self._mock_delegate.invoke(mt_run);
-        } elif self._local_delegate {
-            result = self._local_delegate.invoke(mt_run);
-        } elif self._so1_delegate {
-            result = self._so1_delegate.invoke(mt_run);
+        if delegate {
+            result = delegate.invoke(mt_run);
         } else {
             result = super.invoke(mt_run);
         }
@@ -140,9 +148,7 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
         return await super.ainvoke(mt_run);
     }
 
-    delegate: BaseLLM | None = (
-        self._mock_delegate or self._local_delegate or self._so1_delegate
-    );
+    delegate = self._delegate_for_call();
 
     _parent = _current_invocation_id.get(None);
     mt_run._parent_invocation_id = _parent;
