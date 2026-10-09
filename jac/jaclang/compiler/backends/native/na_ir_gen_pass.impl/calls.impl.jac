@@ -2445,6 +2445,25 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
         if binding is not None
+            and binding.source_context.value == "server"
+            and "native" not in {c.value for c in binding.callers} {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="function",
+                name=func_name,
+                help_text="Native code cannot reach this callee: no declared "
+                "provider crosses the native->server boundary (#9782 "
+                "closed-world link). The callee resolved through a Python "
+                "stub or a module the boundary analysis never marked as "
+                "native-called, so declaring it would leave a bare-name "
+                "extern resolved against the whole process. Import the "
+                "function from a module that is compiled for the boundary, "
+                "or keep the call on the server side."
+            );
+            return None;
+        }
+        if binding is not None
             and func_name not in self.generic_fns
             and (
                 binding.source_context.value == "server"
@@ -2487,6 +2506,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
             _extern_sym = func_name;
+            if binding.source_context.value == "server" {
+                import from jaclang.runtime.interop_bridge { interop_callback_symbol }
+                _extern_sym = interop_callback_symbol(binding);
+            }
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(
                     func_name,

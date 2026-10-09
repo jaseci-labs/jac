@@ -311,8 +311,10 @@ def bind_shared_callbacks(
     assert isinstance(module, llvm.ModuleRef);
     definitions: list[str] = [];
     callbacks: list[InteropBinding] = [];
+    import from jaclang.runtime.interop_bridge { interop_callback_symbol }
     for binding in bindings {
-        function = module.get_function(binding.name);
+        _sym = interop_callback_symbol(binding);
+        function = module.get_function(_sym);
         assert isinstance(function, llvm.ValueRef);
         if not function.is_declaration {
             continue;
@@ -324,9 +326,9 @@ def bind_shared_callbacks(
             );
         }
         callbacks.append(binding);
-        name = _wrapname(binding.name);
-        slot = _wrapname('__jac_callback_' + binding.name);
-        bind_function = _wrapname('__jac_bind_' + binding.name);
+        name = _wrapname(_sym);
+        slot = _wrapname('__jac_callback_' + _sym);
+        bind_function = _wrapname('__jac_bind_' + _sym);
         arguments = ', '.join(
             f'{kind} %arg{index}' for (index, kind) in enumerate(parameters)
         );

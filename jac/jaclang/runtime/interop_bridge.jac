@@ -1,17 +1,44 @@
 import ctypes;
+import hashlib;
 import logging;
 import from collections.abc { Callable, Iterable }
 import from typing { Protocol }
 class CallbackSignature(Protocol) {
     has name: str,
         ret_type: str,
-        param_types: list[str];
+        param_types: list[str],
+        source_module: (str | None) = None;
+}
+
+def _interop_safe_sym(src: str) -> str {
+    safe = '';
+    for ch in src {
+        if ((ch >= 'a') and (ch <= 'z'))
+            or ((ch >= 'A') and (ch <= 'Z'))
+            or ((ch >= '0') and (ch <= '9'))
+            or (ch == '_') {
+            safe += ch;
+        } else {
+            safe += '_';
+        }
+    }
+    return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
+}
+
+def interop_callback_symbol(binding: CallbackSignature) -> str {
+    if binding.source_module {
+        return f"__jac_na_import_{_interop_safe_sym(binding.source_module)}_{_interop_safe_sym(
+            binding.name
+        )}";
+    }
+    return f"__jac_na_import_{_interop_safe_sym(binding.name)}";
 }
 
 obj NativeCallback {
     has name: str,
         ret_type: str,
-        param_types: list[str];
+        param_types: list[str],
+        source_module: str = '';
 }
 
 obj NativeLibrary {
@@ -183,25 +210,32 @@ def register_py_callbacks(
     register_symbol: Callable[[str, int], None]
 ) {
     for binding in bindings {
-        ret_ct = JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64);
-        arg_cts = [JAC_TO_CTYPES.get(pt, ctypes.c_int64) for pt in binding.param_types];
+        _sym = interop_callback_symbol(binding);
+        ret_ct = JAC_TO_CTYPES.get(binding.ret_type);
+        arg_cts = [JAC_TO_CTYPES.get(pt) for pt in binding.param_types];
+        if ret_ct is None or None in arg_cts {
+            raise RuntimeError(
+                f"Native callback '{binding.name}' (from {binding.source_module
+                    or '?'}) "
+                f"has an unmarshallable signature ret={binding.ret_type} "
+                f"params={binding.param_types}; the closed world does not "
+                f"default unknown types to i64 (#9782)."
+            );
+        }
         cb_type = ctypes.CFUNCTYPE(ret_ct, *arg_cts);
         def _make_callback(
             func_name: str, table: dict[(str, Callable[(..., object)])]
         ) -> Callable[(..., object)] {
-            warned = [False];
             def callback(*args: object) -> object {
                 fn = table.get(func_name);
                 if (fn is not None) {
                     return fn(*args);
                 }
-                if not warned[0] {
-                    logger.warning(
-                        f"Native code called Python function '{func_name}' butit's not registered. Returning 0. Ensure Python code defining '{func_name}'executes before native code calls it."
-                    );
-                    warned[0] = True;
-                }
-                return 0;
+                raise RuntimeError(
+                    f"Native code called Python function '{func_name}' but it "
+                        + "is not registered. Ensure the Python module "
+                        + "defining it executes before native code calls it."
+                );
             }
             return callback;
         }
@@ -211,6 +245,6 @@ def register_py_callbacks(
         if cb_addr is None {
             raise RuntimeError(f'Cannot allocate native callback {binding.name!r}');
         }
-        register_symbol(binding.name, cb_addr);
+        register_symbol(_sym, cb_addr);
     }
 }

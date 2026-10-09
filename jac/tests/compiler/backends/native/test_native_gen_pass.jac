@@ -2747,10 +2747,21 @@ test "py interop py function not defined in native ir" {
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    import re;
     # Must not have a define (body) for py_double -- it lives in Python
     assert 'define i64 @"py_double"' not in llvm_ir_str;
-    # Should have an external declare so the native code can call it
-    assert 'declare i64 @"py_double"' in llvm_ir_str;
+    # The extern is module-qualified (#9782 closed-world symbols), so the
+    # native code calls __jac_na_import_<module>_py_double instead of a
+    # bare name resolved against the process symbol table.
+    assert re.search(r'declare i64 @"__jac_na_import_\w*py_double(_\w+)?"', llvm_ir_str)
+        is not None , (
+        f"expected a qualified interop declare for py_double; IR excerpt: "
+        f"{[
+            ln
+            for ln in llvm_ir_str.split(chr(10))
+            if 'py_double' in ln
+        ]}"
+    );
 }
 
 test "py interop py functions in python codegen" {
