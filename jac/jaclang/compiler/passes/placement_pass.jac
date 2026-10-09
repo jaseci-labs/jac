@@ -385,13 +385,16 @@ impl build_native_legality(
     legality = NativeLegality();
     mod_path = mod.loc.mod_path if mod.loc is not None else "";
     base_dir = os.path.dirname(os.path.abspath(mod_path)) if mod_path else ".";
-    (blocker, deps) = scan_native_blockers(mod, base_dir);
-    if blocker {
-        legality.blockers.append(NativeRefusal(kind="module", name=blocker, site=mod));
-    }
-    if prog is not None {
+    judging: (JacProgram | None) = prog if not mod.gen.placement_mode else None;
+    if judging is not None {
+        (blocker, deps) = scan_native_blockers(mod, base_dir);
+        if blocker {
+            legality.blockers.append(
+                NativeRefusal(kind="module", name=blocker, site=mod)
+            );
+        }
         for dep in deps {
-            if not import_placed_native(prog, dep) {
+            if not import_placed_native(judging, dep) {
                 legality.blockers.append(
                     NativeRefusal(
                         kind="import",
@@ -404,7 +407,7 @@ impl build_native_legality(
                 break;
             }
         }
-        for note in capability_notes_of(prog, mod_path, TARGET_NATIVE) {
+        for note in capability_notes_of(judging, mod_path, TARGET_NATIVE) {
             noted = NativeRefusal(
                 kind="construct",
                 name=note.text,
@@ -457,8 +460,8 @@ impl build_native_legality(
             continue;
         }
         for nm in stmt.get_all_sub_nodes(Name) {
-            if prog is not None {
-                for gap in binding_gaps(prog, nm, base_dir) {
+            if judging is not None {
+                for gap in binding_gaps(judging, nm, base_dir) {
                     missing = NativeRefusal(
                         kind="library member",
                         name=gap,
