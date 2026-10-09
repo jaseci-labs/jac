@@ -32,6 +32,7 @@ import from jaclang.dist.payload.fsutil {
     write_bytes,
     write_text
 }
+import from jaclang.dist.fused_binary { LINKED_SOURCE_FILE }
 import from jaclang.dist.payload.pins { py_ver }
 import from jaclang.dist.payload.vendor { MUSL_ARTIFACTS }
 
@@ -145,7 +146,7 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     copy_into(repo_root, "_jac_finder.py", site);
     copy_into(repo_root, "sitecustomize.py", site);
     if opts.link_source is not None {
-        write_text(os.path.join(site, "jac_linked_source"), opts.link_source);
+        write_text(os.path.join(site, LINKED_SOURCE_FILE), opts.link_source);
     }
 
     write_dist_info(repo_root, site);
@@ -644,7 +645,7 @@ impl is_volatile_path(p: str) -> bool {
     return (
         p.startswith("site/_jac_finder.py")
         or p.startswith("site/sitecustomize.py")
-        or p.startswith("site/jac_linked_source")
+        or p.startswith(f"site/{LINKED_SOURCE_FILE}")
         or p.startswith("site/__pycache__")
     );
 }

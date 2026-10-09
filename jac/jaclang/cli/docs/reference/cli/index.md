@@ -63,7 +63,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac publish` | Publish a Jac package or template to the package index (`--dry-run` to run the gates only) |
 | `jac x` | Run an installed CLI tool (Python console-script or npm tool) under the `jac` runtime |
 | `jac remove` | Remove packages from project |
-| `jac update` | Update dependencies to latest compatible versions |
+| `jac update` | Update dependencies to latest compatible versions; with `--self`, update the jac binary itself |
 | `jac tool` | Language tools & source transforms (`jac2py`, `py2jac`, `jac2js`, `grammar`, IR, AST) |
 | `jac guide` | Show curated Jac reference guides |
 | `jac lsp` | Language server |
@@ -1521,15 +1521,19 @@ jac remove react --npm
 
 Re-resolve dependencies to their newest compatible versions. With no names, every Jac package is re-resolved within its range, the Python dependencies are re-installed and re-pinned in `jac.lock`, and each Python package declared with a compatible-release spec gets the installed version written back as `~=X.Y`. With `org/name` arguments only those Jac packages are unlocked. `--pypi` updates named Python packages only.
 
+With `--self`, the command skips dependencies entirely and updates the `jac` binary itself: it resolves the newest GitHub release (or the `--release` tag), downloads this platform's binary, verifies the published sha256, and atomically replaces the running launcher. Already-running `jac` processes keep their version; the next invocation uses the new binary. `--self` refuses to touch anything it should not: a plain interpreter session (e.g. `python -m jaclang`), a linked dev binary (`zig build -Ddev`), an unwritable install location, and a JacPython install (the release channel only ships the default CPython build, so an update would silently drop the JacPython compiler -- reinstall with `install.sh --jacpython` instead). A download that passes the sha256 check but is not a valid `jac` binary (missing the runtime trailer) is discarded and the installed version kept. On hosts no release ships (Windows), it says so and points at the releases page.
+
 ```bash
-jac update [-h] [--pypi] [-d] [-v] [packages ...]
+jac update [-h] [--pypi] [-d] [--self] [--release TAG] [-v] [packages ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `packages` | Jac packages to re-resolve (all if empty); with `--pypi`, Python packages | None |
+| `packages` | Jac packages to re-resolve (all if empty); with `--pypi`, Python packages; not valid with `--self` | None |
 | `--pypi` | Update Python packages only | `False` |
 | `-d, --dev` | Include Python dev dependencies | `False` |
+| `--self` | Update the jac binary itself to the latest release | `False` |
+| `--release TAG` | With `--self`: update to this release tag (e.g. `2.3.1`) instead of the latest | `""` |
 | `-v, --verbose` | Show detailed output | `False` |
 
 **Examples:**
@@ -1543,6 +1547,12 @@ jac update jaseci/vecdb
 
 # Update one Python package
 jac update --pypi requests
+
+# Update the jac binary itself to the latest release
+jac update --self
+
+# Pin the jac binary to a specific release
+jac update --self --release 2.3.1
 ```
 
 ---

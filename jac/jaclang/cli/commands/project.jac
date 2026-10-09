@@ -598,13 +598,16 @@ def publish(
 
 comptime SPEC_UPDATE: CommandSpec = CommandSpec(
          name="update",
-         help="Update project dependencies to latest compatible versions",
+         help=("Update project dependencies, or the jac binary itself with --self"),
          args=[
              Arg.create(
                  "packages",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Jac packages to re-resolve (all if empty); with --pypi, Python packages"
+                 help=(
+                     "Jac packages to re-resolve (all if empty); "
+                     "not valid with --self"
+                 )
              ),
              Arg.create(
                  "pypi",
@@ -621,6 +624,26 @@ comptime SPEC_UPDATE: CommandSpec = CommandSpec(
                  short="d"
              ),
              Arg.create(
+                 "self",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 dest="self_update",
+                 help=(
+                     "Update the jac binary itself to the latest release "
+                     "instead of project dependencies"
+                 )
+             ),
+             Arg.create(
+                 "release",
+                 `default="",
+                 short="",
+                 help=(
+                     "With --self: update to this release tag (e.g. 2.3.1) "
+                     "instead of the latest"
+                 )
+             ),
+             Arg.create(
                  "verbose", typ=bool, `default=False, help="Verbose output", short="v"
              ),
 
@@ -630,6 +653,14 @@ comptime SPEC_UPDATE: CommandSpec = CommandSpec(
              ("jac update jaseci/vecdb", "Re-resolve one Jac package"),
              ("jac update --pypi requests", "Update one Python package"),
              ("jac update --dev", "Also update dev dependencies"),
+             (
+                 "jac update --self",
+                 "Update the jac binary itself to the latest release"
+             ),
+             (
+                 "jac update --self --release 2.3.1",
+                 "Pin the jac binary to release v2.3.1"
+             ),
 
          ],
          group="project",
@@ -640,6 +671,8 @@ def update(
     packages: list[str] = [],
     pypi: bool = False,
     dev: bool = False,
+    self_update: bool = False,
+    release: str = "",
     verbose: bool = False
 ) -> int;
 

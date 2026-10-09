@@ -5,6 +5,7 @@ import subprocess;
 import tempfile;
 import shlex;
 import base64;
+import json;
 import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
@@ -1169,8 +1170,32 @@ impl update(
     packages: list[str] = [],
     pypi: bool = False,
     dev: bool = False,
+    self_update: bool = False,
+    release: str = "",
     verbose: bool = False
 ) -> int {
+    if release and not self_update {
+        console.error(
+            "--release pins a jac binary release; it needs --self.",
+            hint="jac update --self --release 2.3.1"
+        );
+        return 1;
+    }
+    if self_update {
+        if packages {
+            console.error(
+                "--self updates the jac binary itself; it takes no package names.",
+                hint=(
+                    "Run 'jac update --self' without packages, or "
+                    "'jac update' for project dependencies."
+                )
+            );
+            return 1;
+        }
+        import from jaclang.dist.self_update { update_self }
+        import from jaclang.cli.manifest_route { resolve_cli_version }
+        return update_self(release, resolve_cli_version(), verbose);
+    }
     import from jaclang.project.config { get_config }
     import from jaclang.project.providers { InstallContext }
     config = get_config();

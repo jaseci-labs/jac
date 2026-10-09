@@ -13,6 +13,8 @@ import from jaclang.dist.fused.trailer {
     rt_key
 }
 
+glob LINKED_SOURCE_FILE: str = "jac_linked_source";
+
 def fused_base_length(data: bytes) -> int {
     total = len(data);
     if total < TRAILER_LEN {
@@ -153,6 +155,22 @@ def materialized_runtime_dir(path: str = "") -> (str | None) {
         }
     }
     return _runtime_dir_for_key(running_runtime_key(path));
+}
+
+
+def linked_source_dir(runtime_dir: str) -> str {
+    if not runtime_dir {
+        return "";
+    }
+    try {
+        with open(
+            os.path.join(runtime_dir, "site", LINKED_SOURCE_FILE), encoding="utf-8"
+        ) as handle {
+            return handle.read().strip();
+        }
+    } except OSError {
+        return "";
+    }
 }
 
 
