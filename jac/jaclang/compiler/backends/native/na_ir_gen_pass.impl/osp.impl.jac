@@ -712,10 +712,14 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
                 break;
             }
         }
+        root_dir = int(co.edge_dir.value);
+        away_from_root = (root_left and root_dir == 2)
+            or (root_right and root_dir == 1);
         if (root_left and root_right)
             or co.capture_edges
             or co.conn_type is not None
-            or looks_back {
+            or looks_back
+            or not away_from_root {
             self.emit(
                 E5092,
                 node_override=nd,
@@ -724,8 +728,8 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
                 help_text=(
                     "The native tier has no root node. A plain `root ++> node` "
                     "is accepted as an anchor that nothing native can observe; "
-                    "one that names an edge, collects it, or sits in a module "
-                    "that follows edges backward would be missed."
+                    "one that names an edge, collects it, points at root, or "
+                    "sits in a module that follows edges backward would be missed."
                 )
             );
             return None;
@@ -768,6 +772,8 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         }
         many = right if right_spec is not None else left;
     }
+    left_whole = left;
+    right_whole = right;
     loop_idx: (ir.Value | None) = None;
     loop_cond: (ir.Block | None) = None;
     loop_done: (ir.Block | None) = None;
@@ -923,7 +929,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         );
         self.builder.branch(loop_cond);
         self.builder.position_at_end(loop_done);
-        return many if right_spec is not None else tgt;
+        return left_whole if dir_val == 1 else right_whole;
     }
     if co.capture_edges {
         i8p = ir.IntType(8).as_pointer();
