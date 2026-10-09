@@ -363,7 +363,10 @@ impl _convert_dict_to_schema(ty_dict: type) -> dict[str, any] {
     };
 }
 
-impl _decode_dict(json_obj: dict[str, any]) -> dict[str, any] {
+impl _decode_dict(json_obj: JSONValue) -> JSONValue {
+    if isinstance(json_obj, list) {
+        return [_decode_dict(item) for item in json_obj];
+    }
     if not isinstance(json_obj, dict) {
         return json_obj;
     }
@@ -440,8 +443,7 @@ impl tool_to_schema(
 
 impl json_to_instance(json_obj: dict[str, any], ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
-    json_obj = _decode_dict(json_obj);
-    return TypeAdapter(ty).validate_python(json_obj);
+    return TypeAdapter(ty).validate_python(_decode_dict(json_obj));
 }
 
 impl _format_enum_hint(values: list[any], names: list[any]) -> str {

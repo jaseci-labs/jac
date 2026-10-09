@@ -18,6 +18,8 @@ import from jaclang.byllm.exceptions { ConfigurationError }
 glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
      _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";
 
+type JSONValue = dict[str, any] | list[any] | str | int | float | bool | None;
+
 def _as_info(v: object) -> (Info | TypeForm | str | None);
 def _info_at(
     info: (Info | TypeForm | str | None), idx: int
@@ -36,7 +38,7 @@ def _function_to_schema(
 
 def _name_of_type(ty: type, info: (Info | TypeForm | str | None) = None) -> str;
 def _convert_dict_to_schema(ty_dict: type) -> dict[str, any];
-def _decode_dict(json_obj: dict[str, any]) -> dict[str, any];
+def _decode_dict(json_obj: JSONValue) -> JSONValue;
 def _wrap_to_object(schema: dict[str, object]) -> dict[str, object];
 def _unwrap_from_object(json_obj: dict[str, any]) -> dict[str, any];
 def type_to_schema(
