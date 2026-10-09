@@ -66,8 +66,14 @@ impl JcirGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
     );
     passes_continue = False;
     for ctrl in nd.get_all_sub_nodes(CtrlStmt) {
-        if ctrl.ctrl.name == Tok.KW_CONTINUE
-            and isinstance(self._ctrl_owner(ctrl), SwitchStmt) {
+        if ctrl.ctrl.name != Tok.KW_CONTINUE {
+            continue;
+        }
+        leaves = self._ctrl_owner(ctrl);
+        while isinstance(leaves, SwitchStmt) and leaves is not nd {
+            leaves = self._ctrl_owner(leaves);
+        }
+        if leaves is nd {
             passes_continue = True;
             break;
         }
@@ -78,18 +84,13 @@ impl JcirGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
     if not passes_continue {
         return [assign_var, switch_loop];
     }
+    flag = f"__continued_{nd.loc.first_line}_{nd.loc.col_start}";
     return [
         self.nod(
             'Assign',
             ['targets', 'value'],
             [
-                [
-                    self.nod(
-                        'Name',
-                        ['id', 'ctx'],
-                        ['__continued', self.nod('Store', [], [])]
-                    )
-                ],
+                [self.nod('Name', ['id', 'ctx'], [flag, self.nod('Store', [], [])])],
                 self.const_of(False)
             ]
         ),
@@ -98,7 +99,7 @@ impl JcirGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
         self.nod(
             'If',
             ['test', 'body', 'orelse'],
-            [self.name_load('__continued'), self._continue_out(nd), []]
+            [self.name_load(flag), self._continue_out(nd), []]
         )
     ];
 }
@@ -122,9 +123,7 @@ impl JcirGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
 impl JcirGenPass._continue_out(nd: UniNode) -> list[CgItem] {
     owner = self._ctrl_owner(nd);
     if isinstance(owner, SwitchStmt) {
-        if isinstance(nd, SwitchStmt) {
-            return [self.nod('Break', [], [])];
-        }
+        flag = f"__continued_{owner.loc.first_line}_{owner.loc.col_start}";
         return [
             self.nod(
                 'Assign',
@@ -132,9 +131,7 @@ impl JcirGenPass._continue_out(nd: UniNode) -> list[CgItem] {
                 [
                     [
                         self.nod(
-                            'Name',
-                            ['id', 'ctx'],
-                            ['__continued', self.nod('Store', [], [])]
+                            'Name', ['id', 'ctx'], [flag, self.nod('Store', [], [])]
                         )
                     ],
                     self.const_of(True)
