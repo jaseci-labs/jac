@@ -5,8 +5,10 @@ import shutil;
 def pick_free_port(
     name: str, base: int = 18000, retries: int = 100, avoid: set[int] | None = None
 ) -> int {
+    import hashlib;
+    digest = int.from_bytes(hashlib.sha1(name.encode()).digest()[:4], 'big');
     blocked: set[int] = set(avoid) if avoid else set();
-    start: int = base + (hash(name) % 1000);
+    start: int = base + (digest % 1000);
     port: int = start;
     for _ in range(retries) {
         if port in blocked {

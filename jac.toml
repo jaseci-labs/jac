@@ -126,6 +126,11 @@ exclude = [
     # Runtime library.
     "jac/jaclang/client/targets/desktop/native/cef/cef_subprocess.jac",
 
+    # Bun-host cl_stdlib glue: JS-runtime sources built by the Bun service
+    # builder, never imported by the Python/native server toolchain.
+    "jac/jaclang/cl_stdlib/*.jac",
+    "jac/jaclang/cl_stdlib/urllib/*.jac",
+
     # ECMAScript backend.
     "jac/jaclang/compiler/backends/es/esast_gen_pass.jac",
     "jac/jaclang/compiler/backends/es/esast_gen_pass.impl/assign.impl.jac",

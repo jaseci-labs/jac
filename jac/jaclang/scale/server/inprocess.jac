@@ -11,7 +11,6 @@ import from jaclang.server.settings { ServeSettings }
 
 obj PreparedInProcessRuntime {
     has server: any,
-        transport_kind: str,
         client: any | None = None,
         _prior_ctx: (ExecutionContext | None) = None;
 
@@ -134,10 +133,7 @@ def prepare_inprocess_runtime(
                 else None
         );
         return PreparedInProcessRuntime(
-            server=server,
-            transport_kind=transport_kind,
-            client=client,
-            _prior_ctx=prior_ctx
+            server=server, client=client, _prior_ctx=prior_ctx
         );
     } except Exception {
         if not static_only and mod in Jac.loaded_modules {

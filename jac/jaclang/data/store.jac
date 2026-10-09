@@ -11,6 +11,106 @@ import from jaclang.runtime.exceptions { WriteConflict }
 glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',
+     OUTBOX_SCHEMA_SQL: list[str] = [
+         """
+    CREATE TABLE IF NOT EXISTS jac_outbox (
+        id              TEXT PRIMARY KEY,
+        app             TEXT NOT NULL,
+        walker          TEXT NOT NULL,
+        kwargs          TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        created_at      DOUBLE PRECISION NOT NULL,
+        status          TEXT NOT NULL,
+        last_error      TEXT NOT NULL DEFAULT '',
+        next_attempt_at DOUBLE PRECISION NOT NULL DEFAULT 0
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_jac_outbox_due
+        ON jac_outbox (status, next_attempt_at)
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_outbox_seen (
+        idempotency_key TEXT PRIMARY KEY,
+        result          TEXT NOT NULL DEFAULT '',
+        expires_at      DOUBLE PRECISION NOT NULL
+    )
+    """
+     ],
+     SCHEMA_SQL: list[str] = [
+         """
+    CREATE TABLE IF NOT EXISTS anchors (
+        id             uuid PRIMARY KEY,
+        kind           text NOT NULL,
+        arch_type      text NOT NULL DEFAULT '',
+        arch_module    text NOT NULL DEFAULT '',
+        fingerprint    text NOT NULL DEFAULT '',
+        root_id        uuid,
+        src            uuid,
+        dst            uuid,
+        undirected     boolean NOT NULL DEFAULT false,
+        props          jsonb NOT NULL DEFAULT '{}'::jsonb,
+        format_version integer NOT NULL DEFAULT 1,
+        version        bigint  NOT NULL DEFAULT 0,
+        updated_at     timestamptz NOT NULL DEFAULT now(),
+        seq            bigserial
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_anchors_src
+        ON anchors (src, arch_type) WHERE src IS NOT NULL
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_anchors_dst
+        ON anchors (dst, arch_type) WHERE dst IS NOT NULL
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_anchors_kind_type
+        ON anchors (kind, arch_type)
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_anchors_root
+        ON anchors (root_id) WHERE root_id IS NOT NULL
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS graph_types (
+        type_name text NOT NULL,
+        ancestor  text NOT NULL,
+        PRIMARY KEY (type_name, ancestor)
+    )
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS kv_state (
+        key        text PRIMARY KEY,
+        value      text NOT NULL,
+        expires_at timestamptz,
+        updated_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS quarantine (
+        missing_id  uuid NOT NULL,
+        referrer_id uuid,
+        kind        text NOT NULL,
+        created_at  timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (missing_id, kind)
+    )
+    """,
+         """
+    CREATE TABLE IF NOT EXISTS jac_docs (
+        collection text NOT NULL,
+        id         text NOT NULL,
+        doc        jsonb NOT NULL,
+        PRIMARY KEY (collection, id)
+    )
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx
+        ON jac_docs (collection, (doc->>'user_id'))
+    """
+     ]
+         + OUTBOX_SCHEMA_SQL,
      _schema_ready: set[str] = set(),
      _schema_gate = threading.Lock(),
      __all__ = [
@@ -21,6 +121,7 @@ glob logger = logging.getLogger(__name__),
          'TxnIsolation',
          'SCHEMA_VERSION',
          'SCHEMA_STAMP_KEY',
+         'SCHEMA_SQL',
          'SessionConflictError',
          'OUTBOX_SCHEMA_SQL'
      ];

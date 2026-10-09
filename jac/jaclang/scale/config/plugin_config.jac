@@ -191,6 +191,11 @@ def app_scale_schema -> dict[str, any] {
             "default": False,
             "description": "Cache bridged calls whose provider endpoint declares no effects, invalidated when an effectful call to the same provider goes through"
         },
+        "host": {
+            "type": "string",
+            "default": None,
+            "description": "Execution host for this service: 'cpython' (default) or 'bun'. Overridable per module via the JAC_SV_<MODULE>_HOST env var; unrecognized values raise at service startup instead of silently falling back."
+        },
         "workers": {
             "type": "string",
             "default": None,

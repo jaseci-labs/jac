@@ -22,6 +22,7 @@ glob APP_SCALE_KEYS: tuple[str, ...] = (
          "triggers",
          "http_activation",
          "read_cache",
+         "host",
          "workers",
          "threads"
      ),

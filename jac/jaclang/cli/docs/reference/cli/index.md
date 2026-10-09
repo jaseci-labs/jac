@@ -23,6 +23,8 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Add, remove, or update dependencies | `jac install <org/name>` · `jac install --pypi <pkg>` · `jac remove` · `jac update` |
 | Publish a Jac package or template | `jac publish` |
 | Install project dependencies (preview with `--plan`) | `jac install` · `jac install --plan` |
+| Sync Bun server npm deps for BunHost services | `jac install --npm --server` |
+| Start a module as a Bun-hosted HTTP service | `jac start <file.jac> --client bun` |
 | Run an installed CLI tool under Jac | `jac x` |
 | Type-check, format, or lint | `jac check` · `jac fmt` · `jac check --lint` · `jac precommit` |
 | Run tests | `jac test` |
@@ -328,6 +330,44 @@ jac run --platform ios mobile
 # Evict a stuck session holding this project's database
 jac run --takeover
 ```
+
+> **Note**:
+>
+> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac run --serve app.jac`
+
+### Bun-hosted sv services
+
+Server-placed code normally runs on the **cpython** host (the default serve path of `jac run`). The **bun** host is an alternate server runtime: npm packages, JS globals, and Postgres persistence through **BunStore**. See [Placement: Host vs codespace](../placement.md#host-vs-codespace) for the capability table.
+
+**Standalone Bun serve.** Pass `--client bun` to compile the entry module into a `Bun.serve` artifact and run it under the jac-managed **bun** runtime (no system Node required):
+
+```bash
+# Build and start a Bun-hosted HTTP service on the default port
+jac run --serve --client bun my_service.jac
+
+# Custom port (same as jac run -p)
+jac run --serve --client bun -p 3000
+```
+
+Stateless `def:pub` functions become HTTP endpoints; modules that touch `Root` or walkers persist through BunStore when Postgres is available.
+
+**Microservice routes.** For modules in `[scale.microservices.routes]`, the runtime picks the sv host per module: **cpython** by default, or **bun** when `.jac/server/<module>.mjs` exists (emitted by the Bun service builder). Override explicitly:
+
+```bash
+# Force a route module onto the bun host for this process
+export JAC_SV_MATH_SERVICE_HOST=bun
+jac run
+```
+
+Or set `host = "bun"` under `[scale.microservices.services.<name>]` in `jac.toml`.
+
+**Server npm root.** Bun-hosted services resolve npm packages from `.jac/server/` (a private Bun project separate from the client `node_modules` tree). Sync it with:
+
+```bash
+jac install --npm --server
+```
+
+This creates `.jac/server/package.json` if needed and runs `bun install` there. Requires the jac-managed bun runtime (same resolver as `jac x` for npm tools).
 
 To deploy the same program to Kubernetes instead of serving it locally, see [`jac scale deploy`](#jac-scale-deploy).
 
@@ -1354,6 +1394,7 @@ jac install [-h] [packages ...] [--pypi] [--path DIR] [--rev REF] [--frozen]
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups (no-arg mode only) | `[]` |
 | `--no-save` | With `--pypi`: install without recording in `jac.toml` | `False` |
 | `--npm` | Install npm (client-side) package(s); with no names, install all npm deps from `jac.toml` | `False` |
+| `--server` | With `--npm`: sync the Bun server npm root at `.jac/server/` (for Bun-hosted sv services). Ignored without `--npm`. | `False` |
 | `--shadcn` | Install shadcn UI component(s) from the bundled registry | `False` |
 | `-v, --verbose` | Show detailed output | `False` |
 | `--force-reinstall` | Reinstall all Python packages even if they are already up-to-date | `False` |
@@ -1400,6 +1441,9 @@ jac install --pypi --git https://github.com/user/package.git
 
 # Add npm (client-side) packages
 jac install --npm react
+
+# Sync the Bun server npm root for Bun-hosted sv services
+jac install --npm --server
 
 # Add shadcn UI components (offline, bundled registry)
 jac install --shadcn button card

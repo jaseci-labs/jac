@@ -233,6 +233,10 @@ def peer_url_from_env(app: str) -> str {
     return os.environ.get(peer_url_env_key(app), "").strip();
 }
 
+def sv_host_env_key(module_name: str) -> str {
+    return f"JAC_SV_{module_name.upper()}_HOST";
+}
+
 def _unavailable(app: str, name: str = "") -> BridgeUnavailable {
     return BridgeUnavailable(
         app=app,

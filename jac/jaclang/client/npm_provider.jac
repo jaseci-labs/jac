@@ -28,6 +28,33 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
      LEGACY_META_PACKAGES: set = {"jac-client-node", "@jac-client/dev-deps"};
 
 
+def resolve_client_target_name(config: JacConfig) -> str {
+    import os;
+    client_config = config.get_plugin_config("client");
+    raw = str(client_config.get("target", "") or "").strip();
+    if raw == "" {
+        plugin_table = config.get_section("plugin");
+        if isinstance(plugin_table, dict) {
+            nested = plugin_table.get("client", {});
+            if isinstance(nested, dict) {
+                raw = str(nested.get("target", "") or "").strip();
+            }
+        }
+    }
+    if raw == "" {
+        raw = str(os.environ.get("JAC_CLIENT_TARGET", "") or "").strip();
+    }
+    if raw == "" {
+        return "web";
+    }
+    normalized = raw.lower().replace("-", "_");
+    if normalized in ("rn", "reactnative") {
+        return "react_native";
+    }
+    return normalized;
+}
+
+
 def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
     npm_plugin_deps: dict[str, str] = dict(config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};

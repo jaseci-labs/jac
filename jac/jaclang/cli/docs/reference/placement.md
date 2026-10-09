@@ -8,6 +8,29 @@ places every element. There is no placement syntax: the old `cl` / `sv` /
 migrate marker-era code). When a decision must be overridden, the override
 lives in `jac.toml` under `[placement.pins]`, not in the source.
 
+## Host vs codespace
+
+Placement decides **codespace**: server, client, or native. That is which compiler backend emits a declaration and which bundle it ships in. **Host** is a separate axis: which runtime environment executes the code and which platform capabilities are in reach.
+
+A server-placed module normally runs on the **cpython** host (bundled Python, PyPI imports, Postgres persistence through the embedded store). The **bun** host is an alternate server runtime with npm packages, JS globals, and **PERSIST** through BunStore (Postgres via `Bun.sql`). Client code runs on **browser**, **webview**, or **rn** hosts depending on the active client target. Native code runs on **bare-metal** (FFI only).
+
+The placement solver seeds codespace from capability evidence (DOM and npm imports pin client, python imports pin server, extern C pins native). Host selection answers a different question: given a codespace verdict, which host implementation serves it at runtime? Host facts live in `jaclang.jac0core.host` and the Host target registry under `jaclang.runtimelib.client.targets`.
+
+| Host kind | DOM | NPM | PY | PERSIST | FFI |
+|---|---|---|---|---|---|
+| `browser`, `webview` | ● | ● | | | |
+| `rn` | | ● | | | |
+| `bun` | | ● | | ● | |
+| `web-worker`, `service-worker`, `edge`, `cli-js` | | ● | | | |
+| `cpython` | | | ● | ● | |
+| `bare-metal` | | | | | ● |
+
+The P3 host kinds (`web-worker`, `service-worker`, `edge`, `cli-js`) exist only as capability rows and target aliases in `jaclang.jac0core.host`; no executable build, dev, or start target is registered until one ships.
+
+Modules listed in `[scale.microservices.routes]` resolve their sv host at runtime: default **cpython**, or **bun** when a `.jac/server/<module>.mjs` artifact exists or when `JAC_SV_<MODULE>_HOST=bun` (or `[scale.microservices.services.<name>.host]`) overrides it. See [CLI Reference: Bun-hosted sv services](cli/index.md#bun-hosted-sv-services).
+
+Note: the module resolver consults this same host decision: when the project's client target resolves to the **bun** host, failed stdlib imports are rerouted to `cl_stdlib`. That decision is cached per base directory, so resolution cost is paid once per project.
+
 ## How placement is decided
 
 Every module gets a **placement summary**: per top-level element, the

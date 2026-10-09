@@ -1483,6 +1483,10 @@ impl get_config_for_dir(start_dir: str) -> JacConfig | None {
     return get_config_for_path(Path(start_dir));
 }
 
+impl clear_discovered_config_cache -> None {
+    _config_by_root.clear();
+}
+
 impl active_profile_name(config: JacConfig | None) -> str {
     requested = os.environ.get("JAC_PROFILE", "").strip();
     if requested or config is None {

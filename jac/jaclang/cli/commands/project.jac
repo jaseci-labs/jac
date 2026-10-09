@@ -261,6 +261,13 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
                  help="Install npm package(s); with no names, install all npm deps from jac.toml. With --global, install standalone npm CLI tools runnable via 'jac x --global'. As --no-npm, skip npm dependencies during a full install"
              ),
              Arg.create(
+                 "server",
+                 typ=bool,
+                 `default=False,
+                 help="With --npm: sync the Bun server npm root at .jac/server/ (for Bun-hosted sv services). Ignored without --npm.",
+                 short=""
+             ),
+             Arg.create(
                  "shadcn",
                  typ=bool,
                  `default=False,
@@ -438,6 +445,7 @@ def install(
     no_save: bool = False,
     git: str = "",
     npm: bool | None = None,
+    server: bool = False,
     shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,

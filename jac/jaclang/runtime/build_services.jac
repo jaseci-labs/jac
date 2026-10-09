@@ -51,7 +51,9 @@ class BuildServices(Protocol) {
         project_root: str
     ) -> list[tuple[str, str]] abst;
 
-    def client_runtime_basename(self: BuildServices, framework: str) -> str abst;
+    def client_runtime_basename(
+        self: BuildServices, framework: str, module: any = None
+    ) -> str abst;
 }
 
 @cache

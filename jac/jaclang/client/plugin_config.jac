@@ -85,7 +85,8 @@ class JacClientPluginConfig {
 
     static def register_ecosystem_providers -> list[EcosystemProvider] {
         import from jaclang.client.npm_provider { NpmProvider }
-        return [NpmProvider()];
+        import from jaclang.client.server_npm_provider { ServerNpmProvider }
+        return [NpmProvider(), ServerNpmProvider()];
     }
 
     static def client_project_templates -> list[dict[str, any]] {

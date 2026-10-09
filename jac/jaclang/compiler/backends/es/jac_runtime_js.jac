@@ -1425,6 +1425,16 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       if (!format_spec) return String(value);
       return String(value);
     },
+    str(obj) {
+      if (
+        obj !== null && obj !== undefined
+          && typeof obj === "object" && !Array.isArray(obj)
+          && typeof obj.__str__ === "function"
+      ) {
+        return obj.__str__();
+      }
+      return String(obj);
+    },
     ascii(obj) {
       if (typeof obj === "string") {
         let r = "'";

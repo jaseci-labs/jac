@@ -89,7 +89,7 @@ test "the mobile kind resolves to the mobile target" {
 
     _register_client_targets();
     assert sorted(t.name for t in get_target_registry().get_all())
-        == ["desktop", "mobile", "static", "web"] , (
+        == ["bun", "desktop", "mobile", "static", "web"] , (
         "exactly four targets register: web, static, desktop, mobile"
     );
     target = target_for_kind("mobile", Path.cwd());

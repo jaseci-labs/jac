@@ -161,7 +161,12 @@ def find_jac_files(package_dir: str) -> list[str] {
             or rel.startswith("tests/")
             or rel.startswith(".")
             or ".impl." in jac_file.name
+            or rel.startswith("cl_stdlib/")
         ) {
+            # cl_stdlib/*.jac are Bun-host JS sources consumed textually by
+            # the service builder; they are never served from the Python or
+            # native runtime, so precompiling them only trips the native
+            # type checker on globalThis access.
             continue;
         }
         if native_only(str(jac_file)) {
@@ -304,7 +309,17 @@ def sealable_sources(package_dir: str, app: str = "") -> list[str] {
             and not any(p.startswith(n) for n in nested)
     ];
     if Path(package_dir).name == "jaclang" {
-        result = list(candidates);
+        import from jaclang.compiler.placement.placement_facts {
+            native_only
+        }
+        # cl_stdlib modules are JS-runtime sources consumed textually by the
+        # Bun service builder; they never enter the native seal unit.
+        result = [
+            p
+            for p in candidates
+            if not native_only(p)
+                and not p.replace(os.sep, "/").startswith("cl_stdlib/")
+        ];
     } else {
         import from jaclang.compiler.placement.placement_facts {
             discover_spaces,

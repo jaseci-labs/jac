@@ -413,6 +413,8 @@ glob _config: JacConfig | None = None,
      _config_explicit: bool = False,
      _config_by_root: dict[str, JacConfig | None] = {};
 
+def clear_discovered_config_cache -> None;
+
 def get_config(
     start_path: Path | None = None,
     force_discover: bool = False,
