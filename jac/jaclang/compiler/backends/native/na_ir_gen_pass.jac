@@ -2812,6 +2812,13 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _unpack_target_ok(target: uni.UniNode) -> bool;
+    def _unpack_into(
+        targets: Sequence[uni.UniNode],
+        tuple_val: ir.Value,
+        tuple_node: (uni.UniNode | None),
+        replaced: list[tuple[str, ir.Value]]
+    ) -> bool;
+
     def _unpack_store_global(
         var_name: str,
         value: ir.Value,

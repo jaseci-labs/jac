@@ -279,3 +279,28 @@ test "threads writing out cyclic objects do not see each other's progress" {
     );
     assert "Pair(label=7, other=Pair(label=107, other=...))\nwrong 0\n" in out , out;
 }
+
+"""Each switch passes on only a `continue` that leaves through it. With one
+flag shared by every switch, a switch holding a loop saw the `continue` that
+loop had already taken and moved its own loop on too, and a switch that ran
+in a `finally` cleared the flag of a `continue` on its way out."""
+test "a continue reaches the loop it belongs to and no other" {
+    out = assert_native_identity(
+        fixture("switch_continue_nested.jac"), profiles=["rc", "managed"]
+    );
+    assert "after inner loop 0\nafter outer switch 0\nodd 1\n" in out , out;
+    assert "after inner loop 2\nafter outer switch 2\n" in out , out;
+    assert "cleanup tail 1\nother 1\ntail 1\n" in out , out;
+    assert "\ntail 0\n" not in out , out;
+}
+
+"""The values a tuple assignment replaces outlive the whole assignment, at
+any nesting depth. In `((a, n), b) = ((b, 1), a)` the value `a` held is
+stored into `b` after the inner tuple is done; releasing it when the inner
+tuple finished freed it first, for locals and for module globals."""
+test "a swap through a nested tuple keeps every object" {
+    out = assert_native_identity(
+        fixture("unpack_nested_swap.jac"), profiles=["rc", "managed"]
+    );
+    assert out == "R L 1 2\nL R 2 2\nR L 3 2\nba3\n" , out;
+}

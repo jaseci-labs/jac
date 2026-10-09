@@ -78,6 +78,30 @@ impl NaIRGenPass._codegen_tuple_unpack(
     tuple_val: ir.Value,
     tuple_node: (uni.UniNode | None)
 ) -> bool {
+    replaced: list[tuple[str, ir.Value]] = [];
+    if not self._unpack_into(targets, tuple_val, tuple_node, replaced) {
+        return False;
+    }
+    for (how, gone) in replaced {
+        if how == "local" {
+            self._emit_slot_release(gone, op="unpack_old");
+        } elif how == "typed" {
+            self._emit_rc_release_typed(gone, op="overwrite", loc="");
+        } elif how == "payload" {
+            self._emit_rc_release_simple(gone, op="overwrite", loc="");
+        } else {
+            self._emit_slot_release(gone, op="unpack_box");
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._unpack_into(
+    targets: Sequence[uni.UniNode],
+    tuple_val: ir.Value,
+    tuple_node: (uni.UniNode | None),
+    replaced: list[tuple[str, ir.Value]]
+) -> bool {
     _elem_owned = tuple_val?.na_tuple_owned;
     _tu_opt = self._opt_payload_of(tuple_val.type);
     if _tu_opt is not None {
@@ -117,8 +141,6 @@ impl NaIRGenPass._codegen_tuple_unpack(
 
     import from jaclang.compiler.frontend.constant { SymbolStorage }
     rc_ok = (not is_value) or not self._nogc_headerless();
-    pending_old: list[ir.Value] = [];
-    global_replaced: list[tuple[str, ir.Value]] = [];
     for (i, target) in enumerate(targets) {
         if struct_type is not None and i >= len(struct_type.members()) {
             break;
@@ -157,7 +179,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
             if moved and isinstance(elem_val.type, ir.LiteralStructType) {
                 elem_val.na_tuple_owned = [True] * len(inner);
             }
-            if not self._codegen_tuple_unpack(inner, elem_val, None) {
+            if not self._unpack_into(inner, elem_val, None, replaced) {
                 return False;
             }
             continue;
@@ -168,7 +190,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
             and target.sym is not None
             and target.sym.storage == SymbolStorage.MODULE_GLOBAL {
             if not self._unpack_store_global(
-                var_name, elem_val, moved, target, global_replaced
+                var_name, elem_val, moved, target, replaced
             ) {
                 return False;
             }
@@ -196,23 +218,13 @@ impl NaIRGenPass._codegen_tuple_unpack(
             } else {
                 self._emit_take_ref(stored, op="unpack");
             }
-            pending_old.append(self.builder.load(alloca, name=f"unpack.{i}.old"));
+            replaced.append(
+                ("local", self.builder.load(alloca, name=f"unpack.{i}.old"))
+            );
         }
         self.builder.store(stored, alloca);
     }
 
-    for old_val in pending_old {
-        self._emit_slot_release(old_val, op="unpack_old");
-    }
-    for (how, gone) in global_replaced {
-        if how == "typed" {
-            self._emit_rc_release_typed(gone, op="overwrite", loc="");
-        } elif how == "payload" {
-            self._emit_rc_release_simple(gone, op="overwrite", loc="");
-        } else {
-            self._emit_slot_release(gone, op="unpack_box");
-        }
-    }
     if (not is_value) and self._is_owned(_orig_tv) {
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
