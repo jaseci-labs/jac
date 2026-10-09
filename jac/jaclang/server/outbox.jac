@@ -56,6 +56,8 @@ glob logger = logging.getLogger(__name__),
          'backoff_seconds',
          'outbox_db_path',
          'use_store',
+         'primary_pg_store',
+         'writable_txn',
          'STATUS_PENDING',
          'STATUS_DELIVERING',
          'STATUS_DELIVERED',
@@ -153,6 +155,8 @@ def default_idempotency_key(app: str, `walker: str, kwargs: dict[str, any]) -> s
 def backoff_seconds(attempts: int) -> float;
 def outbox_db_path -> str;
 def use_store(store: (OutboxStore | None)) -> None;
+def primary_pg_store -> (PgStore | None);
+def writable_txn(store: Store) -> None;
 
 def enqueue(
     app: str, `walker: str, kwargs: dict[str, any], idempotency_key: str = ""
@@ -180,8 +184,6 @@ def remember_response(key: str, response: any, committed: bool = False) -> any;
 
 def _row_to_entry(row: tuple[any, ...]) -> OutboxEntry;
 def _current_memory -> any;
-def _primary_pg_store -> (PgStore | None);
-def _writable_txn(mem: any, store: Store) -> None;
 def _derive_worker_store(primary: PgStore) -> PgOutboxStore;
 def _pg_worker_store(primary: PgStore) -> PgOutboxStore;
 def _sqlite_store -> SqliteOutboxStore;
