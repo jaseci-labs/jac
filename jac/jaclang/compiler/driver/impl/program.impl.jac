@@ -533,10 +533,10 @@ impl JacProgram.parse_source(
         import from jaclang.compiler.frontend.constant { CodeContext }
         import from jaclang.compiler.driver.boundary_classify {
             _coerce_client_module,
-            _coerce_native_module,
-            _stamp_context_element
+            _coerce_native_module
         }
         import from jaclang.compiler.placement.placement_facts {
+            apply_plan,
             decode_plan,
             native_placement_hard
         }
@@ -556,12 +556,7 @@ impl JacProgram.parse_source(
             early_context='' if plan is not None else codespace
         );
         if plan is not None {
-            spaces = {'native': CodeContext.NATIVE, 'client': CodeContext.CLIENT};
-            for (index, elem) in enumerate(parsed.body) {
-                if index in plan {
-                    _stamp_context_element(elem, spaces[plan[index]]);
-                }
-            }
+            apply_plan(parsed, plan);
             parsed.gen.placement_mode = 'plan';
         } elif codespace == 'client' {
             _coerce_client_module(parsed);

@@ -106,7 +106,7 @@ def:pub raise_signal(signalnum: int) {
     }
 }
 
-def:pub alarm(seconds: int) -> int {
+def alarm(seconds: int) -> int {
     if seconds < 0 {
         raise ValueError("alarm() arg must be positive");
     }
@@ -117,7 +117,7 @@ def:pub alarm(seconds: int) -> int {
     return old;
 }
 
-def:pub pause {
+def pause {
     sig_pause();
 }
 
@@ -177,7 +177,7 @@ def:pub valid_signals -> list[int] {
     return out;
 }
 
-def:pub pthread_sigmask(how: int, mask: list[int]) -> list[int] {
+def pthread_sigmask(how: int, mask: list[int]) -> list[int] {
     if how < SIG_BLOCK or how > SIG_SETMASK {
         raise ValueError("value specified for how (" + str(how) + ") invalid");
     }

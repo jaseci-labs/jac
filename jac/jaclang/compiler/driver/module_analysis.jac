@@ -78,8 +78,15 @@ obj ModuleAnalysis {
     def placement {
         if not self.options.symtab_ir_only and not self.blocked {
             import from jaclang.compiler.placement.placement_solver {
+                place_unanalyzed,
                 solve_program_placement,
                 refresh_placement_module
+            }
+            if not self.module.gen.placement_mode
+                and not self.program.analysis.analyses_run.provides(
+                    self.module, AnalysisFact.PLACED_IN
+                ) {
+                place_unanalyzed(self.module, self.program);
             }
             refresh_placement_module(self.module, self.program);
             solve_program_placement(self.module, self.program);

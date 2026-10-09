@@ -174,6 +174,19 @@ def native_default_path_ok(path: str) -> bool {
     return _native_deps_ok(ap, deps, hold_exempt=exempt);
 }
 
+def place_unanalyzed(module: uni.Module, prog: JacProgram) {
+    """Place a module whose analysis did not run. Client placement is read
+    off syntax and symbol references, so it does not wait for types; a module
+    left unanalyzed is one that was never a native candidate.""";
+    import from jaclang.compiler.placement.placement_facts { contexts_of, write_plan }
+    given = contexts_of(module);
+    refresh_placement_module(module, prog);
+    if solve_module_placement(module, prog) {
+        placement_work(prog).changed(module);
+    }
+    write_plan(module, given);
+}
+
 def native_placement_candidate(
     module: uni.Module, prog: JacProgram
 ) -> tuple[bool, str] {

@@ -690,7 +690,14 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
         placement_work,
         refresh_placement_module
     }
+    import from jaclang.compiler.placement.placement_facts { apply_plan, decode_plan }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    if ir_in.gen.placement_mode == 'plan' and ir_in.source is not None {
+        held = decode_plan(active_host().placement_plan(mod_path), ir_in.source.hash);
+        if held is not None {
+            apply_plan(ir_in, held);
+        }
+    }
     client_refused = client_refused_elements(ir_in);
     placed: list[CodeContext] = [];
     for elem in ir_in.body {
@@ -755,12 +762,9 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         'client': CodeContext.CLIENT,
         'native': CodeContext.NATIVE
     };
-    import from jaclang.compiler.placement.placement_facts { encode_plan }
+    import from jaclang.compiler.placement.placement_facts { contexts_of, write_plan }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
-    given: list[CodeContext | None] = [
-        elem.code_context if isinstance(elem, ContextAwareNode) else None
-        for elem in ir_in.body
-    ];
+    given = contexts_of(ir_in);
 
     required = element_requirements(ir_in, self.prog);
     for elem in ir_in.body {
@@ -875,22 +879,7 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         );
     }
     report_serverless_kind_errors(self, ir_in);
-    plan: dict[int, str] = {};
-    moved = False;
-    for (index, elem) in enumerate(ir_in.body) {
-        if not isinstance(elem, ContextAwareNode) {
-            continue;
-        }
-        if elem.code_context != given[index] {
-            moved = True;
-        }
-        if elem.code_context != CodeContext.SERVER {
-            plan[index] = elem.code_context.value;
-        }
-    }
-    if moved and ir_in.source is not None {
-        ir_in.gen.placement_plan = encode_plan(ir_in.source.hash, plan);
-    }
+    write_plan(ir_in, given);
     return ir_in;
 }
 

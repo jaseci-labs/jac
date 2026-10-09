@@ -392,15 +392,15 @@ def place_on_server(
     warnings_mark: int
 ) {
     import from jaclang.compiler.driver.session_compile { drop_native_bindings }
-    import from jaclang.compiler.placement.placement_facts { encode_plan }
+    import from jaclang.compiler.placement.placement_facts { element_key, encode_plan }
     import from jaclang.compiler.placement.placement_solver { invalidate_importers_es }
     (code, detail, stage) = refusal;
     resolved = os.path.realpath(path);
-    kept: dict[int, str] = {};
-    for (index, elem) in enumerate(module.body) {
+    kept: dict[str, str] = {};
+    for elem in module.body {
         if isinstance(elem, uni.ContextAwareNode)
             and elem.code_context == CodeContext.CLIENT {
-            kept[index] = 'client';
+            kept[element_key(elem)] = 'client';
         }
     }
     host = active_host();

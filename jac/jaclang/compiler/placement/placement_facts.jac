@@ -41,21 +41,27 @@ def native_placement_soft(prog: JacProgram, mod: uni.Module) -> bool {
 
 glob _placement_plans: dict[str, str] = {};
 
-def encode_plan(digest: str, placed: dict[int, str]) -> str {
+def element_key(elem: uni.UniNode) -> str {
+    loc = elem.loc;
+    return f"{os.path.basename(loc.mod_path)}:{loc.first_line}:{loc.col_start}";
+}
+
+
+def encode_plan(digest: str, placed: dict[str, str]) -> str {
     native: list[str] = [];
     client: list[str] = [];
-    for index in sorted(placed.keys()) {
-        if placed[index] == SPACE_NATIVE {
-            native.append(str(index));
-        } elif placed[index] == SPACE_CLIENT {
-            client.append(str(index));
+    for key in sorted(placed.keys()) {
+        if placed[key] == SPACE_NATIVE {
+            native.append(key);
+        } elif placed[key] == SPACE_CLIENT {
+            client.append(key);
         }
     }
     return f"{digest}|{','.join(native)}|{','.join(client)}";
 }
 
 
-def decode_plan(plan: str, digest: str) -> (dict[int, str] | None) {
+def decode_plan(plan: str, digest: str) -> (dict[str, str] | None) {
     if not plan {
         return None;
     }
@@ -63,18 +69,73 @@ def decode_plan(plan: str, digest: str) -> (dict[int, str] | None) {
     if len(parts) != 3 or parts[0] != digest {
         return None;
     }
-    placed: dict[int, str] = {};
+    placed: dict[str, str] = {};
     for item in parts[1].split(',') {
         if item {
-            placed[int(item)] = SPACE_NATIVE;
+            placed[item] = SPACE_NATIVE;
         }
     }
     for item in parts[2].split(',') {
         if item {
-            placed[int(item)] = SPACE_CLIENT;
+            placed[item] = SPACE_CLIENT;
         }
     }
     return placed;
+}
+
+
+def apply_plan(module: uni.Module, placed: dict[str, str]) {
+    import from jaclang.compiler.frontend.constant { CodeContext }
+    spaces = {SPACE_NATIVE: CodeContext.NATIVE, SPACE_CLIENT: CodeContext.CLIENT};
+    for elem in module.body {
+        if not isinstance(elem, uni.ContextAwareNode) {
+            continue;
+        }
+        want = placed.get(element_key(elem));
+        if want is None or elem.code_context == spaces[want] {
+            continue;
+        }
+        elem.code_context = spaces[want];
+        if isinstance(elem, uni.ModuleCode) and elem.body {
+            for inner in elem.body {
+                if isinstance(inner, uni.ContextAwareNode) {
+                    inner.code_context = spaces[want];
+                }
+            }
+        }
+    }
+}
+
+
+def write_plan(module: uni.Module, given: list[str]) {
+    """Record where the module's elements ended up, as the plan its second
+    analysis is run under. `given` is where each stood before placement; a
+    module nothing moved in needs no second analysis and gets no plan.""";
+    placed: dict[str, str] = {};
+    moved = False;
+    for (index, elem) in enumerate(module.body) {
+        if not isinstance(elem, uni.ContextAwareNode) {
+            continue;
+        }
+        now = elem.code_context.value;
+        if index >= len(given) or given[index] != now {
+            moved = True;
+        }
+        if now != SPACE_SERVER {
+            placed[element_key(elem)] = now;
+        }
+    }
+    if moved and module.source is not None {
+        module.gen.placement_plan = encode_plan(module.source.hash, placed);
+    }
+}
+
+
+def contexts_of(module: uni.Module) -> list[str] {
+    return [
+        elem.code_context.value if isinstance(elem, uni.ContextAwareNode) else ''
+        for elem in module.body
+    ];
 }
 
 
