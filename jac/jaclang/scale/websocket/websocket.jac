@@ -65,6 +65,8 @@ def consume_rate_token(
 
 def _ws_stream_next(gen: any) -> any;
 
-async def _ws_close_stream(result: any) -> None;
+async def _ws_close_stream(result: any, abandon: Callable[[], None]) -> None;
 
-async def _ws_stream_result(send_result: any, result: any);
+async def _ws_stream_result(
+    send_result: any, result: any, abandon: Callable[[], None]
+);

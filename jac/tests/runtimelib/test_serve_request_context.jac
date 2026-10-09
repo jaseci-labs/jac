@@ -12,16 +12,18 @@ had no root as far as the websocket walker could see (#9863).
 Pinned here: a websocket walker and a websocket function each run on a session
 that is not the process-global one, on the database the HTTP path uses, and see
 data committed after the process-global session began reading; a stream whose
-delivery is cut off is closed before its scope ends, so the scope does not
-commit its unfinished work; and the executor refuses to run a call that no
+delivery is cut off is closed before its scope ends, and one that cannot be
+closed has its request's work aborted, so in neither case does the scope
+commit unfinished work; and the executor refuses to run a call that no
 transport has given a request scope.
 """
 
 import asyncio;
 import os;
+import threading;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from unittest.mock { patch }
+import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.scale.server.inprocess {
@@ -30,6 +32,7 @@ import from jaclang.scale.server.inprocess {
 }
 import from jaclang.scale.server.websocket_ext { WebSocketExtension }
 import from jaclang.scale.websocket.websocket { _ws_stream_result }
+import from jaclang.server.request_scope { RequestScope }
 import from jaclang.server.serving.datatypes { WebSocketDisconnect }
 import from jaclang.testing.testkit { ServingTestClient }
 
@@ -264,49 +267,156 @@ test "a websocket stream runs inside its request scope and commits when it ends"
 }
 
 
-"""Deliver a bound stream to a client that is gone at the first chunk. Returns
-whether the stream's work had been aborted by the time delivery gave up, while
-the stream is still referenced, so a later garbage-collection close cannot
-stand in for the delivery code closing it."""
-async def _aborted_when_delivery_stops(context: ExecutionContext, source: any) -> bool {
-    async def gone(payload: dict[str, any]) {
-        raise WebSocketDisconnect(code=1006);
+node StreamNote {
+    has text: str = "";
+}
+
+
+"""A request scope on the project's database, opened the way a transport
+opens one per message."""
+def _open_scope(project: str) -> RequestScope {
+    return RequestScope.open(project, str(Path(project) / "app.jac"));
+}
+
+
+"""What a stream's body does to the graph: save a node through whichever
+request context is in force while it runs. Returns the node's id."""
+def _write_note(text: str) -> UUID {
+    note = StreamNote(text=text);
+    Jac.save(note);
+    return note.__jac__.ensure_id();
+}
+
+
+"""Whether the database holds the node, read through a scope of its own, so
+only committed state counts."""
+def _committed(project: str, note_id: UUID) -> bool {
+    with _open_scope(project) as context {
+        return context.mem.get(note_id) is not None;
     }
-    with patch.object(context.mem, 'abort') as abort {
-        stream: any = await context.bind_stream(source);
+}
+
+
+async def _client_gone(payload: dict[str, any]) {
+    raise WebSocketDisconnect(code=1006);
+}
+
+
+async def _client_listening(payload: dict[str, any]) {}
+
+
+"""Deliver `source` the way the websocket loop does: bound to the call's
+context inside the message's request scope, each chunk handed to `send`. The
+bound stream stays referenced until the scope has closed, so garbage
+collection cannot stand in for the delivery code closing it."""
+async def _deliver(project: str, source: any, send: any) {
+    scope = _open_scope(project);
+    stream: any = None;
+    with scope as context {
+        stream = await ExecutionContext(_parent=context).bind_stream(source);
         try {
-            await _ws_stream_result(gone, stream);
-        } except WebSocketDisconnect {
-            return bool(abort.called);
-        }
-        return False;
+            await _ws_stream_result(send, stream, scope.abort);
+        } except WebSocketDisconnect {}
     }
 }
 
 
-test "a websocket stream cut off mid-delivery is closed before its scope can commit it" {
+test "a stream delivered to its end has its write committed when its scope closes" {
+    written: list[UUID] = [];
     def chunks -> Generator[str, None, None] {
+        written.append(_write_note("finished"));
         yield 'first';
         yield 'second';
     }
-    context = ExecutionContext(base_path_dir='', full_target_path='');
-    assert asyncio.run(_aborted_when_delivery_stops(context, chunks())) , (
-        "the stream was left suspended; its scope would commit the work it "
-        "had done so far"
-    );
+    with TemporaryDirectory() as project {
+        asyncio.run(_deliver(project, chunks(), _client_listening));
+        assert len(written) == 1;
+        assert _committed(project, written[0]) , (
+            "a stream that ran to its end lost its write"
+        );
+    }
 }
 
 
-test "an async websocket stream cut off mid-delivery is closed before its scope can commit it" {
-    async def chunks -> AsyncGenerator[str, None] {
+test "a websocket stream cut off mid-delivery does not have its write committed" {
+    written: list[UUID] = [];
+    def chunks -> Generator[str, None, None] {
+        written.append(_write_note("unfinished"));
         yield 'first';
         yield 'second';
     }
-    context = ExecutionContext(base_path_dir='', full_target_path='');
-    assert asyncio.run(_aborted_when_delivery_stops(context, chunks())) , (
-        "the stream was left suspended; its scope would commit the work it "
-        "had done so far"
-    );
+    with TemporaryDirectory() as project {
+        asyncio.run(_deliver(project, chunks(), _client_gone));
+        assert len(written) == 1;
+        assert not _committed(project, written[0]) , (
+            "the stream was left suspended and its scope committed the work "
+            "it had done before the client went away"
+        );
+    }
+}
+
+
+test "an async websocket stream cut off mid-delivery does not have its write committed" {
+    written: list[UUID] = [];
+    async def chunks -> AsyncGenerator[str, None] {
+        written.append(_write_note("unfinished"));
+        yield 'first';
+        yield 'second';
+    }
+    with TemporaryDirectory() as project {
+        asyncio.run(_deliver(project, chunks(), _client_gone));
+        assert len(written) == 1;
+        assert not _committed(project, written[0]) , (
+            "the stream was left suspended and its scope committed the work "
+            "it had done before the client went away"
+        );
+    }
+}
+
+
+test "a stream that cannot be closed has its request's work aborted, not committed" {
+    running = threading.Event();
+    release = threading.Event();
+    written: list[UUID] = [];
+    # The body is still executing in its worker thread when delivery is
+    # cancelled, so closing it raises "generator already executing".
+    def chunks -> Generator[str, None, None] {
+        written.append(_write_note("still running"));
+        running.set();
+        release.`wait(30);
+        yield 'never delivered';
+    }
+    def body_running -> bool {
+        return running.`wait(30);
+    }
+    async def cancel_while_running(project: str) {
+        loop = asyncio.get_running_loop();
+        scope = _open_scope(project);
+        stream: any = None;
+        try {
+            with scope as context {
+                stream = await ExecutionContext(_parent=context).bind_stream(chunks());
+                delivery = asyncio.ensure_future(
+                    _ws_stream_result(_client_listening, stream, scope.abort)
+                );
+                assert await loop.run_in_executor(None, body_running);
+                delivery.cancel();
+                try {
+                    await delivery;
+                } except asyncio.CancelledError {}
+            }
+        } finally {
+            release.set();
+        }
+    }
+    with TemporaryDirectory() as project {
+        asyncio.run(cancel_while_running(project));
+        assert len(written) == 1;
+        assert not _committed(project, written[0]) , (
+            "the stream could not be closed and its scope committed the work "
+            "it had done"
+        );
+    }
 }
 
 

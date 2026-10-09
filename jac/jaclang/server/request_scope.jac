@@ -9,7 +9,8 @@ glob logger: logging.Logger = logging.getLogger('jaclang.serve');
 
 obj RequestScope {
     has context: ExecutionContext,
-        _token: Token[(ExecutionContext | None)];
+        _token: Token[(ExecutionContext | None)],
+        _aborted: bool = False;
 
     static def open(
         base_path_dir: (str | None) = None, full_target_path: (str | None) = None
@@ -37,8 +38,21 @@ obj RequestScope {
         return context;
     }
 
+    def abort {
+        self._aborted = True;
+        self._discard();
+    }
+
+    def _discard {
+        self.context.mem.abort();
+        self.context.pending_effects.clear();
+    }
+
     def close {
         try {
+            if self._aborted {
+                self._discard();
+            }
             self.context.close();
         } except Exception as e {
             logger.warning(f"Failed to close request context: {e}", exc_info=True);

@@ -161,7 +161,7 @@ async def serve_ws_connection(
                     continue;
                 }
                 if isgenerator(result) or isinstance(result, AsyncGenerator) {
-                    await _ws_stream_result(send_result, result);
+                    await _ws_stream_result(send_result, result, scope.abort);
                 } elif isinstance(result, dict) and 'error' in result {
                     await websocket.send_json(
                         ws_error_frame(
