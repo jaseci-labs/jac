@@ -145,6 +145,25 @@ def fleet_targets_for_release(
 }
 
 
+def replacing_init_containers(body: dict[str, any]) -> dict[str, any] {
+    pod_spec: dict[str, any] = dict(
+        dict(dict(body.get("spec") or {}).get("template") or {}).get("spec") or {}
+    );
+    if "initContainers" not in pod_spec {
+        return body;
+    }
+    pod_spec["initContainers"] = list(pod_spec["initContainers"])
+        + [{"$patch": "replace"}];
+    template = dict(body["spec"]["template"]);
+    template["spec"] = pod_spec;
+    spec = dict(body["spec"]);
+    spec["template"] = template;
+    patched = dict(body);
+    patched["spec"] = spec;
+    return patched;
+}
+
+
 def restorable_pod_template(template: dict[str, any]) -> dict[str, any] {
     cleaned = dict(template);
     metadata = dict(cleaned.get("metadata") or {});
@@ -1211,8 +1230,11 @@ obj KubernetesTarget(KubernetesTargetBase) {
         deployments: dict[str, dict[str, any]] = bundle["deployments"];
         for (svc_name, raw_manifest) in deployments.items() {
             dep_manifest = with_config_revision(raw_manifest, config_revision);
-            patch_body = self._deployment_patch_body(
-                dep_manifest, dict(scaling.get(svc_name, {}))
+            patch_body = replacing_init_containers(
+                self._deployment_patch_body(
+                    dep_manifest, dict(scaling.get(svc_name, {}))
+                )
+                    or dep_manifest
             );
             self._apply_or_replace(
                 apps_v1,

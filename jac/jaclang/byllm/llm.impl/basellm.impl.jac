@@ -301,7 +301,7 @@ def _existing_cost(usage_obj: object) -> object {
 def _rebuild_stream_chunks(chunks: list[any], logging_obj: object) -> dict[str, any] {
     rebuilt: any = (
         litellm.stream_chunk_builder(chunks, logging_obj=logging_obj)
-            if _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ
+            if _stream_builder_accepts_logging_obj()
             else litellm.stream_chunk_builder(chunks)
     );
     return rebuilt;
