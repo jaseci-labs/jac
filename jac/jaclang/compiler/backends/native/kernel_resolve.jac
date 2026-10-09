@@ -515,7 +515,7 @@ def _derive_in_tree(lib_path: str) -> (ResolvedKernel | None) {
             }
             _publish_kernel(tmp, lib_path);
         } finally {
-            for leftover in (tmp, tmp + LAYOUT_SIDECAR_SUFFIX) {
+            for leftover in (tmp, tmp + LAYOUT_SIDECAR_SUFFIX, tmp + ".target.json") {
                 try {
                     os.remove(leftover);
                 } except OSError {}

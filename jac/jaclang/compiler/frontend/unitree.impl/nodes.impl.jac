@@ -3532,6 +3532,18 @@ impl FuncCall.callee_decl.setter(callee_decl: (Ability | None)) {
     }
 }
 
+impl FuncCall.callee_signature.getter -> (TypeBase | None) {
+    found = [self->:CalleeSignature:->];
+    return found[0] if found else None;
+}
+
+impl FuncCall.callee_signature.setter(callee_signature: (TypeBase | None)) {
+    del [edge self->:CalleeSignature:->];
+    if callee_signature is not None {
+        self +>:CalleeSignature:+> callee_signature;
+    }
+}
+
 impl Import.absorbed_mod.getter -> (Module | None) {
     found = [self->:Absorbs:->];
     return found[0] if found else None;

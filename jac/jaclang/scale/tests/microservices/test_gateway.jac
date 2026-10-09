@@ -586,7 +586,7 @@ test "service-down returns standardized envelope with SERVICE_UNAVAILABLE + Retr
     assert resp.headers.get("retry-after") == "2";
 }
 
-test "service-timeout returns GATEWAY_TIMEOUT (502) without Retry-After" {
+test "an unreachable service returns BAD_GATEWAY (502) without Retry-After" {
     reg = ServiceRegistry();
     reg.register(
         ServiceEntry(
@@ -607,9 +607,52 @@ test "service-timeout returns GATEWAY_TIMEOUT (502) without Retry-After" {
 
     assert resp.status_code == 502;
     body = resp.json();
-    assert body["error"]["code"] == "GATEWAY_TIMEOUT";
+    assert body["error"]["code"] == "BAD_GATEWAY";
     assert body["error"]["service"] == "orders";
     assert resp.headers.get("retry-after") is None;
+}
+
+test "a service that accepts but never answers returns GATEWAY_TIMEOUT (504)" {
+    import socket;
+    import shutil;
+    import from jaclang.scale.config.config_loader {
+        get_scale_config,
+        reset_scale_config
+    }
+    silent = socket.socket();
+    silent.bind(("127.0.0.1", 0));
+    silent.listen(4);
+    port = silent.getsockname()[1];
+    project = tempfile.mkdtemp(prefix="jac-gw-timeout-");
+    (Path(project) / "jac.toml").write_text(
+        '[project]\nname = "shop"\n\n[scale.gateway]\nhttp_forward_timeout = 1\n',
+        encoding="utf-8"
+    );
+    reset_scale_config();
+    try {
+        get_scale_config(project_dir=Path(project));
+        reg = ServiceRegistry();
+        reg.register(
+            ServiceEntry(
+                name="orders",
+                file="orders.jac",
+                prefix="/api/orders",
+                port=port,
+                url=f"http://127.0.0.1:{port}",
+                status=ServiceStatus.HEALTHY
+            )
+        );
+        gw = MicroserviceGateway(registry=reg);
+        gw.setup();
+        import from jaclang.testing.testkit { ServingTestClient as TestClient }
+        resp = TestClient(gw.app).get("/api/orders/walker/list");
+    } finally {
+        silent.close();
+        reset_scale_config();
+        shutil.rmtree(project, ignore_errors=True);
+    }
+    assert resp.status_code == 504;
+    assert resp.json()["error"]["code"] == "GATEWAY_TIMEOUT";
 }
 
 test "unmatched path returns NOT_FOUND envelope" {

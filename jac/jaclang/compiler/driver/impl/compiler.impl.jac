@@ -348,13 +348,11 @@ impl JacCompiler._adopt_kernel_compile(
     }
     target = compiled.unit(full_target);
     if target is None {
-        entry_report = compiled.analysis.module(full_target);
-        placed_native = entry_report is not None and entry_report.native;
-        return (bool(compiled.analysis.errors) and not placed_native, None);
+        return (bool(compiled.analysis.errors), None);
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     adopted: (bytes | None) = None;
-    for unit in compiled.units {
+    for unit in native_first(compiled.units) {
         with compile_progress.track(unit.path) {
             bytecode = assemble_jcir(unit.jcir);
             if bytecode is None {
@@ -367,10 +365,51 @@ impl JacCompiler._adopt_kernel_compile(
                 );
             }
             sections = unit_sections(unit, bytecode);
+            self._adopt_native_verdict(unit, program, sections);
+            if unit.native_ir {
+                try {
+                    sections.update(
+                        self._adopt_native_unit(
+                            unit, program, options, sections.get(SEC_CTDEPS, b"")
+                        )
+                    );
+                } except Exception as failure {
+                    if not self._demote_adopted_native(
+                        unit.path, program, options, failure
+                    ) {
+                        raise;
+                    }
+                    return self._adopt_kernel_compile(full_target, program, options);
+                }
+            }
             try {
                 write_module_cache(unit.path, bytecode, extra_sections=sections);
             } except OSError {}
             if unit is target {
+                if unit.native_ir and self._wants_native_engine(full_target, program) {
+                    import json;
+                    try {
+                        self._load_native_from_cache(
+                            full_target,
+                            program,
+                            json.loads(unit.interop) if unit.interop else None
+                        );
+                    } except Exception as failure {
+                        if not self._demote_adopted_native(
+                            unit.path, program, options, failure
+                        ) {
+                            raise;
+                        }
+                        return self._adopt_kernel_compile(
+                            full_target, program, options
+                        );
+                    }
+                    sections = {
+                        sec: raw
+                        for (sec, raw) in sections.items()
+                        if sec not in (SEC_NBITCODE, SEC_NOBJ)
+                    };
+                }
                 self._restore_sections(full_target, program, sections);
                 adopted = bytecode;
             } else {
@@ -379,6 +418,101 @@ impl JacCompiler._adopt_kernel_compile(
         }
     }
     return (True, adopted);
+}
+
+impl JacCompiler._demote_adopted_native(
+    unit_path: str, program: JacProgram, options: CompileOptions, failure: Exception
+) -> bool {
+    if options.aot_mode or options.force_codespace {
+        return False;
+    }
+    resolved = os.path.realpath(unit_path);
+    registry = program.native_units();
+    if registry.is_demoted(resolved) {
+        return False;
+    }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.frontend.host { active_host }
+    detail = f"Native compilation failed: {failure}".split("\n")[0];
+    host = active_host();
+    host.record_native_coverage(resolved, "demoted", "E5020", detail);
+    registry.record_verdict(resolved, "E5020", detail);
+    try {
+        get_module_cache_path(resolved).unlink();
+    } except OSError {}
+    host.note(
+        f"note: {unit_path} preferred native but did not lower; "
+        f"compiled in the server codespace ({detail})",
+        "dim"
+    );
+    return True;
+}
+
+impl JacCompiler.kernel_native_entry(
+    full_target: str, target_program: JacProgram, options: (CompileOptions | None)
+) -> tuple[bool, any] {
+    import from jaclang.project.kernel_compile { kernel_generates_native }
+    path = JacProgram.hub_key(full_target);
+    actual = self.selfhost.resolve(path, target_program, execution=True);
+    if actual.internal or not kernel_generates_native(actual, path) {
+        return (False, None);
+    }
+    if options is None {
+        self.get_bytecode(full_target=path, target_program=target_program);
+    } else {
+        self._adopt_kernel_compile(path, actual, options);
+    }
+    carrier = actual.hub.artifacts.get(path);
+    return (True, carrier.native_engine if carrier is not None else None);
+}
+
+impl JacCompiler._adopt_native_verdict(
+    unit: UnitProducts, program: JacProgram, sections: dict[int, bytes]
+) {
+    if not unit.placement {
+        return;
+    }
+    import json;
+    import from jaclang.compiler.driver.nativecache { native_verdict_dep_rows }
+    summary = json.loads(unit.placement);
+    code = str(summary.get("native_verdict_code", ""));
+    if not code {
+        return;
+    }
+    resolved = os.path.realpath(unit.path);
+    program.native_units().record_verdict(
+        resolved, code, str(summary.get("native_verdict", ""))
+    );
+    summary["native_verdict_deps"] = native_verdict_dep_rows(resolved);
+    sections[SEC_PLACEMENT] = json.dumps(summary).encode("utf-8");
+}
+
+impl JacCompiler._adopt_native_unit(
+    unit: UnitProducts,
+    program: JacProgram,
+    options: CompileOptions,
+    compile_deps: bytes
+) -> dict[int, bytes] {
+    registry = program.native_units();
+    ent = registry.adopt_lowered(
+        unit.path,
+        unit.native_ir,
+        unit.native_iface,
+        unit.native_layout,
+        unit.native_deps,
+        compile_deps,
+        options
+    );
+    if ent is None {
+        raise RuntimeError(
+            "the native compiler kernel lowered "
+            f"{unit.path} but its products could not be adopted: "
+            f"{registry.failures.get(
+                os.path.realpath(unit.path), 'no reason recorded'
+            )}"
+        );
+    }
+    return registry.product_sections(unit.path);
 }
 
 impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> bool {

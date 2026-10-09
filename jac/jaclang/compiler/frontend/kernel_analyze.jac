@@ -120,7 +120,8 @@ obj AnalysisReport {
         modules: list[ModuleReport] = [],
         errors: list[AnalysisDiag] = [],
         warnings: list[AnalysisDiag] = [],
-        misses: list[str] = [];
+        misses: list[str] = [],
+        events: list[list[str]] = [];
 
     def module(path: str) -> (ModuleReport | None) {
         resolved = os.path.realpath(path);
@@ -140,7 +141,8 @@ obj AnalysisReport {
             "modules": [m.to_dict() for m in self.modules],
             "errors": [d.to_dict() for d in self.errors],
             "warnings": [d.to_dict() for d in self.warnings],
-            "misses": list(self.misses)
+            "misses": list(self.misses),
+            "events": [list(row) for row in self.events]
         };
     }
 
@@ -160,9 +162,20 @@ obj AnalysisReport {
             modules=[module_from_dict(m) for m in json_maps(raw.get("modules"))],
             errors=[diag_from_dict(d) for d in json_maps(raw.get("errors"))],
             warnings=[diag_from_dict(d) for d in json_maps(raw.get("warnings"))],
-            misses=json_str_list(raw.get("misses"))
+            misses=json_str_list(raw.get("misses")),
+            events=json_str_pairs_of(raw.get("events"))
         );
     }
+}
+
+def json_str_pairs_of(value: object) -> list[list[str]] {
+    rows: list[list[str]] = [];
+    if isinstance(value, list) {
+        for item in value {
+            rows.append(json_str_list(item));
+        }
+    }
+    return rows;
 }
 
 def module_from_dict(raw: dict[str, any]) -> ModuleReport {
@@ -314,6 +327,7 @@ obj KernelRun {
             self.message
         );
         outcome.misses.extend(self.host.census.miss_keys);
+        outcome.events = self.host.event_rows();
         return outcome;
     }
 }
