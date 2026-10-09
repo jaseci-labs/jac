@@ -88,6 +88,19 @@ test "version fast path avoids heavy imports" {
     assert code == 0 , err;
 }
 
+test "version fast path skips cli module" {
+    # Guard the seed-tier fast path: if cli_boot ever regresses to importing
+    # jaclang.cli.cli before serving --version, this probe fails on the
+    # blocked import instead of silently paying the compiler boot.
+    for argv in (["--version"], ["-V"]) {
+        (code, out) = _probe(argv, blocked={"jaclang.cli.cli"});
+        assert code == 0 , f"jac {' '.join(argv)} failed:\n{out}";
+        assert any(line.startswith("jac ") for line in out.splitlines()) , (
+            f"unexpected version line for {argv}: {out!r}"
+        );
+    }
+}
+
 test "help fast path avoids heavy imports" {
     (code, err) = _probe(["--help"]);
     assert code == 0 , err;
