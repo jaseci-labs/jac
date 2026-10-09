@@ -258,13 +258,22 @@ impl ViteBundler.install_packages(
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
-        result = subprocess.run(
-            [bun, 'install'],
-            cwd=build_dir,
-            check=False,
-            text=True,
-            capture_output=capture_output
-        );
+        for attempt in range(1, BUN_INSTALL_ATTEMPTS + 1) {
+            result = subprocess.run(
+                [bun, 'install'],
+                cwd=build_dir,
+                check=False,
+                text=True,
+                capture_output=capture_output
+            );
+            if result.returncode == 0 or attempt == BUN_INSTALL_ATTEMPTS {
+                break;
+            }
+            console.warning(
+                f"bun install failed (attempt {attempt} of {BUN_INSTALL_ATTEMPTS}); retrying"
+            );
+            time.sleep(BUN_INSTALL_RETRY_PAUSE_SECONDS);
+        }
         elapsed = time.time() - start_time;
         if result.returncode != 0 {
             if capture_output {
