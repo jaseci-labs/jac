@@ -92,7 +92,8 @@ test "a Root trigger does not match every node" {
 statement naming `root` was dropped whole, and a connect with a list as an
 operand connected to the list object. A walker then stopped early and the
 program printed less than the Python tier, with no error. What is still not
-lowered (`root`, and a list on both sides of a connect) is refused by name."""
+lowered (`root` as a value, and a list on both sides of a connect) is
+refused by name."""
 test "graph forms the native tier cannot lower are refused, not dropped" {
     import from jaclang.compiler.driver.program { JacProgram }
     import from tests.support { native_force_opts }
@@ -156,4 +157,16 @@ test "default object text stops at an object it is already writing" {
     assert "Tree(name='top', parent=None, kids=[Tree(name='kid', parent=..., kids=[])])"
         in out , out;
     assert "Pair(left=Pair(left=..., label='b'), label='a')" in out , out;
+}
+
+"""The native tier has no root node, and nothing native can walk from one, so
+connecting a node to `root` is an anchor with no effect there: the rest of
+the statement still happens. `root ++> a ++> b` used to drop the whole
+statement and leave `a` and `b` unconnected."""
+test "a connect from root keeps the rest of the chain" {
+    out = assert_native_identity(
+        fixture("connect_from_root.jac"), profiles=["rc", "managed"]
+    );
+    assert "chain [1, 2, 3]" in out , out;
+    assert "typed [4, 5]" in out , out;
 }

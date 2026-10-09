@@ -6,7 +6,7 @@
     "differs": 1,
     "hangs": 0,
     "crashes": 1,
-    "skipped": 79
+    "skipped": 78
   },
   "programs": {
     "examples/chess/chess.jac": {
@@ -56,10 +56,6 @@
     "examples/notes-app/main.jac": {
       "class": "skipped",
       "reason": "the Python tier fails"
-    },
-    "examples/ownbench/bin/reg_graph_bare.jac": {
-      "class": "skipped",
-      "reason": "the Python tier is not repeatable"
     },
     "examples/ownbench/harness/audit.jac": {
       "class": "skipped",

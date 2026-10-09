@@ -702,6 +702,13 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if self._osp_ensure_fn is not None {
         self.builder.call(self._osp_ensure_fn, []);
     }
+    root_left = isinstance(nd.left, uni.SpecialVarRef) and nd.left.value == "root";
+    root_right = isinstance(nd.right, uni.SpecialVarRef) and nd.right.value == "root";
+    if (root_left or root_right)
+        and not (root_left and root_right)
+        and not co.capture_edges {
+        return self._codegen_expr(nd.right if root_left else nd.left);
+    }
     refusals_before = len(self.ctx.errors_had);
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);

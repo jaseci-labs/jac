@@ -44,7 +44,7 @@ glob CLASSES: list[str] = [
      RUN_SECONDS: int = 60,
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent),
      CORPUS: list[str] = ["tests/language/fixtures", "examples"],
-     EXCLUDED_DIRS: tuple[str, ...] = ("jaclang_org", "node_modules", ".jac"),
+     EXCLUDED_DIRS: tuple[str, ...] = ("jaclang_org", "node_modules", ".jac", "bin"),
      ANNEX_SUFFIXES: tuple[str, ...] = (
          ".impl.jac",
          ".test.jac",

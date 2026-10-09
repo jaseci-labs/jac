@@ -4,7 +4,9 @@ node Stop {
 
 with entry {
     first = Stop(val=1);
-    root ++> first;
+}
+glob anchor = root;
+with entry {
     sources = [Stop(val=2), Stop(val=3)];
     sources ++> [Stop(val=4), Stop(val=5)];
     print(first.val, len(sources));
