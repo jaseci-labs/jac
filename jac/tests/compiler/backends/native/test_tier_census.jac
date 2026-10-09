@@ -12,6 +12,7 @@ import sys;
 import tests.tier_census as census_tool;
 import from unittest.mock { patch }
 import from tests.tier_census {
+    Outcome,
     Run,
     classify,
     compare,
@@ -72,4 +73,25 @@ test "program output that looks like tool progress is still compared" {
         outcome = classify("examples/talks_like_the_tool.jac");
     }
     assert outcome.kind == "differs" , outcome.record();
+}
+
+"""A program that prints a random number is not repeatable, yet two runs
+agree now and then. The class it gets on such a run is chance, so it is
+neither an improvement to record nor a regression."""
+test "a program recorded as not repeatable never makes the baseline stale" {
+    baseline = {
+        "a.jac": Outcome(kind="skipped", reason="the Python tier is not repeatable"),
+        "b.jac": Outcome(kind="skipped", reason="the Python tier fails"),
+        "c.jac": Outcome(kind="same")
+    };
+    census = {
+        "a.jac": Outcome(kind="differs"),
+        "b.jac": Outcome(kind="refused", reason="E5092 x"),
+        "c.jac": Outcome(kind="skipped", reason="the Python tier is not repeatable")
+    };
+    (worse, stale) = compare(census, baseline);
+    assert worse == [] , worse;
+    assert len(stale) == 2 , stale;
+    assert stale[0].startswith("b.jac: skipped -> refused") , stale;
+    assert stale[1].startswith("c.jac: same -> skipped") , stale;
 }

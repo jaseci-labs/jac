@@ -40,6 +40,7 @@ glob CLASSES: list[str] = [
          "crashes"
      ],
      SKIPPED: str = "skipped",
+     UNREPEATABLE: str = "the Python tier is not repeatable",
      BASELINE: str = "tier_census.json",
      RUN_SECONDS: int = 60,
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent),
@@ -201,7 +202,7 @@ def classify(program: str) -> Outcome {
     }
     again = run_tier(program, "python");
     if again.timed_out or again.code != 0 or again.out != reference.out {
-        return Outcome(kind=SKIPPED, reason="the Python tier is not repeatable");
+        return Outcome(kind=SKIPPED, reason=UNREPEATABLE);
     }
     native = run_tier(program, "native");
     if native.timed_out {
@@ -275,7 +276,11 @@ def write_baseline(census: dict[str, Outcome]) {
 
 """Programs that moved to a worse class, and programs that moved to a better
 one or are new: the first break the ratchet, the second make the baseline
-stale."""
+stale.
+
+A program recorded as not repeatable is left out of both. It prints
+something that varies, a random number or a time, and two runs agree now and
+then by chance; the class it gets on such a run says nothing about it."""
 def compare(
     census: dict[str, Outcome], baseline: dict[str, Outcome]
 ) -> tuple[list[str], list[str]] {
@@ -287,7 +292,8 @@ def compare(
             stale.append(f"{program}: new, {now.kind}");
             continue;
         }
-        if before.kind == now.kind {
+        if before.kind == now.kind
+            or (before.kind == SKIPPED and before.reason == UNREPEATABLE) {
             continue;
         }
         line = f"{program}: {before.kind} -> {now.kind}";
