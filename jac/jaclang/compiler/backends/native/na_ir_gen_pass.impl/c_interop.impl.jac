@@ -88,7 +88,7 @@ impl NaIRGenPass._c_load_scalar(slot: ir.Value, t: any, name: str) -> ir.Value {
 impl NaIRGenPass._c_store_scalar(value: ir.Value, slot: ir.Value, t: any) -> None {
     slot_type = slot.type;
     assert isinstance(slot_type, ir.PointerType);
-    want: ir.Type = slot_type.pointee;
+    want: ir.Type = slot_type.pointee_type;
     if isinstance(t, ClassType) and t.shared.class_name == "bool" {
         flag = self._to_bool(value);
         self.builder.store(self.builder.zext(flag, want, name="c.bool.byte"), slot);
@@ -113,7 +113,8 @@ impl NaIRGenPass._pinned_scalar_box(elem: any) -> (str | None) {
         self.struct_field_order[name] = ["value"];
         self.struct_field_types[name] = {"value": llt};
         self.struct_field_defaults[name] = {};
-        self.struct_field_foreign[name] = set();
+        _no_foreign: set[str] = set();
+        self.struct_field_foreign[name] = _no_foreign;
         self.clib_struct_names.add(name);
     }
     return name;
@@ -499,7 +500,12 @@ impl NaIRGenPass._clib_ret_is_cptr(sig: uni.FuncSignature) -> bool {
 }
 
 impl NaIRGenPass._c_decl_type_of(type_expr: uni.UniNode) -> any {
-    t = type_expr?.type;
+    t: (TypeBase | None) = None;
+    if isinstance(type_expr, uni.Expr) {
+        t = type_expr.type;
+    } elif isinstance(type_expr, uni.AstTypedVarNode) {
+        t = type_expr.type;
+    }
     if isinstance(t, ClassType) and not t.is_instance() {
         return t.clone_as_instance();
     }
@@ -545,7 +551,7 @@ impl NaIRGenPass._codegen_clib_args(
         return None;
     }
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    param_plans = plan["params"];
+    param_plans: list[dict[str, any]] = plan["params"];
     if len(params) != len(param_plans) {
         return None;
     }
@@ -561,9 +567,10 @@ impl NaIRGenPass._codegen_clib_args(
     }
     i8p = ir.IntType(8).as_pointer();
     out: list[ir.Value] = [];
-    for (i, pp) in enumerate(param_plans) {
+    for i in range(len(param_plans)) {
+        pp = param_plans[i];
         arg = params[i];
-        info = pp.get("c_arg") or {};
+        info: dict[str, any] = pp.get("c_arg") or {};
         if isinstance(arg, uni.Null) and (info.get("optional") or info.get("cptr")) {
             out.append(ir.Constant(i8p, None));
             continue;

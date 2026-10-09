@@ -28,9 +28,12 @@ impl NaIRGenPass._get_or_declare_extern(
             f"Incompatible native extern declaration for {name}: {actual} versus {wanted}"
         );
     }
-    pairs = list(zip(arg_types, actual.args));
-    pairs.append((actual.return_type, ret_type));
-    for (source, target) in pairs {
+    _n_pairs = len(arg_types);
+    for _pair_i in range(_n_pairs + 1) {
+        source: ir.Type = arg_types[_pair_i]
+            if _pair_i < _n_pairs
+            else actual.return_type;
+        target: ir.Type = actual.args[_pair_i] if _pair_i < _n_pairs else ret_type;
         if source == target {
             continue;
         }
@@ -98,8 +101,8 @@ impl NaIRGenPass._get_printf -> ir.Function {
 
 impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     printf = self._get_printf();
-    raw: Sequence[any] = nd.params or [];
-    params: list[any] = [];
+    raw: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
+    params: list[uni.Expr] = [];
     stream = "stdout";
     for param in raw {
         if not isinstance(param, uni.KWPair) {
@@ -282,8 +285,7 @@ impl NaIRGenPass._emit_print_call(
     i32 = ir.IntType(32);
     i8p = ir.IntType(8).as_pointer();
     libc_name = "stderr";
-    import platform as _plat;
-    if _plat.system() == "Darwin" {
+    if active_host().native_fact(FACT_OS, "") == "Darwin" {
         libc_name = "__stderrp";
     }
     if libc_name not in self.llvm_module.globals {
@@ -390,7 +392,7 @@ impl NaIRGenPass._static_str_struct_const(data: bytes) -> tuple[ir.Type, ir.Cons
 
 impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir.Value {
     i32 = ir.IntType(32);
-    _key = f"{name_prefix}\x00{text}";
+    _key = name_prefix + "\x00" + text;
     global_str = self._interned_strs.get(_key);
     if global_str is None {
         (struct_type, struct_val) = self._static_str_struct_const(
@@ -1007,7 +1009,7 @@ impl NaIRGenPass._codegen_list_slice(
 
     new_list = self.builder.call(helpers["new"], [], name="sl.new");
 
-    i_alloca = self.builder.alloca(i64, name="sl.i");
+    i_alloca = self._stack_entry_alloca(i64, "sl.i");
     self.builder.store(start_val, i_alloca);
     loop_check = func.append_basic_block(name="sl.check");
     loop_body = func.append_basic_block(name="sl.body");
@@ -1154,8 +1156,8 @@ impl NaIRGenPass._codegen_string_slice(
     new_str = self._str_alloc(self.builder, alloc_size, name="ss.new");
     self._clear_rc_ctx();
 
-    i_alloca = self.builder.alloca(i64, name="ss.i");
-    k_alloca = self.builder.alloca(i64, name="ss.k");
+    i_alloca = self._stack_entry_alloca(i64, "ss.i");
+    k_alloca = self._stack_entry_alloca(i64, "ss.k");
     self.builder.store(start_val, i_alloca);
     self.builder.store(zero, k_alloca);
     loop_check = func.append_basic_block(name="ss.check");
@@ -1243,7 +1245,7 @@ impl NaIRGenPass._codegen_str_strip_chars(
 
     final_start: ir.Value = ir.Constant(i64, 0);
     if do_left {
-        start_alloca = self.builder.alloca(i64, name="strip.start");
+        start_alloca = self._stack_entry_alloca(i64, "strip.start");
         self.builder.store(ir.Constant(i64, 0), start_alloca);
         start_check_bb = func.append_basic_block(name="strip.start.check");
         start_body_bb = func.append_basic_block(name="strip.start.body");
@@ -1271,7 +1273,7 @@ impl NaIRGenPass._codegen_str_strip_chars(
 
     final_end = slen;
     if do_right {
-        end_alloca = self.builder.alloca(i64, name="strip.end");
+        end_alloca = self._stack_entry_alloca(i64, "strip.end");
         self.builder.store(slen, end_alloca);
         end_check_bb = func.append_basic_block(name="strip.end.check");
         end_body_bb = func.append_basic_block(name="strip.end.body");
@@ -1513,7 +1515,7 @@ impl NaIRGenPass._emit_sys_argv -> (ir.Value | None) {
 
     memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
 
-    i_alloca = self.builder.alloca(i64, name="argv.i");
+    i_alloca = self._stack_entry_alloca(i64, "argv.i");
     self.builder.store(ir.Constant(i64, 0), i_alloca);
 
     loop_check = func.append_basic_block(name="argv.check");
@@ -1558,9 +1560,8 @@ impl NaIRGenPass._emit_sys_stream(stream: str) -> (ir.Value | None) {
     file_st = self._get_file_struct_type();
     self._emit_file_helpers();
 
-    import platform as _plat;
     libc_name = stream;
-    if _plat.system() == "Darwin" {
+    if active_host().native_fact(FACT_OS, "") == "Darwin" {
         libc_name = "__stdoutp" if stream == "stdout" else "__stderrp";
     }
 

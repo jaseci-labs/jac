@@ -63,6 +63,15 @@ def list_directory(directory: str) -> (list[str] | None) {
     }
 }
 
+def style_annex_of(source_path: str) -> (str | None) {
+    src = os.path.realpath(source_path);
+    if not src.endswith(".jac") {
+        return None;
+    }
+    candidate = src[:-len(".jac")] + ".style.css";
+    return candidate if os.path.isfile(candidate) else None;
+}
+
 def annex_files_of(
     tables: LayoutTables,
     source_path: str,

@@ -381,6 +381,17 @@ impl jacLogin(
 impl jacLogout -> None {
     __jacClearCache();
     globalThis.__jacRemoveLocalStorage__("jac_token");
+    try {
+        fetch(
+            f"{globalThis.__jacGetApiBaseUrl__()}/user/logout", {"method": "POST"}
+        ).catch(
+            lambda (e: any) { console.warn(
+                "[jac-client] session cookie clear failed:", e
+            ); }
+        );
+    } except Exception as e {
+        console.warn("[jac-client] session cookie clear failed:", e);
+    }
 }
 
 impl jacIsLoggedIn -> bool {

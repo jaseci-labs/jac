@@ -65,3 +65,16 @@ test "dictionary and view equality agree with Python under every memory profile"
             "dunder True True"
         ];
 }
+
+"""A property read or a call hands the comparison a reference it owns. The
+comparison releases it; the `__eq__` it calls borrows it. When the call
+released it as well, an object still held elsewhere (here the holder's field)
+was freed after two comparisons."""
+test "a user __eq__ borrows an operand the comparison owns" {
+    source = str(
+        Path(__file__).resolve().parent / "fixtures" / "arch_eq_owned_operand.jac"
+    );
+    out = assert_native_identity(source, profiles=["rc", "managed"]);
+    assert "hits 900" in out , out;
+    assert "kept kept" in out , out;
+}

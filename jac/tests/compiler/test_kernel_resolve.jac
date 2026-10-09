@@ -43,11 +43,32 @@ def _with_env(name: str, value: (str | None), fn: any) -> any {
     }
 }
 
-test "the off switch selects the store parser" {
+test "the off switch selects the store parser only in a kernel build" {
+    import from jaclang.compiler.backends.native.kernel_resolve {
+        KERNEL_BUILDING_ENV,
+        KernelUnavailable
+    }
+    def off(fn: any) -> any {
+        return _with_env(KERNEL_LIB_ENV, "off", fn);
+    }
     reset_loaded();
     try {
-        assert _with_env(KERNEL_LIB_ENV, "off", lambda() { resolve_kernel(); }) is None;
-        assert _with_env(KERNEL_LIB_ENV, "off", lambda() { ensure_loaded(); }) is None;
+        def building(fn: any) -> any {
+            return _with_env(KERNEL_BUILDING_ENV, "1", lambda() { off(fn); });
+        }
+        assert building(lambda() { resolve_kernel(); }) is None;
+        assert building(lambda() { ensure_loaded(); }) is None;
+        refused = False;
+        try {
+            _with_env(
+                KERNEL_BUILDING_ENV,
+                None,
+                lambda() { off(lambda() { resolve_kernel(); }); }
+            );
+        } except KernelUnavailable {
+            refused = True;
+        }
+        assert refused , "JAC_COMPILER_LIB=off outside a kernel build must be refused";
     } finally {
         reset_loaded();
     }
@@ -362,5 +383,73 @@ test "kernel source identity is independent of the caller compilation context" {
         with cache_scope(CompileOptions(target_app="application-context")) {
             assert units_source_key([str(source)], options) == built;
         }
+    }
+}
+
+test "a successful derivation sweeps the stage, its sidecar, and its target spec" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.backends.native.kernel_resolve as resolver;
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        lib = os.path.join(tmp, "libjac_compiler.so");
+        def fake_build(destination: str, prog: any = None, log: any = None) -> bool {
+            Path(destination).write_bytes(b"fresh kernel");
+            Path(destination + ".layout.json").write_text(json.dumps({"classes": {}}));
+            Path(destination + ".target.json").write_text(json.dumps({"units": []}));
+            return True;
+        }
+        with patch.object(resolver, "_accept_in_tree", return_value=None) {
+            with patch.object(resolver, "_adopt_bundled", return_value=None) {
+                with patch(
+                    "jaclang.compiler.backends.native.stage0_build.build_kernel_by_pin",
+                    side_effect=fake_build
+                ) {
+                    found = resolver._derive_in_tree(lib);
+                }
+            }
+        }
+        assert found is not None and found.source == "tree";
+        assert Path(lib).read_bytes() == b"fresh kernel";
+        assert read_sidecar(lib) is not None , "the published sidecar travels with the library";
+        assert sorted(p.name for p in Path(tmp).iterdir())
+            == [
+                "libjac_compiler.so",
+                "libjac_compiler.so.layout.json",
+                "libjac_compiler.so.lock"
+            ] , "the stage file, its layout sidecar, and its target spec are swept";
+    }
+}
+
+test "a failed derivation still sweeps its stage and target spec" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.backends.native.kernel_resolve as resolver;
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        lib = os.path.join(tmp, "libjac_compiler.so");
+        def dead_build(destination: str, prog: any = None, log: any = None) -> bool {
+            Path(destination).write_bytes(b"torn kernel");
+            Path(destination + ".layout.json").write_text(json.dumps({"classes": {}}));
+            Path(destination + ".target.json").write_text(json.dumps({"units": []}));
+            raise RuntimeError("link died");
+        }
+        raised = False;
+        with patch.object(resolver, "_accept_in_tree", return_value=None) {
+            with patch.object(resolver, "_adopt_bundled", return_value=None) {
+                with patch(
+                    "jaclang.compiler.backends.native.stage0_build.build_kernel_by_pin",
+                    side_effect=dead_build
+                ) {
+                    try {
+                        resolver._derive_in_tree(lib);
+                    } except RuntimeError {
+                        raised = True;
+                    }
+                }
+            }
+        }
+        assert raised , "a failed build surfaces its error";
+        assert not os.path.exists(str(lib)) , "a failed build publishes nothing";
+        assert sorted(p.name for p in Path(tmp).iterdir())
+            == ["libjac_compiler.so.lock"] , (
+            "an interrupted build leaves no stage file, sidecar, or target spec behind"
+        );
     }
 }

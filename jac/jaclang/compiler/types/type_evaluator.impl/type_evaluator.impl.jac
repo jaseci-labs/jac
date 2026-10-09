@@ -3720,12 +3720,10 @@ impl TypeEvaluator.assign_type(
         return True;
     }
 
-    if isinstance(dest_type, ClassType) and dest_type.is_class_instance() {
-        _ext_arch = dest_type.shared.symbol_table;
-        if isinstance(_ext_arch, Archetype)
-            and _ext_arch.find_parent_of_type(Import) is not None {
-            return True;
-        }
+    if isinstance(dest_type, ClassType)
+        and dest_type.is_class_instance()
+        and dest_type.shared.is_extern_struct {
+        return True;
     }
 
     if self._in_native_context() {
@@ -3786,14 +3784,12 @@ impl TypeEvaluator.assign_type(
         }
     }
 
-    if isinstance(src_type, ClassType) and src_type.is_class_instance() {
-        _ext_src = src_type.shared.symbol_table;
-        if isinstance(_ext_src, Archetype)
-            and _ext_src.find_parent_of_type(Import) is not None
-            and isinstance(dest_type, ClassType)
-            and dest_type.is_builtin("int") {
-            return True;
-        }
+    if isinstance(src_type, ClassType)
+        and src_type.is_class_instance()
+        and src_type.shared.is_extern_struct
+        and isinstance(dest_type, ClassType)
+        and dest_type.is_builtin("int") {
+        return True;
     }
 
     if self.prefetch
@@ -4294,6 +4290,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             classify_client_import_item,
             resolve_import_source_module
         }
+        client_tops: dict[str, bool] = {};
         for imp in mod.get_all_sub_nodes(Import) {
             kind = classify_cross_app_import(imp, None);
             is_service = kind == CrossAppKind.SERVICE_BRIDGE;
@@ -4301,7 +4298,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             is_native_edge = (
                 not is_service
                 and not is_boundary
-                and is_client_native_edge_import(imp, self.program)
+                and is_client_native_edge_import(imp, self.program, client_tops)
             );
             if not (is_service or is_boundary or is_native_edge) {
                 continue;

@@ -25,7 +25,9 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);
         if func is not None {
-            entries.append(func.bitcast(i8_ptr));
+            entries.append(
+                self._vtable_slot_entry(arch_name, method_name, func).bitcast(i8_ptr)
+            );
         } else {
             entries.append(ir.Constant(i8_ptr, None));
         }
@@ -44,6 +46,80 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     vtable_global.linkage = "";
     vtable_global.initializer = vtable_init;
     self._record_export(f"{arch_name}.__vtable", vtable_global.name, "vtable");
+}
+
+impl NaIRGenPass._vtable_slot_type(
+    arch_name: str, method_name: str
+) -> (ir.FunctionType | None) {
+    for cls in reversed(self._mro_of(arch_name)) {
+        lay = self._arch_layout(cls);
+        if lay is None or not lay.has_vtable or method_name not in lay.method_index {
+            continue;
+        }
+        introduced = self._resolve_method(cls, method_name);
+        if introduced is not None {
+            return introduced.function_type;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._slot_abi_matches(
+    fn_type: ir.FunctionType, slot_type: ir.FunctionType
+) -> bool {
+    if len(fn_type.args) != len(slot_type.args) {
+        return False;
+    }
+    haves: list[ir.Type] = [fn_type.return_type];
+    wants: list[ir.Type] = [slot_type.return_type];
+    haves.extend(fn_type.args);
+    wants.extend(slot_type.args);
+    for i in range(len(haves)) {
+        have = haves[i];
+        want = wants[i];
+        if have != want
+            and not (
+                isinstance(have, ir.PointerType) and isinstance(want, ir.PointerType)
+            ) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._vtable_slot_entry(
+    arch_name: str, method_name: str, func: ir.Function
+) -> ir.Function {
+    slot_type = self._vtable_slot_type(arch_name, method_name);
+    if slot_type is None
+        or len(slot_type.args) != len(func.function_type.args)
+        or self._slot_abi_matches(func.function_type, slot_type) {
+        return func;
+    }
+    name = f"{func.name}.__slot";
+    if name in self.llvm_module.globals {
+        existing = self.llvm_module.get_global(name);
+        assert isinstance(existing, ir.Function);
+        return existing;
+    }
+    thunk = ir.Function(self.llvm_module, slot_type, name=name);
+    thunk.linkage = "internal";
+    saved_builder = self._builder;
+    self._builder = ir.IRBuilder(thunk.append_basic_block("entry"));
+    call_args: list[ir.Value] = [];
+    for (arg, want) in zip(thunk.args, func.function_type.args) {
+        call_args.append(self._coerce_type(arg, want));
+    }
+    result = self.builder.call(func, call_args, name=f"slot.{method_name}");
+    if isinstance(slot_type.return_type, ir.VoidType) {
+        self.builder.ret_void();
+    } elif isinstance(func.function_type.return_type, ir.VoidType) {
+        self.builder.ret(ir.Constant(slot_type.return_type, None));
+    } else {
+        self.builder.ret(self._coerce_type(result, slot_type.return_type));
+    }
+    self._builder = saved_builder;
+    return thunk;
 }
 
 impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
@@ -402,10 +478,31 @@ impl NaIRGenPass._codegen_virtual_call(
     );
     method_i8 = self.builder.load(method_slot, name=f"fn.{method_name}.raw");
 
+    slot_type = self._vtable_slot_type(obj_type_name, method_name) or fn_type;
+    if len(slot_type.args) != len(fn_type.args) {
+        slot_type = fn_type;
+    }
+    slot_args: list[ir.Value] = [];
+    for (i, arg) in enumerate(coerced) {
+        slot_args.append(
+            self._coerce_type(arg, slot_type.args[i])
+                if i < len(slot_type.args)
+                else arg
+        );
+    }
     typed_fn = self.builder.bitcast(
-        method_i8, fn_type.as_pointer(), name=f"fn.{method_name}"
+        method_i8, slot_type.as_pointer(), name=f"fn.{method_name}"
     );
-    _vt_res = self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
+    _vt_res: ir.Value = self.builder.call(
+        typed_fn, slot_args, name=f"vcall.{method_name}"
+    );
+    if isinstance(slot_type.return_type, ir.VoidType)
+        and not isinstance(fn_type.return_type, ir.VoidType) {
+        _vt_res = ir.Constant(fn_type.return_type, None);
+    } elif not isinstance(fn_type.return_type, ir.VoidType)
+        and _vt_res.type != fn_type.return_type {
+        _vt_res = self._coerce_type(_vt_res, fn_type.return_type);
+    }
 
     if release_args {
         self._release_owned_args(coerced, op="vcall_arg");
@@ -660,6 +757,87 @@ impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | N
     );
 }
 
+def _caught_exception_class_name(
+    pass_ref: NaIRGenPass, var_name: str
+) -> (ir.Value | None) {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    func = pass_ref.builder.function;
+    code: (ir.Value | None) = None;
+    raised: (ir.Value | None) = None;
+    message: (ir.Value | None) = None;
+    for (owner, name, slot, bound, values) in reversed(pass_ref._exc_bindings) {
+        if owner is func and name == var_name {
+            if pass_ref.local_vars.get(name) is not slot {
+                return None;
+            }
+            code = values[0];
+            raised = values[1];
+            message = values[2];
+            break;
+        }
+    }
+    if code is None or raised is None or message is None {
+        return None;
+    }
+    class_name_fn = pass_ref._emit_runtime_class_name_fn();
+    if class_name_fn is None {
+        return None;
+    }
+    b = pass_ref.builder;
+    i8p = ir.IntType(8).as_pointer();
+    named: ir.Value = ir.Constant(i8p, None);
+    for (builtin, _parent) in JAC_TYPE_REGISTRY.exception_entries() {
+        type_id = JAC_TYPE_REGISTRY.exception_type_id(builtin);
+        named = b.select(
+            b.icmp_unsigned("==", code, ir.Constant(code.type, type_id)),
+            pass_ref._make_global_string(builtin),
+            named,
+            name="exc.name"
+        );
+    }
+    base_named = b.select(
+        b.icmp_unsigned("==", code, ir.Constant(code.type, 0)),
+        pass_ref._make_global_string("Exception"),
+        named,
+        name="exc.name"
+    );
+    raised_p = b.bitcast(raised, i8p, name="exc.name.obj");
+    message_p = b.bitcast(message, i8p, name="exc.name.msg");
+    is_object = b.and_(
+        b.icmp_unsigned(
+            "==", base_named, ir.Constant(i8p, None), name="exc.name.unknown"
+        ),
+        b.and_(
+            b.icmp_unsigned("!=", raised_p, ir.Constant(i8p, None)),
+            b.icmp_unsigned("!=", raised_p, message_p)
+        ),
+        name="exc.name.isobj"
+    );
+    object_bb = func.append_basic_block(name="exc.name.object");
+    done_bb = func.append_basic_block(name="exc.name.done");
+    fallback = b.select(
+        b.icmp_unsigned("==", base_named, ir.Constant(i8p, None)),
+        pass_ref._make_global_string("Exception"),
+        base_named,
+        name="exc.name.or"
+    );
+    from_bb = b.basic_block;
+    b.cbranch(is_object, object_bb, done_bb);
+    b.position_at_end(object_bb);
+    shown = b.call(
+        pass_ref._emit_class_display_fn(),
+        [b.call(class_name_fn, [raised_p], name="exc.name.cls")],
+        name="exc.name.display"
+    );
+    object_end = b.basic_block;
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    result = b.phi(i8p, name="exc.class.name");
+    result.add_incoming(fallback, from_bb);
+    result.add_incoming(shown, object_end);
+    return result;
+}
+
 impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
     if not (nd.is_attr and self._get_name(nd.right) == "__name__") {
         return None;
@@ -696,6 +874,12 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
     }
     if receiver is None {
         return None;
+    }
+    if isinstance(receiver, uni.Name) {
+        _caught_name = _caught_exception_class_name(self, receiver.value);
+        if _caught_name is not None {
+            return _caught_name;
+        }
     }
     _static_arch = self._struct_name_of(receiver);
     if _static_arch is not None and not self._arch_has_vtable(_static_arch) {
@@ -734,7 +918,8 @@ impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
     if not expr.type.is_instantiable() or expr.type.is_instance() {
         return None;
     }
-    return expr.type.shared.class_name;
+    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+    return class_type_native_name(expr.type);
 }
 
 impl NaIRGenPass._codegen_class_id(receiver: uni.UniNode) -> (ir.Value | None) {
@@ -789,7 +974,7 @@ impl NaIRGenPass._codegen_class_ref(
         return None;
     }
 
-    if _np?.collection is nd {
+    if isinstance(_np, (uni.InForStmt, uni.InnerCompr)) and _np.collection is nd {
         return None;
     }
     _arch = self._module_class_name(nd)
@@ -831,7 +1016,9 @@ impl NaIRGenPass._emit_isa_fn -> ir.Function {
     }
     i1 = ir.IntType(1);
     i8p = ir.IntType(8).as_pointer();
-    fn: any = self._define_function("__jac_isa", ir.FunctionType(i1, [i8p, i8p]));
+    fn: ir.Function = self._define_function(
+        "__jac_isa", ir.FunctionType(i1, [i8p, i8p])
+    );
     fn.linkage = "private";
     fn.args[0].name = "cls";
     fn.args[1].name = "tgt";
@@ -876,7 +1063,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     ent_ty = ir.LiteralStructType([i64, i8p, i32, i32]);
 
     reg = get_layout_registry(self.module, self.prog);
-    classes = sorted(set(reg.mro_order));
+    classes = sorted(reg.mro_order.keys());
     ancestors: list[ir.Constant] = [];
     spans: dict[str, tuple[int, int]] = {};
     for cls in classes {
@@ -945,7 +1132,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     idx_gv.initializer = ir.Constant(idx_arr, slots);
 
     strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
-    fn: any = self._define_function(
+    fn: ir.Function = self._define_function(
         "__jac_isa_h", ir.FunctionType(i1, [i8p, i8p, i64])
     );
     fn.linkage = "private";
@@ -1137,7 +1324,7 @@ impl NaIRGenPass._emit_isa_vtable_fn -> ir.Function {
     i8p = ir.IntType(8).as_pointer();
     rec_ty = ir.LiteralStructType([i64, i8p]);
     strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
-    fn: any = self._define_function(
+    fn: ir.Function = self._define_function(
         "__jac_isa_vt", ir.FunctionType(i1, [i8p.as_pointer(), i8p, i64])
     );
     fn.linkage = "private";
@@ -1402,7 +1589,7 @@ impl NaIRGenPass._runtime_class_arms(
     arity is a runtime value -- comes back whole for the loop to walk. Both are
     `None` when the argument is not a runtime class handle at all.
     """;
-    none_pair = (None, None, );
+    none_pair: tuple[list[ir.Value] | None, ir.Value | None] = (None, None, );
     one = self._runtime_class_value(expr);
     if one is not None {
         return ([one], None, );
@@ -1426,13 +1613,16 @@ impl NaIRGenPass._runtime_class_arms(
         val = self.builder.load(val, name="isa.tgts");
     }
     out: list[ir.Value] = [];
-    for i in range(len(st.elements)) {
+    for i in range(len(st.members())) {
         if st.elements[i] != i8p {
             return none_pair;
         }
         out.append(self.builder.extract_value(val, i, name="isa.tgt"));
     }
-    return (out, None, ) if out else none_pair;
+    if out {
+        return (out, None, );
+    }
+    return none_pair;
 }
 
 impl NaIRGenPass._emit_isa_seq_fn -> ir.Function {
@@ -1452,7 +1642,7 @@ impl NaIRGenPass._emit_isa_seq_fn -> ir.Function {
     helpers = self.list_helpers["ptr"];
     seq_ty = self.list_types["ptr"].as_pointer();
 
-    fn: any = self._define_function(
+    fn: ir.Function = self._define_function(
         "__jac_isa_seq", ir.FunctionType(i1, [i8p, seq_ty])
     );
     fn.linkage = "private";

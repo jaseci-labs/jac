@@ -1,18 +1,14 @@
-"""Cross-backend OSP equivalence fixture: BOUND ENDPOINTS on edge refs plus
-the `jid` identity builtin (native gap closing).
+"""Cross-backend OSP equivalence fixture: bound endpoints and `jid`.
 
-Covered, all between two bound nodes:
-  * edge objects of a typed edge  `[edge p ->:Child:-> c]`, with the edge's
-    own fields read off the result (subscript / loop var / def return)
-  * backward bound endpoint       `[edge c <-:Child:<- p]`
-  * plain traversal to a bound neighbour `[p ->:Child:-> c]` (identity of
-    the single result checked via `jid`)
-  * `jid(x)` shape: equal for the same object within a process, distinct
-    across objects, 32 chars. Exact id bytes are backend-specific by design
-    (uuid-based on sv, allocation-derived on na), so only shape is compared.
+A bound endpoint names the far end of a hop: `[p ->:Child:-> c]` keeps the
+neighbours (or, with `edge`, the edges) that reach `c`. Covered: forward and
+backward edge objects between two bound nodes with their fields read back, a
+list of endpoints, an edge predicate combined with an endpoint, an endpoint in
+the middle of a chain, and plain node results. `jid` is compared by shape only
+(exact ids are backend-specific): stable per object, distinct across objects,
+32 hex characters, for nodes, edges and a narrowed optional node.
 
-Graph: p -Child(rank=7)-> c, p -Child(rank=9)-> o. Exactly one Child edge
-between p and c; none between c and o.
+Graph: p -Child(7)-> c, p -Child(9)-> o, c -Child(1)-> g.
 """
 
 node Sub {
@@ -25,115 +21,124 @@ edge Child: Sub --> Sub {
 
 def forward_rank(p: Sub, c: Sub) -> int {
     es = [edge p->:Child:->c];
-    if len(es) == 0 {
-        return -1;
-    }
-    return es[0].rank;
-}
-
-def loop_rank(p: Sub, c: Sub) -> int {
-    for e in [edge p->:Child:->c] {
-        return e.rank;
-    }
-    return -1;
+    return es[0].rank if len(es) == 1 else -1;
 }
 
 def backward_rank(p: Sub, c: Sub) -> int {
     es = [edge c<-:Child:<-p];
-    if len(es) == 0 {
-        return -1;
-    }
-    return es[0].rank;
+    return es[0].rank if len(es) == 1 else -1;
 }
 
-def bound_edge_count(p: Sub, o: Sub) -> int {
-    return len([edge p->:Child:->o]);
+def listed(p: Sub, c: Sub, g: Sub) -> int {
+    ends: list[Sub] = [c, g];
+    return len([p->:Child:->ends]);
 }
 
-def bound_node_is(p: Sub, c: Sub) -> bool {
-    ns = [p->:Child:->c];
-    if len(ns) != 1 {
-        return False;
+def predicated(p: Sub, c: Sub, o: Sub) -> int {
+    return len([edge p->:Child:rank>8:->o]) * 10 + len([edge p->:Child:rank>8:->c]);
+}
+
+def mid_chain(p: Sub, c: Sub, o: Sub) -> int {
+    return len([p->:Child:->c->:Child:->]) * 10 + len([p->:Child:->o->:Child:->]);
+}
+
+def unconnected(c: Sub, o: Sub) -> int {
+    return len([c->:Child:->o]);
+}
+
+def jid_len(n: (Sub | None)) -> int {
+    if n is not None {
+        return len(jid(n));
     }
-    return jid(ns[0]) == jid(c);
+    return -1;
 }
 
 def bound_endpoint_py -> dict[str, any] {
     p = Sub(tag=1);
     c = Sub(tag=2);
     o = Sub(tag=3);
+    g = Sub(tag=4);
     p +>:Child(rank=7):+> c;
     p +>:Child(rank=9):+> o;
+    c +>:Child(rank=1):+> g;
+    e = [edge p->:Child:->c][0];
     jp = jid(p);
-    jc = jid(c);
+    je = jid(e);
     return {
         "fwd": forward_rank(p, c),
-        "loop": loop_rank(p, c),
         "bwd": backward_rank(p, c),
-        "count_po": bound_edge_count(p, o),
-        "other_rank": forward_rank(p, o),
-        "is_c": bound_node_is(p, c),
-        "jid_stable": jp == jid(p),
-        "jid_distinct": jp != jc,
-        "jid_len32": len(jp) == 32
+        "other": forward_rank(p, o),
+        "listed": listed(p, c, g),
+        "predicated": predicated(p, c, o),
+        "mid_chain": mid_chain(p, c, o),
+        "unconnected": unconnected(c, o),
+        "jid_stable": jp == jid(p) and je == jid(e),
+        "jid_distinct": jp != jid(c) and je != jp,
+        "jid_len": len(jp) + len(je),
+        "jid_narrowed": jid_len(c),
+        "jid_none": jid_len(None)
     };
 }
-
 
 # --- na (native LLVM) ---
 
 def forward_rank_na(p: Sub, c: Sub) -> int {
     es = [edge p->:Child:->c];
-    if len(es) == 0 {
-        return -1;
-    }
-    return es[0].rank;
-}
-
-def loop_rank_na(p: Sub, c: Sub) -> int {
-    for e in [edge p->:Child:->c] {
-        return e.rank;
-    }
-    return -1;
+    return es[0].rank if len(es) == 1 else -1;
 }
 
 def backward_rank_na(p: Sub, c: Sub) -> int {
     es = [edge c<-:Child:<-p];
-    if len(es) == 0 {
-        return -1;
-    }
-    return es[0].rank;
+    return es[0].rank if len(es) == 1 else -1;
 }
 
-def bound_edge_count_na(p: Sub, o: Sub) -> int {
-    return len([edge p->:Child:->o]);
+def listed_na(p: Sub, c: Sub, g: Sub) -> int {
+    ends: list[Sub] = [c, g];
+    return len([p->:Child:->ends]);
 }
 
-def bound_node_is_na(p: Sub, c: Sub) -> bool {
-    ns = [p->:Child:->c];
-    if len(ns) != 1 {
-        return False;
+def predicated_na(p: Sub, c: Sub, o: Sub) -> int {
+    return len([edge p->:Child:rank>8:->o]) * 10 + len([edge p->:Child:rank>8:->c]);
+}
+
+def mid_chain_na(p: Sub, c: Sub, o: Sub) -> int {
+    return len([p->:Child:->c->:Child:->]) * 10 + len([p->:Child:->o->:Child:->]);
+}
+
+def unconnected_na(c: Sub, o: Sub) -> int {
+    return len([c->:Child:->o]);
+}
+
+def jid_len_na(n: (Sub | None)) -> int {
+    if n is not None {
+        return len(jid(n));
     }
-    return jid(ns[0]) == jid(c);
+    return -1;
 }
 
 def bound_endpoint_na -> dict[str, any] {
     p = Sub(tag=1);
     c = Sub(tag=2);
     o = Sub(tag=3);
+    g = Sub(tag=4);
     p +>:Child(rank=7):+> c;
     p +>:Child(rank=9):+> o;
+    c +>:Child(rank=1):+> g;
+    e = [edge p->:Child:->c][0];
     jp = jid(p);
-    jc = jid(c);
+    je = jid(e);
     return {
         "fwd": forward_rank_na(p, c),
-        "loop": loop_rank_na(p, c),
         "bwd": backward_rank_na(p, c),
-        "count_po": bound_edge_count_na(p, o),
-        "other_rank": forward_rank_na(p, o),
-        "is_c": bound_node_is_na(p, c),
-        "jid_stable": jp == jid(p),
-        "jid_distinct": jp != jc,
-        "jid_len32": len(jp) == 32
+        "other": forward_rank_na(p, o),
+        "listed": listed_na(p, c, g),
+        "predicated": predicated_na(p, c, o),
+        "mid_chain": mid_chain_na(p, c, o),
+        "unconnected": unconnected_na(c, o),
+        "jid_stable": jp == jid(p) and je == jid(e),
+        "jid_distinct": jp != jid(c) and je != jp,
+        "jid_len": len(jp) + len(je),
+        "jid_narrowed": jid_len_na(c),
+        "jid_none": jid_len_na(None)
     };
 }

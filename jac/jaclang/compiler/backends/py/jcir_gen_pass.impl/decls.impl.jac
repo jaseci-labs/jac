@@ -264,7 +264,7 @@ impl JcirGenPass.exit_ability with Ability exit {
             if (
                 tinfo.cls == 'Tuple' and isinstance(event_sig.arch_tag_info, TupleVal)
             ) {
-                telts = tinfo.get('elts');
+                telts = tinfo.items('elts');
                 if (len(telts) > 1) {
                     trigger_arg = telts[0];
                     for elem in telts[1:] {
@@ -529,7 +529,7 @@ impl JcirGenPass.exit_event_signature with EventSignature exit {
     if here.arch_tag_info {
         tag_recipe = self.val(here.arch_tag_info);
         if (tag_recipe.cls == 'Tuple' and isinstance(here.arch_tag_info, TupleVal)) {
-            telts = tag_recipe.get('elts');
+            telts = tag_recipe.items('elts');
             if (len(telts) > 1) {
                 annotation = telts[0];
                 for elem in telts[1:] {
@@ -633,10 +633,14 @@ impl JcirGenPass.exit_param_var with ParamVar exit {
 }
 
 impl JcirGenPass.exit_arch_has with ArchHas exit {
-    vars_py = self._flatten_ast_list([self.outs(v) for v in here.vars]);
+    vars_py: list[CgItem] = [];
+    for var in here.vars {
+        vars_py.extend(self.outs(var));
+    }
     if here.doc {
         doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
-        self.set_out(here, [doc] + vars_py);
+        vars_py.insert(0, doc);
+        self.set_out(here, vars_py);
     } else {
         self.set_out(here, vars_py);
     }

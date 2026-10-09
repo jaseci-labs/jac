@@ -259,6 +259,7 @@ impl ServeSettings.load(
                     auth_defaults.second_factor_challenge_ttl_seconds
                 )
             ),
+            session_cookie=env_bool('AUTH_SESSION_COOKIE', cfg.auth.session_cookie),
             password_hash_cost=max(
                 10,
                 min(17, env_int('AUTH_PASSWORD_HASH_COST', cfg.auth.password_hash_cost))

@@ -26,6 +26,7 @@ import from jaclang.server.identity.identity_storage {
     IdentityTakenError,
     primary_username
 }
+import from jaclang.server.identity.session_cookie { end_session, start_session }
 import from jaclang.server.identity.user_manager { UserRole }
 import from jaclang.server.middleware { bearer_token, require_user }
 import from jaclang.server.serving.datatypes { Request }
@@ -179,6 +180,7 @@ def register_auth_endpoints(server: EndpointHost) {
             );
         }
         result['token'] = users.create_jwt_token(str(result.get('user_id', '')));
+        start_session(request, str(result['token']));
         return ok(result, status=201);
     }
     server.add_endpoint(
@@ -193,7 +195,7 @@ def register_auth_endpoints(server: EndpointHost) {
         )
     );
 
-    def login_handler(body_data: LoginRequest) -> TransportResponse {
+    def login_handler(body_data: LoginRequest, request: Request) -> TransportResponse {
         result = users.authenticate(
             body_data.identity.value, body_data.credential.password
         );
@@ -217,6 +219,7 @@ def register_auth_endpoints(server: EndpointHost) {
             }
         }
         result['token'] = users.create_jwt_token(user_id);
+        start_session(request, str(result['token']));
         return ok(dict[(str, JsonValue)](result));
     }
     server.add_endpoint(
@@ -227,11 +230,13 @@ def register_auth_endpoints(server: EndpointHost) {
             request_model=LoginRequest,
             tags=['User APIs'],
             summary='User login',
-            description='Authenticate with an identity (username or email) and password. Returns a JWT, or a challenge_token to finish at /user/mfa/login when the account has a verified second factor.'
+            description='Authenticate with an identity (username or email) and password. Returns a JWT, or a challenge_token to finish at /user/mfa/login when the account has a verified second factor. With the session cookie on, a returned JWT is also set as the HttpOnly session cookie that authorizes same-site GET and HEAD requests.'
         )
     );
 
-    def refresh_token_handler(token: (str | None) = None) -> TransportResponse {
+    def refresh_token_handler(
+        request: Request, token: (str | None) = None
+    ) -> TransportResponse {
         if not token {
             return fail('VALIDATION_ERROR', 'Token is required', 400);
         }
@@ -246,6 +251,7 @@ def register_auth_endpoints(server: EndpointHost) {
         if not new_token {
             return fail('UNAUTHORIZED', 'Invalid or expired token', 401);
         }
+        start_session(request, new_token);
         return ok({'token': new_token, 'message': 'Token refreshed successfully'});
     }
     server.add_endpoint(
@@ -265,6 +271,21 @@ def register_auth_endpoints(server: EndpointHost) {
             tags=['User APIs'],
             summary='Refresh JWT token',
             description='Exchange a still-valid token for a fresh one.'
+        )
+    );
+
+    def logout_handler(request: Request) -> TransportResponse {
+        end_session(request);
+        return ok({'status': 'logged_out'});
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/user/logout',
+            callback=logout_handler,
+            tags=['User APIs'],
+            summary='User logout',
+            description='Clears the session cookie. A bearer token held by the client stays valid until it expires; the client discards it.'
         )
     );
 
@@ -289,6 +310,7 @@ def register_auth_endpoints(server: EndpointHost) {
                 'UPDATE_FAILED', result.get('error', 'Password update failed'), 400
             );
         }
+        end_session(request);
         payload: dict[str, any] = dict(result);
         payload['user_id'] = str(user_id);
         username = primary_username(users.get_user(str(user_id)) or {});
@@ -334,6 +356,7 @@ def register_auth_endpoints(server: EndpointHost) {
         result['token'] = users.create_jwt_token(
             str(user_id), assurance=token_assurance(bearer_token(request))
         );
+        start_session(request, str(result['token']));
         return ok(result);
     }
     server.add_endpoint(
@@ -619,6 +642,7 @@ def register_auth_endpoints(server: EndpointHost) {
             return fail('NOT_FOUND', result.get('error', 'User not found'), 404);
         }
         AuthTokenStore.instance().revoke_user_tokens(user_id, 'reset');
+        end_session(request);
         audit(
             'password_reset.completed',
             user_id=user_id,

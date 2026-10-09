@@ -64,6 +64,7 @@ walker BoundaryAnalysisPass(TreePass) {
     ) -> tuple[(str, list[str], list[str])];
 
     def _get_context(nd: UniNode) -> InteropContext;
+    def _caller_context(nd: Import, import_context: InteropContext) -> InteropContext;
     def _extract_type_name(expr: (UniNode | None)) -> str;
     def _in_native_module -> bool;
     def _native_source_module_of(mod: (Module | None)) -> (str | None);
@@ -112,4 +113,7 @@ walker BoundaryAnalysisPass(TreePass) {
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
     can finish with exit;
     def _record_surface(manifest: InteropManifest) -> None;
+    def _route_facts(
+        item: (Ability | Archetype)
+    ) -> tuple[(dict[str, any] | None), bool, bool];
 }

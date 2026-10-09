@@ -247,6 +247,13 @@ def _sv_rpc_timeout(app_name: str) -> float {
         if "rpc_timeout" in app_cfg {
             return float(app_cfg["rpc_timeout"]);
         }
+        import from jaclang.scale.runtime.context.service_routing {
+            HTTP_ACTIVATED_WAKE_TIMEOUT,
+            is_http_activated
+        }
+        if is_http_activated(app_name) {
+            return HTTP_ACTIVATED_WAKE_TIMEOUT;
+        }
     } except Exception {}
     return _SV_DEFAULT_RPC_TIMEOUT;
 }

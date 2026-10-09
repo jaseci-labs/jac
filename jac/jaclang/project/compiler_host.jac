@@ -1,4 +1,3 @@
-import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from jaclang.compiler.frontend.host {
     CheckSettings,
@@ -19,9 +18,11 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.driver.native_iface { NativeIface }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 import type from jaclang.compiler.frontend.kernel_inputs { KernelInputs }
+import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob UNIT_COLLECT_EVERY: int = 16,
      UNIT_COLLECT_GROWTH_MB: int = 512;
@@ -37,6 +38,7 @@ obj ProjectHost(HostServices) {
     has _defaults_active: bool = False,
         _last_defaults: (ProjectDefaults | None) = None,
         _facts: dict[str, tuple[any, ProjectFacts]] = {},
+        _stub_globals: list[str] = [],
         _collect_budget: UnitCollectBudget = UnitCollectBudget(),
         _platform: (HostPlatform | None) = None;
 
@@ -60,6 +62,18 @@ obj ProjectHost(HostServices) {
     def is_untyped_third_party(path: str) -> bool;
     def in_typeshed_tree(path: str) -> bool;
     def sibling_declaration(js_path: str) -> (str | None);
+    def client_pulls(path: str) -> str;
+    def native_dep_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (NativeIface | None);
+
+    def held_native_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> str;
+
+    def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def native_fact(kind: str, key: str) -> str;
+    def save_native_debug_ir(path: str, text: str);
     def has_npm_package(spec: str, base_path: str) -> bool;
     def resolve_npm_package(spec: str, base_path: str) -> (str | None);
     def npm_declarations(spec: str, base_path: str) -> (str | None);
@@ -96,6 +110,15 @@ obj ProjectHost(HostServices) {
     def compiler_for(program: JacProgram) -> JacCompiler;
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
+    def kernel_compile(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (CompileReport | None);
+
+    def in_compiler_tree(path: str) -> bool;
+    def schedule_import_failed(err: ImportError);
+    def client_osp_core_js -> str;
+    def client_stub_globals -> list[str];
     def native_session_declares(
         program: JacProgram, source: str, element: str
     ) -> (bool | None);
@@ -196,4 +219,40 @@ def project_defaults_of(cfg: any) -> ProjectDefaults {
         check=check_settings_of(cfg.check),
         client_framework=cfg.client.framework if cfg.client else "react"
     );
+}
+
+def client_stub_names(path: str) -> set[str] {
+    import ast;
+    out: set[str] = set();
+    try {
+        with open(path, encoding="utf-8") as handle {
+            tree = ast.parse(handle.read());
+        }
+    } except Exception {
+        return out;
+    }
+    for node in tree.body {
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
+            out.add(node.name);
+        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
+            out.add(node.target.id);
+        } elif isinstance(node, ast.Assign) {
+            for tgt in node.targets {
+                if not isinstance(tgt, ast.Name) {
+                    continue;
+                }
+                out.add(tgt.id);
+                if tgt.id != "__all__"
+                    or not isinstance(node.value, (ast.List, ast.Tuple)) {
+                    continue;
+                }
+                for elt in node.value.elts {
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
+                        out.add(elt.value);
+                    }
+                }
+            }
+        }
+    }
+    return out;
 }

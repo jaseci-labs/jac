@@ -65,6 +65,8 @@ obj SessionHooks {
         return compile_once(self, file_path, target_program, use_str, options);
     }
 
+    def assemble_python(program: JacProgram, module: uni.Module) {}
+    def assemble_native(program: JacProgram, module: uni.Module, checking: bool) {}
     def run_module(
         file_path: str,
         target_program: JacProgram,

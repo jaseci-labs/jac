@@ -27,7 +27,10 @@ impl NaIRGenPass._apply_ownership_param_attrs(
             arg.add_attribute("noalias");
         }
         if kind in (OwnershipKind.BORROW, OwnershipKind.IMM) {
-            arg.add_attribute("readonly");
+            self.borrow_param_args.setdefault(func.name, set()).add(i + base);
+            if self._gc_mode() == "none" {
+                arg.add_attribute("readonly");
+            }
         }
     }
 }
@@ -81,9 +84,15 @@ impl NaIRGenPass._maybe_declare_ability(
     self._sig_decl_kind = _saved_sig_kind;
 
     local_type = ir.FunctionType(ret_type, param_types);
-    imported = imp_layout.functions.get(name) if imp_layout is not None else None;
-    if imported is not None and imp_layout.str_headerless != self._nogc_headerless() {
-        kind = "jacstr2" if imp_layout.str_headerless else "jacstr3";
+    import from jaclang.compiler.frontend.codeinfo { NativeModuleLayout }
+    _layout: (NativeModuleLayout | None) = imp_layout
+        if isinstance(imp_layout, NativeModuleLayout)
+        else None;
+    imported = _layout.functions.get(name) if _layout is not None else None;
+    if imported is not None
+        and _layout is not None
+        and _layout.str_headerless != self._nogc_headerless() {
+        kind = "jacstr2" if _layout.str_headerless else "jacstr3";
         carrier = self.llvm_module.context.get_identified_type(f"JacStr.{kind}");
         if carrier.is_opaque {
             carrier.set_body(
@@ -276,7 +285,11 @@ impl NaIRGenPass._elem_keys_of_annotation(
     if isinstance(ann, uni.AtomUnit) {
         return self._elem_keys_of_annotation(ann.value);
     }
-    if (isinstance(ann, uni.BinaryExpr) and getattr(ann.op, 'value', '') == "|") {
+    if (
+        isinstance(ann, uni.BinaryExpr)
+        and isinstance(ann.op, uni.Token)
+        and ann.op.value == "|"
+    ) {
         return (
             self._elem_keys_of_annotation(ann.left)
             or self._elem_keys_of_annotation(ann.right)
@@ -300,7 +313,11 @@ impl NaIRGenPass._elem_keys_of_annotation(
     }
     keys: list[str | None] = [];
     for e in elems {
-        while (isinstance(e, uni.BinaryExpr) and getattr(e.op, 'value', '') == "|") {
+        while (
+            isinstance(e, uni.BinaryExpr)
+            and isinstance(e.op, uni.Token)
+            and e.op.value == "|"
+        ) {
             e = e.left;
         }
         _ek: (str | None) = None;
@@ -325,7 +342,9 @@ impl NaIRGenPass._record_ret_facts(
     if _rt is None {
         return;
     }
-    if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+    if isinstance(_rt, uni.BinaryExpr)
+        and isinstance(_rt.op, uni.Token)
+        and _rt.op.value == "|" {
         _rt = _rt.left;
     }
     _rtb = _rt?.type;
@@ -386,39 +405,50 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     }
     if plan is not None {
         sysv_param_types: list[ir.Type] = [];
-        for slot in plan["sig"] {
-            if slot[0] == "structptr" or slot[0] == "sretptr" {
-                sysv_param_types.append(self._clib_c_type(slot[1]).as_pointer());
-            } elif slot[0] == "coerce" {
-                sysv_param_types.append(slot[1]);
-            } elif slot[1] < len(_c_args) and _c_args[slot[1]] {
-                sysv_param_types.append(ir.IntType(8).as_pointer());
-            } else {
-                _sp = _decl_params[slot[1]];
-                sysv_param_types.append(
-                    self._resolve_clib_type(_sp.type_tag.tag)
-                        if (_sp.type_tag and _sp.type_tag.tag)
-                        else ir.IntType(64)
-                );
+        _sig_slots: list[tuple[str, str | int | ir.Type]] = plan["sig"];
+        for slot in _sig_slots {
+            _slot_kind = slot[0];
+            _slot_val = slot[1];
+            if _slot_kind == "structptr" or _slot_kind == "sretptr" {
+                if isinstance(_slot_val, str) {
+                    sysv_param_types.append(self._clib_c_type(_slot_val).as_pointer());
+                }
+            } elif _slot_kind == "coerce" {
+                if isinstance(_slot_val, ir.Type) {
+                    sysv_param_types.append(_slot_val);
+                }
+            } elif isinstance(_slot_val, int) {
+                if _slot_val < len(_c_args) and _c_args[_slot_val] {
+                    sysv_param_types.append(ir.IntType(8).as_pointer());
+                } else {
+                    _sp = _decl_params[_slot_val];
+                    sysv_param_types.append(
+                        self._resolve_clib_type(_sp.type_tag.tag)
+                            if (_sp.type_tag and _sp.type_tag.tag)
+                            else ir.IntType(64)
+                    );
+                }
             }
         }
 
-        param_plan = plan["params"];
-        for (_pi, pp) in enumerate(param_plan) {
+        param_plan: list[dict[str, any]] = plan["params"];
+        for _pi in range(len(param_plan)) {
+            pp = param_plan[_pi];
             if pp["kind"] == "scalar" {
-                pp["type"] = sysv_param_types[pp["argpos"]];
+                _scalar_pos: int = pp["argpos"];
+                pp["type"] = sysv_param_types[_scalar_pos];
                 pp["is_str"] = pp.get("tname") == "str";
                 pp["c_arg"] = _c_args[_pi] if _pi < len(_c_args) else {};
             }
         }
-        sysv_sret = plan["sret"];
-        sysv_ret_plan = plan["ret"];
-        _sig_ret = plan["sig_ret"];
+        sysv_sret: bool = plan["sret"];
+        sysv_ret_plan: dict[str, any] = plan["ret"];
+        _ret_kind: str = sysv_ret_plan["kind"];
         sysv_ret_type: ir.Type;
-        if _sig_ret[0] == "void" {
+        if _ret_kind == "sret" {
             sysv_ret_type = ir.VoidType();
-        } elif _sig_ret[0] == "coerce" {
-            _rco = _sig_ret[1];
+        } elif _ret_kind == "struct_reg" {
+            _rco: list[ir.Type] = sysv_ret_plan["coerce"];
             if len(_rco) == 1 {
                 sysv_ret_type = _rco[0];
             } else {
@@ -444,31 +474,32 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         }
         if sysv_sret and len(sysv_func.args) > 0 {
             sysv_func.args[0].add_attribute("sret");
-            _sal = sysv_ret_plan["align"];
+            _sal: int = sysv_ret_plan["align"];
             sysv_func.args[0].attributes.align = _sal if _sal > 8 else 8;
             sysv_func.args[0].name = "agg.result";
         }
         for pp in param_plan {
-            _pos = pp["argpos"];
+            _pos: int = pp["argpos"];
+            _pname: str = pp["pname"];
             if pp["kind"] == "struct_mem" and _pos < len(sysv_func.args) {
                 _ba = sysv_func.args[_pos];
 
                 if pp["byval"] {
                     _ba.add_attribute("byval");
-                    _bal = pp["align"];
+                    _bal: int = pp["align"];
                     _ba.attributes.align = _bal if _bal > 8 else 8;
                 }
-                _ba.name = pp["pname"];
+                _ba.name = _pname;
             } elif pp["kind"] == "scalar" and _pos < len(sysv_func.args) {
-                sysv_func.args[_pos].name = pp["pname"];
+                sysv_func.args[_pos].name = _pname;
             } elif pp["kind"] == "struct_reg" {
-                _co = pp["coerce"];
+                _co: list[ir.Type] = pp["coerce"];
                 if len(_co) == 1 and _pos < len(sysv_func.args) {
-                    sysv_func.args[_pos].name = pp["pname"];
+                    sysv_func.args[_pos].name = _pname;
                 } else {
                     for _j in range(len(_co)) {
                         if (_pos + _j) < len(sysv_func.args) {
-                            sysv_func.args[_pos + _j].name = f"{pp['pname']}.{_j}";
+                            sysv_func.args[_pos + _j].name = f"{_pname}.{_j}";
                         }
                     }
                 }
@@ -556,7 +587,31 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             and self._mono_solution is not None
             and self._ability_is_generator(nd)
         ) {
-        self._codegen_generator(nd, func);
+        _gen_mark = len(self.ctx.errors_had);
+        _gen_raised = False;
+        try {
+            self._codegen_generator(nd, func);
+        } except Exception as _gen_exc {
+            _gen_raised = True;
+            if self._na_debug_on() {
+                import sys;
+                sys.stderr.write(
+                    f"NA_DEBUG raise {name}: {type(_gen_exc).__name__}: {_gen_exc}\n"
+                );
+            }
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="function (native emitter error in)",
+                name=name,
+                help_text=f"The native backend raised {type(_gen_exc).__name__} "
+                f"while lowering this function; it falls back to its Python "
+                f"implementation. Original error: {_gen_exc}"
+            );
+        }
+        if _gen_raised and self._demote_method_if_unlowerable(name, func, _gen_mark) {
+            self._rename_demoted_symbol(name, func);
+        }
         return;
     }
 
@@ -614,9 +669,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     } except Exception as _codegen_exc {
         if self._na_debug_on() {
             import sys;
-            import traceback;
-            sys.stderr.write(f"NA_DEBUG raise {name}\n");
-            traceback.print_exc(file=sys.stderr);
+            sys.stderr.write(
+                f"NA_DEBUG raise {name}: "
+                f"{type(_codegen_exc).__name__}: {_codegen_exc}\n"
+            );
         }
         self.emit(
             E5092,
@@ -724,7 +780,9 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         }
         self._attach_di_subprogram(func, symbol, line);
 
-        exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
+        exc_state_type = self._exc_state_type;
+        assert exc_state_type is not None;
+        exc_state = self.builder.alloca(exc_state_type, name="exc.state");
         self.builder.call(self._exc_push_fn, [exc_state]);
         env_ptr = self.builder.gep(
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
@@ -1650,7 +1708,6 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
         return;
     }
     i64 = ir.IntType(64);
-    import re;
 
     import from jaclang.compiler.frontend.codeinfo {
         native_entry_name,

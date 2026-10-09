@@ -321,13 +321,28 @@ def import_bound_names(nd: uni.Import) -> list[str] {
     return bound;
 }
 
-def is_client_native_edge_import(nd: uni.Import, prog: JacProgram) -> bool {
+def is_client_native_edge_import(
+    nd: uni.Import, prog: JacProgram, client_tops: (dict[str, bool] | None) = None
+) -> bool {
     if nd.code_context == CodeContext.CLIENT {} elif nd.code_context
         == CodeContext.SERVER
-        and module_has_client_top(nd.find_parent_of_type(uni.Module)) {} else {
+        and _has_client_top(nd.find_parent_of_type(uni.Module), client_tops) {} else {
         return False;
     }
     return plain_native_import_target(nd, prog) is not None;
+}
+
+def _has_client_top(
+    module: (uni.Module | None), client_tops: (dict[str, bool] | None)
+) -> bool {
+    if client_tops is None or module is None {
+        return module_has_client_top(module);
+    }
+    key = module.loc.mod_path;
+    if key not in client_tops {
+        client_tops[key] = module_has_client_top(module);
+    }
+    return client_tops[key];
 }
 
 enum ClientImportVerdict {
@@ -394,6 +409,9 @@ def same_workspace(consumer_path: str, provider_path: str) -> bool {
     pws = host.workspace(provider_path);
     if cws is None or pws is None {
         return False;
+    }
+    if cws.toml_path == pws.toml_path {
+        return True;
     }
     return os.path.realpath(cws.toml_path) == os.path.realpath(pws.toml_path);
 }

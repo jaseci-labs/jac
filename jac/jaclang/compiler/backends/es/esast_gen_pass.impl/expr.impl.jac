@@ -115,7 +115,7 @@ impl EsastGenPass._primitive_type_ref(
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     self._ensure_emitters();
     if (
-        getattr(self._builtin_emitter, "emit_" + name, None) is None
+        name not in self._builtin_emitter.static_names()
         and not JAC_TYPE_REGISTRY.is_sized(name)
     ) {
         return None;

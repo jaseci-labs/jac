@@ -1059,7 +1059,7 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
             }
         }
 
-        anchor.hash = Serializer._compute_hash(anchor);
+        anchor.hash = Serializer.stored_hash(anchor);
         return anchor;
     } except TypeResolutionError {
         raise;
@@ -1326,11 +1326,32 @@ impl Serializer.serialize_fields(
     return result;
 }
 
-impl Serializer._compute_hash(anchor: Anchor) -> int {
+impl Serializer.stored_form(anchor: Anchor) -> dict[str, object] {
+    data = Serializer.serialize(anchor, include_type=True);
+    if not isinstance(data, dict) {
+        raise TypeError(f"{type(anchor).__name__} did not serialize to a mapping");
+    }
+    stored: dict[str, object] = data;
+    stored.pop('edges', None);
+    return stored;
+}
+
+impl Serializer.stored_hash(
+    anchor: Anchor, stored: (dict[str, object] | None) = None
+) -> int {
     import from json { dumps }
     try {
-        data = Serializer.serialize(anchor, include_type=True);
-        return hash(dumps(data, sort_keys=True));
+        content = stored if stored is not None else Serializer.stored_form(anchor);
+        return hash(
+            dumps(
+                {
+                    k: v
+                    for (k, v) in content.items()
+                    if k != 'version'
+                },
+                sort_keys=True
+            )
+        );
     } except Exception {
         return 0;
     }

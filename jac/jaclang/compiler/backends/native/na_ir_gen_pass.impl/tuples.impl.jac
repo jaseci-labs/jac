@@ -6,7 +6,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     declared_fields: list[ir.Type] = [];
     if isinstance(declared, ir.PointerType)
         and isinstance(declared.pointee, ir.LiteralStructType)
-        and len(declared.pointee.elements) == len(nd.values) {
+        and len(declared.pointee.members()) == len(nd.values) {
         declared_fields = list(declared.pointee.elements);
     }
 
@@ -23,6 +23,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         _anc = _anc.parent;
     }
     _ret_direct = isinstance(nd.parent, uni.ReturnStmt);
+    moved_locals: set[str] = set();
     for val in nd.values {
         v = self._codegen_expr(val);
         if v is None {
@@ -38,14 +39,16 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
 
         _owns = self._is_owned(v);
         if _in_return and self._is_reference_type(v.type) and not _owns {
-            is_named_local = isinstance(val, uni.Name)
-                and val.sym_name in self.local_vars
-                and val.sym_name not in self.param_vars;
-            if not is_named_local {
+            local_name = val.sym_name if isinstance(val, uni.Name) else "";
+            is_named_local = bool(local_name)
+                and local_name in self.local_vars
+                and local_name not in self.param_vars;
+            if not is_named_local or (_ret_direct and local_name in moved_locals) {
                 self._emit_take_ref(v, op="return_tuple_elem");
                 self._mark_owned(v);
                 _owns = True;
             } elif _ret_direct {
+                moved_locals.add(local_name);
                 _owns = True;
             }
         }
@@ -81,9 +84,11 @@ impl NaIRGenPass._codegen_tuple_unpack(
         tuple_val = self._coerce_type(tuple_val, _tu_opt);
     }
     _orig_tv = tuple_val;
-    struct_type = self._tuple_struct_of_value(tuple_val);
+    list_get = self._list_get_of_value(tuple_val);
+    struct_type = self._tuple_struct_of_value(tuple_val) if list_get is None else None;
     is_value = isinstance(tuple_val.type, ir.LiteralStructType);
-    if isinstance(tuple_val.type, ir.PointerType)
+    if list_get is None
+        and isinstance(tuple_val.type, ir.PointerType)
         and isinstance(tuple_node, uni.Expr) {
         cast_ptr_type = self._lower_type(tuple_node.type);
         if cast_ptr_type is not None
@@ -95,15 +100,17 @@ impl NaIRGenPass._codegen_tuple_unpack(
             struct_type = cast_ptr_type.pointee;
         }
     }
-    if struct_type is None {
-        return False;
-    }
-    if len(targets) != len(struct_type.elements) {
-        return False;
+    if list_get is None {
+        if struct_type is None {
+            return False;
+        }
+        if len(targets) != len(struct_type.members()) {
+            return False;
+        }
     }
 
     for target in targets {
-        if self._get_name(target) is None {
+        if not self._unpack_target_ok(target) {
             return False;
         }
     }
@@ -111,14 +118,21 @@ impl NaIRGenPass._codegen_tuple_unpack(
     rc_ok = (not is_value) or not self._nogc_headerless();
     pending_old: list[ir.Value] = [];
     for (i, target) in enumerate(targets) {
-        if i >= len(struct_type.elements) {
+        if struct_type is not None and i >= len(struct_type.members()) {
             break;
         }
         var_name = self._get_name(target);
-        if var_name is None {
+        if var_name is None and not isinstance(target, uni.TupleVal) {
             return False;
         }
-        if is_value {
+        elem_val: ir.Value;
+        if list_get is not None {
+            elem_val = self.builder.call(
+                list_get,
+                [tuple_val, ir.Constant(ir.IntType(64), i)],
+                name=f"unpack.{i}"
+            );
+        } elif is_value {
             elem_val = self.builder.extract_value(tuple_val, i, name=f"unpack.{i}");
         } else {
             elem_ptr = self.builder.gep(
@@ -133,6 +147,19 @@ impl NaIRGenPass._codegen_tuple_unpack(
             and _elem_owned is not None
             and i < len(_elem_owned)
             and _elem_owned[i];
+        if isinstance(target, uni.TupleVal) or var_name is None {
+            if not isinstance(target, uni.TupleVal) {
+                return False;
+            }
+            inner = target.values or [];
+            if moved and isinstance(elem_val.type, ir.LiteralStructType) {
+                elem_val.na_tuple_owned = [True] * len(inner);
+            }
+            if not self._codegen_tuple_unpack(inner, elem_val, None) {
+                return False;
+            }
+            continue;
+        }
         if var_name in self.local_vars {
             alloca = self.local_vars[var_name];
             if not isinstance(alloca.type, ir.PointerType) {
@@ -169,6 +196,34 @@ impl NaIRGenPass._codegen_tuple_unpack(
     return True;
 }
 
+impl NaIRGenPass._unpack_target_ok(target: uni.UniNode) -> bool {
+    if isinstance(target, uni.TupleVal) {
+        for inner in (target.values or []) {
+            if not self._unpack_target_ok(inner) {
+                return False;
+            }
+        }
+        return True;
+    }
+    return self._get_name(target) is not None;
+}
+
+impl NaIRGenPass._list_get_of_value(value: ir.Value) -> (ir.Function | None) {
+    if not isinstance(value.type, ir.PointerType) {
+        return None;
+    }
+    for helpers in self.list_helpers.values() {
+        made = helpers.get("new");
+        fetch = helpers.get("get");
+        if isinstance(made, ir.Function)
+            and isinstance(fetch, ir.Function)
+            and made.function_type.return_type == value.type {
+            return fetch;
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
     total: int = 0;
     for elem in struct_type.elements {
@@ -196,7 +251,7 @@ impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
 impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list[int] {
     return [
         index
-        for (index, element) in enumerate(struct_type.elements)
+        for (index, element) in enumerate(struct_type.members())
         if self._is_reference_type(element)
     ];
 }
@@ -331,11 +386,11 @@ impl NaIRGenPass._coerce_tuple_to_struct(
         return val;
     }
     if val.type == target_struct
-        or len(val.type.elements) != len(target_struct.elements) {
+        or len(val.type.members()) != len(target_struct.members()) {
         return val;
     }
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
-    for i in range(len(target_struct.elements)) {
+    for i in range(len(target_struct.members())) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
         tgt_ty = target_struct.elements[i];
         if fld.type != tgt_ty {
@@ -360,7 +415,7 @@ impl NaIRGenPass._codegen_tuple_index(
     if idx is None {
         return None;
     }
-    if idx < 0 or idx >= len(struct_type.elements) {
+    if idx < 0 or idx >= len(struct_type.members()) {
         return None;
     }
 

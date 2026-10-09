@@ -602,7 +602,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
     with tempfile.TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';
         path.write_text('def hello -> int { return 1; }\n');
-        original = preparation._manifest;
+        original = preparation.build_manifest;
         def changing_manifest(*args: any, **kwargs: any) -> dict[str, any] {
             path.write_text('def hello -> int { return 2; }\n');
             return original(*args, **kwargs);
@@ -610,7 +610,7 @@ test "changes to consumed sources still reject a torn prepared revision" {
         failed = False;
         try {
             with patch.object(
-                preparation, '_manifest', side_effect=changing_manifest
+                preparation, 'build_manifest', side_effect=changing_manifest
             ) {
                 prepare_application(str(path), JacProgram(), tmp);
             }
@@ -720,4 +720,92 @@ test "preparation loads native engines for executable server calls" {
             forget(str(path));
         }
     }
+}
+
+"""Prepare `path` and report whether it restored the recorded application."""
+def _restored(path: Path, `root: str) -> bool {
+    import contextlib;
+    import io;
+    err = io.StringIO();
+    try {
+        with contextlib.redirect_stderr(err) {
+            prepare_application(str(path), JacProgram(), `root);
+        }
+    } finally {
+        forget(str(path));
+    }
+    return 'Restoring prepared application' in err.getvalue();
+}
+
+test "prepared applications are reused by content, not by timestamp" {
+    import time;
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        annex = base / 'main.test.jac';
+        page = base / 'pages' / 'about.txt';
+        page.parent.mkdir();
+        path.write_text("def:pub hello -> int { return 1; }\n");
+        annex.write_text('test "hello" { assert hello() == 1; }\n');
+        page.write_text('about: one');
+        assert not _restored(path, tmp);
+        moved = time.time_ns() - 3_600_000_000_000;
+        for source in (path, annex, page) {
+            os.utime(source, ns=(moved, moved));
+        }
+        assert _restored(path, tmp) , (
+            "identical bytes under new timestamps discarded the prepared application"
+        );
+        assert _restored(path, tmp);
+        page.write_text('about: two');
+        assert not _restored(path, tmp) , "a same-size content change was reused";
+        annex.unlink();
+        assert not _restored(path, tmp) , "an annex deletion was reused";
+    }
+}
+
+def _prepared_lookups(modules: int) -> int {
+    import sys;
+    lookups = [0];
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'mods').mkdir();
+        lines: list[str] = [];
+        for k in range(modules) {
+            (base / 'mods' / f'm{k}.jac').write_text(
+                f'walker:pub w{k} {{\n    can go with Root entry {{\n        report {k};\n    }}\n}}\n'
+            );
+            lines.append(f'import from mods.m{k} {{ w{k} }}\n');
+        }
+        path = base / 'main.jac';
+        path.write_text(''.join(lines));
+        prepared = prepare_application(str(path), JacProgram(), tmp);
+        def tally(frame: any, event: str, arg: any) {
+            if event == 'call'
+                and frame.f_code.co_filename.endswith(
+                    ('prepared.jac', 'prepared_loader.jac')
+                ) {
+                lookups[0] += 1;
+            }
+        }
+        sys.setprofile(tally);
+        try {
+            initialize_application(prepared);
+        } finally {
+            sys.setprofile(None);
+            forget(str(path));
+        }
+    }
+    return lookups[0];
+}
+
+"""Finding a prepared module by name or package used to scan every prepared
+module, so loading an application grew with the square of its module count.
+Counted on a real load, not timed."""
+test "loading a prepared application grows with its module count, not its square" {
+    small = _prepared_lookups(8);
+    large = _prepared_lookups(32);
+    assert large < 6 * small , (
+        f"prepared lookups went {small} -> {large} for 4x the modules"
+    );
 }

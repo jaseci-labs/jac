@@ -26,6 +26,16 @@ glob IDENTITY_KEY_SPEC: str = "oref",
      HASH_FNV_PRIME: int = 1099511628211,
      HASH_MUL_K: int = -7046029254386353131;
 
+def _ir_member_types(t: (ir.Type | None)) -> list[ir.Type] {
+    if isinstance(t, ir.Aggregate) {
+        return t.elements or [];
+    }
+    if isinstance(t, ir.VectorType) {
+        return t.elements;
+    }
+    return [];
+}
+
 impl NaIRGenPass._emit_hash_core_helpers(
     family: str,
     type_key: str,
@@ -45,7 +55,6 @@ impl NaIRGenPass._emit_hash_core_helpers(
     _pre = f"__{family}";
     has_vals: bool = val_type is not None;
     _vt: ir.Type = val_type if val_type is not None else i64;
-    _vt_dyn: any = val_type;
     is_identity_key: bool = key_type_name == IDENTITY_KEY_SPEC;
     is_str_key: bool = key_type == i8p and not is_identity_key;
     is_bytes_key: bool = key_type_name == "bytes";
@@ -58,8 +67,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
     }
     LEN_F = 0;
     CAP_F = 1;
-    KEYS_F = layout["data_fields"][0][0];
-    VALS_F = layout["data_fields"][1][0] if has_vals else -1;
+    _hc_fields = _layout_data_fields(layout);
+    KEYS_F = _hc_fields[0][0];
+    VALS_F = _hc_fields[1][0] if has_vals else -1;
     CTRL_F = layout["ctrl_idx"];
     USED_F = layout["used_idx"];
     ORDER_F = layout["order_idx"];
@@ -81,7 +91,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         else None;
 
     hash_fnty = ir.FunctionType(i64, [key_type]);
-    hash_fn: any = ir.Function(
+    hash_fn: ir.Function = ir.Function(
         self.llvm_module, hash_fnty, name=f"{_pre}_hash_{_safe}"
     );
     hash_fn.linkage = "private";
@@ -91,7 +101,10 @@ impl NaIRGenPass._emit_hash_core_helpers(
         if (_key_sz > 0 and not is_bytes_key and not is_str_key)
         else None;
     if _tkf is not None {
-        bhe.ret(self._emit_tuple_key_hash(bhe, hash_fn.args[0]));
+        _tkh = self._emit_tuple_key_hash(bhe, hash_fn.args[0]);
+        bhe.ret(
+            bhe.xor(_tkh, bhe.lshr(_tkh, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     } elif is_str_key and not is_bytes_key and _key_sz == 0 {
         bhe.ret(bhe.call(self._emit_cstr_hash_fn(), [hash_fn.args[0]], name="h"));
     } elif is_bytes_key or _key_sz > 0 {
@@ -143,16 +156,25 @@ impl NaIRGenPass._emit_hash_core_helpers(
         brt.ret(brt.load(h_a, name="hf"));
     } elif isinstance(key_type, ir.PointerType) {
         ki = bhe.ptrtoint(hash_fn.args[0], i64, name="ki");
-        bhe.ret(bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="h"));
+        _hk = bhe.mul(ki, ir.Constant(i64, HASH_MUL_K), name="hk");
+        bhe.ret(
+            bhe.xor(_hk, bhe.lshr(_hk, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     } elif isinstance(key_type, ir.DoubleType) {
         kbits = bhe.bitcast(hash_fn.args[0], i64, name="kbits");
-        bhe.ret(bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="h"));
+        _hk = bhe.mul(kbits, ir.Constant(i64, HASH_MUL_K), name="hk");
+        bhe.ret(
+            bhe.xor(_hk, bhe.lshr(_hk, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     } else {
-        bhe.ret(bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="h"));
+        _hk = bhe.mul(hash_fn.args[0], ir.Constant(i64, HASH_MUL_K), name="hk");
+        bhe.ret(
+            bhe.xor(_hk, bhe.lshr(_hk, ir.Constant(i64, 32), name="h.hi"), name="h")
+        );
     }
 
     find_fnty = ir.FunctionType(i64, [cont_ptr_type, key_type, i64]);
-    find_fn: any = ir.Function(
+    find_fn: ir.Function = ir.Function(
         self.llvm_module, find_fnty, name=f"{_pre}_find_ph_{_safe}"
     );
     find_fn.linkage = "private";
@@ -188,6 +210,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     bf.store(s0, slot_a);
     bf.store(ir.Constant(i64, -1), itomb_a);
 
+    cap0_bb = find_fn.append_basic_block("cap0");
     probe_bb = find_fn.append_basic_block("probe");
     empty_bb = find_fn.append_basic_block("empty");
     fp_bb = find_fn.append_basic_block("fp");
@@ -195,7 +218,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
     tomb_bb = find_fn.append_basic_block("tomb");
     next_bb = find_fn.append_basic_block("next");
     found_bb = find_fn.append_basic_block("found");
-    bf.branch(probe_bb);
+    _cap_is0 = bf.icmp_unsigned("==", capf, ir.Constant(i64, 0), name="cap.is0");
+    bf.cbranch(_cap_is0, cap0_bb, probe_bb);
+    ir.IRBuilder(cap0_bb).ret(ir.Constant(i64, -1));
 
     bp = ir.IRBuilder(probe_bb);
     sl = bp.load(slot_a, name="sl");
@@ -240,7 +265,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     bnx.branch(probe_bb);
 
     rehash_fnty = ir.FunctionType(ir.VoidType(), [cont_ptr_type]);
-    rehash_fn: any = ir.Function(
+    rehash_fn: ir.Function = ir.Function(
         self.llvm_module, rehash_fnty, name=f"{_pre}_rehash_{_safe}"
     );
     rehash_fn.linkage = "private";
@@ -250,7 +275,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     brh.call(compact_order_fn, [d_rh]);
 
     ok_a = brh.alloca(key_type, name="ok");
-    ov_a = brh.alloca(val_type, name="ov") if has_vals else None;
+    ov_a = brh.alloca(_vt, name="ov") if has_vals else None;
     nh2_a = brh.alloca(i8, name="nh2");
     rslot_a = brh.alloca(i64, name="rsl");
     si_a = brh.alloca(i64, name="si");
@@ -278,7 +303,11 @@ impl NaIRGenPass._emit_hash_core_helpers(
     old_vals = brh.load(vals_prh, name="ovals") if has_vals else None;
     old_ctrl = brh.load(ctrl_prh, name="octrl");
     old_order = brh.load(ord_prh, name="oorder");
-    new_cap = brh.mul(old_cap, ir.Constant(i64, 2), name="ncap");
+    _ncap_dbl = brh.mul(old_cap, ir.Constant(i64, 2), name="ncap.dbl");
+    _ocap_is0 = brh.icmp_unsigned("==", old_cap, ir.Constant(i64, 0), name="ocap.is0");
+    new_cap = brh.select(
+        _ocap_is0, ir.Constant(i64, HASH_INIT_CAP), _ncap_dbl, name="ncap"
+    );
     new_mask = brh.sub(new_cap, ir.Constant(i64, 1), name="nmask");
 
     kgnr = brh.gep(
@@ -393,12 +422,63 @@ impl NaIRGenPass._emit_hash_core_helpers(
     }
     brf.ret_void();
 
+    mat_fn: ir.Function = ir.Function(
+        self.llvm_module, rehash_fnty, name=f"{_pre}_materialize_{_safe}"
+    );
+    mat_fn.linkage = "private";
+    mat_fn.args[0].name = "cont";
+    bm = ir.IRBuilder(mat_fn.append_basic_block("entry"));
+    d_m = mat_fn.args[0];
+    m_cap = ir.Constant(i64, HASH_INIT_CAP);
+    m_ksz = bm.ptrtoint(
+        bm.gep(
+            ir.Constant(key_type.as_pointer(), None),
+            [ir.Constant(i32, 1)],
+            name="mksz.p"
+        ),
+        i64,
+        name="mksz"
+    );
+    m_keys = bm.call(malloc_fn, [bm.mul(m_cap, m_ksz, name="mkb")], name="mkr");
+    bm.store(
+        bm.bitcast(m_keys, key_type.as_pointer(), name="mk"),
+        bm.gep(d_m, [ir.Constant(i32, 0), ir.Constant(i32, KEYS_F)], name="mkp")
+    );
+    if has_vals {
+        m_vsz = bm.ptrtoint(
+            bm.gep(
+                ir.Constant(_vt.as_pointer(), None),
+                [ir.Constant(i32, 1)],
+                name="mvsz.p"
+            ),
+            i64,
+            name="mvsz"
+        );
+        m_vals = bm.call(malloc_fn, [bm.mul(m_cap, m_vsz, name="mvb")], name="mvr");
+        bm.store(
+            bm.bitcast(m_vals, _vt.as_pointer(), name="mv"),
+            bm.gep(d_m, [ir.Constant(i32, 0), ir.Constant(i32, VALS_F)], name="mvp")
+        );
+    }
+    bm.store(
+        bm.call(calloc_fn, [m_cap, ir.Constant(i64, 1)], name="mc"),
+        bm.gep(d_m, [ir.Constant(i32, 0), ir.Constant(i32, CTRL_F)], name="mcp")
+    );
+    bm.store(
+        self._hash_order_alloc(bm, m_cap),
+        bm.gep(d_m, [ir.Constant(i32, 0), ir.Constant(i32, ORDER_F)], name="mop")
+    );
+    bm.store(
+        m_cap, bm.gep(d_m, [ir.Constant(i32, 0), ir.Constant(i32, CAP_F)], name="mcap")
+    );
+    bm.ret_void();
+
     _ins_op = "set" if has_vals else "add";
     _ins_args = [cont_ptr_type, key_type, val_type, i64]
         if has_vals
         else [cont_ptr_type, key_type, i64];
     ins_fnty = ir.FunctionType(ir.VoidType(), _ins_args);
-    ins_fn: any = ir.Function(
+    ins_fn: ir.Function = ir.Function(
         self.llvm_module, ins_fnty, name=f"{_pre}_{_ins_op}_ph_{_safe}"
     );
     ins_fn.linkage = "private";
@@ -413,6 +493,21 @@ impl NaIRGenPass._emit_hash_core_helpers(
     k_s = ins_fn.args[1];
     v_s: any = ins_fn.args[2] if has_vals else None;
     h_ins: any = ins_fn.args[3 if has_vals else 2];
+    _sz_cap = bs.load(
+        bs.gep(d_s, [ir.Constant(i32, 0), ir.Constant(i32, CAP_F)], name="szc.p"),
+        name="szc"
+    );
+    _sz0_bb = ins_fn.append_basic_block("cap0.grow");
+    _sfind_bb = ins_fn.append_basic_block("find");
+    bs.cbranch(
+        bs.icmp_unsigned("==", _sz_cap, ir.Constant(i64, 0), name="szc.is0"),
+        _sz0_bb,
+        _sfind_bb
+    );
+    _bs0 = ir.IRBuilder(_sz0_bb);
+    _bs0.call(mat_fn, [d_s]);
+    _bs0.branch(_sfind_bb);
+    bs = ir.IRBuilder(_sfind_bb);
     res_s = bs.call(find_fn, [d_s, k_s, h_ins], name="res");
     is_fnd = bs.icmp_signed(">=", res_s, ir.Constant(i64, 0), name="found");
     upd_bb = ins_fn.append_basic_block("upd");
@@ -494,7 +589,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         "==", icb, ir.Constant(i8, HASH_CTRL_TOMBSTONE), name="wt"
     );
 
-    _k_ins = k_s;
+    _k_ins: ir.Value = k_s;
     if _hl {
         if (
             has_vals
@@ -561,7 +656,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     ir.IRBuilder(done_s).ret_void();
 
     contains_fnty = ir.FunctionType(i1, [cont_ptr_type, key_type, i64]);
-    contains_fn: any = ir.Function(
+    contains_fn: ir.Function = ir.Function(
         self.llvm_module, contains_fnty, name=f"{_pre}_contains_ph_{_safe}"
     );
     contains_fn.linkage = "private";
@@ -577,7 +672,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     bc.ret(bc.icmp_signed(">=", res_c, ir.Constant(i64, 0), name="found"));
 
     remove_fnty = ir.FunctionType(ir.VoidType(), [cont_ptr_type, key_type, i64]);
-    remove_fn: any = ir.Function(
+    remove_fn: ir.Function = ir.Function(
         self.llvm_module, remove_fnty, name=f"{_pre}_remove_ph_{_safe}"
     );
     remove_fn.linkage = "private";
@@ -625,9 +720,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         } elif isinstance(_vt, ir.PointerType) {
             bdel = self._emit_elem_slot_drop(bdel, remove_fn, d_rm, layout, 1, vv_rm);
         }
-        bdel.store(
-            ir.Constant(val_type, None), bdel.gep(va_rm, [res_rm], name="vclear")
-        );
+        bdel.store(ir.Constant(_vt, None), bdel.gep(va_rm, [res_rm], name="vclear"));
     }
     bdel.store(
         ir.Constant(i8, HASH_CTRL_TOMBSTONE), bdel.gep(ca_rm, [res_rm], name="csp")
@@ -640,9 +733,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
     bdel.branch(done_rm);
     ir.IRBuilder(done_rm).ret_void();
 
-    pop_fn: any = None;
+    pop_fn: (ir.Function | None) = None;
     if has_vals {
-        pop_fnty = ir.FunctionType(val_type, [cont_ptr_type, key_type, i64]);
+        pop_fnty = ir.FunctionType(_vt, [cont_ptr_type, key_type, i64]);
         pop_fn = ir.Function(self.llvm_module, pop_fnty, name=f"{_pre}_pop_ph_{_safe}");
         pop_fn.linkage = "private";
         pop_fn.args[0].name = "cont";
@@ -675,9 +768,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         );
         v_out = bdp.load(bdp.gep(va_p, [res_p], name="vsp"), name="v");
         if self._elem_kind(_vt) != "raw" {
-            bdp.store(
-                ir.Constant(val_type, None), bdp.gep(va_p, [res_p], name="vclear")
-            );
+            bdp.store(ir.Constant(_vt, None), bdp.gep(va_p, [res_p], name="vclear"));
         }
         if isinstance(key_type, ir.PointerType) {
             kv_p = bdp.load(bdp.gep(ka_p, [res_p], name="kvp"), name="kv");
@@ -704,17 +795,19 @@ impl NaIRGenPass._emit_hash_core_helpers(
         bmp = ir.IRBuilder(miss_p);
         if isinstance(val_type, ir.PointerType) {
             bmp.ret(ir.Constant(val_type, None));
-        } elif _vt_dyn?.elements and _vt_dyn.elements {
+        } elif _ir_member_types(val_type) {
             bmp.ret(
-                ir.Constant(val_type, [self._zero_const(e) for e in _vt_dyn.elements])
+                ir.Constant(
+                    _vt, [self._zero_const(e) for e in _ir_member_types(val_type)]
+                )
             );
         } else {
-            bmp.ret(ir.Constant(val_type, 0));
+            bmp.ret(ir.Constant(_vt, 0));
         }
     }
 
     clear_fnty = ir.FunctionType(ir.VoidType(), [cont_ptr_type]);
-    clear_fn: any = ir.Function(
+    clear_fn: ir.Function = ir.Function(
         self.llvm_module, clear_fnty, name=f"{_pre}_clear_{_safe}"
     );
     clear_fn.linkage = "private";
@@ -783,7 +876,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
             self._emit_elem_release(blv_cl, _vt, vv_cl);
         }
         blv_cl.store(
-            ir.Constant(val_type, None), blv_cl.gep(va_cl, [si_v_cl], name="vclear")
+            ir.Constant(_vt, None), blv_cl.gep(va_cl, [si_v_cl], name="vclear")
         );
     }
     blv_cl.branch(cl_zero);
@@ -807,14 +900,26 @@ impl NaIRGenPass._emit_hash_core_helpers(
     order_cl = bdn_cl.load(
         bdn_cl.gep(d_cl, [ir.Constant(i32, 0), ir.Constant(i32, ORDER_F)])
     );
-    bdn_cl.store(
-        ir.Constant(i64, 0), self._hash_order_extent_ptr(bdn_cl, order_cl, cap_cl)
+    cl_ext = clear_fn.append_basic_block("extent");
+    cl_ret = clear_fn.append_basic_block("ret");
+
+    bdn_cl.cbranch(
+        bdn_cl.icmp_unsigned(
+            "==", order_cl, ir.Constant(order_cl.type, None), name="ord.none"
+        ),
+        cl_ret,
+        cl_ext
     );
-    bdn_cl.ret_void();
+    bex_cl = ir.IRBuilder(cl_ext);
+    bex_cl.store(
+        ir.Constant(i64, 0), self._hash_order_extent_ptr(bex_cl, order_cl, cap_cl)
+    );
+    bex_cl.branch(cl_ret);
+    ir.IRBuilder(cl_ret).ret_void();
 
     _gk_op = "get_key" if has_vals else "get";
     get_key_fnty = ir.FunctionType(key_type, [cont_ptr_type, i64]);
-    get_key_fn: any = ir.Function(
+    get_key_fn: ir.Function = ir.Function(
         self.llvm_module, get_key_fnty, name=f"{_pre}_{_gk_op}_{_safe}"
     );
     get_key_fn.linkage = "private";
@@ -891,8 +996,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
         lookup_builder.ret(ir.Constant(slot_type, None));
         core["lookup_ph"] = lookup_fn;
 
-        get_fnty = ir.FunctionType(val_type, [cont_ptr_type, key_type, i64]);
-        get_fn: any = ir.Function(
+        get_fnty = ir.FunctionType(_vt, [cont_ptr_type, key_type, i64]);
+        get_fn: ir.Function = ir.Function(
             self.llvm_module, get_fnty, name=f"{_pre}_get_ph_{_safe}"
         );
         get_fn.linkage = "private";
@@ -912,17 +1017,19 @@ impl NaIRGenPass._emit_hash_core_helpers(
         bmi = ir.IRBuilder(miss_bb);
         if isinstance(val_type, ir.PointerType) {
             bmi.ret(ir.Constant(val_type, None));
-        } elif _vt_dyn?.elements and _vt_dyn.elements {
+        } elif _ir_member_types(val_type) {
             bmi.ret(
-                ir.Constant(val_type, [self._zero_const(e) for e in _vt_dyn.elements])
+                ir.Constant(
+                    _vt, [self._zero_const(e) for e in _ir_member_types(val_type)]
+                )
             );
         } else {
-            bmi.ret(ir.Constant(val_type, 0));
+            bmi.ret(ir.Constant(_vt, 0));
         }
         core["get_ph"] = get_fn;
 
-        get_val_fnty = ir.FunctionType(val_type, [cont_ptr_type, i64]);
-        get_val_fn: any = ir.Function(
+        get_val_fnty = ir.FunctionType(_vt, [cont_ptr_type, i64]);
+        get_val_fn: ir.Function = ir.Function(
             self.llvm_module, get_val_fnty, name=f"{_pre}_get_val_{_safe}"
         );
         get_val_fn.linkage = "private";
@@ -960,31 +1067,35 @@ impl NaIRGenPass._emit_hash_core_helpers(
         bvoob = ir.IRBuilder(gv_oob_bb);
         if isinstance(val_type, ir.PointerType) {
             bvoob.ret(ir.Constant(val_type, None));
-        } elif _vt_dyn?.elements and _vt_dyn.elements {
+        } elif _ir_member_types(val_type) {
             bvoob.ret(
-                ir.Constant(val_type, [self._zero_const(e) for e in _vt_dyn.elements])
+                ir.Constant(
+                    _vt, [self._zero_const(e) for e in _ir_member_types(val_type)]
+                )
             );
         } else {
-            bvoob.ret(ir.Constant(val_type, 0));
+            bvoob.ret(ir.Constant(_vt, 0));
         }
         core["get_val"] = get_val_fn;
     }
 
-    _pub_specs: list[tuple[str, str, any]] = [
+    _pub_specs: list[tuple[str, str, ir.Function]] = [
         ("find", "find", find_fn),
         ("insert", _ins_op, ins_fn),
         ("contains", "contains", contains_fn),
         ("remove", "remove", remove_fn)
     ];
     if has_vals {
-        _pub_specs.append(("lookup", "lookup", core["lookup_ph"]));
-        _pub_specs.append(("pop", "pop", core["pop_ph"]));
-        _pub_specs.append(("get", "get", core["get_ph"]));
+        _pub_specs.append(("lookup", "lookup", lookup_fn));
+        if pop_fn is not None {
+            _pub_specs.append(("pop", "pop", pop_fn));
+        }
+        _pub_specs.append(("get", "get", get_fn));
     }
     for (_wkey, _wop, _wcore) in _pub_specs {
         _w_args = [a.type for a in _wcore.args];
         _wfnty = ir.FunctionType(_wcore.function_type.return_type, _w_args[:-1]);
-        _wfn: any = ir.Function(
+        _wfn: ir.Function = ir.Function(
             self.llvm_module, _wfnty, name=f"{_pre}_{_wop}_{_safe}"
         );
         _wfn.linkage = "private";
@@ -1017,7 +1128,7 @@ impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
     }
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module,
         ir.FunctionType(i64, [i8.as_pointer()]),
         name="__jac_cstr_hash"
@@ -1053,12 +1164,22 @@ impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
 }
 
 impl NaIRGenPass._static_str_hash(key: str) -> int {
-    mask = 0xFFFFFFFFFFFFFFFF;
-    h = HASH_FNV_BASIS & mask;
+    half = 0x100000000;
+    low = 0xFFFFFFFF;
+    hi = (HASH_FNV_BASIS >> 32) & low;
+    lo = HASH_FNV_BASIS & low;
+    prime_hi = HASH_FNV_PRIME >> 32;
+    prime_lo = HASH_FNV_PRIME & low;
     for b in key.encode("utf-8") {
-        h = ((h ^ b) * HASH_FNV_PRIME) & mask;
+        lo = lo ^ b;
+        low_product = lo * prime_lo;
+        hi = (hi * prime_lo + lo * prime_hi + (low_product >> 32)) & low;
+        lo = low_product & low;
     }
-    return h - 0x10000000000000000 if h >= 0x8000000000000000 else h;
+    if hi >= 0x80000000 {
+        hi -= half;
+    }
+    return hi * half + lo;
 }
 
 impl NaIRGenPass._static_key_hash_of(key_node: (uni.UniNode | None)) -> (int | None) {
@@ -1152,7 +1273,7 @@ impl NaIRGenPass._tuple_key_fields(key_type: ir.Type) -> list[tuple[int, str]] |
     }
     i8p = ir.IntType(8).as_pointer();
     out: list[tuple[int, str]] = [];
-    for (i, ety) in enumerate(pointee.elements) {
+    for (i, ety) in enumerate(pointee.members()) {
         if isinstance(ety, ir.IntType) {
             out.append((i, "int"));
         } elif isinstance(ety, ir.DoubleType) {
@@ -1231,7 +1352,11 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
     sig = "";
     for (i, kind) in fields {
         if kind == "int" {
-            sig += f"i{struct_type.elements[i].width}";
+            int_field = struct_type.members()[i];
+            if not isinstance(int_field, ir.IntType) {
+                raise TypeError(f"tuple key field {i} is not an integer");
+            }
+            sig += f"i{int_field.width}";
         } elif kind == "f64" {
             sig += "f";
         } elif kind == "str" {
@@ -1239,10 +1364,13 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
         } elif kind == "jacstr" {
             sig += "j";
         } elif kind == "tuple" {
-            element = struct_type.elements[i];
+            element = struct_type.members()[i];
             nested = element.pointee
                 if isinstance(element, ir.PointerType)
                 else element;
+            if not isinstance(nested, ir.LiteralStructType) {
+                raise TypeError(f"tuple key field {i} is not a tuple");
+            }
             storage = "p" if isinstance(element, ir.PointerType) else "v";
             sig += "n" + storage + self._tuple_spec_name(nested) + "e";
         } else {

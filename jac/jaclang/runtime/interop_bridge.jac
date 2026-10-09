@@ -67,12 +67,6 @@ glob logger = logging.getLogger(__name__),
          'bool': ctypes.c_bool,
          'str': ctypes.c_char_p
      },
-     JAC_TO_CTYPES_STR: dict[(str, str)] = {
-         'int': 'ctypes.c_int64',
-         'float': 'ctypes.c_double',
-         'bool': 'ctypes.c_bool',
-         'str': 'ctypes.c_char_p'
-     },
      _pyb_shadows: dict[(int, object)] = {},
      _pyb_class_memo: dict[(tuple[any, ...], type)] = {},
      _pyb_module_memo: dict[(str, object)] = {};

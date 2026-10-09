@@ -100,7 +100,10 @@ obj OspGraph {
         tags_out: dict[int, dict[int, list[int]]] = {},
         tags_in: dict[int, dict[int, list[int]]] = {},
         holes_out: dict[int, int] = {},
-        holes_in: dict[int, int] = {};
+        holes_in: dict[int, int] = {},
+        jids: dict[int, str] = {},
+        jid_next: int = 0;
+        any_undirected: bool = False;
 
     def adj_of(h: int) -> OspAdj {
         if h in self.adj {
@@ -296,6 +299,9 @@ obj OspGraph {
         unpinned: list[int] = [];
 
     def _row_alloc(src: int, tgt: int, tag: int, eobj: int, undirected: bool) -> int {
+        if undirected {
+            self.any_undirected = True;
+        }
         if self.free_rows {
             rid: int = self.free_rows.pop();
             row: OspEdgeRow = self.rows[rid];
@@ -609,63 +615,90 @@ obj OspGraph {
     def _collect(
         origin: int, dir: int, edge_tag: int, edges_only: bool, out: list[int]
     ) {
-        if origin not in self.adj or origin in self.dead {
+        if origin not in self.adj {
+            return;
+        }
+        if self.dead and origin in self.dead {
             return;
         }
         a: OspAdj = self.adj[origin];
         out_ok = dir == 2 or dir == 3;
         in_ok = dir == 1 or dir == 3;
-        nar = self._narrowed(origin, True, edge_tag);
-        for rid in self._rows_for(origin, a, True, edge_tag) {
-            if rid < 0 {
-                continue;
-            }
-            row: OspEdgeRow = self.rows[rid];
-            if not row.live {
-                continue;
-            }
-            if (out_ok or row.undirected)
-                and (nar or self._tag_matches(row.tag, edge_tag)) {
-                o: int = row.handle if edges_only else row.tgt;
-                out.append(o);
+        mixed = self.any_undirected;
+        if (out_ok or mixed) and a.rows_out {
+            nar = self._narrowed(origin, True, edge_tag);
+            for rid in self._rows_for(origin, a, True, edge_tag) {
+                if rid < 0 {
+                    continue;
+                }
+                row: OspEdgeRow = self.rows[rid];
+                if not row.live {
+                    continue;
+                }
+                if (out_ok or row.undirected)
+                    and (nar or self._tag_matches(row.tag, edge_tag)) {
+                    o: int = row.handle if edges_only else row.tgt;
+                    out.append(o);
+                }
             }
         }
-        nar = self._narrowed(origin, False, edge_tag);
-        for rid in self._rows_for(origin, a, False, edge_tag) {
-            if rid < 0 {
-                continue;
-            }
-            row: OspEdgeRow = self.rows[rid];
-            if not row.live {
-                continue;
-            }
-            if (in_ok or row.undirected)
-                and (nar or self._tag_matches(row.tag, edge_tag)) {
-                o: int = row.handle if edges_only else row.src;
-                out.append(o);
+        if (in_ok or mixed) and a.rows_in {
+            nar = self._narrowed(origin, False, edge_tag);
+            for rid in self._rows_for(origin, a, False, edge_tag) {
+                if rid < 0 {
+                    continue;
+                }
+                row: OspEdgeRow = self.rows[rid];
+                if not row.live {
+                    continue;
+                }
+                if (in_ok or row.undirected)
+                    and (nar or self._tag_matches(row.tag, edge_tag)) {
+                    o: int = row.handle if edges_only else row.src;
+                    out.append(o);
+                }
             }
         }
         if edges_only {
             return;
         }
+        exact = edge_tag != -1 and edge_tag not in _has_subs;
         ad = a.out;
         if out_ok and ad is not None {
-            for k in ad {
-                if self._tag_matches(k, edge_tag) {
-                    peers: list[int] = ad[k];
-                    for p in peers {
+            if exact {
+                if edge_tag in ad {
+                    only_out: list[int] = ad[edge_tag];
+                    for p in only_out {
                         out.append(p);
+                    }
+                }
+            } else {
+                for k in ad {
+                    if self._tag_matches(k, edge_tag) {
+                        peers: list[int] = ad[k];
+                        for p in peers {
+                            out.append(p);
+                        }
                     }
                 }
             }
         }
         ai = a.inn;
         if in_ok and ai is not None {
-            for k in ai {
-                if self._tag_matches(k, edge_tag) {
-                    srcs: list[int] = ai[k];
-                    for s in srcs {
+            if exact {
+                if edge_tag in ai {
+                    only_in: list[int] = ai[edge_tag];
+                    for s in only_in {
                         out.append(s);
+                    }
+                }
+            } else {
+                for k in ai {
+                    if self._tag_matches(k, edge_tag) {
+                        srcs: list[int] = ai[k];
+                        for s in srcs {
+                            out.append(s);
+                        }
                     }
                 }
             }
@@ -828,30 +861,6 @@ obj OspGraph {
         return cur;
     }
 
-    def hop_only(
-        origins: list[int], dir: int, edge_tag: int, edges_only: bool, target: int
-    ) -> list[int] {
-        """Hop results that land on a bound endpoint (`[p ->:E:-> c]`).
-
-        For node hops the result must be `target` itself; for edge hops the
-        edge's far endpoint from `origin` must be `target`.
-        """;
-        out: list[int] = [];
-        seen: set[int] = set();
-        for origin in origins {
-            for h in self.refs(origin, dir, edge_tag, edges_only) {
-                hit = (self.edge_peer(h, origin) == target)
-                    if edges_only
-                    else (h == target);
-                if hit and h not in seen {
-                    seen.add(h);
-                    out.append(h);
-                }
-            }
-        }
-        return out;
-    }
-
     def conn_many(
         srcs: list[int],
         tgts: list[int],
@@ -874,6 +883,55 @@ obj OspGraph {
             }
         }
         return n;
+    }
+
+    def keep_toward(
+        hs: list[int], origins: list[int], dir: int, edges_only: bool, wanted: list[int]
+    ) -> list[int] {
+        want: set[int] = set(wanted);
+        out: list[int] = [];
+        if not edges_only {
+            for h in hs {
+                if h in want {
+                    out.append(h);
+                }
+            }
+            return out;
+        }
+        orig: set[int] = set(origins);
+        for e in hs {
+            if e not in self.row_of {
+                continue;
+            }
+            row: OspEdgeRow = self.rows[self.row_of[e]];
+            fwd = dir != 1 or row.undirected;
+            bwd = dir != 2 or row.undirected;
+            if (fwd and row.src in orig and row.tgt in want)
+                or (bwd and row.tgt in orig and row.src in want) {
+                out.append(e);
+            }
+        }
+        return out;
+    }
+
+    def jid_of(h: int, rgn: int = 0) -> str {
+        if h in self.jids {
+            found: str = self.jids[h];
+            return found;
+        }
+        self.jid_next += 1;
+        made = _hex16(id(self)) + _hex16(self.jid_next);
+        self.jids[h] = made;
+        if rgn != 0 {
+            self.region_reg(h, rgn);
+        }
+        return made;
+    }
+
+    def forget_jid(h: int) {
+        if h in self.jids {
+            self.jids.pop(h);
+        }
     }
 
     def edge_peer(eobj: int, origin: int) -> int {
@@ -1131,6 +1189,7 @@ obj OspGraph {
         if h in self.dead {
             self.dead.pop(h);
         }
+        self.forget_jid(h);
         return n;
     }
 
@@ -1154,6 +1213,7 @@ obj OspGraph {
             if h in self.dead {
                 self.dead.pop(h);
             }
+            self.forget_jid(h);
         }
         n = 0;
         for a in stash {
@@ -1192,8 +1252,22 @@ obj OspGraph {
     }
 }
 
+def _hex16(v: int) -> str {
+    digits: str = "0123456789abcdef";
+    out: str = "";
+    i = 0;
+    while i < 16 {
+        out = digits[v % 16] + out;
+        v = v // 16;
+        i += 1;
+    }
+    return out;
+}
+
 def _new_graph -> OspGraph {
-    return OspGraph(adj={}, rows=[], free_rows=[], row_of={}, dead={}, regions={});
+    return OspGraph(
+        adj={}, rows=[], free_rows=[], row_of={}, dead={}, regions={}, jids={}
+    );
 }
 
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
@@ -1330,16 +1404,20 @@ def osp_disconn_between_many(
     return DEFAULT_GRAPH.disconnect_between_many(srcs, tgts, dir, edge_tag);
 }
 
-def osp_hop_only(
-    origins: list[int], dir: int, edge_tag: int, edges_only: int, target: int
-) -> list[int] {
-    return DEFAULT_GRAPH.hop_only(origins, dir, edge_tag, edges_only != 0, target);
-}
-
 def osp_wrap1(x: int) -> list[int] {
     out: list[int] = [];
     out.append(x);
     return out;
+}
+
+def osp_keep_toward(
+    hs: list[int], origins: list[int], dir: int, edges_only: int, wanted: list[int]
+) -> list[int] {
+    return DEFAULT_GRAPH.keep_toward(hs, origins, dir, edges_only != 0, wanted);
+}
+
+def osp_jid(h: int, rgn: int) -> str {
+    return DEFAULT_GRAPH.jid_of(h, rgn);
 }
 
 def osp_edge_peer(edge_handle: int, origin: int) -> int {
@@ -1380,6 +1458,11 @@ def osp_forget_node(h: int) {
     } elif h in DEFAULT_GRAPH.dead {
         DEFAULT_GRAPH.dead.pop(h);
     }
+    DEFAULT_GRAPH.forget_jid(h);
+}
+
+def osp_forget_edge(h: int) {
+    DEFAULT_GRAPH.forget_jid(h);
 }
 
 def osp_pin_refs {

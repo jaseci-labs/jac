@@ -143,6 +143,7 @@ obj PgStore(Store) {
         _in_txn: bool postinit,
         _isolation: (TxnIsolation | None) postinit,
         _known_types: set[str] postinit,
+        _txn_types: set[str] postinit,
         _listeners: list[ChannelListener] postinit,
         _listen_thread: (any | None) postinit,
         _listen_stop: (any | None) postinit,

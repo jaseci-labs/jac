@@ -345,6 +345,50 @@ test "every service pod carries the sibling flag in its env, and no override dro
 }
 
 
+# Every init container is a serial container start on the cold-wake path, so
+# unpacking the bundle happens inside the bootstrap container rather than in a
+# container of its own, and the probes report Ready as soon as the app answers.
+test "app pods unpack and bootstrap in one init container and probe for a fast first Ready" {
+    import from jaclang.scale.injector.pvc_injector {
+        BUNDLE_MOUNT_PATH,
+        PVC_BOOTSTRAP_NAME,
+        bundle_keys_from_pod_spec
+    }
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = ManifestBuilder(
+        k8s_config=cfg,
+        project_dir=str(_K8S_E2E_FIXTURE),
+        fleet=fleet_of(
+            {"orders_app": "/orders", "cart_app": "/cart"},
+            root_app="main",
+            root_file="main.jac"
+        )
+    );
+    builder._bundle_object_key = "bundles/jac-shop/aaa.jab";
+    builder._toolchain_object_key = "toolchain/jac-shop/bbb.tar.gz";
+    app_cfg = AppConfig(code_folder=str(_K8S_E2E_FIXTURE), app_name="jac-shop");
+    cart = builder.generate_service_pod_specs(app_cfg, "img")["cart_app"];
+    names = [c["name"] for c in cart["initContainers"]];
+    assert PVC_BOOTSTRAP_NAME not in names , names;
+    boot = [
+        c
+        for c in cart["initContainers"]
+        if c["name"] == "jac-bootstrap"
+    ];
+    assert len(boot) == 1 , names;
+    script = boot[0]["args"][0];
+    assert script.index("tar xzf " + BUNDLE_MOUNT_PATH) < script.index("jac install");
+    assert bundle_keys_from_pod_spec(cart) , script;
+    container = cart["containers"][0];
+    assert container["startupProbe"]["periodSeconds"] == 1;
+    assert container["startupProbe"]["periodSeconds"]
+        * container["startupProbe"]["failureThreshold"]
+        == 900;
+    assert container["readinessProbe"]["initialDelaySeconds"] == 0;
+    assert "bundles/jac-shop/aaa.jab" in bundle_keys_from_pod_spec(cart);
+}
+
+
 test "a shared volume is handed to the runtime identity before the service starts" {
     # A PVC from [scale.gateway] shared_volumes arrives root-owned from most
     # provisioners, the service container runs as the image's `jac` user, and

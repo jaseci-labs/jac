@@ -138,15 +138,14 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
                 } elif isinstance(base_expr, AstSymbolNode) {
                     pname = base_expr.sym_name;
                 }
-                if pname is None {
-                    continue;
+                parent = referenced_native_name(base_expr);
+                if parent is None {
+                    if pname is None or is_erased_base_name(pname, archetypes) {
+                        continue;
+                    }
+                    parent = pname;
                 }
-                _pnative = referenced_native_name(base_expr);
-                if _pnative is None and is_erased_base_name(pname, archetypes) {
-                    continue;
-                }
-                pname = _pnative or pname;
-                parents.append(pname);
+                parents.append(parent);
                 parent_mods.append(declaring_module_path(base_expr));
             }
             if parents {
@@ -452,11 +451,12 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
 impl LayoutPass._build_enum_layouts(module: Module) -> None {
     for nd in module.get_all_sub_nodes(Enum) {
         ename = nd.name.value if nd.name else None;
-        if ename is None or ename in self.registry.enums or nd.body is None {
+        body = ModuleFacts.unwrap_body(nd);
+        if ename is None or ename in self.registry.enums or body is None {
             continue;
         }
         raw_members: list[tuple[(str, (UniNode | None))]] = [];
-        for stmt in nd.body {
+        for stmt in body {
             if isinstance(stmt, Assignment) {
                 targets = stmt.target
                     if isinstance(stmt.target, (list, tuple))

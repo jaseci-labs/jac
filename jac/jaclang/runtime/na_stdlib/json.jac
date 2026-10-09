@@ -9,8 +9,27 @@ def:pub load(fp: File) -> any {
 }
 
 
-def:pub dumps(value: any, sort_keys: bool = False) -> str {
-    return _dump_value(value, sort_keys);
+def:pub dumps(
+    value: any,
+    sort_keys: bool = False,
+    separators: (tuple[str, str] | None) = None,
+    ensure_ascii: bool = True
+) -> str {
+    style: _JsonStyle = _JsonStyle(sort_keys=sort_keys, ensure_ascii=ensure_ascii);
+    if separators is not None {
+        (item_sep, key_sep) = separators;
+        style.item_sep = item_sep;
+        style.key_sep = key_sep;
+    }
+    return _dump_value(value, style);
+}
+
+
+obj _JsonStyle {
+    has sort_keys: bool = False,
+        ensure_ascii: bool = True,
+        item_sep: str = ", ",
+        key_sep: str = ": ";
 }
 
 
@@ -65,42 +84,57 @@ obj _JsonParser {
 
     def _parse_string -> str {
         self.pos += 1;
-        out: str = "";
+        closing: int = self.src.find("\"", self.pos);
+        if closing >= 0 {
+            plain: str = self.src[self.pos:closing];
+            if plain.find("\\") < 0 {
+                self.pos = closing + 1;
+                return plain;
+            }
+        }
+        parts: list[str] = [];
+        run_start: int = self.pos;
         while True {
             c: int = self._cc();
             if c == 34 or c == -1 {
+                if self.pos > run_start {
+                    parts.append(self.src[run_start:self.pos]);
+                }
                 self.pos += 1;
                 break;
             }
             if c == 92 {
+                if self.pos > run_start {
+                    parts.append(self.src[run_start:self.pos]);
+                }
                 self.pos += 1;
                 e: int = self._cc();
                 self.pos += 1;
                 if e == 34 {
-                    out += "\"";
+                    parts.append("\"");
                 } elif e == 92 {
-                    out += "\\";
+                    parts.append("\\");
                 } elif e == 47 {
-                    out += "/";
+                    parts.append("/");
                 } elif e == 110 {
-                    out += "\n";
+                    parts.append("\n");
                 } elif e == 116 {
-                    out += "\t";
+                    parts.append("\t");
                 } elif e == 114 {
-                    out += "\r";
+                    parts.append("\r");
                 } elif e == 98 {
-                    out += chr(8);
+                    parts.append(chr(8));
                 } elif e == 102 {
-                    out += chr(12);
+                    parts.append(chr(12));
                 } elif e == 117 {
-                    out += chr(self._hex4());
+                    parts.append(chr(self._hex4()));
                 }
+                run_start = self.pos;
             } else {
-                out += self.src[self.pos];
                 self.pos += 1;
             }
         }
-        return out;
+        return "".join(parts);
     }
 
     def _hex4 -> int {
@@ -240,39 +274,105 @@ def _hex4_str(n: int) -> str {
 }
 
 
-def _dump_str(s: str) -> str {
-    out: str = "\"";
+def _dump_str(s: str, ensure_ascii: bool) -> str {
+    parts: list[str] = ["\""];
     n: int = len(s);
     i: int = 0;
+    start: int = 0;
     while i < n {
         ch: int = ord(s[i]);
+        if ch >= 32 and ch != 34 and ch != 92 and (ch < 127 or not ensure_ascii) {
+            i += 1;
+            continue;
+        }
+        if i > start {
+            parts.append(s[start:i]);
+        }
         if ch == 34 {
-            out += "\\\"";
+            parts.append("\\\"");
         } elif ch == 92 {
-            out += "\\\\";
+            parts.append("\\\\");
         } elif ch == 10 {
-            out += "\\n";
+            parts.append("\\n");
         } elif ch == 9 {
-            out += "\\t";
+            parts.append("\\t");
         } elif ch == 13 {
-            out += "\\r";
+            parts.append("\\r");
         } elif ch == 8 {
-            out += "\\b";
+            parts.append("\\b");
         } elif ch == 12 {
-            out += "\\f";
+            parts.append("\\f");
         } elif ch < 32 {
-            out += "\\u" + _hex4_str(ch);
+            parts.append("\\u" + _hex4_str(ch));
+        } elif ensure_ascii and ch == 127 {
+            parts.append("\\u007f");
+        } elif ensure_ascii and ch > 127 {
+            width: int = 2 if ch < 224 else (3 if ch < 240 else 4);
+            code: int = ch % (64 if width == 2 else (32 if width == 3 else 16));
+            k: int = 1;
+            while k < width and i + k < n {
+                code = code * 64 + ord(s[i + k]) % 64;
+                k += 1;
+            }
+            i += width - 1;
+            if code > 65535 {
+                v: int = code - 65536;
+                parts.append("\\u" + _hex4_str(55296 + v // 1024));
+                parts.append("\\u" + _hex4_str(56320 + v % 1024));
+            } else {
+                parts.append("\\u" + _hex4_str(code));
+            }
         } else {
-            out += s[i];
+            parts.append(s[i]);
         }
         i += 1;
+        start = i;
     }
-    out += "\"";
-    return out;
+    if start == 0 {
+        return "\"" + s + "\"";
+    }
+    if n > start {
+        parts.append(s[start:n]);
+    }
+    parts.append("\"");
+    return "".join(parts);
 }
 
 
-def _dump_value(value: any, sort_keys: bool) -> str {
+def _dump_float(f_val: float) -> str {
+    if f_val != f_val {
+        return "NaN";
+    }
+    if f_val == float("inf") {
+        return "Infinity";
+    }
+    if f_val == float("-inf") {
+        return "-Infinity";
+    }
+    return str(f_val);
+}
+
+
+def _dump_items(items: list[any], style: _JsonStyle) -> str {
+    parts: list[str] = ["["];
+    n: int = len(items);
+    i: int = 0;
+    while i < n {
+        if i > 0 {
+            parts.append(style.item_sep);
+        }
+        parts.append(_dump_value(items[i], style));
+        i += 1;
+    }
+    parts.append("]");
+    return "".join(parts);
+}
+
+
+def _dump_value(value: any, style: _JsonStyle) -> str {
+    if value is None {
+        return "null";
+    }
     if isinstance(value, bool) {
         flag: int = value;
         if flag != 0 {
@@ -286,41 +386,32 @@ def _dump_value(value: any, sort_keys: bool) -> str {
     }
     if isinstance(value, float) {
         f_val: float = value;
-        return str(f_val);
+        return _dump_float(f_val);
     }
     if isinstance(value, str) {
         s_val: str = value;
-        return _dump_str(s_val);
+        return _dump_str(s_val, style.ensure_ascii);
     }
     if isinstance(value, list) {
         arr: list[any] = value;
-        out: str = "[";
-        n: int = len(arr);
-        i: int = 0;
-        while i < n {
-            if i > 0 {
-                out += ", ";
-            }
-            out += _dump_value(arr[i], sort_keys);
-            i += 1;
-        }
-        out += "]";
-        return out;
+        return _dump_items(arr, style);
     }
     if isinstance(value, dict) {
         d: dict[str, any] = value;
-        out: str = "{";
+        parts: list[str] = ["{"];
         first: int = 1;
-        keys: list[str] = sorted(d.keys()) if sort_keys else list(d.keys());
+        keys: list[str] = sorted(d.keys()) if style.sort_keys else list(d.keys());
         for k in keys {
             if first == 0 {
-                out += ", ";
+                parts.append(style.item_sep);
             }
             first = 0;
-            out += _dump_str(k) + ": " + _dump_value(d[k], sort_keys);
+            parts.append(_dump_str(k, style.ensure_ascii));
+            parts.append(style.key_sep);
+            parts.append(_dump_value(d[k], style));
         }
-        out += "}";
-        return out;
+        parts.append("}");
+        return "".join(parts);
     }
-    return "null";
+    raise TypeError("Object is not JSON serializable");
 }

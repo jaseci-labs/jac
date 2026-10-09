@@ -203,6 +203,7 @@ impl PgStore.postinit -> None {
     self._in_txn = False;
     self._isolation = None;
     self._known_types = set();
+    self._txn_types = set();
     self._listeners = [];
     self._listen_thread = None;
     self._listen_stop = None;
@@ -832,6 +833,7 @@ impl PgStore.begin(isolation: TxnIsolation = TxnIsolation.SERIALIZABLE) -> None 
         self._run(f"BEGIN {isolation.value}", {});
         self._in_txn = True;
         self._isolation = isolation;
+        self._txn_types = set();
         try {
             self._run("SET LOCAL lock_timeout = '10s'", {});
         } except Exception {}
@@ -846,6 +848,7 @@ impl PgStore.commit -> None {
         }
         try {
             self._run('COMMIT', {});
+            self._known_types |= self._txn_types;
         } finally {
             self._in_txn = False;
             self._isolation = None;
@@ -1024,10 +1027,13 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             actual_version=int(found[0][0]) if found else -1
         );
     }
+    registered = self._txn_types if self._in_txn else self._known_types;
     pairs: list[tuple[str, str]] = [];
     seen_pairs: set[tuple[str, str]] = set();
     for row in rows {
-        if row.arch_type and row.arch_type not in self._known_types {
+        if row.arch_type
+            and row.arch_type not in self._known_types
+            and row.arch_type not in registered {
             for anc in (row.ancestry or [row.arch_type]) {
                 if (row.arch_type, anc) not in seen_pairs {
                     seen_pairs.add((row.arch_type, anc));
@@ -1051,7 +1057,7 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             tparams
         );
         for pair in pairs {
-            self._known_types.add(pair[0]);
+            registered.add(pair[0]);
         }
     }
 }
