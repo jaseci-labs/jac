@@ -10,7 +10,8 @@ impl Image.postinit -> None {
     value = self.url;
 
     if isinstance(value, os.PathLike) {
-        value = os.fspath(value);
+        self._set_from_path(os.fspath(value));
+        return;
     }
 
     if isinstance(value, str) {
@@ -19,22 +20,8 @@ impl Image.postinit -> None {
             self.url = s;
             return;
         }
-
-        if not os.path.exists(s) {
-            raise ValueError(f"Image file does not exist: {s}");
-        }
-
-        image: any = open_image(s);
-        fmt: str = image.format or "PNG";
-
-        self.mime_type = self._format_to_mime(fmt);
-        buffer = BytesIO();
-        with buffer {
-            image.save(buffer, format=fmt);
-            data = buffer.getvalue();
-            self.url = self._data_url_from_bytes(data, fmt);
-            return;
-        }
+        self._set_from_path(s);
+        return;
     }
 
     if isinstance(value, PILImageCls) {
@@ -102,6 +89,23 @@ impl Image.postinit -> None {
         "Unsupported Image input type. Provide a URL/path string, data URL, bytes, "
         "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
     );
+}
+
+impl Image._set_from_path(path: str | bytes) -> None {
+    if not os.path.exists(path) {
+        raise ValueError(f"Image file does not exist: {path}");
+    }
+
+    image: any = open_image(path);
+    fmt: str = image.format or "PNG";
+
+    self.mime_type = self._format_to_mime(fmt);
+    buffer = BytesIO();
+    with buffer {
+        image.save(buffer, format=fmt);
+        data = buffer.getvalue();
+        self.url = self._data_url_from_bytes(data, fmt);
+    }
 }
 
 impl Image._format_to_mime(fmt: str | None) -> str {
