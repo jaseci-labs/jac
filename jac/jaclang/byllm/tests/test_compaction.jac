@@ -8,11 +8,13 @@ import from jaclang.byllm.llm { BaseLLM, LocalLLM }
 import from jaclang.byllm.types { MockToolCall }
 import from jaclang.byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
+import from jaclang.runtime.runtime { JacRuntime }
 import from pathlib { Path }
 import from support { call, capture_loguru, fail, finish, fixture_path, scripted }
 
 
-glob COMPACTION_TOML_FIXTURE = fixture_path("compaction_config");
+glob COMPACTION_TOML_FIXTURE = fixture_path("compaction_config"),
+     COMPACTION_TARGET = str(Path(COMPACTION_TOML_FIXTURE) / "main.jac");
 
 
 def step_a -> str {
@@ -144,13 +146,10 @@ test "ctx_window priority - call_params beats self.ctx_window" {
 }
 
 
-# T3b/T3c stay at the resolver level: by llm() invocations through MTRuntime
-# call get_byllm_config(project_dir) for system-prompt resolution, which wipes
-# our cached fixture config (find_project_root walks past tests/fixtures and
-# hits the outer jaseci/jac.toml). See ISSUE_config_cache_invalidation.md.
 test "ctx_window priority - self.ctx_window beats jac.toml" {
+    orig_target = JacRuntime.get_full_target_path();
+    JacRuntime.set_full_target_path(COMPACTION_TARGET);
     reset_byllm_config();
-    get_byllm_config(Path(COMPACTION_TOML_FIXTURE));
     try {
         loaded = get_byllm_config().get_compaction_config();
         assert loaded["ctx_window"] == 10000 , f"Fixture not loaded: {loaded}";
@@ -158,19 +157,22 @@ test "ctx_window priority - self.ctx_window beats jac.toml" {
         llm = MockLLM(ctx_window=1000);
         assert llm._get_ctx_window({}) == 1000;
     } finally {
+        JacRuntime.set_full_target_path(orig_target);
         reset_byllm_config();
     }
 }
 
 
 test "ctx_window priority - jac.toml beats litellm" {
+    orig_target = JacRuntime.get_full_target_path();
+    JacRuntime.set_full_target_path(COMPACTION_TARGET);
     reset_byllm_config();
-    get_byllm_config(Path(COMPACTION_TOML_FIXTURE));
     try {
         # litellm registry has gpt-4o-mini = 128000.
         llm = MockLLM(model_name="gpt-4o-mini");
         assert llm._get_ctx_window({}) == 10000;
     } finally {
+        JacRuntime.set_full_target_path(orig_target);
         reset_byllm_config();
     }
 }

@@ -261,6 +261,36 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
     }
 }
 
+test "byllm config cache follows the runtime project target" {
+    orig = JacRuntime.get_full_target_path();
+    gemini_target = os.path.join(GEMINI_FIXTURE, "main.jac");
+    root_target = os.path.join(FIXTURE_DIR, "..", "test_byllm.jac");
+    reset_byllm_config();
+    try {
+        JacRuntime.set_full_target_path(root_target);
+        explicit_config = get_byllm_config(Path(GEMINI_FIXTURE));
+        assert explicit_config.get_model_config()['default_model']
+            == "gemini/gemini-1.5-pro";
+        assert get_byllm_config(Path(GEMINI_FIXTURE)) is explicit_config;
+
+        root_config = get_byllm_config();
+        assert root_config is not explicit_config;
+        assert root_config.get_model_config()['default_model']
+            == "anthropic/claude-sonnet-4-6";
+        assert get_byllm_config() is root_config;
+
+        JacRuntime.set_full_target_path(gemini_target);
+        gemini_config = get_byllm_config();
+        assert gemini_config is not root_config;
+        assert gemini_config.get_model_config()['default_model']
+            == "gemini/gemini-1.5-pro";
+        assert get_byllm_config() is gemini_config;
+    } finally {
+        JacRuntime.set_full_target_path(orig);
+        reset_byllm_config();
+    }
+}
+
 obj _TestPerson {
     has name: str,
         age: int;
