@@ -1041,19 +1041,26 @@ def _exec_file(
                         if _kind_forced or backend == "native"
                         else None
                 );
-                ir_mod = program.compile(file_path=full_path, options=_run_options);
+                (in_kernel, engine) = program._get_compiler().kernel_native_entry(
+                    full_path, program, _run_options
+                );
+                if not in_kernel {
+                    ir_mod = program.compile(file_path=full_path, options=_run_options);
+                    if (
+                        ir_mod
+                        and ir_mod.decided_codespace == 'native'
+                        and ir_mod.gen.native_engine
+                    ) {
+                        engine = ir_mod.gen.native_engine;
+                    }
+                }
                 if program.errors_had {
                     for _err in program.errors_had {
                         console.error(_err.pretty_print());
                     }
                     return 1;
                 }
-                if (
-                    ir_mod
-                    and ir_mod.decided_codespace == 'native'
-                    and ir_mod.gen.native_engine
-                ) {
-                    engine = ir_mod.gen.native_engine;
+                if engine is not None {
                     _populate_native_argv(engine, sys.argv);
                     if main {
                         addr = engine.get_function_address("jac_entry");
@@ -1311,10 +1318,11 @@ impl serve(
                 [svc.entry_path(project_root) for svc in services],
                 not no_client
                     and not faux
-                    and (
-                        served is None
-                        or (cfg.resolved_kind(served) if cfg else served.kind)
-                            == "web-app"
+                    and _serves_web_client(
+                        (cfg.resolved_kind(served) if cfg else served.kind)
+                            if served is not None
+                            else None,
+                        platform or (served.platform if served is not None else "")
                     ),
                 dev
             );
@@ -1556,6 +1564,13 @@ def _get_network_ips -> list[str] {
         }
     } except Exception {}
     return ips;
+}
+
+def _serves_web_client(kind: (str | None), platform: (str | None)) -> bool {
+    if kind is None or kind == "web-app" {
+        return True;
+    }
+    return kind == "mobile" and (platform or "").strip().lower() == "web";
 }
 
 def _count_jac_files(directory: str) -> int {

@@ -132,6 +132,7 @@ import from jaclang.compiler.frontend.roles {
 import from jaclang.compiler.frontend.relations {
     Absorbs,
     CalleeDecl,
+    CalleeSignature,
     EventTriggerOf,
     NarrowedTypeOf,
     TypeOf,
@@ -2038,6 +2039,11 @@ node FuncCall(Expr) {
     has callee_decl: (Ability | None) {
         getter;
         setter(callee_decl: (Ability | None));
+    }
+
+    has callee_signature: (TypeBase | None) {
+        getter;
+        setter(callee_signature: (TypeBase | None));
     }
 
     has target: Expr { getter; }

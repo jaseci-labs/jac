@@ -177,7 +177,7 @@ impl NaIRGenPass._dispatch_bytearray_method(
     fns = self._bytearray_runtime_fns();
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    params: Sequence[any] = nd.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
     if method_name == "append" {
         if not params {
             return None;

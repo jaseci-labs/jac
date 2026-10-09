@@ -4308,6 +4308,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             classify_client_import_item,
             resolve_import_source_module
         }
+        client_tops: dict[str, bool] = {};
         for imp in mod.get_all_sub_nodes(Import) {
             kind = classify_cross_app_import(imp, None);
             is_service = kind == CrossAppKind.SERVICE_BRIDGE;
@@ -4315,7 +4316,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             is_native_edge = (
                 not is_service
                 and not is_boundary
-                and is_client_native_edge_import(imp, self.program)
+                and is_client_native_edge_import(imp, self.program, client_tops)
             );
             if not (is_service or is_boundary or is_native_edge) {
                 continue;

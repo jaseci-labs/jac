@@ -53,12 +53,16 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import from jaclang.compiler.driver.native_iface { NativeIface }
 import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob _CATALOGS: dict[str, StubCatalog] = {};
 
 glob HOST_ONLY_ANSWER: str = "host_only",
-     EMIT_QUESTION: str = "emit_unit";
+     EMIT_QUESTION: str = "emit_unit",
+     NATIVE_GENERATOR_MODULE: str = "jaclang.compiler.backends.native.na_ir_gen_pass",
+     EVENT_NOTE: str = "note",
+     EVENT_COVERAGE: str = "coverage";
 
 class HostOnlyError(RuntimeError) {}
 
@@ -190,10 +194,6 @@ obj KernelSession(SessionHooks) {
         return self.closure;
     }
 
-    def defers_native_codegen -> bool {
-        return self.host.fallback is None;
-    }
-
     def run_module(
         file_path: str,
         target_program: JacProgram,
@@ -307,6 +307,9 @@ obj KernelHost(HostServices) {
         kernel_asker: bool = False,
         _asked: set[str] = set(),
         grown: set[str] = set(),
+        native_failures: dict[str, str] = {},
+        _native_ifaces: dict[str, NativeIface] = {},
+        _lowering: set[str] = set(),
         _indexed: list[int] = [0, 0, 0, 0, 0],
         _session: (KernelSession | None) = None;
 
@@ -508,6 +511,22 @@ obj KernelHost(HostServices) {
         self.census.count(method);
         self.census.buffer(method);
         self.events.append(event);
+    }
+
+    def event_rows -> list[list[str]] {
+        rows: list[list[str]] = [];
+        for event in self.events {
+            if event.kind == HostEventKind.NOTE {
+                rows.append(
+                    [EVENT_NOTE, event.path, event.text, event.code, event.detail]
+                );
+            } elif event.kind == HostEventKind.COVERAGE {
+                rows.append(
+                    [EVENT_COVERAGE, event.path, event.text, event.code, event.detail]
+                );
+            }
+        }
+        return rows;
     }
 
     def replay(target: HostServices) {
@@ -957,6 +976,131 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def held_native_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> str {
+        self.census.count("held_native_iface");
+        key = pair_key(os.path.realpath(path), options.unit_codegen_identity(path));
+        if key in self.inputs.native_ifaces {
+            return self.inputs.native_ifaces[key];
+        }
+        with self.missing("held_native_iface", key) as host {
+            answer = host.held_native_iface(program, path, options);
+        }
+        self.inputs.native_ifaces[key] = answer;
+        return answer;
+    }
+
+    def native_dep_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (NativeIface | None) {
+        if self.fallback is not None {
+            with self.delegating("native_dep_iface") as host {
+                answer = host.native_dep_iface(program, path, options);
+            }
+            return answer;
+        }
+        self.census.count("native_dep_iface");
+        real = os.path.realpath(path);
+        known = self._native_ifaces.get(real);
+        if known is not None {
+            return known;
+        }
+        if real in self._lowering {
+            return None;
+        }
+        found: (NativeIface | None) = None;
+        text = self.held_native_iface(program, real, options);
+        if text {
+            found = NativeIface.from_bytes(text.encode("utf-8"));
+            if found is not None {
+                found.resolve_deps(real);
+            }
+        } else {
+            found = self.lower_dependency(program, real, options);
+        }
+        if found is not None {
+            self._native_ifaces[real] = found;
+        }
+        return found;
+    }
+
+    def lower_dependency(
+        program: JacProgram, real: str, options: CompileOptions
+    ) -> (NativeIface | None) {
+        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
+        import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+        import from jaclang.compiler.frontend.codeinfo {
+            get_effective_default_codespace_override,
+            set_effective_default_codespace
+        }
+        self._lowering.add(real);
+        previous = program.options;
+        codespace = get_effective_default_codespace_override();
+        mark = len(program.errors_had);
+        try {
+            opts = options.clone_for_native_import();
+            opts.no_cgen = True;
+            module = self.compile_module(program, real, None, opts);
+            if len(program.errors_had) > mark {
+                return None;
+            }
+            opts.no_cgen = False;
+            program.options = opts;
+            set_effective_default_codespace("native");
+            import from jaclang.compiler.driver.pipeline {
+                product_ready,
+                require_product
+            }
+            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+            if not product_ready(program, module, CompilationProduct.ANALYSIS)
+                and not require_product(program, module, CompilationProduct.ANALYSIS) {
+                return None;
+            }
+            program.run_schedule(module, [RcFactsPass, NaIRGenPass]);
+            if len(program.errors_had) > mark {
+                return None;
+            }
+            if module.gen.native_iface is not None {
+                self.grown.add(real);
+            }
+            return module.gen.native_iface;
+        } finally {
+            program.options = previous;
+            set_effective_default_codespace(codespace);
+            self._lowering.discard(real);
+        }
+    }
+
+    def native_fact(kind: str, key: str) -> str {
+        self.census.count("native_fact");
+        tag = pair_key(kind, key);
+        if tag in self.inputs.native_facts {
+            return self.inputs.native_facts[tag];
+        }
+        with self.missing("native_fact", tag) as host {
+            answer = host.native_fact(kind, key);
+        }
+        self.inputs.native_facts[tag] = answer;
+        return answer;
+    }
+
+    def save_native_debug_ir(path: str, text: str) {
+        self.census.count("save_native_debug_ir");
+        if self.fallback is not None {
+            self.fallback.save_native_debug_ir(path, text);
+        }
+    }
+
+    def native_lowering_failed(program: JacProgram, path: str, detail: str) {
+        self.census.count("native_lowering_failed");
+        if self.fallback is not None {
+            self.fallback.native_lowering_failed(program, path, detail);
+            return;
+        }
+        self.native_failures[os.path.realpath(path)] = detail;
+    }
+
     def native_units_for(program: JacProgram) -> NativeUnitRegistry {
         with self.delegating("native_units_for") as host {
             answer = host.native_units_for(program);
@@ -1055,6 +1199,18 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
+    def native_unadoptable(path: str, program: (JacProgram | None) = None) -> str {
+        self.census.count("native_unadoptable");
+        if path in self.inputs.unadoptable {
+            return self.inputs.unadoptable[path];
+        }
+        with self.missing("native_unadoptable", path) as host {
+            answer = host.native_unadoptable(path, program);
+        }
+        self.inputs.unadoptable[path] = answer;
+        return answer;
+    }
+
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     ) {
@@ -1114,7 +1270,19 @@ obj KernelHost(HostServices) {
         options: CompileOptions
     ) -> Module {
         owned = program.internal or package_owned(file_path, program, options);
-        if self.in_kernel() {
+        tree_wanted = False;
+        if file_path.endswith(".jac") and not program.internal {
+            import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
+            stdlib_dir = native_stdlib_root();
+            tree_wanted = stdlib_dir is not None
+                and os.path.realpath(file_path).startswith(
+                    os.path.realpath(stdlib_dir) + os.sep
+                );
+        }
+        if tree_wanted {
+            owned = False;
+        }
+        if self.in_kernel() and not tree_wanted {
             served = self.python_module(program, file_path);
             if served is None and (owned or not file_path.endswith(".jac")) {
                 if self.ask("compile_module", file_path) {
@@ -1209,6 +1377,21 @@ obj KernelHost(HostServices) {
 
     def load_modules(names: list[str]) {
         self.census.count("load_modules");
+        if NATIVE_GENERATOR_MODULE in names and self.fallback is None {
+            import from jaclang.compiler.driver.pipeline {
+                register_codegen_backend,
+                register_product_schedule
+            }
+            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+            import from jaclang.compiler.backends.native.na_ir_gen_pass {
+                native_codegen_schedule,
+                native_ir_product_schedule
+            }
+            register_codegen_backend("native", native_codegen_schedule);
+            register_product_schedule(
+                CompilationProduct.NATIVE_IR, native_ir_product_schedule
+            );
+        }
     }
 
     def module_in_flight(names: list[str]) -> str {
@@ -1273,6 +1456,19 @@ def read_utf8_source(path: str) -> (str | None) {
         text = text.replace("\r\n", "\n").replace("\r", "\n");
     }
     return text;
+}
+
+def replay_event_rows(target: HostServices, rows: list[list[str]]) {
+    for row in rows {
+        if len(row) != 5 {
+            continue;
+        }
+        if row[0] == EVENT_NOTE {
+            target.note(row[2], row[3]);
+        } elif row[0] == EVENT_COVERAGE {
+            target.record_native_coverage(row[1], row[2], row[3], row[4]);
+        }
+    }
 }
 
 def replay_event(target: HostServices, event: HostEvent) {

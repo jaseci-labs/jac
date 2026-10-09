@@ -9,6 +9,7 @@ import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.driver.native_iface { NativeIface }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
 import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
@@ -229,6 +230,24 @@ obj HostServices {
         raise RuntimeError("no compiler host is installed");
     }
 
+    def native_dep_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> (NativeIface | None) {
+        return None;
+    }
+
+    def held_native_iface(
+        program: JacProgram, path: str, options: CompileOptions
+    ) -> str {
+        return "";
+    }
+
+    def native_lowering_failed(program: JacProgram, path: str, detail: str) {}
+    def native_fact(kind: str, key: str) -> str {
+        return "";
+    }
+
+    def save_native_debug_ir(path: str, text: str) {}
     def native_units_for(program: JacProgram) -> NativeUnitRegistry {
         raise RuntimeError("no compiler host is installed");
     }
@@ -264,6 +283,10 @@ obj HostServices {
 
     def native_session_active(program: JacProgram) -> bool {
         return False;
+    }
+
+    def native_unadoptable(path: str, program: (JacProgram | None) = None) -> str {
+        return "";
     }
 
     def record_native_coverage(

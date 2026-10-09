@@ -304,3 +304,44 @@ test "a provider's import of a shared pure helper is not an app edge" {
         "the walker import still bridges to its owner when the binding is unlinked"
     );
 }
+
+def _client_top_scans(imports: int) -> int {
+    import sys;
+    import tempfile;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    scans = [0];
+    with tempfile.TemporaryDirectory() as tmp {
+        lines: list[str] = [];
+        for k in range(imports) {
+            with open(os.path.join(tmp, f'm{k}.jac'), 'w') as f {
+                f.write(f'def:pub f{k} -> int {{ return {k}; }}\n');
+            }
+            lines.append(f'import from m{k} {{ f{k} }}\n');
+        }
+        main = os.path.join(tmp, 'main.jac');
+        with open(main, 'w') as f {
+            f.write(''.join(lines));
+        }
+        def tally(frame: any, event: str, arg: any) {
+            if event == 'call' and frame.f_code.co_name == 'module_has_client_top' {
+                scans[0] += 1;
+            }
+        }
+        sys.setprofile(tally);
+        try {
+            JacProgram().compile(main, options=CompileOptions(no_cgen=True));
+        } finally {
+            sys.setprofile(None);
+        }
+    }
+    return scans[0];
+}
+
+"""Classifying each import as a client-native edge used to rescan the importing
+module's top-level statements, so an entry with many imports was analysed in
+time quadratic in its import count. The module is scanned once per pass."""
+test "client-native edge checks scan a module once, not once per import" {
+    few = _client_top_scans(10);
+    many = _client_top_scans(40);
+    assert many == few , f"{few} scans for 10 imports, {many} for 40";
+}

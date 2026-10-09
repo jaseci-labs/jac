@@ -95,8 +95,14 @@ test "Callback records survive managed field and container cleanup" {
     allocator_type = ctypes.CFUNCTYPE(
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t
     );
+    library.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t];
+    library.calloc.restype = ctypes.c_void_p;
+    # Engine setup allocates larger runtime tables through the same symbol;
+    # those go to the real allocator, since a NULL here crashes the worker.
     def allocate(count: int, size: int) -> int {
-        assert count * size <= mmap.PAGESIZE;
+        if count * size > mmap.PAGESIZE {
+            return library.calloc(count, size);
+        }
         return address + mmap.PAGESIZE;
     }
     allocator = allocator_type(allocate);
