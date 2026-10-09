@@ -2842,6 +2842,10 @@ def _decode_str_escapes(text: str) -> str {
     return ''.join(out);
 }
 
+def fstring_escape_interior(value: str) -> str {
+    return value.replace("{", "{{").replace("}", "}}");
+}
+
 def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
     out: list[int] = [];
     i = 0;

@@ -159,7 +159,7 @@ glob FORBIDDEN: dict[str, str] = {
              "stamped Expr.ct_value"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             4,
+             5,
              "imported_module_name reads the stamped ModuleType and import "
              "declaration to preserve aliased module identity. "
              "resolved_callee consumes the resolved call declaration for "
@@ -169,10 +169,15 @@ glob FORBIDDEN: dict[str, str] = {
              "central classification instead of re-implementing name "
              "resolution. The former classify_call fallback is deleted "
              "(#7418): call_kind is stamped authoritatively by the required "
-             "inference schedule. The erased-import predicates "
-             "(erased_identity_call_arg, contextmanager_ability) are pure "
-             "declaration-surface reads of the module's own import list, so "
-             "they live in the leaf erased_imports.jac rather than here. "
+             "inference schedule; qualified_builtin_name as the "
+             "symbol-identity builtin recognizer for `builtins.<name>` / "
+             "aliased builtins-module calls - the backend consumes the central "
+             "symbol-resolved classification instead of textual name matching "
+             "(so a user object named builtins is not mis-dispatched). The "
+             "erased-import predicates (erased_identity_call_arg, "
+             "contextmanager_ability) are pure declaration-surface reads of "
+             "the module's own import list, so they live in the leaf "
+             "erased_imports.jac rather than here. "
              "The is_builtin_region_name read (#7491) is gone from here and "
              "from stmt.impl.jac, whose entry left this table entirely: the "
              "predicate is pure unitree syntax that was marooned in "

@@ -1580,6 +1580,7 @@ impl NaIRGenPass._codegen_synthetic_call(
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
     import from jaclang.compiler.erased_imports { erased_identity_call_arg }
+    import from jaclang.compiler.symbol_utils { qualified_builtin_name }
     import from jaclang.compiler.field_semantics {
         field_initialization,
         is_field_marker
@@ -1653,26 +1654,34 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     func_name: str | None = None;
     _mod_qual: (str | None) = None;
-    _mod_fn = self._native_module_call_target(nd);
-    if _mod_fn is not None {
-        (_mod_qual, func_name) = _mod_fn;
-    } elif _call_kind == "method" {
-        return self._codegen_method_call(nd);
+    _qualified_builtin = qualified_builtin_name(nd.target);
+    if _qualified_builtin is not None {
+        func_name = _qualified_builtin;
+        _call_kind = "builtin";
     } else {
-        func_name = self._get_name(nd.target);
-        if func_name is None {
-            _erased_ctor = self._erased_generic_ctor(nd);
-            if _erased_ctor is not None {
-                return self._codegen_instantiation(nd, type_name_override=_erased_ctor);
+        _mod_fn = self._native_module_call_target(nd);
+        if _mod_fn is not None {
+            (_mod_qual, func_name) = _mod_fn;
+        } elif _call_kind == "method" {
+            return self._codegen_method_call(nd);
+        } else {
+            func_name = self._get_name(nd.target);
+            if func_name is None {
+                _erased_ctor = self._erased_generic_ctor(nd);
+                if _erased_ctor is not None {
+                    return self._codegen_instantiation(
+                        nd, type_name_override=_erased_ctor
+                    );
+                }
+                self._pending_lambda_captures = None;
+                callable_value = self._codegen_expr(nd.target);
+                captures = self._pending_lambda_captures or [];
+                self._pending_lambda_captures = None;
+                if callable_value is not None {
+                    return self._codegen_callable_value(nd, callable_value, captures);
+                }
+                return None;
             }
-            self._pending_lambda_captures = None;
-            callable_value = self._codegen_expr(nd.target);
-            captures = self._pending_lambda_captures or [];
-            self._pending_lambda_captures = None;
-            if callable_value is not None {
-                return self._codegen_callable_value(nd, callable_value, captures);
-            }
-            return None;
         }
     }
 
