@@ -298,6 +298,25 @@ impl ASTValidationPass.enter_import with Import entry {
         and (here.clib_decls is None or len(here.clib_decls) == 0) {
         self.ctx.emit(E0044, node_override=here);
     }
+    if here.items is None {
+        return;
+    }
+    typing_mods = ("typing", "typing_extensions");
+    for item in here.items {
+        if isinstance(item, ModulePath) and item.dot_path_str in typing_mods {
+            self.typing_modules.add(
+                item.alias.value if item.alias is not None else item.dot_path_str
+            );
+        } elif (
+            isinstance(item, ModuleItem)
+            and here.from_loc is not None
+            and here.from_loc.dot_path_str in typing_mods
+            and item.name.value == "overload"
+        ) {
+            bound = item.alias if item.alias is not None else item.name;
+            self.overload_names.add(bound.value);
+        }
+    }
 }
 
 impl ASTValidationPass.enter_yield_expr with YieldExpr entry {
@@ -436,7 +455,15 @@ impl ASTValidationPass.enter_archetype with Archetype entry {
         accessor_target: (str | None) = None;
         if item.decorators is not None {
             for dec in item.decorators {
-                if isinstance(dec, Name) and dec.value == "overload" {
+                if isinstance(dec, Name) and dec.value in self.overload_names {
+                    has_overload = True;
+                } elif (
+                    isinstance(dec, AtomTrailer)
+                    and isinstance(dec.right, Name)
+                    and dec.right.value == "overload"
+                    and isinstance(dec.target, Name)
+                    and dec.target.value in self.typing_modules
+                ) {
                     has_overload = True;
                 } elif (
                     isinstance(dec, AtomTrailer)

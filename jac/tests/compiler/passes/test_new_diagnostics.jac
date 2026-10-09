@@ -392,6 +392,14 @@ test "E0076: Python __init__ and init are distinct methods" {
     assert not has_diagnostic_code(prog, "E0076");
 }
 
+test "E0076: an aliased typing.overload stub is not a duplicate method" {
+    # torch binds `overload as _overload` and declares `SymBool.__eq__` twice
+    # under it before the real definition; the alias the module bound, and the
+    # `typing.overload` attribute form, have to count as the overload marker.
+    (prog, _) = compile_only("parser_E0076_overload_alias.jac");
+    assert not has_diagnostic_code(prog, "E0076");
+}
+
 test "E2036: a second module-level definition of a name is rejected" {
     (prog, _) = compile_and_check("scope_E2036_duplicate_def.jac");
     assert count_diagnostic_code(prog, "E2036") == 2 , "the second 'foo' and the second 'Bar'";
