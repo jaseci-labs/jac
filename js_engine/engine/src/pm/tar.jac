@@ -143,7 +143,12 @@ def _parse_pax(ptr: int, off: int, n: int) -> tuple[str, str, int] {
             } elif key == "linkpath" {
                 link = val;
             } elif key == "size" and val.isdigit() {
-                size = int(val);
+                # 19+ digits would overflow an int: no archive is that big.
+                if len(val) > 18 {
+                    size = 9223372036854775807;
+                } else {
+                    size = int(val);
+                }
             }
         }
         pos = pos + rec_len;
@@ -177,10 +182,12 @@ def:pub tar_list(ptr: int, n: int) -> list[TarEntry] {
             prefix = _field_str(ptr, pos + 345, 155);
         }
         data_start: int = pos + 512;
-        padded: int = ((size + 511) // 512) * 512;
-        if data_start + size > n {
+        # Written so a huge or negative (base-256) size cannot overflow past
+        # the check; data_start <= n by the loop condition.
+        if size < 0 or size > n - data_start {
             break;
         }  # truncated archive
+        padded: int = ((size + 511) // 512) * 512;
         if typeflag == 120 {  # 'x' pax extended header
             px: tuple[str, str, int] = _parse_pax(ptr, data_start, size);
             if px[0] != "" {
@@ -227,6 +234,12 @@ def:pub tar_list(ptr: int, n: int) -> list[TarEntry] {
             link = pax_link;
         }
         if pax_size >= 0 {
+            # A pax size replaces the header's, so it needs the same bound:
+            # entries hand data_off + size to raw-pointer file writes, and an
+            # unchecked size copied process memory past the archive.
+            if pax_size > n - data_start {
+                break;
+            }  # pax size runs past the archive
             size = pax_size;
             padded = ((size + 511) // 512) * 512;
         }
