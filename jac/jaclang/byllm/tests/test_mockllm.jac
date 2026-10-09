@@ -151,11 +151,7 @@ test "a bare string for a typed return that cannot be a string is parsed like mo
 
 
 test "a tool call resolves by name against the tools the call offers" {
-    for (label, queued, expect_ran) in [
-        ("offered, by function", "add", True),
-        ("offered, by name", "add-by-name", True),
-        ("not offered", "secret", False)
-    ] {
+    def resolves(label: str, queued: str, expect_ran: bool) {
         ran: list[str] = [];
         def add(a: int, b: int) -> int {
             ran.append("add");
@@ -184,6 +180,13 @@ test "a tool call resolves by name against the tools the call offers" {
                 f"{label}: the model must be told the tool is unknown"
             );
         }
+    }
+    for (label, queued, expect_ran) in [
+        ("offered, by function", "add", True),
+        ("offered, by name", "add-by-name", True),
+        ("not offered", "secret", False)
+    ] {
+        resolves(label, queued, expect_ran);
     }
 
     # A direct conversion keeps the id, so its tool result answers the same call.

@@ -77,6 +77,32 @@ def _import_probe(module: str) -> str {
     return result.stdout;
 }
 
+test "LLM telemetry registers without importing litellm and attaches once it loads" {
+    import subprocess;
+    import sys;
+    if not is_optional_available("litellm") {
+        return;
+    }
+    probe = (
+        "import sys\n"
+        "from jaclang.scale.admin.llm_telemetry import JacAPIServerLLMTelemetry\n"
+        "class Probe(JacAPIServerLLMTelemetry):\n"
+        "    def require_admin_json(self, Authorization=None):\n"
+        "        return None\n"
+        "Probe().register_llm_telemetry_endpoints()\n"
+        "print('litellm-after-register=' + str('litellm' in sys.modules))\n"
+        "import litellm\n"
+        "names = [type(cb).__name__ for cb in litellm.callbacks]\n"
+        "print('logger-attached=' + str('JacLLMLogger' in names))\n"
+    );
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=300
+    );
+    assert result.returncode == 0 , f"probe failed: {result.stderr[-2000:]}";
+    assert "litellm-after-register=False" in result.stdout , result.stdout;
+    assert "logger-attached=True" in result.stdout , result.stdout;
+}
+
 test "the deploy entry point imports without the env capability" {
     out = _import_probe("jaclang.scale.runtime.realizer.kubernetes_realizer");
     assert "dotenv-loaded=False" in out , f"the deploy realizer pulls dotenv at module scope, so a closure without the 'env' capability cannot reach the deploy path at all: {out}";

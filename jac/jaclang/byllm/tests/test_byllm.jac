@@ -1293,3 +1293,62 @@ test "damaged and truncated tool calls are told apart and get the advice that fi
         }
     }
 }
+
+
+def _fresh_probe(code: str) -> str {
+    import subprocess;
+    import sys;
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=300
+    );
+    assert result.returncode == 0 , f"probe failed: {result.stderr[-3000:]}";
+    return result.stdout;
+}
+
+# litellm costs seconds to import, so byllm loads it on first use; a cold
+# serve pod that never calls a model must never pay for it.
+test "importing byllm and building a model loads neither litellm nor openai" {
+    out = _fresh_probe(
+        "import sys\n"
+        "import jaclang.byllm.llm as llm\n"
+        "llm.Model(model_name='gpt-4o-mini')\n"
+        "llm.MockLLM(outputs=['x'])\n"
+        "print('litellm=' + str('litellm' in sys.modules))\n"
+        "print('openai=' + str('openai' in sys.modules))\n"
+    );
+    assert "litellm=False" in out , out;
+    assert "openai=False" in out , out;
+}
+
+test "litellm settings and load hooks apply when litellm is first imported" {
+    out = _fresh_probe(
+        "import sys\n"
+        "import jaclang.byllm.llm as llm\n"
+        "from jaclang.byllm._optdeps.litellm import when_litellm_loaded\n"
+        "llm.Model(model_name='gpt-4o-mini')\n"
+        "seen = []\n"
+        "when_litellm_loaded(lambda mod: seen.append(mod.__name__))\n"
+        "import litellm\n"
+        "print('seen=' + ','.join(seen))\n"
+        "print('drop_params=' + str(litellm.drop_params))\n"
+        "print('suppress=' + str(litellm.suppress_debug_info))\n"
+        "msg = llm.LiteLLMMessage(role='assistant', content='hi')\n"
+        "print('message=' + str(isinstance(msg, litellm.types.utils.Message)))\n"
+        "print('stand_in=' + str(isinstance(msg, llm.LiteLLMMessage)))\n"
+        "print('proxy_same=' + str(llm.litellm.completion is litellm.completion))\n"
+        "from jaclang.byllm.exceptions import LLMTimeout\n"
+        "print('timeout_is_provider=' + str(issubclass(LLMTimeout, litellm.Timeout)))\n"
+        "try:\n"
+        "    raise LLMTimeout(message='slow', model='m')\n"
+        "except litellm.Timeout as caught:\n"
+        "    print('caught_status=' + str(caught.status_code))\n"
+    );
+    assert "seen=litellm" in out , out;
+    assert "drop_params=True" in out , out;
+    assert "suppress=True" in out , out;
+    assert "message=True" in out , out;
+    assert "stand_in=True" in out , out;
+    assert "proxy_same=True" in out , out;
+    assert "timeout_is_provider=True" in out , out;
+    assert "caught_status=408" in out , out;
+}

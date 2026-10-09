@@ -99,7 +99,9 @@ def build_runtime_install_commands(
         );
     } else {
         commands.append(
-            'if [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
+            f'if [ -x /usr/local/bin/jac ] && [ ! -e "{tc}/bin/jac" ]; '
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            'elif [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
             f"| cut -d' ' -f1)\" = \"$(sha256sum \"{tc}/bin/jac\" | cut -d' ' -f1)\" ]; "
             'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
             f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
@@ -131,11 +133,14 @@ def runtime_container_env -> list[dict[str, str]] {
 
 
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig, base_image: str
+    k8s_config: KubernetesConfig, base_image: str, unpack_script: str = ""
 ) -> dict[str, any] {
     import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
     prefer_image_binary = base_image.startswith(f"{OFFICIAL_IMAGE}:experimental-");
     commands = build_runtime_install_commands(k8s_config, prefer_image_binary);
+    if unpack_script {
+        commands.insert(0, "( " + unpack_script + " )");
+    }
     commands.append(f'cd {APP_MOUNT_PATH}');
 
     cache = f"{BUNDLE_MOUNT_PATH}/.cache";

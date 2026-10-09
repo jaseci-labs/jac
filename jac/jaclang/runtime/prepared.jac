@@ -34,7 +34,17 @@ obj PreparedApplication {
         index: ModuleIndex | None = None;
 }
 
-glob _applications: dict[str, PreparedApplication] = {};
+glob _applications: dict[str, PreparedApplication] = {},
+     _realpaths: dict[str, str] = {};
+
+def _realpath(path: str) -> str {
+    resolved = _realpaths.get(path);
+    if resolved is None {
+        resolved = os.path.realpath(path);
+        _realpaths[path] = resolved;
+    }
+    return resolved;
+}
 
 def publish(application: PreparedApplication) {
     import sys;
@@ -52,7 +62,7 @@ def publish(application: PreparedApplication) {
 }
 
 def application_for(path: str, module_name: str = "") -> (PreparedApplication | None) {
-    resolved = os.path.realpath(path);
+    resolved = _realpath(path);
     for application in _applications.values() {
         if (
             module_name == application_namespace(application)
@@ -168,6 +178,7 @@ def initialize_application(
 
 def clear {
     _applications.clear();
+    _realpaths.clear();
 }
 
 
