@@ -464,6 +464,40 @@ test "valid scheduler bounds are accepted quietly" {
 }
 
 
+test "a [scale.jobs] setting that could never run a job is flagged" {
+    cases: list[tuple[dict[str, any], list[str]]] = [
+        ({"queues": {"agents": {"concurrency": 2, "lease_s": 90}}}, []),
+        ({"queues": {"agents": {"concurrency": 4.0}}, "poll_seconds": 0.25}, []),
+        (
+            {"queues": {"agents": {"concurrency": 0}}},
+            ["concurrency", "whole number 1 or more"]
+        ),
+        (
+            {"queues": {"agents": {"concurrency": 1.5}}},
+            ["concurrency", "whole number 1 or more"]
+        ),
+        ({"queues": {"agents": {"lease_s": 0.5}}}, ["lease_s", "1 or more"]),
+        ({"queues": {"agents": 3}}, ["queues.agents must be a table"]),
+        ({"poll_seconds": 0}, ["poll_seconds", "greater than 0"]),
+        ({"poll_seconds": -1.0}, ["poll_seconds", "greater than 0"]),
+        ({"system_targets": ["RebuildIndex"]}, []),
+        ({"system_targets": ["RebuildIndex", ""]}, ["system_targets", "list of"]),
+        ({"system_targets": [3]}, ["system_targets", "list of"])
+    ];
+    for (jobs, expected) in cases {
+        msgs = validate_scale_config({"jobs": jobs});
+        if not expected {
+            assert msgs == [] , f"{jobs!r}: expected no findings, got {msgs}";
+            continue;
+        }
+        assert len(msgs) == 1 , f"{jobs!r}: expected 1 finding, got {msgs}";
+        for part in expected {
+            assert part in msgs[0] , f"{jobs!r}: {part!r} missing from {msgs[0]}";
+        }
+    }
+}
+
+
 test "a fractional job cap is rejected, not truncated to unlimited" {
     import from jaclang.scale.config.validation { scheduler_job_cap }
 

@@ -319,14 +319,15 @@ impl _current_memory -> any {
 }
 
 
-impl _primary_pg_store -> (PgStore | None) {
+impl primary_pg_store -> (PgStore | None) {
     store = _current_memory()?.store;
     return store if isinstance(store, PgStore) else None;
 }
 
 
-impl _writable_txn(mem: any, store: Store) -> None {
+impl writable_txn(store: Store) -> None {
     import from jaclang.server.session { Session }
+    mem = _current_memory();
     if not isinstance(mem, Session) {
         if not store.in_txn() {
             store.begin(TxnIsolation.SERIALIZABLE);
@@ -373,12 +374,12 @@ impl _store_for_request(writable: bool = True) -> OutboxStore {
     if explicit is not None {
         return explicit;
     }
-    primary = _primary_pg_store();
+    primary = primary_pg_store();
     if primary is None {
         return _sqlite_store();
     }
     if writable {
-        _writable_txn(_current_memory(), primary);
+        writable_txn(primary);
     }
     return PgOutboxStore(store=primary);
 }
@@ -389,7 +390,7 @@ impl _store_for_worker -> OutboxStore {
     if explicit is not None {
         return explicit;
     }
-    primary = _primary_pg_store();
+    primary = primary_pg_store();
     if primary is not None {
         return _pg_worker_store(primary);
     }

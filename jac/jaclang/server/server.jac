@@ -127,33 +127,45 @@ obj ExecutionManager {
         func: Callable[(..., any)],
         args: dict[(str, any)],
         username: str,
-        serialize_result: bool = True
+        serialize_result: bool = True,
+        root_id: str = ""
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_sync(
         func: Callable[(..., any)],
         args: dict[(str, any)],
         username: str,
-        serialize_result: bool = True
+        serialize_result: bool = True,
+        root_id: str = ""
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_async(
         func: Callable[(..., any)],
         args: dict[(str, any)],
         username: str,
-        serialize_result: bool = True
+        serialize_result: bool = True,
+        root_id: str = ""
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
+        walker_cls: type[WalkerArchetype],
+        fields: dict[(str, any)],
+        username: str,
+        root_id: str = ""
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker_sync(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
+        walker_cls: type[WalkerArchetype],
+        fields: dict[(str, any)],
+        username: str,
+        root_id: str = ""
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker_async(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
+        walker_cls: type[WalkerArchetype],
+        fields: dict[(str, any)],
+        username: str,
+        root_id: str = ""
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def report_collector(

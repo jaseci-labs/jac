@@ -189,9 +189,18 @@ async def _run_function_with_occ(
     run_attempt: Callable,
     deserialize_args: bool = True,
     unit_key: (str | None) = None,
-    target: object | None = None
+    target: object | None = None,
+    as_root: str = ""
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
-    resolved = await _abegin_user_request_context(mgr.user_manager, username, target);
+    resolved: any = None;
+    if as_root {
+        (root_ctx, root_token) = await _begin_request_context(as_root, target);
+        resolved = (root_ctx, root_token, as_root);
+    } else {
+        resolved = await _abegin_user_request_context(
+            mgr.user_manager, username, target
+        );
+    }
     if isinstance(resolved, dict) {
         return resolved;
     }
@@ -296,23 +305,27 @@ impl ExecutionManager.execute_function(
     func: Callable[(..., any)],
     args: dict[(str, any)],
     username: str,
-    serialize_result: bool = True
+    serialize_result: bool = True,
+    root_id: str = ""
 ) -> dict[str, JsonValue] {
     import inspect;
 
     if inspect.iscoroutinefunction(func) {
         return await self.execute_function_async(
-            func, args, username, serialize_result
+            func, args, username, serialize_result, root_id=root_id
         );
     }
-    return await self.execute_function_sync(func, args, username, serialize_result);
+    return await self.execute_function_sync(
+        func, args, username, serialize_result, root_id=root_id
+    );
 }
 
 impl ExecutionManager.execute_function_sync(
     func: Callable[(..., any)],
     args: dict[(str, any)],
     username: str,
-    serialize_result: bool = True
+    serialize_result: bool = True,
+    root_id: str = ""
 ) -> dict[str, JsonValue] {
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
@@ -325,7 +338,13 @@ impl ExecutionManager.execute_function_sync(
         return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
-        self, args, username, run_attempt, unit_key=_unit_key_for(func), target=func
+        self,
+        args,
+        username,
+        run_attempt,
+        unit_key=_unit_key_for(func),
+        target=func,
+        as_root=root_id
     );
 }
 
@@ -333,7 +352,8 @@ impl ExecutionManager.execute_function_async(
     func: Callable[(..., any)],
     args: dict[(str, any)],
     username: str,
-    serialize_result: bool = True
+    serialize_result: bool = True,
+    root_id: str = ""
 ) -> dict[str, JsonValue] {
     async def run_attempt(
         call_state: CallState, _ctx: ExecutionContext
@@ -342,21 +362,35 @@ impl ExecutionManager.execute_function_async(
         return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
-        self, args, username, run_attempt, unit_key=_unit_key_for(func), target=func
+        self,
+        args,
+        username,
+        run_attempt,
+        unit_key=_unit_key_for(func),
+        target=func,
+        as_root=root_id
     );
 }
 
 impl ExecutionManager.spawn_walker(
-    walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
+    walker_cls: type[WalkerArchetype],
+    fields: dict[(str, any)],
+    username: str,
+    root_id: str = ""
 ) -> dict[str, JsonValue] {
     if walker_cls.__jac_async__ {
-        return await self.spawn_walker_async(walker_cls, fields, username);
+        return await self.spawn_walker_async(
+            walker_cls, fields, username, root_id=root_id
+        );
     }
-    return await self.spawn_walker_sync(walker_cls, fields, username);
+    return await self.spawn_walker_sync(walker_cls, fields, username, root_id=root_id);
 }
 
 impl ExecutionManager.spawn_walker_sync(
-    walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
+    walker_cls: type[WalkerArchetype],
+    fields: dict[(str, any)],
+    username: str,
+    root_id: str = ""
 ) -> dict[str, JsonValue] {
     import from jaclang.runtime.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
@@ -388,12 +422,16 @@ impl ExecutionManager.spawn_walker_sync(
         run_attempt,
         deserialize_args=False,
         unit_key=_unit_key_for(walker_cls),
-        target=walker_cls
+        target=walker_cls,
+        as_root=root_id
     );
 }
 
 impl ExecutionManager.spawn_walker_async(
-    walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
+    walker_cls: type[WalkerArchetype],
+    fields: dict[(str, any)],
+    username: str,
+    root_id: str = ""
 ) -> dict[str, JsonValue] {
     import from jaclang.runtime.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
@@ -426,7 +464,8 @@ impl ExecutionManager.spawn_walker_async(
         run_attempt,
         deserialize_args=False,
         unit_key=_unit_key_for(walker_cls),
-        target=walker_cls
+        target=walker_cls,
+        as_root=root_id
     );
 }
 
