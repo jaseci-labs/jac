@@ -4,7 +4,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from datetime { datetime, timezone }
 import from pickle { dumps, loads }
 import from typing { Any, cast }
-import from uuid { UUID }
+import from uuid { UUID, uuid4 }
 import from jaclang.scale._optdeps.redis { redis_module as redis }
 import from jaclang.scale._optdeps.pymongo { MongoClient, UpdateOne, ConnectionFailure }
 import from jaclang.jac0core.archetype { Anchor, EdgeAnchor, NodeAnchor, Root }
@@ -38,7 +38,8 @@ import from jaclang.scale.memory.l1_invalidation {
 import from jaclang { JacRuntimeInterface as Jac }
 
 glob logger = logging.getLogger(__name__),
-     _process_cache: dict[str, any] = {};
+     _process_cache: dict[str, any] = {},
+     _REFILL_LEASE_MS: int = 10000;
 
 def _get_db_config -> dict {
     return get_scale_config().get_database_config();
@@ -69,6 +70,8 @@ obj RedisBackend(CacheMemory) {
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
+    def lease(ids: list[UUID]) -> dict[UUID, str];
+    def fill(anchor: Anchor, token: (str | None)) -> None;
     def publish_invalidation(
         anchor_id: str, origin_l1_id: (str | None) = None
     ) -> None;

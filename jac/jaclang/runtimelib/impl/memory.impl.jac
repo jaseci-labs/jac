@@ -1979,9 +1979,6 @@ impl TieredMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
         existing = self.__mem__.get(anchor.id);
         if existing is None {
             self.__mem__[anchor.id] = anchor;
-            if self.l2 {
-                self.l2.put(anchor);
-            }
             yield anchor;
         } else {
             yield existing;
