@@ -53,6 +53,9 @@ glob CLASSES: list[str] = [
          ".na.jac"
      ),
      REFUSAL: str = r"error\[(E\d+)\]: ([^\n]*)",
+     UNORDERED: dict[str, str] = {
+         "tests/language/fixtures/concurrency.jac": "its output depends on thread timing"
+     },
      QUOTED: str = r"'[^']*'",
      MODULE_TAG: str = r"\$[A-Za-z0-9_]+_[0-9a-f]{8}",
      UNCAUGHT: str = r"Uncaught exception: ([^\n]*)",
@@ -205,6 +208,9 @@ def last_line(text: str) -> str {
 }
 
 def classify(program: str) -> Outcome {
+    if program in UNORDERED {
+        return Outcome(kind=SKIPPED, reason=UNORDERED[program]);
+    }
     reference = run_tier(program, "python");
     if reference.timed_out {
         return Outcome(kind=SKIPPED, reason="the Python tier did not finish");
@@ -386,7 +392,12 @@ with entry:__main__ {
         write_baseline(census);
         print(f"\nwrote {baseline_path()}");
     } elif "--check" in flags {
-        (worse, stale) = compare(census, read_baseline());
+        held = {
+            program: outcome
+            for (program, outcome) in read_baseline().items()
+            if not roots or any(program.startswith(start) for start in roots)
+        };
+        (worse, stale) = compare(census, held);
         for line in worse {
             print(f"WORSE  {line}");
         }

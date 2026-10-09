@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 44,
-    "refused": 63,
+    "same": 45,
+    "refused": 62,
     "fails": 0,
     "differs": 1,
     "hangs": 0,
@@ -175,7 +175,7 @@
     },
     "tests/language/fixtures/anonymous_ability_test.jac": {
       "class": "skipped",
-      "reason": "the Python tier fails"
+      "reason": "the Python tier is not repeatable"
     },
     "tests/language/fixtures/arch_create_util.jac": {
       "class": "same"
@@ -289,7 +289,7 @@
     },
     "tests/language/fixtures/concurrency.jac": {
       "class": "skipped",
-      "reason": "the Python tier is not repeatable"
+      "reason": "its output depends on thread timing"
     },
     "tests/language/fixtures/connect_traverse_syntax.jac": {
       "class": "skipped",
@@ -506,8 +506,7 @@
       "reason": "the Python tier is not repeatable"
     },
     "tests/language/fixtures/lambda.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+      "class": "same"
     },
     "tests/language/fixtures/lambda_arg_annotation.jac": {
       "class": "same"
