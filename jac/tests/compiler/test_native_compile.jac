@@ -475,6 +475,14 @@ test "a jaclang import in an impl folder annex compiles in the kernel" {
     }
 }
 
+"""A stand-in `host_kernel_compile` that answers every call with `canned`."""
+def _answering(canned: CompileReport) -> Callable[..., CompileReport] {
+    def answer(*args: any, **kwargs: any) -> CompileReport {
+        return canned;
+    }
+    return answer;
+}
+
 """A kernel compile can come back with no unit for the entry. If the kernel
 reported errors, the module is compiled and failed, and the host must not
 compile it again, whichever codespace it was placed in: a native module's
@@ -510,10 +518,9 @@ test "a kernel compile with no unit is final only when it reported errors" {
                     errors=list(errors)
                 )
             );
-            def answer(*args: any, **kwargs: any) -> CompileReport {
-                return canned;
-            }
-            with patch.object(kernel_compile_mod, "host_kernel_compile", answer) {
+            with patch.object(
+                kernel_compile_mod, "host_kernel_compile", _answering(canned)
+            ) {
                 (handled, code) = compiler._adopt_kernel_compile(
                     entry_file, program, compile_options()
                 );

@@ -224,6 +224,27 @@ test "bundle keys round-trip from the init container the injector builds" {
 }
 
 
+test "bundle keys are read from the bootstrap container that unpacks them" {
+    import from jaclang.scale.injector.pvc_injector { pvc_unpack_script }
+    import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+        build_bootstrap_init_container
+    }
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        KubernetesConfig
+    }
+    keys = ["bundles/orders/aaa.jab", "toolchain/orders/bbb.tar.gz"];
+    script = pvc_unpack_script([f"{BUNDLE_MOUNT_PATH}/{k}" for k in keys]);
+    pod_spec = {
+        "initContainers": [
+            build_bootstrap_init_container(
+                KubernetesConfig(), "python:3.12-slim", unpack_script=script
+            )
+        ]
+    };
+    assert bundle_keys_from_pod_spec(pod_spec) == keys;
+}
+
+
 test "a pod spec with no bootstrap container references no bundles" {
     assert bundle_keys_from_pod_spec({}) == [];
     assert bundle_keys_from_pod_spec(

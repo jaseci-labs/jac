@@ -623,6 +623,36 @@ test "containers keep CPython repr, equality, key identity, and ordering" {
     );
 }
 
+def same_builtin(name: str, args: list[object], kw: dict[str, object]) {
+    py_fn = getattr(builtins, name);
+    wrap = name in ("enumerate", "zip", "reversed");
+    same(
+        f"{name}{args}{kw}",
+        lambda { list(py_fn(*args, **kw)) if wrap else py_fn(*args, **kw); },
+        lambda { _call_builtin_kw(
+            name, [py2ct(a) for a in args], {k: py2ct(v) for (k, v) in kw.items()}
+        ); }
+    );
+}
+
+def same_ctor(tname: str, targs: list[object]) {
+    py_t = getattr(builtins, tname);
+    same(
+        f"{tname}{targs}",
+        lambda { py_t(*targs); },
+        lambda { ct_construct_builtin(tname, [py2ct(a) for a in targs], {}); }
+    );
+}
+
+def same_math(mname: str, margs: list[object]) {
+    py_m = getattr(math, mname);
+    same(
+        f"math.{mname}{margs}",
+        lambda { py_m(*margs); },
+        lambda { ct_call_math(mname, [py2ct(a) for a in margs], {}); }
+    );
+}
+
 test "builtins and math agree with CPython on results and messages" {
     cases: list[tuple[str, list[object], dict[str, object]]] = [
         ("sorted", [[3, 1, 2, 1]], {}),
@@ -658,15 +688,7 @@ test "builtins and math agree with CPython on results and messages" {
         ("range", [1, 2, 0], {})
     ];
     for (name, args, kw) in cases {
-        py_fn = getattr(builtins, name);
-        wrap = name in ("enumerate", "zip", "reversed");
-        same(
-            f"{name}{args}{kw}",
-            lambda { list(py_fn(*args, **kw)) if wrap else py_fn(*args, **kw); },
-            lambda { _call_builtin_kw(
-                name, [py2ct(a) for a in args], {k: py2ct(v) for (k, v) in kw.items()}
-            ); }
-        );
+        same_builtin(name, args, kw);
     }
     ctor_cases: list[tuple[str, list[object]]] = [
         ("int", ["  -0b101  ", 0]),
@@ -691,12 +713,7 @@ test "builtins and math agree with CPython on results and messages" {
         ("list", [5])
     ];
     for (tname, targs) in ctor_cases {
-        py_t = getattr(builtins, tname);
-        same(
-            f"{tname}{targs}",
-            lambda { py_t(*targs); },
-            lambda { ct_construct_builtin(tname, [py2ct(a) for a in targs], {}); }
-        );
+        same_ctor(tname, targs);
     }
     math_cases: list[tuple[str, list[object]]] = [
         ("sqrt", [-1.0]),
@@ -739,12 +756,7 @@ test "builtins and math agree with CPython on results and messages" {
         ("prod", [[1, 2, 3, 4]])
     ];
     for (mname, margs) in math_cases {
-        py_m = getattr(math, mname);
-        same(
-            f"math.{mname}{margs}",
-            lambda { py_m(*margs); },
-            lambda { ct_call_math(mname, [py2ct(a) for a in margs], {}); }
-        );
+        same_math(mname, margs);
     }
 }
 
@@ -759,6 +771,20 @@ def _call_builtin_kw(
     fn = ev._builtin_value(name);
     assert fn is not None;
     return ev.call_value(fn, args, kwargs);
+}
+
+def same_method(ev: CtEvaluator, recv: object, mname: str, margs: list[object]) {
+    kwargs: dict[str, object] = {"name": "N"} if mname == "format" else {};
+    same(
+        f"{recv!r}.{mname}{margs}",
+        lambda { getattr(recv, mname)(*margs, **kwargs); },
+        lambda { ev._call_attr(
+            py2ct(recv),
+            mname,
+            [py2ct(a) for a in margs],
+            {k: py2ct(v) for (k, v) in kwargs.items()}
+        ); }
+    );
 }
 
 test "methods on typed values match CPython" {
@@ -799,17 +825,7 @@ test "methods on typed values match CPython" {
         (2.0, "is_integer", [])
     ];
     for (recv, mname, margs) in method_cases {
-        kwargs: dict[str, object] = {"name": "N"} if mname == "format" else {};
-        same(
-            f"{recv!r}.{mname}{margs}",
-            lambda { getattr(recv, mname)(*margs, **kwargs); },
-            lambda { ev._call_attr(
-                py2ct(recv),
-                mname,
-                [py2ct(a) for a in margs],
-                {k: py2ct(v) for (k, v) in kwargs.items()}
-            ); }
-        );
+        same_method(ev, recv, mname, margs);
     }
     lst = py2ct([3, 1, 2]);
     ev._call_attr(lst, "append", [mk_int(0)], {});
