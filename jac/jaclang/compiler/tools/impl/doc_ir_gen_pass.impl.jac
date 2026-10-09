@@ -2276,24 +2276,32 @@ impl DocIRGenPass._rescue_lost_comments(
     if self._emitted_comment_ids is None {
         self._emitted_comment_ids = set();
     }
-    mod_dc = nd.gen.doc_comments;
-    own_ids: set[int] = set();
-    if mod_dc is not None {
-        for c in (mod_dc.leading + mod_dc.trailing_inline + mod_dc.trailing_own) {
-            own_ids.add(id(c));
+    if self._rescue_nd is not nd {
+        self._rescue_nd = nd;
+        self._rescue_idx = 0;
+        mod_dc = nd.gen.doc_comments;
+        self._rescue_own_ids = set();
+        if mod_dc is not None {
+            for c in (mod_dc.leading + mod_dc.trailing_inline + mod_dc.trailing_own) {
+                self._rescue_own_ids.add(id(c));
+            }
         }
     }
+    comments = nd.source.comments;
     limit = self.effective_first_line(next_kid) if (next_kid is not None) else None;
     prev_line: (int | None) = None;
-    for c in nd.source.comments {
-        if ((id(c) in self._emitted_comment_ids) or (id(c) in own_ids)) {
+    while self._rescue_idx < len(comments) {
+        c = comments[self._rescue_idx];
+        if (id(c) in self._emitted_comment_ids) or (id(c) in self._rescue_own_ids) {
+            self._rescue_idx += 1;
             continue;
         }
         if not self._comment_is_live(c) {
+            self._rescue_idx += 1;
             continue;
         }
         if (limit is not None and (c.loc.first_line >= limit)) {
-            continue;
+            break;
         }
         if (prev_line is not None and ((prev_line + 1) < c.loc.first_line)) {
             parts.append(self.hard_line());
@@ -2302,6 +2310,7 @@ impl DocIRGenPass._rescue_lost_comments(
         parts.append(self.hard_line());
         self._emitted_comment_ids.add(id(c));
         prev_line = c.loc.last_line;
+        self._rescue_idx += 1;
     }
 }
 

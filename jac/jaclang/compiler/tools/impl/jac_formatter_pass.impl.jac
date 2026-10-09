@@ -95,13 +95,15 @@ impl JacFormatPass.format_doc_ir(
         for (idx, part) in enumerate(doc_node.parts) {
             is_last = (idx + 1) == num_parts;
 
-            if is_last {
+            if is_last or current_line_budget <= 0 {
                 child_trailing = trailing_width;
             } else {
-                child_trailing = self._flat_first_line_width(
-                    doc.Concat(doc_node.parts[(idx + 1):]),
+                child_trailing = self._flat_tail_width(
+                    doc_node.parts,
+                    idx + 1,
                     base=trailing_width,
-                    is_broken=is_broken
+                    is_broken=is_broken,
+                    cap=current_line_budget
                 );
             }
             pend_before = ''.join(self._pending_suffixes);
@@ -281,13 +283,24 @@ impl JacFormatPass._probe_fits(
     return True;
 }
 
-impl JacFormatPass._flat_first_line_width(
-    nd: doc.DocType, base: int = 0, is_broken: bool = False
+impl JacFormatPass._flat_tail_width(
+    parts: list[doc.DocType],
+    start: int,
+    base: int = 0,
+    is_broken: bool = False,
+    cap: int = 0
 ) -> int {
     work: deque[object] = deque();
-    work.append(nd);
+    i = len(parts) - 1;
+    while i >= start {
+        work.append(parts[i]);
+        i -= 1;
+    }
     width = 0;
     while work {
+        if cap > 0 and width >= cap {
+            return width;
+        }
         cur = work.pop();
         if isinstance(cur, doc.Text) {
             width += len(cur.text);
