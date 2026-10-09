@@ -115,6 +115,80 @@ test "a published template resolves by name and range" {
 }
 
 # --- LoadTemplateFromDirectory tests ---
+test "template TOML preserves string values and quoted keys" {
+    import tomllib;
+    import from jaclang.cli.commands.project { _render_config_to_toml }
+    for value in [
+        "plain",
+        'Say "hello" to {{name}}',
+        "line one\nline two",
+        "C:\\new\\test",
+        "\b\t\r\f" + chr(0) + chr(31) + chr(127),
+        "café " + chr(128640)
+    ] {
+        config = {"project": {"description": value, "authors": [value]}};
+        parsed = tomllib.loads(_render_config_to_toml(config, "demo"));
+        expected = value.replace("{{name}}", "demo");
+        assert parsed["project"]["description"] == expected;
+        assert parsed["project"]["authors"] == [expected];
+    }
+    for key in [
+        "@scope/pkg",
+        "literal.dot",
+        'a"b',
+        "a\\b",
+        "café",
+        "",
+        "_",
+        "line\nbreak"
+    ] {
+        table_config = {key: {key: {key: "value"}}};
+        assert tomllib.loads(_render_config_to_toml(table_config, "demo"))
+            == table_config;
+    }
+}
+
+test "template TOML preserves root values and inline table arrays" {
+    import tomllib;
+    import from jaclang.cli.commands.project { _render_config_to_toml }
+    config = {
+        "project": {"name": "demo"},
+        "root.key": [1, True, {"a.b": 'Say "hello"'}]
+    };
+    assert tomllib.loads(_render_config_to_toml(config, "demo")) == config;
+}
+
+test "template TOML survives project creation from directories and packages" {
+    import tomllib;
+    import from contextlib { chdir }
+    import from jaclang.cli.commands.project { create }
+    import from jaclang.packages.artifact { build_package }
+    with TemporaryDirectory() as tmpdir {
+        template_dir = _publishable(tmpdir);
+        manifest = template_dir / "jac.toml";
+        text = manifest.read_text().replace(
+            "[project]\n",
+            "[project]\ndescription = 'Say \"hello\" to {{name}} at C:\\new\\test'\n"
+        );
+        manifest.write_text(text);
+        package = Path(tmpdir) / "starter.jab";
+        package.write_bytes(build_package(JacConfig.load(manifest)).data);
+        with chdir(tmpdir) {
+            for (name, source) in [
+                ("directory", template_dir),
+                ("packaged", package)
+            ] {
+                assert create(name=name, use=str(source), `skip=True) == 0;
+                created = tomllib.loads((Path(name) / "jac.toml").read_text());
+                assert created["project"]["description"]
+                    == f'Say "hello" to {name} at C:\\new\\test';
+                assert (Path(name) / "main.jac").read_text()
+                    == f'with entry {{\n    print("{name}");\n}}\n';
+            }
+        }
+    }
+}
+
 test "load from directory" {
     template_dir = Path(fixture_path("templates/minimal"));
     template = load_template_from_directory(template_dir);
