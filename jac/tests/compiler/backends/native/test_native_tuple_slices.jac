@@ -28,12 +28,14 @@ def _engine -> any {
 }
 
 test "an unpacked tuple in an entry global keeps its length and elements" {
+    print("MARK 1: entry global", flush=True);
     eng = _engine();
     assert get_func(eng, "entry_len", ctypes.c_int64)() == 2;
     assert get_func(eng, "entry_second", ctypes.c_double)() == 2.5;
 }
 
 test "a slice of an unpacked tuple in an entry global is not empty" {
+    print("MARK 2: entry slice", flush=True);
     eng = _engine();
     assert get_func(eng, "entry_head_len", ctypes.c_int64)() == 1;
     assert get_func(eng, "entry_head", ctypes.c_double)() == 1.5;
@@ -41,21 +43,34 @@ test "a slice of an unpacked tuple in an entry global is not empty" {
 }
 
 test "mixed int and float fields box into the variadic slot" {
+    print("MARK 3: mixed box", flush=True);
     eng = _engine();
     assert get_func(eng, "mixed_sum", ctypes.c_double)() == 11.5;
 }
 
 test "an annotated variadic local holds every unpacked field" {
+    print("MARK 4: variadic local", flush=True);
     eng = _engine();
     assert get_func(eng, "local_tail_len", ctypes.c_int64)() == 2;
 }
 
 test "a slice of a None-narrowed optional string still lowers" {
+    print("MARK 5: narrowed str", flush=True);
     eng = _engine();
+    print("MARK 5a: is-not-none", flush=True);
+    assert get_func(eng, "narrowed_is_not_none", ctypes.c_int64)() == 1;
+    print("MARK 5b: startswith", flush=True);
+    assert get_func(eng, "narrowed_startswith", ctypes.c_int64)() == 1;
+    print("MARK 5c: slice+len", flush=True);
+    assert get_func(eng, "narrowed_slice_len", ctypes.c_int64)() == 3;
+    print("MARK 5d: slice+eq", flush=True);
+    assert get_func(eng, "narrowed_slice_eq", ctypes.c_int64)() == 1;
+    print("MARK 5e: combined", flush=True);
     assert get_func(eng, "narrowed_str_tail", ctypes.c_int64)() == 3;
 }
 
 test "a fixed tuple slice is refused rather than read as an index" {
+    print("MARK 6: refusal compile", flush=True);
     path = os.path.join(FIXTURES, "tuple_slice_refusal.jac");
     prog = JacProgram();
     na_coverage_begin();

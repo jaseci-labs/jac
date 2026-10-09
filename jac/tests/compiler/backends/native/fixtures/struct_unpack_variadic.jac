@@ -60,3 +60,34 @@ def narrowed_str_tail -> int {
     }
     return -2;
 }
+
+def narrowed_is_not_none -> int {
+    tok = Escape(metadata="escape:abc");
+    return 1 if tok.metadata is not None else 0;
+}
+
+def narrowed_startswith -> int {
+    tok = Escape(metadata="escape:abc");
+    if tok.metadata is None {
+        return -2;
+    }
+    return 1 if tok.metadata.startswith("escape:") else 0;
+}
+
+def narrowed_slice_len -> int {
+    tok = Escape(metadata="escape:abc");
+    if tok.metadata is None {
+        return -2;
+    }
+    rest = tok.metadata[7:];
+    return len(rest);
+}
+
+def narrowed_slice_eq -> int {
+    tok = Escape(metadata="escape:abc");
+    if tok.metadata is None {
+        return -2;
+    }
+    rest = tok.metadata[7:];
+    return 1 if rest == "abc" else 0;
+}

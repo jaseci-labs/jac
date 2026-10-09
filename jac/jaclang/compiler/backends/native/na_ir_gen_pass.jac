@@ -51,7 +51,9 @@ import from jaclang.compiler.frontend.codeinfo {
     is_package_keyed_path,
     native_unit_identity,
     str_len_tag,
+    STR_ASCII_TAG_BIT,
     STR_LEN_TAG_BIT,
+    STR_LEN_PAYLOAD_MASK,
     STR_LEN_TAG_SHIFT
 }
 import from jaclang.compiler.frontend.constant {
@@ -471,6 +473,12 @@ walker NaIRGenPass(CompilerPass) {
         str_import_fn: (ir.Function | None) = None,
         str_unwrap_fn: (ir.Function | None) = None,
         str_materialize_fn: (ir.Function | None) = None,
+        str_isascii_fn: (ir.Function | None) = None,
+        utf8_cplen_fn: (ir.Function | None) = None,
+        utf8_cp_off_fn: (ir.Function | None) = None,
+        utf8_cp_len_at_fn: (ir.Function | None) = None,
+        utf8_cp_at_off_fn: (ir.Function | None) = None,
+        utf8_advance_fn: (ir.Function | None) = None,
         _str_desc_ty: (ir.IdentifiedStructType | None) = None,
         rc_roots_buf_gv: (ir.GlobalVariable | None) = None,
         rc_roots_cap_gv: (ir.GlobalVariable | None) = None,
@@ -2449,6 +2457,40 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_str_len_raw_helper -> None;
     def _call_str_len_raw(
         b: ir.IRBuilder, ptr: ir.Value, name: str = "s.rlen"
+    ) -> ir.Value;
+
+    def _call_str_isascii(
+        b: ir.IRBuilder, ptr: ir.Value, nbytes: ir.Value, name: str = "s.isascii"
+    ) -> ir.Value;
+
+    def _emit_utf8_helpers -> None;
+    def _call_utf8_cplen(
+        b: ir.IRBuilder, ptr: ir.Value, nbytes: ir.Value, name: str = "u8.cplen"
+    ) -> ir.Value;
+
+    def _call_utf8_cp_off(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        cp_index: ir.Value,
+        name: str = "u8.cpoff"
+    ) -> ir.Value;
+
+    def _call_utf8_cp_len_at(
+        b: ir.IRBuilder, ptr: ir.Value, off: ir.Value, name: str = "u8.cplenat"
+    ) -> ir.Value;
+
+    def _call_utf8_cp_at_off(
+        b: ir.IRBuilder, ptr: ir.Value, off: ir.Value, name: str = "u8.cpat"
+    ) -> ir.Value;
+
+    def _call_utf8_advance(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        off: ir.Value,
+        delta: ir.Value,
+        name: str = "u8.adv"
     ) -> ir.Value;
 
     def _str_desc_type -> ir.IdentifiedStructType;
