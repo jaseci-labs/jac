@@ -783,7 +783,7 @@ impl ModuleIntrospector.introspect_callable(
             'required': (param.`default == inspect.Parameter.empty),
             'default': None
                 if (param.`default == inspect.Parameter.empty)
-                else str(param.`default)
+                else param.`default
         } for (name, param) in sig.parameters.items()
     };
     return_type = type_hints.get('return', any);
