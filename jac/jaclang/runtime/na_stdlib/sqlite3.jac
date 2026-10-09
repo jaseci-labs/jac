@@ -1231,14 +1231,14 @@ def:pub complete_statement(statement: any) -> bool {
 }
 
 
-def:pub Binary(b: any) -> bytes {
-    if isinstance(b, bytes) {
-        return b;
+def:pub Binary(`obj: any) -> bytes {
+    if isinstance(`obj, bytes) {
+        return `obj;
     }
-    if isinstance(b, bytearray) {
-        return bytes(b);
+    if isinstance(`obj, bytearray) {
+        return bytes(`obj);
     }
     raise TypeError(
-        "memoryview: a bytes-like object is required, not '" + _type_name(b) + "'"
+        "memoryview: a bytes-like object is required, not '" + _type_name(`obj) + "'"
     );
 }

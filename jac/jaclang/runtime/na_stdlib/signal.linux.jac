@@ -69,38 +69,38 @@ def _sig_ign_impl(signum: int, frame: any) {}
 glob:pub SIG_DFL: Callable[[int, any], None] = _sig_dfl_impl,
      SIG_IGN: Callable[[int, any], None] = _sig_ign_impl;
 
-def:pub default_int_handler(signum: int, frame: any) {
+def:pub default_int_handler(signalnum: int, frame: any) {
     raise KeyboardInterrupt();
 }
 
-def:pub signal(signum: int, handler: Callable[[int, any], None]) -> any {
-    _check_signum(signum);
-    prev = getsignal(signum);
+def:pub signal(signalnum: int, handler: Callable[[int, any], None]) -> any {
+    _check_signum(signalnum);
+    prev = getsignal(signalnum);
     if handler is SIG_DFL {
-        old = sig_install_addr(signum, 0);
+        old = sig_install_addr(signalnum, 0);
     } elif handler is SIG_IGN {
-        old = sig_install_addr(signum, 1);
+        old = sig_install_addr(signalnum, 1);
     } else {
-        old = sig_install_fn(signum, handler);
+        old = sig_install_fn(signalnum, handler);
     }
     if old == -1 {
         raise_errno(last_errno());
     }
-    _shadow[signum] = handler;
+    _shadow[signalnum] = handler;
     return prev;
 }
 
-def:pub getsignal(signum: int) -> any {
-    _check_signum(signum);
-    if signum in _shadow {
-        return _shadow[signum];
+def:pub getsignal(signalnum: int) -> any {
+    _check_signum(signalnum);
+    if signalnum in _shadow {
+        return _shadow[signalnum];
     }
     return SIG_DFL;
 }
 
-def:pub raise_signal(signum: int) {
-    _check_signum(signum);
-    rc = sig_kill_self(signum);
+def:pub raise_signal(signalnum: int) {
+    _check_signum(signalnum);
+    rc = sig_kill_self(signalnum);
     if rc != 0 {
         raise_errno(last_errno());
     }
@@ -156,15 +156,15 @@ glob _SIG_DESCR: list[str] = [
          "Bad system call"
      ];
 
-def:pub strsignal(signum: int) -> (str | None) {
-    _check_signum(signum);
-    if signum >= SIGRTMIN and signum <= SIGRTMAX {
-        return "Real-time signal " + str(signum - SIGRTMIN);
+def:pub strsignal(signalnum: int) -> (str | None) {
+    _check_signum(signalnum);
+    if signalnum >= SIGRTMIN and signalnum <= SIGRTMAX {
+        return "Real-time signal " + str(signalnum - SIGRTMIN);
     }
-    if signum == 32 or signum == 33 {
+    if signalnum == 32 or signalnum == 33 {
         return None;
     }
-    return _SIG_DESCR[signum];
+    return _SIG_DESCR[signalnum];
 }
 
 def:pub valid_signals -> list[int] {

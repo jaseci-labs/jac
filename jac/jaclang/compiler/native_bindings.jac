@@ -9,6 +9,7 @@ import from jaclang.compiler.frontend.unitree {
     KWPair,
     Module,
     Name,
+    Symbol,
     UniNode,
     UniScopeNode,
     resolved_decl_of
@@ -96,6 +97,8 @@ def merge_sigs(
     into: (InterfaceSig | None), more: (InterfaceSig | None)
 ) -> (InterfaceSig | None);
 
+def declared_symbols(scope: UniScopeNode, name: str) -> list[Symbol];
+def overload_symbols(sym: Symbol) -> list[Symbol];
 def scope_sig(
     scope: UniScopeNode, name: str, prog: JacProgram
 ) -> (InterfaceSig | None);
@@ -266,16 +269,56 @@ impl merge_sigs(
     return into;
 }
 
+impl declared_symbols(scope: UniScopeNode, name: str) -> list[Symbol] {
+    found: list[Symbol] = scope.lookup_all(name, deep=False);
+    for kid in scope.kid_scope {
+        if not UniScopeNode.is_python_scoping(kid) {
+            found.extend(declared_symbols(kid, name));
+        }
+    }
+    return found;
+}
+
+impl overload_symbols(sym: Symbol) -> list[Symbol] {
+    origin = sym;
+    hops = 0;
+    while hops < 8 {
+        provider = origin.provider;
+        source = provider.definition() if provider is not None else None;
+        if source is None {
+            target = resolved_decl_of(origin);
+            source = target.sym if target is not None else None;
+        }
+        if source is None or source is origin {
+            break;
+        }
+        origin = source;
+        hops += 1;
+    }
+    home = origin.parent_tab;
+    if home is None {
+        return [origin];
+    }
+    return declared_symbols(home, origin.sym_name) or [origin];
+}
+
 impl scope_sig(
     scope: UniScopeNode, name: str, prog: JacProgram
 ) -> (InterfaceSig | None) {
     """How `name` is called in `scope`, over every declaration of it there:
     a scope holds each overload of a function as its own symbol.""";
     found: (InterfaceSig | None) = None;
-    for sym in scope.lookup_all(name, deep=False) {
-        found = merge_sigs(
-            found, callable_sig(prog.get_type_evaluator().get_type_of_symbol(sym))
-        );
+    seen: set[int] = set();
+    for sym in declared_symbols(scope, name) {
+        for each in overload_symbols(sym) {
+            if id(each) in seen {
+                continue;
+            }
+            seen.add(id(each));
+            found = merge_sigs(
+                found, callable_sig(prog.get_type_evaluator().get_type_of_symbol(each))
+            );
+        }
     }
     return found;
 }
@@ -286,11 +329,11 @@ impl interface_type(
     """The type the Python interface gives `name`. An interface is read from
     its symbols and their types, never from syntax: in a build the stubs are
     served from the catalog, which holds no trees.""";
-    sym = stub_mod.lookup(name, deep=False);
-    if sym is None {
+    declared = declared_symbols(stub_mod, name);
+    if not declared {
         return None;
     }
-    return prog.get_type_evaluator().get_type_of_symbol(sym);
+    return prog.get_type_evaluator().get_type_of_symbol(declared[0]);
 }
 
 impl class_member_type(
@@ -299,9 +342,9 @@ impl class_member_type(
     chain: list[ClassType] = list(cls.shared.mro) or [cls];
     for klass in chain {
         scope = klass.shared.symbol_table;
-        sym = scope.lookup(member, deep=False) if scope is not None else None;
-        if sym is not None {
-            return prog.get_type_evaluator().get_type_of_symbol(sym);
+        declared = declared_symbols(scope, member) if scope is not None else [];
+        if declared {
+            return prog.get_type_evaluator().get_type_of_symbol(declared[0]);
         }
     }
     return None;

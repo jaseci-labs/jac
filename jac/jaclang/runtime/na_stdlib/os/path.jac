@@ -19,8 +19,8 @@ def:pub isdir(s: str) -> bool {
     return os.path.isdir(s);
 }
 
-def:pub realpath(path: str) -> str {
-    return os.path.realpath(path);
+def:pub realpath(filename: str) -> str {
+    return os.path.realpath(filename);
 }
 
 def:pub getsize(filename: str) -> int {
