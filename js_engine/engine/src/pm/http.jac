@@ -129,12 +129,43 @@ def:pub http_user_agent -> str {
     return "js_engine/" + JS_ENGINE_VERSION + " (bun-compat)";
 }
 
-"""GET `url`. `extra_headers` are complete "Name: value" lines. `verify`
-false disables TLS peer verification; `ca_file` adds a PEM bundle."""
+"""Whether a "Name: value" header line carries credentials."""
+def _is_credential_header(h: str) -> bool {
+    l: str = h.lower();
+    return l.startswith("authorization:")
+        or l.startswith("proxy-authorization:")
+        or l.startswith("cookie:");
+}
+
+"""Headers to send on to a redirect target `next_url` after a request to `u`:
+`headers` unchanged while the redirect stays on one origin (scheme, host and
+port); without its credentials once it leaves — a private registry that
+redirects tarball downloads to a CDN, an object store or plain http must not
+hand that service its token (the Fetch spec and curl drop them the same way).
+The caller keeps the result, so credentials dropped once stay dropped."""
+def:pub http_redirect_headers(u: HttpUrl, next_url: str, headers: list[str]) -> list[str] {
+    nu: HttpUrl = http_parse_url(next_url);
+    if nu.ok and http_origin(nu).lower() == http_origin(u).lower() {
+        return headers;
+    }
+    kept: list[str] = [];
+    for h in headers {
+        if not _is_credential_header(h) {
+            kept.append(h);
+        }
+    }
+    return kept;
+}
+
+"""GET `url`. `extra_headers` are complete "Name: value" lines; credential
+headers among them are dropped once a redirect leaves the origin (see
+http_redirect_headers). `verify` false disables TLS peer verification;
+`ca_file` adds a PEM bundle."""
 def:pub http_get(
     url: str, extra_headers: list[str], verify: bool, ca_file: str
 ) -> HttpResponse {
     cur: str = url;
+    hdrs: list[str] = extra_headers;
     hops: int = 0;
     while True {
         u: HttpUrl = http_parse_url(cur);
@@ -144,7 +175,7 @@ def:pub http_get(
             r.error = "invalid URL: " + cur;
             return r;
         }
-        r: HttpResponse = _http_once(u, extra_headers, verify, ca_file);
+        r: HttpResponse = _http_once(u, hdrs, verify, ca_file);
         r.url = cur;
         if r.error != "" {
             return r;
@@ -177,6 +208,7 @@ def:pub http_get(
                 }
                 cur = http_origin(u) + base + loc;
             }
+            hdrs = http_redirect_headers(u, cur, hdrs);
             bytebuf_free(r.body);
             continue;
         }
