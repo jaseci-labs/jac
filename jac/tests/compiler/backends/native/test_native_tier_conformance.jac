@@ -173,3 +173,109 @@ test "a connect from root keeps the rest of the chain" {
     assert "chain [1, 2, 3]" in out , out;
     assert "reversed [4, 5]" in out , out;
 }
+
+"""An integer and a float are equal when they are the same number, not when
+they round to the same float. `9007199254740993 == 9007199254740992.0` is
+false, and so is `9223372036854775807 == 9223372036854775808.0`; comparing
+both sides as floats made each of them true."""
+test "untyped numbers compare exactly past the range a float holds" {
+    out = assert_native_identity(
+        fixture("any_number_equality_wide.jac"), profiles=["rc", "managed"]
+    );
+    assert "False True" in out , out;
+    assert "True True False False" in out , out;
+}
+
+"""`(a, b) = (b, a)` on two module globals reads both before it writes
+either. Releasing the value a global held as soon as it was overwritten freed
+an object the second assignment was still about to store."""
+test "swapping two module globals that hold objects keeps both" {
+    out = assert_native_identity(
+        fixture("unpack_swaps_object_globals.jac"), profiles=["rc", "managed"]
+    );
+    assert out == "R L 2\nL R 2\nR L 2\n" , out;
+}
+
+"""`sinks <++ src` yields `sinks` and `hub <++ feeders` yields `hub`: the
+side the edges arrive at, as written, whichever side is the list."""
+test "a connect written toward its source yields the destination" {
+    out = assert_native_identity(
+        fixture("connect_reverse_result.jac"), profiles=["rc", "managed"]
+    );
+    assert "reverse list dest 2" in out , out;
+    assert "reverse node dest 10" in out , out;
+    assert "[1, 2, 3]" in out , out;
+}
+
+"""Only an edge that leaves root is an anchor nothing native can observe.
+One that arrives at root, or runs both ways, gives the node an outgoing edge
+a forward traversal would follow, so it is refused like any other use of
+root."""
+test "a connect that puts an edge into root is refused" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from tests.support { native_force_opts }
+    options = native_force_opts();
+    options.skip_native_engine = True;
+    options.no_ir_cache = True;
+    program = JacProgram();
+    program.compile(file_path=fixture("connect_into_root.jac"), options=options);
+    refusals = [
+        str(e)
+        for e in program.errors_had
+        if "connect operand 'root'" in str(e)
+    ];
+    assert len(refusals) == 4 , [str(e) for e in program.errors_had];
+}
+
+"""A `continue` inside a switch belongs to the loop around the switch. The
+native tier jumped to that loop without running the `finally` blocks it left
+on the way. The Python tier runs a switch as a loop of its own and restarted
+it, so the same program never finished there."""
+test "a continue inside a switch moves the enclosing loop on" {
+    out = assert_native_identity(
+        fixture("switch_continue.jac"), profiles=["rc", "managed"]
+    );
+    assert "zero\nfinally 0\none\nafter switch 1\nfinally 1\n" in out , out;
+    assert "inner finally 00\ninner 01\ninner finally 01\nouter finally 0\n"
+        in out , out;
+    assert "skip 0\nodd 1\nend 1\neven 2\nafter inner 2\n" in out , out;
+    assert "counted 0\nk 1\nk 3\ncounted 2\n" in out , out;
+    assert "two done\ntail 2\nn 4\ntail 4\n" in out , out;
+}
+
+"""The objects being written out are tracked without a limit. With room for
+64, a chain of 80 objects that closes on itself past the 64th was followed
+round the cycle until the stack ran out."""
+test "default object text nests past any fixed depth and still stops at a cycle" {
+    out = assert_native_identity(
+        fixture("default_object_text_deep.jac"), profiles=["rc", "managed"]
+    );
+    assert "1754 80 0\n1753 80 1\n" in out , out;
+    assert "True 1754" in out , out;
+}
+
+"""A field whose own text raises ends the write of the object holding it.
+The object is no longer being written, so printing it again writes it in
+full rather than `...`."""
+test "an error raised while an object is written out leaves it printable" {
+    out = assert_native_identity(
+        fixture("default_object_text_raise.jac"), profiles=["rc", "managed"]
+    );
+    assert out
+        == (
+            "Holder(name='h', inner=calm)\n"
+            "refused: not now\n"
+            "Holder(name='h', inner=calm)\n"
+            "Holder(name='h', inner=calm)\n"
+        ) , out;
+}
+
+"""Each thread tracks the objects it is writing out on its own. Sharing one
+record let a `flow for` body see another thread's objects as its own and
+print `...` for an object it had not met."""
+test "threads writing out cyclic objects do not see each other's progress" {
+    out = assert_native_identity(
+        fixture("default_object_text_threads.jac"), profiles=["rc", "managed"]
+    );
+    assert "Pair(label=7, other=Pair(label=107, other=...))\nwrong 0\n" in out , out;
+}
