@@ -1,9 +1,10 @@
 """The `conversation=<list>` kwarg: what byLLM writes back into the caller's list.
 
 byLLM appends to the caller's list in place. The system prompt and finish_tool
-plumbing are filtered out on the way; a real tool result is not.
+plumbing are filtered out on the way; real tool results and final answers are not.
 """
 
+import json;
 import from jaclang.byllm.types { Message, MessageRole }
 import from jaclang.byllm.lib { MockLLM }
 import from support { call, finish, say }
@@ -11,6 +12,12 @@ import from support { call, finish, say }
 
 def get_weather(city: str) -> str {
     return f"sunny in {city}";
+}
+
+
+obj Forecast {
+    has city: str,
+        temperature: int;
 }
 
 
@@ -81,6 +88,41 @@ test "scaffolding and finish_tool are filtered out, a real tool result is not" {
     for m in history {
         assert m.get("name") != "finish_tool" , f"finish_tool is plumbing and leaked: {m}";
     }
+}
+
+
+test "a non-streaming tool turn persists its final answer" {
+    history: list[dict[str, any]] = [];
+    llm = MockLLM(
+        outputs=[call("get_weather", {"city": "Paris"}), finish("Paris is sunny.")]
+    );
+
+    def ask(message: str) -> str by llm(tools=[get_weather], conversation=history);
+
+    answer = ask("How is Paris?");
+    assistants = by_role(history, "assistant");
+    assert answer == "Paris is sunny.";
+    assert assistants[-1].get("content") == answer , (
+        f"the returned answer must close the stored turn: {history}"
+    );
+}
+
+
+test "a typed non-streaming tool answer is persisted as json" {
+    history: list[dict[str, any]] = [];
+    llm = MockLLM(outputs=[finish({"city": "Paris", "temperature": 21})]);
+
+    def forecast(city: str) -> Forecast by llm(
+        tools=[get_weather], conversation=history
+    );
+
+    answer = forecast("Paris");
+    assistants = by_role(history, "assistant");
+    stored = json.loads(str(assistants[-1].get("content")));
+    assert answer.city == "Paris" and answer.temperature == 21;
+    assert stored == {"city": "Paris", "temperature": 21} , (
+        f"the typed answer must remain machine-readable: {assistants[-1]}"
+    );
 }
 
 

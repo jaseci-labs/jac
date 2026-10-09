@@ -13,6 +13,7 @@ import type from llama_cpp { Llama }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm._optdeps.litellm { litellm, _disable_debugging }
 import from jaclang.byllm._optdeps.openai { openai, OpenAI, AsyncOpenAI }
+import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from jaclang.project.capabilities { require_optional }
 import from jaclang.byllm.systemone {
     Decision,

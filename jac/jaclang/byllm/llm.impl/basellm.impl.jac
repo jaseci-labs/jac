@@ -161,6 +161,22 @@ def _should_parallelize(mt_run: MTRuntime) -> bool {
 }
 
 
+def _persist_final_answer(mt_run: MTRuntime, final_output: object) {
+    content: str;
+    if isinstance(final_output, str) {
+        content = final_output;
+    } else {
+        try {
+            answer_type = mt_run.resp_type or type(final_output);
+            content = TypeAdapter(answer_type).dump_json(final_output).decode("utf-8");
+        } except Exception {
+            content = json.dumps(final_output, `default=str);
+        }
+    }
+    mt_run.add_message(Message(role=MessageRole.ASSISTANT, content=content));
+}
+
+
 def _is_transient_error(exc: object) -> bool {
     return isinstance(
         exc,
@@ -1167,7 +1183,9 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 for tool_call in recovery_resp.tool_calls {
                     if tool_call.is_finish_call() {
                         mt_run.add_message(tool_call());
-                        return tool_call.get_output();
+                        final_output = tool_call.get_output();
+                        _persist_final_answer(mt_run, final_output);
+                        return final_output;
                     }
                 }
             }
@@ -1230,6 +1248,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 if mt_run.stream {
                     return self._stream_final_answer(mt_run);
                 }
+                _persist_final_answer(mt_run, final_output);
                 return final_output;
             }
         } else {
@@ -1241,7 +1260,9 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 for tool_call in recovery_resp.tool_calls {
                     if tool_call.is_finish_call() {
                         mt_run.add_message(tool_call());
-                        return tool_call.get_output();
+                        final_output = tool_call.get_output();
+                        _persist_final_answer(mt_run, final_output);
+                        return final_output;
                     }
                 }
             }
@@ -2098,7 +2119,9 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
             for tool_call in final_resp.tool_calls {
                 if tool_call.is_finish_call() {
                     mt_run.add_scaffolding_message(tool_call());
-                    return tool_call.get_output();
+                    final_output = tool_call.get_output();
+                    _persist_final_answer(mt_run, final_output);
+                    return final_output;
                 }
             }
         }
