@@ -561,6 +561,7 @@ impl MicroserviceGateway.probe_services(
     request: Request, path: str, candidates: list[tuple[str, ServiceEntry]]
 ) -> Response {
     import from jaclang.scale.runtime.context.util { http_forward_timeout }
+    import from jaclang.server.serving.client { ClientReadTimeout }
     import from jaclang.scale.runtime.transport.http_forward { stream_forward }
 
     fwd_headers = self.build_forward_headers(request);
@@ -588,13 +589,19 @@ impl MicroserviceGateway.probe_services(
         if svc_entry.host_override {
             per_svc_headers["Host"] = svc_entry.host_override;
         }
-        fr = await stream_forward(
-            request.method,
-            target_url,
-            per_svc_headers,
-            body,
-            timeout=int(http_forward_timeout(svc_name))
-        );
+        try {
+            fr = await stream_forward(
+                request.method,
+                target_url,
+                per_svc_headers,
+                body,
+                timeout=int(http_forward_timeout(svc_name))
+            );
+        } except ClientReadTimeout as timed_out {
+            import from jaclang.scale.runtime.context.errors { gateway_timeout }
+            logger.info(f"Probe: {svc_name} timed out: {timed_out}");
+            return gateway_timeout(svc_name);
+        }
         if fr is None {
             import from jaclang.scale.runtime.context.errors { service_unavailable }
             return service_unavailable(svc_name, "transport_error");
@@ -625,9 +632,11 @@ impl MicroserviceGateway.forward_to(
     request: Request, service_entry: ServiceEntry, target_url: str
 ) -> Response | None {
     import from jaclang.scale.runtime.context.errors {
+        bad_gateway,
         service_unavailable,
         gateway_timeout
     }
+    import from jaclang.server.serving.client { ClientReadTimeout }
     import from jaclang.scale.runtime.transport.http_forward { stream_forward }
     import from jaclang.scale.runtime.context.util { http_forward_timeout }
 
@@ -642,11 +651,15 @@ impl MicroserviceGateway.forward_to(
     body: bytes = request.body;
 
     timeout = http_forward_timeout(service_entry.name);
-    fr = await stream_forward(
-        request.method, target_url, fwd_headers, body, timeout=int(timeout)
-    );
-    if fr is None {
+    try {
+        fr = await stream_forward(
+            request.method, target_url, fwd_headers, body, timeout=int(timeout)
+        );
+    } except ClientReadTimeout {
         return gateway_timeout(service_entry.name);
+    }
+    if fr is None {
+        return bad_gateway(service_entry.name);
     }
     return fr.to_response();
 }

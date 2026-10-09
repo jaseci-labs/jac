@@ -4,6 +4,8 @@ import from pathlib { Path }
 
 enum ChangeType { CREATED, MODIFIED, DELETED }
 
+def watch_roots(base: str, app_root: str, sources: list[str]) -> list[str];
+
 obj FileChangeEvent {
     has path: str,
         change_type: ChangeType,

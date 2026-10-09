@@ -1381,6 +1381,7 @@ impl serve(
             return 0;
         }
         hot_reloader = None;
+        watch_paths: list[str] = [base];
         vite_holder: list[any] = [];
         if dev {
             if not _ensure_watchdog_installed() {
@@ -1389,9 +1390,14 @@ impl serve(
             }
             try {
                 import from jaclang.server.hmr { HotReloader }
-                import from jaclang.server.watcher { JacFileWatcher }
+                import from jaclang.server.watcher { JacFileWatcher, watch_roots }
 
-                watcher = JacFileWatcher(watch_paths=[base]);
+                watch_paths = watch_roots(
+                    base,
+                    prepared.`root,
+                    [str(k) for k in Jac.get_program().mod.hub.keys()]
+                );
+                watcher = JacFileWatcher(watch_paths=watch_paths);
                 client_compiler = None;
                 if not no_client {
                     try {
@@ -1455,7 +1461,8 @@ impl serve(
                 no_client=no_client,
                 primary_port=primary_port,
                 api_port=actual_port,
-                base_path=base
+                base_path=base,
+                watch_paths=watch_paths
             );
         }
         try {
@@ -1584,6 +1591,9 @@ def _count_jac_files(directory: str) -> int {
     import from pathlib { Path }
     try {
         path = Path(directory);
+        if path.is_file() {
+            return 1 if path.suffix == '.jac' else 0;
+        }
         return len(list(path.rglob('*.jac')));
     } except Exception {
         return 0;
@@ -1591,7 +1601,12 @@ def _count_jac_files(directory: str) -> int {
 }
 
 def _print_startup_message(
-    dev: bool, no_client: bool, primary_port: int, api_port: int, base_path: str = '.'
+    dev: bool,
+    no_client: bool,
+    primary_port: int,
+    api_port: int,
+    base_path: str = '.',
+    watch_paths: (list[str] | None) = None
 ) {
     import from importlib.metadata { version as pkg_version }
 
@@ -1622,7 +1637,7 @@ def _print_startup_message(
         console.print(f"    API:  http://localhost:{api_port}/", style="muted");
         console.print();
 
-        file_count = _count_jac_files(base_path);
+        file_count = sum(_count_jac_files(p) for p in (watch_paths or [base_path]));
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
@@ -1631,7 +1646,7 @@ def _print_startup_message(
     } elif dev and no_client {
         console.print("  Server ready (API only)", style="bold green");
         console.print();
-        file_count = _count_jac_files(base_path);
+        file_count = sum(_count_jac_files(p) for p in (watch_paths or [base_path]));
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
