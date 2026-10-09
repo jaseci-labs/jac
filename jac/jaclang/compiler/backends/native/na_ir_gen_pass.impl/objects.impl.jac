@@ -1331,6 +1331,21 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     self._native_skipped_methods.add(full_name);
     self._demoted_names.add(full_name);
     self._unit_exports.pop(full_name, None);
+    if full_name in self.osp_thunk_funcs {
+        self.emit(
+            E5092,
+            node_override=self.module,
+            kind="event ability",
+            name=full_name,
+            help_text=(
+                "This ability could not be lowered ("
+                + str(_own[0]).split("\n")[0]
+                + "). A walker runs its abilities through the native graph "
+                "engine, which has no caller to refuse, so the module cannot "
+                "stay native with it."
+            )
+        );
+    }
     return True;
 }
 

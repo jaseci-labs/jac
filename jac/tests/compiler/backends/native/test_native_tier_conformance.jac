@@ -105,3 +105,20 @@ test "graph forms the native tier cannot lower are refused, not dropped" {
     assert any("'root'" in r for r in refusals) , refusals;
     assert any("connect operand 'list'" in r for r in refusals) , refusals;
 }
+
+"""A function that cannot be lowered is left to the Python tier and every
+native caller of it is refused. A walker's ability has no caller in the
+source: the graph engine runs it. So a walker with an ability that could not
+be lowered compiled, and the program stopped on the stub when the engine
+reached it. The module is now refused when that happens."""
+test "a walker ability that cannot be lowered refuses the module" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from tests.support { native_force_opts }
+    options = native_force_opts();
+    options.skip_native_engine = True;
+    options.no_ir_cache = True;
+    program = JacProgram();
+    program.compile(file_path=fixture("ability_not_lowered.jac"), options=options);
+    refusals = [str(e) for e in program.errors_had];
+    assert any("event ability" in r and "look" in r for r in refusals) , refusals;
+}
