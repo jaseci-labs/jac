@@ -12,7 +12,7 @@ glob logger = logging.getLogger(__name__),
      SCHEMA_VERSION = 1,
      SCHEMA_STAMP_KEY = 'schema_fingerprint',
      _schema_ready: set[str] = set(),
-     _schema_gate = threading.Lock(),
+     _schema_gate = threading.RLock(),
      __all__ = [
          'AnchorRow',
          'Store',
@@ -212,3 +212,6 @@ obj PgStore(Store) {
     def _reap_dead_sessions -> int;
     def _live_blockers -> list[dict[str, any]];
 }
+
+
+def forget_schema(info: ConnInfo) -> None;
