@@ -27,10 +27,20 @@ runs:
           js_engine/engine/src/builtins/js/**/*.jsbc
         key: js-engine-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('js_engine/engine/src/**', 'js_engine/napi/**', 'js_engine/native/**', 'js_engine/Makefile', 'js_engine/jac.toml', 'jac/jaclang/compiler/backends/native/**') }}
 
+    - name: Install js_engine runtime dependencies (PCRE2 10.45)
+      shell: bash
+      run: make -C js_engine install_deps
+
     - name: Build js_engine
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: make -C js_engine
+
+    - name: Smoke-test the engine
+      shell: bash
+      run: |
+        out="$(js_engine/bin/js_engine -e 'console.log(/(?<=a+)b/.test("aab"))')"
+        [ "$out" = "true" ] || { echo "::error::js_engine smoke test printed '$out', expected 'true'"; exit 1; }
 
     - name: Export the engine path
       shell: bash
