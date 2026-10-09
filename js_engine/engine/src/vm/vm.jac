@@ -349,6 +349,7 @@ import from engine.src.runtime.realm {
     gc_note_alloc,
     _GC_MIN_THRESHOLD,
     _GC_GROWTH_PCT,
+    gc_growth_pct_for,
     realm_request_exit
 }
 import from engine.src.builtins.regexp_type { JSRegExpState }
@@ -1409,7 +1410,7 @@ def _vm_set_mega(ins: Instruction, rv: JSValue, val: JSValue, sm_sid: int) -> bo
             return False;
         }
         sm_raw.shape_id = _MAC_AFTER[sm_h];
-        sm_raw.slots.append(val);
+        sm_raw.spush(val);
         sm_raw.version = sm_raw.version + 1;
         if (sm_raw.cell_flags & FLAG_IS_PROTO) != 0 {
             proto_epoch_bump();
@@ -1688,7 +1689,7 @@ def _vm_set_ic_add(ins: Instruction, rv: JSValue, val: JSValue, sa_sid: int) -> 
         return False;
     }
     sa_raw.shape_id = ins.ic_ver;
-    sa_raw.slots.append(val);
+    sa_raw.spush(val);
     sa_raw.version = sa_raw.version + 1;
     if (sa_raw.cell_flags & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
@@ -4168,6 +4169,7 @@ obj VM {
         had_exception: bool = False,
         _coerce_diverted: bool = False,
         _gen_ret_pending: bool = False,
+        _gen_ret_depth: int = -1,
         call_depth: int = 0,
         yielded: bool = False,
         yielded_star: bool = False,
@@ -4636,6 +4638,27 @@ obj VM {
             dt_result = self._invoke_callable_value(dt_closure, dt_this, dt_args);
         }
         return dt_result;
+    }
+
+    """Store a suspended async frame's state in realm.generators, reusing a
+    GC-freed slot when there is one (as js_generator_create does). Every await
+    used to append, so the table grew by one entry per await for the whole run
+    (625K in a vite build) and each collection walked all of them twice. A
+    pending state is always rooted and a finished one's resume/reject markers
+    have already fired, so no marker refers to a freed slot. Returns its index."""
+    def _gen_state_slot(state: JSGeneratorState) -> int {
+        if len(self.realm.free_generator_slots) > 0 {
+            gs_last: int = len(self.realm.free_generator_slots) - 1;
+            gs_idx: int = self.realm.free_generator_slots[gs_last];
+            del self.realm.free_generator_slots[gs_last];
+            self.realm.generators[gs_idx] = state;
+            if gs_idx < len(self.realm.generators_mark_epoch) {
+                self.realm.generators_mark_epoch[gs_idx] = 0;
+            }
+            return gs_idx;
+        }
+        self.realm.generators.append(state);
+        return len(self.realm.generators) - 1;
     }
 
     def _resume_async_frame(idx: int, send_val: JSValue, is_rejection: bool) -> None {
@@ -12510,11 +12533,27 @@ obj VM {
             frame.rpc = state.func.reg_gen_start;
         }
 
+        # The forced-return flag belongs to THIS generator frame: only its own
+        # finally / IteratorClose handlers (frame depth _gen_ret_depth) treat the
+        # unwind as a return. Save the caller's flag and restore it after the body
+        # runs: a .return() whose finally yields, awaits or throws used to leave the
+        # VM-wide flag set, and every later `finally` reached by an exception — in
+        # any frame — then completed as `return undefined`, swallowing the error
+        # (vite: rollup's write failure became a silent "built" with no output).
+        rg_prev_ret: bool = self._gen_ret_pending;
+        rg_prev_ret_depth: int = self._gen_ret_depth;
+        self._gen_ret_pending = False;
+        if state.ret_mode and not rg_abrupt_ret {
+            # resumed after yielding from a finally block while .return() completes
+            self._gen_ret_pending = True;
+            self._gen_ret_depth = len(self.frames);
+        }
         if rg_abrupt_ret {
             nc_ab: int = len(frame.catch_stack);
             if nc_ab == 0 and _reg_handler_at(frame.func, frame.ip - 1) >= 0 {
                 frame.rpc = _reg_handler_at(frame.func, frame.ip - 1);
                 self._gen_ret_pending = True;
+                self._gen_ret_depth = len(self.frames);
             } elif nc_ab > 0 {
                 # (a register frame's catch stack holds register pcs)
                 if frame.func.risa == 1 {
@@ -12529,6 +12568,7 @@ obj VM {
                 # for ordinary try/finally handlers: they complete via RETURN without
                 # touching ITER_CLOSE_THRW, and the flag is cleared on completion.
                 self._gen_ret_pending = True;
+                self._gen_ret_depth = len(self.frames);
             }
         }
 
@@ -12565,6 +12605,8 @@ obj VM {
             result = self._drain_tail_channel(self._exec_any(frame));
         }
         self.module_fns = rg_saved_mf;
+        self._gen_ret_pending = rg_prev_ret;
+        self._gen_ret_depth = rg_prev_ret_depth;
         # Body has suspended (yield/await) or completed — no longer on the stack.
         gen_exec_state: JSGeneratorState = js_get_generator_state(gen_obj);
         gen_exec_state.executing = False;
@@ -12697,7 +12739,6 @@ obj VM {
         } else {
             # Generator returned (RETURN / RETURN_UNDEFINED / ran off end)
             state.done = True;
-            self._gen_ret_pending = False;  # forced-return fully unwound
             close_val: JSValue = result;
             if state.ret_mode {
                 close_val = state.send_val;
@@ -13353,7 +13394,7 @@ obj VM {
     # Array-destructuring IteratorClose on ABRUPT completion.  Stack: [exc, iter].
     # Close swallowing any error from return(); then re-throw the original exc.
     def _op_iter_close_thrw(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if self._gen_ret_pending {
+        if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
             # Forced generator return unwinding through this destructuring handler:
             # the abrupt-ret jump did not push an exception value onto the stack (it
             # is not a throw), so only the iterator record (from LOAD_LOCAL) is here.
@@ -13394,7 +13435,7 @@ obj VM {
     return NO value was pushed (`_gen_ret_pending`), so leave the stack untouched;
     the matching FINALLY_RETHROW will hand control back for the return completion."""
     def _op_finally_enter(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if self._gen_ret_pending {
+        if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
             # Forced-return: no exception on the stack. Record undefined so a spurious
             # value is not thrown at FINALLY_RETHROW if _gen_ret_pending were cleared.
             frame.locals[frame.lb + (ins.arg)] = js_undefined();
@@ -13409,7 +13450,7 @@ obj VM {
     reload the stashed exception and re-raise it (unwinding to an enclosing handler),
     completing the abrupt try completion the finalizer did not itself replace."""
     def _op_finally_rethrow(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if self._gen_ret_pending {
+        if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
             # Return completion: the generator resume driver reads state.ret_mode.
             st.running = False;
             return;
@@ -15796,7 +15837,7 @@ obj VM {
             )
                 and jsv_is_object_cell(gp_obj)
                 and jsv_to_table_id(gp_obj) > 0
-                and js_object_table_get(jsv_to_table_id(gp_obj)).binary_kind
+                and js_object_table_get(jsv_to_table_id(gp_obj)).bkind()
                     == BINARY_KIND_TYPED_ARRAY {
                 gp_ta_g: JSValue = js_object_lookup_getter(gp_obj, gp_key);
                 if is_native_val(gp_ta_g) {
@@ -16018,7 +16059,7 @@ obj VM {
                             gp_raw_ic: JSObject = js_object_table_get(
                                 jsv_to_table_id(gp_obj)
                             );
-                            self._push(gp_raw_ic.slots[ins.ic_ver // 16]);
+                            self._push(gp_raw_ic.sget(ins.ic_ver // 16));
                             gp_ic_hit = True;
                         }
                     }
@@ -16132,11 +16173,11 @@ obj VM {
             return;
         }
         pf_rraw: JSObject = js_object_table_get(jsv_to_table_id(gp_obj));
-        if pf_rraw.binary_kind != 0
+        if pf_rraw.bkind() != 0
             or (pf_rraw.cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
             return;
         }
-        if pf_rraw.accessors is not None {
+        if pf_rraw.has_acc() {
             return;
         }
         if shape_lookup(pf_rsid, gp_key) >= 0 {
@@ -16150,14 +16191,14 @@ obj VM {
         pf_depth: int = 0;
         while pf_lvl > 0 and pf_depth < 16 {
             pf_lraw: JSObject = js_object_table_get(pf_lvl);
-            if pf_lraw.class_id != 0 or pf_lraw.binary_kind != 0 {
+            if pf_lraw.class_id != 0 or pf_lraw.bkind() != 0 {
                 return;
             }
             if (pf_lraw.cell_flags & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
                 return;
             }
             if pf_lraw.mode == MAP_MODE_SHAPE {
-                if pf_lraw.accessors is not None {
+                if pf_lraw.has_acc() {
                     return;
                 }
                 pf_lpk: int = shape_lookup(pf_lraw.shape_id, gp_key);
@@ -16166,7 +16207,7 @@ obj VM {
                         return;
                     }
                     # The slow path must have read exactly this slot.
-                    if pf_lraw.slots[pf_lpk // 16] != gp_val {
+                    if pf_lraw.sget(pf_lpk // 16) != gp_val {
                         return;
                     }
                     pf_pip: int = frame.ip - 1;
@@ -16293,11 +16334,11 @@ obj VM {
             return jsv_hole();
         }
         gf_raw: JSObject = js_object_table_get(jsv_to_table_id(rv));
-        if gf_raw.binary_kind != 0
+        if gf_raw.bkind() != 0
             or (gf_raw.cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
             return jsv_hole();
         }
-        if gf_raw.accessors is not None {
+        if gf_raw.has_acc() {
             return jsv_hole();
         }
         if shape_lookup(sid, gf_key) >= 0 {
@@ -16308,7 +16349,7 @@ obj VM {
         gf_depth: int = 0;
         while gf_lvl > 0 and gf_depth < 16 {
             gf_lraw: JSObject = js_object_table_get(gf_lvl);
-            if gf_lraw.class_id != 0 or gf_lraw.binary_kind != 0 {
+            if gf_lraw.class_id != 0 or gf_lraw.bkind() != 0 {
                 return jsv_hole();
             }
             if (gf_lraw.cell_flags & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
@@ -16398,11 +16439,11 @@ obj VM {
             return jsv_hole();
         }
         sf_raw: JSObject = js_object_table_get(jsv_to_table_id(rv));
-        if sf_raw.binary_kind != 0
+        if sf_raw.bkind() != 0
             or (sf_raw.cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
             return jsv_hole();
         }
-        if sf_raw.accessors is not None {
+        if sf_raw.has_acc() {
             return jsv_hole();
         }
         if shape_lookup(sid, sf_key) >= 0 {
@@ -16413,7 +16454,7 @@ obj VM {
         sf_depth: int = 0;
         while sf_lvl > 0 and sf_depth < 16 {
             sf_lraw: JSObject = js_object_table_get(sf_lvl);
-            if sf_lraw.class_id != 0 or sf_lraw.binary_kind != 0 {
+            if sf_lraw.class_id != 0 or sf_lraw.bkind() != 0 {
                 return jsv_hole();
             }
             if (sf_lraw.cell_flags & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
@@ -16529,7 +16570,7 @@ obj VM {
                     and sp4_fparent >= 0 {
                     sp4_fraw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
                     if sp4_fraw.is_ext()
-                        and (sp4_fpk // 16) == len(sp4_fraw.slots) - 1
+                        and (sp4_fpk // 16) == sp4_fraw.slen() - 1
                         and not self._chain_has_accessor(sp_obj, sp_key) {
                         sp4_fpip: int = frame.ip - 1;
                         if sp4_fpip >= 0 and sp4_fpip < len(frame.func.code) {
@@ -16568,7 +16609,7 @@ obj VM {
             return;
         }
         sp_fraw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
-        if (sp_fpk // 16) != len(sp_fraw.slots) - 1 {
+        if (sp_fpk // 16) != sp_fraw.slen() - 1 {
             return;
         }
         sp_fpip: int = frame.ip - 1;
@@ -16662,7 +16703,7 @@ obj VM {
                 sp4_raw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
                 if sp4_raw.is_ext() {
                     sp4_raw.shape_id = ins.ic_ver;
-                    sp4_raw.slots.append(sp_val);
+                    sp4_raw.spush(sp_val);
                     sp4_raw.version = sp4_raw.version + 1;
                     # A new key on a prototype can shadow an inherited-read IC's holder.
                     if (sp4_raw.cell_flags & FLAG_IS_PROTO) != 0 {
@@ -16735,7 +16776,7 @@ obj VM {
                     sp_traw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
                     if sp_traw.is_ext() {
                         sp_traw.shape_id = ins.ic_ver;
-                        sp_traw.slots.append(sp_val);
+                        sp_traw.spush(sp_val);
                         sp_traw.version = sp_traw.version + 1;
                         if (sp_traw.cell_flags & FLAG_IS_PROTO) != 0 {
                             proto_epoch_bump();
@@ -18065,7 +18106,7 @@ obj VM {
                         # needed; at/above it the length must be writable to grow.
                         si_dpk: int = shape_lookup(si_draw.shape_id, WK_LENGTH);
                         if si_dpk >= 0 and (si_dpk & SHAPE_ATTR_ACCESSOR) == 0 {
-                            si_dlen_v: JSValue = si_draw.slots[si_dpk // 16];
+                            si_dlen_v: JSValue = si_draw.sget(si_dpk // 16);
                             if jsv_is_int32(si_dlen_v) {
                                 si_dcur: int = jsv_to_int32(si_dlen_v);
                                 if si_di < si_dcur {
@@ -18075,7 +18116,7 @@ obj VM {
                                 }
                                 if (si_dpk & PROP_WRITABLE) != 0 {
                                     si_draw.elems_rw().append(si_val);
-                                    si_draw.slots[si_dpk // 16] = js_int(si_di + 1);
+                                    si_draw.sset(si_dpk // 16, js_int(si_di + 1));
                                     self._push(si_val);
                                     return;
                                 }
@@ -25473,8 +25514,22 @@ obj VM {
                     gr_val = args_m[0];
                 }
                 gr_result: JSValue = self.run_generator(this_m, gr_val, False, True);
-                # Async gen: gr_result is already Promise<{value,done}>; sync gen: plain
-                self._push(gr_result);
+                if self.had_exception {
+                    # A finally block run by the forced return threw: raise it here,
+                    # at the .return() call (it was left pending and surfaced later
+                    # as uncaught, past the caller's try/catch).
+                    exc_gr: JSValue = self.pending_exc;
+                    self.had_exception = False;
+                    self.pending_exc = js_undefined();
+                    if not self._unwind_in_frame(frame, exc_gr) {
+                        self.had_exception = True;
+                        self.pending_exc = exc_gr;
+                        st.running = False;
+                    }
+                } else {
+                    # Async gen: gr_result is already Promise<{value,done}>; sync gen: plain
+                    self._push(gr_result);
+                }
             } elif kind_m == NATIVE_KIND_GENERATOR_THROW {
                 # gen.throw(err) — inject exception into generator
                 gt_err: JSValue = js_undefined();
@@ -26373,7 +26428,7 @@ obj VM {
                         + " shape_id="
                         + str(_dbg_raw.shape_id)
                         + " nslots="
-                        + str(len(_dbg_raw.slots))
+                        + str(_dbg_raw.slen())
                         + " children_undef="
                         + str(jsv_is_undefined(_dbg_children))
                         + " variables_undef="
@@ -30166,9 +30221,8 @@ obj VM {
             async_promise=self._cur_async_promise,
             module_fns=self.module_fns
         );
-        self.realm.generators.append(asd_state);
+        asd_idx: int = self._gen_state_slot(asd_state);
         gc_note_alloc(self.realm);  # G0.4: account generator allocation
-        asd_idx: int = len(self.realm.generators) - 1;
         asd_rsm: JSValue = js_object_create_null();
         js_object_set(asd_rsm, _KEY_IS_ASYNC_RESUME, js_true());
         js_object_set(asd_rsm, _KEY_ASYNC_RESUME_IDX, js_int(asd_idx));
@@ -30311,9 +30365,8 @@ obj VM {
                 async_promise=self._cur_async_promise,
                 module_fns=self.module_fns
             );
-            self.realm.generators.append(aw_state);
+            aw_idx: int = self._gen_state_slot(aw_state);
             gc_note_alloc(self.realm);  # G0.4: account generator allocation
-            aw_idx: int = len(self.realm.generators) - 1;
 
             aw_rsm: JSValue = js_object_create_null();
             js_object_set(aw_rsm, _KEY_IS_ASYNC_RESUME, js_true());
@@ -30706,9 +30759,8 @@ obj VM {
                             async_promise=self._cur_async_promise,
                             module_fns=self.module_fns
                         );
-                        self.realm.generators.append(ain_ag_state);
+                        ain_ag_idx: int = self._gen_state_slot(ain_ag_state);
                         gc_note_alloc(self.realm);  # G0.4: account generator allocation
-                        ain_ag_idx: int = len(self.realm.generators) - 1;
                         ain_ag_rsm: JSValue = js_object_create_null();
                         js_object_set(ain_ag_rsm, _KEY_IS_ASYNC_ITER_RESUME, js_true());
                         js_object_set(
@@ -32704,11 +32756,9 @@ obj VM {
             # heap, bounding GC to a fixed fraction of total work (standard
             # "collect when the heap has grown by ~itself" policy), scaled by
             # _GC_GROWTH_PCT (JAC_GC_GROWTH).
-            _gc_live: int = (
-                (len(self.realm.objects) - len(self.realm.free_object_slots))
-                * _GC_GROWTH_PCT
-            )
-                // 100;
+            # The growth tapers for very large heaps (gc_growth_pct_for).
+            _gc_nlive: int = len(self.realm.objects) - len(self.realm.free_object_slots);
+            _gc_live: int = (_gc_nlive * gc_growth_pct_for(_gc_nlive)) // 100;
             if _gc_live > _GC_MIN_THRESHOLD {
                 self.realm.gc_threshold = _gc_live;
             } else {
@@ -34827,7 +34877,7 @@ obj VM {
             and sf_o.mode == MAP_MODE_SHAPE {
             sf_pk: int = shape_lookup(sf_o.shape_id, WK_LENGTH);
             if sf_pk >= 0 and (sf_pk & SHAPE_ATTR_ACCESSOR) == 0 {
-                sf_len: JSValue = sf_o.slots[sf_pk // 16];
+                sf_len: JSValue = sf_o.sget(sf_pk // 16);
                 if jsv_is_int32(sf_len) {
                     sf_cur: int = jsv_to_int32(sf_len);
                     if sf_di < sf_cur {
@@ -34836,7 +34886,7 @@ obj VM {
                     }
                     if (sf_pk & PROP_WRITABLE) != 0 {
                         sf_o.elems_rw().append(sv);
-                        sf_o.slots[sf_pk // 16] = js_int(sf_di + 1);
+                        sf_o.sset(sf_pk // 16, js_int(sf_di + 1));
                         return True;
                     }
                 }
@@ -36850,14 +36900,14 @@ obj VM {
                     }
                 } elif op == 106 {
                     # FINENTER slot, src
-                    if self._gen_ret_pending {
+                    if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
                         regs[lb + ((w >> 8) & 65535)] = js_undefined();
                     } else {
                         regs[lb + ((w >> 8) & 65535)] = regs[lb + ((w >> 24) & 65535)];
                     }
                 } elif op == 107 {
                     # FINRETHROW slot
-                    if self._gen_ret_pending {
+                    if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
                         st.running = False;
                     } else {
                         self._reg_throw(
@@ -43623,7 +43673,7 @@ def _vm_cdp_dense(o: JSValue, idx: int, val: JSValue) -> bool {
     if cd_pk < 0 or (cd_pk & SHAPE_ATTR_ACCESSOR) != 0 {
         return False;
     }
-    cd_lv: JSValue = cd_o.slots[cd_pk // 16];
+    cd_lv: JSValue = cd_o.sget(cd_pk // 16);
     if not jsv_is_int32(cd_lv) {
         return False;
     }
@@ -43635,7 +43685,7 @@ def _vm_cdp_dense(o: JSValue, idx: int, val: JSValue) -> bool {
         return False;
     }
     cd_o.elems_rw().append(val);
-    cd_o.slots[cd_pk // 16] = js_int(idx + 1);
+    cd_o.sset(cd_pk // 16, js_int(idx + 1));
     return True;
 }
 
@@ -44270,15 +44320,15 @@ def _vm_array_push(vm: VM, this_val: JSValue, items: list[JSValue]) -> JSValue {
                 if vp_pk >= 0
                     and (vp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (vp_pk & 1) != 0 {
-                    vp_lv: JSValue = vp_raw.slots[vp_pk // 16];
+                    vp_lv: JSValue = vp_raw.sget(vp_pk // 16);
                     if jsv_is_int32(vp_lv)
                         and jsv_to_int32(vp_lv) == len(vp_raw.elems_ro()) {
                         for vp_itm in items {
                             vp_raw.elems_rw().append(vp_itm);
                         }
-                        vp_raw.slots[vp_pk // 16] = js_array_len_value(
+                        vp_raw.sset(vp_pk // 16, js_array_len_value(
                             len(vp_raw.elems_ro())
-                        );
+                        ));
                         return js_array_len_value(len(vp_raw.elems_ro()));
                     }
                 }

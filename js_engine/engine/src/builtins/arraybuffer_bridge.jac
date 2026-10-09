@@ -337,7 +337,7 @@ def:pub buf_decode_utf8(args: list[JSValue]) -> JSValue {
     if n == 0 {
         return jsv_from_string_id(str_heap(""));
     }
-    # Pass 1: ASCII check + count NULs (each expands to the 4-byte sentinel).
+    # Pass 1: ASCII check + count NULs (each becomes the 2-byte sentinel C0 80).
     nuls: int = 0;
     i: int = st;
     while i < en {
@@ -352,7 +352,7 @@ def:pub buf_decode_utf8(args: list[JSValue]) -> JSValue {
     }
     # Pass 2: copy into a NUL-terminated buffer and reinterpret as str — the
     # same headerless-buffer idiom (and lifetime semantics) as str_substr.
-    slen: int = n + nuls * 3;
+    slen: int = n + nuls;
     out: int = io_alloc(slen + 33);  # 32-byte header region + slen chars + NUL
     data: int = out + 32;
     j: int = 0;
@@ -360,11 +360,9 @@ def:pub buf_decode_utf8(args: list[JSValue]) -> JSValue {
     while i < en {
         b2: int = read_byte(ptr, i);
         if b2 == 0 {
-            write_byte(data, j, 92);  # `\`
-            write_byte(data, j + 1, 120);  # `x`
-            write_byte(data, j + 2, 48);  # `0`
-            write_byte(data, j + 3, 48);  # `0`
-            j += 4;
+            write_byte(data, j, 192);  # the NUL sentinel C0 80 (jsstring.nul_sentinel)
+            write_byte(data, j + 1, 128);
+            j += 2;
         } else {
             write_byte(data, j, b2);
             j += 1;
@@ -411,7 +409,7 @@ def:pub buf_decode_latin1(args: list[JSValue]) -> JSValue {
     while i < en {
         b: int = read_byte(ptr, i);
         if b == 0 {
-            slen += 4;
+            slen += 2;  # the NUL sentinel C0 80
         } elif b < 128 {
             slen += 1;
         } else {
@@ -426,11 +424,9 @@ def:pub buf_decode_latin1(args: list[JSValue]) -> JSValue {
     while i < en {
         b2: int = read_byte(ptr, i);
         if b2 == 0 {
-            write_byte(data, j, 92);
-            write_byte(data, j + 1, 120);
-            write_byte(data, j + 2, 48);
-            write_byte(data, j + 3, 48);
-            j += 4;
+            write_byte(data, j, 192);  # the NUL sentinel C0 80
+            write_byte(data, j + 1, 128);
+            j += 2;
         } elif b2 < 128 {
             write_byte(data, j, b2);
             j += 1;

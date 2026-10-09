@@ -43,6 +43,7 @@ import from engine.src.runtime.jsobj_type {
     global_obj_note_write,
     JSProperty,
     JSObject,
+    JSObjectExt,
     ProxyState,
     ArgsState,
     AccessorTable,
@@ -214,15 +215,11 @@ def _obj_alloc(prototype_idx: int) -> int {
         }
         # Release the lazy containers (P2/P3b/P4); sweep already nulled them, but
         # drop defensively so a reused slot can never inherit stale property state.
-        ro.accessors = None;
-        ro.entries = None;
-        ro.key_order = None;
+        ro.ext = None;  # dict maps, accessor table
         ro.elems = None;
         ro.binary_kind = 0;
         ro.binary_slot = -1;
-        ro.cell_kind = 1;
         ro.cell_flags = 0;  # clears FLAG_MODULE_NS (former is_module_namespace) too
-        ro.structure_id = 0;
         ro.brand = 0;
         _OBJ_REALM.objects_mark_epoch[idx - 1] = 0;
         return idx;
@@ -254,7 +251,6 @@ def _obj_alloc(prototype_idx: int) -> int {
             prototype_idx=prototype_idx,
             version=0,
             shape_id=0,
-            slots=[],
             mode=(MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT),
             class_id=0,
             elems_kind=0
@@ -274,8 +270,8 @@ def:pub js_object_new_shaped2(
 ) -> JSValue {
     sh2_idx: int = _obj_alloc(proto_idx);
     _OBJ_REALM.objects[sh2_idx - 1].shape_id = sid;
-    _OBJ_REALM.objects[sh2_idx - 1].slots.append(v0);
-    _OBJ_REALM.objects[sh2_idx - 1].slots.append(v1);
+    _OBJ_REALM.objects[sh2_idx - 1].spush(v0);
+    _OBJ_REALM.objects[sh2_idx - 1].spush(v1);
     _OBJ_REALM.objects[sh2_idx - 1].version = 2;
     return _obj_wrap(sh2_idx);
 }
@@ -293,7 +289,7 @@ def:pub js_object_table_get(idx: int) -> JSObject {
 
 """binary_kind of the object with table id `id`."""
 def:pub js_object_binary_kind_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].binary_kind;
+    return _OBJ_REALM.objects[id - 1].bkind();
 }
 
 """Element `i` of `v`'s dense elements when it is there (an own data element:
@@ -396,7 +392,7 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
     if i == dp_n and dp_raw.mode == MAP_MODE_SHAPE {
         dp_lk: int = shape_lookup(dp_raw.shape_id, KEY_LENGTH);
         if dp_lk >= 0 and (dp_lk & SHAPE_ATTR_ACCESSOR) == 0 {
-            dp_len: JSValue = dp_raw.slots[dp_lk // 16];
+            dp_len: JSValue = dp_raw.sget(dp_lk // 16);
             if jsv_is_int32(dp_len) and i < jsv_to_int32(dp_len) {
                 dp_raw.elems_rw().append(val);
                 return True;
@@ -409,7 +405,7 @@ def:pub js_object_dense_put(v: JSValue, i: int, val: JSValue) -> bool {
                 and (dp_lk & PROP_WRITABLE) != 0
                 and i < 2147483647 {
                 dp_raw.elems_rw().append(val);
-                dp_raw.slots[dp_lk // 16] = js_int(i + 1);
+                dp_raw.sset(dp_lk // 16, js_int(i + 1));
                 return True;
             }
         }
@@ -429,7 +425,7 @@ def:pub js_object_is_plain_ordinary(v: JSValue) -> bool {
         return False;
     }
     return _OBJ_REALM.objects[po_id - 1].class_id == 0
-        and _OBJ_REALM.objects[po_id - 1].binary_kind == 0
+        and _OBJ_REALM.objects[po_id - 1].bkind() == 0
         and (
             _OBJ_REALM.objects[po_id - 1].cell_flags
             & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)
@@ -454,7 +450,7 @@ def:pub js_object_elems_kind_id(id: int) -> int {
 
 """binary_slot of the object with table id `id`."""
 def:pub js_object_binary_slot_id(id: int) -> int {
-    return _OBJ_REALM.objects[id - 1].binary_slot;
+    return _OBJ_REALM.objects[id - 1].bslot();
 }
 
 """Flag `v` as the realm's global object (FLAG_IS_GLOBAL): its writes are
@@ -503,7 +499,7 @@ def:pub js_object_ic_shape(v: JSValue) -> int {
 """slots[si] of the object with table id `id` (an IC hit: the caller has
 matched the shape, so the slot exists)."""
 def:pub js_object_slot_at_id(id: int, si: int) -> JSValue {
-    return _OBJ_REALM.objects[id - 1].slots[si];
+    return _OBJ_REALM.objects[id - 1].sget(si);
 }
 
 """Table slot index of `v`'s own data property `key` when `v` is an ordinary
@@ -535,14 +531,14 @@ def:pub js_object_shape_slot_set(v: JSValue, sid: int, si: int, val: JSValue) ->
         != 0 {
         return False;
     }
-    _OBJ_REALM.objects[sw_id - 1].slots[si] = val;
+    _OBJ_REALM.objects[sw_id - 1].sset(si, val);
     return True;
 }
 
 """slots[si] = val on the object with table id `id` (a SET IC hit: the
 caller has matched the shape, which guarantees a writable data slot)."""
 def:pub js_object_slot_set_at_id(id: int, si: int, val: JSValue) {
-    _OBJ_REALM.objects[id - 1].slots[si] = val;
+    _OBJ_REALM.objects[id - 1].sset(si, val);
 }
 
 """Inherited-data IC guard on the receiver (table id `id`): its
@@ -550,7 +546,7 @@ def:pub js_object_slot_set_at_id(id: int, si: int, val: JSValue) {
 neither an arguments object nor a class."""
 def:pub js_object_proto_ic_ok(id: int, proto_idx: int) -> bool {
     return _OBJ_REALM.objects[id - 1].prototype_idx == proto_idx
-        and _OBJ_REALM.objects[id - 1].binary_kind == 0
+        and _OBJ_REALM.objects[id - 1].bkind() == 0
         and (
             _OBJ_REALM.objects[id - 1].cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)
         )
@@ -586,7 +582,7 @@ def _args_row(idx: int) -> ArgsState {
 }
 
 # ── Lazy accessor tables (docs/OBJECT_FOOTPRINT_PLAN.md P2) ────────────────────
-# JSObject.accessors is None until the first accessor is installed, so ordinary
+# An object has no accessor table until the first accessor is installed, so ordinary
 # objects carry no getter/setter dicts. Shared read-only empty table for the None
 # case — NEVER mutate it; every write path must go through _acc_rw.
 glob _ACC_EMPTY: AccessorTable = AccessorTable();
@@ -594,8 +590,12 @@ glob _ACC_EMPTY: AccessorTable = AccessorTable();
 """Accessor table for READ access: the object's own table, or the shared empty one
 when it has no accessors. Result must not be mutated (see _acc_rw for writes)."""
 def _acc_ro(raw: JSObject) -> AccessorTable {
-    if raw.accessors is not None {
-        return raw.accessors;
+    ar_x: JSObjectExt | None = raw.ext;
+    if ar_x is not None {
+        ar_a: AccessorTable | None = ar_x.accessors;
+        if ar_a is not None {
+            return ar_a;
+        }
     }
     return _ACC_EMPTY;
 }
@@ -603,14 +603,7 @@ def _acc_ro(raw: JSObject) -> AccessorTable {
 """Accessor table for WRITE access, materializing it (and the owning edge) on the
 object's first accessor install."""
 def _acc_rw(raw: JSObject) -> AccessorTable {
-    if raw.accessors is not None {
-        return raw.accessors;
-    }
-    t: AccessorTable = AccessorTable(
-        getters={}, setters={}, enumerable={}, configurable={}
-    );
-    raw.accessors = t;
-    return t;
+    return raw.ensure_accessors();
 }
 
 """Wrap an object table index as a JSValue with tag=Object."""
@@ -865,7 +858,7 @@ def:pub js_object_get_ordinary(jsobj: JSValue, key: int) -> JSValue {
         # (ES §10.4.3); any other key — every String.prototype method name —
         # resolves like an ordinary object's.
         if go_raw.class_id != 0
-            or go_raw.binary_kind != 0
+            or go_raw.bkind() != 0
             or go_raw.elems_kind != ELEMS_NONE
             or (go_raw.cell_flags & (FLAG_MODULE_NS | FLAG_MAPPED_ARGS)) != 0
             or (
@@ -876,7 +869,7 @@ def:pub js_object_get_ordinary(jsobj: JSValue, key: int) -> JSValue {
         }
         # Accessors first, as the full [[Get]] does: a key can be in both the
         # accessor tables and `entries`, and the accessor wins.
-        if go_raw.accessors is not None and _go_acc_tables_have(go_raw, key) {
+        if go_raw.has_acc() and _go_acc_tables_have(go_raw, key) {
             return jsv_hole();
         }
         if go_raw.mode == MAP_MODE_SHAPE {
@@ -885,7 +878,7 @@ def:pub js_object_get_ordinary(jsobj: JSValue, key: int) -> JSValue {
                 if (go_packed & SHAPE_ATTR_ACCESSOR) != 0 {
                     return jsv_hole();
                 }
-                return go_raw.slots[go_packed // 16];
+                return go_raw.sget(go_packed // 16);
             }
         } else {
             go_ent: dict[int, JSProperty] = go_raw.ent_ro();
@@ -903,7 +896,7 @@ that is not an array, String wrapper, process.env, class, binary view, module
 namespace, mapped `arguments` or dense-elements holder."""
 def _go_write_plain(raw: JSObject) -> bool {
     return raw.class_id == 0
-        and raw.binary_kind == 0
+        and raw.bkind() == 0
         and raw.elems_kind == ELEMS_NONE
         and (
             raw.cell_flags
@@ -939,7 +932,7 @@ def _go_has_accessor(raw: JSObject, key: int) -> bool {
             return True;
         }
     }
-    if raw.accessors is not None {
+    if raw.has_acc() {
         return _go_acc_tables_have(raw, key);
     }
     return False;
@@ -995,7 +988,7 @@ def:pub js_object_set_ordinary(jsobj: JSValue, key: int, val: JSValue) -> bool {
             if (so_p & SHAPE_ATTR_ACCESSOR) != 0 or (so_p & PROP_WRITABLE) == 0 {
                 return False;
             }
-            so_raw.slots[so_p // 16] = val;
+            so_raw.sset(so_p // 16, val);
             return True;
         }
     } else {
@@ -1018,7 +1011,7 @@ def:pub js_object_set_ordinary(jsobj: JSValue, key: int, val: JSValue) -> bool {
         }
         so_pr: JSObject = _obj_get(so_pidx);
         if so_pr.class_id != 0
-            or so_pr.binary_kind != 0
+            or so_pr.bkind() != 0
             or so_pr.elems_kind != ELEMS_NONE
             or (so_pr.cell_flags & (FLAG_MODULE_NS | FLAG_MAPPED_ARGS)) != 0
             or (so_pr.brand & BRAND_STRING_OBJ) != 0 {
@@ -1067,14 +1060,14 @@ def:pub js_object_own_int_add(jsobj: JSValue, key: int, delta: int) -> JSValue {
     if oi_raw.mode != MAP_MODE_SHAPE or not _go_write_plain(oi_raw) {
         return jsv_hole();
     }
-    if oi_raw.accessors is not None and _go_acc_tables_have(oi_raw, key) {
+    if oi_raw.has_acc() and _go_acc_tables_have(oi_raw, key) {
         return jsv_hole();
     }
     oi_p: int = shape_lookup(oi_raw.shape_id, key);
     if oi_p < 0 or (oi_p & SHAPE_ATTR_ACCESSOR) != 0 or (oi_p & PROP_WRITABLE) == 0 {
         return jsv_hole();
     }
-    oi_old: JSValue = oi_raw.slots[oi_p // 16];
+    oi_old: JSValue = oi_raw.sget(oi_p // 16);
     if not jsv_is_int32(oi_old) {
         return jsv_hole();
     }
@@ -1082,7 +1075,7 @@ def:pub js_object_own_int_add(jsobj: JSValue, key: int, delta: int) -> JSValue {
     if oi_new < -2147483648 or oi_new > 2147483647 {
         return jsv_hole();
     }
-    oi_raw.slots[oi_p // 16] = js_int(oi_new);
+    oi_raw.sset(oi_p // 16, js_int(oi_new));
     return oi_old;
 }
 
@@ -1142,10 +1135,10 @@ def:pub obj_stats_report {
             } else {
                 shapem = shapem + 1;
             }
-            sslots = sslots + len(os_o.slots);
+            sslots = sslots + os_o.slen();
             sentries = sentries + len(os_o.ent_ro());
             sko = sko + len(os_o.ko_ro());
-            if os_o.entries is not None {
+            if os_o.has_ent() {
                 ent_objs = ent_objs + 1;
             }
             if len(_acc_ro(os_o).getters) > 0 or len(_acc_ro(os_o).setters) > 0 {
@@ -1164,7 +1157,7 @@ def:pub obj_stats_report {
             if os_o.class_id != 0 {
                 classful = classful + 1;
             }
-            if os_o.binary_kind != 0 {
+            if os_o.bkind() != 0 {
                 binaries = binaries + 1;
             }
             if (os_o.cell_flags & FLAG_MODULE_NS) != 0 {
@@ -1569,7 +1562,7 @@ def:pub js_object_delete(jsobj: JSValue, key: int) -> bool {
                 acc_ko_new.append(acc_kk);
             }
         }
-        raw.key_order = acc_ko_new;
+        raw.ext_rw().key_order = acc_ko_new;
         return True;
     }
     prop: JSProperty = raw.get_property(key);
@@ -1647,7 +1640,7 @@ def _compact_key_order(raw: JSObject) -> None {
         }
         koi = koi + 1;
     }
-    raw.key_order = ko_new;
+    raw.ext_rw().key_order = ko_new;
 }
 
 
@@ -1676,7 +1669,7 @@ def:pub js_object_has_own(jsobj: JSValue, key: int) -> bool {
     # No accessor side table: nothing else can hold the key. (The common
     # miss — marker-key probes on plain objects — paid four empty-table
     # lookups, each through its own AccessorTable reference.)
-    if raw.accessors is None {
+    if not raw.has_acc() {
         return False;
     }
     return (
@@ -1742,7 +1735,7 @@ def:pub js_object_has(jsobj: JSValue, key: int) -> bool {
         if current.has_key(key) {
             return True;
         }
-        if current.accessors is not None
+        if current.has_acc()
             and (key in _acc_ro(current).getters or key in _acc_ro(current).setters) {
             return True;
         }
@@ -2123,7 +2116,7 @@ def:pub js_object_spread_plan(v: JSValue) -> list[int] {
     if _OBJ_REALM.objects[sp_id - 1].mode != MAP_MODE_SHAPE
         or _OBJ_REALM.objects[sp_id - 1].elems_kind != ELEMS_NONE
         or _OBJ_REALM.objects[sp_id - 1].class_id != 0
-        or _OBJ_REALM.objects[sp_id - 1].binary_kind != 0
+        or _OBJ_REALM.objects[sp_id - 1].bkind() != 0
         or _OBJ_REALM.objects[sp_id - 1].brand != 0
         or (
             _OBJ_REALM.objects[sp_id - 1].cell_flags
@@ -2178,7 +2171,7 @@ def:pub js_object_keys(jsobj: JSValue) -> list[int] {
     if _OBJ_REALM.objects[ok_id - 1].mode == MAP_MODE_SHAPE
         and _OBJ_REALM.objects[ok_id - 1].elems_kind == ELEMS_NONE
         and _OBJ_REALM.objects[ok_id - 1].class_id == 0
-        and _OBJ_REALM.objects[ok_id - 1].binary_kind == 0 {
+        and _OBJ_REALM.objects[ok_id - 1].bkind() == 0 {
         ok_sid = _OBJ_REALM.objects[ok_id - 1].shape_id;
         if ok_sid in _OKEYS_BY_SHAPE {
             ok_c: list[int] = _OKEYS_BY_SHAPE[ok_sid];
@@ -2232,7 +2225,7 @@ def:pub js_object_accessor_getter_keys(jsobj: JSValue) -> list[int] {
             agp: int = shape_lookup(raw.shape_id, agk[agi]);
             if agp >= 0
                 and (agp & SHAPE_ATTR_ACCESSOR) != 0
-                and not jsv_is_undefined(raw.slots[agp // 16]) {
+                and not jsv_is_undefined(raw.sget(agp // 16)) {
                 result.append(agk[agi]);
             }
             agi = agi + 1;
@@ -2311,10 +2304,10 @@ def:pub js_object_gc_push_children(idx: int, work: list[JSValue]) -> None {
     }
     raw: JSObject = _obj_get(idx);
     si: int = 0;
-    sn: int = len(raw.slots);
+    sn: int = raw.slen();
     while si < sn {
-        if jsv_is_cell(raw.slots[si]) {
-            work.append(raw.slots[si]);
+        if jsv_is_cell(raw.sget(si)) {
+            work.append(raw.sget(si));
         }
         si = si + 1;
     }
@@ -2327,7 +2320,7 @@ def:pub js_object_gc_push_children(idx: int, work: list[JSValue]) -> None {
             ei = ei + 1;
         }
     }
-    if raw.entries is not None {
+    if raw.has_ent() {
         pc_ent: dict[int, JSProperty] = raw.ent_ro();
         for k in pc_ent {
             if jsv_is_cell(pc_ent[k].value) {
@@ -2335,7 +2328,7 @@ def:pub js_object_gc_push_children(idx: int, work: list[JSValue]) -> None {
             }
         }
     }
-    if raw.accessors is not None {
+    if raw.has_acc() {
         for k in _acc_ro(raw).getters {
             work.append(_acc_ro(raw).getters[k]);
         }
@@ -2376,8 +2369,8 @@ def:pub js_object_gc_children(idx: int) -> list[JSValue] {
     # Shape-mode values live in the flat slots list. Missing this walk is a
     # use-after-free factory: slot values would be invisible to the marker.
     si: int = 0;
-    while si < len(raw.slots) {
-        out.append(raw.slots[si]);
+    while si < raw.slen() {
+        out.append(raw.sget(si));
         si = si + 1;
     }
     # Dense array elements likewise (hole sentinels are non-cells — the
@@ -3525,7 +3518,7 @@ def:pub js_object_set_accessor_getter(
     if raw.mode == MAP_MODE_SHAPE {
         sag: int = shape_lookup(raw.shape_id, key);
         if sag >= 0 and (sag & SHAPE_ATTR_ACCESSOR) != 0 {
-            raw.slots[sag // 16] = getter_fn;
+            raw.sset(sag // 16, getter_fn);
             return 0;
         }
         if sag < 0 {
@@ -3536,8 +3529,8 @@ def:pub js_object_set_accessor_getter(
             );
             if sag_child > 0 {
                 raw.shape_id = sag_child;
-                raw.slots.append(getter_fn);
-                raw.slots.append(js_undefined());
+                raw.spush(getter_fn);
+                raw.spush(js_undefined());
                 raw.version = raw.version + 1;
                 return 0;
             }
@@ -3703,7 +3696,7 @@ def:pub js_object_set_accessor_setter(
     if raw.mode == MAP_MODE_SHAPE {
         sas: int = shape_lookup(raw.shape_id, key);
         if sas >= 0 and (sas & SHAPE_ATTR_ACCESSOR) != 0 {
-            raw.slots[sas // 16 + 1] = setter_fn;
+            raw.sset(sas // 16 + 1, setter_fn);
             return 0;
         }
         if sas < 0 {
@@ -3714,8 +3707,8 @@ def:pub js_object_set_accessor_setter(
             );
             if sas_child > 0 {
                 raw.shape_id = sas_child;
-                raw.slots.append(js_undefined());
-                raw.slots.append(setter_fn);
+                raw.spush(js_undefined());
+                raw.spush(setter_fn);
                 raw.version = raw.version + 1;
                 return 0;
             }
@@ -3750,7 +3743,7 @@ def:pub js_object_get_own_accessor_getter(jsobj: JSValue, key: int) -> JSValue {
     if raw.mode == MAP_MODE_SHAPE {
         gag: int = shape_lookup(raw.shape_id, key);
         if gag >= 0 and (gag & SHAPE_ATTR_ACCESSOR) != 0 {
-            return raw.slots[gag // 16];
+            return raw.sget(gag // 16);
         }
         return js_undefined();
     }
@@ -3776,7 +3769,7 @@ def:pub js_object_get_own_accessor_setter(jsobj: JSValue, key: int) -> JSValue {
     if raw.mode == MAP_MODE_SHAPE {
         gas: int = shape_lookup(raw.shape_id, key);
         if gas >= 0 and (gas & SHAPE_ATTR_ACCESSOR) != 0 {
-            return raw.slots[gas // 16 + 1];
+            return raw.sget(gas // 16 + 1);
         }
         return js_undefined();
     }
@@ -3819,7 +3812,7 @@ def:pub js_object_lookup_getter(jsobj: JSValue, key: int) -> JSValue {
             if lgp >= 0 {
                 if (lgp & SHAPE_ATTR_ACCESSOR) != 0 {
                     # Getter slot; undefined correctly shadows (setter-only).
-                    return current.slots[lgp // 16];
+                    return current.sget(lgp // 16);
                 }
                 return js_undefined();  # own data property shadows prototypes
             }
@@ -3869,7 +3862,7 @@ def:pub js_object_lookup_setter(jsobj: JSValue, key: int) -> JSValue {
             lsp: int = shape_lookup(current.shape_id, key);
             if lsp >= 0 {
                 if (lsp & SHAPE_ATTR_ACCESSOR) != 0 {
-                    return current.slots[lsp // 16 + 1];
+                    return current.sget(lsp // 16 + 1);
                 }
                 return js_undefined();  # own data property shadows prototypes
             }

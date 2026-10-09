@@ -1025,21 +1025,14 @@ def _units_substr(units: list[int], st: int, en: int) -> JSValue {
     return _mk_str(js_string_from_utf16_code_units(kept));
 }
 
-"""True when `s` can be sliced BY BYTE OFFSET: pure ASCII and free of the
-4-char `\\x00` NUL sentinel (which is 4 bytes but ONE UTF-16 unit — byte
-slicing could cut through it). For such strings UTF-16 indices == byte
-indices, so slice/substring/substr need ONE str_substr instead of
+"""True when `s` can be sliced BY BYTE OFFSET: pure ASCII (the NUL sentinel
+C0 80 is not ASCII, so a string holding one never qualifies). For such strings
+UTF-16 indices == byte indices, so slice/substring/substr need ONE str_substr instead of
 decode-all-units → copy → re-encode (which was >1MB of allocation and
 ~330µs PER slice call — the vite transform OOM/stall)."""
 def _byte_sliceable(s: str) -> bool {
     # isascii() is the native byte loop (the ord(s[i]) loop cost ~4x per byte).
-    if not s.isascii() {
-        return False;
-    }
-    if len(s) >= 4 and s.find("\\x00") >= 0 {
-        return False;
-    }
-    return True;
+    return s.isascii();
 }
 
 """Byte-clean test that uses the string CELL's cached flag (computed once at

@@ -247,11 +247,11 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
         # view→buffer strong edge (formerly the inline JSObject.binary_buffer
         # field, now a native TypedArrayData/DataViewData.buffer_id — traced here
         # because jsobject cannot import binary_state; Phase 1).
-        gc_bin_kind: int = realm.objects[idx - 1].binary_kind;
+        gc_bin_kind: int = realm.objects[idx - 1].bkind();
         if gc_bin_kind == BINARY_KIND_TYPED_ARRAY
             or gc_bin_kind == BINARY_KIND_DATA_VIEW {
             gc_buf_id: int = binary_view_buffer_id(
-                gc_bin_kind, realm.objects[idx - 1].binary_slot
+                gc_bin_kind, realm.objects[idx - 1].bslot()
             );
             if gc_buf_id > 0 {
                 work.append(jsv_from_object_id(gc_buf_id));
@@ -708,9 +708,9 @@ def:pub gc_sweep_objects(realm: Realm) -> int {
                 # NAPI external ArrayBuffer: fire the addon's finalize_cb for
                 # the backing memory exactly once (no-op for non-external ABs
                 # — the registry only holds napi_create_external_* entries).
-                if realm.objects[i].binary_kind == BINARY_KIND_ARRAY_BUFFER {
+                if realm.objects[i].bkind() == BINARY_KIND_ARRAY_BUFFER {
                     gc_ab_ptr: int = binary_store_ptr_for_slot(
-                        realm.objects[i].binary_slot
+                        realm.objects[i].bslot()
                     );
                     napi_binary_on_arraybuffer_swept(gc_ab_ptr);
                 }
@@ -727,24 +727,22 @@ def:pub gc_sweep_objects(realm: Realm) -> int {
                 # For a workload that allocates more than it reuses, that meant
                 # a sweep reclaimed no memory at all (gc_sweep_maps already
                 # clears its backing stores for the same reason).
-                realm.objects[i].entries = None;  # release lazy dict maps (P3b)
-                realm.objects[i].key_order = None;
+                # Release the extension record (dict maps, accessor table:
+                # P2/P3b) now, not when the slot is reused.
+                realm.objects[i].ext = None;
                 # A small slots list is emptied in place (a fresh `[]` per dead
                 # object was ~20M allocations + frees per vite build, and the
                 # reuse path keeps it); a large one is dropped so its memory
                 # is released now.
-                if len(realm.objects[i].slots) <= 16 {
-                    while len(realm.objects[i].slots) > 0 {
-                        realm.objects[i].slots.pop();
-                    }
+                if realm.objects[i].slen() <= 16 {
+                    realm.objects[i].sreset();
                 } else {
-                    realm.objects[i].slots = [];
+                    realm.objects[i].sclear();
                 }
                 realm.objects[i].shape_id = 0;
                 realm.objects[i].mode = 0;  # MAP_MODE_DICT
                 realm.objects[i].elems = None;  # release lazy elems (P4)
                 realm.objects[i].elems_kind = 0;  # ELEMS_NONE
-                realm.objects[i].accessors = None;  # release accessor table (P2)
                 realm.objects[i].brand = 0;  # its marker keys are gone
                 realm.free_object_slots.append(i + 1);  # push 1-based index
                 freed += 1;
@@ -1135,7 +1133,7 @@ def _gc_type_breakdown(realm: Realm) {
             continue;
         }
         total = total + 1;
-        if _bo.binary_kind != 0 {
+        if _bo.bkind() != 0 {
             bin_ct = bin_ct + 1;
         } elif _bo.arguments_obj() {
             args_ct = args_ct + 1;
@@ -1143,9 +1141,7 @@ def _gc_type_breakdown(realm: Realm) {
             arr_ct = arr_ct + 1;
         } elif _bo.mode == MAP_MODE_DICT {
             dict_ct = dict_ct + 1;
-            if _bo.key_order is not None {
-                dict_keys_sum = dict_keys_sum + len(_bo.key_order);
-            }
+            dict_keys_sum = dict_keys_sum + len(_bo.ko_ro());
         } else {
             shape_ct = shape_ct + 1;
             _sid: int = _bo.shape_id;
@@ -1359,7 +1355,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
 
     # TEMP diagnostic (JAC_GC_TRACE=1): characterise the sweep cost.
     if _GC_TRACE != 0 {
-        if 0 < 0 {
+        if _GC_TRACE < 0 {
             if getenv("JAC_GC_TRACE") != None {
                 _GC_TRACE = 1;
             } else {
@@ -1396,6 +1392,24 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 + str(_hs_free)
                 + " hstrMB="
                 + str(_hs_chars // 1048576)
+                + " clos="
+                + str(len(realm.closures))
+                + "/free="
+                + str(len(realm.free_closure_slots))
+                + " gens="
+                + str(len(realm.generators))
+                + "/free="
+                + str(len(realm.free_generator_slots))
+                + " maps="
+                + str(len(realm.maps))
+                + "/"
+                + str(len(realm.free_map_slots))
+                + " sets="
+                + str(len(realm.sets))
+                + "/"
+                + str(len(realm.free_set_slots))
+                + " interned="
+                + str(realm.intern_next_id)
                 + " thr="
                 + str(realm.gc_threshold)
                 + " freed="

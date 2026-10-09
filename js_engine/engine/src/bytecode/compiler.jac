@@ -215,7 +215,7 @@ def _unescape_string(raw: str) -> str {
                     if okb and nhex > 0 and j < n and raw[j] == "}" {
                         i = j + 1;
                         if cpb == 0 {
-                            result.append("\\x00");
+                            result.append(utf8_encode_scalar(0));  # NUL sentinel
                         } else {
                             result.append(utf8_encode_scalar(cpb));
                         }
@@ -246,7 +246,7 @@ def _unescape_string(raw: str) -> str {
                     if ok {
                         i = i + 4;
                         if cp == 0 {
-                            result.append("\\x00");
+                            result.append(utf8_encode_scalar(0));  # NUL sentinel
                         } else {
                             result.append(utf8_encode_scalar(cp));
                         }
@@ -283,7 +283,7 @@ def _unescape_string(raw: str) -> str {
                         # is a lone Latin-1 byte and fails SameValue vs fromCharCode(254)
                         # (Annex B unescape("%fe") === "\\xfe").
                         if cp2 == 0 {
-                            result.append("\\x00");
+                            result.append(utf8_encode_scalar(0));  # NUL sentinel
                         } else {
                             result.append(utf8_encode_scalar(cp2));
                         }
@@ -328,7 +328,7 @@ def _unescape_string(raw: str) -> str {
                     oct_cnt = oct_cnt + 1;
                 }
                 if oct_v == 0 {
-                    result.append("\\x00");
+                    result.append(utf8_encode_scalar(0));  # NUL sentinel
                 } else {
                     result.append(utf8_encode_scalar(oct_v));
                 }

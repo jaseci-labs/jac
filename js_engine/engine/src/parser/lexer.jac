@@ -14,6 +14,8 @@ the parser calls after each token to signal when the next `/` begins a regexp.
 Bun reference: bun/src/js_lexer.zig (~3 000 lines)
 ECMAScript spec: §12 — Lexical Grammar  https://tc39.es/ecma262/#sec-lexical-grammar
 """
+import from engine.src.runtime.mem { byte_chr }
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  TokenType enum
@@ -242,11 +244,11 @@ def _lex_hex_val(c: str) -> int {
 }
 
 """Encode a Unicode code point as a UTF-8 byte string (mirrors
-runtime.jsstring.utf8_encode_scalar; kept local so the lexer has no imports)."""
+runtime.jsstring.utf8_encode_scalar; kept local so the lexer imports only mem)."""
 def _lex_utf8_cp(cp: int) -> str {
-    # 4-char NUL sentinel (\,x,0,0), not a real NUL byte — see utf8_encode_scalar.
+    # the NUL sentinel C0 80, not a real NUL byte — see jsstring.nul_sentinel.
     if cp == 0 {
-        return "\\x00";
+        return byte_chr(192) + byte_chr(128);
     }
     if cp < 0 or cp > 1114111 {
         return "?";

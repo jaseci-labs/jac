@@ -145,6 +145,7 @@ glob:priv PCRE2_CASELESS: int = 8,
      PCRE2_DUPNAMES: int = 64,
      PCRE2_MATCH_UNSET_BACKREF: int = 512,
      PCRE2_UTF: int = 524288,
+     PCRE2_MATCH_INVALID_UTF: int = 67108864,
      PCRE2_UCP: int = 131072,
      PCRE2_EXTRA_ALLOW_SURROGATE_ESCAPES: int = 1,
      PCRE2_INFO_CAPTURECOUNT: int = 4,
@@ -1494,14 +1495,16 @@ def _pcre2_compile(pattern: str, flags: str) -> JSRegExpState {
             options = options + PCRE2_DOTALL;
         } elif c == "u" {
             fu = True;
-            options = options + PCRE2_UTF + PCRE2_UCP;
+            # MATCH_INVALID_UTF: subjects may hold the NUL sentinel C0 80
+            # (invalid UTF-8 by design); match around it instead of failing.
+            options = options + PCRE2_UTF + PCRE2_UCP + PCRE2_MATCH_INVALID_UTF;
         } elif c == "y" {
             fy = True;
         } elif c == "d" {
             fd = True;
         } elif c == "v" {
             fv = True;
-            options = options + PCRE2_UTF + PCRE2_UCP;
+            options = options + PCRE2_UTF + PCRE2_UCP + PCRE2_MATCH_INVALID_UTF;
         }
         i_fl = i_fl + 1;
     }
@@ -1667,13 +1670,14 @@ def _normalize_unicode_pattern(
         # NON-`\u` escapes here (e.g. `\[`, `\]`, `\.`). This keeps `\]` from
         # closing a class and `\[` from opening one.
         # U+0000 escapes (`\\0` not followed by a digit, `\\x00`, `\\u0000`) must
-        # match the engine's 4-char NUL sentinel text `\\x00` — engine strings
-        # never hold a NUL byte, so PCRE2's `\\0` matched nothing:
+        # match the engine's NUL sentinel, bytes C0 80 — engine strings never
+        # hold a NUL byte, so PCRE2's `\\0` matched nothing (byte mode; under
+        # /u, MATCH_INVALID_UTF steps over the sentinel instead):
         # `/^\\0/.test("\\0id")` was false and `id.replace(/\\0/g, "")` a no-op
         # (vite's virtual-module ids leaked into sourcemap `sources`). Top level
         # only: inside a class the 4-char form has no meaning.
         if not nz_in_class and _re_nul_escape_len(pattern, i) > 0 {
-            out = out + "\\\\x00";
+            out = out + "\\xC0\\x80";
             i = i + _re_nul_escape_len(pattern, i);
             continue;
         }
@@ -1771,6 +1775,11 @@ def _normalize_unicode_pattern(
                     # UTF-8, so PCRE2's UTF mode rejected the whole pattern. Emit an
                     # escape instead — _pcre2_compile sets ALLOW_SURROGATE_ESCAPES.
                     out = out + "\\x{" + h0 + h1 + h2 + h3 + "}";
+                } elif cp4 == 0 {
+                    # U+0000 (inside a class; top level was rewritten above): PCRE2's
+                    # own escape — utf8_encode_scalar(0) is the C0 80 string sentinel,
+                    # which in a class made `[\u0000-\u001F]` an out-of-order range.
+                    out = out + "\\x00";
                 } else {
                     out = out + utf8_encode_scalar(cp4);
                 }
@@ -1802,6 +1811,8 @@ def _normalize_unicode_pattern(
                     if cp >= 55296 and cp <= 57343 {
                         # Lone surrogate via \u{...}: escape it (see the \uXXXX case).
                         out = out + "\\x{" + hexs + "}";
+                    } elif cp == 0 {
+                        out = out + "\\x00";  # PCRE2 escape, see the \uXXXX case
                     } elif cp >= 0 and cp <= 1114111 {
                         out = out + utf8_encode_scalar(cp);
                     } else {

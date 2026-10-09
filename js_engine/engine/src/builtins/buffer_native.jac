@@ -19,7 +19,7 @@ so behaviour for the rare cases is unchanged.
 Decode semantics mirror text_codec.js `_utf8DecodeBytes` (validated lead /
 continuation bytes, U+FFFD per invalid lead byte, TypeError when `fatal`).
 The engine stores JS strings as UTF-8 with two twists that the output honours:
-code unit 0 is the 4-char sentinel `\\x00` (see jsstring.utf8_encode_scalar)
+code unit 0 is the sentinel C0 80 (see jsstring.nul_sentinel)
 and astral characters are two 3-byte surrogate encodings (CESU-8), exactly
 what the JS loop's `String.fromCharCode(hi) + String.fromCharCode(lo)` built.
 """
@@ -198,14 +198,13 @@ def _bn_encoding(v: JSValue) -> int {
 }
 
 """Emit `cp` (a UTF-16 code unit / BMP code point, or 0xFFFD) as the engine's
-internal bytes at out[j]; returns the new j. cp == 0 → 4-char NUL sentinel."""
+internal bytes at out[j]; returns the new j. cp == 0 → the NUL sentinel C0 80
+(see jsstring.nul_sentinel)."""
 def _bn_put_unit(out: int, j: int, cp: int) -> int {
     if cp == 0 {
-        write_byte(out, j, 92);
-        write_byte(out, j + 1, 120);
-        write_byte(out, j + 2, 48);
-        write_byte(out, j + 3, 48);
-        return j + 4;
+        write_byte(out, j, 192);
+        write_byte(out, j + 1, 128);
+        return j + 2;
     }
     if cp < 128 {
         write_byte(out, j, cp);
@@ -1038,15 +1037,12 @@ def:pub buf_init_typed_array(
 # ── Engine string → wire UTF-8 / latin1 ──────────────────────────────────────
 # Engine text is UTF-8 with two twists: an astral character is stored as a
 # CESU-8 surrogate pair (two 3-byte ED xx xx sequences) and code unit 0 is the
-# 4-char sentinel `\x00` (bytes 92 120 48 48). Lone surrogates become U+FFFD
+# sentinel C0 80 (see jsstring.nul_sentinel). Lone surrogates become U+FFFD
 # (EF BF BD), as node's utf8 encoder does.
 
-"""True when s[i..] starts the 4-char NUL sentinel."""
+"""True when s[i..] starts the NUL sentinel C0 80 (called with s[i] == 192)."""
 def _bn_at_nul_sentinel(s: str, i: int, n: int) -> bool {
-    return i + 3 < n
-        and ord(s[i + 1]) == 120
-        and ord(s[i + 2]) == 48
-        and ord(s[i + 3]) == 48;
+    return i + 1 < n and ord(s[i + 1]) == 128;
 }
 
 """Wire UTF-8 byte length of engine string `s`."""
@@ -1057,11 +1053,10 @@ def _bn_wire_utf8_len(s: str) -> int {
     while i < n {
         b: int = ord(s[i]);
         if b < 128 {
-            if b == 92 and _bn_at_nul_sentinel(s, i, n) {
-                i = i + 4;
-            } else {
-                i = i + 1;
-            }
+            i = i + 1;
+            out = out + 1;
+        } elif b == 192 and _bn_at_nul_sentinel(s, i, n) {
+            i = i + 2;  # NUL sentinel → one 0x00 byte
             out = out + 1;
         } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
             if (ord(s[i + 1]) & 240) == 160
@@ -1104,13 +1099,15 @@ def _bn_wire_utf8_write(s: str, dst: int, off: int, cap: int) -> int {
             if w + 1 > cap {
                 break;
             }
-            if b == 92 and _bn_at_nul_sentinel(s, i, n) {
-                write_byte(dst, off + w, 0);
-                i = i + 4;
-            } else {
-                write_byte(dst, off + w, b);
-                i = i + 1;
+            write_byte(dst, off + w, b);
+            i = i + 1;
+            w = w + 1;
+        } elif b == 192 and _bn_at_nul_sentinel(s, i, n) {
+            if w + 1 > cap {
+                break;
             }
+            write_byte(dst, off + w, 0);  # NUL sentinel → a real NUL byte
+            i = i + 2;
             w = w + 1;
         } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
             b1: int = ord(s[i + 1]);
@@ -1178,13 +1175,9 @@ def _bn_latin1_write(s: str, dst: int, off: int, cap: int) -> int {
         b: int = ord(s[i]);
         unit: int = b;
         if b < 128 {
-            if b == 92 and _bn_at_nul_sentinel(s, i, n) {
-                unit = 0;
-                i = i + 4;
-            } else {
-                i = i + 1;
-            }
+            i = i + 1;
         } elif b < 224 and i + 1 < n {
+            # (the NUL sentinel C0 80 decodes to unit 0 here)
             unit = ((b & 31) << 6) | (ord(s[i + 1]) & 63);
             i = i + 2;
         } elif b < 240 and i + 2 < n {

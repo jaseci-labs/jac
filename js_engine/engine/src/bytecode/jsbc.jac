@@ -80,9 +80,9 @@ import from engine.src.runtime.mem { io_alloc, write_byte, read_byte }
 import from engine.src.runtime.jsstring { str_chars }
 import from engine.src.ffi.libc { memcpy }
 
-glob JSBC_FORMAT_VER: int = 15,
+glob JSBC_FORMAT_VER: int = 16,
      JSBC_OPCODE_COUNT: int = 143,
-     JSBC_MAGIC: str = "JSBC";  # v15: PROP_INC megaop; v14: call-family arg3 bit 3 = has-spread (VM skips _expand_spreads when clear); v13: SET_LL_PROP; v12-v10: megaops/optimizer
+     JSBC_MAGIC: str = "JSBC";  # v16: U+0000 in string constants is the C0 80 sentinel (was the text \x00); v15: PROP_INC megaop; v14: call-family arg3 bit 3 = has-spread (VM skips _expand_spreads when clear); v13: SET_LL_PROP; v12-v10: megaops/optimizer
 
 # 141 + SET_LL_PROP + PROP_INC
 # ══════════════════════════════════════════════════════════════════════════════

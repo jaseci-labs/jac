@@ -110,7 +110,7 @@ def _binary_raw(v: JSValue) -> JSObject {
 
 def _buffer_data(buffer: JSValue) -> ArrayBufferData {
     raw: JSObject = _binary_raw(buffer);
-    return _ARRAY_BUFFERS[raw.binary_slot];
+    return _ARRAY_BUFFERS[raw.bslot()];
 }
 
 def:pub binary_backing_store(buffer: JSValue) -> BackingStore {
@@ -197,12 +197,12 @@ def:pub binary_register_buffer(args: list[JSValue]) -> JSValue {
     generation: int = _binary_arg_int(args[4]);
     flags: int = _binary_arg_int(args[5]);
     store_id: int = -1;
-    if binary_is_array_buffer(buffer) and raw.binary_slot >= 0 {
-        store_id = _ARRAY_BUFFERS[raw.binary_slot].store_id;
+    if binary_is_array_buffer(buffer) and raw.bslot() >= 0 {
+        store_id = _ARRAY_BUFFERS[raw.bslot()].store_id;
     } else {
         store_id = len(_BACKING_STORES);
         _BACKING_STORES.append(BackingStore());
-        raw.binary_slot = len(_ARRAY_BUFFERS);
+        raw.set_bslot(len(_ARRAY_BUFFERS));
         _ARRAY_BUFFERS.append(ArrayBufferData(store_id=store_id));
     }
     store: BackingStore = _BACKING_STORES[store_id];
@@ -218,9 +218,10 @@ def:pub binary_register_buffer(args: list[JSValue]) -> JSValue {
     store.shared = (flags & 2) != 0;
     store.immutable = (flags & 4) != 0;
     store.resizable = (flags & 8) != 0;
-    raw.binary_kind = (
+    ab_kind: int = (
         BINARY_KIND_SHARED_ARRAY_BUFFER if store.shared else BINARY_KIND_ARRAY_BUFFER
     );
+    raw.set_bkind(ab_kind);
     return js_true();
 }
 
@@ -243,8 +244,8 @@ def:pub binary_register_typed_array(args: list[JSValue]) -> JSValue {
         element_kind=_binary_arg_int(args[5]),
         length_tracking=jsv_is_bool(args[6]) and jsv_to_bool(args[6])
     );
-    raw.binary_kind = BINARY_KIND_TYPED_ARRAY;
-    raw.binary_slot = len(_TYPED_ARRAYS);
+    raw.set_bkind(BINARY_KIND_TYPED_ARRAY);
+    raw.set_bslot(len(_TYPED_ARRAYS));
     # view→buffer edge lives in data.buffer_id (set above); no inline field.
     _TYPED_ARRAYS.append(data);
     return js_true();
@@ -261,8 +262,8 @@ def:pub binary_register_data_view(args: list[JSValue]) -> JSValue {
         return js_false();
     }
     raw: JSObject = _binary_raw(view);
-    raw.binary_kind = BINARY_KIND_DATA_VIEW;
-    raw.binary_slot = len(_DATA_VIEWS);
+    raw.set_bkind(BINARY_KIND_DATA_VIEW);
+    raw.set_bslot(len(_DATA_VIEWS));
     # view→buffer edge lives in DataViewData.buffer_id (set below); no inline field.
     _DATA_VIEWS.append(
         DataViewData(
@@ -281,8 +282,8 @@ def:pub binary_view_witness(view: JSValue) -> BinaryViewWitness {
         return witness;
     }
     raw: JSObject = _binary_raw(view);
-    if raw.binary_kind == BINARY_KIND_TYPED_ARRAY {
-        data: TypedArrayData = _TYPED_ARRAYS[raw.binary_slot];
+    if raw.bkind() == BINARY_KIND_TYPED_ARRAY {
+        data: TypedArrayData = _TYPED_ARRAYS[raw.bslot()];
         buffer: JSValue = jsv_from_object_id(data.buffer_id);
         if not binary_is_array_buffer(buffer) {
             return witness;
@@ -316,8 +317,8 @@ def:pub binary_view_witness(view: JSValue) -> BinaryViewWitness {
         witness.byte_length = witness.length * data.bytes_per_element;
         return witness;
     }
-    if raw.binary_kind == BINARY_KIND_DATA_VIEW {
-        dv: DataViewData = _DATA_VIEWS[raw.binary_slot];
+    if raw.bkind() == BINARY_KIND_DATA_VIEW {
+        dv: DataViewData = _DATA_VIEWS[raw.bslot()];
         buffer_dv: JSValue = jsv_from_object_id(dv.buffer_id);
         if not binary_is_array_buffer(buffer_dv) {
             return witness;
@@ -352,14 +353,14 @@ def:pub binary_typed_array_buffer(view: JSValue) -> JSValue {
     if not binary_is_typed_array(view) {
         return js_undefined();
     }
-    return jsv_from_object_id(_TYPED_ARRAYS[_binary_raw(view).binary_slot].buffer_id);
+    return jsv_from_object_id(_TYPED_ARRAYS[_binary_raw(view).bslot()].buffer_id);
 }
 
 def:pub binary_data_view_buffer(view: JSValue) -> JSValue {
     if not binary_is_data_view(view) {
         return js_undefined();
     }
-    return jsv_from_object_id(_DATA_VIEWS[_binary_raw(view).binary_slot].buffer_id);
+    return jsv_from_object_id(_DATA_VIEWS[_binary_raw(view).bslot()].buffer_id);
 }
 
 """Allocation-free TypedArrayLength for the `.length` / `.byteLength` getter fast
@@ -371,10 +372,10 @@ def:pub binary_typed_array_length(view: JSValue) -> int {
         return 0;
     }
     raw: JSObject = _binary_raw(view);
-    if raw.binary_kind != BINARY_KIND_TYPED_ARRAY {
+    if raw.bkind() != BINARY_KIND_TYPED_ARRAY {
         return 0;
     }
-    data: TypedArrayData = _TYPED_ARRAYS[raw.binary_slot];
+    data: TypedArrayData = _TYPED_ARRAYS[raw.bslot()];
     tl_buf: JSValue = jsv_from_object_id(data.buffer_id);
     if not binary_is_array_buffer(tl_buf) {
         return 0;
@@ -403,10 +404,10 @@ def:pub binary_typed_array_byte_offset(view: JSValue) -> int {
         return 0;
     }
     raw: JSObject = _binary_raw(view);
-    if raw.binary_kind != BINARY_KIND_TYPED_ARRAY {
+    if raw.bkind() != BINARY_KIND_TYPED_ARRAY {
         return 0;
     }
-    data: TypedArrayData = _TYPED_ARRAYS[raw.binary_slot];
+    data: TypedArrayData = _TYPED_ARRAYS[raw.bslot()];
     bo_buf: JSValue = jsv_from_object_id(data.buffer_id);
     if not binary_is_array_buffer(bo_buf) {
         return 0;
@@ -430,14 +431,14 @@ def:pub binary_typed_array_is_length_tracking(view: JSValue) -> bool {
     if not binary_is_typed_array(view) {
         return False;
     }
-    return _TYPED_ARRAYS[_binary_raw(view).binary_slot].length_tracking;
+    return _TYPED_ARRAYS[_binary_raw(view).bslot()].length_tracking;
 }
 
 def:pub binary_typed_array_bytes_per_element(view: JSValue) -> int {
     if not binary_is_typed_array(view) {
         return 1;
     }
-    return _TYPED_ARRAYS[_binary_raw(view).binary_slot].bytes_per_element;
+    return _TYPED_ARRAYS[_binary_raw(view).bslot()].bytes_per_element;
 }
 
 """
@@ -449,7 +450,7 @@ def:pub binary_typed_array_prevent_extensions_allowed(view: JSValue) -> bool {
     if not binary_is_typed_array(view) {
         return True;
     }
-    data: TypedArrayData = _TYPED_ARRAYS[_binary_raw(view).binary_slot];
+    data: TypedArrayData = _TYPED_ARRAYS[_binary_raw(view).bslot()];
     if data.length_tracking {
         return False;
     }
@@ -752,7 +753,7 @@ def:pub binary_data_view_get_int(
     }
     raw: JSObject = _binary_raw(view);
     store: BackingStore = binary_backing_store(
-        jsv_from_object_id(_DATA_VIEWS[raw.binary_slot].buffer_id)
+        jsv_from_object_id(_DATA_VIEWS[raw.bslot()].buffer_id)
     );
     abs_off: int = witness.byte_offset + rel_offset;
     value: int = 0;
@@ -801,7 +802,7 @@ def:pub binary_data_view_set_int(
     }
     raw: JSObject = _binary_raw(view);
     store: BackingStore = binary_backing_store(
-        jsv_from_object_id(_DATA_VIEWS[raw.binary_slot].buffer_id)
+        jsv_from_object_id(_DATA_VIEWS[raw.bslot()].buffer_id)
     );
     if store.immutable {
         return 1;

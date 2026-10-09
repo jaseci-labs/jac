@@ -803,24 +803,8 @@ def _strf_string(s: str) -> str {
         if ch == "\"" {
             parts.append(_JSON_ESC_QUOT);
         } elif ch == "\\" {
-            # Detect literal \xNN escape from utf8_encode_scalar (e.g. \u0000 stored as "\x00")
-            if i + 3 < n {
-                nx: str = str_char_at(s, i + 1);
-                if nx == "x" {
-                    hv1: int = _hex_val_char(str_char_at(s, i + 2));
-                    hv2: int = _hex_val_char(str_char_at(s, i + 3));
-                    if hv1 >= 0 and hv2 >= 0 {
-                        cval: int = hv1 * 16 + hv2;
-                        if cval < 32 {
-                            parts.append(_JSON_ESC_U);
-                            parts.append("00");
-                            parts.append(_hex2(cval));
-                            i = i + 4;
-                            continue;
-                        }
-                    }
-                }
-            }
+            # A backslash is always text here: U+0000 is the C0 80 sentinel
+            # (handled below), so `\x00` in a string is four real characters.
             parts.append(_JSON_ESC_BSL);
         } elif ch == "\n" {
             parts.append(_JSON_ESC_N);
@@ -839,6 +823,12 @@ def _strf_string(s: str) -> str {
             parts.append(_JSON_ESC_U);
             parts.append("00");
             parts.append(_hex2(o));
+        } elif o == 0xC0 and i + 1 < n and ord(str_char_at(s, i + 1)) == 0x80 {
+            # U+0000 (the engine's NUL sentinel C0 80) → \u0000
+            parts.append(_JSON_ESC_U);
+            parts.append("0000");
+            i = i + 2;
+            continue;
         } elif o == 0xED {
             # Potential CESU-8 lone surrogate (U+D800..U+DFFF): 3-byte pattern ED [A0-BF] [80-BF]
             sur_ok: bool = False;

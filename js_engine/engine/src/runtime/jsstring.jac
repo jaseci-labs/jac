@@ -14,7 +14,7 @@ Bun reference: src/string/bun_string.zig, src/bun.js/webcore/Blob.zig
 """
 
 import from engine.src.runtime.realm { Realm, gc_note_alloc, realm_request_gc }
-import from engine.src.runtime.mem { Ptr, io_alloc, io_free, write_byte, str_from_raw }
+import from engine.src.runtime.mem { Ptr, io_alloc, io_free, write_byte, str_from_raw, byte_chr }
 
 # Byte-based GC trigger for heap strings. The object trigger counts ALLOCATIONS
 # (gc_note_alloc), which cannot tell a 500KB slice from a 1-char string: a
@@ -196,27 +196,39 @@ def _str_is_ascii(s: str) -> bool {
     return s.isascii();
 }
 
-"""True when s contains the 4-char NUL sentinel `\\x00` (bytes 92 120 48 48)."""
-def _str_has_nul_sentinel(s: str) -> bool {
-    n: int = len(s);
-    if n < 4 {
-        return False;
+# Code unit U+0000 inside an engine string. A Jac `str` is a C string and cannot
+# hold a real NUL, so U+0000 is stored as the overlong UTF-8 pair C0 80
+# ("modified UTF-8", as in Java): valid UTF-8 never contains it, so it cannot
+# collide with text. It used to be the 4-char text `\x00`, so every string that
+# merely CONTAINED those four characters (a regex like /[\x00-\x1f]/ in a
+# bundle) read back as a NUL — and was truncated at it on the way through C.
+glob _NUL_SENT: str = "";
+
+"""The NUL code-unit sentinel (bytes C0 80)."""
+def:pub nul_sentinel -> str {
+    if len(_NUL_SENT) == 0 {
+        _NUL_SENT = byte_chr(192) + byte_chr(128);
     }
-    return s.find("\\x00") >= 0;
+    return _NUL_SENT;
 }
 
-"""Cache flag value: 1 = "byte-clean" ASCII (every byte < 128 AND no `\\x00`
-NUL sentinel, so byte offset == UTF-16 unit offset for the whole string);
-2 = anything else. The sentinel test moved HERE (computed once per cell):
+"""True when s contains the NUL sentinel (bytes C0 80)."""
+def _str_has_nul_sentinel(s: str) -> bool {
+    if len(s) < 2 {
+        return False;
+    }
+    return s.find(nul_sentinel()) >= 0;
+}
+
+"""Cache flag value: 1 = "byte-clean" ASCII (every byte < 128, so byte offset
+== UTF-16 unit offset for the whole string; the NUL sentinel C0 80 is not
+ASCII, so a string holding one is never byte-clean); 2 = anything else. The sentinel test moved HERE (computed once per cell):
 js_string_utf16_len_cell / js_string_unit_at_cell used to `find("\\x00")`
 over the WHOLE string on every `.length` / `charCodeAt` call — 32µs per
 charCodeAt on a 650KB string, i.e. the sourcemap-codec decode loop in rollup's
 render phase took 20s per map and OOM'd the build."""
 def _ascii_flag(s: str) -> int {
     if not _str_is_ascii(s) {
-        return 2;
-    }
-    if _str_has_nul_sentinel(s) {
         return 2;
     }
     return 1;
@@ -1467,15 +1479,11 @@ def:pub utf8_encode_scalar(cp: int) -> str {
     # "A"+NUL+"B" lost its middle character.
     #
     # Until Jac gains length-aware string compare/hash, this placeholder keeps a
-    # A NUL code unit is stored as the 4-char sentinel `\`,`x`,`0`,`0` — NOT a real
-    # NUL byte. Jac-native `str` is a C string that cannot hold an embedded NUL
-    # (it collides with "" and the value vanishes), so the whole engine represents
-    # code unit 0 as this escape and decodes it back on read (see _str_is_nul_escape
-    # / js_string_utf16_unit_at / js_string_utf16_len). The source literal MUST be
-    # "\\x00" (escaped backslash) so the compiler emits the four characters and not
-    # a real NUL — the current compiler decodes "\x00" to an actual NUL byte.
+    # A NUL code unit is stored as the sentinel C0 80 (see nul_sentinel), NOT a
+    # real NUL byte: Jac-native `str` is a C string that cannot hold an embedded
+    # NUL (it collides with "" and the value vanishes).
     if cp == 0 {
-        return "\\x00";
+        return nul_sentinel();
     }
     if cp < 0 or cp > 1114111 {
         return "?";
@@ -1495,23 +1503,17 @@ def:pub _utf8_bytes_to_codepoints(raw: list[int]) -> list[int] {
     while i < n {
         b0: int = raw[i];
         if b0 < 128 {
-            # The 4-byte `\x00` NUL sentinel is ONE code unit (0), exactly as the
-            # pure-ASCII fast path in utf8_decode_str_to_codepoints treats it;
-            # non-ASCII strings containing U+0000 used to count it as 4 units.
-            if b0 == 92
-                and i + 3 < n
-                and raw[i + 1] == 120
-                and raw[i + 2] == 48
-                and raw[i + 3] == 48 {
-                out.append(0);
-                i = i + 4;
-            } else {
-                out.append(b0);
-                i = i + 1;
-            }
+            out.append(b0);
+            i = i + 1;
         } elif (b0 & 224) == 192 and i + 1 < n {
             # 2-byte leader: 110xxxxx  continuation: 10xxxxxx
             b1: int = raw[i + 1];
+            if b0 == 192 and b1 == 128 {
+                # the NUL sentinel (nul_sentinel): one code unit, 0
+                out.append(0);
+                i = i + 2;
+                continue;
+            }
             if (b1 & 192) == 128 {
                 cp: int = (b0 & 31) * 64 + (b1 & 63);
                 if cp >= 128 {
@@ -1560,20 +1562,20 @@ def:pub _utf8_bytes_to_codepoints(raw: list[int]) -> list[int] {
     return out;
 }
 
-"""True when s[i..i+3] is the Jac \\x00 NUL code-unit escape (4 bytes)."""
+"""True when s[i..i+1] is the NUL code-unit sentinel (bytes C0 80)."""
 def _str_is_nul_escape(s: str, i: int) -> bool {
     # byte values, not one-character strings: this runs per byte in the
     # offset walkers (V4.26)
-    if i + 3 >= len(s) or ord(s[i]) != 92 {
+    if i + 1 >= len(s) or ord(s[i]) != 192 {
         return False;
     }
-    return ord(s[i + 1]) == 120 and ord(s[i + 2]) == 48 and ord(s[i + 3]) == 48;
+    return ord(s[i + 1]) == 128;
 }
 
 """Convert a raw BYTE offset in `s` into a UTF-16 code-unit offset.
 
 Byte offsets (what native `str.find`/`str.rfind` and byte slicing return) do NOT
-equal JS string indices when `s` holds multi-byte UTF-8 or the 4-byte \\x00 NUL
+equal JS string indices when `s` holds multi-byte UTF-8 or the 2-byte C0 80 NUL
 sentinel: a 2/3-byte char is 1 unit, a 4-byte char is 2 units (surrogate pair),
 and the 4-byte NUL sentinel is 1 unit. Position-returning String methods
 (indexOf/lastIndexOf) MUST report code-unit indices — matching .length /
@@ -1589,7 +1591,7 @@ def:pub js_string_byte_to_unit(s: str, byte_off: int) -> int {
     i: int = 0;
     while i < lim {
         if _str_is_nul_escape(s, i) {
-            i = i + 4;
+            i = i + 2;
             units = units + 1;
         } else {
             b: int = ord(s[i]);
@@ -1619,7 +1621,7 @@ def:pub js_string_unit_to_byte(s: str, unit_off: int) -> int {
     i: int = 0;
     while i < n and units < unit_off {
         if _str_is_nul_escape(s, i) {
-            i = i + 4;
+            i = i + 2;
             units = units + 1;
         } else {
             b: int = ord(s[i]);
@@ -1654,7 +1656,7 @@ def:pub js_string_unit_to_byte_from(
     i: int = byte_from;
     while i < n and units < unit_to {
         if _str_is_nul_escape(s, i) {
-            i = i + 4;
+            i = i + 2;
             units = units + 1;
         } else {
             b: int = ord(s[i]);
@@ -1678,15 +1680,15 @@ def:pub js_string_unit_to_byte_from(
 
 """Width of the character starting at byte `i` of `s`, packed as
 (bytes << 2) | utf16_units, or 0 for a sequence the decoder could read
-differently (see U16Index.regular). The \\x00 NUL sentinel is one unit.
+differently (see U16Index.regular). The C0 80 NUL sentinel is one unit.
 (An int, not a tuple: tuple returns are heap-allocated per call.)"""
 def _u16_step(s: str, i: int, n: int) -> int {
     b: int = ord(s[i]);
     if b < 128 {
-        if b == 92 and _str_is_nul_escape(s, i) {
-            return 17;
-        }
         return 5;
+    }
+    if b == 192 and _str_is_nul_escape(s, i) {
+        return 9;  # NUL sentinel: 2 bytes, 1 unit
     }
     if b < 194 or b > 244 {
         return 0;
@@ -1714,8 +1716,8 @@ case even in a non-ASCII string (bundle code with one non-ASCII literal): an
 ASCII run advances bytes and units 1:1, so it is skipped with one byte compare
 per byte and its checkpoints are placed arithmetically, instead of the full
 per-character step (~40 instructions; these builds were 29% of the jac_client
-render phase). A backslash ends the run: it may start the 4-byte `\\x00` NUL
-sentinel (one UTF-16 unit), which _u16_step measures."""
+render phase). Any byte >= 128 ends the run, including the NUL sentinel C0 80
+(one UTF-16 unit), which _u16_step measures."""
 def _u16ix_build(id: int, s: str) -> U16Index {
     ix: U16Index = U16Index(id=id, bytes=[0], units=[0], total=0, regular=True);
     n: int = len(s);
@@ -1726,7 +1728,7 @@ def _u16ix_build(id: int, s: str) -> U16Index {
         r: int = i;
         while r < n {
             rb: int = ord(s[r]);
-            if rb >= 128 or rb == 92 {
+            if rb >= 128 {
                 break;
             }
             r = r + 1;
@@ -1866,7 +1868,7 @@ def:pub utf8_decode_str_to_codepoints(s: str) -> list[int] {
         while j < n {
             if _str_is_nul_escape(s, j) {
                 out.append(0);
-                j = j + 4;
+                j = j + 2;
                 continue;
             }
             out.append(ord(s[j]));
@@ -1916,9 +1918,8 @@ cell, byte length == UTF-16 length == the cached char length, so no scan is
 needed. Falls back to the scanning path when ASCII-ness is unknown or false."""
 def:pub js_string_utf16_len_cell(id: int) -> int {
     if str_cell_ascii(id) == 1 {
-        # Flag 1 = byte-clean (no multi-byte chars, no `\\x00` sentinel — the
-        # sentinel test is folded into _ascii_flag at cell creation), so the
-        # byte length IS the UTF-16 length: O(1), no per-call rescan.
+        # Flag 1 = byte-clean (no multi-byte chars; the NUL sentinel C0 80 is
+        # not ASCII), so the byte length IS the UTF-16 length: O(1), no rescan.
         return str_cell_len(id);
     }
     # Non-ASCII: the cached checkpoint index carries the unit count (several
@@ -1961,7 +1962,7 @@ def:pub js_string_utf16_len(s: str) -> int {
         }
         if _str_is_nul_escape(s, i) {
             units = units + 1;
-            i = i + 4;
+            i = i + 2;
             continue;
         }
         units = units + 1;
@@ -1997,7 +1998,7 @@ def:pub js_string_utf16_unit_at(s: str, n: int) -> int {
                 return 0;
             }
             ui = ui + 1;
-            i = i + 4;
+            i = i + 2;
             continue;
         }
         if ui == n {
@@ -2081,13 +2082,11 @@ def:pub utf16_units_to_scalars(units: list[int]) -> list[int] {
 
 """Wire-UTF-8 helpers for file/socket writes (leaf module: fs.jac cannot import
 buffer_native — that reaches vm_obs → vm → fs, a cycle that silently dropped the
-whole native link). Engine strings are CESU-8 + a 4-char NUL sentinel; wire form is
-real UTF-8: surrogate pairs → 4-byte scalars, lone halves → U+FFFD, sentinel → 0x00."""
+whole native link). Engine strings are CESU-8 + the NUL sentinel C0 80; wire form is
+real UTF-8: surrogate pairs → 4-byte scalars, lone halves → U+FFFD, sentinel → 0x00.
+Called with s[i] == 192."""
 def _ws_at_nul_sentinel(s: str, i: int, n: int) -> bool {
-    return i + 3 < n
-        and ord(s[i + 1]) == 120
-        and ord(s[i + 2]) == 48
-        and ord(s[i + 3]) == 48;
+    return i + 1 < n and ord(s[i + 1]) == 128;
 }
 
 """True when `s` needs conversion to wire UTF-8 (NUL sentinel or 0xED surrogate lead)."""
@@ -2099,7 +2098,7 @@ def:pub wire_utf8_needs_convert(s: str) -> bool {
         if b == 237 {
             return True;
         }
-        if b == 92 and _ws_at_nul_sentinel(s, i, n) {
+        if b == 192 and _ws_at_nul_sentinel(s, i, n) {
             return True;
         }
         i = i + 1;
@@ -2115,11 +2114,10 @@ def:pub wire_utf8_len(s: str) -> int {
     while i < n {
         b: int = ord(s[i]);
         if b < 128 {
-            if b == 92 and _ws_at_nul_sentinel(s, i, n) {
-                i = i + 4;
-            } else {
-                i = i + 1;
-            }
+            i = i + 1;
+            out = out + 1;
+        } elif b == 192 and _ws_at_nul_sentinel(s, i, n) {
+            i = i + 2;  # NUL sentinel → one 0x00 byte
             out = out + 1;
         } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
             if (ord(s[i + 1]) & 240) == 160
@@ -2161,13 +2159,15 @@ def:pub wire_utf8_write(s: str, dst: int, cap: int) -> int {
             if w + 1 > cap {
                 break;
             }
-            if b == 92 and _ws_at_nul_sentinel(s, i, n) {
-                write_byte(dst, off + w, 0);
-                i = i + 4;
-            } else {
-                write_byte(dst, off + w, b);
-                i = i + 1;
+            write_byte(dst, off + w, b);
+            i = i + 1;
+            w = w + 1;
+        } elif b == 192 and _ws_at_nul_sentinel(s, i, n) {
+            if w + 1 > cap {
+                break;
             }
+            write_byte(dst, off + w, 0);  # NUL sentinel → a real NUL byte
+            i = i + 2;
             w = w + 1;
         } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
             b1: int = ord(s[i + 1]);
@@ -2230,7 +2230,7 @@ the 4-char NUL sentinel for U+0000, UTF-8 for other BMP units and CESU-8 for a
 surrogate half."""
 def:pub js_string_unit_str(u: int) -> str {
     if u == 0 {
-        return "\\x00";
+        return nul_sentinel();
     }
     if u < 128 {
         return chr(u);
@@ -2255,8 +2255,8 @@ def:pub js_string_from_utf16_code_units(units: list[int]) -> str {
     while i < n {
         cu: int = units[i];
         if cu == 0 {
-            # 4-char NUL sentinel, not a real NUL byte (see utf8_encode_scalar).
-            out.append("\\x00");
+            # the NUL sentinel, not a real NUL byte (see nul_sentinel).
+            out.append(nul_sentinel());
         } else {
             out.append(utf8_encode_scalar(cu));
         }

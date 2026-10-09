@@ -32,7 +32,7 @@ import from "libc.so.6" {
         dst: int, src: int, n: int
     ) -> int;  def memmove(dst: int, src: int, n: int) -> int;  def memset(
         dst: int, c: i32, n: int
-    ) -> int;  def free(ptr: int) -> None;
+    ) -> int;  def free(ptr: int) -> None;  def realloc(ptr: int, size: int) -> int;
     # ── Process ───────────────────────────────────────────────────────────────
     def fork -> int;  def execve(path: str, argv: int, envp: int) -> int;  def execvpe(
         file: str, argv: int, envp: int

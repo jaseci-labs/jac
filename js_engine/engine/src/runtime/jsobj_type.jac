@@ -40,6 +40,46 @@ import from engine.src.builtins.markers {
     _KEY_IS_ENV_OBJ,
     _KEY_IS_REGEXP_MARK
 }
+import from engine.src.runtime.mem { read_u64, write_i64 }
+import from engine.src.ffi.libc { realloc, free, write, abort, getenv }
+
+# JAC_SLOT_CHECK=1: bounds-check every JSObject slot read/write and abort on a
+# violation (debug gate for the raw slot buffers; -1 = env not read yet).
+glob _SLOT_CHECK: int = -1;
+
+"""Bounds check for JSObject.sget / sset under JAC_SLOT_CHECK (latches the env var)."""
+def _slot_check(sp: int, i: int, what: str) -> None {
+    if _SLOT_CHECK < 0 {
+        if getenv("JAC_SLOT_CHECK") != None {
+            _SLOT_CHECK = 1;
+        } else {
+            _SLOT_CHECK = 0;
+            return;
+        }
+    }
+    sc_n: int = 0;
+    if sp != 0 {
+        sc_n = read_u64(sp, 0);
+    }
+    if i < 0 or i >= sc_n {
+        sc_msg: str = "[SLOTCHECK] slot "
+            + what
+            + " at index "
+            + str(i)
+            + ", object has "
+            + str(sc_n)
+            + " slots\n";
+        write(2, sc_msg, len(sc_msg));
+        abort();
+    }
+}
+
+"""Out of memory while growing a slot buffer."""
+def _slot_oom(size: int) -> None {
+    so_msg: str = "FATAL: slot buffer OOM (size=" + str(size) + ")\n";
+    write(2, so_msg, len(so_msg));
+    abort();
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Property flag bitmask constants
@@ -343,6 +383,17 @@ glob _ENT_EMPTY: dict[int, JSProperty] = {},
 # JSObject
 # ═══════════════════════════════════════════════════════════════════════════════
 
+"""Per-object state that few objects need: dict-mode property maps and the
+accessor table. Created on first use (JSObject.ext_rw), so an ordinary object
+carries one null pointer instead of three. (binary_kind / binary_slot stay in
+JSObject: typed-array element access reads them on every access, and the
+property fast paths test binary_kind on every object.)"""
+obj:pub JSObjectExt {
+    has entries: dict[int, JSProperty] | None = None,
+        key_order: list[int] | None = None,
+        accessors: AccessorTable | None = None;
+}
+
 """
 Core JavaScript object.
 
@@ -352,58 +403,185 @@ a null prototype (Object.create(null)).
 """
 obj:pub JSObject {
     has prototype_idx: int,
-        entries: dict[int, JSProperty] | None = None,
-        key_order: list[int] | None = None,
         version: int = 0,
         shape_id: int = 0,
-        slots: list[JSValue] = [],
+        sp: int = 0,
         mode: int = 0,
-        accessors: AccessorTable | None = None,
         class_id: int = 0,
         binary_kind: int = 0,
         binary_slot: int = -1,
-        cell_kind: int = 1,
         cell_flags: int = 0,
-        structure_id: int = 0,
         elems_kind: int = 0,
         elems: list[JSValue] | None = None,
-        brand: int = 0;  # -1 = null prototype
+        brand: int = 0,
+        ext: JSObjectExt | None = None;  # -1 = null prototype
+
+    # ── Property slots ─────────────────────────────────────────────────────
+    # One raw buffer of 8-byte words, [len][cap][v0 .. v(cap-1)]; sp = 0 means
+    # no slots. JSValues are tagged ints, so it needs no refcounting (a
+    # list[JSValue] cost a 72-byte list object plus an 8-slot buffer per
+    # object, empty or not). Freed by sclear (dict conversion, large rows at
+    # sweep); a swept small row keeps it for the next object (sreset).
+
+    """Number of slots in use."""
+    def:pub slen -> int {
+        if self.sp == 0 {
+            return 0;
+        }
+        return read_u64(self.sp, 0);
+    }
+
+    """Slot i, 0 <= i < slen(). Unchecked unless JAC_SLOT_CHECK=1."""
+    def:pub sget(i: int) -> JSValue {
+        if _SLOT_CHECK != 0 {
+            _slot_check(self.sp, i, "read");
+        }
+        return read_u64(self.sp, 16 + i * 8);
+    }
+
+    """Store v in slot i, 0 <= i < slen()."""
+    def:pub sset(i: int, v: JSValue) -> None {
+        if _SLOT_CHECK != 0 {
+            _slot_check(self.sp, i, "write");
+        }
+        write_i64(self.sp, 16 + i * 8, v);
+    }
+
+    """Append v as the new last slot; capacity grows 4, 8, 16, ..."""
+    def:pub spush(v: JSValue) -> None {
+        sp_n: int = 0;
+        sp_c: int = 0;
+        if self.sp != 0 {
+            sp_n = read_u64(self.sp, 0);
+            sp_c = read_u64(self.sp, 8);
+        }
+        if sp_n >= sp_c {
+            sp_nc: int = 4;
+            if sp_c > 0 {
+                sp_nc = sp_c * 2;
+            }
+            sp_new: int = realloc(self.sp, 16 + sp_nc * 8);
+            if sp_new == 0 {
+                _slot_oom(16 + sp_nc * 8);
+            }
+            write_i64(sp_new, 0, sp_n);
+            write_i64(sp_new, 8, sp_nc);
+            self.sp = sp_new;
+        }
+        write_i64(self.sp, 16 + sp_n * 8, v);
+        write_i64(self.sp, 0, sp_n + 1);
+    }
+
+    """Drop every slot, keeping the buffer for this row's next object."""
+    def:pub sreset -> None {
+        if self.sp != 0 {
+            write_i64(self.sp, 0, 0);
+        }
+    }
+
+    """Drop every slot and free the buffer."""
+    def:pub sclear -> None {
+        if self.sp != 0 {
+            free(self.sp);
+            self.sp = 0;
+        }
+    }
+
+    # ── Extension record (rare per-object state) ───────────────────────────
+    """The extension record, created on first use."""
+    def:pub ext_rw -> JSObjectExt {
+        er_x: JSObjectExt | None = self.ext;
+        if er_x is not None {
+            return er_x;
+        }
+        er_n: JSObjectExt = JSObjectExt();
+        self.ext = er_n;
+        return er_n;
+    }
+
+    """True when the object has an accessor table."""
+    def:pub has_acc -> bool {
+        ha_x: JSObjectExt | None = self.ext;
+        if ha_x is None {
+            return False;
+        }
+        return ha_x.accessors is not None;
+    }
+
+    """Binary kind (BINARY_KIND_*), 0 for an ordinary object."""
+    def:pub bkind -> int {
+        return self.binary_kind;
+    }
+
+    """Binary backing-store slot, -1 when there is none."""
+    def:pub bslot -> int {
+        return self.binary_slot;
+    }
+
+    def:pub set_bkind(k: int) -> None {
+        self.binary_kind = k;
+    }
+
+    def:pub set_bslot(s: int) -> None {
+        self.binary_slot = s;
+    }
 
     # ── Lazy dict-mode map accessors (P3b) ─────────────────────────────────
     """Dict `entries` for READ access: the object's own dict, or the shared empty
     one when it has none yet. Result must not be mutated (see ent_rw)."""
     def:pub ent_ro -> dict[int, JSProperty] {
-        if self.entries is not None {
-            return self.entries;
+        eo_x: JSObjectExt | None = self.ext;
+        if eo_x is not None {
+            eo_e: dict[int, JSProperty] | None = eo_x.entries;
+            if eo_e is not None {
+                return eo_e;
+            }
         }
         return _ENT_EMPTY;
     }
 
+    """True when the object has its own dict-mode `entries`."""
+    def:pub has_ent -> bool {
+        he_x: JSObjectExt | None = self.ext;
+        if he_x is None {
+            return False;
+        }
+        return he_x.entries is not None;
+    }
+
     """Dict `entries` for WRITE access, materializing it on first dict-mode store."""
     def:pub ent_rw -> dict[int, JSProperty] {
-        if self.entries is not None {
-            return self.entries;
+        ew_x: JSObjectExt = self.ext_rw();
+        ew_e: dict[int, JSProperty] | None = ew_x.entries;
+        if ew_e is not None {
+            return ew_e;
         }
         e: dict[int, JSProperty] = {};
-        self.entries = e;
+        ew_x.entries = e;
         return e;
     }
 
     """`key_order` for READ access; shared empty list when the object has none."""
     def:pub ko_ro -> list[int] {
-        if self.key_order is not None {
-            return self.key_order;
+        ko_x: JSObjectExt | None = self.ext;
+        if ko_x is not None {
+            ko_k: list[int] | None = ko_x.key_order;
+            if ko_k is not None {
+                return ko_k;
+            }
         }
         return _KO_EMPTY;
     }
 
     """`key_order` for WRITE access, materializing it on first dict-mode store."""
     def:pub ko_rw -> list[int] {
-        if self.key_order is not None {
-            return self.key_order;
+        kw_x: JSObjectExt = self.ext_rw();
+        kw_k: list[int] | None = kw_x.key_order;
+        if kw_k is not None {
+            return kw_k;
         }
         k: list[int] = [];
-        self.key_order = k;
+        kw_x.key_order = k;
         return k;
     }
 
@@ -429,7 +607,7 @@ obj:pub JSObject {
         if (self.cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
             return jsv_hole();
         }
-        return self.slots[si];
+        return self.sget(si);
     }
 
     """The SET-IC hit test and write in one (see ic_slot); False when the
@@ -441,7 +619,7 @@ obj:pub JSObject {
         if (self.cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
             return False;
         }
-        self.slots[si] = val;
+        self.sset(si, val);
         return True;
     }
 
@@ -519,7 +697,7 @@ obj:pub JSObject {
             if packed >= 0 {
                 self.ent_rw()[ek] = JSProperty(
                     key=ek,
-                    value=self.slots[packed // 16],
+                    value=self.sget(packed // 16),
                     writable=(packed & PROP_WRITABLE) != 0,
                     enumerable=(packed & PROP_ENUMERABLE) != 0,
                     configurable=(packed & PROP_CONFIGURABLE) != 0,
@@ -529,7 +707,7 @@ obj:pub JSObject {
             }
             ei = ei + 1;
         }
-        self.slots = [];
+        self.sclear();
         self.shape_id = 0;
         self.mode = MAP_MODE_DICT;
     }
@@ -548,7 +726,7 @@ obj:pub JSObject {
             if (packed_g & SHAPE_ATTR_ACCESSOR) != 0 {
                 return js_undefined();
             }
-            return self.slots[packed_g // 16];
+            return self.sget(packed_g // 16);
         }
         ent_g: dict[int, JSProperty] = self.ent_ro();
         if key in ent_g {
@@ -572,7 +750,7 @@ obj:pub JSObject {
             if packed_p >= 0 {
                 return JSProperty(
                     key=key,
-                    value=self.slots[packed_p // 16],
+                    value=self.sget(packed_p // 16),
                     writable=(packed_p & PROP_WRITABLE) != 0,
                     enumerable=(packed_p & PROP_ENUMERABLE) != 0,
                     configurable=(packed_p & PROP_CONFIGURABLE) != 0,
@@ -611,7 +789,7 @@ obj:pub JSObject {
             if packed_o < 0 or (packed_o & SHAPE_ATTR_ACCESSOR) != 0 {
                 return jsv_hole();
             }
-            return self.slots[packed_o // 16];
+            return self.sget(packed_o // 16);
         }
         ent_o: dict[int, JSProperty] = self.ent_ro();
         if key in ent_o {
@@ -661,7 +839,7 @@ obj:pub JSObject {
                     return -1;
                 }
                 if (packed_s & 15) == (flags & 7) {
-                    self.slots[packed_s // 16] = value;
+                    self.sset(packed_s // 16, value);
                     return 0;
                 }
                 # Attribute change on an existing key: replay the chain with
@@ -670,7 +848,7 @@ obj:pub JSObject {
                 nsid_s: int = shape_change_attrs(self.shape_id, key, flags & 7);
                 if nsid_s >= 0 {
                     self.shape_id = nsid_s;
-                    self.slots[packed_s // 16] = value;
+                    self.sset(packed_s // 16, value);
                     return 0;
                 }
                 return -1;
@@ -681,7 +859,7 @@ obj:pub JSObject {
                 # transitions from its own shape, so the new key's slot is
                 # exactly len(slots).
                 self.shape_id = child;
-                self.slots.append(value);
+                self.spush(value);
                 self.version = self.version + 1;  # key add → invalidate ICs
                 if key < 0 or key >= 1000000 {
                     self.brand = self.brand | brand_bit_for_key(key);
@@ -717,7 +895,7 @@ obj:pub JSObject {
                     }
                     pi = pi + 1;
                 }
-                self.key_order = purged;
+                self.ext_rw().key_order = purged;
                 ko_s = purged;  # keep local in sync with the reassigned field
             }
             ko_s.append(key);
@@ -872,13 +1050,15 @@ obj:pub JSObject {
     In-struct counterpart of jsobject.jac's `_acc_rw`, for methods that install
     accessors while converting shape→dict."""
     def ensure_accessors -> AccessorTable {
-        if self.accessors is not None {
-            return self.accessors;
+        ea_x: JSObjectExt = self.ext_rw();
+        ea_a: AccessorTable | None = ea_x.accessors;
+        if ea_a is not None {
+            return ea_a;
         }
         t: AccessorTable = AccessorTable(
             getters={}, setters={}, enumerable={}, configurable={}
         );
-        self.accessors = t;
+        ea_x.accessors = t;
         return t;
     }
 
@@ -908,15 +1088,15 @@ obj:pub JSObject {
             if packed >= 0 {
                 if (packed & SHAPE_ATTR_ACCESSOR) != 0 {
                     at: AccessorTable = self.ensure_accessors();
-                    at.getters[pk] = self.slots[packed // 16];
-                    at.setters[pk] = self.slots[packed // 16 + 1];
+                    at.getters[pk] = self.sget(packed // 16);
+                    at.setters[pk] = self.sget(packed // 16 + 1);
                     at.enumerable[pk] = (packed & PROP_ENUMERABLE) != 0;
                     at.configurable[pk] = (packed & PROP_CONFIGURABLE) != 0;
                     self.ko_rw().append(pk);
                 } else {
                     self.ent_rw()[pk] = JSProperty(
                         key=pk,
-                        value=self.slots[packed // 16],
+                        value=self.sget(packed // 16),
                         writable=(packed & PROP_WRITABLE) != 0,
                         enumerable=(packed & PROP_ENUMERABLE) != 0,
                         configurable=(packed & PROP_CONFIGURABLE) != 0,
@@ -927,7 +1107,7 @@ obj:pub JSObject {
             }
             pi = pi + 1;
         }
-        self.slots = [];
+        self.sclear();
         self.shape_id = 0;
         self.mode = MAP_MODE_DICT;
     }

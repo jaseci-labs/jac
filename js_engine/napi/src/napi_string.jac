@@ -52,7 +52,11 @@ import from engine.src.runtime.jsstring {
     str_from_id,
     str_get_realm,
     js_string_utf16_units,
-    js_string_from_utf16_code_units
+    js_string_from_utf16_code_units,
+    nul_sentinel,
+    wire_utf8_needs_convert,
+    wire_utf8_len,
+    wire_utf8_write
 }
 
 import from engine.src.runtime.jssymbol { js_symbol, js_symbol_for }
@@ -102,37 +106,34 @@ def _read_utf8(ptr: int, len: int) -> str {
         }
     } else {
         while i < len {
-            out = out + byte_chr(read_byte(ptr, i));
+            rb: int = read_byte(ptr, i);
+            if rb == 0 {
+                out = out + nul_sentinel();  # U+0000 (a C string cannot hold 0x00)
+            } else {
+                out = out + byte_chr(rb);
+            }
             i = i + 1;
         }
     }
     return out;
 }
 
-"""Write a Jac (UTF-8-backed) string's bytes to a C char* buffer.
+"""Write an engine string to a C char* buffer as true UTF-8.
 
-Copies the string's UTF-8 bytes verbatim, at most bufsize-1 of them, then
-appends a null terminator.  Returns the full UTF-8 byte length (no null).
+At most bufsize-1 bytes, then a null terminator. Returns the bytes written
+(excluding the NUL), or with a NULL buffer the full UTF-8 byte length.
 """
 def _write_utf8(s: str, buf: int, bufsize: int) -> int {
-    # Jac `str` is UTF-8-backed: len(s) is the byte length and each s[i]
-    # already yields one UTF-8 byte (ord(s[i]) in 0..255).  Copy the bytes
-    # verbatim — do NOT re-encode, or non-ASCII bytes double (0xC3 -> C3 83).
-    #
-    # EXCEPTION: an embedded U+0000 code unit is stored as the 4-byte sentinel
-    # `\`,`x`,`0`,`0` (a real NUL can't live in a C-string; see
-    # jsstring.utf8_encode_scalar / _str_is_nul_escape). napi's contract is the
-    # string's TRUE UTF-8 bytes, where U+0000 is a SINGLE 0x00. Copying the raw
-    # 4-byte sentinel makes the byte length — and every downstream byte position
-    # — run ahead of the JS code-unit length by 3 per embedded NUL. rollup uses
-    # \0-prefixed virtual module ids (`"\0commonjsHelpers.js"`), so its SWC
-    # parser (fed via this op) then returned AST positions past the module
-    # length and MagicString threw "range out of bounds" during render. Decode
-    # each sentinel back to one 0x00 byte; copy everything else verbatim.
+    # napi's contract is the string's TRUE UTF-8 bytes. Engine strings are
+    # CESU-8 plus the NUL sentinel C0 80 (jsstring.nul_sentinel), neither of
+    # which is valid UTF-8: Rust addons (rollup's parser) panic on them, and a
+    # byte length that differs from the real UTF-8 shifts every position the
+    # addon reports (rollup's \0-prefixed virtual module ids: SWC returned
+    # positions past the module and MagicString threw "range out of bounds").
+    # The wire helpers convert both; the usual string needs no conversion and
+    # is copied verbatim in one call.
     n: int = len(s);
-    # No NUL sentinel (the usual case): the bytes are the true UTF-8 — one
-    # copy (V4.26; the loops below compared each byte as a string).
-    if s.find("\\x00") < 0 {
+    if s.isascii() or not wire_utf8_needs_convert(s) {
         if buf == 0 or bufsize == 0 {
             return n;
         }
@@ -147,40 +148,9 @@ def _write_utf8(s: str, buf: int, bufsize: int) -> int {
         return wu_n;
     }
     if buf == 0 or bufsize == 0 {
-        # NULL-buffer probe: report the decoded (true) UTF-8 byte length.
-        out_n: int = 0;
-        pi: int = 0;
-        while pi < n {
-            if pi + 3 < n
-                and s[pi] == "\\"
-                and s[pi + 1] == "x"
-                and s[pi + 2] == "0"
-                and s[pi + 3] == "0" {
-                pi = pi + 4;
-            } else {
-                pi = pi + 1;
-            }
-            out_n = out_n + 1;
-        }
-        return out_n;
+        return wire_utf8_len(s);
     }
-    limit: int = bufsize - 1;
-    written: int = 0;
-    i: int = 0;
-    while i < n and written < limit {
-        if i + 3 < n
-            and s[i] == "\\"
-            and s[i + 1] == "x"
-            and s[i + 2] == "0"
-            and s[i + 3] == "0" {
-            write_byte(buf, written, 0);
-            i = i + 4;
-        } else {
-            write_byte(buf, written, ord(s[i]) & 255);
-            i = i + 1;
-        }
-        written = written + 1;
-    }
+    written: int = wire_utf8_write(s, buf, bufsize - 1);
     write_byte(buf, written, 0);
     # Node reports the number of bytes actually written (excluding the NUL).
     return written;

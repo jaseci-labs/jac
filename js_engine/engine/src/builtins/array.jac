@@ -347,15 +347,15 @@ def:pub js_array_push(arr: JSValue, item: JSValue) -> None {
                 if ap_pk >= 0
                     and (ap_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (ap_pk & 1) != 0 {
-                    ap_len_v: JSValue = ap_raw.slots[ap_pk // 16];
+                    ap_len_v: JSValue = ap_raw.sget(ap_pk // 16);
                     # Push appends at `length` — only a pure append when the
                     # dense range reaches exactly that far (no trailing holes).
                     if jsv_is_int32(ap_len_v)
                         and jsv_to_int32(ap_len_v) == len(ap_raw.elems_ro()) {
                         ap_raw.elems_rw().append(item);
-                        ap_raw.slots[ap_pk // 16] = js_array_len_value(
+                        ap_raw.sset(ap_pk // 16, js_array_len_value(
                             len(ap_raw.elems_ro())
-                        );
+                        ));
                         return;
                     }
                 }
@@ -1744,15 +1744,15 @@ def:pub js_Array_push(arr: JSValue, items: list[JSValue]) -> JSValue {
                 if jp_pk >= 0
                     and (jp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (jp_pk & 1) != 0 {
-                    jp_lv: JSValue = jp_raw.slots[jp_pk // 16];
+                    jp_lv: JSValue = jp_raw.sget(jp_pk // 16);
                     if jsv_is_int32(jp_lv)
                         and jsv_to_int32(jp_lv) == len(jp_raw.elems_ro()) {
                         for jp_itm in items {
                             jp_raw.elems_rw().append(jp_itm);
                         }
-                        jp_raw.slots[jp_pk // 16] = js_array_len_value(
+                        jp_raw.sset(jp_pk // 16, js_array_len_value(
                             len(jp_raw.elems_ro())
-                        );
+                        ));
                         return js_array_len_value(len(jp_raw.elems_ro()));
                     }
                 }
