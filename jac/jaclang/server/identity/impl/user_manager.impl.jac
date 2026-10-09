@@ -45,21 +45,21 @@ impl UserManager.ensure_internal_user(
     username: str, password: str, role: str = 'user'
 ) -> dict[str, any] {
     existing = self.find_user_by_identity(username);
-    if existing {
-        user_id = str(existing.get('user_id') or '');
-        if role != 'user' and self.get_user_role(user_id) != role {
-            self.set_user_role(user_id, role);
+    if not existing {
+        created = self.create_internal_user(username, password, role);
+        if 'error' not in created {
+            return created;
         }
-        return existing;
-    }
-    created = self.create_internal_user(username, password, role);
-    if 'error' in created {
-        again = self.find_user_by_identity(username);
-        if again {
-            return again;
+        existing = self.find_user_by_identity(username);
+        if not existing {
+            return created;
         }
     }
-    return created;
+    user_id = str(existing.get('user_id') or '');
+    if role != 'user' and self.get_user_role(user_id) != role {
+        self.set_user_role(user_id, role);
+    }
+    return existing;
 }
 
 impl UserManager.aget_root_id(user_id: str) -> str | None {

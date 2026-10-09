@@ -339,6 +339,7 @@ test "api server construction is socket-free and builds a serving app" {
         assert srv.server is None , f"expected no bound server at construction, got {type(
             srv.server
         ).__name__}";
+        srv._ensure_internal_users();
         app = srv.build_app();
         assert isinstance(app, ServingApp);
         assert app.router.all_endpoints() , "built app has no endpoints";
@@ -427,6 +428,7 @@ test "route registration grows with the route count, not its square" {
                     calls['resolves'] += 1;
                 }
             }
+            srv._ensure_internal_users();
             sys.setprofile(tally);
             try {
                 app = srv.build_app();

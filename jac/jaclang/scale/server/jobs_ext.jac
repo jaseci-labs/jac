@@ -68,9 +68,14 @@ obj JobsExtension(ServerExtension) {
         scheduler_cfg = get_scale_config().get_scheduler_config();
         job_cap = int(scheduler_cfg['max_jobs_per_user']);
         system_user = users.find_user_by_identity(SYSTEM_USER);
-        system_user_id = str(system_user.get('user_id', SYSTEM_USER))
-            if system_user
-            else SYSTEM_USER;
+        system_user_id = str(system_user.get('user_id') or '') if system_user else '';
+        if not system_user_id {
+            raise RuntimeError(
+                f"scheduler cannot start: the system identity '{SYSTEM_USER}' is "
+                "missing from the users store; the server creates it at boot, so "
+                "check the identity database before serving."
+            );
+        }
         jobs = JacScaleScheduler.instance();
         jobs.setup(system_user_id=system_user_id, server=server);
         jobs.register_dynamic_tasks_from_db();

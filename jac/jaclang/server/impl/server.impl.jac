@@ -1436,8 +1436,20 @@ impl JacAPIServer._ensure_client_bundle -> None {
 impl JacAPIServer._ensure_internal_users -> None {
     import from jaclang.server.identity.user_manager { SYSTEM_USER, UserRole }
     self.user_manager.ensure_internal_user(Con.GUEST.value, '__no_password__');
-    self.user_manager.ensure_internal_user(
+    outcome = self.user_manager.ensure_internal_user(
         SYSTEM_USER, '__no_login__', role=UserRole.SYSTEM.value
+    )
+        or {};
+    found = self.user_manager.find_user_by_identity(SYSTEM_USER);
+    system_id = str(found.get('user_id') or '') if found else '';
+    if system_id
+        and (self.user_manager.get_user_role(system_id) == UserRole.SYSTEM.value) {
+        return;
+    }
+    reason = outcome.get('error') or 'it could not be read back with the system role';
+    raise RuntimeError(
+        f"cannot start: the system principal '{SYSTEM_USER}' that scheduled jobs "
+        f"and webhooks run as was not provisioned ({reason})"
     );
 }
 
