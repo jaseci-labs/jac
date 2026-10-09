@@ -769,7 +769,11 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
             if id(elem) in legality.elements {
                 refusals.append(legality.elements[id(elem)]);
             }
-            refusals.extend(legality.units.get(id(elem), []));
+            for unit_refusal in legality.units.get(id(elem), []) {
+                if unit_refusal.noted {
+                    refusals.append(unit_refusal);
+                }
+            }
             for refusal in refusals {
                 if refusal.site is None or id(refusal.site) in seen {
                     continue;
