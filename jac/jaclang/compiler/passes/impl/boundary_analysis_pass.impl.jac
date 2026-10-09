@@ -1377,16 +1377,6 @@ impl BoundaryAnalysisPass.finish with exit {
     }
     import from jaclang.compiler.frontend.diagnostics { E5093 }
     import from jaclang.compiler.frontend.diagnostics { E5115 }
-    import from jaclang.compiler.boundary_rules {
-        archetype_refusals,
-        signature_crossings,
-        signature_refusals
-    }
-    import from jaclang.compiler.capability_notes {
-        TARGET_CLIENT,
-        TARGET_NATIVE,
-        TARGET_SERVER
-    }
     manifest = self.module.gen.interop_manifest;
 
     for binding in manifest.bindings.values() {
