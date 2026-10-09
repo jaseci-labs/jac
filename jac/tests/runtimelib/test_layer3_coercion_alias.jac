@@ -10,8 +10,9 @@ import io;
 import logging;
 import from datetime { date, datetime, time }
 import from enum { Enum }
+import from typing { cast }
 import from uuid { UUID, uuid4 }
-import from jaclang.runtime.archetype { NodeAnchor, Root }
+import from jaclang.runtime.archetype { NodeAnchor, Root, GenericEdge }
 # archetype_alias is an ambient Jac builtin (no import). Serializer is
 # an explicit import because we directly test its internals here.
 import from jaclang.data.serializer { Serializer }
@@ -60,8 +61,49 @@ test "alias to same qualified name is a no-op (does not self-alias)" {
 
 
 test "_get_class returns None for truly unregistered class names" {
-    resolved = Serializer._get_class("definitely.not", "Present");
-    assert resolved is None;
+    for (module_name, class_name) in [
+        ('definitely.not', 'Present'),
+        ('myapp.models', 'Root'),
+        ('myapp.models', 'GenericEdge'),
+        ('jaclang.scale.userland', 'Root')
+    ] {
+        resolved = Serializer._get_class(module_name, class_name);
+        assert resolved is None , (
+            f"{module_name}.{class_name} resolved to {resolved}; a name that "
+            "is not registered under the stored module must not fall back to "
+            "the jaclang built-in name index"
+        );
+    }
+}
+
+
+# --- Persisted built-ins resolve by name, not by path (regression: #8747) ---
+#
+# The never-existed module stands in for the next relocation: it must keep
+# resolving with no change here. Negatives extend the unregistered-class test.
+glob _HISTORICAL_PATHS: list[str] = [
+         'jaclang.jac0core.archetype',
+         'jaclang.runtime.archetype',
+         'jaclang.not.a.real.module'
+     ];
+
+
+test "persisted built-ins resolve from any jaclang-internal module path" {
+    live: dict[str, type] = {
+        'Root': cast(type, Root),
+        'GenericEdge': cast(type, GenericEdge)
+    };
+    for (name, cls) in live.items() {
+        for module_name in _HISTORICAL_PATHS {
+            resolved = Serializer._get_class(module_name, name);
+            assert resolved is cls , (
+                f"{module_name}.{name} did not resolve to {cls}: got "
+                f"{resolved}. Persisted built-ins resolve by declaration "
+                "name for any jaclang-internal module; the index is built in "
+                "Serializer.register."
+            );
+        }
+    }
 }
 
 

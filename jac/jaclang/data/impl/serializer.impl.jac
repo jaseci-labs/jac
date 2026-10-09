@@ -422,6 +422,9 @@ impl Serializer._deserialize_value(val: object) -> object {
 impl Serializer.register(cls: type) -> None {
     register_type(cls);
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
+    if not Serializer.is_auto_registered_module(cls.__module__) {
+        Serializer._builtins_by_name[cls.__name__] = cls;
+    }
     import from jaclang.runtime.typecache {
         invalidate as _invalidate_typecache,
         warm as _warm_typecache
@@ -680,6 +683,9 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
         );
     }
     cls = Serializer._registry.get(key);
+    if cls is None and not Serializer.is_auto_registered_module(module_name) {
+        cls = Serializer._builtins_by_name.get(class_name);
+    }
     if cls is None {
         cls = Serializer._resolve_class_by_import(module_name, class_name);
         if cls is not None {

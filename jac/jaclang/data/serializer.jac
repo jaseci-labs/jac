@@ -61,6 +61,7 @@ obj ImportFailure {
 obj Serializer {
     static has _registry: dict[str, type] = {},
         _aliases: dict[str, str] = {},
+        _builtins_by_name: dict[str, type] = {},
         _warn_counts: dict[str, int] = {},
         _warn_dedup_saturated: bool = False,
         _import_failures: dict[str, ImportFailure] = {},
