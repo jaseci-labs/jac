@@ -3315,6 +3315,11 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
     }
     (continue_bb, break_bb) = self.loop_stack[-1];
     _loop_depth = len(self.loop_stack);
+    if ctrl_name == Tok.KW_CONTINUE {
+        while _loop_depth > 1 and self.loop_stack[_loop_depth - 2][0] is continue_bb {
+            _loop_depth -= 1;
+        }
+    }
     if self._emit_finalizers(_loop_depth) {
         return;
     }

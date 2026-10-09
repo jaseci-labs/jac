@@ -64,10 +64,89 @@ impl JcirGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
         ['op', 'operand'],
         [self.nod('Not', [], []), self.name_load('__executed')]
     );
+    passes_continue = False;
+    for ctrl in nd.get_all_sub_nodes(CtrlStmt) {
+        if ctrl.ctrl.name == Tok.KW_CONTINUE
+            and isinstance(self._ctrl_owner(ctrl), SwitchStmt) {
+            passes_continue = True;
+            break;
+        }
+    }
+    switch_loop = self.nod(
+        'While', ['test', 'body', 'orelse'], [while_cond, ast_nodes, []]
+    );
+    if not passes_continue {
+        return [assign_var, switch_loop];
+    }
     return [
+        self.nod(
+            'Assign',
+            ['targets', 'value'],
+            [
+                [
+                    self.nod(
+                        'Name',
+                        ['id', 'ctx'],
+                        ['__continued', self.nod('Store', [], [])]
+                    )
+                ],
+                self.const_of(False)
+            ]
+        ),
         assign_var,
-        self.nod('While', ['test', 'body', 'orelse'], [while_cond, ast_nodes, []])
+        switch_loop,
+        self.nod(
+            'If',
+            ['test', 'body', 'orelse'],
+            [self.name_load('__continued'), self._continue_out(nd), []]
+        )
     ];
+}
+
+impl JcirGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
+    at = nd.parent;
+    while at is not None {
+        if isinstance(
+            at, (SwitchStmt, InForStmt, IterForStmt, WhileStmt, ForeverStmt)
+        ) {
+            return at;
+        }
+        if isinstance(at, (Ability, LambdaExpr)) {
+            return None;
+        }
+        at = at.parent;
+    }
+    return None;
+}
+
+impl JcirGenPass._continue_out(nd: UniNode) -> list[CgItem] {
+    owner = self._ctrl_owner(nd);
+    if isinstance(owner, SwitchStmt) {
+        if isinstance(nd, SwitchStmt) {
+            return [self.nod('Break', [], [])];
+        }
+        return [
+            self.nod(
+                'Assign',
+                ['targets', 'value'],
+                [
+                    [
+                        self.nod(
+                            'Name',
+                            ['id', 'ctx'],
+                            ['__continued', self.nod('Store', [], [])]
+                        )
+                    ],
+                    self.const_of(True)
+                ]
+            ),
+            self.nod('Break', [], [])
+        ];
+    }
+    if isinstance(owner, IterForStmt) {
+        return [self.val(owner.count_by), self.nod('Continue', [], [])];
+    }
+    return [self.nod('Continue', [], [])];
 }
 
 impl JcirGenPass.resolve_stmt_block(
@@ -597,12 +676,7 @@ impl JcirGenPass.exit_ctrl_stmt with CtrlStmt exit {
     if (here.ctrl.name == Tok.KW_BREAK) {
         self.set_out(here, [self.nod('Break', [], [])]);
     } elif (here.ctrl.name == Tok.KW_CONTINUE) {
-        if (iter_for_parent := here.find_parent_of_type(IterForStmt)) {
-            count_by = iter_for_parent.count_by;
-            self.set_out(here, [self.val(count_by), self.nod('Continue', [], [])]);
-        } else {
-            self.set_out(here, [self.nod('Continue', [], [])]);
-        }
+        self.set_out(here, self._continue_out(here));
     } elif (here.ctrl.name == Tok.KW_SKIP) {
         self.set_out(here, [self.nod('Return', ['value'], [None])]);
     }
