@@ -102,6 +102,47 @@ def list_reset_on_some_paths(xs: list[int]) -> list[Callable[[], int]] {
     return batch;
 }
 
+def taken_out_of_a_fresh_list(xs: list[int]) -> list[Callable[[], int]] {
+    out: list[Callable[[], int]] = [];
+    for x in xs {
+        extractVal = x + 1;
+        batch = [lambda -> int { return extractVal; }];
+        out.append(batch[0]);
+    }
+    return out;
+}
+
+def one_field_of_a_fresh_dict_is_stored(xs: list[int]) -> list[any] {
+    out: list[any] = [];
+    for x in xs {
+        pickVal = x;
+        record: dict[str, any] = {"run": lambda -> int { return pickVal; }, "id": x};
+        record["run"]();
+        out.append(record["id"]);
+    }
+    return out;
+}
+
+obj Button {
+    has label: str,
+        on_click: Callable[[], str] | None = None;
+}
+
+def field_of_the_loop_target(buttons: list[Button]) {
+    for btn in buttons {
+        targetVal = btn.label.upper();
+        btn.on_click = lambda -> str { return targetVal; };
+    }
+}
+
+def stored_through_an_alias(table: list[list[Callable[[], int]]], xs: list[int]) {
+    for x in xs {
+        aliasVal = x;
+        row = table[x % 2];
+        row.append(lambda -> int { return aliasVal; });
+    }
+}
+
 def created_inside_a_combinator(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
     for x in xs {

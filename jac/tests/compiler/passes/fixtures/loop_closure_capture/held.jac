@@ -185,7 +185,9 @@ obj Watcher {
     def watch(xs: list[int]) {
         for x in xs {
             fieldVal = x + 1;
-            self.on_done = lambda -> int { return fieldVal; };
+            if x > 0 {
+                self.on_done = lambda -> int { return fieldVal; };
+            }
         }
     }
 
@@ -260,12 +262,11 @@ def kept_through_a_fresh_list(xs: list[int]) -> list[list[Callable[[], int]]] {
     return out;
 }
 
-def taken_out_of_a_fresh_list(xs: list[int]) -> list[Callable[[], int]] {
-    out: list[Callable[[], int]] = [];
+def handler_that_updates_the_name(xs: list[int]) -> list[Callable[[], None]] {
+    out: list[Callable[[], None]] = [];
     for x in xs {
-        extractVal = x + 1;
-        batch = [lambda -> int { return extractVal; }];
-        out.append(batch[0]);
+        bumpVal = x;
+        out.append(lambda { bumpVal += 1; });
     }
     return out;
 }

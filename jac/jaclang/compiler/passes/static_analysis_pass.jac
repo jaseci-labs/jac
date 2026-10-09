@@ -75,6 +75,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 
 import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType }
+import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.diagnostics {
     W1103,
     W2001,
@@ -418,7 +419,23 @@ def comes_before(first: UniNode, second: UniNode) -> bool {
 
 def runs_later(closure: Closure) -> bool {
     return isinstance(closure, Ability)
-        and (closure.is_async or len(closure.get_all_sub_nodes(typ=YieldExpr)) > 0);
+        and (closure.is_async or ModuleFacts.ability_is_generator(closure));
+}
+
+def makes_fresh_container(value: (UniNode | None)) -> bool {
+    made = value;
+    while isinstance(made, AtomUnit) {
+        made = made.value;
+    }
+    return isinstance(made, (ListVal, TupleVal, SetVal, DictVal, ListCompr, DictCompr));
+}
+
+def reads_binding(name_nd: Name) -> bool {
+    if name_nd.expr_ctx == ExprCtx.LOAD {
+        return True;
+    }
+    store = name_nd.parent;
+    return isinstance(store, Assignment) and store.aug_op is not None;
 }
 
 def store_root(target: UniNode) -> UniNode {
@@ -495,6 +512,10 @@ walker StaticAnalysisPass(CompilerPass) {
     def _stored_fate(
         target: UniNode, loop: (LoopStmt | None), seen: list[int]
     ) -> ClosureFate;
+
+    def _overwritten_each_iteration(
+        store: Assignment, target: UniNode, loop: (LoopStmt | None)
+    ) -> bool;
 
     def _carried_fate(
         sym: Symbol, site: UniNode, loop: (LoopStmt | None)

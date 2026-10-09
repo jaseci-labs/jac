@@ -661,7 +661,7 @@ impl StaticAnalysisPass._check_loop_closure_captures(mod: Module) -> None {
             sym = name_nd.sym;
             if sym is None
                 or sym.sym_type != SymbolType.VAR
-                or name_nd.expr_ctx != ExprCtx.LOAD
+                or not reads_binding(name_nd)
                 or id(sym) in reported
                 or is_identifier_slot(name_nd) {
                 continue;
@@ -824,10 +824,12 @@ impl StaticAnalysisPass._value_fate(
             )
         ) {
             direct = False;
-        } elif not isinstance(holder, AtomUnit)
-            and not (
-                isinstance(holder, AtomTrailer) and holder.target is cur and not direct
-            ) {
+        } elif isinstance(holder, AtomTrailer)
+            and holder.target is cur
+            and not direct {
+            taken = self._value_fate(holder, False, loop, seen);
+            return ClosureFate.OPAQUE if taken == ClosureFate.HELD else taken;
+        } elif not isinstance(holder, AtomUnit) {
             break;
         }
         cur = holder;
@@ -879,7 +881,9 @@ impl StaticAnalysisPass._value_fate(
         fate: ClosureFate = ClosureFate.IN_PLACE;
         for target in holder.target {
             if not isinstance(target, Name) or holder.aug_op is not None {
-                fate = worse_fate(fate, self._stored_fate(target, loop, seen));
+                if not self._overwritten_each_iteration(holder, target, loop) {
+                    fate = worse_fate(fate, self._stored_fate(target, loop, seen));
+                }
             } elif target.sym is None {
                 fate = worse_fate(fate, ClosureFate.OPAQUE);
             } elif id(target.sym) in seen {
@@ -931,6 +935,34 @@ impl StaticAnalysisPass._stored_fate(
     );
 }
 
+impl StaticAnalysisPass._overwritten_each_iteration(
+    store: Assignment, target: UniNode, loop: (LoopStmt | None)
+) -> bool {
+    if loop is None
+        or store.aug_op is not None
+        or store.parent is not loop
+        or not loop_repeats(loop, store) {
+        return False;
+    }
+    slot = target;
+    while isinstance(slot, AtomTrailer) and slot.is_attr {
+        slot = slot.target;
+    }
+    if slot is target or not isinstance(slot, Name) {
+        return False;
+    }
+    if slot.sym is not None
+        and self._rebound_each_iteration(slot.sym, loop, False) is not None {
+        return False;
+    }
+    for ctrl in loop.get_all_sub_nodes(typ=CtrlStmt) {
+        if comes_before(ctrl, store) {
+            return False;
+        }
+    }
+    return True;
+}
+
 impl StaticAnalysisPass._carried_fate(
     sym: Symbol, site: UniNode, loop: (LoopStmt | None)
 ) -> ClosureFate {
@@ -943,6 +975,7 @@ impl StaticAnalysisPass._carried_fate(
             and isinstance(store, Assignment)
             and store.parent is not None
             and not carries_over(sym, store)
+            and makes_fresh_container(store.value)
             and comes_before(store, site)
             and is_within(site, store.parent)
             and self._outlives(store, loop) {

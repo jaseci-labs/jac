@@ -230,6 +230,39 @@ async def coroutine_awaited_in_its_iteration(xs: list[int]) -> int {
     return total;
 }
 
+def helper_that_holds_a_generator(xs: list[int]) -> list[int] {
+    out: list[int] = [];
+    for x in xs {
+        innerVal = x + 1;
+        def total -> int {
+            def parts -> Generator[int, None, None] {
+                yield innerVal;
+            }
+            acc = 0;
+            for p in parts() {
+                acc += p;
+            }
+            return acc;
+        }
+        out.append(total());
+    }
+    return out;
+}
+
+obj Stepper {
+    has on_progress: Callable[[], str] | None = None;
+
+    def run(names: list[str]) -> list[str] {
+        done: list[str] = [];
+        for nm in names {
+            slotVal = nm.upper();
+            self.on_progress = lambda -> str { return slotVal; };
+            done.append(nm);
+        }
+        return done;
+    }
+}
+
 def declared_global(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
     for x in xs {

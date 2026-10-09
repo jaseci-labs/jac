@@ -490,7 +490,7 @@ Emitted by static analysis and declaration-implementation matching passes.
 | Code | Message |
 |------|---------|
 | `E2097` | Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value |
-| `W2084` | Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value if the callee keeps them past the iteration |
+| `W2084` | Closure captures '{name}', which the enclosing loop reassigns: every closure the loop creates shares that one binding and will see its final value if the callee or container it is handed to keeps it past the iteration |
 
 A local assigned in a loop body belongs to the enclosing function, not to one iteration, with or without a type annotation (see [Variables and Scope](language/variables-and-scope.md#4-scope-rules)). A `lambda` or nested `def` created in the loop only reads that local when it is called, so if it is kept past its iteration every one of them reads whatever the last iteration assigned:
 
@@ -524,15 +524,15 @@ Both codes are reported from `jac check` in every codespace. Which one depends o
 **`E2097`, an error: the loop keeps the closure.** Nothing the compiler cannot see stands between the closure and the place that holds it past the iteration:
 
 - it is the value of a JSX attribute, a spread attribute or a JSX child (`<li onClick={lambda { ... }}>`)
-- it is assigned to a field or a subscript of something that outlives the iteration (`self.on_done = ...`, `table[key] = ...`), on its own or inside a list, tuple, set or dict literal
+- it is assigned to a field or a subscript of something that outlives the iteration (`table[key] = ...`, `if ready { self.on_done = ...; }`), on its own or inside a list, tuple, set or dict literal
 - it is stored by `append`, `extend` or `insert` on a `list`, or `add` on a `set`, when the checker has resolved the receiver to that builtin type and the container outlives the iteration
 - it is carried from one iteration to the next by a rebinding (`rows = rows + [lambda { ... }]`, `rows += [...]`)
 - it is yielded
 - it is captured by another closure that is kept in one of these ways
 
-A named closure (a `def` in the loop body, or a `lambda` assigned to a name) is followed to where the name is used, so `handler = lambda { ... }; handlers.append(handler);` is the same error. So is a value taken back out of a container (`handlers.append(batch[0])`). A local `async def` or generator does not run when it is called, so its call result is followed the same way: `pending.append(read())` keeps the coroutine, `await read()` runs it in place.
+A named closure (a `def` in the loop body, or a `lambda` assigned to a name) is followed to where the name is used, so `handler = lambda { ... }; handlers.append(handler);` is the same error. A local `async def` or generator does not run when it is called, so its call result is followed the same way: `pending.append(read())` keeps the coroutine, `await read()` runs it in place.
 
-**`W2084`, a warning: the closure is handed to a callee the compiler cannot see into.** It is written as an argument of a call (directly, by keyword, or inside a literal that is passed), or it is a named closure whose only use as a value is being passed to one. A closure stored in a container that the loop resets only on some paths is reported the same way, since whether it is kept depends on the path. The callee may run it before returning, in which case the code is correct, or keep it, in which case every closure sees the last value. The warning does not fail `jac check`. Binding through a parameter removes it; so does `# jac:ignore[W2084]` on the line when the callee is known to run the closure in place.
+**`W2084`, a warning: the closure is handed to a callee the compiler cannot see into.** It is written as an argument of a call (directly, by keyword, or inside a literal that is passed), or it is a named closure whose only use as a value is being passed to one. The same warning covers stores the code does not settle either way: a container the loop resets only on some paths, a container that is an alias, a call result or the loop target (`btn.on_click = ...`, where whether `btn` outlives the iteration depends on the collection), and a value taken back out of a per-iteration container and then stored (`handlers.append(batch[0])`), where the compiler does not track which element was taken. The callee may run it before returning, in which case the code is correct, or keep it, in which case every closure sees the last value. The warning does not fail `jac check`. Binding through a parameter removes it; so does `# jac:ignore[W2084]` on the line when the callee is known to run the closure in place.
 
 <!-- jac-skip -->
 ```jac
@@ -547,8 +547,10 @@ for item in items {
 - the closure is called on the spot (`(lambda { ... })()`), or is a local `def` or named `lambda` that is only ever called
 - the closure is the callback of an iteration combinator that runs it before returning (`map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `flatMap`, `reduceRight`, `sort`, `toSorted`) or a `key=` argument; a closure created inside such a callback is still checked
 - the closure is part of a `return` statement, which ends the loop, or is only used after the loop
+- the closure is assigned to a field of one object that the loop body overwrites unconditionally on every iteration (`self.on_progress = lambda { ... };`), so only the latest one exists
+- the closure is put in a list, tuple, set or dict literal that is created afresh in the iteration and stays there
 - the name is a parameter of the closure, a local of its own, or is read in a parameter default (evaluated when the closure is created)
-- the closure only assigns the name and never reads it
+- the closure only assigns the name and never reads it (an augmented assignment such as `count += 1` does read it)
 - the loop does not assign the binding (it was assigned before the loop), or the binding is a `glob`
 - the binding belongs to the loop itself: the `for` target, or a `def` declared in the loop body
 

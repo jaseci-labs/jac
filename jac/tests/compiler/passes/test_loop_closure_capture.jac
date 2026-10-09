@@ -137,7 +137,7 @@ glob HELD_NAMES = [
          "insertVal",
          "viaVal",
          "freshVal",
-         "extractVal",
+         "bumpVal",
          "genVal",
          "asyncVal",
          "entryLocal"
@@ -151,6 +151,10 @@ glob HELD_NAMES = [
          "anyVal",
          "batchVal",
          "resetVal",
+         "extractVal",
+         "pickVal",
+         "targetVal",
+         "aliasVal",
          "mapOuter",
          "hopVal"
      ];
