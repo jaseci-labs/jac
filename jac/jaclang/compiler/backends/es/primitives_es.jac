@@ -1456,6 +1456,10 @@ class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
 
+    def emit___import__(
+        self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+    ) -> (str | None);
+
     def emit_unsafe_html(
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
