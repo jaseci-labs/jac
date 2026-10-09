@@ -1,7 +1,8 @@
 """nghttp2 C FFI bindings for js_engine.
 
 nghttp2 is the HTTP/2 C library used by Node.js, curl, and many others.
-Version: 1.59.0  (system-installed at libnghttp2.so)
+Version: 1.59.0  (system-installed; bound by its soname libnghttp2.so.14,
+which the runtime package ships — the bare libnghttp2.so is only in -dev)
 
 Struct sizes (verified with gcc against nghttp2 1.59.0 headers, x86-64 LP64):
     nghttp2_nv             = 40 bytes  (name*:8, value*:8, namelen:8, valuelen:8, flags:1 + 7 pad)
@@ -24,7 +25,7 @@ Bun reference: bun/src/bun.js/bindings/nghttp2.h  (system lib, not vendored)
 Phase: D (HTTP/2 FFI foundation)
 """
 
-import from "libnghttp2.so" {
+import from "libnghttp2.so.14" {
     # ── Session lifecycle ─────────────────────────────────────────────────────
 
     # Create a client session. session_ptr is a (nghttp2_session**) C pointer;
