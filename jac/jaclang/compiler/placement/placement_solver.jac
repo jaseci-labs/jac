@@ -175,16 +175,21 @@ def native_default_path_ok(path: str) -> bool {
 }
 
 def place_unanalyzed(module: uni.Module, prog: JacProgram) {
-    """Place a module whose analysis did not run. Client placement is read
-    off syntax and symbol references, so it does not wait for types; a module
-    left unanalyzed is one that was never a native candidate.""";
+    """Run the placement solver for a module whose analysis schedule did not.
+    Client placement is read off syntax and symbol references, and it reaches
+    across modules: a client element pulls the helpers it imports. So it runs
+    for every module, decided or not. An undecided module also gets its plan
+    here; a module left unanalyzed was never a native candidate.""";
     import from jaclang.compiler.placement.placement_facts { contexts_of, write_plan }
-    given = contexts_of(module);
+    undecided = not module.gen.placement_mode;
+    given = contexts_of(module) if undecided else [];
     refresh_placement_module(module, prog);
     if solve_module_placement(module, prog) {
         placement_work(prog).changed(module);
     }
-    write_plan(module, given);
+    if undecided {
+        write_plan(module, given);
+    }
 }
 
 def native_placement_candidate(

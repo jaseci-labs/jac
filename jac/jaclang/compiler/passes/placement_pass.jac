@@ -688,7 +688,8 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
     import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
     import from jaclang.compiler.placement.placement_solver {
         placement_work,
-        refresh_placement_module
+        refresh_placement_module,
+        solve_module_placement
     }
     import from jaclang.compiler.placement.placement_facts { apply_plan, decode_plan }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
@@ -741,6 +742,7 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
         active_host().record_native_coverage(mod_path, 'native');
     }
     refresh_placement_module(ir_in, self.prog);
+    solve_module_placement(ir_in, self.prog);
     placement_work(self.prog).changed(ir_in);
     report_serverless_kind_errors(self, ir_in);
     return ir_in;
