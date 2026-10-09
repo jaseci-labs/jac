@@ -82,5 +82,9 @@ glob _BASH_TEMPLATE = (
          '            ;;\n'
          '    esac\n'
          '}\n'
-         '_%s "$@"\n'
+         'if [[ $ZSH_EVAL_CONTEXT == *:file ]]; then\n'
+         '    compdef _%s %s\n'
+         'else\n'
+         '    _%s "$@"\n'
+         'fi\n'
      );
