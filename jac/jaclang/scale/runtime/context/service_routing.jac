@@ -1,6 +1,7 @@
 import from jaclang.scale.runtime.context.util { k8s_safe_name, k8s_service_dns_host }
 
-glob KEDA_INTERCEPTOR_SERVICE_ADDRESS: str = "keda-add-ons-http-interceptor-proxy.keda:8080";
+glob KEDA_INTERCEPTOR_SERVICE_ADDRESS: str = "keda-add-ons-http-interceptor-proxy.keda:8080",
+     HTTP_ACTIVATED_WAKE_TIMEOUT: float = 300.0;
 
 
 obj ServiceRoute {
@@ -57,4 +58,23 @@ def resolve_service_route(
         return ServiceRoute(url=f"http://{interceptor_address}", host_header=real_host);
     }
     return ServiceRoute(url=f"http://{real_host}:{port}", host_header=None);
+}
+
+
+def is_http_activated(app_name: str) -> bool {
+    if not app_name {
+        return False;
+    }
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        scale_cfg = get_scale_config();
+        kubernetes_cfg = scale_cfg.get_kubernetes_config();
+        app_scale_cfg = scale_cfg.get_app_scale_config(app_name);
+    } except Exception {
+        return False;
+    }
+    return resolve_http_activation_config(
+        dict(kubernetes_cfg.get("http_activation", {})), app_scale_cfg
+    )
+        is not None;
 }

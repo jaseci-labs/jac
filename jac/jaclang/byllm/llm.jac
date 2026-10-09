@@ -11,7 +11,11 @@ import from typing { AsyncGenerator, Generator, cast }
 import type from litellm { Router }
 import type from llama_cpp { Llama }
 import from jaclang.byllm.mtir { MTRuntime }
-import from jaclang.byllm._optdeps.litellm { litellm, _disable_debugging }
+import from jaclang.byllm._optdeps.litellm {
+    litellm,
+    _disable_debugging,
+    when_litellm_loaded
+}
 import from jaclang.byllm._optdeps.openai { openai, OpenAI, AsyncOpenAI }
 import from jaclang.project.capabilities { require_optional }
 import from jaclang.byllm.systemone {
@@ -83,11 +87,15 @@ glob _byllm_config = get_byllm_config(),
      _streaming_config = _byllm_config.get_streaming_config(),
      _CACHE_CONTROL_EPHEMERAL: dict[str, any] = {"type": "ephemeral"};
 
+def _apply_litellm_debug_setting(module: any) {
+    module.suppress_debug_info = not _litellm_config.get("debug", False);
+}
+
 with entry {
     if _litellm_config['local_cost_map'] {
         os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
     }
-    litellm.suppress_debug_info = not _litellm_config.get("debug", False);
+    when_litellm_loaded(_apply_litellm_debug_setting);
 }
 
 glob _TOOL_DELTA_MIN_CHARS = 48,
@@ -110,9 +118,18 @@ def _stream_chunk_builder_accepts_logging_obj -> bool {
     }
 }
 
-glob _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ: bool = (
-         _stream_chunk_builder_accepts_logging_obj()
-     );
+glob _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ: bool | None = None,
+     _stream_builder_probe_cache: dict[str, bool] = {};
+
+def _stream_builder_accepts_logging_obj -> bool {
+    if _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ is not None {
+        return _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ;
+    }
+    if "accepts" not in _stream_builder_probe_cache {
+        _stream_builder_probe_cache["accepts"] = _stream_chunk_builder_accepts_logging_obj();
+    }
+    return _stream_builder_probe_cache["accepts"];
+}
 
 obj BaseLLM {
     has model_name: str,
@@ -266,7 +283,7 @@ obj Model(BaseLLM) {
         _mock_delegate: MockLLM | None = None,
         _local_delegate: BaseLLM | None = None,
         _so1_delegate: BaseLLM | None = None,
-        _async_proxy_client: AsyncOpenAI | None = None;
+        _async_proxy_client: any = None;
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> any;

@@ -536,12 +536,15 @@ impl _key_code(ch: str) -> str {
     return ch;
 }
 
-impl _press(cdp: CDP, key: str, modifiers: int = 0) {
+impl _key_down(key: str, modifiers: int = 0) -> dict[str, any] {
     vk = KEY_CODES.get(key, 0);
     code = key;
-    down = {"type": "keyDown", "key": key, "modifiers": modifiers};
+    down: dict[str, any] = {"type": "keyDown", "key": key, "modifiers": modifiers};
     if vk {
         down["windowsVirtualKeyCode"] = vk;
+        if key == "Enter" and modifiers in (0, 8) {
+            down["text"] = "\r";
+        }
     } elif len(key) == 1 {
         code = _key_code(key);
         down["windowsVirtualKeyCode"] = ord(key.upper());
@@ -550,10 +553,15 @@ impl _press(cdp: CDP, key: str, modifiers: int = 0) {
         }
     }
     down["code"] = code;
+    return down;
+}
+
+impl _press(cdp: CDP, key: str, modifiers: int = 0) {
+    down = _key_down(key, modifiers);
     cdp.call("Input.dispatchKeyEvent", down);
     cdp.call(
         "Input.dispatchKeyEvent",
-        {"type": "keyUp", "key": key, "code": code, "modifiers": modifiers}
+        {"type": "keyUp", "key": key, "code": down["code"], "modifiers": modifiers}
     );
 }
 
@@ -566,10 +574,22 @@ impl cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> st
     return "browser ready (about:blank)";
 }
 
-impl cmd_navigate(session: str, url: str) -> str {
-    if not re.`match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
-        url = "https://" + url;
+impl _normalize_url(url: str) -> str {
+    hierarchical = re.`match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url);
+    opaque = re.`match(
+        r"^(about|blob|chrome|data|devtools|file|javascript|view-source):", url, re.I
+    );
+    if hierarchical or opaque {
+        return url;
     }
+    local = re.`match(
+        r"^(([\w-]+\.)*localhost|127(\.\d+){3}|0\.0\.0\.0|\[::1\])([:/?#]|$)", url, re.I
+    );
+    return ("http://" if local else "https://") + url;
+}
+
+impl cmd_navigate(session: str, url: str) -> str {
+    url = _normalize_url(url);
     cdp = connect(session);
     cdp.call("Page.enable");
     cdp.call("Page.navigate", {"url": url});

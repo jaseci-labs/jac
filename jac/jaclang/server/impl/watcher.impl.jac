@@ -8,6 +8,31 @@ import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
 
+impl watch_roots(base: str, app_root: str, sources: list[str]) -> list[str] {
+    base_real = os.path.realpath(base);
+    root_real = os.path.realpath(app_root);
+    roots: set[str] = set();
+    for source in sources {
+        path = os.path.realpath(source);
+        if not path.startswith(root_real + os.sep) {
+            continue;
+        }
+        parts = os.path.relpath(path, root_real).split(os.sep);
+        if any(
+            p.startswith('.') or p in ('node_modules', 'venv', '__pycache__')
+            for p in parts
+        ) {
+            continue;
+        }
+        top = os.path.join(root_real, parts[0]);
+        if top != base_real and not top.startswith(base_real + os.sep) {
+            roots.add(top);
+        }
+    }
+    covered = any(base_real.startswith(r + os.sep) for r in roots);
+    return ([] if covered else [base]) + sorted(roots);
+}
+
 impl JacFileWatcher.start -> None {
     if self._running {
         return;

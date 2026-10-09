@@ -49,8 +49,8 @@ def:pub NativeSelectOptGroup(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <optgroup
         data-slot="native-select-optgroup"
-        className={props["className"]}
         {**attrs}
+        className={props["className"]}
     >
         {props["children"]}
     </optgroup>

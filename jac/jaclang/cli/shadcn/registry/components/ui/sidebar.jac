@@ -128,12 +128,12 @@ def:pub SidebarProvider(props: any) -> JsxElement {
     <SidebarContext.Provider value={ctxValue}>
         <div
             data-slot="sidebar-wrapper"
+            {**attrs}
             style={mergedStyle}
             className={cn(
                 "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
                 props["className"]
             )}
-            {**attrs}
         >
             {props["children"]}
         </div>
@@ -158,11 +158,11 @@ def:pub Sidebar(props: any) -> JsxElement {
         return
             <div
                 data-slot="sidebar"
+                {**attrs}
                 className={cn(
                     "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
                     props["className"]
                 )}
-                {**attrs}
             >
                 {props["children"]}
             </div>;
@@ -214,12 +214,12 @@ def:pub Sidebar(props: any) -> JsxElement {
                 <div
                     data-slot="sidebar-container"
                     data-side={side}
+                    {**attrs}
                     className={cn(
                         "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
                         containerClass,
                         props["className"]
                     )}
-                    {**attrs}
                 >
                     <div
                         data-sidebar="sidebar"
@@ -245,9 +245,9 @@ def:pub SidebarTrigger(props: any) -> JsxElement {
         data-slot="sidebar-trigger"
         variant="ghost"
         size="icon-sm"
-        className={cn("cn-sidebar-trigger", props["className"])}
-        onClick={handleClick}
         {**props}
+        onClick={handleClick}
+        className={cn("cn-sidebar-trigger", props["className"])}
     >
         <HugeiconsIcon icon={SidebarLeftIcon} className="cn-rtl-flip" size={16}/>
         <span className="sr-only">Toggle Sidebar</span>
@@ -265,11 +265,11 @@ def:pub SidebarRail(props: any) -> JsxElement {
         tabIndex={-1}
         onClick={toggleSidebar}
         title="Toggle Sidebar"
+        {**attrs}
         className={cn(
             "cn-sidebar-rail absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] sm:flex",
             props["className"]
         )}
-        {**attrs}
     />
 }
 
@@ -277,10 +277,10 @@ def:pub SidebarInset(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <main
         data-slot="sidebar-inset"
+        {**attrs}
         className={cn(
             "cn-sidebar-inset relative flex w-full flex-1 flex-col", props["className"]
         )}
-        {**attrs}
     />
 }
 
@@ -288,8 +288,8 @@ def:pub SidebarInput(props: any) -> JsxElement {
     <Input
         data-slot="sidebar-input"
         data-sidebar="input"
-        className={cn("cn-sidebar-input", props["className"])}
         {**props}
+        className={cn("cn-sidebar-input", props["className"])}
     />
 }
 
@@ -298,8 +298,8 @@ def:pub SidebarHeader(props: any) -> JsxElement {
     <div
         data-slot="sidebar-header"
         data-sidebar="header"
-        className={cn("cn-sidebar-header flex flex-col", props["className"])}
         {**attrs}
+        className={cn("cn-sidebar-header flex flex-col", props["className"])}
     />
 }
 
@@ -308,8 +308,8 @@ def:pub SidebarFooter(props: any) -> JsxElement {
     <div
         data-slot="sidebar-footer"
         data-sidebar="footer"
-        className={cn("cn-sidebar-footer flex flex-col", props["className"])}
         {**attrs}
+        className={cn("cn-sidebar-footer flex flex-col", props["className"])}
     />
 }
 
@@ -317,8 +317,8 @@ def:pub SidebarSeparator(props: any) -> JsxElement {
     <Separator
         data-slot="sidebar-separator"
         data-sidebar="separator"
-        className={cn("cn-sidebar-separator w-auto", props["className"])}
         {**props}
+        className={cn("cn-sidebar-separator w-auto", props["className"])}
     />
 }
 
@@ -327,11 +327,11 @@ def:pub SidebarContent(props: any) -> JsxElement {
     <div
         data-slot="sidebar-content"
         data-sidebar="content"
+        {**attrs}
         className={cn(
             "cn-sidebar-content flex min-h-0 flex-1 flex-col overflow-auto group-data-[collapsible=icon]:overflow-hidden",
             props["className"]
         )}
-        {**attrs}
     />
 }
 
@@ -340,10 +340,10 @@ def:pub SidebarGroup(props: any) -> JsxElement {
     <div
         data-slot="sidebar-group"
         data-sidebar="group"
+        {**attrs}
         className={cn(
             "cn-sidebar-group relative flex w-full min-w-0 flex-col", props["className"]
         )}
-        {**attrs}
     />
 }
 
@@ -353,11 +353,11 @@ def:pub SidebarGroupLabel(props: any) -> JsxElement {
     <Comp
         data-slot="sidebar-group-label"
         data-sidebar="group-label"
+        {**props}
         className={cn(
             "cn-sidebar-group-label flex shrink-0 items-center outline-hidden [&>svg]:shrink-0",
             props["className"]
         )}
-        {**props}
     />
 }
 
@@ -367,11 +367,11 @@ def:pub SidebarGroupAction(props: any) -> JsxElement {
     <Comp
         data-slot="sidebar-group-action"
         data-sidebar="group-action"
+        {**props}
         className={cn(
             "cn-sidebar-group-action flex aspect-square items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
             props["className"]
         )}
-        {**props}
     />
 }
 
@@ -380,8 +380,8 @@ def:pub SidebarGroupContent(props: any) -> JsxElement {
     <div
         data-slot="sidebar-group-content"
         data-sidebar="group-content"
-        className={cn("cn-sidebar-group-content w-full", props["className"])}
         {**attrs}
+        className={cn("cn-sidebar-group-content w-full", props["className"])}
     />
 }
 
@@ -390,10 +390,10 @@ def:pub SidebarMenu(props: any) -> JsxElement {
     <ul
         data-slot="sidebar-menu"
         data-sidebar="menu"
+        {**attrs}
         className={cn(
             "cn-sidebar-menu flex w-full min-w-0 flex-col", props["className"]
         )}
-        {**attrs}
     />
 }
 
@@ -402,8 +402,8 @@ def:pub SidebarMenuItem(props: any) -> JsxElement {
     <li
         data-slot="sidebar-menu-item"
         data-sidebar="menu-item"
-        className={cn("group/menu-item relative", props["className"])}
         {**attrs}
+        className={cn("group/menu-item relative", props["className"])}
     />
 }
 
@@ -423,8 +423,8 @@ def:pub SidebarMenuButton(props: any) -> JsxElement {
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
-        className={cn(btnClass, props["className"])}
         {**props}
+        className={cn(btnClass, props["className"])}
     />;
     if not tooltip {
         return button;
@@ -447,12 +447,12 @@ def:pub SidebarMenuAction(props: any) -> JsxElement {
     <Comp
         data-slot="sidebar-menu-action"
         data-sidebar="menu-action"
+        {**props}
         className={cn(
             "cn-sidebar-menu-action flex items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
             hoverClass,
             props["className"]
         )}
-        {**props}
     />
 }
 
@@ -461,11 +461,11 @@ def:pub SidebarMenuBadge(props: any) -> JsxElement {
     <div
         data-slot="sidebar-menu-badge"
         data-sidebar="menu-badge"
+        {**attrs}
         className={cn(
             "cn-sidebar-menu-badge flex items-center justify-center tabular-nums select-none group-data-[collapsible=icon]:hidden",
             props["className"]
         )}
-        {**attrs}
     />
 }
 
@@ -478,8 +478,8 @@ def:pub SidebarMenuSkeleton(props: any) -> JsxElement {
     <div
         data-slot="sidebar-menu-skeleton"
         data-sidebar="menu-skeleton"
-        className={cn("cn-sidebar-menu-skeleton flex items-center", props["className"])}
         {**attrs}
+        className={cn("cn-sidebar-menu-skeleton flex items-center", props["className"])}
     >
         {showIcon
             and (
@@ -501,8 +501,8 @@ def:pub SidebarMenuSub(props: any) -> JsxElement {
     <ul
         data-slot="sidebar-menu-sub"
         data-sidebar="menu-sub"
-        className={cn("cn-sidebar-menu-sub flex min-w-0 flex-col", props["className"])}
         {**attrs}
+        className={cn("cn-sidebar-menu-sub flex min-w-0 flex-col", props["className"])}
     />
 }
 
@@ -511,8 +511,8 @@ def:pub SidebarMenuSubItem(props: any) -> JsxElement {
     <li
         data-slot="sidebar-menu-sub-item"
         data-sidebar="menu-sub-item"
-        className={cn("group/menu-sub-item relative", props["className"])}
         {**attrs}
+        className={cn("group/menu-sub-item relative", props["className"])}
     />
 }
 
@@ -526,10 +526,10 @@ def:pub SidebarMenuSubButton(props: any) -> JsxElement {
         data-sidebar="menu-sub-button"
         data-size={size}
         data-active={isActive}
+        {**props}
         className={cn(
             "cn-sidebar-menu-sub-button flex min-w-0 -translate-x-px items-center overflow-hidden outline-hidden group-data-[collapsible=icon]:hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:shrink-0",
             props["className"]
         )}
-        {**props}
     />
 }

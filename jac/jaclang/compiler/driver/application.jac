@@ -669,6 +669,15 @@ def _prepare(
     }
 }
 
+def _unit_lookup(
+    units: dict[str, ManifestSource]
+) -> Callable[[str], ManifestSource | None] {
+    def lookup(source: str) -> (ManifestSource | None) {
+        return units.get(os.path.realpath(source));
+    }
+    return lookup;
+}
+
 def _kernel_units(
     program: any, entries: list[str], `root: str, before: int, inputs: dict[str, str]
 ) -> (dict[str, ManifestSource] | None) {
@@ -865,15 +874,11 @@ def _prepare_revision(
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
         if units is not None {
-            emitted = units;
-            def emitted_unit(source: str) -> (ManifestSource | None) {
-                return emitted.get(os.path.realpath(source));
-            }
             revision.manifests[path] = build_manifest(
                 `root,
-                emitted[os.path.realpath(path)],
-                emitted_unit,
-                list(emitted.values())
+                units[os.path.realpath(path)],
+                _unit_lookup(units),
+                list(units.values())
             );
         } else {
             revision.manifests[path] = _manifest(program, path, `root, modules[path]);
