@@ -99,12 +99,28 @@ test "server-context import of another serving app is SERVICE_BRIDGE" {
     assert "E5104" not in codes(prog);
 }
 
-test "bridging to a plain (private) walker of another app is E5106" {
-    (prog, mod) = compile_fixture(fixture("web", "bad_walker_bridge.jac"));
-    found = codes(prog);
-    assert "E5106" in found , (
-        f"expected E5106 for a private walker, got {[str(e) for e in prog.errors_had]}"
-    );
+test "bridging to a private element of another app is E5106" {
+    cases = [
+        ("bad_bridge.jac", "hidden"),
+        ("bad_walker_bridge.jac", "Housekeep"),
+        ("bad_reexport_bridge.jac", "Sweep")
+    ];
+    for (consumer, name) in cases {
+        (prog, mod) = compile_fixture(fixture("web", consumer));
+        found = codes(prog);
+        msgs = [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code == "E5106"
+        ];
+        assert any(f"'{name}'" in m for m in msgs) , (
+            f"{consumer}: expected E5106 naming '{name}', got "
+            + str([str(e) for e in prog.errors_had])
+        );
+        assert "E5082" not in found , (
+            f"{consumer}: cross-app dead bindings report E5106, not E5082"
+        );
+    }
 }
 
 test "SERVICE_BRIDGE stubs are typed-async and keyed by the owner app" {
@@ -146,17 +162,32 @@ test "client-context import of server-placed elements is CLIENT_BRIDGE" {
     assert ("web", "social") in mod.gen.interop_manifest.app_edges;
 }
 
-test "direct and aliased client RPC calls retain the service route" {
+test "direct, aliased and re-imported client RPC calls retain the service route" {
     (prog, mod) = compile_fixture(fixture("web", "panel.jac"), cgen=True, app="web");
     assert not prog.errors_had , str(prog.errors_had);
-    calls = re.findall(r'__jacCallFunction\("greet",[^\n]+', mod.gen.js);
-    assert len(calls) == 4 , mod.gen.js;
+    js = mod.gen.js;
+    calls = re.findall(r'__jacCallFunction\("greet",[^\n]+', js);
+    assert len(calls) == 4 , js;
+    calls += re.findall(r'__jacCallFunction\("relay",[^\n]+', js);
+    assert len(calls) > 4 , (
+        "a def:pub the entry re-imports from social_ops bridges like greet; got:\n" + js
+    );
     for call in calls {
         assert '"app": "social"' in call , call;
         assert '"route": "/api/social"' in call , call;
         assert '"contract":' in call , call;
     }
-    assert '__jacCallFunction("hello"' not in mod.gen.js;
+    assert '__jacCallFunction("hello"' not in js;
+    at = js.find('__jacSpawn("Relay"');
+    assert at >= 0 and '"app": "social"' in js[at:at + 400] , js;
+    social_path = os.path.realpath(fixture("social_app.jac"));
+    assert all(
+        os.path.realpath(path) != social_path
+        for path in mod.gen.client_manifest.runtime_imports
+    ) , (
+        "bridged names never become runtime imports of the provider entry; got "
+        + str(mod.gen.client_manifest.runtime_imports)
+    );
 }
 
 test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
@@ -175,15 +206,6 @@ test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
         source_module=resolved
     );
     assert classify_cross_app_import(imp, manifest) == CrossAppKind.NATIVE_BIND;
-}
-
-test "bridging to a non-pub def of another app is E5106" {
-    (prog, mod) = compile_fixture(fixture("web", "bad_bridge.jac"));
-    found = codes(prog);
-    assert "E5106" in found , (
-        f"expected E5106, got {[str(e) for e in prog.errors_had]}"
-    );
-    assert "E5082" not in found , "cross-app dead bindings report E5106, not E5082";
 }
 
 test "app dependency cycle is E5104" {

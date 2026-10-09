@@ -43,6 +43,7 @@ to the selected app context.
 ## The bridge surface and its laws
 
 - An **exposed** declaration - `walker:pub` / `walker:protect` or `def:pub` / `def:protect` - is callable from any consumer app; plain and `:priv` declarations are private to their own server. Bridging to a private element is **E5106**.
+- An entry may re-import its endpoints from implementation modules instead of declaring them: a name imported through the entry bridges to the entry's app, with exposure read from the declaration it resolves to.
 - **E5108**: an app may not import another app's `node` or `edge`. Only exposed walkers and functions bridge; an imported `obj` or `enum` mirrors as a boundary type.
 - Every bridged import is an edge consumer -> provider; the graph must be a DAG, providers boot first. **E5104** names the import that closes a cycle: move the code both need into shared code, or fold one app into the other.
 - **E5105**: a `.native.jac` platform variant disagrees with its base module's public surface.

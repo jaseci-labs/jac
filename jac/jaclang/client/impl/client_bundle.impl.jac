@@ -110,6 +110,13 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
         if not formatted {
             formatted = '\n'.join(str(err) for err in diagnostic_program.errors_had);
         }
+        if not formatted {
+            formatted = (
+                " it lowers to no client code. Client code imports a runtime "
+                "value from it, but it declares nothing that runs on or is "
+                "exposed to the client."
+            );
+        }
         raise ClientBundleError(
             f"Failed to compile '{source_path}' for client bundle:{formatted}"
         );

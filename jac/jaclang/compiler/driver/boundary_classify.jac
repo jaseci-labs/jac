@@ -522,7 +522,7 @@ def _declared_name(stmt: uni.ContextAwareNode) -> (str | None) {
     return None;
 }
 
-def _import_item_declaration(
+def import_item_declaration(
     source_mod: uni.Module, item: uni.ModuleItem
 ) -> (uni.ContextAwareNode | None) {
     if not isinstance(item.name, uni.Name) {
@@ -535,10 +535,10 @@ def _import_item_declaration(
         }
     }
     sym = source_mod.lookup(wanted);
-    if sym is None or sym.decl is None {
+    if sym is None {
         return None;
     }
-    cur: (uni.UniNode | None) = sym.decl;
+    cur: (uni.UniNode | None) = uni.resolved_decl_of(sym);
     while cur is not None and not isinstance(cur, uni.Module) {
         if isinstance(cur, uni.ContextAwareNode) {
             return cur;
@@ -554,7 +554,7 @@ def classify_client_import_item(
     if not isinstance(item, uni.ModuleItem) {
         return ClientImportVerdict.UNKNOWN;
     }
-    owner = _import_item_declaration(source_mod, item);
+    owner = import_item_declaration(source_mod, item);
     if owner is None or isinstance(owner, uni.Import) {
         return ClientImportVerdict.UNKNOWN;
     }

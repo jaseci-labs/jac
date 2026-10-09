@@ -765,11 +765,11 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
         _default_codespace_for,
         classify_client_import_item,
         import_declares_native_target,
+        import_item_declaration,
         is_client_boundary_import,
         is_client_native_edge_import
     }
     import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.frontend.unitree { ability_of_symbol }
     import from jaclang.compiler.frontend.codeinfo {
         is_bundled_native_module,
         resolve_native_module
@@ -969,10 +969,9 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                             if verdict != ClientImportVerdict.BRIDGED {
                                 continue;
                             }
-                            sym_name = item.name.value;
-                            decl = ability_of_symbol(linked_mod.lookup(sym_name));
-                            if decl is not None {
-                                facts.bridged_decls[sym_name] = decl;
+                            decl = import_item_declaration(linked_mod, item);
+                            if isinstance(decl, uni.Ability) {
+                                facts.bridged_decls[item.name.value] = decl;
                             }
                         }
                     }

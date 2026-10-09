@@ -206,6 +206,12 @@ is private to its own server and is not an endpoint at all. Bridging to a
 private element is **`E5106`**. There are no per-app grants, and no config
 entry changes exposure: `[placement.pins]` decides only where code runs.
 
+An entry does not have to declare its endpoints itself. A walker or function
+the entry imports from one of its implementation modules is on its bridge
+surface too: a consumer that imports the name through the entry bridges to the
+entry's app, and the exposure is read from the declaration the name resolves
+to, so a re-imported private element is still `E5106`.
+
 ## Routes
 
 An app with a server answers under its `route`, default `/api/<name>`. Routes
