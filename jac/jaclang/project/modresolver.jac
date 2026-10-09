@@ -380,14 +380,21 @@ def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | No
 }
 
 def platform_variant(candidate: str) -> (str | None) {
+    found: list[str] = [
+        tag
+        for tag in PLATFORM_TAGS
+        if os.path.isfile(f"{candidate}.{tag}.jac")
+    ];
+    if not found {
+        return None;
+    }
     import from jaclang.compiler.frontend.codeinfo {
         native_target_arch,
         native_target_os
     }
     for tag in (native_target_arch(), native_target_os()) {
-        path = f"{candidate}.{tag}.jac";
-        if os.path.isfile(path) {
-            return path;
+        if tag in found {
+            return f"{candidate}.{tag}.jac";
         }
     }
     return None;
@@ -1108,6 +1115,15 @@ def get_typeshed_paths -> list[str] {
 def in_typeshed_tree(path: str) -> bool {
     return "/vendor/typeshed/" in path.replace("\\", "/");
 }
+
+glob PLATFORM_TAGS: tuple[str, ...] = (
+         "linux",
+         "darwin",
+         "windows",
+         "aarch64",
+         "x86_64",
+         "wasm32"
+     );
 
 def in_native_library(path: str) -> bool {
     return "/runtime/na_stdlib/" in path.replace("\\", "/");
