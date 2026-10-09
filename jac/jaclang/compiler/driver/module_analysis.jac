@@ -246,5 +246,13 @@ def analyze_module(
     } finally {
         host.record_placement_plan(path, "");
     }
+    if task.module is not None
+        and not task.parse_failed
+        and not task.module.gen.placement_mode {
+        raise RuntimeError(
+            f"the placement plan for {path} was not applied to its second "
+            f"analysis ({plan})"
+        );
+    }
     return task;
 }
