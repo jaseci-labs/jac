@@ -1390,12 +1390,13 @@ impl serve(
             }
             try {
                 import from jaclang.server.hmr { HotReloader }
-                import from jaclang.server.watcher { JacFileWatcher, watch_roots }
+                import from jaclang.server.watcher {
+                    JacFileWatcher,
+                    application_watch_roots
+                }
 
-                watch_paths = watch_roots(
-                    base,
-                    prepared.`root,
-                    [str(k) for k in Jac.get_program().mod.hub.keys()]
+                watch_paths = application_watch_roots(
+                    base, prepared, Jac.get_program()
                 );
                 watcher = JacFileWatcher(watch_paths=watch_paths);
                 client_compiler = None;

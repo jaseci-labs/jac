@@ -4,7 +4,9 @@ import from pathlib { Path }
 
 enum ChangeType { CREATED, MODIFIED, DELETED }
 
+def annex_folders_of(module_path: str) -> list[str];
 def watch_roots(base: str, app_root: str, sources: list[str]) -> list[str];
+def application_watch_roots(base: str, application: any, program: any) -> list[str];
 
 obj FileChangeEvent {
     has path: str,
@@ -43,6 +45,7 @@ obj JacFileWatcher {
     ) -> None;
 
     def _debounce_flush -> None;
+    def _beside_watched_file(path: str) -> bool;
     def _matches_pattern(path: str) -> bool;
     def _notify_callbacks(event: FileChangeEvent) -> None;
 }

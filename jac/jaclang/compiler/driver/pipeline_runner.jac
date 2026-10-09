@@ -147,6 +147,7 @@ def compile_application(
     import from jaclang.compiler.frontend.unitree { Import, ModulePath }
     import from jaclang.compiler.backends.py.artifact_imports { package_sources }
     import from jaclang.jac0core.ext_registry { is_annex }
+    import from jaclang.runtime.prepared { holds_application_code }
     import from jaclang.project.app_kinds { kind_has_client }
     entry_path = os.path.realpath(entry_path);
     project_root = os.path.realpath(
@@ -225,10 +226,7 @@ def compile_application(
                     program._get_compiler().selfhost.resolve(dependency, context)
                 )
                 and os.path.isfile(dependency)
-                and not any(
-                    part in ('.jac', 'node_modules', 'venv')
-                    for part in os.path.relpath(dependency, project_root).split(os.sep)
-                )
+                and holds_application_code(os.path.relpath(dependency, project_root))
         );
     }
     if entry_module is None {

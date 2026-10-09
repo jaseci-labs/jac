@@ -17,7 +17,8 @@ import from jaclang.server.watcher {
     ChangeType,
     FileChangeEvent,
     JacFileWatcher,
-    watch_roots
+    watch_roots,
+    application_watch_roots
 }
 
 def _as_any(v: any) -> any {
@@ -100,26 +101,106 @@ test "watch roots cover the directories the application's modules come from" {
     }
 }
 
-test "a watched directory outside the first one delivers its changes" {
+test "nothing under site-packages or a hidden directory becomes a watch root" {
+    import os;
     with tempfile.TemporaryDirectory() as tmp {
-        entry_dir = Path(tmp) / "web";
-        shared_dir = Path(tmp) / "core";
-        entry_dir.mkdir();
-        shared_dir.mkdir();
-        seen: list[str] = [];
-        watcher = JacFileWatcher(watch_paths=[str(entry_dir), str(shared_dir)]);
-        watcher.add_callback(lambda (e: FileChangeEvent) { seen.append(e.path); });
-        watcher.start();
+        top = os.path.realpath(tmp);
+        base = os.path.join(top, "web");
+        os.makedirs(base);
+        sources = [
+            os.path.join(base, "main.jac"),
+            os.path.join(
+                top, "env", "lib", "python3.12", "site-packages", "pkg", "m.jac"
+            ),
+            os.path.join(top, ".venv", "lib", "site-packages", "pkg", "m.jac"),
+            os.path.join(top, "venv", "lib", "pkg", "m.jac"),
+            os.path.join(top, "core", "__pycache__", "m.jac")
+        ];
+        assert watch_roots(base, top, sources) == [base];
+    }
+}
+
+# The dev server hands the watcher the prepared application's root and the
+# modules the program loaded. On a workspace-shaped project that has to reach
+# the sibling directory the entry imports from.
+test "the watch roots of a prepared workspace app include its shared directory" {
+    import os;
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { forget }
+    with tempfile.TemporaryDirectory() as tmp {
+        top = os.path.realpath(tmp);
+        web = os.path.join(top, "web");
+        os.makedirs(web);
+        os.makedirs(os.path.join(top, "core"));
+        Path(top, "core", "shared.jac").write_text('def value -> int { return 1; }\n');
+        source_path = Path(web, "main.jac");
+        source_path.write_text(
+            'import from core.shared { value }\n\ndef doubled -> int { return value() * 2; }\n'
+        );
+        application = prepare_application(str(source_path), Jac.get_program(), top);
         try {
-            (shared_dir / "life.jac").write_text("glob x = 1;\n");
-            deadline = time.time() + 5;
-            while not seen and time.time() < deadline {
-                time.sleep(0.05);
-            }
+            roots = application_watch_roots(web, application, Jac.get_program());
+            assert roots == [web, os.path.join(top, "core")] , str(roots);
         } finally {
-            watcher.stop();
+            forget(str(source_path));
         }
-        assert any(p.endswith("life.jac") for p in seen) , f"no event for the shared module: {seen}";
+    }
+}
+
+test "a watched file reports itself and its annexes, not the files beside it" {
+    with tempfile.TemporaryDirectory() as tmp {
+        top = Path(tmp).resolve();
+        (top / "core").mkdir();
+        shared = top / "shared.jac";
+        shared.write_text("glob x = 1;\n");
+        watcher = JacFileWatcher(watch_paths=[str(top / "core"), str(shared)]);
+        for name in [
+            "other.jac",
+            "shared.jac",
+            "shared.impl.jac",
+            "shared.extra.impl.jac",
+            "shared.test.jac",
+            "shared.extra.jac",
+            "sharedness.jac",
+            "core/inside.jac"
+        ] {
+            watcher._on_change(str(top / name), ChangeType.MODIFIED);
+        }
+        for name in ["shared.impl", "impl", "docs"] {
+            watcher._on_change(str(top / name), ChangeType.CREATED, True);
+        }
+        seen = sorted(Path(p).name for p in watcher._pending_events);
+        assert seen
+            == [
+                "impl",
+                "inside.jac",
+                "shared.extra.impl.jac",
+                "shared.impl",
+                "shared.impl.jac",
+                "shared.jac",
+                "shared.test.jac"
+            ] , str(seen);
+    }
+}
+
+test "a root-level module brings its annex folders into the watch roots" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        top = os.path.realpath(tmp);
+        base = os.path.join(top, "web");
+        for rel in ["web", "shared.impl", "impl", "other.impl"] {
+            os.makedirs(os.path.join(top, rel));
+        }
+        shared = os.path.join(top, "shared.jac");
+        sources = [os.path.join(base, "main.jac"), shared];
+        assert watch_roots(base, top, sources)
+            == [
+                base,
+                os.path.join(top, "impl"),
+                os.path.join(top, "shared.impl"),
+                shared
+            ];
     }
 }
 
