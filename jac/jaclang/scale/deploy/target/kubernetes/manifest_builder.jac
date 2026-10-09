@@ -1379,11 +1379,15 @@ obj ManifestBuilder {
         return {"exec": {"command": ["sh", "-c", f"sleep {cushion}"]}};
     }
 
+    def _fleet_role(svc_name: str) -> str {
+        return "gateway" if svc_name == GATEWAY_NAME else "microservice";
+    }
+
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, any]
     ) -> dict[str, any] {
         k8s_name = k8s_safe_name(svc_name);
-        role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
+        role: str = self._fleet_role(svc_name);
         labels: dict[str, str] = {
             ** self._owner_labels(),
             "app": k8s_name,
@@ -1450,7 +1454,8 @@ obj ManifestBuilder {
                 "labels": {
                     ** self._owner_labels(),
                     "app": k8s_name,
-                    "managed": "jac-scale"
+                    "managed": "jac-scale",
+                    "jac-scale.role": self._fleet_role(svc_name)
                 }
             },
             "spec": spec
@@ -1779,7 +1784,11 @@ obj ManifestBuilder {
             "metadata": {
                 "name": f"{k8s_name}-pdb",
                 "namespace": self.k8s_config.namespace,
-                "labels": {"app": k8s_name, "managed": "jac-scale"}
+                "labels": {
+                    "app": k8s_name,
+                    "managed": "jac-scale",
+                    "jac-scale.role": self._fleet_role(svc_name)
+                }
             },
             "spec": spec
         };

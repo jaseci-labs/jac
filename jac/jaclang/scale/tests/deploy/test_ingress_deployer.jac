@@ -8,7 +8,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 
-def _render_rules(domain: str) -> list[any] {
+def _render_body(domain: str) -> dict[str, any] {
     config = KubernetesConfig(app_name="myapp", namespace="test-ns", domain=domain);
     deployer = IngressDeployer(k8s_config=config, logger=None);
     networking_v1 = unittest.mock.MagicMock();
@@ -24,14 +24,24 @@ def _render_rules(domain: str) -> list[any] {
     );
     call_args = networking_v1.patch_namespaced_ingress.call_args;
     assert call_args is not None;
-    return call_args.kwargs["body"]["spec"]["rules"];
+    return call_args.kwargs["body"];
+}
+
+def _render_rules(domain: str) -> list[any] {
+    return _render_body(domain)["spec"]["rules"];
 }
 
 test "per-app ingress with a domain keeps a host-bound rule across deploys" {
     # The host rule is what ingress-nginx binds the TLS cert to; without
     # it every redeploy of a TLS-enabled app dropped the binding set by
     # enable_tls and nginx served its self-signed fallback cert (#7707).
-    rules = _render_rules("example.com");
+    body = _render_body("example.com");
+    rules = body["spec"]["rules"];
+    labels = body["metadata"]["labels"];
+    assert labels.get("managed") == "jac-scale"
+        and labels.get("jac-scale.role") == "gateway" , (
+        f"the per-app ingress must carry the role label the fleet sweeps select on, got {labels}"
+    );
     assert len(rules) == 2 , f"expected host rule + catch-all, got {rules}";
     assert rules[0].get("host") == "example.com";
     assert "host" not in rules[1] , "catch-all rule must keep serving the raw load-balancer hostname";

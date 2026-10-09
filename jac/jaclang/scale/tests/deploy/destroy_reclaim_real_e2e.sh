@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Real-cluster e2e for destroy reclamation (#7968).
 #
-# Five properties, each one a bug this change fixes:
+# Six properties, each one a bug this change fixes:
 #
 #   A  owned namespace     the namespace jac-scale created is reclaimed whole
 #   B  adopted namespace   a namespace it did not create survives, foreign
@@ -13,6 +13,9 @@
 #                          is still reclaimed
 #   E  sibling app         a PVC belonging to an app sharing a name prefix is
 #                          never deleted
+#   F  application only    destroying just the application leaves the database
+#                          and its Service in place, and still clears the
+#                          Service and PDB of an app deployed before roles
 #
 # Requires a reachable cluster (kind/minikube/microk8s/EKS) on the current
 # kubeconfig context and the scale deploy deps installed for `jac`.
@@ -349,6 +352,38 @@ require_present "${ADOPTED_NS}" rolebinding "${SIBLING}-ops"
 echo "  ops RBAC reclaimed for '${APP}', left alone for '${SIBLING}'"
 _t "B+D+E PASSED"
 
+# F: destroying only the application. The database and monitoring Services share
+# the namespace and the managed=jac-scale label, so only the fleet roles may
+# select what goes. The Service and PDB are stripped of their role first, the
+# shape an app deployed before roles existed has, which destroy must still clear.
+echo "=== F: destroy --component application spares the database's Service ==="
+deploy_app "${APP}" "${ADOPTED_NS}"
+kubectl label service "${APP}-service" -n "${ADOPTED_NS}" jac-scale.role- >/dev/null \
+    || fail "${ADOPTED_NS}" "service/${APP}-service was not there to relabel as pre-role"
+# The app deploys without a PodDisruptionBudget (a floor of one replica that may
+# lose one makes the builder return none), so seed one in the pre-role shape.
+kubectl delete pdb "${APP}-pdb" -n "${ADOPTED_NS}" --ignore-not-found >/dev/null
+kubectl create pdb "${APP}-pdb" -n "${ADOPTED_NS}" --selector="app=${APP}" --max-unavailable=1 >/dev/null \
+    || fail "${ADOPTED_NS}" "could not seed a pre-role pdb/${APP}-pdb"
+kubectl label pdb "${APP}-pdb" -n "${ADOPTED_NS}" managed=jac-scale >/dev/null
+require_present "${ADOPTED_NS}" pdb "${APP}-pdb"
+require_present "${ADOPTED_NS}" service "${APP}-postgres-service"
+
+SDK_DEPLOY_COMPONENT=application destroy_app "${APP}" "${ADOPTED_NS}"
+
+require_absent  "${ADOPTED_NS}" deployment "${APP}-deployment"
+require_absent  "${ADOPTED_NS}" service "${APP}-service"
+require_absent  "${ADOPTED_NS}" pdb "${APP}-pdb"
+require_absent  "${ADOPTED_NS}" service gateway-service
+require_present "${ADOPTED_NS}" statefulset "${APP}-postgres"
+require_present "${ADOPTED_NS}" service "${APP}-postgres-service"
+echo "  application and its pre-role Service removed, database and its Service kept"
+
+# The database is still deployed; a full destroy clears it before C starts.
+destroy_app "${APP}" "${ADOPTED_NS}"
+require_absent "${ADOPTED_NS}" statefulset "${APP}-postgres"
+_t "F PASSED"
+
 ########################## scenario C: co-tenant apps ##########################
 echo "=== C: two apps in one namespace, destroying one must not delete the other ==="
 kubectl delete namespace "${COTENANT_NS}" --ignore-not-found --timeout=300s >/dev/null 2>&1 || true
@@ -401,4 +436,4 @@ echo "  '${COTENANT}' database and volumes survived the owner's destroy"
 _t "C PASSED"
 
 print_timing_report
-echo "=== destroy reclamation REAL e2e PASSED (A B C D E) ==="
+echo "=== destroy reclamation REAL e2e PASSED (A B C D E F) ==="
