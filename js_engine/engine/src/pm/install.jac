@@ -289,18 +289,20 @@ def _trust_via_requests(lf: Lockfile, requested: list[str]) -> list[str] {
 }
 
 """Run lifecycle scripts after the packages are in place (bun: dependency
-scripts, then the root's), and count blocked ones. Only packages resolved this
-run are known to have install scripts (the text lockfile does not record it),
-which matches bun: installs from a lockfile run no dependency scripts and
-report nothing blocked. Returns (blocked packages, blocked scripts, exit code)."""
+scripts, then the root's), and count blocked ones. A dependency's scripts are
+read from the package.json of every package installed this run
+(summary.installed_keys), whether or not its version had to be resolved: the
+text lockfile does not record install scripts, and a fresh install from a
+matching bun.lock (CI, a deleted node_modules) must run trusted packages'
+setup the way the first install did. Packages already in place are not
+installed again, so their scripts do not re-run. Returns (blocked packages,
+blocked scripts, exit code)."""
 def _run_lifecycle(
     cfg: PmConfig,
     root_dir: str,
     pj: JVal,
     lf: Lockfile,
     summary: InstallSummary,
-    rr: ResolveResult,
-    resolved: bool,
     trust: TrustCtx,
     via: list[str]
 ) -> tuple[int, int, int] {
@@ -317,63 +319,56 @@ def _run_lifecycle(
     if cpu_name == "" {
         cpu_name = pm_current_cpu();
     }
-    if resolved {
-        has_script: dict[str, bool] = {};
-        for p in rr.pkg_graph.pkgs {
-            if p.kind != "root" and p.kind != "workspace" and p.has_install_script {
-                has_script[p.name + "@" + p.version] = True;
-            }
+    project_trusted: list[str] = jv_str_list(jv_get(pj, "trustedDependencies"));
+    has_project_list: bool = jv_has(pj, "trustedDependencies");
+    if trust.active {  # add --trust: the list as it was before add edited package.json
+        project_trusted = trust.project_list;
+        has_project_list = trust.has_project_list;
+    }
+    defaults: list[str] = lifecycle_default_trusted();
+    for key in summary.installed_keys {
+        if not (key in lf.by_key) {
+            continue;
         }
-        project_trusted: list[str] = jv_str_list(jv_get(pj, "trustedDependencies"));
-        has_project_list: bool = jv_has(pj, "trustedDependencies");
-        if trust.active {  # add --trust: the list as it was before add edited package.json
-            project_trusted = trust.project_list;
-            has_project_list = trust.has_project_list;
+        lp: LockPkg = lf.packages[lf.by_key[key]];
+        if lp.kind == "workspace" or lp.kind == "root" {
+            continue;
         }
-        defaults: list[str] = lifecycle_default_trusted();
-        for key in summary.installed_keys {
-            if not (key in lf.by_key) {
-                continue;
-            }
-            lp: LockPkg = lf.packages[lf.by_key[key]];
-            if lp.kind == "workspace" or lp.kind == "root" {
-                continue;
-            }
-            if not ((lp.name + "@" + lp.version) in has_script) {
-                continue;
-            }
-            if pm_native_binlink_target(lf, lp, os_name, cpu_name).key != "" {
-                continue;
-            }
-            dest: str = root_dir + "/" + lockfile_key_to_path(key);
-            if key in summary.installed_dirs {
-                dest = summary.installed_dirs[key];
-            }  # isolated store path
-            dpj: PkgJson = pm_read_package_json(dest + "/package.json");
-            if not dpj.ok {
-                continue;
-            }
-            via_request: bool = lp.dep_name in via;
+        if pm_native_binlink_target(lf, lp, os_name, cpu_name).key != "" {
+            continue;
+        }
+        dest: str = root_dir + "/" + lockfile_key_to_path(key);
+        if key in summary.installed_dirs {
+            dest = summary.installed_dirs[key];
+        }  # isolated store path
+        dpj: PkgJson = pm_read_package_json(dest + "/package.json");
+        if not dpj.ok {
+            continue;
+        }
+        if lifecycle_install_script_count(dpj.json) == 0
+            and not fsx_is_file(dest + "/binding.gyp") {
+            continue;
+        }  # no setup to run or block (binding.gyp implies `node-gyp rebuild`)
+        via_request: bool = lp.dep_name in via;
+        if via_request
+            or lifecycle_is_trusted(
+                lp.dep_name, lp.kind, project_trusted, has_project_list, defaults
+            ) {
+            sl: ScriptList = lifecycle_collect(dpj.json, dest, lp.name, lp.kind);
             if via_request
-                or lifecycle_is_trusted(
-                    lp.dep_name, lp.kind, project_trusted, has_project_list, defaults
-                ) {
-                sl: ScriptList = lifecycle_collect(dpj.json, dest, lp.name, lp.kind);
-                if via_request
-                    and len(sl.scripts) > 0
-                    and not (lp.dep_name in trust.ran_via) {
-                    trust.ran_via.append(lp.dep_name);
-                }
-                rc: int = lifecycle_run(sl, root_dir, lp.version, False);
-                if rc != 0 {
-                    return (blocked_pkgs, blocked_scripts, rc);
-                }
-            } else {
-                cnt: int = lifecycle_install_script_count(dpj.json);
-                if cnt > 0 {
-                    blocked_pkgs = blocked_pkgs + 1;
-                    blocked_scripts = blocked_scripts + cnt;
-                }
+                and len(sl.scripts) > 0
+                and not (lp.dep_name in trust.ran_via) {
+                trust.ran_via.append(lp.dep_name);
+            }
+            rc: int = lifecycle_run(sl, root_dir, lp.version, False);
+            if rc != 0 {
+                return (blocked_pkgs, blocked_scripts, rc);
+            }
+        } else {
+            cnt: int = lifecycle_install_script_count(dpj.json);
+            if cnt > 0 {
+                blocked_pkgs = blocked_pkgs + 1;
+                blocked_scripts = blocked_scripts + cnt;
             }
         }
     }
@@ -498,7 +493,10 @@ def:pub pm_install_project(
     resolved: bool = False;
     prefetch_errors: list[str] = [];
     if not up_to_date {
-        if cfg.frozen_lockfile and have_lock {
+        # Frozen means install exactly what bun.lock pins: resolving anything —
+        # including when there is no lockfile to install from — is refused,
+        # rather than resolving unpinned versions and writing a new lock.
+        if cfg.frozen_lockfile {
             _err("error: lockfile had changes, but lockfile is frozen\n");
             _err(
                 "note: try re-running without --frozen-lockfile and commit the updated lockfile\n"
@@ -647,7 +645,7 @@ def:pub pm_install_project(
     }
 
     lc: tuple[int, int, int] = _run_lifecycle(
-        cfg, root_dir, pj, lf_install, summary, rr, resolved, trust, via
+        cfg, root_dir, pj, lf_install, summary, trust, via
     );
     script_rc: int = lc[2];
     blocked_info: str = "\n";
