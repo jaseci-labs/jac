@@ -3800,8 +3800,9 @@ impl NaIRGenPass._emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value {
     pay_eq = self.builder.icmp_signed("==", lpay, rpay, name="jv.eq.pay");
     same_kind_eq = self.builder.and_(tag_eq, pay_eq, name="jv.eq.samekind");
     f64 = ir.DoubleType();
-    sides: list[tuple[ir.Value, ir.Value]] = [];
-    for (side, tag, pay) in [("l", ltag, lpay), ("r", rtag, rpay)] {
+    i64v = ir.IntType(64);
+    kinds: list[tuple[ir.Value, ir.Value]] = [];
+    for (side, tag) in [("l", ltag), ("r", rtag)] {
         is_float = self.builder.icmp_signed(
             "==", tag, ir.Constant(i8, 1), name=f"jv.eq.{side}flt"
         );
@@ -3818,22 +3819,54 @@ impl NaIRGenPass._emit_jacval_eq(left: ir.Value, right: ir.Value) -> ir.Value {
             ),
             name=f"jv.eq.{side}num"
         );
-        as_double = self.builder.select(
-            is_float,
-            self.builder.bitcast(pay, f64, name=f"jv.eq.{side}bits"),
-            self.builder.sitofp(pay, f64, name=f"jv.eq.{side}conv"),
-            name=f"jv.eq.{side}dbl"
-        );
-        sides.append((is_number, as_double));
+        kinds.append((is_number, is_float));
     }
+    left_is_float = kinds[0][1];
+    one_float = self.builder.xor(left_is_float, kinds[1][1], name="jv.eq.onefloat");
+    as_float = self.builder.bitcast(
+        self.builder.select(left_is_float, lpay, rpay, name="jv.eq.fbits"),
+        f64,
+        name="jv.eq.f"
+    );
+    as_int = self.builder.select(left_is_float, rpay, lpay, name="jv.eq.i");
+    in_range = self.builder.and_(
+        self.builder.fcmp_ordered(
+            ">=", as_float, ir.Constant(f64, -9223372036854775808.0), name="jv.eq.flo"
+        ),
+        self.builder.fcmp_ordered(
+            "<", as_float, ir.Constant(f64, 9223372036854775808.0), name="jv.eq.fhi"
+        ),
+        name="jv.eq.finrange"
+    );
+    whole = self.builder.select(
+        in_range,
+        self.builder.icmp_signed(
+            "==",
+            self.builder.fptosi(as_float, i64v, name="jv.eq.ftoi"),
+            as_int,
+            name="jv.eq.sameint"
+        ),
+        ir.Constant(i1, 0),
+        name="jv.eq.whole"
+    );
+    int_float_eq = self.builder.and_(
+        self.builder.fcmp_ordered(
+            "==",
+            as_float,
+            self.builder.sitofp(as_int, f64, name="jv.eq.itof"),
+            name="jv.eq.samefloat"
+        ),
+        whole,
+        name="jv.eq.intfloat"
+    );
     mixed_numbers = self.builder.and_(
-        self.builder.and_(sides[0][0], sides[1][0], name="jv.eq.bothnum"),
+        self.builder.and_(kinds[0][0], kinds[1][0], name="jv.eq.bothnum"),
         self.builder.not_(tag_eq, name="jv.eq.mixed"),
         name="jv.eq.mixednum"
     );
     mixed_eq = self.builder.and_(
         mixed_numbers,
-        self.builder.fcmp_ordered("==", sides[0][1], sides[1][1], name="jv.eq.numeq"),
+        self.builder.select(one_float, int_float_eq, pay_eq, name="jv.eq.mixedval"),
         name="jv.eq.mixedeq"
     );
     bits_eq = self.builder.or_(same_kind_eq, mixed_eq, name="jv.eq.bitseq");
