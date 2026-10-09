@@ -7,7 +7,11 @@ exports and broke fresh scaffolds)."""
 import os;
 import re;
 import json;
+import subprocess;
+import from tempfile { TemporaryDirectory }
 import from tests.support { JAC_ROOT }
+import from jaclang.client.bun_installer { get_bun }
+import from jaclang.compiler.driver.program { JacProgram }
 
 glob REGISTRY = os.path.join(
          JAC_ROOT, "jaclang", "cli", "shadcn", "registry", "registry.json"
@@ -98,4 +102,72 @@ test "a merged className is never overridden by the props spread" {
         }
     }
     assert not offenders , f"props spread after a merged className (move className after the spread): {offenders}";
+}
+
+"""Compile one registry component and run `checks` against it under Bun with
+React, the JSX factory and the sibling components replaced by recording
+stubs, so a component's own prop handling runs for real."""
+def run_component(name: str, checks: str) {
+    bun = get_bun();
+    if bun is None {
+        testskip("Bun is required to execute generated JavaScript");
+    }
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(COMPONENTS, name));
+    assert not prog.errors_had , str(prog.errors_had);
+    js = re.sub(r"import[^;]+;", "", mod.gen.js);
+    stubs = """
+const __jacJsx = (tag, props, children) => ({tag, props: props || {}, children: children || []});
+const _jac = {builtin: {}, types: {}};
+const sidebar = {toggled: 0};
+const useState = (v) => [v, () => {}];
+const useEffect = () => {};
+const useCallback = (f) => f;
+const createContext = (v) => ({Provider: "Provider"});
+const useContext = () => ({toggleSidebar: () => { sidebar.toggled += 1; }});
+const cva = () => () => "";
+const cn = (...parts) => parts.filter(Boolean).join(" ");
+const [Slot, HugeiconsIcon, SidebarLeftIcon, Button, Input, Separator, Sheet,
+    SheetContent, SheetDescription, SheetHeader, SheetTitle, Skeleton, Tooltip,
+    TooltipContent, TooltipTrigger] = Array(15).fill("stub");
+function check(value, message) { if (!value) throw new Error(message); }
+""";
+    with TemporaryDirectory() as tmp {
+        script = os.path.join(tmp, "component.mjs");
+        with open(script, "w") as f {
+            f.write(stubs + js + checks);
+        }
+        result = subprocess.run(
+            [bun, script], capture_output=True, text=True, timeout=30
+        );
+        assert result.returncode == 0 , result.stdout + result.stderr;
+    }
+}
+
+test "SidebarProvider keeps the caller's style next to its width defaults" {
+    run_component(
+        "sidebar.jac",
+        """
+const wrapper = SidebarProvider({style: {color: "red", "--sidebar-width": "20rem"}}).children[0];
+check(wrapper.props.style.color === "red", "caller style dropped");
+check(wrapper.props.style["--sidebar-width"] === "20rem", "caller cannot set the width");
+check(wrapper.props.style["--sidebar-width-icon"] === "3rem", "default icon width lost");
+const plain = SidebarProvider({}).children[0];
+check(plain.props.style["--sidebar-width"] === "16rem", "default width lost");
+"""
+    );
+}
+
+test "SidebarTrigger runs the caller's click handler and toggles the sidebar" {
+    run_component(
+        "sidebar.jac",
+        """
+let clicked = 0;
+const trigger = SidebarTrigger({onClick: () => { clicked += 1; }, className: "mine"});
+trigger.props.onClick({});
+check(clicked === 1, "caller onClick not called");
+check(sidebar.toggled === 1, "sidebar not toggled");
+check(trigger.props.className === "cn-sidebar-trigger mine", "className not merged");
+"""
+    );
 }

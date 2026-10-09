@@ -123,7 +123,8 @@ def:pub SidebarProvider(props: any) -> JsxElement {
     };
     mergedStyle = {
         "--sidebar-width": SIDEBAR_WIDTH,
-        "--sidebar-width-icon": SIDEBAR_WIDTH_ICON
+        "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+        ** (props["style"] or {})
     };
     <SidebarContext.Provider value={ctxValue}>
         <div
