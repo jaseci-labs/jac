@@ -521,8 +521,8 @@ test "entry_override keeps a named file for kinds that plan without one" {
 }
 
 test "serve flags are recognised only when they were actually typed" {
-    # (port, dev, api_port, no_client, faux, host, platform, fleet, cfg): the
-    # old `client` slot is gone with the --client flag.
+    # None means "not typed"; only explicitly passed flags become overrides.
+    # The old `client` slot is gone with the --client flag.
     over = execution._serve_overrides(
         None, None, None, None, None, None, None, False, None
     );

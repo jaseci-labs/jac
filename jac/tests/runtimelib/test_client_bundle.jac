@@ -148,9 +148,10 @@ test "dev config wires fast refresh and index.html installs the hook before the 
         bundler._ensure_dev_index_html(Path(tmp));
         html = (Path(tmp) / "index.html").read_text();
         assert "injectIntoGlobalHook" in html;
-        # The refresh hook must install before React loads with the app entry
-        assert html.index('"/@react-refresh"')
-            < html.index('import("/compiled/_entry.js")');
+        # The refresh hook must install before React loads with the app entry:
+        # the entry import lives inside the loadEntry retry helper, so no
+        # entry-load call site may precede the refresh hook install
+        assert html.index('"/@react-refresh"') < html.index('loadEntry(8)');
         build_content = bundler.create_vite_config(`entry, is_dev=False).read_text();
         assert "jacFastRefresh" not in build_content;
     }

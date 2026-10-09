@@ -8,3 +8,5 @@ def native_build(
     memory: str = "",
     no_ir_cache: bool = False
 ) -> int;
+
+def native_build_sealed_pair(filename: str, exe_output: str, lib_output: str) -> int;

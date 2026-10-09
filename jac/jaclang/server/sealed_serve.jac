@@ -42,6 +42,33 @@ def _image_module_keys(img_root: str) -> set {
 }
 
 
+def shared_lib_ext(is_windows: bool, is_macos: bool) -> str {
+    if is_windows {
+        return ".dll";
+    }
+    if is_macos {
+        return ".dylib";
+    }
+    return ".so";
+}
+
+
+def native_lib_suffix -> str {
+    import sys;
+    return shared_lib_ext(sys.platform.startswith("win"), sys.platform == "darwin");
+}
+
+
+def native_lib_name(stem: str) -> str {
+    return stem + native_lib_suffix();
+}
+
+
+def interop_record_path(lib_output: str) -> Path {
+    return Path(str(lib_output) + ".interop.json");
+}
+
+
 def _image_key(abs_path: str, img_root: str) -> str {
     rel = os.path.relpath(abs_path, img_root).replace(os.sep, "/");
     return rel[:-3] + ".jac" if rel.endswith(".py") else rel;
