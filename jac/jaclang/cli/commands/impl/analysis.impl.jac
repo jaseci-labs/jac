@@ -1927,16 +1927,16 @@ def _is_project_wide_run(paths: list[str]) -> bool {
 }
 
 def _drop_git_ignored(paths: list[str]) -> list[str] {
+    import os;
     import subprocess;
     if not paths {
         return paths;
     }
     try {
         proc = subprocess.run(
-            ['git', 'check-ignore', '--stdin'],
-            input="\n".join(paths),
+            ['git', 'check-ignore', '--stdin', '-z'],
+            input=b"\0".join(os.fsencode(p) for p in paths) + b"\0",
             capture_output=True,
-            text=True,
             check=False
         );
     } except (OSError, ValueError) {
@@ -1947,8 +1947,8 @@ def _drop_git_ignored(paths: list[str]) -> list[str] {
         return paths;
     }
     ignored = {
-        line
-        for line in proc.stdout.splitlines()
+        os.fsdecode(line)
+        for line in proc.stdout.split(b"\0")
         if line
     };
     if not ignored {

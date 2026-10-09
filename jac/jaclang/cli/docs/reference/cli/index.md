@@ -465,6 +465,11 @@ carry an app prefix when several apps are checked. `--app <name>` selects one
 context; explicit files remain explicit roots. Unreachable source is checked by
 naming it explicitly. See [Workspaces & Apps](../apps.md#working-with-a-workspace).
 
+Directory scans respect Git ignore rules, including filenames containing Unicode,
+quotes, or line breaks. An explicitly named file or ignored directory is still
+checked. If Git is unavailable or the working directory is outside a repository,
+the scan keeps all otherwise eligible files.
+
 **Examples:**
 
 ```bash
