@@ -54,6 +54,7 @@ glob CLASSES: list[str] = [
      ),
      REFUSAL: str = r"error\[(E\d+)\]: ([^\n]*)",
      QUOTED: str = r"'[^']*'",
+     MODULE_TAG: str = r"\$[A-Za-z0-9_]+_[0-9a-f]{8}",
      UNCAUGHT: str = r"Uncaught exception: ([^\n]*)",
      LOCATION: str = r" at \S+:\d+$",
      CASCADE_KINDS: tuple[str, ...] = (
@@ -190,6 +191,7 @@ def refusal_reason(err: str) -> str {
     if any(f" for {kind} '" in message for kind in CASCADE_KINDS) {
         message = re.sub(QUOTED, "'_'", message);
     }
+    message = re.sub(MODULE_TAG, "", message);
     return f"{code} {message.strip()}"[:140];
 }
 

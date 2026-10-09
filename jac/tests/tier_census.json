@@ -1,11 +1,11 @@
 {
   "summary": {
-    "same": 42,
-    "refused": 58,
+    "same": 44,
+    "refused": 63,
     "fails": 0,
-    "differs": 6,
+    "differs": 1,
     "hangs": 0,
-    "crashes": 3,
+    "crashes": 1,
     "skipped": 79
   },
   "programs": {
@@ -185,7 +185,7 @@
       "reason": "the Python tier is not repeatable"
     },
     "tests/language/fixtures/archetype_def_bug.jac": {
-      "class": "differs"
+      "class": "same"
     },
     "tests/language/fixtures/arithmetic_bug.jac": {
       "class": "same"
@@ -195,8 +195,7 @@
       "reason": "E5092 Native lowering failed for builtin call 'sum'"
     },
     "tests/language/fixtures/as_cast_precedence.jac": {
-      "class": "crashes",
-      "reason": "the program"
+      "class": "same"
     },
     "tests/language/fixtures/as_cast_with_except.jac": {
       "class": "refused",
@@ -226,11 +225,12 @@
       "class": "same"
     },
     "tests/language/fixtures/backward_edge_visit.jac": {
-      "class": "differs"
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/bidirectional_edge_traversal.jac": {
-      "class": "crashes",
-      "reason": "the program"
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for event ability 'travel_generic.visit_generic'"
     },
     "tests/language/fixtures/blankwithentry.jac": {
       "class": "same"
@@ -340,7 +340,7 @@
     },
     "tests/language/fixtures/del_dead_anchor.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for function '_'"
+      "reason": "E5092 Native lowering failed for event ability 'Sweep.look'"
     },
     "tests/language/fixtures/del_semantics.jac": {
       "class": "refused",
@@ -362,7 +362,8 @@
       "reason": "the Python tier fails"
     },
     "tests/language/fixtures/edge_ability.jac": {
-      "class": "differs"
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/edge_node_walk.jac": {
       "class": "skipped",
@@ -378,7 +379,7 @@
     },
     "tests/language/fixtures/edgetypeissue.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for expression 'BinaryExpr'"
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/entry_exit.jac": {
       "class": "skipped",
@@ -634,7 +635,7 @@
     },
     "tests/language/fixtures/self_type.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for integer operator layout 'PLUS on %\"Money$self_type_cc4f5184\"* vs %\"Money$self_type_cc4f5184\"*'"
+      "reason": "E5092 Native lowering failed for integer operator layout 'PLUS on %\"Money\"* vs %\"Money\"*'"
     },
     "tests/language/fixtures/self_type_errors.jac": {
       "class": "refused",
@@ -648,7 +649,8 @@
       "reason": "the Python tier fails"
     },
     "tests/language/fixtures/spawn_loc_list.jac": {
-      "class": "differs"
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/sub_abil_sep.jac": {
       "class": "refused",
@@ -691,7 +693,8 @@
       "reason": "the Python tier fails"
     },
     "tests/language/fixtures/visit_traversal.jac": {
-      "class": "differs"
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for expression 'root'"
     },
     "tests/language/fixtures/walker_override.jac": {
       "class": "refused",
