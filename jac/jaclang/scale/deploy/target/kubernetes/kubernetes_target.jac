@@ -2,7 +2,8 @@ import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
 import from jaclang.scale.models.resource_status {
     ResourceStatus,
     ResourceStatusInfo,
-    assess_workload
+    assess_workload,
+    container_crashlooping
 }
 import from jaclang.scale.models.progress { EventSink, NoopSink, ProgressEvent }
 import from jaclang.scale.observability.logger { Logger }
@@ -520,9 +521,11 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 pod_labels: (dict[str, str] | None) = pod.metadata.labels;
                 if pod_labels and 'app' in pod_labels {
                     pod_app = pod_labels['app'];
-                    if pod.status and pod.status.container_statuses {
+                    if pod.status
+                        and pod.status.container_statuses
+                        and not pod.metadata.deletion_timestamp {
                         for cs in pod.status.container_statuses {
-                            if cs.restart_count and cs.restart_count > 0 {
+                            if container_crashlooping(cs) {
                                 restarting_apps[pod_app] = True;
                             }
                         }
