@@ -1321,10 +1321,12 @@ def _nb_tls_rearm_read(
     return False;
 }
 
-"""__net.tlsConnectNb(host, port, callback) → undefined
-Starts a non-blocking TLS connect.  The callback is invoked as
+"""__net.tlsConnectNb(host, port, callback[, rejectUnauthorized[, alpn[, servername]]]) → undefined
+Starts a non-blocking TLS connect to host:port.  The callback is invoked as
 callback(handle, errCode) when the TLS handshake completes (or fails).
-handle < 0 on success (TLS handle), 0 on error."""
+handle < 0 on success (TLS handle), 0 on error.  `servername` (tls.connect's
+option) is the name SNI announces and the server certificate must match;
+empty or absent means `host`, as in Node."""
 def:pub net_tls_connect_nb(args: list[JSValue]) -> JSValue {
     if len(args) < 3 {
         return js_undefined();
@@ -1361,6 +1363,16 @@ def:pub net_tls_connect_nb(args: list[JSValue]) -> JSValue {
         }
     }
 
+    # Optional 6th arg: servername — SNI and the certificate identity check use
+    # it instead of the connect host (e.g. connecting to an IP for a DNS name)
+    tls_name: str = host;
+    if len(args) >= 6 and jsv_is_string_cell(args[5]) {
+        sn_arg: str = str_from_id(jsv_to_table_id(args[5]));
+        if sn_arg != "" {
+            tls_name = sn_arg;
+        }
+    }
+
     # Non-blocking TCP connect (same as net_tcp_connect_nb)
     sock: TCPSocket = tcp_connect_nb_start(host, port);
 
@@ -1379,7 +1391,7 @@ def:pub net_tls_connect_nb(args: list[JSValue]) -> JSValue {
         if verify == 0 {
             v_bool2 = False;
         }
-        tls_sock: TLSSocket = tls_client_wrap_fd(sock.fd, host, v_bool2, alpn);
+        tls_sock: TLSSocket = tls_client_wrap_fd(sock.fd, tls_name, v_bool2, alpn);
         if tls_sock.ssl_ptr == 0 {
             close(sock.fd);
             _NB_FIRED_FNS.append(cb);
@@ -1417,7 +1429,7 @@ def:pub net_tls_connect_nb(args: list[JSValue]) -> JSValue {
 
     # EINPROGRESS — poll for writability, then do TLS handshake in callback
     _nb_watch(
-        UV_WRITABLE, sock.fd, cb, _NB_TYPE_TLS_CONNECT, tcp_hid, verify, host, alpn
+        UV_WRITABLE, sock.fd, cb, _NB_TYPE_TLS_CONNECT, tcp_hid, verify, tls_name, alpn
     );
     return js_undefined();
 }

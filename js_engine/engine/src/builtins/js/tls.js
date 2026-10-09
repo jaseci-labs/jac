@@ -283,8 +283,9 @@ _netInternals.installWriteQueue(TLSSocket.prototype);
  * Options:
  *   host / hostname — remote host (default "localhost")
  *   port — remote port (required)
- *   servername — SNI hostname (default: host)
- *   rejectUnauthorized — (stub, ignored for now)
+ *   servername — the name SNI announces and the server certificate must match
+ *                (default: host)
+ *   rejectUnauthorized — false skips server certificate verification
  */
 function tlsConnect(options, cb) {
     if (typeof options === "number") {
@@ -363,7 +364,7 @@ function tlsConnect(options, cb) {
         socket._startReading();
         // Send what was written during the handshake (and finish a pending end())
         socket._flushWrites();
-    }, rejectUnauthorized, alpnStr);
+    }, rejectUnauthorized, alpnStr, servername);
 
     return socket;
 }

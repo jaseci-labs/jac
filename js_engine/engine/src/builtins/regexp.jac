@@ -1494,8 +1494,10 @@ def _pcre2_compile(pattern: str, flags: str) -> JSRegExpState {
             options = options + PCRE2_DOTALL;
         } elif c == "u" {
             fu = True;
-            # MATCH_INVALID_UTF: subjects may hold the NUL sentinel C0 80
-            # (invalid UTF-8 by design); match around it instead of failing.
+            # MATCH_INVALID_UTF: _dm_converted hands PCRE2 a copy with NUL (the
+            # sentinel C0 80) as a real 0x00 byte and surrogate pairs joined, but
+            # a lone surrogate half stays invalid UTF-8; match around it instead
+            # of failing.
             options = options + PCRE2_UTF + PCRE2_UCP + PCRE2_MATCH_INVALID_UTF;
         } elif c == "y" {
             fy = True;
