@@ -43,6 +43,8 @@ jac scale deploy app.jac
 
 Use this for air-gapped clusters, to pin an exact build, or to deploy a binary you compiled locally. The driver checksum-caches downloaded release binaries per channel and architecture, so an unchanged `stable`/`dev` deploy does not re-download on every run.
 
+**GitHub API rate limit.** Once the release version is known, the binary, its checksum and the admin console download straight from `github.com/jaseci-labs/jac/releases/download/`, which uses no API quota. An exact `jac-version` pin therefore makes no `api.github.com` request, a range makes one listing request, and an unpinned deploy asks the Releases API for the latest release. Unauthenticated, that API allows 60 requests per hour per IP, which a shared CI runner can use up. Set `GH_TOKEN` (or `GITHUB_TOKEN`; `GH_TOKEN` wins) in the environment that runs `jac scale deploy` and those requests use your own quota instead. The token is sent only to `api.github.com`, never to a redirect target or any other host. When the quota is exhausted the deploy stops with an error naming `GH_TOKEN` and the exact-pin alternative.
+
 ---
 
 ### App Artifact (`.jab`)

@@ -14,8 +14,9 @@ import from jaclang.project.jac_version {
     split_clause,
     version_key
 }
-import from urllib.request { urlopen }
+import from urllib.request { urlopen, Request }
 import from urllib.error { HTTPError }
+import from urllib.parse { urlsplit }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.runtime.graph_utils { release_arch, host_arch, host_os }
 
@@ -75,8 +76,90 @@ def node_arch -> str {
 }
 
 
+glob GH_API_HOST: str = "api.github.com";
+
+
+def _github_token -> str {
+    return os.environ.get("GH_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "");
+}
+
+
+def _api_token(url: str) -> str {
+    parts = urlsplit(url);
+    if parts.scheme == "https" and parts.hostname == GH_API_HOST {
+        return _github_token();
+    }
+    return "";
+}
+
+
+def _http_request(url: str, method: str = "GET", anonymous: bool = False) -> Request {
+    req = Request(url, method=method);
+    token = "" if anonymous else _api_token(url);
+    if token {
+        req.add_unredirected_header("Authorization", f"Bearer {token}");
+    }
+    return req;
+}
+
+
+def _quota_exhausted(url: str, err: HTTPError) -> bool {
+    return err.code == 403
+        and urlsplit(url).hostname == GH_API_HOST
+        and err.headers is not None
+        and err.headers.get("X-RateLimit-Remaining") == "0";
+}
+
+
+def _url_exists(url: str) -> bool {
+    try {
+        resp = urlopen(_http_request(url, "HEAD"), timeout=_HTTP_TIMEOUT);
+    } except HTTPError as e {
+        if e.code == 404 {
+            return False;
+        }
+        raise RuntimeError(
+            f"Could not check {url} (HTTP {e.code}); retry the deploy."
+        ) from e;
+    } except OSError as e {
+        raise RuntimeError(
+            f"Could not reach {url} ({e}); check the network and retry the deploy."
+        ) from e;
+    }
+    resp.close();
+    return True;
+}
+
+
+def _open_get(url: str, anonymous: bool = False) -> any {
+    try {
+        return urlopen(_http_request(url, "GET", anonymous), timeout=_HTTP_TIMEOUT);
+    } except HTTPError as e {
+        if _quota_exhausted(url, e) {
+            raise RuntimeError(
+                "GitHub API rate limit exhausted for this IP; set GH_TOKEN (or "
+                "GITHUB_TOKEN) to use your own quota, or pin an exact "
+                "[project] jac-version so the release assets need no API lookup."
+            ) from e;
+        }
+        raise;
+    }
+}
+
+
 def _http_get_bytes(url: str) -> bytes {
-    resp = urlopen(url, timeout=_HTTP_TIMEOUT);
+    try {
+        resp = _open_get(url);
+    } except HTTPError as e {
+        if e.code != 401 or not _api_token(url) {
+            raise;
+        }
+        logger.warning(
+            "GitHub rejected the token in GH_TOKEN/GITHUB_TOKEN (401 Bad "
+            "credentials); retrying without it. Replace or unset the token."
+        );
+        resp = _open_get(url, anonymous=True);
+    }
     try {
         return bytes(resp.read());
     } finally {
@@ -92,9 +175,11 @@ def _list_release_versions(repo: str) -> list[str] {
     api = f"https://api.github.com/repos/{repo}/releases?per_page=100";
     try {
         arr = json.loads(_http_get_bytes(api).decode("utf-8"));
-    } except Exception as e {
-        logger.warning(f"Could not list {repo} releases ({e}).");
-        return [];
+    } except (OSError, ValueError) as e {
+        raise RuntimeError(
+            f"Could not list the {repo} releases to resolve [project] jac-version "
+            f"({e}); retry the deploy, or pin an exact jac-version to skip the listing."
+        ) from e;
     }
     out: list[str] = [];
     for rel in arr {
@@ -286,26 +371,32 @@ def host_seal_platform -> str {
 }
 
 
-def stable_release_meta(version: str = "") -> dict[str, any] {
-    api = f"https://api.github.com/repos/{GH_REPO}/releases/tags/v{version}"
-        if version
-        else f"https://api.github.com/repos/{GH_REPO}/releases/latest";
-    try {
-        return dict(json.loads(_http_get_bytes(api).decode("utf-8")));
-    } except HTTPError as e {
-        if e.code == 404 and version {
-            raise RuntimeError(
-                f"Pinned jac-version v{version} is not a published {GH_REPO} "
-                "release; fix [project] jac-version or remove it for latest."
-            );
-        }
-        raise;
-    }
+def stable_release_meta -> dict[str, any] {
+    api = f"https://api.github.com/repos/{GH_REPO}/releases/latest";
+    return dict(json.loads(_http_get_bytes(api).decode("utf-8")));
 }
 
 
-def _no_asset_message(meta: dict[str, any], suffix: str, version: str) -> str {
-    tag = str(meta.get("tag_name", version or "latest"));
+def stable_asset_urls(version: str, suffix: str) -> tuple[str, str] {
+    binary_url = (
+        f"https://github.com/{GH_REPO}/releases/download/v{version}/jac-{version}{suffix}"
+    );
+    return (binary_url, f"{binary_url}.sha256");
+}
+
+
+def _missing_pinned_asset_message(version: str, suffix: str, what: str) -> str {
+    return (
+        f"No {what} `jac-{version}{suffix}` on the {GH_REPO} release v{version}. "
+        "The release may not be published (fix [project] jac-version), or the "
+        "node arch may be unpublished (set JAC_NODE_ARCH); see "
+        f"https://github.com/{GH_REPO}/releases."
+    );
+}
+
+
+def _no_asset_message(meta: dict[str, any], suffix: str) -> str {
+    tag = str(meta.get("tag_name", "latest"));
     return (
         f"No `jac-*{suffix}` asset on the {GH_REPO} release ({tag}). The node "
         "arch may be unpublished; set JAC_NODE_ARCH or check "
@@ -320,12 +411,28 @@ def preflight_pod_runtime(project_dir: str, channel: str, arch: str) -> str {
         return "";
     }
     version = resolve_deploy_version(project_dir, channel);
-    meta = stable_release_meta(version);
 
     needed = {f"-linux-{arch}", f"-{host_seal_platform()}-{host_arch()}"};
+    if version {
+        for suffix in sorted(needed) {
+            (binary_url, checksum_url) = stable_asset_urls(version, suffix);
+            if not _url_exists(binary_url) {
+                raise RuntimeError(
+                    _missing_pinned_asset_message(version, suffix, "asset")
+                );
+            }
+            if not _url_exists(checksum_url) {
+                raise RuntimeError(
+                    _missing_pinned_asset_message(version, suffix, "checksum for")
+                );
+            }
+        }
+        return version;
+    }
+    meta = stable_release_meta();
     for suffix in sorted(needed) {
         if not _pick_stable_assets(meta, suffix)[0] {
-            raise RuntimeError(_no_asset_message(meta, suffix, version));
+            raise RuntimeError(_no_asset_message(meta, suffix));
         }
     }
     return version;
@@ -368,14 +475,14 @@ def download_release_binary(
         base = f"https://github.com/{repo}/releases/download/dev";
         binary_url = f"{base}/jac-dev{suffix}";
         checksum_url = f"{binary_url}.sha256";
+    } elif version {
+        (binary_url, checksum_url) = stable_asset_urls(version, suffix);
+        logger.info(f"Shipping the pinned pod runtime jac {version}.");
     } else {
-        meta = stable_release_meta(version);
+        meta = stable_release_meta();
         (binary_url, checksum_url) = _pick_stable_assets(meta, suffix);
         if not binary_url {
-            raise RuntimeError(_no_asset_message(meta, suffix, version));
-        }
-        if version {
-            logger.info(f"Shipping the pinned pod runtime jac {version}.");
+            raise RuntimeError(_no_asset_message(meta, suffix));
         }
     }
 
@@ -576,9 +683,27 @@ def _admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
         return ("", "");
     }
 
-    api = f"https://api.github.com/repos/{repo}/releases/tags/v{version}"
-        if version
-        else f"https://api.github.com/repos/{repo}/releases/latest";
+    if version {
+        (dist_url, checksum_url) = stable_asset_urls(version, suffix);
+        if not _url_exists(dist_url) {
+            if not _url_exists(f"https://github.com/{repo}/releases/tag/v{version}") {
+                raise RuntimeError(
+                    f"Pinned jac-version v{version} is not a published {repo} "
+                    "release; fix [project] jac-version or remove it for latest."
+                );
+            }
+            return ("", "");
+        }
+        if not _url_exists(checksum_url) {
+            raise RuntimeError(
+                f"Pinned jac {version} publishes an admin console without a "
+                f"checksum; refusing to stage it unverified."
+            );
+        }
+        return (dist_url, checksum_url);
+    }
+
+    api = f"https://api.github.com/repos/{repo}/releases/latest";
     meta = json.loads(_http_get_bytes(api).decode("utf-8"));
     dist_url = "";
     checksum_url = "";
@@ -593,12 +718,6 @@ def _admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
         } elif name.endswith(suffix) {
             dist_url = url;
         }
-    }
-    if version and dist_url and not checksum_url {
-        raise RuntimeError(
-            f"Pinned jac {version} publishes an admin console without a "
-            f"checksum; refusing to stage it unverified."
-        );
     }
     return (dist_url, checksum_url);
 }
