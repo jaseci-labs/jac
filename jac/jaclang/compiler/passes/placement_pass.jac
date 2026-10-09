@@ -45,6 +45,7 @@ obj NativeLegality {
         anchored_by: dict[int, set[int]] = {},
         tops: dict[int, UniNode] = {},
         elements: dict[int, NativeRefusal] = {},
+        blockers: list[NativeRefusal] = [],
         module: list[NativeRefusal] = [],
         reach: list[NativeRefusal] = [],
         reached: dict[int, int] = {},
@@ -385,12 +386,12 @@ impl build_native_legality(
     base_dir = os.path.dirname(os.path.abspath(mod_path)) if mod_path else ".";
     (blocker, deps) = scan_native_blockers(mod, base_dir);
     if blocker {
-        legality.refuse_module(NativeRefusal(kind="module", name=blocker, site=mod));
+        legality.blockers.append(NativeRefusal(kind="module", name=blocker, site=mod));
     }
     if prog is not None {
         for dep in deps {
             if not import_placed_native(prog, dep) {
-                legality.refuse_module(
+                legality.blockers.append(
                     NativeRefusal(
                         kind="import",
                         name=os.path.basename(dep),
@@ -742,14 +743,22 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
     legality = build_native_legality(ir_in, self.prog);
     native_refused = legality.refused_elements(ir_in);
     client_refused = client_refused_elements(ir_in);
+    inferred_refused: set[int] = set(native_refused);
+    if legality.blockers {
+        for elem in ir_in.body {
+            if id(elem) not in required {
+                inferred_refused.add(id(elem));
+            }
+        }
+    }
     for elem in tentative {
         owner = top_element_of(ir_in, elem);
-        if owner is not None and id(owner) in native_refused {
+        if owner is not None and id(owner) in inferred_refused {
             elem.code_context = CodeContext.SERVER;
         }
     }
     self.prog.analysis.placement_refusals[os.path.realpath(mod_path)] = {
-        'native': native_refused,
+        'native': inferred_refused,
         'client': set(client_refused.keys())
     };
     refresh_placement_module(ir_in, self.prog);
@@ -801,7 +810,13 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
         first = legality.module[0]
             if legality.module
             else (
-                next(iter(legality.elements.values())) if legality.elements else None
+                legality.blockers[0]
+                    if legality.blockers
+                    else (
+                        next(iter(legality.elements.values()))
+                            if legality.elements
+                            else None
+                    )
             );
         active_host().record_native_coverage(
             mod_path,

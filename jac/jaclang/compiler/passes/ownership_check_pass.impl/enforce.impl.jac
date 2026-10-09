@@ -88,28 +88,10 @@ impl OwnershipCheckPass._nogc_setup -> None {
     self.nogc_prov = self._nogc_resolve_provenance();
     self.module.gen.nogc_enforced = self.nogc_prov is not None;
     self.module.gen.nogc_provenance = self.nogc_prov or '';
-    self._nogc_infer_locals();
-    self._stamp_view_borrows();
-}
-
-impl OwnershipCheckPass._memory_facts(mark: int) -> None {
-    """The memory rules run on every module. Where the headerless runtime is
-    required their findings are errors; everywhere else they are recorded as
-    the reasons this module cannot use it.""";
-    if self.nogc_prov is not None or len(self.ctx.errors_had) <= mark {
-        return;
+    if self.nogc_prov is not None {
+        self._nogc_infer_locals();
+        self._stamp_view_borrows();
     }
-    import from jaclang.compiler.capability_notes { TARGET_HEADERLESS, note_capability }
-    for alert in self.ctx.errors_had[mark:] {
-        note_capability(
-            self.prog,
-            self.module,
-            TARGET_HEADERLESS,
-            alert.code.code if alert.code is not None else "",
-            alert.pretty_print().split('\n')[0]
-        );
-    }
-    del self.ctx.errors_had[mark:];
 }
 
 impl OwnershipCheckPass._nogc_tag_shape(tag: SubTag | None) -> str {
@@ -693,6 +675,9 @@ impl OwnershipCheckPass._nogc_fresh_scalar_list(expr: Expr | None) -> bool {
 }
 
 impl OwnershipCheckPass._emit_raises_diagnostics -> None {
+    if self.nogc_prov is None {
+        return;
+    }
     import from jaclang.compiler.frontend.diagnostics { E1407 }
     for mc in self.module.get_all_sub_nodes(ModuleCode) {
         for exc in sorted(self._local_raises(mc)) {
@@ -878,7 +863,10 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
 }
 
 impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
-    _prov = self.nogc_prov or "not required for this module";
+    if self.nogc_prov is None {
+        return;
+    }
+    _prov = self.nogc_prov;
 
     _opts = self.prog?.options;
     _headerless = _opts is not None and _opts.na_gc_mode == "none";

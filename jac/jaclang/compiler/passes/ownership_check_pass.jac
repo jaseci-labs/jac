@@ -132,7 +132,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _nogc_setup -> None;
-    def _memory_facts(mark: int) -> None;
     def _nogc_resolve_provenance -> (str | None);
     def _nogc_infer_locals -> None;
     def _nogc_infer_state(expr: Expr | None) -> tuple[OwnershipKind, list[Name]];
