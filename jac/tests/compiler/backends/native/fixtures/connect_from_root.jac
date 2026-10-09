@@ -23,8 +23,8 @@ with entry {
     w1 = a spawn W();
     print("chain", w1.seen);
     d = N(val=4);
-    root +>:Road(km=2):+> d;
-    d ++> N(val=5);
+    d <++ root;
+    d +>:Road(km=2):+> N(val=5);
     w2 = d spawn W();
-    print("typed", w2.seen);
+    print("reversed", w2.seen);
 }

@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 45,
-    "refused": 62,
+    "same": 46,
+    "refused": 61,
     "fails": 0,
     "differs": 1,
     "hangs": 0,
@@ -171,7 +171,7 @@
     },
     "tests/language/fixtures/anonymous_ability_test.jac": {
       "class": "skipped",
-      "reason": "the Python tier is not repeatable"
+      "reason": "the Python tier fails"
     },
     "tests/language/fixtures/arch_create_util.jac": {
       "class": "same"
@@ -222,7 +222,7 @@
     },
     "tests/language/fixtures/backward_edge_visit.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for expression 'root'"
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
     },
     "tests/language/fixtures/bidirectional_edge_traversal.jac": {
       "class": "refused",
@@ -359,7 +359,7 @@
     },
     "tests/language/fixtures/edge_ability.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for expression 'root'"
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
     },
     "tests/language/fixtures/edge_node_walk.jac": {
       "class": "skipped",
@@ -375,7 +375,7 @@
     },
     "tests/language/fixtures/edgetypeissue.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for expression 'root'"
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
     },
     "tests/language/fixtures/entry_exit.jac": {
       "class": "skipped",
@@ -645,7 +645,7 @@
     },
     "tests/language/fixtures/spawn_loc_list.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for expression 'root'"
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
     },
     "tests/language/fixtures/sub_abil_sep.jac": {
       "class": "refused",
@@ -688,8 +688,7 @@
       "reason": "the Python tier fails"
     },
     "tests/language/fixtures/visit_traversal.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for expression 'root'"
+      "class": "same"
     },
     "tests/language/fixtures/walker_override.jac": {
       "class": "refused",

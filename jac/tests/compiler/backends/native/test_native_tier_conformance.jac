@@ -103,7 +103,8 @@ test "graph forms the native tier cannot lower are refused, not dropped" {
     program = JacProgram();
     program.compile(file_path=fixture("graph_forms_not_lowered.jac"), options=options);
     refusals = [str(e) for e in program.errors_had];
-    assert any("'root'" in r for r in refusals) , refusals;
+    assert any("expression 'root'" in r for r in refusals) , refusals;
+    assert any("connect operand 'root'" in r for r in refusals) , refusals;
     assert any("connect operand 'list'" in r for r in refusals) , refusals;
 }
 
@@ -159,14 +160,16 @@ test "default object text stops at an object it is already writing" {
     assert "Pair(left=Pair(left=..., label='b'), label='a')" in out , out;
 }
 
-"""The native tier has no root node, and nothing native can walk from one, so
-connecting a node to `root` is an anchor with no effect there: the rest of
-the statement still happens. `root ++> a ++> b` used to drop the whole
-statement and leave `a` and `b` unconnected."""
+"""The native tier has no root node. A plain `root ++> node` in a module
+that only follows edges forward is an anchor nothing native can observe, so
+it is accepted and the rest of the statement still happens: `root ++> a ++>
+b` used to drop the whole statement and leave `a` and `b` unconnected. A
+root connect that names an edge, or sits beside a backward traversal, would
+be missed, and is refused."""
 test "a connect from root keeps the rest of the chain" {
     out = assert_native_identity(
         fixture("connect_from_root.jac"), profiles=["rc", "managed"]
     );
     assert "chain [1, 2, 3]" in out , out;
-    assert "typed [4, 5]" in out , out;
+    assert "reversed [4, 5]" in out , out;
 }

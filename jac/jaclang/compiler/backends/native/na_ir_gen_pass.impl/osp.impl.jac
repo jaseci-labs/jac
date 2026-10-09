@@ -704,9 +704,32 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     root_left = isinstance(nd.left, uni.SpecialVarRef) and nd.left.value == "root";
     root_right = isinstance(nd.right, uni.SpecialVarRef) and nd.right.value == "root";
-    if (root_left or root_right)
-        and not (root_left and root_right)
-        and not co.capture_edges {
+    if root_left or root_right {
+        looks_back = False;
+        for ref in self.module.get_all_sub_nodes(uni.EdgeOpRef) {
+            if int(ref.edge_dir.value) != 2 {
+                looks_back = True;
+                break;
+            }
+        }
+        if (root_left and root_right)
+            or co.capture_edges
+            or co.conn_type is not None
+            or looks_back {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="connect operand",
+                name="root",
+                help_text=(
+                    "The native tier has no root node. A plain `root ++> node` "
+                    "is accepted as an anchor that nothing native can observe; "
+                    "one that names an edge, collects it, or sits in a module "
+                    "that follows edges backward would be missed."
+                )
+            );
+            return None;
+        }
         return self._codegen_expr(nd.right if root_left else nd.left);
     }
     refusals_before = len(self.ctx.errors_had);
