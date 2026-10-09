@@ -530,9 +530,49 @@ impl JacProgram.parse_source(
             annex_sources,
             parse_woven
         }
+        import from jaclang.compiler.frontend.constant { CodeContext }
+        import from jaclang.compiler.driver.boundary_classify {
+            _coerce_client_module,
+            _coerce_native_module,
+            _stamp_context_element
+        }
+        import from jaclang.compiler.placement.placement_facts {
+            decode_plan,
+            native_placement_hard
+        }
+        codespace = self.declared_codespace(file_path);
+        held = active_host().placement_plan(file_path);
+        plan = decode_plan(held, uni.Source(source_str, file_path).hash)
+            if held
+            else None;
+        if plan is not None and native_placement_hard(self, file_path) {
+            plan = None;
+        }
         (parsed, had_error) = parse_woven(
-            source_str, file_path, self, annex_sources(file_path), early_context=''
+            source_str,
+            file_path,
+            self,
+            annex_sources(file_path),
+            early_context='' if plan is not None else codespace
         );
+        if plan is not None {
+            spaces = {'native': CodeContext.NATIVE, 'client': CodeContext.CLIENT};
+            for (index, elem) in enumerate(parsed.body) {
+                if index in plan {
+                    _stamp_context_element(elem, spaces[plan[index]]);
+                }
+            }
+            parsed.gen.placement_mode = 'plan';
+        } elif codespace == 'client' {
+            _coerce_client_module(parsed);
+            parsed.gen.placement_mode = 'declared';
+        } elif codespace == 'native' {
+            _coerce_native_module(parsed);
+            parsed.gen.placement_mode = 'declared';
+        } elif codespace == 'server' {
+            parsed.set_code_context(CodeContext.SERVER);
+            parsed.gen.placement_mode = 'declared';
+        }
     }
     hub_key = self.hub_key(parsed.loc.mod_path);
     if had_error {

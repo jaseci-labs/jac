@@ -2160,7 +2160,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                     expr.sym = None;
                 }
 
-                if symbol is None {
+                if (self._in_native_context() or expr.in_native_context())
+                    and (symbol is None or symbol.parent_tab is self.builtins_module) {
+                    na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
+                    if na_sym is not None {
+                        symbol = na_sym;
+                    }
+                } elif symbol is None and self.neutral_site(expr) {
                     na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
                     if na_sym is not None {
                         symbol = na_sym;
@@ -2183,13 +2189,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
 
-                if symbol is None {
+                if symbol is None or symbol.parent_tab is self.builtins_module {
                     _js_name = expr.value;
                     if _js_name == "import" {
                         _js_name = "__import_meta__";
                     }
                     js_sym = self.js_globals_module.names_in_scope.get(_js_name);
-                    if js_sym is not None {
+                    if js_sym is not None and expr.in_client_context() {
+                        symbol = js_sym;
+                    } elif js_sym is not None
+                        and symbol is None
+                        and self.neutral_site(expr) {
                         symbol = js_sym;
                         self.note_client(
                             expr, "E5096", f"'{expr.value}' is a browser global"
@@ -3600,12 +3610,19 @@ impl TypeEvaluator._diag_unnarrowed_optional(
     if not _has_none {
         return False;
     }
-    if self._is_strict_site(nd) {
-        self.note_native(
-            nd, "E1121", E1121.format_message(type=str(ty), required=required)
-        );
+    if not self._is_strict_site(nd) {
+        return False;
     }
-    return False;
+    if not self._in_native_context() {
+        if self.neutral_site(nd) {
+            self.note_native(
+                nd, "E1121", E1121.format_message(type=str(ty), required=required)
+            );
+        }
+        return False;
+    }
+    self.emit_diag(E1121, nd, type=str(ty), required=required);
+    return True;
 }
 
 impl TypeEvaluator._is_strict_site(nd: UniNode) -> bool {
@@ -3620,6 +3637,11 @@ impl TypeEvaluator._is_strict_site(nd: UniNode) -> bool {
     result = not mod.is_raised_from_py;
     self._strict_site_cache[id(mod)] = result;
     return result;
+}
+
+impl TypeEvaluator.neutral_site(nd: UniNode) -> bool {
+    import from jaclang.compiler.capability_notes { placement_neutral }
+    return placement_neutral(nd);
 }
 
 impl TypeEvaluator.note_native(
@@ -3638,6 +3660,22 @@ impl TypeEvaluator.note_client(nd: UniNode, code: str, text: str) -> None {
     }
     import from jaclang.compiler.capability_notes { TARGET_CLIENT, note_capability }
     note_capability(self.program, nd, TARGET_CLIENT, code, text, True);
+}
+
+impl TypeEvaluator._in_native_context -> bool {
+    if self._pass is None {
+        return False;
+    }
+    cur = self._pass?.current_node;
+    if cur is None or not isinstance(cur, UniNode) {
+        return False;
+    }
+
+    if cur.in_native_context() {
+        return True;
+    }
+    mod = cur.find_parent_of_type(Module);
+    return mod is not None and mod.decided_codespace == 'native';
 }
 
 impl TypeEvaluator._is_typing_special_form(ty: TypeBase, name: str) -> bool {
@@ -3747,16 +3785,19 @@ impl TypeEvaluator.assign_type(
             and isinstance(dest_type, ClassType)
             and dest_type.is_builtin("int")
         ) {
+        if self._in_native_context() {
+            return True;
+        }
         cur = self._pass?.current_node;
-        if isinstance(cur, UniNode) {
+        if isinstance(cur, UniNode) and self.neutral_site(cur) {
             self.note_native(
                 cur,
                 "E5090",
                 "a function address converts to and from int only natively",
                 requires=True
             );
+            return True;
         }
-        return True;
     }
 
     _rt_base_kinds: dict[str, tuple[str, ...]] = {

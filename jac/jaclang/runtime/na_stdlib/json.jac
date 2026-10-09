@@ -1,12 +1,10 @@
-import from typing { TextIO }
-
 def:pub loads(s: str) -> any {
     p: _JsonParser = _JsonParser(src=s);
     return p._parse_value();
 }
 
 
-def:pub load(fp: TextIO) -> any {
+def:pub load(fp: File) -> any {
     return loads(fp.read());
 }
 

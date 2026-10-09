@@ -78,10 +78,6 @@ def native_placement_candidate(
     if not any([isinstance(e, uni.ElementStmt) for e in module.body]) {
         return (False, "empty module: nothing to lower");
     }
-    unadoptable = active_host().native_unadoptable(os.path.realpath(mod_path), prog);
-    if unadoptable {
-        return (False, unadoptable);
-    }
     for elem in module.body {
         if isinstance(elem, uni.ContextAwareNode)
             and elem.code_context == CodeContext.CLIENT {

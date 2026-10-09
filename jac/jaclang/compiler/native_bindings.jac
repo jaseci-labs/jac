@@ -3,21 +3,23 @@ import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
     AtomTrailer,
-    ElseStmt,
-    Enum,
     FuncCall,
     FuncSignature,
     HasVar,
-    IfStmt,
-    Import,
     KWPair,
     Module,
-    ModuleItem,
-    ModulePath,
     Name,
-    UniNode
+    UniNode,
+    UniScopeNode,
+    resolved_decl_of
 }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import from jaclang.compiler.frontend.constant { ParamKind, Tokens as Tok }
+import from jaclang.compiler.types.types {
+    ClassType,
+    FunctionType,
+    OverloadedType,
+    TypeBase
+}
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import type from jaclang.compiler.driver.program { JacProgram }
 
@@ -46,21 +48,6 @@ glob NATIVE_FILE_CLASSES: dict[str, str] = {
      },
      NATIVE_LIBRARY_REL: str = "/runtime/na_stdlib/",
      LIFECYCLE_MEMBERS: tuple[str, ...] = ("init", "postinit", "drop"),
-     CLOSED_BASES: tuple[str, ...] = (
-         "object",
-         "Generic",
-         "Protocol",
-         "NamedTuple",
-         "BaseException",
-         "Exception",
-         "OSError",
-         "ValueError",
-         "TypeError",
-         "KeyError",
-         "LookupError",
-         "RuntimeError",
-         "ArithmeticError"
-     ),
      PLATFORM_SUFFIXES: tuple[str, ...] = (
          "linux",
          "darwin",
@@ -82,16 +69,10 @@ obj NativeBinding {
         mismatches: list[str] = [];
 }
 
-obj StubDecl {
-    has name: str,
-        kind: str,
-        params: list[str] = [],
-        variadic: bool = False,
+obj InterfaceSig {
+    has params: list[str] = [],
         positional: int = 0,
-        members: set[str] = set(),
-        extensible: bool = False,
-        bases: list[str] = [],
-        maker: (StubDecl | None) = None;
+        variadic: bool = False;
 }
 
 obj NativeBindings {
@@ -107,19 +88,22 @@ obj NativeBindings {
 }
 
 def is_pub(nd: UniNode) -> bool;
-def stub_home(decl: UniNode) -> (Module | None);
+def interface_module_name(home: Module) -> str;
 def native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBinding];
-def stub_signature(decl: Ability) -> StubDecl;
-def merge_signatures(prev: (StubDecl | None), cur: StubDecl) -> StubDecl;
-def stub_surface(
-    stub_mod: Module,
-    prog: (JacProgram | None) = None,
-    visiting: (set[str] | None) = None
-) -> dict[str, StubDecl];
+def signature_of(overloads: list[FunctionType]) -> InterfaceSig;
+def callable_sig(ty: (TypeBase | None)) -> (InterfaceSig | None);
+def interface_type(stub_mod: Module, name: str, prog: JacProgram) -> (TypeBase | None);
+def class_member_type(
+    cls: ClassType, member: str, prog: JacProgram
+) -> (TypeBase | None);
 
-def parameter_mismatches(name: str, params: list[str], want: StubDecl) -> list[str];
+def constructor_sig(cls: ClassType, prog: JacProgram) -> (InterfaceSig | None);
+def parameter_mismatches(
+    name: str, params: list[str], want: InterfaceSig
+) -> list[str];
+
 def conformance_mismatches(
-    stub_mod: Module, native_mod: Module, prog: (JacProgram | None) = None
+    stub_mod: Module, native_mod: Module, prog: JacProgram
 ) -> list[tuple[UniNode, str]];
 
 def call_gaps(call: FuncCall, binding: NativeBinding) -> list[str];
@@ -137,17 +121,6 @@ impl is_pub(nd: UniNode) -> bool {
     }
     access = nd.access;
     return access is not None and access.tag.name == Tok.KW_PUB;
-}
-
-impl stub_home(decl: UniNode) -> (Module | None) {
-    home = decl if isinstance(decl, Module) else decl.find_parent_of_type(Module);
-    if home is None or home.loc is None {
-        return None;
-    }
-    if home.stub_only or home.is_raised_from_py or home.loc.mod_path.endswith(".pyi") {
-        return home;
-    }
-    return None;
 }
 
 def _param_names(decl: Ability) -> tuple[list[str], bool] {
@@ -228,181 +201,118 @@ impl native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBin
     return out;
 }
 
-impl stub_signature(decl: Ability) -> StubDecl {
-    name = decl.name_ref.sym_name if decl.name_ref is not None else "";
-    out = StubDecl(name=name, kind="function");
-    sig = decl.signature;
-    if not isinstance(sig, FuncSignature) {
-        out.variadic = True;
-        return out;
+impl signature_of(overloads: list[FunctionType]) -> InterfaceSig {
+    """The names an interface function can be called with, over every
+    overload. A leading run of parameters taken by position only is counted
+    and not named: the native declaration may call those anything.""";
+    sig = InterfaceSig();
+    for fn in overloads {
+        leading = 0;
+        named = False;
+        for p in fn.parameters {
+            if p.is_self or p.is_cls or p.name in ("self", "cls") {
+                continue;
+            }
+            if p.param_kind == ParamKind.VARARG or p.param_kind == ParamKind.KWARG {
+                sig.variadic = True;
+                continue;
+            }
+            if p.name not in sig.params {
+                sig.params.append(p.name);
+            }
+            if not named
+                and (p.param_kind == ParamKind.POSONLY or p.name.startswith("__")) {
+                leading += 1;
+            } else {
+                named = True;
+            }
+        }
+        sig.positional = max(sig.positional, leading);
     }
-    out.variadic = sig.varargs is not None or sig.kwargs is not None;
-    for p in sig.posonly_params {
-        if p.name.value not in ("self", "cls") {
-            out.params.append(p.name.value);
-            out.positional += 1;
+    return sig;
+}
+
+impl callable_sig(ty: (TypeBase | None)) -> (InterfaceSig | None) {
+    if isinstance(ty, FunctionType) {
+        return signature_of([ty]);
+    }
+    if isinstance(ty, OverloadedType) {
+        return signature_of(list(ty.overloads));
+    }
+    return None;
+}
+
+impl interface_type(
+    stub_mod: Module, name: str, prog: JacProgram
+) -> (TypeBase | None) {
+    """The type the Python interface gives `name`. An interface is read from
+    its symbols and their types, never from syntax: in a build the stubs are
+    served from the catalog, which holds no trees.""";
+    sym = stub_mod.lookup(name, deep=False);
+    if sym is None {
+        return None;
+    }
+    return prog.get_type_evaluator().get_type_of_symbol(sym);
+}
+
+impl class_member_type(
+    cls: ClassType, member: str, prog: JacProgram
+) -> (TypeBase | None) {
+    chain: list[ClassType] = list(cls.shared.mro) or [cls];
+    for klass in chain {
+        scope = klass.shared.symbol_table;
+        sym = scope.lookup(member, deep=False) if scope is not None else None;
+        if sym is not None {
+            return prog.get_type_evaluator().get_type_of_symbol(sym);
         }
     }
-    for p in (sig.params or []) {
-        pname = p.name.value;
-        if pname in ("self", "cls") {
+    return None;
+}
+
+impl constructor_sig(cls: ClassType, prog: JacProgram) -> (InterfaceSig | None) {
+    """How the interface constructs `cls`: the `__new__` and `__init__` of the
+    nearest class in its chain that declares either. Reaching `object` means
+    the interface says nothing, and nothing is held against the native side.""";
+    chain: list[ClassType] = list(cls.shared.mro) or [cls];
+    for klass in chain {
+        if klass.is_builtin("object") {
+            return None;
+        }
+        scope = klass.shared.symbol_table;
+        if scope is None {
             continue;
         }
-        out.params.append(pname);
-        if pname.startswith("__") and out.positional == len(out.params) - 1 {
-            out.positional += 1;
-        }
-    }
-    for p in sig.kwonlyargs {
-        out.params.append(p.name.value);
-    }
-    return out;
-}
-
-impl merge_signatures(prev: (StubDecl | None), cur: StubDecl) -> StubDecl {
-    if prev is None or prev.kind != "function" {
-        return cur;
-    }
-    for pname in cur.params {
-        if pname not in prev.params {
-            prev.params.append(pname);
-        }
-    }
-    prev.variadic = prev.variadic or cur.variadic;
-    prev.positional = max(prev.positional, cur.positional);
-    return prev;
-}
-
-def _base_name(base: UniNode) -> str {
-    target: UniNode = base;
-    while isinstance(target, AtomTrailer) {
-        target = target.right if target.is_attr else target.target;
-    }
-    return target.value if isinstance(target, Name) else "";
-}
-
-def _declare_class(out: dict[str, StubDecl], arch: Archetype) -> None {
-    if arch.name is None {
-        return;
-    }
-    found = out.get(arch.name.value);
-    if found is None or found.kind != "class" {
-        found = StubDecl(name=arch.name.value, kind="class");
-        out[arch.name.value] = found;
-    }
-    found.members |= _member_names(arch);
-    for base in arch.base_classes {
-        found.bases.append(_base_name(base));
-    }
-    body = ModuleFacts.unwrap_body(arch);
-    for stmt in (body or []) {
-        if isinstance(stmt, Ability)
-            and stmt.name_ref is not None
-            and stmt.name_ref.sym_name in ("init", "__init__", "__new__") {
-            found.maker = merge_signatures(found.maker, stub_signature(stmt));
-        }
-    }
-}
-
-def _reexported(
-    stmt: Import, prog: JacProgram, visiting: set[str]
-) -> list[tuple[str, StubDecl]] {
-    out: list[tuple[str, StubDecl]] = [];
-    source = stmt.items[0] if stmt.is_absorb and stmt.items else stmt.from_loc;
-    if not isinstance(source, ModulePath) {
-        return out;
-    }
-    path = source.resolve_relative_path();
-    if not path.endswith(".pyi") or not os.path.isfile(path) or path in visiting {
-        return out;
-    }
-    other = stub_surface(
-        prog.load_dependency_module(path, need_tree=True), prog, visiting
-    );
-    if stmt.is_absorb {
-        for (name, decl) in other.items() {
-            if not name.startswith("_") {
-                out.append((name, decl));
+        made: (InterfaceSig | None) = None;
+        for maker in ("__new__", "init", "__init__") {
+            sym = scope.lookup(maker, deep=False);
+            sig = callable_sig(prog.get_type_evaluator().get_type_of_symbol(sym))
+                if sym is not None
+                else None;
+            if sig is None {
+                continue;
             }
+            if made is None {
+                made = sig;
+                continue;
+            }
+            for pname in sig.params {
+                if pname not in made.params {
+                    made.params.append(pname);
+                }
+            }
+            made.variadic = made.variadic or sig.variadic;
+            made.positional = max(made.positional, sig.positional);
         }
-        return out;
-    }
-    for item in stmt.items {
-        if isinstance(item, ModuleItem) and item.name.value in other {
-            shown = item.alias.value if item.alias is not None else item.name.value;
-            out.append((shown, other[item.name.value]));
+        if made is not None {
+            return made;
         }
     }
-    return out;
+    return None;
 }
 
-def _inherit(out: dict[str, StubDecl], name: str, chain: set[str]) {
-    decl = out[name];
-    for base in decl.bases {
-        if base in CLOSED_BASES or base == name {
-            continue;
-        }
-        parent = out.get(base);
-        if parent is None or parent.kind != "class" or base in chain {
-            decl.extensible = True;
-            continue;
-        }
-        _inherit(out, base, chain | {name});
-        decl.members |= parent.members;
-        decl.extensible = decl.extensible or parent.extensible;
-        if decl.maker is None {
-            decl.maker = parent.maker;
-        }
-    }
-    decl.bases = [];
-}
-
-impl stub_surface(
-    stub_mod: Module,
-    prog: (JacProgram | None) = None,
-    visiting: (set[str] | None) = None
-) -> dict[str, StubDecl] {
-    out: dict[str, StubDecl] = {};
-    active: set[str] = visiting if visiting is not None else set();
-    if stub_mod.loc is not None {
-        active.add(stub_mod.loc.mod_path);
-    }
-    pending: list[UniNode] = list(stub_mod.body);
-    while pending {
-        stmt = pending.pop(0);
-        if isinstance(stmt, IfStmt) {
-            branch: (IfStmt | ElseStmt | None) = stmt;
-            while isinstance(branch, IfStmt) {
-                pending.extend(branch.body);
-                branch = branch.else_body;
-            }
-            if isinstance(branch, ElseStmt) {
-                pending.extend(branch.body);
-            }
-        } elif isinstance(stmt, Ability) and stmt.name_ref is not None {
-            name = stmt.name_ref.sym_name;
-            out[name] = merge_signatures(out.get(name), stub_signature(stmt));
-        } elif isinstance(stmt, Archetype) {
-            _declare_class(out, stmt);
-        } elif isinstance(stmt, Enum) and stmt.name is not None {
-            out[stmt.name.value] = StubDecl(
-                name=stmt.name.value, kind="class", extensible=True
-            );
-        } elif isinstance(stmt, Import) and prog is not None {
-            for (name, decl) in _reexported(stmt, prog, active) {
-                out.setdefault(name, decl);
-            }
-        }
-    }
-    for name in list(out.keys()) {
-        if out[name].kind == "class" {
-            _inherit(out, name, set());
-        }
-    }
-    return out;
-}
-
-impl parameter_mismatches(name: str, params: list[str], want: StubDecl) -> list[str] {
+impl parameter_mismatches(
+    name: str, params: list[str], want: InterfaceSig
+) -> list[str] {
     out: list[str] = [];
     if want.variadic {
         return out;
@@ -420,16 +330,15 @@ impl parameter_mismatches(name: str, params: list[str], want: StubDecl) -> list[
 }
 
 impl conformance_mismatches(
-    stub_mod: Module, native_mod: Module, prog: (JacProgram | None) = None
+    stub_mod: Module, native_mod: Module, prog: JacProgram
 ) -> list[tuple[UniNode, str]] {
     out: list[tuple[UniNode, str]] = [];
-    declared = stub_surface(stub_mod, prog);
     for (name, binding) in native_surface(native_mod, stub_mod.name).items() {
         decl = binding.decl;
         if decl is None {
             continue;
         }
-        want = declared.get(name);
+        want = interface_type(stub_mod, name, prog);
         if want is None {
             out.append(
                 (
@@ -440,15 +349,19 @@ impl conformance_mismatches(
             );
             continue;
         }
+        called = callable_sig(want);
         if isinstance(decl, Ability) {
-            against = want if want.kind == "function" else want.maker;
+            against = called;
+            if against is None and isinstance(want, ClassType) {
+                against = constructor_sig(want, prog);
+            }
             if against is None {
                 continue;
             }
             for why in parameter_mismatches(name, binding.params, against) {
                 out.append((decl, why));
             }
-        } elif want.kind == "function" {
+        } elif called is not None {
             out.append(
                 (
                     decl,
@@ -456,12 +369,12 @@ impl conformance_mismatches(
                     f"interface of '{stub_mod.name}'"
                 )
             );
-        } elif not want.extensible {
-            made = want.maker;
+        } elif isinstance(want, ClassType) {
+            made = constructor_sig(want, prog);
             for member in sorted(binding.members) {
                 if member.startswith("_")
                     or member in LIFECYCLE_MEMBERS
-                    or member in want.members {
+                    or class_member_type(want, member, prog) is not None {
                     continue;
                 }
                 if member in binding.fields
@@ -550,54 +463,81 @@ impl call_gaps(call: FuncCall, binding: NativeBinding) -> list[str] {
     return out;
 }
 
+impl interface_module_name(home: Module) -> str {
+    """The dotted name a stub module is imported by, read off its path under
+    the typeshed standard library when it has one.""";
+    path = home.loc.mod_path.replace(os.sep, "/") if home.loc is not None else "";
+    marker = "/typeshed/stdlib/";
+    at = path.rfind(marker);
+    if at < 0 {
+        return home.name;
+    }
+    rel = path[at + len(marker):];
+    if rel.endswith(".pyi") {
+        rel = rel[:-len(".pyi")];
+    }
+    if rel.endswith("/__init__") {
+        rel = rel[:-len("/__init__")];
+    }
+    return rel.replace("/", ".");
+}
+
 impl binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str] {
+    """What the native library lacks for a name the checker typed from a
+    Python interface: its module-level function or class, a member of its
+    class, or an argument the call passes. A name that did not resolve into
+    an interface, or whose interface has no native module, has no gap.""";
     sym = nm.sym;
-    if sym is None or sym.decl is None {
+    if sym is None {
         return [];
     }
-    declared = sym.decl.name_of;
-    home = stub_home(declared);
-    if home is None {
+    target = resolved_decl_of(sym);
+    declared = target.sym if target is not None and target.sym is not None else sym;
+    if not declared.in_stub_scope() {
         return [];
     }
-    bindings = native_bindings_of(prog);
-    owner = declared.find_parent_of_type(Archetype)
-        if isinstance(declared, (Ability, HasVar))
-        else None;
-    if owner is not None
-        and owner.name is not None
-        and owner.name.value in NATIVE_FILE_CLASSES {
+    owner: (UniScopeNode | None) = None;
+    home: (UniScopeNode | None) = declared.parent_tab;
+    while home is not None and not isinstance(home, Module) {
+        if owner is None {
+            owner = home;
+        }
+        home = home.parent_scope;
+    }
+    if not isinstance(home, Module) {
+        return [];
+    }
+    if owner is not None and owner.scope_name in NATIVE_FILE_CLASSES {
         if nm.value in NATIVE_FILE_MEMBERS {
             return [];
         }
         return [f"the native file object has no member '{nm.value}'"];
     }
-    if owner is not None and owner.name is not None {
-        bound = bindings.lookup(prog, home.name, owner.name.value, base_dir);
+    lib = interface_module_name(home);
+    table = native_bindings_of(prog).surface(prog, lib, base_dir);
+    if table is None {
+        return [];
+    }
+    if owner is not None {
+        bound = table.get(owner.scope_name);
         if bound is None {
-            if bindings.surface(prog, home.name, base_dir) is None {
-                return [];
-            }
-            return [f"'{home.name}.{owner.name.value}' has no native implementation"];
+            return [f"'{lib}.{owner.scope_name}' has no native implementation"];
         }
         if nm.value not in bound.members {
             return [
-                f"the native '{home.name}.{owner.name.value}' has no member "
-                f"'{nm.value}'"
+                f"the native '{lib}.{owner.scope_name}' has no member '{nm.value}'"
             ];
         }
         return [];
     }
-    if not isinstance(declared, (Ability, Archetype)) {
-        return [];
-    }
-    table = bindings.surface(prog, home.name, base_dir);
-    if table is None {
-        return [];
-    }
-    bound = table.get(nm.value);
+    bound = table.get(declared.sym_name);
     if bound is None {
-        return [f"'{home.name}.{nm.value}' has no native implementation"];
+        want = prog.get_type_evaluator().get_type_of_symbol(declared);
+        if callable_sig(want) is not None
+            or (isinstance(want, ClassType) and want.is_instantiable_class()) {
+            return [f"'{lib}.{declared.sym_name}' has no native implementation"];
+        }
+        return [];
     }
     call = nm.parent;
     if isinstance(call, AtomTrailer) {

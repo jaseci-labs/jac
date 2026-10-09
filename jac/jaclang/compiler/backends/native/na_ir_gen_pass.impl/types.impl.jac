@@ -904,21 +904,7 @@ impl NaIRGenPass._lower_view_container(t: any) -> (ir.Type | None) {
 }
 
 impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
-    import from jaclang.compiler.native_bindings { NATIVE_FILE_CLASSES }
     cname = t.shared.class_name;
-    if t.shared.is_from_stdlib_stub {
-        cname = NATIVE_FILE_CLASSES.get(cname, cname);
-        _stub_scope = t.shared.symbol_table;
-        if isinstance(_stub_scope, uni.Archetype) {
-            _bound_arch = self._native_bound_decl(_stub_scope);
-            if isinstance(_bound_arch, uni.Archetype) {
-                _bound_struct = self.struct_types.get(self._arch_key(_bound_arch));
-                if _bound_struct is not None {
-                    return _bound_struct.as_pointer();
-                }
-            }
-        }
-    }
     if t.is_builtin("Node") or t.is_builtin("Edge") or t.is_builtin("Walker") {
         _any_ref = self.llvm_module.context.get_identified_type("OspAnyRef");
         if _any_ref.is_opaque {

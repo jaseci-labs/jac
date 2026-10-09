@@ -425,17 +425,19 @@ impl JacCompiler._demote_adopted_native(
     if options.aot_mode or options.force_codespace {
         return False;
     }
-    resolved = os.path.realpath(unit_path);
-    registry = program.native_units();
-    if resolved in registry.unadoptable {
-        return False;
-    }
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     import from jaclang.compiler.frontend.host { active_host }
-    detail = f"Native compilation failed: {failure}".split("\n")[0];
+    import from jaclang.compiler.frontend.unitree { Source }
+    import from jaclang.compiler.placement.placement_facts { encode_plan }
+    resolved = os.path.realpath(unit_path);
     host = active_host();
+    held = encode_plan(Source(host.read_source(resolved), resolved).hash, {});
+    if host.placement_plan(resolved) == held {
+        return False;
+    }
+    detail = f"Native compilation failed: {failure}".split("\n")[0];
     host.record_native_coverage(resolved, "demoted", "E5020", detail);
-    registry.unadoptable[resolved] = detail;
+    host.record_placement_plan(resolved, held);
     try {
         get_module_cache_path(resolved).unlink();
     } except OSError {}

@@ -1,12 +1,12 @@
-"""Native placement is one judgment over a module that was typed once.
+"""Placement is one judgment, made after a module has been typed.
 
-Every module is type-checked by the same rules, whatever codespace it ends
-up in. What only matters natively is recorded on the typed module as a
-note, a requirement or a library gap, and the legality pass reads those
-after analysis to decide placement. A module that cannot be native is not
-analyzed a second time and nothing about it is remembered between
-compiles; a refusal only the backend can see places the module on the
-server in place. A backend crash is none of these: it is a compiler error."""
+A module with no declared codespace is typed with none assumed. What only one
+codespace has is recorded on the typed module as a requirement or a refusal,
+and the placement pass reads those to place each top-level element. If any
+element is placed off the server, the module is analyzed a second time under
+that plan, so each backend sees the trees its codespace expects. A refusal
+found only then, or only by the backend, sends the module to the server once.
+A backend crash is none of these: it is a compiler error."""
 
 import os;
 import tempfile;
@@ -162,10 +162,11 @@ def refused_units(prog: JacProgram, mod: uni.Module) -> list[str] {
     );
 }
 
-test "a module is parsed and analyzed once and placed native after analysis" {
+test "an inferred native module is judged once, then typed again under its plan" {
     (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert parses == 1;
+    assert parses == 2 , f"one judgment and one analysis under the plan, got {parses}";
+    assert mod.gen.placement_mode == 'plan';
     assert mod.decided_codespace == 'native' and mod.codespace_inferred;
     assert mod.gen.llvm_ir is not None;
 }
@@ -184,7 +185,7 @@ test "a refused unit and every unit that reaches it are placed in Python statica
 
 test "placement is per element: what cannot be native stays in Python, the rest is native" {
     (prog, mod, path, parses) = compile_native_default(SEAM_SRC + REACHING_ENTRY);
-    assert parses == 1 , "placement must not parse or analyze the module again";
+    assert parses == 2 , f"the plan is applied once, got {parses} analyses";
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     placed = placed_by_name(mod);
     assert placed["other"] == 'native' , placed;
@@ -195,13 +196,15 @@ test "placement is per element: what cannot be native stays in Python, the rest 
     assert mod.decided_codespace != 'native' , "a mixed module is not whole-module native";
 }
 
-test "a refusal only the backend can see places the module on the server in place" {
+test "a refusal only the backend can see sends the module to the server once" {
     (prog, mod, path, parses) = compile_native_default(LATE_SRC);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert parses == 1 , "a late refusal must not recompile the module";
+    assert parses == 3 , (
+        f"the judgment, the plan, and one fallback to the server, got {parses}"
+    );
     assert mod.decided_codespace != 'native';
     assert mod.gen.llvm_ir is None;
-    assert mod.gen.py_ast , "the Python backend emits the module in the same compile";
+    assert mod.gen.py_ast , "the Python backend emits the module after the fallback";
 }
 
 test "a native library gap refuses the function that uses it, not the module" {
@@ -218,7 +221,7 @@ test "a native library gap refuses the function that uses it, not the module" {
 test "what only matters natively is a note on the typed module, never a type error" {
     (prog, mod, path, parses) = compile_native_default(ERASED_SRC);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert parses == 1;
+    assert parses == 1 , "nothing was placed off the server, so there is no plan";
     assert mod.decided_codespace != 'native';
     assert "E1124" in [note.code for note in capability_notes_of(prog, path, "native")];
 }

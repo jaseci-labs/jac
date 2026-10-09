@@ -1199,16 +1199,26 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
-    def native_unadoptable(path: str, program: (JacProgram | None) = None) -> str {
-        self.census.count("native_unadoptable");
-        if path in self.inputs.unadoptable {
-            return self.inputs.unadoptable[path];
+    def placement_plan(path: str) -> str {
+        self.census.count("placement_plan");
+        if path in self.inputs.plans {
+            return self.inputs.plans[path];
         }
-        with self.missing("native_unadoptable", path) as host {
-            answer = host.native_unadoptable(path, program);
+        with self.missing("placement_plan", path) as host {
+            answer = host.placement_plan(path);
         }
-        self.inputs.unadoptable[path] = answer;
+        self.inputs.plans[path] = answer;
         return answer;
+    }
+
+    def record_placement_plan(path: str, plan: str) {
+        self.inputs.plans[path] = plan;
+        if self.kernel_only("record_placement_plan") {
+            return;
+        }
+        with self.delegating("record_placement_plan") as host {
+            host.record_placement_plan(path, plan);
+        }
     }
 
     def record_native_coverage(

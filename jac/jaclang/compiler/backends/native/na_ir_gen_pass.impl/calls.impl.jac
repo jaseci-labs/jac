@@ -170,14 +170,7 @@ impl NaIRGenPass._transfer_own_args(
 
 impl NaIRGenPass._callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None) {
     import from jaclang.compiler.symbol_utils { resolved_callee }
-    found = resolved_callee(nd);
-    if found is not None {
-        bound = self._native_bound_decl(found);
-        if isinstance(bound, uni.Ability) {
-            return bound;
-        }
-    }
-    return found;
+    return resolved_callee(nd);
 }
 
 impl NaIRGenPass._linked_callee_decl(

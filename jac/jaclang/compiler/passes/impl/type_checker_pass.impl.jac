@@ -68,13 +68,11 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
             and not isinstance(here.expr, Null)
         ) {
             if not (
-                scope.signature.event.name == Tok.KW_ENTRY and not scope.is_async
+                scope.in_client_context()
+                and scope.signature.event.name == Tok.KW_ENTRY
+                and not scope.is_async
             ) {
                 self.ctx.emit(W2014, node_override=here);
-            } else {
-                self.evaluator.note_client(
-                    here, "W2014", "a value returned from an entry ability"
-                );
             }
             return;
         }
@@ -343,19 +341,24 @@ impl TypeCheckPass._diag_erased_membership(
     if not self.evaluator._is_strict_site(nd) {
         return;
     }
+    native = self.evaluator._in_native_context();
+    if not native and not self.evaluator.neutral_site(nd) {
+        return;
+    }
     hay_t = self.evaluator.get_type_of_expression(hay);
 
     if hay_t is None
         or isinstance(hay_t, UnknownType)
         or hay_t.is_any_type()
         or hay_t.is_any_instance() {
-        self.evaluator.note_native(
-            hay,
-            "E1124",
-            E1124.format_message(
-                op=op_text, type=str(hay_t) if hay_t is not None else "<unknown>"
-            )
-        );
+        shown = str(hay_t) if hay_t is not None else "<unknown>";
+        if native {
+            self.ctx.emit(E1124, node_override=hay, op=op_text, type=shown);
+        } else {
+            self.evaluator.note_native(
+                hay, "E1124", E1124.format_message(op=op_text, type=shown)
+            );
+        }
     }
 }
 
@@ -1433,7 +1436,14 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
     if not isinstance(owner, Ability) {
         return None;
     }
-    self.evaluator.note_client(nd, "E5096", "component state declared in a function");
+    if not nd.in_client_context() {
+        if not self.evaluator.neutral_site(nd) {
+            return None;
+        }
+        self.evaluator.note_client(
+            nd, "E5096", "component state declared in a function"
+        );
+    }
     probes: list[Expr | None] = [nd.value, nd.type_tag.tag if nd.type_tag else None];
     for probe in probes {
         cur: (UniNode | None) = probe;

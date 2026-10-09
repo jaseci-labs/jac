@@ -1,6 +1,6 @@
 import os;
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.frontend.unitree { UniNode }
+import from jaclang.compiler.frontend.unitree { Module, UniNode }
 
 glob TARGET_NATIVE: str = "native",
      TARGET_CLIENT: str = "client",
@@ -53,4 +53,15 @@ def capability_notes_of(
 
 def forget_capability_notes(prog: JacProgram, mod_path: str) {
     prog.analysis.capability_notes.pop(os.path.realpath(mod_path), None);
+}
+
+def placement_neutral(nd: UniNode) -> bool {
+    """Whether `nd` sits in a module whose placement has not been decided:
+    the first analysis of a module with no declared codespace. What only one
+    codespace has is then a fact to record for placement, not an error.""";
+    if nd.in_native_context() or nd.in_client_context() {
+        return False;
+    }
+    mod = nd if isinstance(nd, Module) else nd.find_parent_of_type(Module);
+    return mod is not None and mod.gen.placement_mode == "";
 }

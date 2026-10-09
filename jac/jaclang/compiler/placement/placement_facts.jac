@@ -18,19 +18,78 @@ glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtime", "na_stdlib"),
      );
 
 
-def native_placement_soft(prog: JacProgram, mod: uni.Module) -> bool {
-    if not mod.codespace_inferred {
-        return False;
-    }
+def native_placement_hard(prog: JacProgram, mod_path: str) -> bool {
     opts = prog.options;
     if opts is None {
-        return True;
+        return False;
     }
     if opts.aot_mode or opts.force_codespace {
+        return True;
+    }
+    return bool(mod_path and opts.native_required_for(mod_path));
+}
+
+
+def native_placement_soft(prog: JacProgram, mod: uni.Module) -> bool {
+    if mod.decided_codespace != SPACE_NATIVE and not mod.codespace_inferred {
         return False;
     }
     mod_path = mod.loc.mod_path if mod.loc is not None else "";
-    return not (mod_path and opts.native_required_for(mod_path));
+    return not native_placement_hard(prog, mod_path);
+}
+
+
+glob _placement_plans: dict[str, str] = {};
+
+def encode_plan(digest: str, placed: dict[int, str]) -> str {
+    native: list[str] = [];
+    client: list[str] = [];
+    for index in sorted(placed.keys()) {
+        if placed[index] == SPACE_NATIVE {
+            native.append(str(index));
+        } elif placed[index] == SPACE_CLIENT {
+            client.append(str(index));
+        }
+    }
+    return f"{digest}|{','.join(native)}|{','.join(client)}";
+}
+
+
+def decode_plan(plan: str, digest: str) -> (dict[int, str] | None) {
+    if not plan {
+        return None;
+    }
+    parts = plan.split('|');
+    if len(parts) != 3 or parts[0] != digest {
+        return None;
+    }
+    placed: dict[int, str] = {};
+    for item in parts[1].split(',') {
+        if item {
+            placed[int(item)] = SPACE_NATIVE;
+        }
+    }
+    for item in parts[2].split(',') {
+        if item {
+            placed[int(item)] = SPACE_CLIENT;
+        }
+    }
+    return placed;
+}
+
+
+def held_plan(path: str) -> str {
+    return _placement_plans.get(os.path.realpath(path), '');
+}
+
+
+def hold_plan(path: str, plan: str) {
+    key = os.path.realpath(path);
+    if plan {
+        _placement_plans[key] = plan;
+    } else {
+        _placement_plans.pop(key, None);
+    }
 }
 
 

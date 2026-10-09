@@ -78,7 +78,6 @@ def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, 
 def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
 def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
 def import_placed_native(prog: JacProgram, dep_path: str) -> bool;
-def place_module_server(mod: Module, prog: JacProgram, refusal: NativeRefusal) -> None;
 def settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None);
@@ -87,6 +86,8 @@ walker PlacementPass(CompilerPass) {
     def _emit_refusal(refusal: NativeRefusal, required_by: str) -> None;
     def _report_unmet(legality: NativeLegality, why: str) -> None;
     def _check_conformance(ir_in: Module) -> None;
+    def _run_decided(ir_in: Module) -> Module;
+    def _run_undecided(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
 }
@@ -605,50 +606,6 @@ impl import_placed_native(prog: JacProgram, dep_path: str) -> bool {
     return target is not None and target.declares_codespace(CodeContext.NATIVE);
 }
 
-impl place_module_server(
-    mod: Module, prog: JacProgram, refusal: NativeRefusal
-) -> None {
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.placement.placement_solver {
-        invalidate_importers_es,
-        placement_work
-    }
-    import from jaclang.compiler.driver.session_compile { drop_native_bindings }
-    for elem in mod.body {
-        if not isinstance(elem, ContextAwareNode)
-            or elem.code_context != CodeContext.NATIVE
-            or (isinstance(elem, Import) and elem.has_clib_decls) {
-            continue;
-        }
-        elem.code_context = CodeContext.SERVER;
-        if isinstance(elem, ModuleCode) and elem.body {
-            for inner in elem.body {
-                if isinstance(inner, ContextAwareNode) {
-                    inner.code_context = CodeContext.SERVER;
-                }
-            }
-        }
-    }
-    mod.decided_codespace = "";
-    mod.codespace_inferred = False;
-    mod_path = mod.loc.mod_path if mod.loc is not None else "";
-    if not mod_path {
-        return;
-    }
-    resolved = os.path.realpath(mod_path);
-    host = active_host();
-    host.record_native_coverage(resolved, 'server', refusal.code, refusal.headline());
-    for stale in invalidate_importers_es(prog, resolved) {
-        drop_native_bindings(stale, resolved);
-    }
-    placement_work(prog).changed(mod);
-    host.note(
-        f"note: {mod_path} preferred native but did not lower; "
-        f"compiled in the server codespace ({refusal.headline()})",
-        "dim"
-    );
-}
-
 impl settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None) {
@@ -659,6 +616,7 @@ impl settle_native_module(
     del pending[:];
     del warnings[:];
     gen = mod.gen;
+    gen.native_refusal_code = refusal.code;
     gen.native_refusal = refusal.headline();
     gen.llvm_ir = None;
     gen.native_engine = None;
@@ -667,7 +625,6 @@ impl settle_native_module(
     gen.native_iface = None;
     gen.native_layout = None;
     gen.native_deps = [];
-    place_module_server(mod, prog, refusal);
     return refusal;
 }
 
@@ -709,6 +666,77 @@ impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> No
 }
 
 impl PlacementPass._run_impl(ir_in: Module) -> Module {
+    """Placement is decided once. A module whose codespace was declared, or
+    one being analyzed again under the plan its first analysis produced, has
+    its elements placed already: what remains is to hold that placement to
+    account. Any other module is undecided, and this is where it is decided.""";
+    ir_in.native_viols_reported = True;
+    ir_in.client_viols_reported = True;
+    self._check_conformance(ir_in);
+    if ir_in.gen.placement_mode {
+        return self._run_decided(ir_in);
+    }
+    return self._run_undecided(ir_in);
+}
+
+impl PlacementPass._run_decided(ir_in: Module) -> Module {
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.diagnostics { E5096 }
+    import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
+    import from jaclang.compiler.placement.placement_solver {
+        placement_work,
+        refresh_placement_module
+    }
+    mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    client_refused = client_refused_elements(ir_in);
+    placed: list[CodeContext] = [];
+    for elem in ir_in.body {
+        if not isinstance(elem, ContextAwareNode) {
+            continue;
+        }
+        placed.append(elem.code_context);
+        if elem.code_context == CodeContext.CLIENT and id(elem) in client_refused {
+            for (vnode, vkind) in client_refused[id(elem)] {
+                self.ctx.emit(E5096, node_override=vnode, kind=vkind);
+            }
+        }
+    }
+    has_native = CodeContext.NATIVE in placed;
+    if ir_in.gen.placement_mode == 'plan' {
+        uniform = placed[0]
+            if placed and all(ctx == placed[0] for ctx in placed)
+            else None;
+        ir_in.decided_codespace = uniform.value
+            if uniform is not None and uniform != CodeContext.SERVER
+            else "";
+        ir_in.codespace_inferred = has_native;
+    }
+    if has_native {
+        legality = build_native_legality(ir_in, self.prog);
+        refused: list[NativeRefusal] = list(legality.module);
+        refused.extend(legality.elements.values());
+        if refused and native_placement_soft(self.prog, ir_in) {
+            ir_in.gen.native_refusal_code = refused[0].code;
+            ir_in.gen.native_refusal = refused[0].headline();
+        } elif refused {
+            seen: set[int] = set();
+            for refusal in refused {
+                if refusal.site is None or id(refusal.site) in seen {
+                    continue;
+                }
+                seen.add(id(refusal.site));
+                self._emit_refusal(refusal, "");
+            }
+        }
+        active_host().record_native_coverage(mod_path, 'native');
+    }
+    refresh_placement_module(ir_in, self.prog);
+    placement_work(self.prog).changed(ir_in);
+    report_serverless_kind_errors(self, ir_in);
+    return ir_in;
+}
+
+impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.diagnostics { E5096 }
     import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
@@ -724,10 +752,12 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
         'client': CodeContext.CLIENT,
         'native': CodeContext.NATIVE
     };
-    ir_in.native_viols_reported = True;
-    ir_in.client_viols_reported = True;
+    import from jaclang.compiler.placement.placement_facts { encode_plan }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
-    self._check_conformance(ir_in);
+    given: list[CodeContext | None] = [
+        elem.code_context if isinstance(elem, ContextAwareNode) else None
+        for elem in ir_in.body
+    ];
 
     required = element_requirements(ir_in, self.prog);
     for elem in ir_in.body {
@@ -761,6 +791,22 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
         'native': inferred_refused,
         'client': set(client_refused.keys())
     };
+    carries_native = False;
+    for elem in ir_in.body {
+        if isinstance(elem, ContextAwareNode)
+            and elem.code_context == CodeContext.NATIVE
+            and not isinstance(elem, Import) {
+            carries_native = True;
+            break;
+        }
+    }
+    if not carries_native {
+        for elem in tentative {
+            if elem.code_context == CodeContext.NATIVE {
+                elem.code_context = CodeContext.SERVER;
+            }
+        }
+    }
     refresh_placement_module(ir_in, self.prog);
     solve_module_placement(ir_in, self.prog);
     placement_work(self.prog).changed(ir_in);
@@ -826,6 +872,22 @@ impl PlacementPass._run_impl(ir_in: Module) -> Module {
         );
     }
     report_serverless_kind_errors(self, ir_in);
+    plan: dict[int, str] = {};
+    moved = False;
+    for (index, elem) in enumerate(ir_in.body) {
+        if not isinstance(elem, ContextAwareNode) {
+            continue;
+        }
+        if elem.code_context != given[index] {
+            moved = True;
+        }
+        if elem.code_context != CodeContext.SERVER {
+            plan[index] = elem.code_context.value;
+        }
+    }
+    if moved and ir_in.source is not None {
+        ir_in.gen.placement_plan = encode_plan(ir_in.source.hash, plan);
+    }
     return ir_in;
 }
 

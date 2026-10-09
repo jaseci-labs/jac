@@ -199,9 +199,10 @@ def cancelled(options: CompileOptions) -> bool {
     return options.cancel_token is not None and options.cancel_token.is_set();
 }
 
-def analyze_module(
-    program: JacProgram, path: str, options: CompileOptions, source: str | None = None
+def run_analysis_phases(
+    program: JacProgram, path: str, options: CompileOptions, source: str | None
 ) -> ModuleAnalysis {
+    program.analysis.capability_notes.pop(os.path.realpath(path), None);
     task = ModuleAnalysis(program, path, options, source);
     for phase in ANALYSIS_PHASES {
         if cancelled(options) {
@@ -213,6 +214,30 @@ def analyze_module(
         } finally {
             record_phase(program, phase, started);
         }
+    }
+    return task;
+}
+
+def analyze_module(
+    program: JacProgram, path: str, options: CompileOptions, source: str | None = None
+) -> ModuleAnalysis {
+    errors_mark = len(program.errors_had);
+    warnings_mark = len(program.warnings_had);
+    task = run_analysis_phases(program, path, options, source);
+    plan = task.module.gen.placement_plan
+        if task.module is not None and not task.parse_failed
+        else "";
+    if not plan or len(program.errors_had) > errors_mark or cancelled(options) {
+        return task;
+    }
+    host = active_host();
+    host.record_placement_plan(path, plan);
+    try {
+        del program.warnings_had[warnings_mark:];
+        program.invalidate_module(os.path.realpath(path));
+        task = run_analysis_phases(program, path, options, source);
+    } finally {
+        host.record_placement_plan(path, "");
     }
     return task;
 }

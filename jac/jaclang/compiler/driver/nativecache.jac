@@ -55,7 +55,6 @@ obj NativeUnitRegistry {
         checking: set[str] postinit,
         not_native: dict[str, str] = {},
         failures: dict[str, str] = {},
-        unadoptable: dict[str, str] = {},
         compiled_paths: list[str] = [];
 
     def postinit {

@@ -277,7 +277,7 @@ walker StaticAnalysisPass(CompilerPass) {
     def _literal_case_suggestion(name: str) -> (str | None);
     def _enclosing_class_member(name_nd: Name) -> (str | None);
     def _osp_shape_position(name_nd: Name) -> (str | None);
-    def _clib_type_position(name_nd: Name) -> bool;
+    def _native_type_position(name_nd: Name) -> (str | None);
     def _check_unreachable_code(mod: Module) -> None;
     def _check_semantic_patterns(mod: Module) -> None;
     def _check_typing_import_refusals(mod: Module) -> None;

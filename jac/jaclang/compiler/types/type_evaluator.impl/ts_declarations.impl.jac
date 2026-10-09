@@ -1,4 +1,7 @@
 impl TypeEvaluator._ts_decl_path(from_loc: ModulePath) -> (str | None) {
+    if not from_loc.in_client_context() and not self.neutral_site(from_loc) {
+        return None;
+    }
     mod_path = from_loc.loc.mod_path if from_loc.loc else None;
     if not mod_path {
         return None;

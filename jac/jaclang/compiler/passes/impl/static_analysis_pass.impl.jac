@@ -113,29 +113,33 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
         }
 
         if not name_nd.is_kwesc {
-            if self._clib_type_position(name_nd) {
+            native_position = self._native_type_position(name_nd);
+            if native_position is not None {
                 self.ctx.emit(
                     E2018,
                     node_override=name_nd,
                     name=name_nd.value,
-                    position="C library declaration type position"
+                    position=native_position
                 );
                 continue;
             }
             if in_type_position(name_nd, include_subscripts=False) {
                 import from jaclang.compiler.capability_notes {
                     TARGET_NATIVE,
-                    note_capability
+                    note_capability,
+                    placement_neutral
                 }
-                note_capability(
-                    self.prog,
-                    name_nd,
-                    TARGET_NATIVE,
-                    "E2018",
-                    E2018.format_message(
-                        name=name_nd.value, position="native type position"
-                    )
-                );
+                if placement_neutral(name_nd) {
+                    note_capability(
+                        self.prog,
+                        name_nd,
+                        TARGET_NATIVE,
+                        "E2018",
+                        E2018.format_message(
+                            name=name_nd.value, position="native type position"
+                        )
+                    );
+                }
             }
         }
 
@@ -256,12 +260,18 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: Name) -> (str | None) {
     return None;
 }
 
-impl StaticAnalysisPass._clib_type_position(name_nd: Name) -> bool {
+impl StaticAnalysisPass._native_type_position(name_nd: Name) -> (str | None) {
     if not in_type_position(name_nd, include_subscripts=False) {
-        return False;
+        return None;
     }
     imp = name_nd.find_parent_of_type(Import);
-    return imp is not None and bool(imp.clib_decls);
+    if imp is not None and imp.clib_decls {
+        return "C library declaration type position";
+    }
+    if name_nd.in_native_context() {
+        return "native type position";
+    }
+    return None;
 }
 
 impl StaticAnalysisPass._check_unreachable_code(mod: Module) -> None {
@@ -427,14 +437,25 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
                 break;
             }
             if isinstance(parent, Test) {
-                import from jaclang.compiler.capability_notes {
-                    TARGET_CLIENT,
-                    note_capability as _note_await
+                in_async = parent.in_client_context();
+                if not in_async {
+                    import from jaclang.compiler.capability_notes {
+                        TARGET_CLIENT,
+                        note_capability as _note_await,
+                        placement_neutral as _undecided
+                    }
+                    if _undecided(parent) {
+                        _note_await(
+                            self.prog,
+                            nd,
+                            TARGET_CLIENT,
+                            "E5096",
+                            "await in a test",
+                            True
+                        );
+                        in_async = True;
+                    }
                 }
-                _note_await(
-                    self.prog, nd, TARGET_CLIENT, "E5096", "await in a test", True
-                );
-                in_async = True;
                 break;
             }
             if isinstance(parent, Ability) {

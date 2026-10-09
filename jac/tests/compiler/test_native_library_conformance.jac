@@ -10,8 +10,10 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
 import from jaclang.compiler.native_bindings {
     conformance_mismatches,
+    callable_sig,
+    class_member_type,
+    interface_type,
     native_library_module_name,
-    stub_surface,
     typeshed_stub_path,
     variant_mismatches
 }
@@ -71,21 +73,38 @@ test "platform variants of a library module expose one surface" {
     assert not failures , "\n".join(failures);
 }
 
-test "the interface surface follows branches, re-exports and bases" {
+test "the interface is read from symbols: branches, re-exports and bases included" {
+    import from jaclang.compiler.types.types { ClassType }
     prog = JacProgram();
     posix = prog.load_dependency_module(
         typeshed_stub_path("os.path") or "", need_tree=True
     );
-    surface = stub_surface(posix, prog);
-    assert "join" in surface and "exists" in surface , sorted(surface.keys());
+    assert callable_sig(interface_type(posix, "join", prog)) is not None;
+    assert callable_sig(interface_type(posix, "exists", prog)) is not None;
     sched = prog.load_dependency_module(
         typeshed_stub_path("sched") or "", need_tree=True
     );
-    event = stub_surface(sched, prog)["Event"];
-    assert "sequence" in event.members , sorted(event.members);
+    event = interface_type(sched, "Event", prog);
+    assert isinstance(event, ClassType);
+    assert class_member_type(event, "sequence", prog) is not None;
     pathlib = prog.load_dependency_module(
         typeshed_stub_path("pathlib") or "", need_tree=True
     );
-    path_decl = stub_surface(pathlib, prog)["Path"];
-    assert "parts" in path_decl.members , "members of PurePath are inherited by Path";
+    path_cls = interface_type(pathlib, "Path", prog);
+    assert isinstance(path_cls, ClassType);
+    assert class_member_type(path_cls, "parts", prog) is not None , (
+        "members of PurePath are inherited by Path"
+    );
+    sleep = callable_sig(
+        interface_type(
+            prog.load_dependency_module(
+                typeshed_stub_path("time") or "", need_tree=True
+            ),
+            "sleep",
+            prog
+        )
+    );
+    assert sleep is not None and sleep.positional == 1 , (
+        "a parameter taken by position only may have any name natively"
+    );
 }

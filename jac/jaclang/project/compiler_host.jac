@@ -162,7 +162,8 @@ obj ProjectHost(HostServices) {
     ) -> Module;
 
     def native_session_active(program: JacProgram) -> bool;
-    def native_unadoptable(path: str, program: (JacProgram | None) = None) -> str;
+    def placement_plan(path: str) -> str;
+    def record_placement_plan(path: str, plan: str);
     def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);

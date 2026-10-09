@@ -229,7 +229,7 @@ obj KernelInputs {
         project_root_of: dict[str, str] = {},
         lint_of: dict[str, LintSettings] = {},
         untyped: dict[str, bool] = {},
-        unadoptable: dict[str, str] = {},
+        plans: dict[str, str] = {},
         siblings: dict[str, str] = {},
         client_pulls: dict[str, str] = {},
         native_ifaces: dict[str, str] = {},
@@ -758,7 +758,7 @@ def answers_to_dict(inputs: KernelInputs) -> dict[str, any] {
             path: lint_to_dict(lint) for (path, lint) in inputs.lint_of.items()
         },
         "untyped": dict(inputs.untyped),
-        "unadoptable": dict(inputs.unadoptable),
+        "plans": dict(inputs.plans),
         "siblings": dict(inputs.siblings),
         "client_pulls": dict(inputs.client_pulls),
         "native_ifaces": dict(inputs.native_ifaces),
@@ -836,7 +836,7 @@ def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
     merge_str_map(inputs.app_of, raw.get("app_of"));
     merge_str_map(inputs.project_root_of, raw.get("project_root_of"));
     merge_bool_map(inputs.untyped, raw.get("untyped"));
-    merge_str_map(inputs.unadoptable, raw.get("unadoptable"));
+    merge_str_map(inputs.plans, raw.get("plans"));
     merge_str_map(inputs.siblings, raw.get("siblings"));
     merge_str_map(inputs.client_pulls, raw.get("client_pulls"));
     merge_str_map(inputs.native_ifaces, raw.get("native_ifaces"));

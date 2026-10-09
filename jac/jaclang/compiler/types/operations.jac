@@ -756,9 +756,11 @@ def get_type_of_binary_operation(
         target_node = expr.right if left_walker else expr.left;
         target_type = right_type if left_walker else left_type;
         _jid_target = (
-            isinstance(target_type, ClassType) and target_type.is_builtin("str")
+            isinstance(target_type, ClassType)
+            and target_type.is_builtin("str")
+            and (expr.in_client_context() or evaluator.neutral_site(expr))
         );
-        if _jid_target {
+        if _jid_target and not expr.in_client_context() {
             evaluator.note_client(
                 target_node, "E1115", "a walker spawned on a node id string"
             );
