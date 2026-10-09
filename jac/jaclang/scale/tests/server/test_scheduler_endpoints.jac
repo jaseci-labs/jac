@@ -4,8 +4,10 @@ raise since #7947 removed Mongo, so every storage failure fell through to the
 generic 500 SCHEDULER_ERROR and the 503 path was unreachable.
 """
 
+import os;
 import shutil;
 import tempfile;
+import time;
 import from pathlib { Path }
 import from jaclang.data.pgwire { PgWireError }
 import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
@@ -175,6 +177,79 @@ test "POST /jobs schedules a DYNAMIC target, then refuses the account past its c
         assert second.status_code == 429 , second.text;
         assert second.json()["error"]["code"] == "QUOTA_EXCEEDED" , second.text;
     } finally {
+        client.close();
+        reset_scale_config();
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "GET /admin/schedules lists the static tasks, to admins only" {
+    fixtures = Path(__file__).parent.parent / "fixtures";
+    base = tempfile.mkdtemp(prefix="jac-schedules-");
+    for f in fixtures.iterdir() {
+        if f.is_file() {
+            shutil.copy2(f, Path(base) / f.name);
+        }
+    }
+    reset_scale_config();
+    get_scale_config(project_dir=Path(base));
+    client = ScaleTestClient.from_file(str(fixtures / "test_api.jac"), base_path=base);
+    server: any = client._server;
+    try {
+        server._register_scheduled_tasks();
+        user = client.register_and_login("schedules-user", "password123");
+        refused = client.get(
+            "/admin/schedules", headers={"Authorization": f"Bearer {user}"}
+        );
+        assert refused.status_code in (401, 403) , refused.text;
+
+        admin = client.admin_login();
+        listed = client.get(
+            "/admin/schedules", headers={"Authorization": f"Bearer {admin}"}
+        );
+        assert listed.status_code == 200 , listed.text;
+        rows = {r["name"]: r for r in listed.json()["data"]["schedules"]};
+        for (name, kind, interval, cron) in [
+            ("StaticIntervalWalker", "walker", 0.3, None),
+            ("StaticCronWalker", "walker", None, "* * * * *"),
+            ("static_interval_func", "function", 0.3, None),
+            ("static_cron_func", "function", None, "* * * * *")
+        ] {
+            row = rows[name];
+            assert (row["kind"], row["interval"], row["cron"])
+                == (kind, interval, cron) , row;
+            assert row["next_run"] is not None , row;
+        }
+        assert "DynamicScheduledWalker" not in rows , sorted(rows);
+
+        scheduler: any = server.scheduler;
+        assert listed.json()["data"]["namespace"] == scheduler.namespace , listed.text;
+        assert scheduler.namespace , "the listing must name the claim namespace";
+        scheduler.start();
+        ran: dict[str, any] = {};
+        deadline = time.monotonic() + 30.0;
+        while time.monotonic() < deadline {
+            answer = client.get(
+                "/admin/schedules", headers={"Authorization": f"Bearer {admin}"}
+            );
+            assert answer.status_code == 200 , answer.text;
+            row = {r["name"]: r for r in answer.json()["data"]["schedules"]}[
+                "static_interval_func"
+            ];
+            if row["last_run"] is not None {
+                ran = row["last_run"];
+                break;
+            }
+            time.sleep(0.2);
+        }
+        assert ran , "static_interval_func ran but the listing never showed it";
+        assert ran["status"] == "ok" , ran;
+        assert ran["worker"].endswith(f":{os.getpid()}") , ran;
+        assert ran["tick"] and ran["duration_ms"] >= 0.0 , ran;
+    } finally {
+        server.scheduler.stop(timeout=5.0);
+        server.scheduler._tasks.clear();
         client.close();
         reset_scale_config();
         shutil.rmtree(base, ignore_errors=True);

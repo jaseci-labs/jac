@@ -340,6 +340,33 @@ Each execution updates the job record with run bookkeeping, visible via `GET /jo
 | `last_status` | `succeeded` or `failed` |
 | `last_error` | Error message from the last failed run, else `null` |
 
+### Seeing Static Task Runs
+
+Every run of a static task writes one log line naming the task, the tick it ran for, the worker that ran it (`host:pid`) and how long it took. A failed run logs at `ERROR` with its error; the traceback is logged separately, just before it:
+
+```
+INFO  scheduled heartbeat ok in 1.8 ms (tick 2026-10-01T09:00:05+00:00, worker web-7f9c:4120)
+ERROR scheduled send_digest failed in 3.2 ms (tick 2026-10-01T09:00:00+00:00, worker web-7f9c:4121): smtp unreachable
+```
+
+A worker that does not run a tick logs that at `DEBUG` with the reason: `claimed_elsewhere` (another replica took the tick), `running_elsewhere` (a run is still going on another replica), `still_running` (an earlier run is still going on this worker), `claim_failed` or `hold_failed` (the database could not be reached), `draining` (the server is shutting down) or `stopping` (the scheduler stopped between the claim and the run). Every tick a worker claims ends in one of these or in a run. With structured logs on, these lines also carry `task`, `tick`, `worker`, `status`, `duration_ms`, `reason` and `error` under `extras`.
+
+With `[scale.monitoring] enabled = true`, `/metrics` exposes the same outcomes per task, merged across workers:
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `<namespace>_scheduled_runs_total` | `task`, `status` | Runs started, by `ok` or `failed` |
+| `<namespace>_scheduled_run_duration_seconds` | `task` | Run duration histogram, with buckets from 10 ms to 1 hour |
+| `<namespace>_scheduled_ticks_skipped_total` | `task`, `reason` | Ticks a worker did not run, by the reasons above |
+
+Admins can list the static tasks a service runs with `GET /admin/schedules`. Each entry gives the task's `name`, its `kind` (`walker` or `function`), its `interval`, `cron` or `date`, its `next_run`, and its `last_run`: the `tick`, `worker`, `status`, `duration_ms`, `error` and `finished_at` of the most recent run. With a database configured, the run that finishes records itself next to its tick claim, so any worker of any replica answers with the same last run. Without one, each worker reports only the runs it made itself.
+
+```bash
+curl -s http://localhost:8000/admin/schedules -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Behind the fleet gateway, the same request answers for the whole fleet: the gateway asks every service it serves and returns `{"ok": true, "data": {"services": [...], "schedules": [...]}}`, where each entry also carries the `service` that runs it and that service's `namespace`. A service answers for itself, with its own `namespace` at the top level.
+
 ## Configuration Reference
 
 All keys live under `[scale.scheduler]` in `jac.toml`:
@@ -370,7 +397,7 @@ max_jobs_per_user = 25
 ## Behavior Notes
 
 - Cron fields, dynamic job triggers, and stored timestamps are all UTC. The one exception is a bare `date` string on `@schedule`, which is read in the server's local timezone; pin an offset there.
-- Within one worker process, a static task does not overlap itself: if its run is still going when the next fire time arrives, that tick is skipped there, logged once, and left unclaimed, so another worker or replica may run it alongside the first. A dynamic job is skipped by APScheduler (`max_instances=1`), also per process.
+- A static task does not overlap itself, across workers and replicas: a run holds the task in the database while it goes, renewing the hold every 10 seconds, and a tick that arrives meanwhile is skipped on every replica, not queued. If a worker dies mid-run its hold expires after 30 seconds and the task runs again. Without a Postgres-backed store there is one process to coordinate, so the check is per process. A dynamic job is skipped by APScheduler (`max_instances=1`), per process.
 - When a server shuts down it stops starting static runs as soon as it begins draining, and waits for the runs already going within what is left of `[serve.timeouts] drain` after in-flight requests. A run still going when that budget is spent is cut off, and the log names it. Dynamic jobs are waited on for `shutdown_timeout`.
 - Every fire missed within `misfire_grace_time` runs on recovery, each claiming its own tick, so a replica that stalls makes up to `misfire_grace_time / interval` runs back to back before it catches up. Misses older than the grace window are dropped. Lower `misfire_grace_time` if a burst is worse for your job than a gap.
 - Keep scheduled work idempotent where possible. Interval and cron jobs will run many times, and a restart near a fire time can produce a make-up run.

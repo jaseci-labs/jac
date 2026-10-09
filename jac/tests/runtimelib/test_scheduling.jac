@@ -1,6 +1,9 @@
 """Tests for the built-in scheduler engine."""
 
 import datetime;
+import json;
+import os;
+import socket;
 import threading;
 import time;
 import from pathlib { Path }
@@ -8,6 +11,7 @@ import from jaclang { JacRuntime as Jac }
 import logging;
 import from jaclang.server.task_scheduler {
     CronSchedule,
+    RunOutcome,
     Scheduler,
     ScheduleSpec,
     ScheduledTask,
@@ -183,7 +187,7 @@ test "compute next run and schedule decorator" {
     assert module.static_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
     assert module.str_trigger_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
 
-    # _execute catches exceptions gracefully
+    # _execute catches exceptions and returns them as the run's error
     def bad_fn {
         raise RuntimeError("boom");
     }
@@ -192,10 +196,9 @@ test "compute next run and schedule decorator" {
         target=bad_fn,
         spec=ScheduleSpec(interval=60),
         is_walker=False,
-        next_run=datetime.datetime.now(),
-        last_run=None
+        next_run=datetime.datetime.now()
     );
-    sched._execute(task);
+    assert sched._execute(task) == "RuntimeError: boom";
 }
 
 test "fixture loading registration and api exclusion" {
@@ -377,8 +380,8 @@ test "a served scheduled walker runs each tick without an error record" {
             ][0];
             served_log = sys.modules[walker_cls.__module__].execution_log;
             before = served_log.count("interval-walker");
-            server.scheduler._execute(task);
-            server.scheduler._execute(task);
+            assert server.scheduler._execute(task) == "";
+            assert server.scheduler._execute(task) == "";
             assert served_log.count("interval-walker") == before + 2 , served_log;
             errors = [
                 m
@@ -532,12 +535,13 @@ test "a worker recomputes inherited fire times when it starts" {
     sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
     stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1);
     sched._tasks[0].next_run = stale;
+    outcomes: list[RunOutcome] = [];
+    sched.on_run("probe", outcomes.append);
     sched.start();
     try {
-        # The loop stamps last_run the moment it pops a task, so an inherited
-        # past fire time is caught whichever thread gets there first.
+        # A run of the inherited past fire time would report an outcome.
         task = sched._tasks[0];
-        assert task.last_run is None , task.last_run;
+        assert outcomes == [] , outcomes;
         assert task.next_run is not None;
         assert task.next_run > datetime.datetime.now(datetime.timezone.utc) , task.next_run;
     } finally {
@@ -625,7 +629,7 @@ test "the namespace is the fleet service name, else the served module" {
 }
 
 
-test "a tick whose claim cannot be checked is skipped, and logged once" {
+test "a claim or run hold that cannot be checked is logged once" {
     # #9030: a failed lease check used to return True on every worker of
     # every pod, so a database blip ran the task everywhere at once.
     calls: list[int] = [];
@@ -664,6 +668,46 @@ test "a tick whose claim cannot be checked is skipped, and logged once" {
     ];
     assert len(warnings) == 1 , records.messages;
     assert len(recovered) == 1 , records.messages;
+
+    renewals: list[int] = [];
+    def lost(key: str, ttl: int, owner: str) -> bool {
+        renewals.append(ttl);
+        if len(renewals) == 1 {
+            raise ConnectionError("database is restarting");
+        }
+        return len(renewals) == 2;
+    }
+    sched.hold = lost;
+    sched.hold_ttl = 1;
+    records.messages.clear();
+    beat = threading.Event();
+    keeper = threading.Thread(target=sched._keep_hold, args=(task, beat));
+    log.addHandler(records);
+    try {
+        keeper.start();
+        deadline = time.monotonic() + 5.0;
+        while len(renewals) < 5 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+    } finally {
+        beat.set();
+        keeper.join();
+        log.removeHandler(records);
+    }
+    assert len(renewals) >= 5 , renewals;
+    lost_each_time = [
+        m
+        for m in records.messages
+        if m.startswith("WARNING") and "lost its run hold" in m
+    ];
+    back = [
+        m
+        for m in records.messages
+        if m.startswith("INFO") and "run hold back" in m
+    ];
+    assert len(lost_each_time) == 2 , records.messages;
+    assert len(back) == 1 , records.messages;
+    assert len(records.messages) == 3 , records.messages;
 }
 
 
@@ -703,6 +747,8 @@ test "a static task never runs alongside an earlier run of itself" {
     sched.register(
         "slow_fn", lambda { probe.slow(0.7); }, ScheduleSpec(interval=0.2), False
     );
+    outcomes: list[RunOutcome] = [];
+    sched.on_run("probe", outcomes.append);
     records = _Records();
     log = logging.getLogger("jaclang.server.task_scheduler");
     log.addHandler(records);
@@ -723,6 +769,219 @@ test "a static task never runs alongside an earlier run of itself" {
         if "still running" in m
     ];
     assert 1 <= len(overlaps) <= probe.started , records.messages;
+    statuses = [(o.status, o.reason) for o in outcomes];
+    assert statuses.count(("ok", "")) == probe.finished , statuses;
+    assert ("skipped", "still_running") in statuses , statuses;
+}
+
+
+test "each tick reports one outcome naming its task, tick and worker" {
+    (claim, last) = _shared_claims();
+    def broken(key: str, tick: int) -> bool {
+        raise ConnectionError("database is restarting");
+    }
+    def raising {
+        raise RuntimeError("boom");
+    }
+    def unregistered -> dict[str, str] {
+        return {"error": "'gone_fn' is no longer registered"};
+    }
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    claim(f"sched:orders:taken_fn", tick_of(tick));
+    later = (datetime.datetime.now() + datetime.timedelta(hours=1)).isoformat();
+    worker = f"{socket.gethostname()}:{os.getpid()}";
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    (level, disabled) = (log.level, log.disabled);
+    log.setLevel(logging.INFO);
+    log.disabled = False;
+    log.addHandler(records);
+    try {
+        for (name, target, claim_fn, status, reason, error, line) in [
+            (
+                "ok_fn",
+                lambda { None; },
+                claim,
+                "ok",
+                "",
+                "",
+                "INFO scheduled ok_fn ok in"
+            ),
+            (
+                "gone_fn",
+                unregistered,
+                claim,
+                "failed",
+                "",
+                "'gone_fn' is no longer registered",
+                "ERROR scheduled gone_fn failed in"
+            ),
+            (
+                "raising_fn",
+                raising,
+                claim,
+                "failed",
+                "",
+                "RuntimeError: boom",
+                "ERROR scheduled raising_fn failed in"
+            ),
+            (
+                "taken_fn",
+                lambda { None; },
+                claim,
+                "skipped",
+                "claimed_elsewhere",
+                "",
+                ""
+            ),
+            ("broken_fn", lambda { None; }, broken, "skipped", "claim_failed", "", "")
+        ] {
+            outcomes: list[RunOutcome] = [];
+            stored: dict[str, str] = {};
+            sched = fresh_scheduler();
+            sched.claim = claim_fn;
+            sched.record = stored.__setitem__;
+            sched.recall = stored.get;
+            sched.namespace = "orders";
+            sched.on_run("probe", outcomes.append);
+            sched.register(name, target, ScheduleSpec(date=later), False);
+            task = sched._tasks[0];
+            records.messages.clear();
+            sched.start();
+            try {
+                sched._tick(task, tick);
+                deadline = time.monotonic() + 5.0;
+                while not outcomes and time.monotonic() < deadline {
+                    time.sleep(0.02);
+                }
+            } finally {
+                sched.stop(timeout=2.0);
+            }
+            assert len(outcomes) == 1 , (name, outcomes);
+            got = outcomes[0];
+            assert (got.task, got.tick, got.worker) == (name, tick, worker) , got;
+            assert (got.status, got.reason, got.error) == (status, reason, error) , got;
+            listed = sched.schedules();
+            assert [(r["name"], r["kind"], r["date"]) for r in listed]
+                == [(name, "function", later)] , listed;
+            last = listed[0]["last_run"];
+            if status == "skipped" {
+                assert last is None and not stored , (name, last, stored);
+            } else {
+                assert list(stored.keys()) == [f"sched-last:orders:{name}"] , stored;
+                assert (last["tick"], last["worker"], last["status"], last["error"])
+                    == (tick.isoformat(), worker, status, error) , last;
+            }
+            if line {
+                assert any(
+                    m.startswith(line) and worker in m for m in records.messages
+                ) , (name, records.messages);
+            }
+        }
+    } finally {
+        log.removeHandler(records);
+        log.setLevel(level);
+        log.disabled = disabled;
+    }
+}
+
+
+test "a listing stays on this worker's runs while its record is failing" {
+    # The warning _remember logs is only true if the read stops using the row
+    # the write could not update, and a read that fails warns once too.
+    writes: list[str] = [];
+    def broken_record(key: str, value: str) {
+        writes.append(key);
+        raise ConnectionError("standby is read only");
+    }
+    def shared_recall(key: str) -> (str | None) {
+        return '{"tick": "old", "worker": "pod-b:2", "status": "ok", "error": ""}';
+    }
+    sched = fresh_scheduler();
+    sched.namespace = "orders";
+    sched.record = broken_record;
+    sched.recall = shared_recall;
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    log.addHandler(records);
+    try {
+        for n in [0, 60] {
+            sched._report(
+                RunOutcome(
+                    task="mailer",
+                    tick=tick + datetime.timedelta(seconds=n),
+                    worker="pod-a:1",
+                    status="ok"
+                )
+            );
+        }
+        mine = sched.last_run_of("mailer");
+    } finally {
+        log.removeHandler(records);
+    }
+    assert len(writes) == 2 , writes;
+    assert mine is not None and mine["worker"] == "pod-a:1" , mine;
+    assert len(
+        [
+            m
+            for m in records.messages
+            if m.startswith("WARNING")
+        ]
+    )
+        == 1 , (records.messages);
+
+    attempts: list[str] = [];
+    def flaky_recall(key: str) -> (str | None) {
+        attempts.append(key);
+        if len(attempts) <= 2 {
+            raise ConnectionError("database is restarting");
+        }
+        return '{"tick": "old", "worker": "pod-b:2", "status": "ok", "error": ""}';
+    }
+    reader = fresh_scheduler();
+    reader.namespace = "orders";
+    reader.recall = flaky_recall;
+    records.messages.clear();
+    log.addHandler(records);
+    try {
+        assert reader.last_run_of("mailer") is None;
+        assert reader.last_run_of("mailer") is None;
+        healed = reader.last_run_of("mailer");
+    } finally {
+        log.removeHandler(records);
+    }
+    assert healed is not None and healed["worker"] == "pod-b:2" , healed;
+    assert len(
+        [
+            m
+            for m in records.messages
+            if m.startswith("WARNING")
+        ]
+    )
+        == 1 , (records.messages);
+    assert any("succeeding again" in m for m in records.messages) , records.messages;
+}
+
+
+test "a tick stop() refuses is reported as a skip, not spent in silence" {
+    # The tick is claimed before the launch, so without this every other
+    # replica logs claimed_elsewhere for a tick nobody ran and nobody named.
+    (claim_fn, claims) = _shared_claims();
+    outcomes: list[RunOutcome] = [];
+    sched = fresh_scheduler();
+    sched.claim = claim_fn;
+    sched.namespace = "orders";
+    sched.on_run("probe", outcomes.append);
+    sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
+    sched.start();
+    sched.stop(timeout=2.0);
+    tick = datetime.datetime(2026, 5, 1, 9, 0, tzinfo=datetime.timezone.utc);
+    sched._tick(sched._tasks[0], tick);
+    assert len(outcomes) == 1 , outcomes;
+    got = outcomes[0];
+    assert (got.status, got.reason) == ("skipped", "stopping") , got;
+    assert claims["sched:orders:beat"] == tick_of(tick) , claims;
 }
 
 
@@ -813,6 +1072,8 @@ test "a served worker starts no runs once draining, and stops after its run in f
         server.scheduler.register(
             "quick", lambda { quick.slow(0.0); }, ScheduleSpec(interval=0.2), False
         );
+        store: any = server.user_manager._identity_storage.store;
+        lease = f"lease:sched-run:{schedule_namespace(server.module_name)}:long_run";
         stop = server.serve_background(no_client=True);
         try {
             deadline = time.monotonic() + 5.0;
@@ -826,11 +1087,19 @@ test "a served worker starts no runs once draining, and stops after its run in f
             assert quick.started == before , f"{quick.started
                 - before} run(s) started while draining";
             assert long_run.finished < long_run.started , "no run was in flight at stop";
+            holder = store.kv_get(lease);
         } finally {
             stop();
+            released = store.kv_get(lease);
+            recorded = store.kv_get_record(
+                f"sched-last:{schedule_namespace(server.module_name)}:quick"
+            );
             server.scheduler._tasks.clear();
             client.close();
         }
     }
     assert long_run.finished == long_run.started , "the run in flight was abandoned";
+    assert holder == server.scheduler._hold_owner() , f"run hold held by {holder}";
+    assert released is None , f"run hold left behind by {released}";
+    assert recorded is not None and json.loads(recorded)["status"] == "ok" , recorded;
 }

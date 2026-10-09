@@ -12,6 +12,7 @@ import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 import from jaclang.server.serving.drain { HEALTH_PATHS }
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
+import from jaclang.server.task_scheduler { RunOutcome }
 import from jaclang.server.transport { Meta, TransportResponse }
 import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
 import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
@@ -20,6 +21,7 @@ import from jaclang.scale.admin.logs { JacAPIServerLogs }
 import from jaclang.scale.admin.network { JacAPIServerNetwork }
 import from jaclang.scale.admin.ops { JacAPIServerOps }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
+import from jaclang.scale.admin.schedules { JacAPIServerSchedules }
 import from jaclang.scale.admin.traces { JacAPIServerTraces }
 import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -149,6 +151,12 @@ obj MetricsExtension(ServerExtension) {
         if not collector.is_enabled() {
             return;
         }
+        def _record_run(outcome: RunOutcome) {
+            collector.record_scheduled_run(
+                outcome.task, outcome.status, outcome.reason, outcome.duration
+            );
+        }
+        server.scheduler.on_run('metrics', _record_run);
         endpoint = str(cfg.get('endpoint', '/metrics'));
         server.metrics_path = endpoint;
         scrape_password = str(cfg.get('prometheus_admin_password', ''));
@@ -567,7 +575,7 @@ obj EventsExtension(ServerExtension) {
 }
 
 
-obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
+obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerSchedules) {
     def register(server: JacAPIServer) -> None {
         if not get_scale_config().get_admin_config().get('enabled', True) {
             return;
@@ -575,6 +583,7 @@ obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry,
         self.server = server;
         self.user_manager = server.user_manager;
         self._metrics = server.metrics;
+        self.scheduler = server.scheduler;
         self.register_admin_endpoints();
         self.register_llm_telemetry_endpoints();
         self.register_workloads_endpoints();
@@ -584,6 +593,7 @@ obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry,
         self.register_deploy_health_endpoints();
         self.register_network_endpoints();
         self.register_podenv_endpoints();
+        self.register_schedules_endpoints();
     }
 }
 

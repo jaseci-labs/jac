@@ -4,7 +4,8 @@ The app defines a counter of its own, so prometheus_client is imported while
 the application loads: an entry point that opens the shared metrics directory
 any later than that fixes every metric in this process to memory. One walker
 names the worker that served it, another holds its worker until the request is
-abandoned.
+abandoned. A scheduled function runs on every worker so its run counter has to
+be merged too.
 """
 
 import os;
@@ -21,6 +22,9 @@ walker:pub Ping {
         report os.getpid();
     }
 }
+
+@schedule(interval=0.5)
+def beat {}
 
 walker:pub Hold {
     has seconds: float = 60.0;

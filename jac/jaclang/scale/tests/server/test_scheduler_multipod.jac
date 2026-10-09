@@ -181,9 +181,9 @@ test "each scheduled occurrence of a job is claimed by exactly one pod" {
 }
 
 
-test "a busy pod skips a static tick another pod claims and runs alongside it" {
-    # #9029 bounds overlap per process only: a busy pod leaves its tick
-    # unclaimed, so another pod claims it and both run the task at once.
+test "a static task runs on one pod at a time, and a dead pod's hold expires" {
+    # The run hold (1 s here) is renewed while a 2.5 s run goes, so no pod
+    # starts the task until the run is over.
     store_a = _store();
     if store_a is None {
         return;
@@ -193,13 +193,16 @@ test "a busy pod skips a static tick another pod claims and runs alongside it" {
         return;
     }
     lock = threading.Lock();
-    state: dict[str, int] = {"live": 0, "peak": 0};
-    runs: dict[str, int] = {"a": 0, "b": 0};
+    state: dict[str, float] = {"live": 0, "peak": 0, "first": 0.0};
     won: list[int] = [];
     pods: list[Scheduler] = [];
-    for (name, store) in [("a", store_a), ("b", store_b)] {
+    # A pod that died mid-run leaves its hold behind until the TTL runs out.
+    assert store_a.kv_acquire_lease("sched-run:overlap:slow_fn", 1, "dead-pod");
+    planted = time.monotonic();
+    for store in [store_a, store_b] {
         pod = Scheduler();
         pod.namespace = "overlap";
+        pod.hold_ttl = 1;
         def claim(key: str, tick: int, st: PgStore = store) -> bool {
             got = bool(st.kv_claim_tick(key, tick));
             if got {
@@ -209,18 +212,36 @@ test "a busy pod skips a static tick another pod claims and runs alongside it" {
             }
             return got;
         }
-        def slow(pod_name: str = name) {
+        def hold(key: str, ttl: int, owner: str, st: PgStore = store) -> bool {
+            return bool(st.kv_acquire_lease(key, ttl, owner));
+        }
+        def release(key: str, owner: str, st: PgStore = store) -> bool {
+            return bool(st.kv_release_lease(key, owner));
+        }
+        def record(key: str, value: str, st: PgStore = store) {
+            st.kv_put_record(key, value);
+        }
+        def recall(key: str, st: PgStore = store) -> (str | None) {
+            return st.kv_get_record(key);
+        }
+        def slow {
             with lock {
-                runs[pod_name] += 1;
+                if state["first"] == 0.0 {
+                    state["first"] = time.monotonic() - planted;
+                }
                 state["live"] += 1;
                 state["peak"] = max(state["peak"], state["live"]);
             }
-            time.sleep(0.7);
+            time.sleep(2.5);
             with lock {
                 state["live"] -= 1;
             }
         }
         pod.claim = claim;
+        pod.hold = hold;
+        pod.release = release;
+        pod.record = record;
+        pod.recall = recall;
         pod.register("slow_fn", slow, ScheduleSpec(interval=0.2), False);
         pods.append(pod);
     }
@@ -228,16 +249,21 @@ test "a busy pod skips a static tick another pod claims and runs alongside it" {
         pod.start();
     }
     try {
-        time.sleep(2.5);
+        time.sleep(5.0);
     } finally {
         for pod in pods {
-            pod.stop(timeout=2.0);
+            pod.stop(timeout=3.0);
         }
     }
     assert len(won) == len(set(won)) , f"a tick ran twice: {sorted(won)}";
-    assert runs["a"] >= 1 and runs["b"] >= 1 , runs;
-    assert runs["a"] + runs["b"] == len(won) , (runs, won);
-    assert state["peak"] == 2 , f"expected the pods to overlap, peak {state['peak']}";
+    assert len(won) >= 1 , "no pod ran the task";
+    assert state["peak"] == 1 , f"pods overlapped, peak {state['peak']}";
+    assert state["first"] >= 0.9 , f"ran {state[
+        'first'
+    ]:.2f}s after a dead pod's 1s hold";
+    seen = [pod.last_run_of("slow_fn") for pod in pods];
+    assert seen[0] is not None and seen[0] == seen[1] , f"pods disagree on the last run: {seen}";
+    assert seen[0]["status"] == "ok" , seen;
 }
 
 
