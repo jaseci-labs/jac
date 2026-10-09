@@ -1888,6 +1888,10 @@ jac tool <name> [args ...]
 | `grammar [--lark] [-o OUT]` | Extract and print the Jac grammar (EBNF, or `--lark` for Lark format) |
 | `ir [ast\|sym\|py] <file>` | Inspect compiler IR: AST, symbol table, or generated Python |
 
+`py2jac` preserves explicit exception chaining: Python `raise Error(...) from cause`
+becomes the same Jac statement with a trailing semicolon. `raise Error(...) from None`
+suppresses exception context in the converted program, as it does in Python.
+
 **Examples:**
 
 ```bash

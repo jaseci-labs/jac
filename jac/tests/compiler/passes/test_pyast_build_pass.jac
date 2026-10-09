@@ -7,7 +7,9 @@ are handled properly.
 
 import ast as py_ast;
 import inspect;
+import marshal;
 import os;
+import from builtins { exec as pyexec }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.pyast_load_pass {
@@ -18,9 +20,67 @@ import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.source { pascal_to_snake }
 import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { PythonModuleAst, Source }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
+
+test "py2jac preserves raised exceptions and explicit causes" {
+    for statement in [
+        'raise ValueError("outer") from TypeError("inner")',
+        'raise ValueError("outer") from None',
+        'raise ValueError("outer")',
+        'raise'
+    ] {
+        # An active exception also exercises context suppression and bare reraise.
+        file_source = (
+            'def fail():\n'
+            + '    try:\n'
+            + '        raise RuntimeError("context")\n'
+            + '    except RuntimeError:\n'
+            + '        '
+            + statement
+            + '\n'
+        );
+        code = unparse_module(
+            build_python_module(
+                PythonModuleAst(
+                    py_ast.parse(file_source), orig_src=Source(file_source, "raise.py")
+                )
+            ),
+            requires_format=False
+        );
+        assert statement + ";" in code , code;
+        program = JacProgram();
+        module = program.compile(
+            use_str=code,
+            file_path="raise.jac",
+            options=CompileOptions(force_codespace="server")
+        );
+        assert not program.errors_had , str(program.errors_had);
+        assert module.gen.py_bytecode is not None;
+        results: list[tuple[str, str, str, str, bool]] = [];
+        for executable in [file_source, marshal.loads(module.gen.py_bytecode)] {
+            namespace: dict[str, any] = {};
+            pyexec(executable, namespace);
+            try {
+                namespace["fail"]();
+            } except Exception as exc {
+                results.append(
+                    (
+                        type(exc).__name__,
+                        str(exc),
+                        type(exc.__cause__).__name__,
+                        str(exc.__cause__),
+                        exc.__suppress_context__
+                    )
+                );
+            }
+        }
+        assert len(results) == 2 , f"Expected both programs to raise: {statement}";
+        assert results[0] == results[1] , f"{statement}: {results}";
+    }
+}
 
 test "synced to latest py ast" {
     # Python 3.14 moved the unparser to `_ast_unparse` and binds

@@ -1508,7 +1508,7 @@ impl PyastBuildPass.proc_raise(nd: py_ast.Raise) -> RaiseStmt {
                 kid=[self.operator(Tok.KW_RAISE, 'raise'), exc]
             );
         } else {
-            return RaiseStmt(cause=cause, from_target=exc, kid=kid);
+            return RaiseStmt(cause=exc, from_target=cause, kid=kid);
         }
     } else {
         raise RuntimeError(self.ctx.ice());
