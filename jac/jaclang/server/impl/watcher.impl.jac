@@ -8,6 +8,22 @@ import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
 
+impl annex_folders_of(module_path: str) -> list[str] {
+    import from jaclang.jac0core.ext_registry {
+        ANNEX_FOLDER,
+        JAC_SUFFIX,
+        shared_annex_folder
+    }
+    stem = module_path[:-len(JAC_SUFFIX)]
+        if module_path.endswith(JAC_SUFFIX)
+        else module_path;
+    beside = os.path.dirname(module_path);
+    return [stem + folder for folder in ANNEX_FOLDER.values()]
+        + [
+            os.path.join(beside, shared_annex_folder(suffix)) for suffix in ANNEX_FOLDER
+        ];
+}
+
 impl watch_roots(base: str, app_root: str, sources: list[str]) -> list[str] {
     import from jaclang.runtime.prepared { holds_application_code }
     base_real = os.path.realpath(base);
@@ -25,6 +41,13 @@ impl watch_roots(base: str, app_root: str, sources: list[str]) -> list[str] {
         top = os.path.join(root_real, relative.split(os.sep)[0]);
         if top != base_real and not top.startswith(base_real + os.sep) {
             roots.add(top);
+            if top == path {
+                roots.update(
+                    f
+                    for f in annex_folders_of(path)
+                    if os.path.isdir(f)
+                );
+            }
         }
     }
     covered = any(base_real.startswith(r + os.sep) for r in roots);
@@ -130,7 +153,7 @@ impl JacFileWatcher.remove_callback(
 }
 
 impl JacFileWatcher._beside_watched_file(path: str) -> bool {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.jac0core.ext_registry { is_annex_path_of }
     changed = os.path.realpath(path);
     files: list[str] = [];
     for watch_path in self.watch_paths {
@@ -143,7 +166,12 @@ impl JacFileWatcher._beside_watched_file(path: str) -> bool {
             files.append(watched);
         }
     }
-    return bool(files) and not any(base_stem(f) == base_stem(changed) for f in files);
+    return bool(files)
+        and not any(
+            changed == f
+                or is_annex_path_of(changed, f)
+                or changed in annex_folders_of(f) for f in files
+        );
 }
 
 impl JacFileWatcher._on_change(

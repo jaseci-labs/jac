@@ -159,13 +159,48 @@ test "a watched file reports itself and its annexes, not the files beside it" {
             "other.jac",
             "shared.jac",
             "shared.impl.jac",
+            "shared.extra.impl.jac",
+            "shared.test.jac",
+            "shared.extra.jac",
             "sharedness.jac",
             "core/inside.jac"
         ] {
             watcher._on_change(str(top / name), ChangeType.MODIFIED);
         }
+        for name in ["shared.impl", "impl", "docs"] {
+            watcher._on_change(str(top / name), ChangeType.CREATED, True);
+        }
         seen = sorted(Path(p).name for p in watcher._pending_events);
-        assert seen == ["inside.jac", "shared.impl.jac", "shared.jac"] , str(seen);
+        assert seen
+            == [
+                "impl",
+                "inside.jac",
+                "shared.extra.impl.jac",
+                "shared.impl",
+                "shared.impl.jac",
+                "shared.jac",
+                "shared.test.jac"
+            ] , str(seen);
+    }
+}
+
+test "a root-level module brings its annex folders into the watch roots" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        top = os.path.realpath(tmp);
+        base = os.path.join(top, "web");
+        for rel in ["web", "shared.impl", "impl", "other.impl"] {
+            os.makedirs(os.path.join(top, rel));
+        }
+        shared = os.path.join(top, "shared.jac");
+        sources = [os.path.join(base, "main.jac"), shared];
+        assert watch_roots(base, top, sources)
+            == [
+                base,
+                os.path.join(top, "impl"),
+                os.path.join(top, "shared.impl"),
+                shared
+            ];
     }
 }
 

@@ -4,6 +4,7 @@ import from pathlib { Path }
 
 enum ChangeType { CREATED, MODIFIED, DELETED }
 
+def annex_folders_of(module_path: str) -> list[str];
 def watch_roots(base: str, app_root: str, sources: list[str]) -> list[str];
 def application_watch_roots(base: str, application: any, program: any) -> list[str];
 
