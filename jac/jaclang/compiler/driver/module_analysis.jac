@@ -76,17 +76,20 @@ obj ModuleAnalysis {
     }
 
     def placement {
+        import from jaclang.compiler.placement.placement_solver {
+            place_unanalyzed,
+            solve_program_placement,
+            refresh_placement_module
+        }
+        if self.parse_failed {
+            return;
+        }
+        if not self.program.analysis.analyses_run.provides(
+            self.module, AnalysisFact.PLACED_IN
+        ) {
+            place_unanalyzed(self.module, self.program);
+        }
         if not self.options.symtab_ir_only and not self.blocked {
-            import from jaclang.compiler.placement.placement_solver {
-                place_unanalyzed,
-                solve_program_placement,
-                refresh_placement_module
-            }
-            if not self.program.analysis.analyses_run.provides(
-                self.module, AnalysisFact.PLACED_IN
-            ) {
-                place_unanalyzed(self.module, self.program);
-            }
             refresh_placement_module(self.module, self.program);
             solve_program_placement(self.module, self.program);
             import from jaclang.compiler.frontend.constant { CodeContext as _Ctx }
