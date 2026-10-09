@@ -54,6 +54,13 @@ import from "libssl.so.3" {
     # Certificate verification result (call after handshake completes)
     #   Returns X509_V_OK (0) on success, or an X509_V_ERR_* code on failure.
     def:pub SSL_get_verify_result(ssl: int) -> int;
+    # Peer identity for verification (call before SSL_connect): the DNS name
+    # the server certificate must match (1 on success) and its X509_CHECK_FLAG_*
+    # matching flags; SSL_get0_param returns the X509_VERIFY_PARAM* that
+    # X509_VERIFY_PARAM_set1_ip_asc (libcrypto) sets an expected IP on.
+    def:pub SSL_set1_host(ssl: int, hostname: str) -> int;  def:pub SSL_set_hostflags(
+        ssl: int, flags: int
+    ) -> None;  def:pub SSL_get0_param(ssl: int) -> int;
     # ALPN (Application-Layer Protocol Negotiation) — RFC 7301
     # Client-side: set list of protocols to offer (wire-format: len-prefixed)
     #   SSL_CTX_set_alpn_protos(ctx, protos, protos_len) → 0 on success

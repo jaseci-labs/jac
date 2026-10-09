@@ -41,6 +41,10 @@ import from "libcrypto.so.3" {
     def:pub EVP_sha256 -> int;  def:pub X509_digest(
         cert: int, md: int, buf: int, len: int
     ) -> int;
+    # ── Verification parameters ───────────────────────────────────────────────
+    # Expected peer IP (text form, "127.0.0.1" / "::1") on an X509_VERIFY_PARAM*
+    # (libssl's SSL_get0_param); 1 on success.
+    def:pub X509_VERIFY_PARAM_set1_ip_asc(param: int, ipasc: str) -> int;
     # ── Error reporting ───────────────────────────────────────────────────────
     def:pub ERR_get_error -> int;
     # ── SHA-1 digest (Phase 6.9 — WebSocket handshake) ───────────────────────

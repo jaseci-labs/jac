@@ -55,7 +55,10 @@ import from engine.src.ffi.libssl {
     SSL_get0_alpn_selected,
     SSL_CTX_set_alpn_select_cb,
     SSL_select_next_proto,
-    SSL_get_verify_result
+    SSL_get_verify_result,
+    SSL_set1_host,
+    SSL_set_hostflags,
+    SSL_get0_param
 }
 import from engine.src.ffi.libc {
     calloc,
@@ -75,7 +78,8 @@ import from engine.src.ffi.libcrypto {
     PEM_read_bio_PrivateKey,
     X509_free,
     EVP_PKEY_free,
-    ERR_get_error
+    ERR_get_error,
+    X509_VERIFY_PARAM_set1_ip_asc
 }
 import from engine.src.runtime.syscall { is_c_error }
 import from engine.src.runtime.mem {
@@ -103,6 +107,7 @@ glob:pub SSL_VERIFY_NONE: int = 0,
      TLSEXT_NAMETYPE_host_name: int = 0,
      CRLF: str = chr(13) + "\n",
      X509_V_OK: int = 0,
+     X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS: int = 4,
      SSL_ERROR_NONE: int = 0,
      SSL_ERROR_SSL: int = 1,
      SSL_ERROR_WANT_READ: int = 2,
@@ -371,6 +376,49 @@ def:pub tls_wrap_fd(fd: int, ctx: TLSContext, server_side: bool) -> TLSSocket {
 
 # ── Handshake ─────────────────────────────────────────────────────────────────
 
+"""Whether `name` is an IP literal (dotted IPv4, or IPv6 — hostnames never
+contain a colon) rather than a DNS name."""
+def _is_ip_literal(name: str) -> bool {
+    if name.find(":") >= 0 {
+        return True;
+    }
+    dots: int = 0;
+    i: int = 0;
+    while i < len(name) {
+        c: str = name[i];
+        if c == "." {
+            dots = dots + 1;
+        } elif c < "0" or c > "9" {
+            return False;
+        }
+        i = i + 1;
+    }
+    return dots == 3;
+}
+
+"""Tell OpenSSL which identity the server certificate must carry, so
+verification checks the hostname and not just the chain: SNI only names the
+host to the server, and a valid certificate for any other domain passed. An
+IP literal must match an IP SAN; a DNS name must match a DNS SAN (or CN),
+with no partial wildcards (`f*.example.com`), as Node's checkServerIdentity.
+Must run before SSL_connect; it replaces the expected identity, so a
+non-blocking retry may call it again. False (fail closed) when there is no
+name to check or OpenSSL rejects it."""
+def _set_peer_identity(sock: TLSSocket) -> bool {
+    name: str = sock.context.server_name;
+    if len(name) > 1 and name[0] == "[" and name[len(name) - 1] == "]" {
+        name = str_substr(name, 1, len(name) - 1);
+    }
+    if name == "" {
+        return False;
+    }
+    if _is_ip_literal(name) {
+        return X509_VERIFY_PARAM_set1_ip_asc(SSL_get0_param(sock.ssl_ptr), name) == 1;
+    }
+    SSL_set_hostflags(sock.ssl_ptr, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+    return SSL_set1_host(sock.ssl_ptr, name) == 1;
+}
+
 """Perform the TLS handshake on a wrapped socket.
 
 For client sockets (is_server=False) calls SSL_connect; for server sockets
@@ -384,7 +432,8 @@ def:pub tls_handshake(sock: TLSSocket) -> bool {
         return False;
     }
 
-    # Set SNI hostname for client connections
+    # Set SNI hostname for client connections, and the identity a verified
+    # client requires of the server certificate
     if not sock.context.is_server {
         if sock.context.server_name != "" {
             SSL_ctrl(
@@ -393,6 +442,10 @@ def:pub tls_handshake(sock: TLSSocket) -> bool {
                 TLSEXT_NAMETYPE_host_name,
                 sock.context.server_name
             );
+        }
+        if sock.context.verify_peer and not _set_peer_identity(sock) {
+            sock.last_error = SSL_ERROR_SSL;
+            return False;
         }
     }
 
@@ -435,7 +488,9 @@ def:pub tls_handshake_nb(sock: TLSSocket) -> int {
         return 0 - 1;
     }
 
-    # Set SNI hostname for client connections (idempotent — safe to call on retry)
+    # Set SNI hostname for client connections, and the identity a verified
+    # client requires of the server certificate (both idempotent — safe to
+    # call on retry)
     if not sock.context.is_server {
         if sock.context.server_name != "" {
             SSL_ctrl(
@@ -444,6 +499,10 @@ def:pub tls_handshake_nb(sock: TLSSocket) -> int {
                 TLSEXT_NAMETYPE_host_name,
                 sock.context.server_name
             );
+        }
+        if sock.context.verify_peer and not _set_peer_identity(sock) {
+            sock.last_error = SSL_ERROR_SSL;
+            return SSL_ERROR_SSL;
         }
     }
 
