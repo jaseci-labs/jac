@@ -276,6 +276,84 @@ impl Scheduler._may_fire(task: ScheduledTask, due: datetime.datetime) -> bool {
     return won;
 }
 
+impl Scheduler._run_key(task: ScheduledTask) -> str {
+    return f"sched-run:{self.namespace}:{task.name}";
+}
+
+impl Scheduler._hold_owner -> str {
+    if not self._owner {
+        self._owner = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex}";
+    }
+    return self._owner;
+}
+
+impl Scheduler._take_hold(task: ScheduledTask) -> bool {
+    hold_fn: any = self.hold;
+    return bool(hold_fn(self._run_key(task), self.hold_ttl, self._hold_owner()));
+}
+
+impl Scheduler._hold_run(task: ScheduledTask) -> bool {
+    if self.hold is None {
+        return True;
+    }
+    key = self._run_key(task);
+    try {
+        held = self._take_hold(task);
+    } except Exception as e {
+        if key not in self._failing_claims {
+            self._failing_claims.add(key);
+            logger.warning(
+                f"could not take the run hold of '{task.name}': {e}; "
+                "skipping its ticks until a hold succeeds"
+            );
+        }
+        return False;
+    }
+    if key in self._failing_claims {
+        self._failing_claims.discard(key);
+        logger.info(f"run holds for '{task.name}' are succeeding again");
+    }
+    return held;
+}
+
+impl Scheduler._keep_hold(task: ScheduledTask, beat: threading.Event) -> None {
+    lost = False;
+    while not beat.`wait(self.hold_ttl / 3) {
+        try {
+            held = self._take_hold(task);
+            reason = "";
+        } except Exception as e {
+            held = False;
+            reason = f" ({e})";
+        }
+        if held and lost {
+            lost = False;
+            logger.info(f"'{task.name}' has its run hold back while still running");
+        } elif not held and not lost {
+            lost = True;
+            logger.warning(
+                f"'{task.name}' lost its run hold while still running{reason}; "
+                "another replica may start it"
+            );
+        }
+    }
+}
+
+impl Scheduler._release_run(task: ScheduledTask) -> None {
+    if self.release is None {
+        return;
+    }
+    release_fn: any = self.release;
+    try {
+        release_fn(self._run_key(task), self._hold_owner());
+    } except Exception as e {
+        logger.warning(
+            f"could not release the run hold of '{task.name}': {e}; "
+            f"it expires within {self.hold_ttl}s"
+        );
+    }
+}
+
 impl Scheduler._still_running(task: ScheduledTask) -> bool {
     with self._flight_lock {
         flight = self._in_flight.get(id(task));
@@ -305,18 +383,38 @@ impl Scheduler._launch(task: ScheduledTask) -> None {
         name=f"jac-schedule-{task.name}"
     );
     with self._flight_lock {
-        if not self._running {
-            return;
+        refused = not self._running;
+        if not refused {
+            self._in_flight[id(task)] = (task.name, thread);
         }
-        self._in_flight[id(task)] = (task.name, thread);
+    }
+    if refused {
+        self._release_run(task);
+        return;
     }
     thread.start();
 }
 
 impl Scheduler._run_tracked(task: ScheduledTask) -> None {
+    beat = threading.Event();
+    keeper: (threading.Thread | None) = None;
+    if self.hold is not None {
+        keeper = threading.Thread(
+            target=self._keep_hold,
+            args=(task, beat),
+            daemon=True,
+            name=f"jac-schedule-hold-{task.name}"
+        );
+        keeper.start();
+    }
     try {
         self._execute(task);
     } finally {
+        beat.set();
+        if keeper is not None {
+            keeper.join();
+        }
+        self._release_run(task);
         with self._flight_lock {
             flight = self._in_flight.get(id(task));
             if flight is not None and flight[1] is threading.current_thread() {
@@ -421,9 +519,12 @@ impl Scheduler._run_loop -> None {
         task.last_run = now;
         draining = self.drain is not None and self.drain.draining;
         if not draining and not self._still_running(task) {
-            if due is not None and self._may_fire(task, due) {
+            if due is None or not self._hold_run(task) {
+                logger.debug(f"'{task.name}' is running elsewhere; skipping this tick");
+            } elif self._may_fire(task, due) {
                 self._launch(task);
             } else {
+                self._release_run(task);
                 logger.debug(f"'{task.name}' fired elsewhere this tick; skipping");
             }
         }
