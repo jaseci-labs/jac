@@ -260,6 +260,40 @@ def kept_through_a_fresh_list(xs: list[int]) -> list[list[Callable[[], int]]] {
     return out;
 }
 
+def taken_out_of_a_fresh_list(xs: list[int]) -> list[Callable[[], int]] {
+    out: list[Callable[[], int]] = [];
+    for x in xs {
+        extractVal = x + 1;
+        batch = [lambda -> int { return extractVal; }];
+        out.append(batch[0]);
+    }
+    return out;
+}
+
+def generator_made_in_the_loop(xs: list[int]) -> list[Generator[int, None, None]] {
+    out: list[Generator[int, None, None]] = [];
+    for x in xs {
+        genVal = x + 1;
+        def later -> Generator[int, None, None] {
+            yield genVal;
+        }
+        out.append(later());
+    }
+    return out;
+}
+
+async def coroutine_made_in_the_loop(xs: list[int]) -> list[int] {
+    pending: list[Coroutine[any, any, int]] = [];
+    for x in xs {
+        asyncVal = x + 1;
+        async def read -> int {
+            return asyncVal;
+        }
+        pending.append(read());
+    }
+    return [await p for p in pending];
+}
+
 glob entryHandlers: list[Callable[[], int]] = [];
 
 with entry {

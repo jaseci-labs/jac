@@ -530,9 +530,9 @@ Both codes are reported from `jac check` in every codespace. Which one depends o
 - it is yielded
 - it is captured by another closure that is kept in one of these ways
 
-A named closure (a `def` in the loop body, or a `lambda` assigned to a name) is followed to where the name is used, so `handler = lambda { ... }; handlers.append(handler);` is the same error.
+A named closure (a `def` in the loop body, or a `lambda` assigned to a name) is followed to where the name is used, so `handler = lambda { ... }; handlers.append(handler);` is the same error. So is a value taken back out of a container (`handlers.append(batch[0])`). A local `async def` or generator does not run when it is called, so its call result is followed the same way: `pending.append(read())` keeps the coroutine, `await read()` runs it in place.
 
-**`W2084`, a warning: the closure is handed to a callee the compiler cannot see into.** It is written as an argument of a call (directly, by keyword, or inside a literal that is passed), or it is a named closure whose only use as a value is being passed to one. The callee may run it before returning, in which case the code is correct, or keep it, in which case every closure sees the last value. The warning does not fail `jac check`. Binding through a parameter removes it; so does `# jac:ignore[W2084]` on the line when the callee is known to run the closure in place.
+**`W2084`, a warning: the closure is handed to a callee the compiler cannot see into.** It is written as an argument of a call (directly, by keyword, or inside a literal that is passed), or it is a named closure whose only use as a value is being passed to one. A closure stored in a container that the loop resets only on some paths is reported the same way, since whether it is kept depends on the path. The callee may run it before returning, in which case the code is correct, or keep it, in which case every closure sees the last value. The warning does not fail `jac check`. Binding through a parameter removes it; so does `# jac:ignore[W2084]` on the line when the callee is known to run the closure in place.
 
 <!-- jac-skip -->
 ```jac
@@ -548,6 +548,7 @@ for item in items {
 - the closure is the callback of an iteration combinator that runs it before returning (`map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `flatMap`, `reduceRight`, `sort`, `toSorted`) or a `key=` argument; a closure created inside such a callback is still checked
 - the closure is part of a `return` statement, which ends the loop, or is only used after the loop
 - the name is a parameter of the closure, a local of its own, or is read in a parameter default (evaluated when the closure is created)
+- the closure only assigns the name and never reads it
 - the loop does not assign the binding (it was assigned before the loop), or the binding is a `glob`
 - the binding belongs to the loop itself: the `for` target, or a `def` declared in the loop body
 

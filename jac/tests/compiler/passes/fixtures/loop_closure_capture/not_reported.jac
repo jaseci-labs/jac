@@ -195,6 +195,41 @@ def kept_only_after_the_loop(xs: list[int]) -> list[Callable[[], int]] {
     return out;
 }
 
+def handler_that_only_writes(xs: list[int]) -> list[Callable[[], None]] {
+    out: list[Callable[[], None]] = [];
+    for x in xs {
+        writeVal = x;
+        out.append(lambda { writeVal = 0; });
+    }
+    return out;
+}
+
+def generator_drained_in_its_iteration(xs: list[int]) -> int {
+    total = 0;
+    for x in xs {
+        iterVal = x + 1;
+        def each -> Generator[int, None, None] {
+            yield iterVal;
+        }
+        for v in each() {
+            total += v;
+        }
+    }
+    return total;
+}
+
+async def coroutine_awaited_in_its_iteration(xs: list[int]) -> int {
+    total = 0;
+    for x in xs {
+        awaitVal = x + 1;
+        async def read -> int {
+            return awaitVal;
+        }
+        total += await read();
+    }
+    return total;
+}
+
 def declared_global(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
     for x in xs {

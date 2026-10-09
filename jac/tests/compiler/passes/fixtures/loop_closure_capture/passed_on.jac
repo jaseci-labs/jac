@@ -90,6 +90,18 @@ def fresh_list_then_passed(xs: list[int]) -> int {
     return total;
 }
 
+def list_reset_on_some_paths(xs: list[int]) -> list[Callable[[], int]] {
+    batch: list[Callable[[], int]] = [];
+    for x in xs {
+        resetVal = x;
+        if x == 0 {
+            batch = [];
+        }
+        batch.append(lambda -> int { return resetVal; });
+    }
+    return batch;
+}
+
 def created_inside_a_combinator(xs: list[int]) -> list[Callable[[], int]] {
     out: list[Callable[[], int]] = [];
     for x in xs {

@@ -137,6 +137,9 @@ glob HELD_NAMES = [
          "insertVal",
          "viaVal",
          "freshVal",
+         "extractVal",
+         "genVal",
+         "asyncVal",
          "entryLocal"
      ],
      PASSED_ON_NAMES = [
@@ -147,6 +150,7 @@ glob HELD_NAMES = [
          "propsVal",
          "anyVal",
          "batchVal",
+         "resetVal",
          "mapOuter",
          "hopVal"
      ];

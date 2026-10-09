@@ -409,6 +409,18 @@ def carries_over(sym: Symbol, store: Assignment) -> bool {
     return False;
 }
 
+def comes_before(first: UniNode, second: UniNode) -> bool {
+    if first.loc.first_line != second.loc.first_line {
+        return first.loc.first_line < second.loc.first_line;
+    }
+    return first.loc.col_start < second.loc.col_start;
+}
+
+def runs_later(closure: Closure) -> bool {
+    return isinstance(closure, Ability)
+        and (closure.is_async or len(closure.get_all_sub_nodes(typ=YieldExpr)) > 0);
+}
+
 def store_root(target: UniNode) -> UniNode {
     base = target;
     while isinstance(base, AtomTrailer) {
@@ -482,6 +494,10 @@ walker StaticAnalysisPass(CompilerPass) {
 
     def _stored_fate(
         target: UniNode, loop: (LoopStmt | None), seen: list[int]
+    ) -> ClosureFate;
+
+    def _carried_fate(
+        sym: Symbol, site: UniNode, loop: (LoopStmt | None)
     ) -> ClosureFate;
 
     def _returned_fate(

@@ -661,6 +661,7 @@ impl StaticAnalysisPass._check_loop_closure_captures(mod: Module) -> None {
             sym = name_nd.sym;
             if sym is None
                 or sym.sym_type != SymbolType.VAR
+                or name_nd.expr_ctx != ExprCtx.LOAD
                 or id(sym) in reported
                 or is_identifier_slot(name_nd) {
                 continue;
@@ -749,12 +750,18 @@ impl StaticAnalysisPass._binding_fate(
     }
     seen.append(id(binding));
     fate: ClosureFate = ClosureFate.IN_PLACE;
+    deferred = origin is not None and runs_later(origin);
     for use in binding.uses {
         if use.expr_ctx != ExprCtx.LOAD
             or (origin is not None and is_within(use, origin)) {
             continue;
         }
-        fate = worse_fate(fate, self._use_fate(use, home, direct, loop, seen));
+        call = use.parent;
+        if deferred and isinstance(call, FuncCall) and call.target is use {
+            fate = worse_fate(fate, self._use_fate(call, home, False, loop, seen));
+        } else {
+            fate = worse_fate(fate, self._use_fate(use, home, direct, loop, seen));
+        }
         if fate == ClosureFate.HELD {
             break;
         }
@@ -817,7 +824,10 @@ impl StaticAnalysisPass._value_fate(
             )
         ) {
             direct = False;
-        } elif not isinstance(holder, AtomUnit) {
+        } elif not isinstance(holder, AtomUnit)
+            and not (
+                isinstance(holder, AtomTrailer) and holder.target is cur and not direct
+            ) {
             break;
         }
         cur = holder;
@@ -873,10 +883,7 @@ impl StaticAnalysisPass._value_fate(
             } elif target.sym is None {
                 fate = worse_fate(fate, ClosureFate.OPAQUE);
             } elif id(target.sym) in seen {
-                if loop is None
-                    or self._rebound_each_iteration(target.sym, loop, True) is None {
-                    fate = ClosureFate.HELD;
-                }
+                fate = worse_fate(fate, self._carried_fate(target.sym, holder, loop));
             } else {
                 fate = worse_fate(
                     fate,
@@ -892,6 +899,7 @@ impl StaticAnalysisPass._value_fate(
         holder,
         (
             AtomTrailer,
+            AwaitExpr,
             CompareExpr,
             InnerCompr,
             IfStmt,
@@ -914,12 +922,34 @@ impl StaticAnalysisPass._stored_fate(
         return ClosureFate.OPAQUE;
     }
     sym = base.sym;
-    if sym is None
-        or loop is None
-        or self._rebound_each_iteration(sym, loop, True) is None {
+    if sym is None {
         return ClosureFate.HELD;
     }
-    return self._binding_fate(sym, None, self._frame_of(base), False, loop, seen);
+    return worse_fate(
+        self._carried_fate(sym, base, loop),
+        self._binding_fate(sym, None, self._frame_of(base), False, loop, seen)
+    );
+}
+
+impl StaticAnalysisPass._carried_fate(
+    sym: Symbol, site: UniNode, loop: (LoopStmt | None)
+) -> ClosureFate {
+    if loop is None or self._rebound_each_iteration(sym, loop, True) is None {
+        return ClosureFate.HELD;
+    }
+    for name_nd in (list(sym.defn) + list(sym.uses)) {
+        store = name_nd.parent;
+        if name_nd.expr_ctx == ExprCtx.STORE
+            and isinstance(store, Assignment)
+            and store.parent is not None
+            and not carries_over(sym, store)
+            and comes_before(store, site)
+            and is_within(site, store.parent)
+            and self._outlives(store, loop) {
+            return ClosureFate.IN_PLACE;
+        }
+    }
+    return ClosureFate.OPAQUE;
 }
 
 impl StaticAnalysisPass._returned_fate(
