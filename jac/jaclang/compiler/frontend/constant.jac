@@ -140,7 +140,7 @@ glob TYPE_PARAM_CONSTRUCTORS: frozenset[str] = frozenset(
          {"TypeVar", "ParamSpec", "TypeVarTuple"}
      ),
      NATIVE_ERASED_TYPE_MARKERS: frozenset[str] = frozenset({"TypeAlias"}),
-     NATIVE_ERASED_ANNOTATIONS: frozenset[str] = frozenset({"ClassVar"});
+     NATIVE_ERASED_ANNOTATIONS: frozenset[str] = frozenset({"ClassVar", "Literal"});
 
 glob BROWSER_SEED_GLOBALS: frozenset[str] = frozenset(
          {

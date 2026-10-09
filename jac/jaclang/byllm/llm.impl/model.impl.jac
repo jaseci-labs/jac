@@ -1,15 +1,16 @@
-def _configure_litellm {
-    import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
-    logging.getLogger("httpx").setLevel(logging.WARNING);
-    if HAS_LITELLM {
-        if not _litellm_config.get("debug", False) {
-            _disable_debugging();
-        }
-        litellm.drop_params = _litellm_config.get("drop_params", True);
-        litellm.include_cost_in_streaming_usage = _litellm_config.get(
-            "include_cost_in_streaming_usage", True
-        );
+def _apply_litellm_config(module: any) {
+    if not _litellm_config.get("debug", False) {
+        _disable_debugging();
     }
+    module.drop_params = _litellm_config.get("drop_params", True);
+    module.include_cost_in_streaming_usage = _litellm_config.get(
+        "include_cost_in_streaming_usage", True
+    );
+}
+
+def _configure_litellm {
+    logging.getLogger("httpx").setLevel(logging.WARNING);
+    when_litellm_loaded(_apply_litellm_config);
 }
 
 
@@ -264,7 +265,23 @@ def _stream_with_telemetry(
     }
 }
 
+def _is_timeout_error(e: Exception) -> bool {
+    if isinstance(e, (litellm.Timeout, openai.APITimeoutError)) {
+        return True;
+    }
+    try {
+        import httpx;
+        return isinstance(e, httpx.TimeoutException);
+    } except ImportError {
+        return False;
+    }
+}
+
+
 impl Model._raise_mapped_provider_error(e: Exception) -> None {
+    if isinstance(e, ByLLMError) {
+        raise;
+    }
     if isinstance(
         e, (litellm.exceptions.AuthenticationError, openai.AuthenticationError)
     ) {
@@ -278,6 +295,10 @@ impl Model._raise_mapped_provider_error(e: Exception) -> None {
     if isinstance(e, (litellm.exceptions.NotFoundError, openai.NotFoundError)) {
         logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
+    }
+    if _is_timeout_error(e) {
+        logger.error(f"LLM LLMTimeout: {e}");
+        raise LLMTimeout(message=str(e), model=self.model_name);
     }
     logger.error(f"LLM call failed with {type(e).__name__}: {e}");
     raise;
@@ -312,12 +333,15 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
             );
         } elif self.proxy {
             require_optional("openai", "llm");
-            client = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
+            client: any = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
             response = litellm.completion(
-                api_key=self.api_key or None, api_base=self.api_base or None, **params
+                api_key=self.api_key or None,
+                api_base=self.api_base or None,
+                num_retries=0,
+                **params
             );
         }
     } except Exception as e {
@@ -332,7 +356,7 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     try {
         if self.proxy {
             require_optional("openai", "llm");
-            client = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
+            client: any = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
             response = client.chat.completions.create(stream=True, **params);
         } else {
             require_optional("litellm", "llm");
@@ -359,14 +383,26 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     return response;
 }
 
+def _body_without_timeout(payload: dict[str, any]) -> dict[str, any] {
+    return {
+        k: v
+        for (k, v) in payload.items()
+        if k != "timeout"
+    };
+}
+
+
 impl Model.model_call_http(
     url: str, token: str, payload: dict[str, any], ca_bundle: (str | bool | None)
 ) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
-    client = httpx.Client(verify=ca_bundle or True, timeout=60.0);
+    body = _body_without_timeout(payload);
+    client = httpx.Client(
+        verify=ca_bundle or True, timeout=payload.get("timeout", 60.0)
+    );
     with client {
-        response = client.post(url=url, headers=headers, json=payload);
+        response = client.post(url=url, headers=headers, json=body);
     }
     return response.json();
 }
@@ -394,7 +430,10 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
         } else {
             require_optional("litellm", "llm");
             response = await litellm.acompletion(
-                api_key=self.api_key or None, api_base=self.api_base or None, **params
+                api_key=self.api_key or None,
+                api_base=self.api_base or None,
+                num_retries=0,
+                **params
             );
         }
     } except Exception as e {
@@ -455,9 +494,12 @@ impl Model.model_call_http_async(
 ) -> dict[str, any] {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
-    client = httpx.AsyncClient(verify=ca_bundle or True, timeout=60.0);
+    body = _body_without_timeout(payload);
+    client = httpx.AsyncClient(
+        verify=ca_bundle or True, timeout=payload.get("timeout", 60.0)
+    );
     async with client {
-        response = await client.post(url=url, headers=headers, json=payload);
+        response = await client.post(url=url, headers=headers, json=body);
     }
     return response.json();
 }

@@ -914,7 +914,7 @@ impl NativeStrEmitter._emit_affix(
     i8p = ir.IntType(8).as_pointer();
     candidates: list[ir.Value] = [];
     if isinstance(args[0].type, ir.LiteralStructType) {
-        for (index, typ) in enumerate(args[0].type.elements) {
+        for (index, typ) in enumerate(args[0].type.members()) {
             if typ != i8p {
                 return None;
             }
@@ -2414,13 +2414,77 @@ impl NativeBytesEmitter.emit_decode(
 impl NativeBytesEmitter.emit_hex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_hex", [target]);
+}
+
+impl NativeBytesEmitter._kernel_call(
+    self: NativeBytesEmitter, ctx: NativeEmitCtx, name: str, values: list[ir.Value]
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    fn = p._get_fmt_kernel_fn(name);
+    if fn is None or len(fn.args) != len(values) {
+        return None;
+    }
+    coerced: list[ir.Value] = [];
+    for (index, value) in enumerate(values) {
+        coerced.append(p._coerce_type(value, fn.args[index].type));
+    }
+    return get_builder(p).call(fn, coerced, name=f"bytes.{name}");
+}
+
+impl NativeBytesEmitter._optional_bytes(
+    self: NativeBytesEmitter, ctx: NativeEmitCtx, arg: ir.Value, target: ir.Value
+) -> (tuple[ir.Value, ir.Value] | None) {
+    b = get_builder(ctx.pass_ref);
+    null = ir.Constant(target.type, None);
+    if arg.type == target.type {
+        return (arg, b.icmp_unsigned("!=", arg, null, name="bytes.arg.given"));
+    }
+    if ctx.pass_ref._opt_payload_of(arg.type) != target.type {
+        return None;
+    }
+    tag = b.extract_value(arg, 0, name="bytes.arg.tag");
+    given = b.icmp_signed("!=", tag, ir.Constant(tag.type, 0), name="bytes.arg.given");
+    payload = b.extract_value(arg, 1, name="bytes.arg.val");
+    return (b.select(given, payload, null, name="bytes.arg"), given);
+}
+
+impl NativeBytesEmitter._emit_strip(
+    self: NativeBytesEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    args: list[ir.Value],
+    which: int
+) -> (ir.Value | None) {
+    if len(args) > 1 {
+        return None;
+    }
+    chars = target;
+    has_chars: ir.Value = ir.Constant(ir.IntType(1), 0);
+    if args {
+        given = self._optional_bytes(ctx, args[0], target);
+        if given is None {
+            return None;
+        }
+        (chars, has_chars) = given;
+    }
+    return self._kernel_call(
+        ctx,
+        "jac_bytes_strip",
+        [target, chars, has_chars, ir.Constant(ir.IntType(64), which)]
+    );
 }
 
 impl NativeBytesEmitter.emit_fromhex(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 1 {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_fromhex", [args[0]]);
 }
 
 impl NativeBytesEmitter.emit_count(
@@ -2487,7 +2551,7 @@ impl NativeBytesEmitter._emit_affix(
         if any(typ != bytes_ptr for typ in args[0].type.elements) {
             return None;
         }
-        for index in range(len(args[0].type.elements)) {
+        for index in range(len(args[0].type.members())) {
             candidates.append(b.extract_value(args[0], index, name="affix.item"));
         }
     } elif p._is_bytes_value(args[0]) {
@@ -2517,25 +2581,40 @@ impl NativeBytesEmitter._emit_affix(
 impl NativeBytesEmitter.emit_replace(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) < 2 or len(args) > 3 {
+        return None;
+    }
+    if args[0].type != target.type or args[1].type != target.type {
+        return None;
+    }
+    count: ir.Value = ir.Constant(ir.IntType(64), -1);
+    if len(args) == 3 {
+        if not isinstance(args[2].type, ir.IntType) {
+            return None;
+        }
+        count = args[2];
+    }
+    return self._kernel_call(
+        ctx, "jac_bytes_replace", [target, args[0], args[1], count]
+    );
 }
 
 impl NativeBytesEmitter.emit_strip(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_strip(ctx, target, args, 0);
 }
 
 impl NativeBytesEmitter.emit_lstrip(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_strip(ctx, target, args, 1);
 }
 
 impl NativeBytesEmitter.emit_rstrip(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    return self._emit_strip(ctx, target, args, 2);
 }
 
 impl NativeBytesEmitter.emit_removeprefix(
@@ -2553,7 +2632,27 @@ impl NativeBytesEmitter.emit_removesuffix(
 impl NativeBytesEmitter.emit_split(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) > 2 {
+        return None;
+    }
+    i64 = ir.IntType(64);
+    sep = target;
+    has_sep: ir.Value = ir.Constant(ir.IntType(1), 0);
+    if args {
+        given = self._optional_bytes(ctx, args[0], target);
+        if given is None {
+            return None;
+        }
+        (sep, has_sep) = given;
+    }
+    maxsplit: ir.Value = ir.Constant(i64, -1);
+    if len(args) == 2 {
+        if not isinstance(args[1].type, ir.IntType) {
+            return None;
+        }
+        maxsplit = args[1];
+    }
+    return self._kernel_call(ctx, "jac_bytes_split", [target, sep, has_sep, maxsplit]);
 }
 
 impl NativeBytesEmitter.emit_rsplit(
@@ -2571,7 +2670,14 @@ impl NativeBytesEmitter.emit_splitlines(
 impl NativeBytesEmitter.emit_join(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 1 {
+        return None;
+    }
+    fn = ctx.pass_ref._get_fmt_kernel_fn("jac_bytes_join");
+    if fn is None or args[0].type != fn.args[1].type {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_join", [target, args[0]]);
 }
 
 impl NativeBytesEmitter.emit_partition(
@@ -2595,13 +2701,19 @@ impl NativeBytesEmitter.emit_capitalize(
 impl NativeBytesEmitter.emit_lower(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_lower", [target]);
 }
 
 impl NativeBytesEmitter.emit_upper(
     self: NativeBytesEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if args {
+        return None;
+    }
+    return self._kernel_call(ctx, "jac_bytes_upper", [target]);
 }
 
 impl NativeBytesEmitter.emit_title(
@@ -2728,7 +2840,7 @@ impl NativeListEmitter.emit_append(
         helpers["append"],
         [target, p._coerce_type(val, helpers["elem_type"])],
         op="append",
-        loc=getattr(args[0], 'jac_loc', "")
+        loc=args[0].jac_loc
     );
     p._release_after_store(val, op="append");
     return ir.Constant(ir.IntType(64), 0);
@@ -3357,7 +3469,7 @@ impl NativeListEmitter.emit_sort(
     cj1 = p._cast_to_list_elem(b, cj1, cmp_type, "sort.cj1");
     _key_ret = p._sort_key_return_type(_key_node) if key_fn is not None else None;
     _key_orderable = p._sort_key_orderable(_key_ret);
-    if _key_orderable is False
+    if (_key_orderable is not None and not _key_orderable)
         or (_key_orderable is None and not p._sort_key_supported(cmp_type)) {
         p.ctx.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
         return None;
@@ -3445,10 +3557,11 @@ impl NativeListEmitter._emit_value_sort(
     length = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
     data = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]));
     assert isinstance(data.type, ir.PointerType) and not data.type.is_opaque;
-    elem_type = data.type.pointee;
+    elem_type = data.type.pointee_type;
     itemsize = p._abi_sizeof(elem_type);
     checked_elem: (TypeBase | None) = None;
-    for source_node in (ctx.receiver_node, ctx.call_node) {
+    _sort_sources: list[UniNode | None] = [ctx.receiver_node, ctx.call_node];
+    for source_node in _sort_sources {
         elem_args = (
             p._agg_key_args(p._flow_narrowed_type_of(source_node), "list")
                 if source_node is not None
@@ -3462,7 +3575,9 @@ impl NativeListEmitter._emit_value_sort(
     orderable = p._sort_key_orderable(checked_elem);
     compare_as_str = isinstance(elem_type, ir.PointerType)
         and (orderable is None or p._container_class_name(checked_elem) == "str");
-    if isinstance(elem_type, ir.PointerType) and orderable is False {
+    if isinstance(elem_type, ir.PointerType)
+        and orderable is not None
+        and not orderable {
         p.ctx.emit(
             E5092,
             node_override=ctx.call_node or ctx.receiver_node,
@@ -4265,7 +4380,7 @@ impl NativeSetEmitter._emit_set_elem_loop(
     ctx: NativeEmitCtx,
     src_set: ir.Value,
     prefix: str,
-    body_cb: object
+    body_cb: Callable[[ir.IRBuilder, ir.Value], None]
 ) -> None {
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
@@ -4499,23 +4614,35 @@ impl NativeSetEmitter.emit_symmetric_difference(
     new_set = b.call(helpers["new"], [], name="ssymd.new");
     other = args[0];
 
-    def _only_in(probe: ir.Value, prefix: str) -> object {
-        def _cb(b2: ir.IRBuilder, ev: ir.Value) {
-            func = b2.basic_block.function;
-            hit = b2.call(helpers["contains"], [probe, ev], name=f"{prefix}.in");
-            add_bb = func.append_basic_block(name=f"{prefix}.add");
-            skip_bb = func.append_basic_block(name=f"{prefix}.skip");
-            b2.cbranch(hit, skip_bb, add_bb);
-            b2.position_at_start(add_bb);
-            b2.call(helpers["add"], [new_set, ev]);
-            b2.branch(skip_bb);
-            b2.position_at_start(skip_bb);
-        }
-        return _cb;
+    def _only_in_target(b2: ir.IRBuilder, ev: ir.Value) {
+        _emit_set_add_missing(b2, ev, helpers, other, new_set, "ssymd.a");
     }
-    self._emit_set_elem_loop(ctx, target, "ssymd.a", _only_in(other, "ssymd.a"));
-    self._emit_set_elem_loop(ctx, other, "ssymd.b", _only_in(target, "ssymd.b"));
+
+    def _only_in_other(b2: ir.IRBuilder, ev: ir.Value) {
+        _emit_set_add_missing(b2, ev, helpers, target, new_set, "ssymd.b");
+    }
+    self._emit_set_elem_loop(ctx, target, "ssymd.a", _only_in_target);
+    self._emit_set_elem_loop(ctx, other, "ssymd.b", _only_in_other);
     return new_set;
+}
+
+def _emit_set_add_missing(
+    b2: ir.IRBuilder,
+    ev: ir.Value,
+    helpers: dict[str, any],
+    probe: ir.Value,
+    new_set: ir.Value,
+    prefix: str
+) {
+    func = b2.basic_block.function;
+    hit = b2.call(helpers["contains"], [probe, ev], name=f"{prefix}.in");
+    add_bb = func.append_basic_block(name=f"{prefix}.add");
+    skip_bb = func.append_basic_block(name=f"{prefix}.skip");
+    b2.cbranch(hit, skip_bb, add_bb);
+    b2.position_at_start(add_bb);
+    b2.call(helpers["add"], [new_set, ev]);
+    b2.branch(skip_bb);
+    b2.position_at_start(skip_bb);
 }
 
 impl NativeSetEmitter.emit_update(
@@ -4807,7 +4934,7 @@ impl NativeTupleEmitter.emit_count(
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    n = len(st.elements);
+    n = len(st.members());
     count: ir.Value = ir.Constant(i64, 0);
     val = args[0];
     for i in range(n) {
@@ -4841,7 +4968,7 @@ impl NativeTupleEmitter.emit_index(
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    n = len(st.elements);
+    n = len(st.members());
     val = args[0];
 
     result: ir.Value = ir.Constant(i64, -1);
@@ -5311,7 +5438,11 @@ impl NativeBuiltinEmitter.emit_sum(
         return None;
     }
 
-    elem_ty = helpers["get"].function_type.return_type;
+    sum_get = helpers["get"];
+    if not isinstance(sum_get, ir.Function) {
+        return None;
+    }
+    elem_ty = sum_get.function_type.return_type;
     elem_float = isinstance(elem_ty, (ir.DoubleType, ir.FloatType));
     if not elem_float and not isinstance(elem_ty, ir.IntType) {
         return None;
@@ -5326,7 +5457,9 @@ impl NativeBuiltinEmitter.emit_sum(
     }
     use_float = elem_float or start_float;
     acc_ty = f64 if use_float else i64;
-    initial: ir.Value = ir.Constant(acc_ty, 0.0 if use_float else 0);
+    initial: ir.Value = ir.Constant(acc_ty, 0.0)
+        if use_float
+        else ir.Constant(acc_ty, 0);
     if start is not None {
         initial = _sum_operand(b, start, use_float);
     }
@@ -5874,6 +6007,18 @@ impl NativeBuiltinEmitter._int_from_c_string(
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
+    parse_fn = p._get_fmt_kernel_fn("jac_int_parse");
+    if parse_fn is not None and len(parse_fn.args) == 2 {
+        base_val = base if base is not None else ir.Constant(i32, 10);
+        return b.call(
+            parse_fn,
+            [
+                p._coerce_type(text, parse_fn.args[0].type),
+                p._coerce_type(base_val, parse_fn.args[1].type)
+            ],
+            name="int.parse"
+        );
+    }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
     endptr_alloca = b.alloca(i8p, name="endptr");
     result_val = b.call(
@@ -6140,10 +6285,15 @@ impl NativeBuiltinEmitter.emit_list(
             return _le.emit_copy(_ctx2, val, []);
         }
     }
-    _vp_nm = getattr(val.type.pointee, "name", "")
-        if isinstance(val.type, ir.PointerType)
-        else "";
-    if isinstance(_vp_nm, str) and _vp_nm.startswith("List.") {
+    _vp_nm = "";
+    _vp_ty = val.type;
+    if isinstance(_vp_ty, ir.PointerType) {
+        _vp_target = _vp_ty.pointee;
+        if isinstance(_vp_target, ir.IdentifiedStructType) {
+            _vp_nm = _vp_target.name;
+        }
+    }
+    if _vp_nm.startswith("List.") {
         p._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
         _lt_ptr = p.list_types.get("ptr");
         _le3 = p?._native_emitters?.get("list");
@@ -6243,12 +6393,12 @@ impl NativeBuiltinEmitter.emit_set(
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
-            elem_type = p._list_elem_llvm_of(ctx.arg_nodes[0])
+            _elem_hint = p._list_elem_llvm_of(ctx.arg_nodes[0])
                 if ctx.arg_nodes
                 else None;
-            if elem_type is None {
-                elem_type = lhelpers["elem_type"];
-            }
+            elem_type: ir.Type = _elem_hint
+                if _elem_hint is not None
+                else lhelpers["elem_type"];
             if p._str_desc_ty is not None and elem_type == p._str_desc_ty {
                 elem_type = ir.IntType(8).as_pointer();
             }

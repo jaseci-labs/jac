@@ -596,6 +596,70 @@ obj NativeUnitRegistry {
         }
     }
 
+    def adopt_lowered(
+        path: str,
+        ir_text: str,
+        iface_text: str,
+        layout_json: str,
+        deps: list[str],
+        compile_deps: bytes,
+        options: (CompileOptions | None) = None
+    ) -> (NativeUnitEntry | None) {
+        import json;
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            emit_unit_object,
+            optimize_unit_texts,
+            require_native_ir
+        }
+        import from jaclang.compiler.driver.native_iface { native_layout_from_dict }
+        import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+        opts = options if options is not None else self._options();
+        resolved = os.path.realpath(path);
+        iface = NativeIface.from_bytes(iface_text.encode("utf-8"));
+        if iface is None {
+            self.failures[resolved] = (
+                "the kernel returned a native interface that does not decode"
+            );
+            return None;
+        }
+        iface.resolve_deps(resolved);
+        if opts.native_required_for(resolved) {
+            require_native_ir(ir_text);
+        }
+        if opts.debug_ir {
+            import from jaclang.compiler.frontend.host { active_host }
+            active_host().save_native_debug_ir(resolved, ir_text);
+        }
+        debug = bool(opts.native_debug);
+        bitcode = optimize_unit_texts(
+            [ir_text], opts, 0 if debug else int(opts.opt_level or 0)
+        )[0];
+        carrier = self.prog.hub.artifacts.get(resolved);
+        if carrier is None {
+            carrier = CodeGenTarget();
+            self.prog.hub.artifacts[resolved] = carrier;
+        }
+        carrier.llvm_ir = ir_text;
+        carrier.native_iface = iface;
+        carrier.native_bitcode = bitcode;
+        carrier.native_object = emit_unit_object(bitcode, opts) if debug else None;
+        carrier.native_layout = native_layout_from_dict(json.loads(layout_json))
+            if layout_json
+            else None;
+        carrier.native_deps = list(deps);
+        ent = self.record(
+            resolved,
+            iface,
+            opts,
+            dep_digests=self.dep_digests(list(deps)),
+            compile_deps=compile_deps
+        );
+        ent.bitcode = bitcode;
+        ent.object_bytes = carrier.native_object;
+        self.note_codegen(resolved, debug);
+        return ent;
+    }
+
     def _stash_products(resolved: str, gen: CodeGenTarget) {
         ent = self.entries.get(resolved);
         if ent is not None {
@@ -840,7 +904,7 @@ obj NativeBuildSession {
             if tasks is not None {
                 tasks.pop(CompilationProduct.NATIVE_IR, None);
             }
-            mod.gen.llvm_ir = None;
+            mod.gen.drop_native_ir();
             mod.gen.native_iface = None;
             mod.gen.native_bitcode = None;
             mod.gen.native_object = None;
@@ -980,7 +1044,13 @@ obj NativeBuildSession {
             }
             if len(self.prog.errors_had) > errors_before
                 or mod.gen.native_bitcode is None {
-                raise RuntimeError(f"native product emission failed for {path}");
+                reasons = "\n".join(
+                    str(err) for err in self.prog.errors_had[errors_before:]
+                );
+                raise RuntimeError(
+                    f"native product emission failed for {path}"
+                        + (f":\n{reasons}" if reasons else "")
+                );
             }
             self.registry.record_module(mod, self.prog.options);
             self.registry._stash_products(path, mod.gen);

@@ -87,7 +87,9 @@ def format_jac(text: str, target: Path) -> str {
     path = Path(scratch[1]);
     # The scratch file sits in the compiler's source tree, so a native
     # compiler kernel keyed on that tree would be rebuilt for every call.
-    environment = {** os.environ, "JAC_COMPILER_LIB": "off"};
+    environment = {
+        ** os.environ, "JAC_COMPILER_LIB": "off", "JAC_KERNEL_BUILDING": "1"
+    };
     try {
         path.write_text(text);
         for _ in range(3) {

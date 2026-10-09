@@ -111,7 +111,7 @@ test "faux flag prints endpoint docs" {
         # Verify summary is present
         assert "TOTAL:" in output;
         # 2 functions / 20 endpoints: only the two user functions (add_numbers,
-        # greet) are exposed. _collect_functions skips jaclang framework helpers
+        # greet) are exposed. The served surface skips jaclang framework helpers
         # (connect, spawn, on_entry, set_trigger, …) that the compiler imports
         # into every module's namespace, so they no longer leak as endpoints.
         assert "2 functions" in output;
@@ -284,6 +284,19 @@ test "jac run --dev auto-installs watchdog even when not in jac.toml" {
     assert mock_provider.install_specs.call_args.args[1] == ["watchdog>=3.0.0"];
 }
 
+# `jac run --platform web <mobile app>` falls through to this serve path; it
+# must compile the client it is about to serve, like it does for a web app.
+test "a mobile app served on the web platform gets its client prepared" {
+    assert execution._serves_web_client(None, "");
+    assert execution._serves_web_client("web-app", "");
+    assert execution._serves_web_client("mobile", "web");
+    assert execution._serves_web_client("mobile", " Web ");
+    assert not execution._serves_web_client("mobile", "");
+    assert not execution._serves_web_client("mobile", "android");
+    assert not execution._serves_web_client("service", "web");
+    assert not execution._serves_web_client("desktop", None);
+}
+
 test "dev banner headlines vite port not api port" {
     with TemporaryDirectory() as tmpdir {
         captured_output = io.StringIO();
@@ -333,17 +346,17 @@ test "api server construction is socket-free and builds a serving app" {
 }
 
 obj _CountingIntrospector(ModuleIntrospector) {
-    has collects: int = 0;
+    has resolves: int = 0;
 
-    def _collect_walkers -> dict[str, type[WalkerArchetype]] {
-        self.collects += 1;
-        return super._collect_walkers();
+    def _resolve_declared(rel: str, name: str) -> any {
+        self.resolves += 1;
+        return super._resolve_declared(rel, name);
     }
 }
 
 """Looking up the served walkers used to re-resolve every one of them, so route
-registration paid the walker count twice over. A module whose walkers all
-resolved and have not changed is collected once, at load."""
+registration paid the walker count twice over. Loading resolves nothing; the
+first full lookup resolves each served target once and later lookups reuse it."""
 test "repeated walker lookups do not re-resolve an unchanged module" {
     import from jaclang.compiler.driver.application { prepare_application }
     import from jaclang.runtime.prepared { initialize_application }
@@ -355,13 +368,87 @@ test "repeated walker lookups do not re-resolve an unchanged module" {
         Jac.set_base_path(tmpdir);
         introspector = _CountingIntrospector(module.__name__, tmpdir);
         introspector.load();
-        assert introspector.collects == 1 , f"load collected {introspector.collects} times";
+        assert introspector.resolves == 0 , f"load resolved {introspector.resolves} targets";
         assert introspector.get_walkers() , "the fixture declares served walkers";
+        served = len(
+            [
+                rec
+                for rec in introspector._surface.values()
+                if rec.kind in ('walker', 'function') and rec.is_served()
+            ]
+        );
+        assert introspector.resolves == served , f"{introspector.resolves} resolutions for {served} targets";
         for _ in range(8) {
             introspector.get_walkers();
         }
-        extra = introspector.collects - 1;
-        assert introspector.collects == 1 , f"lookups re-collected {extra} times";
+        extra = introspector.resolves - served;
+        assert extra == 0 , f"lookups re-resolved {extra} times";
+    }
+}
+
+"""Registering routes used to re-sort a method's whole route list on every add and
+to look each walker up again through the full walker table, so startup grew with
+the square of the route count. Routes now come from the surface manifest, so
+registration resolves no walker class at all. Counted on a real build, not timed."""
+test "route registration grows with the route count, not its square" {
+    import math;
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application, forget }
+    walkers = 60;
+    with TemporaryDirectory() as tmpdir {
+        main_file = Path(tmpdir) / 'main.jac';
+        main_file.write_text(
+            ''.join(
+                'walker:pub w_'
+                    + str(i)
+                    + ' {\n    can go with Root entry {\n'
+                    + '        report 1;\n    }\n}\n\n' for i in range(walkers)
+            )
+        );
+        prepared = prepare_application(str(main_file), Jac.get_program(), tmpdir);
+        try {
+            module = initialize_application(prepared);
+            Jac.set_base_path(tmpdir);
+            srv = JacAPIServer(
+                module_name=module.__name__, port=get_free_port(), base_path=tmpdir
+            );
+            calls = {'sort_keys': 0, 'walker_tables': 0, 'resolves': 0};
+            def tally(frame: any, event: str, arg: any) {
+                if event != 'call' {
+                    return;
+                }
+                name = frame.f_code.co_name;
+                if name == 'route_sort_key' {
+                    calls['sort_keys'] += 1;
+                } elif name == 'get_walkers'
+                    and isinstance(frame.f_locals.get('self'), ModuleIntrospector) {
+                    calls['walker_tables'] += 1;
+                } elif name == '_resolve_declared' {
+                    calls['resolves'] += 1;
+                }
+            }
+            sys.setprofile(tally);
+            try {
+                app = srv.build_app();
+            } finally {
+                sys.setprofile(None);
+            }
+            routes = sum(len(bucket) for bucket in app.router.routes.values())
+                + len(app.router.ws_routes);
+            assert routes > 2 * walkers , f"expected every walker routed, got {routes}";
+            bound = routes * (math.ceil(math.log2(routes)) + 2);
+            assert calls['sort_keys'] <= bound , (
+                f"{calls['sort_keys']} sort-key calls for {routes} routes"
+            );
+            assert calls['walker_tables'] < walkers // 4 , (
+                f"{calls['walker_tables']} walker-table lookups for {walkers} walkers"
+            );
+            assert calls['resolves'] == 0 , (
+                f"registering {routes} routes resolved {calls['resolves']} targets"
+            );
+        } finally {
+            forget(str(main_file));
+        }
     }
 }
 

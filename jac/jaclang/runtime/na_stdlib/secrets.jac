@@ -1,45 +1,39 @@
-import from _csprng_native { csprng_bytes, to_hex }
+import from _csprng_native { csprng_bytes }
+import from _hex { to_hex }
+import from _typename { typename }
+import from base64 { urlsafe_b64encode }
+import from hmac { compare_digest as _hmac_compare_digest }
+
+glob:pub DEFAULT_ENTROPY: int = 32;
 
 
-def:pub token_bytes(nbytes: int = 32) -> bytes {
-    return csprng_bytes(nbytes);
+def:pub compare_digest(a: bytes, b: bytes) -> bool {
+    return _hmac_compare_digest(a, b);
 }
 
 
-def:pub token_hex(nbytes: int = 32) -> str {
-    return to_hex(csprng_bytes(nbytes));
+def:pub token_bytes(nbytes: any = None) -> bytes {
+    n: int = DEFAULT_ENTROPY;
+    if isinstance(nbytes, bool) {
+        n = 1 if nbytes else 0;
+    } elif isinstance(nbytes, int) {
+        n = nbytes;
+    } elif nbytes is not None {
+        raise TypeError(
+            "'" + typename(nbytes) + "' object cannot be interpreted as an integer"
+        );
+    }
+    return csprng_bytes(n);
 }
 
 
-def:pub token_urlsafe(nbytes: int = 32) -> str {
-    data = csprng_bytes(nbytes);
-    alphabet: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    out: str = "";
-    n: int = len(data);
-    i: int = 0;
-    while i + 3 <= n {
-        b0: int = data[i];
-        b1: int = data[i + 1];
-        b2: int = data[i + 2];
-        out += alphabet[b0 >> 2];
-        out += alphabet[((b0 & 3) << 4) | (b1 >> 4)];
-        out += alphabet[((b1 & 15) << 2) | (b2 >> 6)];
-        out += alphabet[b2 & 63];
-        i += 3;
-    }
-    rem: int = n - i;
-    if rem == 1 {
-        b0: int = data[i];
-        out += alphabet[b0 >> 2];
-        out += alphabet[(b0 & 3) << 4];
-    } elif rem == 2 {
-        b0: int = data[i];
-        b1: int = data[i + 1];
-        out += alphabet[b0 >> 2];
-        out += alphabet[((b0 & 3) << 4) | (b1 >> 4)];
-        out += alphabet[(b1 & 15) << 2];
-    }
-    return out;
+def:pub token_hex(nbytes: any = None) -> str {
+    return to_hex(token_bytes(nbytes));
+}
+
+
+def:pub token_urlsafe(nbytes: any = None) -> str {
+    return urlsafe_b64encode(token_bytes(nbytes)).decode().rstrip("=");
 }
 
 

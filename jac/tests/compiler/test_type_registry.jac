@@ -345,3 +345,56 @@ test "sized scalar names are a subset of primitive_names" {
     sized = set(JAC_TYPE_REGISTRY.sized_scalar_names());
     assert sized.issubset(JAC_TYPE_REGISTRY.primitive_names());
 }
+
+"""The kernel runs this with a native 64-bit `int`, which cannot hold the
+`u64` maximum, so the unsigned 64-bit fit is decided from the value's sign
+and magnitude instead of from the range."""
+test "a u64 literal fits by sign and magnitude" {
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 0);
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 2305843009213693952);
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 9223372036854775807);
+    assert JAC_TYPE_REGISTRY.literal_fits("u64", 18446744073709551615);
+    assert not JAC_TYPE_REGISTRY.literal_fits("u64", -1);
+    assert not JAC_TYPE_REGISTRY.literal_fits("u64", 18446744073709551616);
+    assert JAC_TYPE_REGISTRY.range_of("u64") == (0, 18446744073709551615);
+    assert JAC_TYPE_REGISTRY.range_of("i64")
+        == (-9223372036854775808, 9223372036854775807);
+}
+
+"""The stub catalog answers for a typeshed file by where it sits under the
+compiler package. A kit whose typeshed is reached through another path (a
+link, or a second checkout beside the binary) names the same stub by a path
+outside the package; the catalog did not know it, so the stub was parsed
+again, which the native kernel cannot do. Any path inside a typeshed tree
+now maps to the stub the catalog holds for it."""
+test "the stub catalog knows a typeshed stub reached through another tree" {
+    import os;
+    import shutil;
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.compiler.types.stubcat.locate {
+        ensure_catalog,
+        jaclang_pkg_dir,
+        typeshed_stdlib_dir
+    }
+    catalog = ensure_catalog();
+    held = os.path.join(typeshed_stdlib_dir(jaclang_pkg_dir()), "builtins.pyi");
+    if catalog is None or not os.path.isfile(held) {
+        testskip("no stub catalog over a vendored typeshed here");
+    }
+    with TemporaryDirectory() as td {
+        elsewhere = Path(os.path.realpath(td))
+            / "jaclang"
+            / "vendor"
+            / "typeshed"
+            / "stdlib";
+        elsewhere.mkdir(parents=True);
+        shutil.copy(held, elsewhere / "builtins.pyi");
+        (elsewhere / "not_a_stub.pyi").write_text("x: int\n");
+        assert catalog.rel_of(str(elsewhere / "builtins.pyi")) == catalog.rel_of(held);
+        assert catalog.module_for_path(str(elsewhere / "builtins.pyi"))
+            is catalog.module_for_path(held);
+        assert catalog.rel_of(str(elsewhere / "not_a_stub.pyi")) is None;
+        assert catalog.rel_of(str(Path(td) / "builtins.pyi")) is None;
+    }
+}

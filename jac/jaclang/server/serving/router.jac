@@ -1,3 +1,4 @@
+import bisect;
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint, WSEndPoint }
 
 
@@ -118,16 +119,15 @@ obj Router {
         method = str(endpoint.method.value)
             if isinstance(endpoint.method, HTTPMethod)
             else str(endpoint.method);
-        bucket = self.routes.setdefault(method.upper(), []);
-        bucket.append(route);
-        bucket.sort(key=route_sort_key);
+        bisect.insort(
+            self.routes.setdefault(method.upper(), []), route, key=route_sort_key
+        );
     }
 
     def add_ws(endpoint: WSEndPoint) {
         route = compile_route(endpoint.path);
         route.ws_endpoint = endpoint;
-        self.ws_routes.append(route);
-        self.ws_routes.sort(key=route_sort_key);
+        bisect.insort(self.ws_routes, route, key=route_sort_key);
     }
 
     def clear {

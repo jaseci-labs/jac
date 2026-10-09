@@ -224,7 +224,7 @@ obj OspAnalysis {
         if (_kind is None) or (_owner is None) or (arch.body is None) {
             return out;
         }
-        for stmt in arch.body {
+        for stmt in (ModuleFacts.unwrap_body(arch) or []) {
             if (not isinstance(stmt, uni.Ability))
                 or (not isinstance(stmt.signature, uni.EventSignature)) {
                 continue;

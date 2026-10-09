@@ -97,6 +97,10 @@ impl __jacNativeCreate(
     return React.createElement(RNView, debug_adapted, *flat);
 }
 
+impl _changeTextHandler(on_change: any) -> Callable[[any], None] {
+    return lambda (text: any) { on_change({"target": {"value": text}}); };
+}
+
 impl _adaptProps(tag: str, props: dict[str, any]) -> dict[str, any] {
     if not props {
         return {};
@@ -111,10 +115,7 @@ impl _adaptProps(tag: str, props: dict[str, any]) -> dict[str, any] {
         } elif key == "onClick" {
             out["onPress"] = value;
         } elif key == "onChange" {
-            user_on_change = value;
-            out["onChangeText"] = lambda (text: any) { user_on_change(
-                {"target": {"value": text}}
-            ); };
+            out["onChangeText"] = _changeTextHandler(value);
         } elif key.startswith("data-") or key.startswith("aria-") {
             continue;
         } else {
@@ -904,6 +905,20 @@ def _setFormField(form: any, field_name: str, value: any) {
     );
 }
 
+impl _fieldSetter(form: any, field_name: str, value: any) -> Callable[[], None] {
+    return lambda { _setFormField(form, field_name, value); };
+}
+
+impl _passwordToggle(
+    field_name: str, is_visible: bool, visible: any, set_visible: any
+) -> Callable[[], None] {
+    return lambda {
+        next_visible = {** visible};
+        next_visible[field_name] = not is_visible;
+        set_visible(next_visible);
+    };
+}
+
 def _fieldErrorMessage(errors: any, field_name: str) -> str {
     err = errors[field_name] if errors and errors[field_name] else None;
     if not err {
@@ -947,7 +962,7 @@ def _renderSelectField(
                 RNPressable,
                 {
                     "key": f"{field_name}:{opt_value}",
-                    "onPress": lambda { _setFormField(form, field_name, opt_value); },
+                    "onPress": _fieldSetter(form, field_name, opt_value),
                     "style": {
                         "borderWidth": 1,
                         "borderColor": ("#2563eb" if is_selected else "#d1d5db"),
@@ -977,7 +992,7 @@ def _renderRadioField(
                 RNPressable,
                 {
                     "key": f"{field_name}:{opt_value}",
-                    "onPress": lambda { _setFormField(form, field_name, opt_value); },
+                    "onPress": _fieldSetter(form, field_name, opt_value),
                     "style": {
                         "flexDirection": "row",
                         "alignItems": "center",
@@ -1137,11 +1152,9 @@ impl JacForm(props: dict[str, any]) -> JsxElement {
             input_row = _renderPasswordRow(
                 input_row,
                 is_visible,
-                lambda {
-                    next_visible = {** passwordVisible};
-                    next_visible[fieldName] = not is_visible;
-                    setPasswordVisible(next_visible);
-                }
+                _passwordToggle(
+                    fieldName, is_visible, passwordVisible, setPasswordVisible
+                )
             );
         }
         error_view = None;

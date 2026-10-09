@@ -13,6 +13,15 @@ import from jaclang.compiler.placement.placement {
     placement_evidence_for
 }
 
+def escapes_record(escapes: list[tuple[int, str]]) -> list[any] {
+    rows: list[any] = [];
+    for (index, name) in escapes {
+        row: list[any] = [index, name];
+        rows.append(row);
+    }
+    return rows;
+}
+
 def element_to_dict(es: ElementSummary) -> dict[str, any] {
     return {
         'index': es.index,
@@ -27,7 +36,7 @@ def element_to_dict(es: ElementSummary) -> dict[str, any] {
         'import_py_targets': list(es.import_py_targets),
         'reqs': [list(r) for r in es.reqs],
         'refs': list(es.refs),
-        'escapes': [list(e) for e in es.escapes],
+        'escapes': escapes_record(es.escapes),
         'glob_writes': list(es.glob_writes)
     };
 }
@@ -210,34 +219,4 @@ def collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
         };
     }
     return rows_by_module;
-}
-
-def sealed_spaces_for(source_path: str) -> (set[str] | None) {
-    ap = os.path.abspath(source_path);
-    d = os.path.dirname(ap);
-    while True {
-        mf = os.path.join(d, "_precompiled", "MANIFEST.json");
-        if os.path.isfile(mf) {
-            break;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
-    }
-    try {
-        with open(mf, "r") as f {
-            manifest = json.load(f);
-        }
-    } except Exception {
-        return None;
-    }
-    placement: any = manifest.get("placement") or {};
-    rel = os.path.relpath(ap, d).replace(os.sep, "/");
-    spaces = placement.get(rel);
-    if spaces is None {
-        return None;
-    }
-    return set(spaces);
 }

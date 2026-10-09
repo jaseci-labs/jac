@@ -119,7 +119,7 @@ glob FORBIDDEN: dict[str, str] = {
              "the #8681 reorg with its consumption unchanged"
          ),
          ("es/esast_gen_pass.impl/calls.impl.jac", "type_tag.tag"): (
-             4,
+             3,
              "declaration-surface name reads: the param type-name map for "
              "interop payloads and the W6005 Callable-over-RPC guard on "
              "endpoint params - the declared annotation is the consumed "
@@ -262,9 +262,10 @@ glob FORBIDDEN: dict[str, str] = {
              "which needs the declared Callable annotation itself (the "
              "template is uninstantiated, so no resolved type exists)"
          ),
-         ("native/na_ir_gen_pass.impl/bytes.impl.jac", ".lookup("): (
+         ("native/host_facts.jac", ".lookup("): (
              1,
-             "codecs.lookup on a literal bytes.decode encoding name: it "
+             "codecs.lookup on a literal bytes.decode encoding name, asked "
+             "of the host because the generator runs in the kernel: it "
              "asks CPython's codec registry for the canonical codec, the "
              "same registry the run-time alias table is built from. No "
              "scope table is read and no name is re-resolved"

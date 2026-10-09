@@ -128,7 +128,7 @@ glob R_AARCH64_PREL32 = 261,
 def _elf_hash(name: str) -> int {
     h = 0;
     for c in name.encode("utf-8") {
-        h = (h << 4) + c;
+        h = ((h << 4) + c) & 0xFFFFFFFF;
         g = h & 0xF0000000;
         if g {
             h ^= g >> 24;
@@ -136,25 +136,6 @@ def _elf_hash(name: str) -> int {
         h &= ~g;
     }
     return h;
-}
-
-
-def _build_hash_table(num_symbols: int) -> bytes {
-    nbucket = 1;
-    nchain = num_symbols;
-    data = bytearray();
-    data.extend(struct.pack("<II", nbucket, nchain));
-    data.extend(struct.pack("<I", 1 if num_symbols > 1 else 0));
-    for i in range(nchain) {
-        if i == 0 {
-            data.extend(struct.pack("<I", 0));
-        } elif i == nchain - 1 {
-            data.extend(struct.pack("<I", 0));
-        } else {
-            data.extend(struct.pack("<I", i + 1));
-        }
-    }
-    return bytes(data);
 }
 
 
@@ -883,7 +864,7 @@ impl ElfLinker.build_executable -> bytes {
         dynsym_data.extend(struct.pack("<IBBHQQ", st_name, st_info, 0, 0, 0, 0));
     }
 
-    hash_data = _build_hash_table(num_dynsyms);
+    hash_data = _build_sysv_hash_for_names([""] + extern_syms + exec_exports);
 
     plt0_size = arch.plt0_size;
     plt_entry_size = arch.plt_entry_size;

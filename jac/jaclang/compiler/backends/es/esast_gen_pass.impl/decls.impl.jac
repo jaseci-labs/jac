@@ -536,10 +536,7 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
     );
     has_postinit = False;
     for _stmt in (ModuleFacts.unwrap_body(here) or []) {
-        if (
-            isinstance(_stmt, uni.Ability)
-            and getattr(_stmt, 'sym_name', '') == '__post_init__'
-        ) {
+        if isinstance(_stmt, uni.Ability) and _stmt.sym_name == '__post_init__' {
             has_postinit = True;
         }
     }
@@ -758,6 +755,18 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
             body_stmts.insert(0, constructor_method);
         }
     }
+    body_stmts.append(
+        self.sync_loc(
+            es.PropertyDefinition(
+                key=es.Identifier(name='__name__'),
+                value=self.sync_loc(
+                    es.Literal(value=here.name.sym_name), jac_node=here.name
+                ),
+                `static=True
+            ),
+            jac_node=here.name
+        )
+    );
     class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=here);
     super_class: (es.Expression | None) = None;
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }

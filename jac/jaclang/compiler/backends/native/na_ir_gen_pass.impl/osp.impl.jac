@@ -35,9 +35,9 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
 impl NaIRGenPass._osp_kernel_init_fns -> list[ir.Function] {
     import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
     out: list[ir.Function] = [];
-    for unit_mod in (self._osp_kernel_mod, self._osp_graph_mod) {
-        unit: any = unit_mod;
-        if unit is None or not (unit?.loc and unit.loc.mod_path) {
+    _init_units: list[uni.Module | None] = [self._osp_kernel_mod, self._osp_graph_mod];
+    for unit in _init_units {
+        if unit is None or not (unit.loc and unit.loc.mod_path) {
             continue;
         }
         name = native_glob_init_name(unit.loc.mod_path);
@@ -1898,7 +1898,7 @@ impl NaIRGenPass._osp_pred_pair(
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     _env_ty = ir.LiteralStructType([_v.type for _v in _rhs_vals]);
-    _env = self.builder.alloca(_env_ty, name="predp.env");
+    _env = self._stack_entry_alloca(_env_ty, "predp.env");
     for (_ci, _v) in enumerate(_rhs_vals) {
         self.builder.store(
             _v,
@@ -1959,7 +1959,7 @@ impl NaIRGenPass._osp_pred_pair(
         return None;
     }
     _pair_ty = ir.LiteralStructType([i64, i8p]);
-    _pair = self.builder.alloca(_pair_ty, name="predp.pair");
+    _pair = self._stack_entry_alloca(_pair_ty, "predp.pair");
     self.builder.store(
         self.builder.ptrtoint(_tf, i64, name="predp.fni"),
         self.builder.gep(
@@ -2016,7 +2016,7 @@ impl NaIRGenPass._osp_type_pair(ntag: int) -> (ir.Value | None) {
     );
     self._builder = _saved;
     _pair_ty = ir.LiteralStructType([i64, i8p]);
-    _pair = self.builder.alloca(_pair_ty, name="typep.pair");
+    _pair = self._stack_entry_alloca(_pair_ty, "typep.pair");
     self.builder.store(
         self.builder.ptrtoint(_tf, i64, name="typep.fni"),
         self.builder.gep(
@@ -2091,7 +2091,7 @@ impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
     if isinstance(_release_targets.type, ir.PointerType)
         and self._is_owned(_release_targets) {
         self._emit_rc_release_simple(
-            _release_targets, op="visit_targets", loc=getattr(_targets, 'jac_loc', '')
+            _release_targets, op="visit_targets", loc=_targets.jac_loc
         );
     }
     if nd.else_body is None {

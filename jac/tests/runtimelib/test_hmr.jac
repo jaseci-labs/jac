@@ -13,7 +13,12 @@ import watchdog;
 
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.build_status { get_build_status }
-import from jaclang.server.watcher { ChangeType, FileChangeEvent, JacFileWatcher }
+import from jaclang.server.watcher {
+    ChangeType,
+    FileChangeEvent,
+    JacFileWatcher,
+    watch_roots
+}
 
 def _as_any(v: any) -> any {
     return v;
@@ -55,6 +60,66 @@ test "prepared namespaced modules reload through their source source_path" {
                 }
             }
         }
+    }
+}
+
+# A workspace app's entry sits in its own directory while the modules it
+# imports live in sibling directories under the application root. Watching
+# only the entry's directory left edits to those modules unnoticed.
+test "watch roots cover the directories the application's modules come from" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        top = os.path.realpath(tmp);
+        for rel in [
+            "web/pages",
+            "core/site/ui",
+            "cli",
+            ".jac/client",
+            "node_modules/pkg"
+        ] {
+            os.makedirs(os.path.join(top, rel));
+        }
+        base = os.path.join(top, "web");
+        sources = [
+            os.path.join(top, "web", "main.jac"),
+            os.path.join(top, "web", "pages", "index.jac"),
+            os.path.join(top, "core", "site", "ui", "empty.jac"),
+            os.path.join(top, "core", "life.jac"),
+            os.path.join(top, ".jac", "client", "gen.jac"),
+            os.path.join(top, "node_modules", "pkg", "x.jac"),
+            "/elsewhere/lib.jac"
+        ];
+        assert watch_roots(base, top, sources) == [base, os.path.join(top, "core")];
+        assert watch_roots(top, top, sources) == [top];
+        shared = sources + [os.path.join(top, "shared.jac")];
+        assert watch_roots(base, top, shared)
+            == [base, os.path.join(top, "core"), os.path.join(top, "shared.jac")];
+        nested = os.path.join(top, "web", "pages");
+        assert watch_roots(nested, top, sources)
+            == [os.path.join(top, "core"), os.path.join(top, "web")];
+    }
+}
+
+test "a watched directory outside the first one delivers its changes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        entry_dir = Path(tmp) / "web";
+        shared_dir = Path(tmp) / "core";
+        entry_dir.mkdir();
+        shared_dir.mkdir();
+        seen: list[str] = [];
+        watcher = JacFileWatcher(watch_paths=[str(entry_dir), str(shared_dir)]);
+        watcher.add_callback(lambda (e: FileChangeEvent) { seen.append(e.path); });
+        watcher.start();
+        try {
+            (shared_dir / "life.jac").write_text("glob x = 1;\n");
+            deadline = time.time() + 5;
+            while not seen and time.time() < deadline {
+                time.sleep(0.05);
+            }
+        } finally {
+            watcher.stop();
+        }
+        assert any(p.endswith("life.jac") for p in seen) , f"no event for the shared module: {seen}";
     }
 }
 

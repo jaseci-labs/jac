@@ -21,7 +21,8 @@ impl JcirGenPass.exit_visit_stmt with VisitStmt exit {
         self.jaclib_obj('visit'), [loc, self.val(here.target)], []
     );
     if (here.insert_loc is not None) {
-        visit_call.get('keywords').append(
+        visit_call.push(
+            'keywords',
             self.nod(
                 'keyword', ['arg', 'value'], ['insert_loc', self.val(here.insert_loc)]
             )
@@ -144,7 +145,8 @@ impl JcirGenPass._fold_sorted_traversal(nd: FuncCall) -> bool {
             )
         );
     }
-    gq.get('keywords').append(
+    gq.push(
+        'keywords',
         self.nod(
             'keyword',
             ['arg', 'value'],

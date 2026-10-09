@@ -7,11 +7,37 @@ import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
 import type from jaclang.compiler.frontend { unitree as uni }
-glob _FORMAT: int = 8,
+glob _FORMAT: int = 9,
+     SLOW_PREPARE_SECONDS: int = 45,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
-def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
-    result: dict[str, tuple[int, int]] = {};
+def _stamp(path: str, previous: any = None) -> tuple[int, int, str] {
+    import from jaclang.compiler.driver.jir { compute_content_sha256 }
+    import from jaclang.compiler.driver.bccache { LISTING_SETTLE_NS }
+    st = os.stat(path);
+    if (
+        isinstance(previous, (list, tuple))
+        and len(previous) == 3
+        and previous[0] == st.st_mtime_ns
+        and previous[1] == st.st_size
+    ) {
+        return (st.st_mtime_ns, st.st_size, previous[2]);
+    }
+    settled = time.time_ns() - st.st_mtime_ns > LISTING_SETTLE_NS;
+    return (
+        st.st_mtime_ns if settled else -1,
+        st.st_size,
+        compute_content_sha256(path)
+    );
+}
+
+def _inventory(
+    `root: any,
+    inputs: bool = False,
+    previous: (dict[str, tuple[int, int, str]] | None) = None
+) -> dict[str, tuple[int, int, str]] {
+    previous = previous or {};
+    result: dict[str, tuple[int, int, str]] = {};
     for (directory, dirs, files) in os.walk(`root) {
         dirs[:] = sorted(
             d
@@ -26,15 +52,17 @@ def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
                 continue;
             }
             path = os.path.join(directory, name);
-            stat = os.stat(path);
-            result[path] = (stat.st_mtime_ns, stat.st_size);
+            result[path] = _stamp(path, previous.get(path));
         }
     }
     for path in Path(`root).`glob('jac*.toml') {
-        stat = path.stat();
-        result[str(path)] = (stat.st_mtime_ns, stat.st_size);
+        result[str(path)] = _stamp(str(path), previous.get(str(path)));
     }
     return result;
+}
+
+def _digests(inventory: dict[str, tuple[int, int, str]]) -> dict[str, str] {
+    return {path: stamp[2] for (path, stamp) in inventory.items()};
 }
 
 def _identity -> tuple[str, str | None, str] {
@@ -115,84 +143,151 @@ def _semantic_metadata(revision: PreparedApplication, program: any) {
     }
 }
 
+obj ManifestSource {
+    has path: str,
+        app: str = '',
+        persistence: any = None,
+        edges: list[tuple[bool, str, list[str]]] = [],
+        interop: any = None,
+        client: any = None;
+}
+
+def _import_edges_of(rows: list[str]) -> list[tuple[bool, str, list[str]]] {
+    import from jaclang.compiler.driver.unit_products { DEF_DEP_SEP as EDGE_SEP }
+    edges: list[tuple[bool, str, list[str]]] = [];
+    for row in rows {
+        parts = row.split(EDGE_SEP);
+        if len(parts) != 3 {
+            continue;
+        }
+        edges.append(
+            (parts[0] == "1", parts[1], parts[2].split(",") if parts[2] else [])
+        );
+    }
+    return edges;
+}
+
+def _tree_source(
+    program: any, mod: uni.Module, imported: bool = True
+) -> ManifestSource {
+    import from jaclang.compiler.driver.unit_products { import_edge_rows }
+    if imported {
+        import from jaclang.compiler.driver.pipeline {
+            require_product,
+            CompilationProduct
+        }
+        manifest = mod.gen.interop_manifest;
+        if not (manifest and manifest.surface) {
+            require_product(program, mod, CompilationProduct.BOUNDARIES);
+        }
+    }
+    return ManifestSource(
+        path=mod.loc.mod_path if mod.loc else '',
+        app=mod.app or '',
+        persistence=mod.persistence,
+        edges=_import_edges_of(import_edge_rows(mod)) if imported else [],
+        interop=mod.gen.interop_manifest,
+        client=mod.gen.client_manifest
+    );
+}
+
+def _unit_source(unit: any) -> ManifestSource {
+    import json;
+    import from jaclang.compiler.driver.unit_products {
+        interop_manifest_of,
+        manifest_from_record
+    }
+    return ManifestSource(
+        path=unit.path,
+        app=unit.app,
+        persistence=list(unit.persistence),
+        edges=_import_edges_of(unit.import_edges),
+        interop=interop_manifest_of(json.loads(unit.interop)) if unit.interop else None,
+        client=manifest_from_record(json.loads(unit.client_manifest))
+            if unit.client_manifest
+            else None
+    );
+}
+
 def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str, any] {
-    import from jaclang.compiler.frontend { unitree as uni }
     mod = mod if (mod is not None) else program.find_module(path);
     if (mod is None) {
         raise RuntimeError(f'Preparation did not produce metadata for {path}');
     }
-    sources = [mod];
-    namespace_sources = [mod];
-    imported_functions: set[tuple[str, str]] = set();
+    selfhost = program._get_compiler().selfhost;
+    def lookup(source: str) -> (ManifestSource | None) {
+        if selfhost.is_selfhost(selfhost.resolve(source, program)) {
+            return None;
+        }
+        imported = program.find_module(source);
+        return _tree_source(program, imported) if imported is not None else None;
+    }
+    return build_manifest(
+        `root,
+        _tree_source(program, mod),
+        lookup,
+        [
+            _tree_source(program, m, imported=False)
+            for m in _project_modules(program, `root).values()
+        ]
+    );
+}
 
+def build_manifest(
+    `root: str,
+    main: ManifestSource,
+    lookup: Callable[[str], ManifestSource | None],
+    project: list[ManifestSource]
+) -> dict[str, any] {
+    def key_of(source: ManifestSource) -> str {
+        return os.path.realpath(source.path) if source.path else '';
+    }
+    sources: list[ManifestSource] = [main];
+    listed: set[str] = {key_of(main)};
+    namespace_sources: list[ManifestSource] = [main];
+    namespaces: set[str] = {key_of(main)};
+    imported_functions: set[tuple[str, str]] = set();
     for namespace in namespace_sources {
-        for item in namespace.body {
-            if not (isinstance(item, uni.Import) and item.is_jac) {
-                continue;
-            }
-            module_path = item.from_loc;
-            if item.is_absorb
-                and item.items
-                and isinstance(item.items[0], uni.ModulePath) {
-                module_path = item.items[0];
-            }
-            if module_path is None {
-                continue;
-            }
-            source = module_path.resolve_relative_path();
-            selfhost = program._get_compiler().selfhost;
-            imported = program.find_module(source)
-                if source
-                    and not selfhost.is_selfhost(selfhost.resolve(source, program))
-                else None;
+        for (absorb, source_path, names) in namespace.edges {
+            imported = lookup(source_path);
             if imported is None {
                 continue;
             }
-            if imported not in sources {
+            if key_of(imported) not in listed {
+                listed.add(key_of(imported));
                 sources.append(imported);
             }
-            if item.is_absorb {
-                if imported not in namespace_sources {
+            if absorb {
+                if key_of(imported) not in namespaces {
+                    namespaces.add(key_of(imported));
                     namespace_sources.append(imported);
                 }
             } else {
-                for name in item.items {
-                    if isinstance(name, uni.ModuleItem) {
-                        imported_functions.add(
-                            (imported.loc.mod_path, name.name.value)
-                        );
-                    }
+                for name in names {
+                    imported_functions.add((imported.path, name));
                 }
             }
-        }
-    }
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-    for source in sources {
-        manifest = source.gen.interop_manifest;
-        if not (manifest and manifest.surface) {
-            require_product(program, source, CompilationProduct.BOUNDARIES);
         }
     }
     surface: dict[str, dict[str, any]] = {};
     private_declarations: set[str] = set();
     effects: dict[str, dict[str, any]] = {};
-    own_app = mod.app or '';
     ordered = list(sources)
         + [
             m
-            for m in _project_modules(program, `root).values()
-            if m not in sources
+            for m in project
+            if key_of(m) not in listed
         ];
     for source in ordered {
-        manifest = source.gen.interop_manifest;
+        manifest = source.interop;
         if not manifest {
             continue;
         }
         effects.update(manifest.endpoint_effects);
-        if not manifest.surface or (source.app or '') != own_app {
+        if not manifest.surface or source.app != main.app {
             continue;
         }
-        src_path = source.loc.mod_path if source.loc else '';
+        src_path = source.path;
         if not src_path {
             continue;
         }
@@ -205,7 +300,7 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
                 and not name.startswith('_')
                 and (
                     rec.kind == 'walker'
-                    or source in namespace_sources
+                    or key_of(source) in namespaces
                     or (src_path, name) in imported_functions
                 )
             ) {
@@ -217,11 +312,11 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str,
             surface[name] = {** rec.to_dict(), 'src': rel};
         }
     }
-    client = mod.gen.client_manifest;
+    client = main.client;
     return `dict(
         `root=`root,
-        app=mod.app or '',
-        persistence=mod.persistence,
+        app=main.app,
+        persistence=main.persistence,
         client=`dict(
             exports=`list(client.exports),
             globals=`list(client.globals),
@@ -459,6 +554,17 @@ def prepare_application(
     }
     previous = get_effective_default_codespace_override();
     set_effective_default_codespace('server');
+    watched = bool(os.environ.get('JAC_KERNEL_TIMING'));
+    if watched {
+        import faulthandler;
+        try {
+            faulthandler.dump_traceback_later(
+                SLOW_PREPARE_SECONDS, repeat=True, file=sys.stderr
+            );
+        } except (ValueError, OSError) {
+            watched = False;
+        }
+    }
     try {
         with console.status('Preparing application...', file=sys.stderr) as status {
             status.update(progress);
@@ -511,6 +617,10 @@ def prepare_application(
             }
         }
     } finally {
+        if watched {
+            import faulthandler;
+            faulthandler.cancel_dump_traceback_later();
+        }
         set_effective_default_codespace(previous);
     }
 }
@@ -547,11 +657,64 @@ def _prepare(
     for path in entries {
         capture(path);
     }
+    import from jaclang.project.kernel_compile { host_prepared }
     with compile_progress.listen(capture) {
-        return _prepare_revision(
-            `entry, program, `root, entries, client, dev, console, inputs
-        );
+        try {
+            return _prepare_revision(
+                `entry, program, `root, entries, client, dev, console, inputs
+            );
+        } finally {
+            host_prepared();
+        }
     }
+}
+
+def _unit_lookup(
+    units: dict[str, ManifestSource]
+) -> Callable[[str], ManifestSource | None] {
+    def lookup(source: str) -> (ManifestSource | None) {
+        return units.get(os.path.realpath(source));
+    }
+    return lookup;
+}
+
+def _kernel_units(
+    program: any, entries: list[str], `root: str, before: int, inputs: dict[str, str]
+) -> (dict[str, ManifestSource] | None) {
+    import copy;
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.project.kernel_compile {
+        forget_application_units,
+        kernel_compile_application
+    }
+    forget_application_units();
+    selfhost = program._get_compiler().selfhost;
+    units: dict[str, ManifestSource] = {};
+    for path in entries {
+        options = copy.copy(program.options);
+        options.project_root = `root;
+        options.no_cgen = False;
+        options.skip_native_engine = True;
+        compiled = kernel_compile_application(active_host(), program, path, options);
+        if compiled is None {
+            forget_application_units();
+            return None;
+        }
+        _check(program, before);
+        for reached in compiled.analysis.modules {
+            if not selfhost.is_selfhost(selfhost.resolve(reached.path, program)) {
+                _capture_input(reached.path, inputs);
+            }
+        }
+        for unit in compiled.units {
+            units.setdefault(os.path.realpath(unit.path), _unit_source(unit));
+        }
+        if os.path.realpath(path) not in units {
+            forget_application_units();
+            return None;
+        }
+    }
+    return units;
 }
 
 def _prepare_revision(
@@ -569,43 +732,58 @@ def _prepare_revision(
     inventory_root = `root
         if client
         else os.path.join(os.path.dirname(`entry), 'pages');
-    inventory = _inventory(inventory_root, inputs=True);
+    slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
+    cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
+    candidate: any = None;
+    try {
+        with cache.open('rb') as stream {
+            candidate = marshal.load(stream);
+        }
+    } except (OSError, ValueError, EOFError, TypeError) {}
+    stamps = candidate if isinstance(candidate, dict) else {};
+    inventory = _inventory(
+        inventory_root, inputs=True, previous=stamps.get('inventory')
+    );
     key = (
         _FORMAT,
         _identity(),
-        inventory,
+        _digests(inventory),
         sorted(inputs.items()),
         entries,
         client,
         dev
     );
-    slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
-    cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
     compiler = program._get_compiler();
     revision = PreparedApplication(
         `root, `entry, client_enabled=client, services=`tuple(entries[1:]), dev=dev
     );
     record = None;
     try {
-        with cache.open('rb') as stream {
-            candidate = marshal.load(stream);
-        }
         import from jaclang.compiler.driver.jir { cache_mode }
-        if (
-            not cache_mode()[0]
-            and (candidate['key'] == key)
-            and all(
-                (
-                    Path(path).is_file()
-                    and ((os.stat(path).st_mtime_ns, os.stat(path).st_size) == stamp)
-                ) for (path, stamp) in candidate['outputs'].items()
+        if candidate is not None
+            and not cache_mode()[0]
+            and (candidate['key'] == key) {
+            outputs = {
+                path: _stamp(path, stamp)
+                for (path, stamp) in candidate['outputs'].items()
+            };
+            if all(
+                outputs[path][2] == stamp[2]
+                for (path, stamp) in candidate['outputs'].items()
             )
-            and all(
-                (ct_dep_digest(path, with_annexes=True) == digest)
-                for (path, digest) in candidate['dependencies'].items()
-            )
-        ) {
-            record = candidate;
+                and all(
+                    (ct_dep_digest(path, with_annexes=True) == digest)
+                    for (path, digest) in candidate['dependencies'].items()
+                ) {
+                record = candidate;
+                if inventory != record['inventory'] or outputs != record['outputs'] {
+                    record['inventory'] = inventory;
+                    record['outputs'] = outputs;
+                    try {
+                        _write(cache, record);
+                    } except OSError {}
+                }
+            }
         }
     } except (OSError, ValueError, EOFError, TypeError, KeyError) {}
     builder = None;
@@ -654,15 +832,24 @@ def _prepare_revision(
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
-    import from jaclang.compiler.driver.pipeline_runner { compile_application }
-    for path in entries {
-        options = copy.copy(program.options);
-        options.project_root = `root;
-        options.no_cgen = False;
-        modules[path] = compile_application(program, path, options);
-        _check(program, before);
+    units: (dict[str, ManifestSource] | None) = _kernel_units(
+        program, entries, `root, before, inputs
+    );
+    if units is None {
+        import from jaclang.compiler.driver.pipeline_runner { compile_application }
+        import from jaclang.project.kernel_compile { host_preparing }
+        host_preparing(`entry);
+        for path in entries {
+            options = copy.copy(program.options);
+            options.project_root = `root;
+            options.no_cgen = False;
+            modules[path] = compile_application(program, path, options);
+            _check(program, before);
+        }
     }
-    entry_client = modules[`entry].gen.client_manifest;
+    entry_client = modules[`entry].gen.client_manifest
+        if units is None
+        else units[os.path.realpath(`entry)].client;
     has_client = client
         and bool(
             (entry_client is not None and entry_client.has_client)
@@ -686,8 +873,16 @@ def _prepare_revision(
     }
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
-        mod = modules[path];
-        revision.manifests[path] = _manifest(program, path, `root, mod);
+        if units is not None {
+            revision.manifests[path] = build_manifest(
+                `root,
+                units[os.path.realpath(path)],
+                _unit_lookup(units),
+                list(units.values())
+            );
+        } else {
+            revision.manifests[path] = _manifest(program, path, `root, modules[path]);
+        }
         _check(program, before);
     }
     revision.manifests[`entry]['spa_routes'] = routes;
@@ -740,11 +935,21 @@ def _prepare_revision(
         pending.update((runtime_sources(code, path, `root) - revision.code.keys()));
     }
 
-    for (path, mod) in _project_modules(program, `root).items() {
+    project_facts: dict[str, tuple[str, any]] = {
+        path: (mod.app or '', mod.persistence)
+        for (path, mod) in _project_modules(program, `root).items()
+    };
+    if units is not None {
+        project_facts = {
+            path: (source.app, source.persistence)
+            for (path, source) in units.items()
+            if path.startswith(`root + os.sep)
+        };
+    }
+    for (path, facts) in project_facts.items() {
         if path in revision.code {
             revision.manifests.setdefault(
-                path,
-                {'root': `root, 'app': mod.app or '', 'persistence': mod.persistence}
+                path, {'root': `root, 'app': facts[0], 'persistence': facts[1]}
             );
         }
     }
@@ -763,7 +968,7 @@ def _prepare_revision(
     for path in revision.code {
         _capture_input(path, inputs);
     }
-    for path in _project_modules(program, `root) {
+    for path in project_facts {
         _capture_input(path, inputs);
     }
     if any(
@@ -774,10 +979,11 @@ def _prepare_revision(
             'Sources changed during preparation; retry with the new revision.'
         );
     }
-    current_inventory = _inventory(inventory_root, inputs=True);
-    if (not client and current_inventory != inventory)
+    current = _digests(_inventory(inventory_root, inputs=True, previous=inventory));
+    if (not client and current != _digests(inventory))
         or any(
-            current_inventory.get(path) != stamp for (path, stamp) in inventory.items()
+            current.get(path) != digest
+            for (path, digest) in _digests(inventory).items()
         ) {
         raise RuntimeError(
             'Sources changed during preparation; retry with the new revision.'
@@ -800,6 +1006,7 @@ def _prepare_revision(
             manifests=revision.manifests,
             sections=sections,
             outputs=outputs,
+            inventory=inventory,
             dependencies=inputs
         )
     );

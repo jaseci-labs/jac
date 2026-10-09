@@ -43,7 +43,15 @@ obj RequestOptions {
         ui: str = "",
         project_root: (str | None) = None,
         strict_dependencies: bool = False,
-        package_canonical: bool = False;
+        package_canonical: bool = False,
+        na_gc_mode: str = "",
+        native_debug: bool = False,
+        rc_debug_codegen: bool = False,
+        rc_stats: bool = False,
+        nogc_debug: bool = False,
+        na_debug: bool = False,
+        native_threads: int = -1,
+        opt_level: int = -1;
 
     def to_options -> CompileOptions {
         return CompileOptions(
@@ -73,7 +81,15 @@ obj RequestOptions {
             ui=self.ui,
             project_root=self.project_root,
             strict_dependencies=self.strict_dependencies,
-            package_canonical=self.package_canonical
+            package_canonical=self.package_canonical,
+            na_gc_mode=self.na_gc_mode or None,
+            native_debug=self.native_debug,
+            rc_debug_codegen=self.rc_debug_codegen,
+            rc_stats=self.rc_stats,
+            nogc_debug=self.nogc_debug,
+            na_debug=self.na_debug,
+            native_threads=self.native_threads if self.native_threads >= 0 else None,
+            opt_level=self.opt_level if self.opt_level >= 0 else None
         );
     }
 }
@@ -189,6 +205,9 @@ obj KernelInputs {
         native_pipeline: bool = False,
         native_pipeline_reason: str = "",
         native_pipeline_known: bool = False,
+        osp_core_js: str = "",
+        client_stub_globals: list[str] = [],
+        client_stub_globals_known: bool = False,
         stub_catalog_active: bool = False,
         stub_catalog_dir: str = "",
         stub_catalog_file: str = "",
@@ -198,6 +217,9 @@ obj KernelInputs {
         search_paths: list[str] = [],
         native_session_active: bool = False,
         scanned_modules: int = 0,
+        emit_paths: list[str] = [],
+        emit_closure: bool = False,
+        emit_of: dict[str, bool] = {},
         manifest: ManifestSets = ManifestSets(),
         layout: LayoutTables = LayoutTables(),
         project_facts: dict[str, ProjectFacts] = {},
@@ -210,6 +232,9 @@ obj KernelInputs {
         verdicts: dict[str, (NativeVerdict | None)] = {},
         untyped: dict[str, bool] = {},
         siblings: dict[str, str] = {},
+        client_pulls: dict[str, str] = {},
+        native_ifaces: dict[str, str] = {},
+        native_facts: dict[str, str] = {},
         path_aliases: dict[str, bool] = {},
         virtual_modules: dict[str, str] = {},
         imports: list[ImportResolution] = [],
@@ -268,7 +293,17 @@ def request_of(options: CompileOptions) -> RequestOptions {
         ui=options.ui,
         project_root=options.project_root,
         strict_dependencies=options.strict_dependencies,
-        package_canonical=options.package_canonical
+        package_canonical=options.package_canonical,
+        na_gc_mode=options.na_gc_mode or "",
+        native_debug=bool(options.native_debug),
+        rc_debug_codegen=bool(options.rc_debug_codegen),
+        rc_stats=bool(options.rc_stats),
+        nogc_debug=bool(options.nogc_debug),
+        na_debug=bool(options.na_debug),
+        native_threads=options.native_threads
+            if options.native_threads is not None
+            else -1,
+        opt_level=options.opt_level if options.opt_level is not None else -1
     );
 }
 
@@ -300,7 +335,15 @@ def request_to_dict(request: RequestOptions) -> dict[str, any] {
         "ui": request.ui,
         "project_root": request.project_root,
         "strict_dependencies": request.strict_dependencies,
-        "package_canonical": request.package_canonical
+        "package_canonical": request.package_canonical,
+        "na_gc_mode": request.na_gc_mode,
+        "native_debug": request.native_debug,
+        "rc_debug_codegen": request.rc_debug_codegen,
+        "rc_stats": request.rc_stats,
+        "nogc_debug": request.nogc_debug,
+        "na_debug": request.na_debug,
+        "native_threads": request.native_threads,
+        "opt_level": request.opt_level
     };
 }
 
@@ -333,7 +376,15 @@ def request_from_dict(raw: dict[str, any]) -> RequestOptions {
         ui=str(raw.get("ui", "")),
         project_root=str(project_root) if project_root is not None else None,
         strict_dependencies=bool(raw.get("strict_dependencies", False)),
-        package_canonical=bool(raw.get("package_canonical", False))
+        package_canonical=bool(raw.get("package_canonical", False)),
+        na_gc_mode=str(raw.get("na_gc_mode", "")),
+        native_debug=bool(raw.get("native_debug", False)),
+        rc_debug_codegen=bool(raw.get("rc_debug_codegen", False)),
+        rc_stats=bool(raw.get("rc_stats", False)),
+        nogc_debug=bool(raw.get("nogc_debug", False)),
+        na_debug=bool(raw.get("na_debug", False)),
+        native_threads=json_int(raw.get("native_threads"), -1),
+        opt_level=json_int(raw.get("opt_level"), -1)
     );
 }
 
@@ -664,7 +715,7 @@ def json_int(value: object, fallback: int = 0) -> int {
 
 def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
     defaults = inputs.project_defaults;
-    return {
+    record: dict[str, any] = {
         "version": inputs.version,
         "entry_path": inputs.entry_path,
         "package_root": inputs.package_root,
@@ -674,9 +725,6 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "project_defaults": defaults_to_dict(defaults)
             if defaults is not None
             else None,
-        "check_settings": {
-            app: check_to_dict(check) for (app, check) in inputs.check_settings.items()
-        },
         "host_platform": {
             "machine": inputs.host_platform.machine,
             "python_major": inputs.host_platform.python_major,
@@ -691,6 +739,9 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "native_pipeline": inputs.native_pipeline,
         "native_pipeline_reason": inputs.native_pipeline_reason,
         "native_pipeline_known": inputs.native_pipeline_known,
+        "osp_core_js": inputs.osp_core_js,
+        "client_stub_globals": list(inputs.client_stub_globals),
+        "client_stub_globals_known": inputs.client_stub_globals_known,
         "stub_catalog_active": inputs.stub_catalog_active,
         "stub_catalog_dir": inputs.stub_catalog_dir,
         "stub_catalog_file": inputs.stub_catalog_file,
@@ -700,8 +751,21 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "search_paths": list(inputs.search_paths),
         "native_session_active": inputs.native_session_active,
         "scanned_modules": inputs.scanned_modules,
+        "emit_paths": list(inputs.emit_paths),
+        "emit_closure": inputs.emit_closure,
         "manifest": manifest_to_dict(inputs.manifest),
-        "layout": layout_to_dict(inputs.layout),
+        "layout": layout_to_dict(inputs.layout)
+    };
+    record.update(answers_to_dict(inputs));
+    return record;
+}
+
+def answers_to_dict(inputs: KernelInputs) -> dict[str, any] {
+    return {
+        "check_settings": {
+            app: check_to_dict(check) for (app, check) in inputs.check_settings.items()
+        },
+        "emit_of": dict(inputs.emit_of),
         "project_facts": {
             owner_root: facts_to_dict(facts)
             for (owner_root, facts) in inputs.project_facts.items()
@@ -723,6 +787,9 @@ def inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         },
         "untyped": dict(inputs.untyped),
         "siblings": dict(inputs.siblings),
+        "client_pulls": dict(inputs.client_pulls),
+        "native_ifaces": dict(inputs.native_ifaces),
+        "native_facts": dict(inputs.native_facts),
         "path_aliases": dict(inputs.path_aliases),
         "virtual_modules": dict(inputs.virtual_modules),
         "imports": [
@@ -778,59 +845,39 @@ def json_opt_str(value: object) -> (str | None) {
     return str(value);
 }
 
-def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
-    version = json_int(raw.get("version"), 0);
-    if version != KERNEL_INPUTS_VERSION {
-        raise ValueError(
-            f"kernel inputs version {version} does not match {KERNEL_INPUTS_VERSION}"
-        );
+def merge_str_map(into: dict[str, str], value: object) {
+    for (key, text) in json_str_map(value).items() {
+        into[key] = text;
     }
-    defaults_raw = raw.get("project_defaults");
-    platform_raw = json_map(raw.get("host_platform"));
-    env_raw = json_map(raw.get("ct_environment"));
-    inputs = KernelInputs(
-        version=version,
-        entry_path=str(raw.get("entry_path", "")),
-        package_root=str(raw.get("package_root", "")),
-        module_projection=str(raw.get("module_projection", "")),
-        target_app=str(raw.get("target_app", "")),
-        request=request_from_dict(json_map(raw.get("request"))),
-        project_defaults=defaults_from_dict(json_map(defaults_raw))
-            if defaults_raw is not None
-            else None,
-        host_platform=HostPlatform(
-            machine=str(platform_raw.get("machine", "")),
-            python_major=json_int(platform_raw.get("python_major")),
-            python_minor=json_int(platform_raw.get("python_minor"))
-        ),
-        ct_environment=CtEnvironment(
-            os=str(env_raw.get("os", "linux")), arch=str(env_raw.get("arch", ""))
-        ),
-        target_triple=str(raw.get("target_triple", "")),
-        target_triple_known=bool(raw.get("target_triple_known", False)),
-        native_pipeline=bool(raw.get("native_pipeline", False)),
-        native_pipeline_reason=str(raw.get("native_pipeline_reason", "")),
-        native_pipeline_known=bool(raw.get("native_pipeline_known", False)),
-        stub_catalog_active=bool(raw.get("stub_catalog_active", False)),
-        stub_catalog_dir=str(raw.get("stub_catalog_dir", "")),
-        stub_catalog_file=str(raw.get("stub_catalog_file", "")),
-        stub_catalog_offset=json_int(raw.get("stub_catalog_offset"), 0),
-        stub_catalog_length=json_int(raw.get("stub_catalog_length"), 0),
-        typeshed_roots=json_str_list(raw.get("typeshed_roots")),
-        search_paths=json_str_list(raw.get("search_paths")),
-        native_session_active=bool(raw.get("native_session_active", False)),
-        scanned_modules=json_int(raw.get("scanned_modules"), 0),
-        manifest=manifest_from_dict(json_map(raw.get("manifest"))),
-        layout=layout_from_dict(json_map(raw.get("layout"))),
-        facts_of=json_str_map(raw.get("facts_of")),
-        workspace_of=json_str_map(raw.get("workspace_of")),
-        app_of=json_str_map(raw.get("app_of")),
-        project_root_of=json_str_map(raw.get("project_root_of")),
-        untyped=json_bool_map(raw.get("untyped")),
-        siblings=json_str_map(raw.get("siblings")),
-        path_aliases=json_bool_map(raw.get("path_aliases")),
-        virtual_modules=json_str_map(raw.get("virtual_modules"))
-    );
+}
+
+def merge_bool_map(into: dict[str, bool], value: object) {
+    for (key, flag) in json_bool_map(value).items() {
+        into[key] = flag;
+    }
+}
+
+def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
+    merge_str_map(inputs.facts_of, raw.get("facts_of"));
+    merge_str_map(inputs.workspace_of, raw.get("workspace_of"));
+    merge_str_map(inputs.app_of, raw.get("app_of"));
+    merge_str_map(inputs.project_root_of, raw.get("project_root_of"));
+    merge_bool_map(inputs.untyped, raw.get("untyped"));
+    merge_str_map(inputs.siblings, raw.get("siblings"));
+    merge_str_map(inputs.client_pulls, raw.get("client_pulls"));
+    merge_str_map(inputs.native_ifaces, raw.get("native_ifaces"));
+    merge_str_map(inputs.native_facts, raw.get("native_facts"));
+    merge_bool_map(inputs.path_aliases, raw.get("path_aliases"));
+    merge_str_map(inputs.virtual_modules, raw.get("virtual_modules"));
+    merge_bool_map(inputs.emit_of, raw.get("emit_of"));
+    core_js = str(raw.get("osp_core_js", ""));
+    if core_js {
+        inputs.osp_core_js = core_js;
+    }
+    if bool(raw.get("client_stub_globals_known", False)) {
+        inputs.client_stub_globals = json_str_list(raw.get("client_stub_globals"));
+        inputs.client_stub_globals_known = True;
+    }
     for (app, check) in json_map(raw.get("check_settings")).items() {
         inputs.check_settings[app] = check_from_dict(json_map(check));
     }
@@ -901,5 +948,58 @@ def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
             )
         );
     }
+}
+
+def inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
+    version = json_int(raw.get("version"), 0);
+    if version != KERNEL_INPUTS_VERSION {
+        raise ValueError(
+            f"kernel inputs version {version} does not match {KERNEL_INPUTS_VERSION}"
+        );
+    }
+    defaults_raw = raw.get("project_defaults");
+    platform_raw = json_map(raw.get("host_platform"));
+    env_raw = json_map(raw.get("ct_environment"));
+    inputs = KernelInputs(
+        version=version,
+        entry_path=str(raw.get("entry_path", "")),
+        package_root=str(raw.get("package_root", "")),
+        module_projection=str(raw.get("module_projection", "")),
+        target_app=str(raw.get("target_app", "")),
+        request=request_from_dict(json_map(raw.get("request"))),
+        project_defaults=defaults_from_dict(json_map(defaults_raw))
+            if defaults_raw is not None
+            else None,
+        host_platform=HostPlatform(
+            machine=str(platform_raw.get("machine", "")),
+            python_major=json_int(platform_raw.get("python_major")),
+            python_minor=json_int(platform_raw.get("python_minor"))
+        ),
+        ct_environment=CtEnvironment(
+            os=str(env_raw.get("os", "linux")), arch=str(env_raw.get("arch", ""))
+        ),
+        target_triple=str(raw.get("target_triple", "")),
+        target_triple_known=bool(raw.get("target_triple_known", False)),
+        native_pipeline=bool(raw.get("native_pipeline", False)),
+        native_pipeline_reason=str(raw.get("native_pipeline_reason", "")),
+        native_pipeline_known=bool(raw.get("native_pipeline_known", False)),
+        osp_core_js=str(raw.get("osp_core_js", "")),
+        client_stub_globals=json_str_list(raw.get("client_stub_globals")),
+        client_stub_globals_known=bool(raw.get("client_stub_globals_known", False)),
+        stub_catalog_active=bool(raw.get("stub_catalog_active", False)),
+        stub_catalog_dir=str(raw.get("stub_catalog_dir", "")),
+        stub_catalog_file=str(raw.get("stub_catalog_file", "")),
+        stub_catalog_offset=json_int(raw.get("stub_catalog_offset"), 0),
+        stub_catalog_length=json_int(raw.get("stub_catalog_length"), 0),
+        typeshed_roots=json_str_list(raw.get("typeshed_roots")),
+        search_paths=json_str_list(raw.get("search_paths")),
+        native_session_active=bool(raw.get("native_session_active", False)),
+        scanned_modules=json_int(raw.get("scanned_modules"), 0),
+        emit_paths=json_str_list(raw.get("emit_paths")),
+        emit_closure=bool(raw.get("emit_closure", False)),
+        manifest=manifest_from_dict(json_map(raw.get("manifest"))),
+        layout=layout_from_dict(json_map(raw.get("layout")))
+    );
+    merge_answers(inputs, raw);
     return inputs;
 }

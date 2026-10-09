@@ -497,3 +497,269 @@ def jac_fmt_bool(v: bool, spec: str) -> str {
     }
     return jac_fmt_int(1 if v else 0, spec);
 }
+
+def _jac_hex_digit(ch: str) -> int {
+    idx = "0123456789abcdefABCDEF".find(ch);
+    if idx < 0 {
+        return -1;
+    }
+    return idx if idx < 16 else idx - 6;
+}
+
+def _jac_int_digit(ch: str) -> int {
+    idx = "0123456789abcdefghijklmnopqrstuvwxyz".find(ch.lower());
+    return idx if idx >= 0 else 99;
+}
+
+def _jac_int_bad(text: str, base: int) {
+    raise ValueError(f"invalid literal for int() with base {base}: '{text}'");
+}
+
+def jac_int_parse(text: str, base: int) -> int {
+    if base != 0 and (base < 2 or base > 36) {
+        raise ValueError("int() base must be >= 2 and <= 36, or 0");
+    }
+    i = 0;
+    j = len(text);
+    while i < j and text[i] in " \t\n\r\x0b\x0c" {
+        i += 1;
+    }
+    while j > i and text[j - 1] in " \t\n\r\x0b\x0c" {
+        j -= 1;
+    }
+    neg = False;
+    if i < j and (text[i] == "+" or text[i] == "-") {
+        neg = text[i] == "-";
+        i += 1;
+    }
+    radix = base;
+    prefixed = False;
+    if i + 1 < j and text[i] == "0" {
+        mark = text[i + 1].lower();
+        found = 16
+            if mark == "x"
+            else (8 if mark == "o" else (2 if mark == "b" else 0));
+        if found != 0 and (base == 0 or base == found) {
+            radix = found;
+            prefixed = True;
+            i += 2;
+        }
+    }
+    decimal_zero_rule = radix == 0;
+    if radix == 0 {
+        radix = 10;
+    }
+    value = 0;
+    digits = 0;
+    nonzero = False;
+    under_ok = prefixed;
+    last_under = False;
+    while i < j {
+        ch = text[i];
+        if ch == "_" {
+            if not under_ok {
+                _jac_int_bad(text, base);
+            }
+            under_ok = False;
+            last_under = True;
+            i += 1;
+            continue;
+        }
+        d = _jac_int_digit(ch);
+        if d >= radix {
+            _jac_int_bad(text, base);
+        }
+        if d != 0 {
+            nonzero = True;
+        }
+        value = value * radix + d;
+        digits += 1;
+        under_ok = True;
+        last_under = False;
+        i += 1;
+    }
+    if digits == 0 or last_under {
+        _jac_int_bad(text, base);
+    }
+    if decimal_zero_rule and nonzero and digits > 1 {
+        k = 0;
+        while k < len(text) and text[k] in " \t\n\r\x0b\x0c+-" {
+            k += 1;
+        }
+        if k < len(text) and text[k] == "0" {
+            _jac_int_bad(text, base);
+        }
+    }
+    return -value if neg else value;
+}
+
+def jac_bytes_hex(data: bytes) -> str {
+    digits = "0123456789abcdef";
+    out = "";
+    for v in data {
+        out += digits[v // 16];
+        out += digits[v % 16];
+    }
+    return out;
+}
+
+def jac_bytes_fromhex(text: str) -> bytes {
+    out = bytearray();
+    n = len(text);
+    i = 0;
+    while i < n {
+        if text[i] in " \t\n\r\x0b\x0c" {
+            i += 1;
+            continue;
+        }
+        hi = _jac_hex_digit(text[i]);
+        if hi >= 0 and i + 1 == n {
+            raise ValueError(
+                "fromhex() arg must contain an even number of hexadecimal digits"
+            );
+        }
+        lo = _jac_hex_digit(text[i + 1]) if hi >= 0 else -1;
+        if hi < 0 or lo < 0 {
+            bad = i if hi < 0 else i + 1;
+            raise ValueError(
+                f"non-hexadecimal number found in fromhex() arg at position {bad}"
+            );
+        }
+        out.append(hi * 16 + lo);
+        i += 2;
+    }
+    return bytes(out);
+}
+
+def _jac_bytes_is_space(v: int) -> bool {
+    return v == 32 or (v >= 9 and v <= 13);
+}
+
+def jac_bytes_upper(data: bytes) -> bytes {
+    out = bytearray();
+    for v in data {
+        out.append(v - 32 if v >= 97 and v <= 122 else v);
+    }
+    return bytes(out);
+}
+
+def jac_bytes_lower(data: bytes) -> bytes {
+    out = bytearray();
+    for v in data {
+        out.append(v + 32 if v >= 65 and v <= 90 else v);
+    }
+    return bytes(out);
+}
+
+def jac_bytes_strip(data: bytes, chars: bytes, has_chars: bool, which: int) -> bytes {
+    start = 0;
+    end = len(data);
+    if which != 2 {
+        while start < end
+            and (
+                data[start] in chars if has_chars else _jac_bytes_is_space(data[start])
+            ) {
+            start += 1;
+        }
+    }
+    if which != 1 {
+        while end > start
+            and (
+                data[end - 1] in chars
+                    if has_chars
+                    else _jac_bytes_is_space(data[end - 1])
+            ) {
+            end -= 1;
+        }
+    }
+    return data[start:end];
+}
+
+def _jac_bytes_split_ws(data: bytes, maxsplit: int) -> list[bytes] {
+    parts: list[bytes] = [];
+    n = len(data);
+    i = 0;
+    while i < n {
+        while i < n and _jac_bytes_is_space(data[i]) {
+            i += 1;
+        }
+        if i >= n {
+            break;
+        }
+        if maxsplit >= 0 and len(parts) == maxsplit {
+            parts.append(data[i:]);
+            break;
+        }
+        j = i;
+        while j < n and not _jac_bytes_is_space(data[j]) {
+            j += 1;
+        }
+        parts.append(data[i:j]);
+        i = j;
+    }
+    return parts;
+}
+
+def jac_bytes_split(
+    data: bytes, sep: bytes, has_sep: bool, maxsplit: int
+) -> list[bytes] {
+    if not has_sep {
+        return _jac_bytes_split_ws(data, maxsplit);
+    }
+    if len(sep) == 0 {
+        raise ValueError("empty separator");
+    }
+    parts: list[bytes] = [];
+    start = 0;
+    at = data.find(sep, start);
+    while at >= 0 and (maxsplit < 0 or len(parts) < maxsplit) {
+        parts.append(data[start:at]);
+        start = at + len(sep);
+        at = data.find(sep, start);
+    }
+    parts.append(data[start:]);
+    return parts;
+}
+
+def jac_bytes_replace(data: bytes, old: bytes, new: bytes, count: int) -> bytes {
+    out = bytearray();
+    done = 0;
+    if len(old) == 0 {
+        i = 0;
+        while i <= len(data) {
+            if count < 0 or done < count {
+                out.extend(new);
+                done += 1;
+            }
+            if i < len(data) {
+                out.append(data[i]);
+            }
+            i += 1;
+        }
+        return bytes(out);
+    }
+    start = 0;
+    at = data.find(old, start);
+    while at >= 0 and (count < 0 or done < count) {
+        out.extend(data[start:at]);
+        out.extend(new);
+        done += 1;
+        start = at + len(old);
+        at = data.find(old, start);
+    }
+    out.extend(data[start:]);
+    return bytes(out);
+}
+
+def jac_bytes_join(sep: bytes, parts: list[bytes]) -> bytes {
+    out = bytearray();
+    first = True;
+    for part in parts {
+        if not first {
+            out.extend(sep);
+        }
+        out.extend(part);
+        first = False;
+    }
+    return bytes(out);
+}
