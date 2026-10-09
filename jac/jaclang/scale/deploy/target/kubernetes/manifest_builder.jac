@@ -1,7 +1,7 @@
 import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 import from jaclang.server { sv_client }
 import from jaclang.project.config { JacConfig, ServeConfig }
-import from jaclang.server.settings { resolve_count }
+import from jaclang.server.settings { AuthSettings, resolve_count }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.config.config_loader {
     ADMIN_PASSWORD_ENV,
@@ -673,6 +673,9 @@ obj ManifestBuilder {
         user_secret = self._build_user_secret_manifest();
         if user_secret is not None {
             bundle["user_secret"] = user_secret;
+            bundle["admin_password_rules"] = AuthSettings.from_table(
+                self._serve_config().auth
+            ).password;
         }
         ingress_cfg: dict[str, any] = self._gateway_cfg().get("ingress", {});
         ingress = self._build_ingress_manifest(ingress_cfg);
@@ -1172,8 +1175,8 @@ obj ManifestBuilder {
         import os;
         admin = get_scale_config().get_admin_config();
         if admin.get('enabled', True) and ADMIN_PASSWORD_ENV not in data {
-            from_shell = str(os.environ.get(ADMIN_PASSWORD_ENV) or '').strip();
-            if from_shell {
+            from_shell = os.environ.get(ADMIN_PASSWORD_ENV) or '';
+            if from_shell.strip() {
                 data[ADMIN_PASSWORD_ENV] = from_shell;
             } elif not admin.get('default_password') {
                 data[ADMIN_PASSWORD_ENV] = PLACEHOLDER_JWT_SECRET;

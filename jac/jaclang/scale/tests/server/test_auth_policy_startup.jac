@@ -118,18 +118,22 @@ test "a configured admin password is held to the password policy from any source
         }
 
         # What the server and the deploy mint must pass the strictest policy.
-        configure_identity(
-            AuthSettings(
-                password=PasswordSettings(
-                    min_length=16, require=['lower', 'upper', 'digit', 'symbol']
-                )
+        for bounds in [
+            PasswordSettings(require=['lower', 'upper', 'digit', 'symbol']),
+            PasswordSettings(
+                min_length=64, require=['lower', 'upper', 'digit', 'symbol']
             ),
-            ''
-        );
-        for attempt in range(50) {
-            assert check_password(minted_password(), ['admin']) == [];
-            assert check_password(minted_password(24), ['admin']) == [];
+            PasswordSettings(min_length=12, max_length=20, require=['symbol'])
+        ] {
+            configure_identity(AuthSettings(password=bounds), '');
+            for attempt in range(30) {
+                assert check_password(minted_password(), ['admin']) == [];
+                assert check_password(minted_password(bounds), ['admin']) == [];
+            }
         }
+        configure_identity(AuthSettings(), '');
+        assert len(minted_password(PasswordSettings(min_length=64))) == 64;
+        assert len(minted_password(PasswordSettings(max_length=20))) == 20;
     } finally {
         configure_identity(AuthSettings(), '');
     }
@@ -161,6 +165,16 @@ test "the admin portal mails and holds an unverified email like the public paths
             bearer = 'Bearer ' + manager.create_jwt_token(root_id);
             name = 'ops' + tag;
             address = name + '@corp.example';
+
+            malformed = portal.admin_create_user(
+                username=name,
+                password='another horse battery',
+                Authorization=bearer,
+                email='bad@@corp.example'
+            );
+            assert malformed.error.code == 'VALIDATION_ERROR' , malformed.error;
+            assert manager.find_user_by_identity(name) is None;
+            assert emailer.sent == [];
 
             created = portal.admin_create_user(
                 username=name,

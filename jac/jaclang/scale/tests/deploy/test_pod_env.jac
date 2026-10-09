@@ -1254,7 +1254,12 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
             raised = False;
             try {
                 resolve_minted_secret(
-                    api, "ns", "app-secrets", data, "JAC_SERVE_AUTH_SECRET"
+                    api,
+                    "ns",
+                    "app-secrets",
+                    data,
+                    "JAC_SERVE_AUTH_SECRET",
+                    "freshly-minted"
                 );
                 create_k8s_secret(api, "ns", "app-secrets", data);
             } except expected {
@@ -1269,7 +1274,7 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
             continue;
         }
         assert resolve_minted_secret(
-            api, "ns", "app-secrets", data, "JAC_SERVE_AUTH_SECRET"
+            api, "ns", "app-secrets", data, "JAC_SERVE_AUTH_SECRET", "freshly-minted"
         )
             == minted , label;
         revision = create_k8s_secret(api, "ns", "app-secrets", data);
@@ -1311,20 +1316,38 @@ test "a redeploy keeps the signing secret and takes its revision from the replac
         )._build_user_secret_manifest()["stringData"];
         assert kept["JAC_SCALE_ADMIN_PASSWORD"] == "From-Scale-Secrets-1!";
     }
+    with mock.patch.dict(
+        os.environ, {"JAC_SCALE_ADMIN_PASSWORD": " spaced pass 1! "}
+    ) {
+        spaced = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="app", namespace="ns")
+        )._build_user_secret_manifest()["stringData"];
+        assert spaced["JAC_SCALE_ADMIN_PASSWORD"] == " spaced pass 1! " , (
+            "a password is copied as given; trimming it changes what signs in"
+        );
+    }
     assert rendered["JAC_SERVE_AUTH_SECRET"] == PLACEHOLDER_JWT_SECRET , (
         "a rendered manifest must never carry a random value the apply will not use"
     );
     first = _FakeSecrets();
     assert resolve_minted_secret(
-        first, "ns", "app-secrets", rendered, "JAC_SERVE_AUTH_SECRET"
+        first, "ns", "app-secrets", rendered, "JAC_SERVE_AUTH_SECRET", "freshly-minted"
     );
     assert rendered["JAC_SCALE_ADMIN_PASSWORD"] == PLACEHOLDER_JWT_SECRET , (
         "with no admin password configured the deploy mints one, like the signing secret"
     );
     assert resolve_minted_secret(
-        first, "ns", "app-secrets", rendered, "JAC_SCALE_ADMIN_PASSWORD"
+        first,
+        "ns",
+        "app-secrets",
+        rendered,
+        "JAC_SCALE_ADMIN_PASSWORD",
+        "freshly-minted"
     );
-    assert rendered["JAC_SCALE_ADMIN_PASSWORD"] not in ("", PLACEHOLDER_JWT_SECRET);
+    assert rendered["JAC_SCALE_ADMIN_PASSWORD"] == "freshly-minted" , (
+        "the apply writes the value it was handed, so the admin password can be "
+        "minted to the project's own length bounds"
+    );
     assert rendered["JAC_SERVE_AUTH_SECRET"] not in ("", PLACEHOLDER_JWT_SECRET) , "a first deploy mints a real secret";
 }
 

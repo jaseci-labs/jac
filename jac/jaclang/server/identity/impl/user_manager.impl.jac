@@ -110,14 +110,16 @@ impl UserManager.unverified_email(user_id: str) -> dict[str, any] | None {
     return awaiting_verification(self.get_user(user_id) or {});
 }
 
-impl UserManager.open_session(user_id: str) -> SessionGrant {
+impl UserManager.open_session(
+    user_id: str, method: str = METHOD_PASSWORD
+) -> SessionGrant {
     unverified = self.unverified_email(user_id);
     if unverified is not None {
         return SessionGrant(unverified=unverified);
     }
     factors = self.second_factors();
     if factors.required_for(user_id) {
-        return SessionGrant(challenge=factors.begin_login(user_id));
+        return SessionGrant(challenge=factors.begin_login(user_id, method));
     }
     return SessionGrant(token=self.create_jwt_token(user_id));
 }
@@ -222,6 +224,27 @@ impl UserManager.reset_password_by_user_id(
 ) -> dict[str, any] {
     return self.password_refusal(user_id, new_password)
         or self._identity_storage.reset_password(user_id, new_password);
+}
+
+impl UserManager.redeem_reset(token: str, new_password: str) -> dict[str, any] {
+    tokens = AuthTokenStore.instance();
+    record = tokens.peek_token(token, RESET_PURPOSE);
+    user_id = str(record.get('user_id') or '') if record else '';
+    if not user_id {
+        return {'error': 'Reset token is invalid or expired', 'code': 'INVALID_TOKEN'};
+    }
+    result = self.reset_password_by_user_id(user_id, new_password);
+    if 'error' in result {
+        result['code'] = result.get('code') or 'NOT_FOUND';
+        result['user_id'] = user_id;
+        return result;
+    }
+    tokens.consume_token(token, RESET_PURPOSE);
+    tokens.revoke_user_tokens(user_id, RESET_PURPOSE);
+    return {
+        'user_id': user_id,
+        'identity_value': str(record.get('identity_value') or '') if record else ''
+    };
 }
 
 impl UserManager.add_identity(
@@ -569,6 +592,12 @@ impl UserManager.bootstrap_admin_user(
             self.set_user_role(user_id, 'admin');
             logger.info(f"Existing user '{admin_username}' promoted to admin role");
         }
+        if self._identity_storage.holds_password(user_id, RETIRED_ADMIN_PASSWORD) {
+            logger.error(
+                f"Admin user '{admin_username}' still has the retired default "
+                "password; anyone can sign in as it. Change it now."
+            );
+        }
         return {'message': 'Admin user already exists', 'username': admin_username};
     }
     minted = not password;
@@ -580,7 +609,7 @@ impl UserManager.bootstrap_admin_user(
                 'Secret)'
             };
         }
-        password = minted_password(24);
+        password = minted_password();
     }
     result = self.create_internal_user(admin_username, password, UserRole.ADMIN.value);
     if 'error' in result {

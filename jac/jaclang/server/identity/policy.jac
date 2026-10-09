@@ -5,12 +5,17 @@ import secrets;
 import from jaclang.server.identity.common_passwords { COMMON_PASSWORDS }
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.serving.client { request_sync }
-import from jaclang.server.settings { IDENTIFIER_KINDS, PASSWORD_CLASSES }
+import from jaclang.server.settings {
+    IDENTIFIER_KINDS,
+    PASSWORD_CLASSES,
+    PasswordSettings
+}
 
 glob logger = logging.getLogger(__name__),
      POLICY_VIOLATION: str = 'POLICY_VIOLATION',
      VERIFY_BEFORE_LOGIN: str = 'verify_before_login',
      CONTAINED_IDENTIFIER_MIN: int = 4,
+     MINTED_LENGTH: int = 32,
      BREACH_RANGE_URL: str = 'https://api.pwnedpasswords.com/range/',
      BREACH_TIMEOUT: float = 3.0;
 
@@ -146,10 +151,13 @@ def character_classes(password: str) -> set[str] {
 }
 
 
-def minted_password(length: int = 48) -> str {
+def minted_password(rules: (PasswordSettings | None) = None) -> str {
+    bounds = rules or auth_settings().password;
+    length = min(bounds.max_length, max(bounds.min_length, MINTED_LENGTH));
     while True {
         candidate = secrets.token_urlsafe(length)[:length];
-        if character_classes(candidate) == set(PASSWORD_CLASSES) {
+        if length < len(PASSWORD_CLASSES)
+            or character_classes(candidate) == set(PASSWORD_CLASSES) {
             return candidate;
         }
     }

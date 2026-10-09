@@ -94,7 +94,13 @@ def table_value(current: any, raw: any, label: str) -> any {
 
 def env_typed(current: any, name: str) -> any {
     if isinstance(current, bool) {
-        return env_bool(name, current);
+        raw = str(env_value(name)).lower();
+        if raw not in ENV_TRUE + ENV_FALSE {
+            raise ServeConfigError(
+                f"{ENV_PREFIX}{name} must be true or false, got {raw!r}"
+            );
+        }
+        return raw in ENV_TRUE;
     }
     if isinstance(current, int) {
         return env_int(name, current);
@@ -557,6 +563,23 @@ impl ServeSettings.validate -> list[str] {
         }
     }
     return problems;
+}
+
+
+impl ServeSettings.warnings -> list[str] {
+    lockout = self.auth.lockout;
+    if in_cluster() and lockout.max_attempts > 0 and not self.proxy.trusted {
+        return [
+            "[serve.auth.lockout] counts failed logins per source address and "
+            "identity, but [serve.proxy] trusted is empty in a cluster, so every "
+            "caller arrives from the ingress address and the limit is per identity: "
+            f"{lockout.max_attempts} wrong passwords from anyone lock that "
+            f"account's login for {lockout.window_seconds} seconds. List the "
+            "ingress in [serve.proxy] trusted (JAC_SERVE_PROXY_TRUSTED), or set "
+            "[serve.auth.lockout] max_attempts = 0."
+        ];
+    }
+    return [];
 }
 
 

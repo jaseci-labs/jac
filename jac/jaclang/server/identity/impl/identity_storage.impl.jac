@@ -240,6 +240,21 @@ impl IdentityStorage.get_user_role(user_id: str) -> str | None {
     return user.get('role', 'user') or 'user';
 }
 
+impl IdentityStorage.holds_password(user_id: str, password: str) -> bool {
+    if not isinstance(password, str) or not password {
+        return False;
+    }
+    return any(
+        [
+            IdentityStorage.verify_password(
+                password, str(credential.get('password_hash') or '')
+            )
+            for credential in self._get_credentials(user_id)
+            if credential.get('type') == 'password'
+        ]
+    );
+}
+
 impl IdentityStorage.password_reused(
     credentials: list[dict[str, any]], new_password: str
 ) -> bool {

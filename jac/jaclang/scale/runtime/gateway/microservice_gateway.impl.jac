@@ -1119,6 +1119,9 @@ impl MicroserviceGateway._install_admin_api -> None {
     if problems {
         raise ServeConfigError('\n'.join(f"- {p}" for p in problems));
     }
+    for warning in settings.warnings() {
+        logger.warning(warning);
+    }
     self.server = self;
     self.user_manager = self.identity();
     self.app.add_middleware(jwt_middleware(self.user_manager));

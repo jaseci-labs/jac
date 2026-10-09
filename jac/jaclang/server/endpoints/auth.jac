@@ -24,8 +24,8 @@ import from jaclang.server.identity.auth_models {
 }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
 import from jaclang.server.identity.identity_storage { primary_username }
-import from jaclang.server.identity.mail { MailOutcome, RESET_PURPOSE, VERIFY_PURPOSE }
-import from jaclang.server.identity.policy { public_policy }
+import from jaclang.server.identity.mail { MailOutcome, VERIFY_PURPOSE }
+import from jaclang.server.identity.policy { POLICY_VIOLATION, public_policy }
 import from jaclang.server.identity.session_cookie { end_session, start_session }
 import from jaclang.server.identity.user_manager { UserRole }
 import from jaclang.server.middleware { bearer_token, require_user }
@@ -638,51 +638,24 @@ def register_auth_endpoints(server: EndpointHost) {
         request: Request, body_data: ResetPasswordRequest
     ) -> TransportResponse {
         source_ip = client_ip(request);
-        tokens = AuthTokenStore.instance();
-        pending = tokens.peek_token(body_data.token, RESET_PURPOSE);
-        pending_user = str(pending.get('user_id') or '') if pending else '';
-        refusal = users.password_refusal(pending_user, body_data.new_password)
-            if pending_user
-            else None;
-        if refusal is not None {
-            return refused(refusal, 'UPDATE_FAILED');
+        result = users.redeem_reset(body_data.token, body_data.new_password);
+        user_id = str(result.get('user_id') or '');
+        if 'error' in result {
+            if result.get('code') != POLICY_VIOLATION {
+                audit(
+                    'password_reset.failed',
+                    reason='user_gone' if user_id else 'invalid_or_expired_token',
+                    user_id=user_id,
+                    source_ip=source_ip
+                );
+            }
+            return refused(result, 'INVALID_TOKEN', {'NOT_FOUND': 404});
         }
-        record = tokens.consume_token(body_data.token, RESET_PURPOSE);
-        if record is None {
-            audit(
-                'password_reset.failed',
-                reason='invalid_or_expired_token',
-                source_ip=source_ip
-            );
-            return fail('INVALID_TOKEN', 'Reset token is invalid or expired', 400);
-        }
-        user_id = record.get('user_id', '');
-        identity_value = record.get('identity_value', '') or '';
-        if not user_id {
-            audit(
-                'password_reset.failed',
-                reason='token_missing_user',
-                source_ip=source_ip
-            );
-            return fail('INVALID_TOKEN', 'Reset token is invalid', 400);
-        }
-        result = users.reset_password_by_user_id(user_id, body_data.new_password);
-        if result.get('error') {
-            audit(
-                'password_reset.failed',
-                reason='user_gone',
-                user_id=user_id,
-                identity_value=identity_value,
-                source_ip=source_ip
-            );
-            return refused(result, 'NOT_FOUND', {'NOT_FOUND': 404});
-        }
-        tokens.revoke_user_tokens(user_id, RESET_PURPOSE);
         end_session(request);
         audit(
             'password_reset.completed',
             user_id=user_id,
-            identity_value=identity_value,
+            identity_value=str(result.get('identity_value') or ''),
             source_ip=source_ip
         );
         return ok({'status': 'password_reset'});

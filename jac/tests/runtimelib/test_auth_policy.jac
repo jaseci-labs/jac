@@ -140,6 +140,28 @@ test "auth settings load nested tables and env, and name moved or unknown keys" 
         assert from_env.session_cookie;
     }
 
+    for (raw, expected) in [
+        ('off', False),
+        ('No', False),
+        ('1', True),
+        ('yes', True)
+    ] {
+        with patch.dict(os.environ, {'JAC_SERVE_AUTH_REGISTRATION_ENABLED': raw}) {
+            assert AuthSettings.from_table({}).registration.enabled is expected;
+        }
+    }
+    for typo in ['disabled', 'n', 'closed', 'flase'] {
+        with patch.dict(os.environ, {'JAC_SERVE_AUTH_REGISTRATION_ENABLED': typo}) {
+            try {
+                AuthSettings.from_table({});
+                assert False , f"{typo!r} was read as a boolean";
+            } except ServeConfigError as refused {
+                assert 'JAC_SERVE_AUTH_REGISTRATION_ENABLED must be true or false'
+                    in str(refused) , str(refused);
+            }
+        }
+    }
+
     for (table, needle) in [
         ({'password_hash_cost': 12}, '[serve.auth.password] hash_cost'),
         ({'registration_challenge': True}, '[serve.auth.registration] challenge'),
@@ -511,6 +533,115 @@ test "login is throttled per source and identity and a success refunds the attem
             assert manager.authenticate(name, 'correct horse battery', '192.0.2.8')
                 is not None;
             assert manager.authenticate(unique('ghost'), 'x', '192.0.2.7') is None;
+            manager.close();
+        } finally {
+            configure_identity(AuthSettings(), '');
+        }
+    }
+}
+
+
+test "an untrusted proxy makes the login limit per identity, and the server says so" {
+    import from jaclang.server.serving.datatypes { Headers }
+    import from jaclang.server.serving.proxy { ProxyResolver }
+    import from jaclang.server.settings { ProxySettings }
+    forwarded = Headers();
+    forwarded.set('X-Forwarded-For', '203.0.113.9');
+    ingress = '10.1.7.213';
+    # With the ingress trusted, two callers behind it are two sources. Without,
+    # they are one, which is what turns the limit into a per-account lockout.
+    assert ProxyResolver(trusted=['10.0.0.0/8']).resolve(ingress, forwarded).client
+        == '203.0.113.9';
+    assert ProxyResolver().resolve(ingress, forwarded).client == ingress;
+
+    target = ServeSettings.__module__ + '.in_cluster';
+    with patch(target, return_value=True) {
+        warned = ServeSettings().warnings();
+        assert len(warned) == 1 and '[serve.proxy] trusted' in warned[0] , warned;
+        assert '10 wrong passwords' in warned[0];
+        assert ServeSettings(proxy=ProxySettings(trusted=['10.0.0.0/8'])).warnings()
+            == [];
+        assert ServeSettings(
+            auth=AuthSettings(lockout=LockoutSettings(max_attempts=0))
+        ).warnings()
+            == [];
+    }
+    with patch(target, return_value=False) {
+        assert ServeSettings().warnings() == [];
+    }
+}
+
+
+test "a reset decides once, and a refused password keeps its link" {
+    import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+    with TemporaryDirectory() as tmpdir {
+        try {
+            configure_identity(
+                AuthSettings(
+                    password=PasswordSettings(breached_check=True, hash_cost=10),
+                    lockout=LockoutSettings(max_attempts=0)
+                ),
+                tmpdir
+            );
+            manager = UserManager(base_path=tmpdir);
+            name = unique('gina');
+            user_id = str(
+                manager.create_internal_user(name, 'correct horse battery')['user_id']
+            );
+            token = AuthTokenStore.instance().create_token(user_id, 'reset', 600, name);
+            assert manager.redeem_reset('not-a-token', 'another horse battery')['code']
+                == 'INVALID_TOKEN';
+
+            with patch(check_password.__module__ + '.breached', return_value=False) {
+                weak = manager.redeem_reset(token, 'short');
+            }
+            assert weak['violations'] == ['PASSWORD_TOO_SHORT'];
+            assert manager.authenticate(name, 'correct horse battery') is not None;
+
+            # One lookup per reset: a second, differing answer cannot arrive
+            # after the link is spent.
+            with patch(
+                check_password.__module__ + '.breached', side_effect=[True, False]
+            ) as lookup {
+                leaked = manager.redeem_reset(token, 'another horse battery');
+                assert leaked['violations'] == ['PASSWORD_BREACHED'];
+                assert lookup.call_count == 1;
+                done = manager.redeem_reset(token, 'another horse battery');
+                assert 'error' not in done and done['user_id'] == user_id , done;
+                assert lookup.call_count == 2;
+            }
+            assert manager.authenticate(name, 'another horse battery') is not None;
+            with patch(check_password.__module__ + '.breached', return_value=False) {
+                assert manager.redeem_reset(token, 'a third horse battery')['code']
+                    == 'INVALID_TOKEN';
+            }
+            manager.close();
+        } finally {
+            configure_identity(AuthSettings(), '');
+        }
+    }
+}
+
+
+test "an admin that still holds the retired default password is reported at startup" {
+    with TemporaryDirectory() as tmpdir {
+        try {
+            configure_identity(
+                AuthSettings(password=PasswordSettings(hash_cost=10)), tmpdir
+            );
+            manager = UserManager(base_path=tmpdir);
+            stale = unique('admin');
+            manager.create_internal_user(stale, 'changeme', 'admin');
+            rotated = unique('admin');
+            manager.create_internal_user(rotated, 'correct horse battery', 'admin');
+            with patch(UserManager.__module__ + '.logger') as patched {
+                log: any = patched;
+                manager.bootstrap_admin_user(rotated);
+                log.error.assert_not_called();
+                manager.bootstrap_admin_user(stale);
+                log.error.assert_called_once();
+                assert 'retired default password' in log.error.call_args.args[0];
+            }
             manager.close();
         } finally {
             configure_identity(AuthSettings(), '');

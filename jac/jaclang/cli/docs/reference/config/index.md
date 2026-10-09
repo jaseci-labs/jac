@@ -419,7 +419,7 @@ attempts_per_hour = 0    # Per source address; 0 = unlimited
 challenges_per_10_minutes = 0
 
 [serve.auth.lockout]
-max_attempts = 10        # Failed logins per source address and identity in the window; 0 = unlimited
+max_attempts = 10        # Failed logins per source address and identity in the window; 0 = unlimited. Needs [serve.proxy] trusted behind an ingress
 window_seconds = 900
 
 [serve.auth.second_factor]

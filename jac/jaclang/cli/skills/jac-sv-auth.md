@@ -103,7 +103,7 @@ Opt-in per user; an account with no verified factor signs in exactly as above. A
 
 Once a factor is verified, `POST /user/login` stops answering a `token`: it answers `{"mfa_required": true, "challenge_token": "...", "expires_in": 300}`. The challenge is not a session (every other endpoint answers 401 for it); exchange it at `/user/mfa/login`. Codes are RFC 6238 (SHA-1, 6 digits, 30 s, one step of clock skew), single-use, and five failures lock the account's second step for 15 minutes (`JAC_SERVE_AUTH_SECOND_FACTOR_ATTEMPTS`, `..._LOCKOUT_SECONDS`, `..._CHALLENGE_TTL_SECONDS`, `..._ISSUER`).
 
-A session that proved a second factor carries `"aal": "aal2"` (plus `amr`, `auth_time`); a password-only or SSO session has no `aal` claim and reads as `aal1`. Use `/user/mfa/verify` on a verified factor to step an `aal1` session up. Require the level inside an endpoint:
+A session that proved a second factor carries `"aal": "aal2"` (plus `amr`, `auth_time`); `amr` lists how each step was proven, `["pwd", "otp"]` after a password login and `["sso", "otp"]` after an SSO login. A password-only or SSO session on an account with no verified factor has no `aal` claim and reads as `aal1`; an account with a verified factor is always challenged, whichever way it signs in. Use `/user/mfa/verify` on a verified factor to step an `aal1` session up. Require the level inside an endpoint:
 
 ```jac
 import from jaclang.server.identity.assurance { caller_assurance_level }
@@ -143,7 +143,7 @@ max_age_days = 0
 enabled = true              # false: 403 REGISTRATION_CLOSED, accounts come from an admin
 
 [serve.auth.lockout]
-max_attempts = 10           # failed logins per source address + identity per window_seconds (900); 429 RATE_LIMITED
+max_attempts = 10           # failed logins per source address + identity per window_seconds (900); 429 RATE_LIMITED. Behind an ingress, list it in [serve.proxy] trusted or the limit is per identity (anyone can lock an account out)
 ```
 
 - A new username may not contain `@`. Register an email as `{"type": "email", ...}`, not as a username.

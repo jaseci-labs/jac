@@ -9,6 +9,7 @@ import from urllib.parse { urlencode }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.identity.identity_storage { primary_username }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+import from jaclang.server.identity.assurance { METHOD_FEDERATED }
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.identity.policy { check_email }
 import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
@@ -152,7 +153,7 @@ def complete_identity(
     profiles[platform] = info.profile_fields();
     profile["sso"] = profiles;
     manager.update_user_fields(user_id, {"profile": profile});
-    grant = manager.open_session(user_id);
+    grant = manager.open_session(user_id, METHOD_FEDERATED);
     if grant.unverified is not None {
         return OAuthLogin(
             code="EMAIL_NOT_VERIFIED", error="Verify your email address to sign in."

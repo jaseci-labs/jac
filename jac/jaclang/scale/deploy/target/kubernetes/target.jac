@@ -1,9 +1,11 @@
 import logging;
+import secrets;
 import time;
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
     KubernetesTargetBase
 }
 import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.server.identity.policy { minted_password }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.models.resource_status { ResourceStatus, assess_workload }
@@ -1163,13 +1165,18 @@ obj KubernetesTarget(KubernetesTargetBase) {
         config_revision: str = "";
         user_secret = bundle.get("user_secret");
         if user_secret {
+            fresh = {
+                SIGNING_SECRET_ENV: secrets.token_urlsafe(48),
+                ADMIN_PASSWORD_ENV: minted_password(bundle.get("admin_password_rules"))
+            };
             for (key, minted_note) in MINTED_SECRET_NOTES.items() {
                 if resolve_minted_secret(
                     core_v1,
                     namespace,
                     user_secret["metadata"]["name"],
                     user_secret["stringData"],
-                    key
+                    key,
+                    fresh[key]
                 )
                     and self.logger {
                     self.logger.info(minted_note);

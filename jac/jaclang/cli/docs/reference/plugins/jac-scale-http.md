@@ -512,6 +512,8 @@ Length and the common and breached lists do most of the work; `require`, `histor
 
 **Registration and login limits.** `[serve.auth.registration] enabled = false` closes self-registration (`403 REGISTRATION_CLOSED`); accounts are then created by an admin. `[serve.auth.lockout]` limits failed logins to `max_attempts` (default `10`) per `window_seconds` (default `900`) for each source address and identity, answering `429 RATE_LIMITED`.
 
+The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services but sets none on the gateway, which is the pod an ingress talks to; list your ingress controller's address in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
+
 **Refusals.** A value that breaks the policy is answered with `400 POLICY_VIOLATION`, and the error `details` list every rule it broke so a form can show them together:
 
 ```json

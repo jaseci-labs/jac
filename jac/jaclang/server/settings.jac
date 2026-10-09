@@ -4,6 +4,8 @@ import from jaclang.project.config { JacConfig, ServeConfig }
 
 glob ENV_PREFIX: str = 'JAC_SERVE_',
      WORKERS_AUTO: str = 'auto',
+     ENV_TRUE: tuple[str, ...] = ('1', 'true', 'yes', 'on'),
+     ENV_FALSE: tuple[str, ...] = ('0', 'false', 'no', 'off'),
      IDENTIFIER_KINDS: tuple[str, ...] = ('username', 'email'),
      IDENTIFIER_MODES: tuple[str, ...] = ('required', 'optional', 'off'),
      VERIFICATION_MODES: tuple[str, ...] = ('none', 'optional', 'required'),
@@ -201,6 +203,7 @@ obj ServeSettings {
     ) -> ServeSettings;
 
     def validate -> list[str];
+    def warnings -> list[str];
     def require_valid -> None;
     def scheme -> str {
         return 'https' if self.tls.enabled() else 'http';

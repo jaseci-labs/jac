@@ -321,7 +321,9 @@ def register_second_factor_endpoints(server: EndpointHost) {
         }
         payload['token'] = users.create_jwt_token(
             user_id,
-            assurance=second_factor_claims([METHOD_PASSWORD, str(result['method'])])
+            assurance=second_factor_claims(
+                [str(result['first_method']), str(result['method'])]
+            )
         );
         start_session(request, str(payload['token']));
         return ok(dict[(str, JsonValue)](payload));

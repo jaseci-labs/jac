@@ -23,6 +23,7 @@ import from jaclang.server.identity.user_manager { UserRole, UserManager }
 import from jaclang.server.identity.assurance { METHOD_PASSWORD, second_factor_claims }
 import from jaclang.server.identity.second_factor { SecondFactorUnavailable }
 import from jaclang.server.identity.audit { client_ip }
+import from jaclang.server.identity.auth_models { IdentityInputModel }
 import from jaclang.server.identity.rate_limit { AttemptsExhausted }
 import from jaclang.server.endpoints.auth { refused, throttled }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
@@ -829,11 +830,19 @@ impl JacAPIServerAdmin.admin_create_user(
     if error {
         return error;
     }
-    identities = [
-        {'type': kind, 'value': value}
-        for (kind, value) in (('username', username), ('email', email))
-        if value
-    ];
+    try {
+        identities = [
+            IdentityInputModel.from_dict({'type': kind, 'value': value}).model_dump()
+            for (kind, value) in (('username', username), ('email', email))
+            if value
+        ];
+    } except ValueError as invalid {
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message=str(invalid),
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
     if not identities or not password {
         return TransportResponse.fail(
             code='VALIDATION_ERROR',

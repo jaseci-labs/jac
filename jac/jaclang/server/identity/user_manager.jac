@@ -29,7 +29,9 @@ import from jaclang.server.serving.authcrypt {
     jwt_decode,
     jwt_encode
 }
-import from jaclang.server.identity.assurance { carried_claims }
+import from jaclang.server.identity.assurance { METHOD_PASSWORD, carried_claims }
+import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+import from jaclang.server.identity.mail { RESET_PURPOSE }
 import from jaclang.server.identity.second_factor { SecondFactorManager }
 import from jaclang.server.identity.config {
     auth_settings,
@@ -41,6 +43,7 @@ import from jaclang.server.identity.config {
 glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
      LOGIN_SCOPE: str = 'login-attempt',
+     RETIRED_ADMIN_PASSWORD: str = 'changeme',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );
@@ -83,7 +86,7 @@ obj UserManager {
     ) -> dict[str, any] | None;
 
     def unverified_email(user_id: str) -> dict[str, any] | None;
-    def open_session(user_id: str) -> SessionGrant;
+    def open_session(user_id: str, method: str = METHOD_PASSWORD) -> SessionGrant;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def user_exists(user_id: str) -> bool;
     def get_user(user_id: str) -> dict[str, any] | None;
@@ -97,6 +100,7 @@ obj UserManager {
     ) -> dict[str, any];
 
     def reset_password_by_user_id(user_id: str, new_password: str) -> dict[str, any];
+    def redeem_reset(token: str, new_password: str) -> dict[str, any];
     def add_identity(
         user_id: str, kind: str, value: str, is_recovery: bool = False
     ) -> dict[str, any];

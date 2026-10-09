@@ -52,7 +52,8 @@ def resolve_minted_secret(
     namespace: str,
     secret_name: str,
     secret_data: dict[str, str],
-    key: str
+    key: str,
+    fresh: str
 ) -> bool;
 
 def delete_k8s_secret(

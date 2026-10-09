@@ -99,12 +99,12 @@ test "SSO uses stable provider IDs and never links by an unverified email" {
     assert result.ok;
     manager.create_federated_user.assert_not_called();
     manager.find_user_by_identity.assert_not_called();
-    manager.open_session.assert_called_once_with("original");
+    manager.open_session.assert_called_once_with("original", "sso");
     manager = fake_users();
     manager.find_user_by_identity.return_value = {"user_id": "victim"};
     assert complete_identity(manager, info, "github").ok;
     manager.find_user_by_identity.assert_not_called();
-    manager.open_session.assert_called_once_with("new-user");
+    manager.open_session.assert_called_once_with("new-user", "sso");
 }
 
 test "a provider-verified email links only to a verified local email" {
@@ -126,7 +126,7 @@ test "a provider-verified email links only to a verified local email" {
     manager.find_user_by_identity.assert_called_once_with("alice@corp.example");
     manager.create_federated_user.assert_not_called();
     manager.link_sso_account.assert_called_once_with("owner", "github", "123");
-    manager.open_session.assert_called_once_with("owner");
+    manager.open_session.assert_called_once_with("owner", "sso");
 
     for squatted in [
         [{** held, "verified": False}],
@@ -169,6 +169,89 @@ test "an SSO login answers the second-factor challenge instead of a session" {
     connected = complete_identity(manager, info, "github", "protected");
     assert connected.ok and not connected.token and not connected.challenge;
     manager.link_sso_account.assert_called_once_with("protected", "github", "123");
+}
+
+test "SSO into an account with a real verified factor is challenged, not signed in" {
+    # The gate is exercised end to end: a factor enrolled and verified through
+    # the real manager, in the real store, seen by the real session open.
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.scale.tests.scale_test_client { fresh_totp_code }
+    import from jaclang.server.identity.config { configure_identity }
+    import from jaclang.server.identity.user_manager {
+        SecondFactorRequired,
+        UserManager
+    }
+    import from jaclang.server.settings {
+        AuthSettings,
+        LockoutSettings,
+        PasswordSettings
+    }
+    with TemporaryDirectory() as tmpdir {
+        try {
+            configure_identity(
+                AuthSettings(
+                    password=PasswordSettings(hash_cost=10),
+                    lockout=LockoutSettings(max_attempts=0)
+                ),
+                tmpdir
+            );
+            manager = UserManager(base_path=tmpdir);
+            import from uuid { uuid4 }
+            tag = uuid4().hex[:10];
+            user_id = str(
+                manager.create_internal_user("mfa" + tag, "correct horse battery")[
+                    "user_id"
+                ]
+            );
+            external = "gh-" + tag;
+            assert "error" not in manager.link_sso_account(user_id, "github", external);
+            info = SSOUserInfo(email="", external_id=external, username="mfa" + tag);
+
+            before = complete_identity(manager, info, "github");
+            assert before.ok and before.token , "no factor yet: SSO signs in";
+
+            used: set[int] = set();
+            factors = manager.second_factors();
+            enrolled = factors.enroll(
+                user_id, "correct horse battery", "", "", "mfa" + tag
+            );
+            assert enrolled["ok"] , enrolled;
+            confirmed = factors.confirm(
+                user_id,
+                str(enrolled["factor_id"]),
+                fresh_totp_code(str(enrolled["secret"]), used)
+            );
+            assert confirmed["ok"] , confirmed;
+
+            try {
+                manager.create_jwt_token(user_id);
+                assert False , "a plain token was minted past a verified factor";
+            } except SecondFactorRequired {}
+            held = complete_identity(manager, info, "github");
+            assert not held.ok and not held.token;
+            assert held.code == "MFA_REQUIRED";
+            challenge = str(held.challenge["challenge_token"]);
+
+            proven = factors.complete_login(
+                challenge, fresh_totp_code(str(enrolled["secret"]), used), ""
+            );
+            assert proven["ok"] , proven;
+            assert proven["user_id"] == user_id;
+            assert proven["first_method"] == "sso" , (
+                "the session must say it began with SSO, not with a password"
+            );
+            password_first = factors.begin_login(user_id);
+            assert factors.complete_login(
+                str(password_first["challenge_token"]),
+                fresh_totp_code(str(enrolled["secret"]), used),
+                ""
+            )["first_method"]
+                == "pwd";
+            manager.close();
+        } finally {
+            configure_identity(AuthSettings(), "");
+        }
+    }
 }
 
 test "the identifier and registration policy governs accounts SSO creates" {

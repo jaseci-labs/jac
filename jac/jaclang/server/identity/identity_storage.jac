@@ -61,6 +61,7 @@ obj IdentityStorage {
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def set_user_role(user_id: str, role: str) -> bool;
     def get_user_role(user_id: str) -> str | None;
+    def holds_password(user_id: str, password: str) -> bool;
     def password_reused(credentials: list[dict[str, any]], new_password: str) -> bool;
     def write_password(
         user_id: str, credentials: list[dict[str, any]], new_password: str

@@ -71,23 +71,6 @@ def _first_use(kind: str, subject: str, seconds: int) -> bool {
 }
 
 
-def _password_matches(storage: IdentityStorage, user_id: str, password: str) -> bool {
-    if not isinstance(password, str) or not password {
-        return False;
-    }
-    matched = False;
-    for credential in storage._get_credentials(user_id) {
-        if credential.get('type') == 'password'
-            and IdentityStorage.verify_password(
-                password, str(credential.get('password_hash') or '')
-            ) {
-            matched = True;
-        }
-    }
-    return matched;
-}
-
-
 def _matching_factor(
     credentials: list[dict[str, any]], code: str, status: str, factor_id: str = ''
 ) -> (tuple[str, int] | None) {
@@ -225,7 +208,7 @@ impl SecondFactorManager.enroll(
     if retry > 0 {
         return _limited(retry);
     }
-    if not _password_matches(self.storage, user_id, password) {
+    if not self.storage.holds_password(user_id, password) {
         return _refused('INVALID_PASSWORD');
     }
     if self.required_for(user_id)
@@ -369,10 +352,12 @@ impl SecondFactorManager.remove(
     return {'ok': True, 'factor_id': factor_id};
 }
 
-impl SecondFactorManager.begin_login(user_id: str) -> dict[str, any] {
+impl SecondFactorManager.begin_login(
+    user_id: str, method: str = METHOD_PASSWORD
+) -> dict[str, any] {
     ttl = max(30, int(auth_settings().second_factor.challenge_ttl_seconds));
     token = AuthTokenStore.instance().create_token(
-        user_id, LOGIN_CHALLENGE_PURPOSE, ttl
+        user_id, LOGIN_CHALLENGE_PURPOSE, ttl, method
     );
     return {
         'mfa_required': True,
@@ -408,5 +393,12 @@ impl SecondFactorManager.complete_login(
     if store.consume_token(challenge_token, LOGIN_CHALLENGE_PURPOSE) is None {
         return _refused('INVALID_CHALLENGE');
     }
-    return {'ok': True, 'user_id': user_id, 'method': proof['method']};
+    return {
+        'ok': True,
+        'user_id': user_id,
+        'method': proof['method'],
+        'first_method': str(record.get('identity_value') or METHOD_PASSWORD)
+            if record
+            else METHOD_PASSWORD
+    };
 }
