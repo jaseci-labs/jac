@@ -262,6 +262,7 @@ obj ManifestBuilder {
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
+        _pod_binary_sha256: str = "",
         fleet: (FleetSpec | None) = None,
         gateway_config: (dict[str, any] | None) = None,
         app_overrides: dict[str, dict[str, any]] = {},
@@ -345,6 +346,7 @@ obj ManifestBuilder {
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
+        self._pod_binary_sha256 = str(getattr(injector, "_pod_binary_sha256", ""));
         return injector;
     }
 
@@ -1376,9 +1378,9 @@ obj ManifestBuilder {
         cfg = self.k8s_config;
         return {
             "httpGet": {"path": "/healthz/live", "port": cfg.container_port},
-            "periodSeconds": 10,
+            "periodSeconds": 1,
             "timeoutSeconds": 3,
-            "failureThreshold": 90
+            "failureThreshold": 900
         };
     }
 
@@ -1606,7 +1608,7 @@ obj ManifestBuilder {
                     f"KEDA HTTP Add-on interceptor can't tell which target a "
                     f"matching request belongs to when two InterceptorRoutes "
                     f"share the same match criteria. Set a distinct "
-                    f"[services.NAME.http_activation.rules] for at least all "
+                    f"[apps.NAME.scale.http_activation.rules] for at least all "
                     f"but one of these services."
                 );
             }
@@ -1907,12 +1909,15 @@ obj ManifestBuilder {
             storage_class=self.k8s_config.bundle_storage_class
         );
         injector._toolchain_object_key = self._toolchain_object_key;
+        injector._pod_binary_sha256 = self._pod_binary_sha256;
         injector._object_key = self._injector_object_key();
         spec["_jac_meta"] = {
             "app_name": k8s_safe_name(self.k8s_config.app_name),
             "namespace": self.k8s_config.namespace
         };
-        spec = injector.mutate_pod_spec(spec, self.k8s_config.python_image);
+        spec = injector.mutate_pod_spec(
+            spec, self.k8s_config.python_image, unpack_container=False
+        );
         spec.pop("_jac_meta", None);
 
         import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
@@ -1920,7 +1925,9 @@ obj ManifestBuilder {
         }
         spec["initContainers"].append(
             build_bootstrap_init_container(
-                self.k8s_config, self.k8s_config.python_image
+                self.k8s_config,
+                self.k8s_config.python_image,
+                unpack_script=injector.unpack_script()
             )
         );
         return spec;

@@ -149,12 +149,12 @@ def app_scale_schema -> dict[str, any] {
         "rpc_timeout": {
             "type": "float",
             "default": 10.0,
-            "description": "App-to-app RPC call timeout in seconds"
+            "description": "App-to-app RPC call timeout in seconds. Unset on an HTTP-activated app, it is 300 so a call can wait out a cold wake."
         },
         "http_forward_timeout": {
             "type": "float",
             "default": 30.0,
-            "description": "Gateway-to-app forward timeout in seconds"
+            "description": "Gateway-to-app forward timeout in seconds. Unset on an HTTP-activated app, it is at least 300 so a request can wait out a cold wake."
         },
         "replicas": {
             "type": "int",
@@ -524,8 +524,8 @@ class JacScalePluginConfig {
                         },
                         "readiness_initial_delay": {
                             "type": "int",
-                            "default": 10,
-                            "description": "Readiness probe initialDelaySeconds"
+                            "default": 0,
+                            "description": "Readiness probe initialDelaySeconds. The startup probe already holds readiness until the server answers, so any delay here only postpones the first Ready."
                         },
                         "readiness_period": {
                             "type": "int",
@@ -559,7 +559,7 @@ class JacScalePluginConfig {
                         },
                         "wait_image": {
                             "type": "string",
-                            "default": "busybox",
+                            "default": "busybox:1.36",
                             "description": "Image used by init/wait containers"
                         },
                         "bundle_storage_class": {
