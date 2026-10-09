@@ -1993,3 +1993,77 @@ test "plugins table is not special-cased" {
     );
     assert cfg.get_plugin_config("scale") == {};
 }
+
+test "save removes complete multiline dependency values" {
+    for value in ['"""\\\n~=0.28\\\n"""', "'''~=0.28\n'''"] {
+        with TemporaryDirectory() as tmpdir {
+            path = Path(tmpdir) / "jac.toml";
+            text = '[project]\nname = "repro"\n\n[dependencies.pypi]\n'
+                + f'httpx = {value}\nbcrypt = ">=4"\n';
+            expected = tomllib.loads(text);
+            del expected["dependencies"]["pypi"]["httpx"];
+            path.write_text(text);
+            cfg = JacConfig.load(path);
+            assert cfg.remove_dependency("httpx");
+            cfg.save();
+            assert tomllib.loads(path.read_text()) == expected , value;
+        }
+    }
+}
+
+test "save does not edit dependency examples inside strings" {
+    for quote in ['"""', "'''"] {
+        with TemporaryDirectory() as tmpdir {
+            path = Path(tmpdir) / "jac.toml";
+            text = '[project]\nname = "repro"\ndescription = '
+                + quote
+                + '\n[dependencies.pypi]\nhttpx = "~=0.28"\n'
+                + quote
+                + '\n[dependencies]\npypi.httpx = "~=0.28"\npypi.bcrypt = ">=4"\n';
+            expected = tomllib.loads(text);
+            del expected["dependencies"]["pypi"]["httpx"];
+            path.write_text(text);
+            cfg = JacConfig.load(path);
+            assert cfg.remove_dependency("httpx");
+            cfg.save();
+            assert tomllib.loads(path.read_text()) == expected , quote;
+        }
+    }
+}
+
+test "TOML serialization preserves string contents" {
+    for value in [
+        "first\nsecond\r\nthird\tcolumn",
+        'quotes " and backslash \\',
+        "controls " + chr(0) + chr(8) + chr(12) + chr(31) + chr(127),
+        "Unicode " + chr(233) + chr(128512)
+    ] {
+        doc = {
+            "project": {"description": value},
+            "custom": {"items": [value, {"code": value}]}
+        };
+        assert tomllib.loads(serialize_toml(doc)) == doc , repr(value);
+    }
+}
+
+test "config mutations preserve unrelated multiline strings" {
+    import from jaclang.cli.commands.config { _config_set, _config_unset }
+    text = '[project]\nname = "repro"\ndescription = """first\nsecond"""\n'
+        + '[run]\ncache = true\n[custom]\nscripts = [{code = "first\\nsecond"}]\n';
+    for action in ["set", "unset"] {
+        with TemporaryDirectory() as tmpdir {
+            path = Path(tmpdir) / "jac.toml";
+            path.write_text(text);
+            expected = tomllib.loads(text);
+            cfg = JacConfig.load(path);
+            if action == "set" {
+                assert _config_set(cfg, "run.cache", "false") == 0;
+                expected["run"]["cache"] = False;
+            } else {
+                assert _config_unset(cfg, "run.cache") == 0;
+                del expected["run"];
+            }
+            assert tomllib.loads(path.read_text()) == expected , action;
+        }
+    }
+}

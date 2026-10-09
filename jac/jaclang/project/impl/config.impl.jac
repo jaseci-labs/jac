@@ -881,7 +881,17 @@ impl toml_minimal_update(
             }
         }
     }
-    return "\n".join(lines);
+    updated = "\n".join(lines);
+
+    import tomllib;
+    try {
+        if tomllib.loads(updated) != new_doc {
+            return None;
+        }
+    } except tomllib.TOMLDecodeError {
+        return None;
+    }
+    return updated;
 }
 
 impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
@@ -949,8 +959,8 @@ impl toml_value(value: any) -> str {
     } elif isinstance(value, float) {
         return str(value);
     } elif isinstance(value, str) {
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"');
-        return f'"{escaped}"';
+        import json;
+        return json.dumps(value, ensure_ascii=False).replace(chr(127), "\\u007f");
     } elif isinstance(value, list) {
         items = [toml_value(item) for item in value];
         return f"[{', '.join(items)}]";
