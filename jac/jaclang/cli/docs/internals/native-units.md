@@ -285,7 +285,9 @@ with a fixed precedence:
    catalog build.
 2. Sealed image. The manifest's `native` record names the artifact, its
    sha256, layout digest and plan digest; missing or mismatched is a startup
-   error.
+   error. The one image without an artifact is a pull request's CI kit: its
+   record says `"kernel": "none"` and names the kit it ships in, and the
+   store parser serves every process that runs on it, sealed or rerouted.
 3. Source tree. The kernel beside `native_compiler.jac` is accepted when the
    inputs its sidecar records are the ones the sources have now.
    Otherwise, under a lock, the checkout first looks at the kernel the
@@ -326,6 +328,19 @@ second run must leave that file in place (same inode and mtime). A kernel
 derived there instead would cost every reroute lane a relink, so the step
 fails rather than letting a lane quietly pay it. Sealed lanes skip the check:
 they boot from the payload's own image.
+
+A pull request's kit is built without the kernel. The kernel is most of a
+kit's build time (24 to 64 minutes of a build that otherwise takes about 15),
+and it is the same compiler lowered to native code, so a pull request runs
+its lanes on the bytecode the kit precompiles: the path every kernel build
+compiles through. `JAC_PR_KIT_KERNEL=none` asks the seal for such a kit, and
+the seal refuses it outside a `pull_request` CI build, so main, nightly and
+release kits always carry a kernel; the release smoke test asserts one is
+loaded. On such a kit the warm step checks the opposite of adoption: the
+first run must leave no kernel beside the loader, because a lane that derived
+its own would pay the build the kit skipped. A pull request that changes what
+the kernel is built from can ask for the full kit with the `build-kernel`
+label; otherwise the first build with a kernel is the one on main.
 
 The kernel is always the host's. `kernel_options()` pins the target to the
 host whatever `JAC_NATIVE_TARGET` says, so a cross-compiled artifact's units

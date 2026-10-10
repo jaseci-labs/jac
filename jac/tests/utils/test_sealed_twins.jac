@@ -227,7 +227,7 @@ test "verify_native passes an image with no native record" {
 bitcode, interface and object into the module cache. The compiler's own sealed
 twins must not carry them into the image: the kernel library is their linked
 product, and shipping both multiplied the size of the payload and of every
-first run. A kernel built by stage 0 leaves none there either."""
+first run."""
 test "a compiler module's sealed twin sheds its native sections and keeps the rest" {
     import tempfile;
     import from pathlib { Path }

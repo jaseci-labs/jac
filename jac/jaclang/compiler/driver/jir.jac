@@ -696,6 +696,28 @@ def dev_carry_enabled -> bool {
     }
 }
 
+def _contract_file_sha(path: str) -> str {
+    try {
+        with open(path, "rb") as f {
+            return hashlib.sha256(f.read()).hexdigest();
+        }
+    } except OSError {
+        return "missing";
+    }
+}
+
+def abi_contract_digest(pkg_root: str) -> str {
+    import from jaclang.compiler.native_scope { KERNEL_ABI_CONTRACT_REL }
+    h = hashlib.sha256();
+    for rel in KERNEL_ABI_CONTRACT_REL {
+        h.update(rel.encode("utf-8"));
+        h.update(
+            _contract_file_sha(os.path.join(pkg_root, *rel.split("/"))).encode("utf-8")
+        );
+    }
+    return h.hexdigest();
+}
+
 def native_producer_digest(kernel_build: bool = False) -> str {
     current = running_compiler_digest();
     if not kernel_build or not dev_carry_enabled() {
@@ -705,7 +727,6 @@ def native_producer_digest(kernel_build: bool = False) -> str {
     if known is None {
         import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
         import from jaclang.compiler.kernel_target { target_pkg_root }
-        import from jaclang.compiler.backends.native.stage0_pin { abi_contract_digest }
         known = DEV_NATIVE_PRODUCER
             + str(NATIVE_ABI_VERSION)
             + ":"
