@@ -762,6 +762,10 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         }
     }
     (candidate, why) = native_placement_candidate(ir_in, self.prog);
+    if candidate and not ir_in.gen.native_undecided {
+        candidate = False;
+        why = "the module was parsed without the native preference";
+    }
     tentative: list[ContextAwareNode] = stamp_native(ir_in, set(required.keys()))
         if candidate
         else [];
