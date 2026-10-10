@@ -5427,6 +5427,12 @@ impl NativeBuiltinEmitter.emit_sum(
     f64 = ir.DoubleType();
     list_val = args[0];
 
+    byte_src = p._bytearray_src_of(list_val);
+    if byte_src is not None {
+        (data, count) = byte_src;
+        return _sum_bytes(b, data, count, args);
+    }
+
     helpers: (dict[str, any] | None) = None;
     for (lk, lt) in p.list_types.items() {
         if list_val.type == lt.as_pointer() {
@@ -5484,6 +5490,52 @@ impl NativeBuiltinEmitter.emit_sum(
         if use_float
         else b.add(acc, value, name="sum.add");
     next_idx = b.add(idx, ir.Constant(i64, 1), name="sum.next");
+    body_end = b.basic_block;
+    idx.add_incoming(next_idx, body_end);
+    acc.add_incoming(new_acc, body_end);
+    b.branch(loop_bb);
+    b.position_at_start(done_bb);
+    return acc;
+}
+
+def _sum_bytes(
+    b: ir.IRBuilder, data: ir.Value, count: ir.Value, args: list[ir.Value]
+) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    f64 = ir.DoubleType();
+    start = args[1] if len(args) == 2 else None;
+    use_float = start is not None
+        and isinstance(start.type, (ir.DoubleType, ir.FloatType));
+    if start is not None and not use_float and not isinstance(start.type, ir.IntType) {
+        return None;
+    }
+    acc_ty = f64 if use_float else i64;
+    initial: ir.Value = ir.Constant(acc_ty, 0.0)
+        if use_float
+        else ir.Constant(acc_ty, 0);
+    if start is not None {
+        initial = _sum_operand(b, start, use_float);
+    }
+    func = b.basic_block.function;
+    entry_bb = b.basic_block;
+    loop_bb = func.append_basic_block(name="sumb.loop");
+    body_bb = func.append_basic_block(name="sumb.body");
+    done_bb = func.append_basic_block(name="sumb.done");
+    b.branch(loop_bb);
+    b.position_at_start(loop_bb);
+    idx = b.phi(i64, name="sumb.idx");
+    acc = b.phi(acc_ty, name="sumb.acc");
+    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
+    acc.add_incoming(initial, entry_bb);
+    at_end = b.icmp_unsigned(">=", idx, count, name="sumb.atend");
+    b.cbranch(at_end, done_bb, body_bb);
+    b.position_at_start(body_bb);
+    byte = b.load(b.gep(data, [idx], name="sumb.at"), name="sumb.byte");
+    value = _sum_operand(b, b.zext(byte, i64, name="sumb.wide"), use_float);
+    new_acc = b.fadd(acc, value, name="sumb.add")
+        if use_float
+        else b.add(acc, value, name="sumb.add");
+    next_idx = b.add(idx, ir.Constant(i64, 1), name="sumb.next");
     body_end = b.basic_block;
     idx.add_incoming(next_idx, body_end);
     acc.add_incoming(new_acc, body_end);
