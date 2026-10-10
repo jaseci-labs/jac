@@ -463,6 +463,8 @@ impl NativeBindings.surface(
     prog: JacProgram, stub_module: str, base_dir: str
 ) -> (dict[str, NativeBinding] | None) {
     import from jaclang.compiler.frontend.codeinfo {
+        NATIVE_STDLIB_EXTENSIONS,
+        NATIVE_SUPPORTED_STDLIB,
         is_bundled_native_module,
         resolve_native_module
     }
@@ -470,7 +472,9 @@ impl NativeBindings.surface(
         return self.modules[stub_module];
     }
     found: (dict[str, NativeBinding] | None) = None;
-    if is_bundled_native_module(stub_module) {
+    lowered_by_backend = stub_module in NATIVE_SUPPORTED_STDLIB
+        or stub_module in NATIVE_STDLIB_EXTENSIONS;
+    if not lowered_by_backend and is_bundled_native_module(stub_module) {
         (_src, full_path) = resolve_native_module(
             stub_module, base_dir, allow_inferred=False
         );
@@ -563,7 +567,7 @@ impl binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str] {
     owner: (UniScopeNode | None) = None;
     home: (UniScopeNode | None) = declared.parent_tab;
     while home is not None and not isinstance(home, Module) {
-        if owner is None {
+        if owner is None and UniScopeNode.is_python_scoping(home) {
             owner = home;
         }
         home = home.parent_scope;

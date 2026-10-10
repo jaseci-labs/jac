@@ -77,7 +77,7 @@ def top_element_of(mod: Module, nd: UniNode) -> (UniNode | None);
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
 def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
 def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
-def uncrossable_native(mod: Module, prog: JacProgram) -> set[int];
+def uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[int];
 def settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None);
@@ -564,7 +564,7 @@ impl client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]
     return out;
 }
 
-impl uncrossable_native(mod: Module, prog: JacProgram) -> set[int] {
+impl uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[int] {
     import from jaclang.compiler.boundary_rules { ability_crossing }
     import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
     import from jaclang.compiler.placement.placement_solver {
@@ -592,8 +592,9 @@ impl uncrossable_native(mod: Module, prog: JacProgram) -> set[int] {
             and any(e.code_context == CodeContext.SERVER for e in tops.values());
         if mixed {
             for (eid, elem) in tops.items() {
-                if isinstance(elem, ModuleCode)
-                    and elem.code_context == CodeContext.NATIVE {
+                if eid not in held
+                    and elem.code_context == CodeContext.NATIVE
+                    and not crosses(elem, TARGET_SERVER, TARGET_NATIVE) {
                     _stamp_context_element(elem, CodeContext.SERVER);
                     moved.add(eid);
                     changed = True;
@@ -620,6 +621,9 @@ impl uncrossable_native(mod: Module, prog: JacProgram) -> set[int] {
                     continue;
                 }
                 native_side = elem if caller_native else target;
+                if id(native_side) in held {
+                    continue;
+                }
                 _stamp_context_element(native_side, CodeContext.SERVER);
                 moved.add(id(native_side));
                 changed = True;
@@ -859,7 +863,9 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         }
     }
     if tentative {
-        inferred_refused.update(uncrossable_native(ir_in, self.prog));
+        inferred_refused.update(
+            uncrossable_native(ir_in, self.prog, set(required.keys()))
+        );
     }
     self.prog.analysis.placement_refusals[os.path.realpath(mod_path)] = {
         'native': inferred_refused,

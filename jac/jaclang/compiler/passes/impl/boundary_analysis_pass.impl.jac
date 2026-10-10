@@ -1378,6 +1378,7 @@ impl BoundaryAnalysisPass.finish with exit {
     import from jaclang.compiler.frontend.diagnostics { E5093 }
     import from jaclang.compiler.frontend.diagnostics { E5115 }
     manifest = self.module.gen.interop_manifest;
+    self._export_mixed_native(manifest);
 
     for binding in manifest.bindings.values() {
         crosses_ctypes = (
@@ -1634,5 +1635,42 @@ impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
         }
         import from jaclang.compiler.frontend.diagnostics { E5112 }
         self.ctx.emit(E5112, node_override=here, name=scope.sym_name);
+    }
+}
+
+impl BoundaryAnalysisPass._export_mixed_native(manifest: InteropManifest) -> None {
+    contexts: set[CodeContext] = set();
+    for stmt in self.module.body {
+        if isinstance(stmt, ContextAwareNode) and not isinstance(stmt, Import) {
+            contexts.add(stmt.code_context);
+        }
+    }
+    if CodeContext.NATIVE not in contexts or CodeContext.SERVER not in contexts {
+        return;
+    }
+    import from jaclang.compiler.boundary_rules { ability_crossing }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
+    for stmt in self.module.body {
+        if not isinstance(stmt, Ability)
+            or stmt.code_context != CodeContext.NATIVE
+            or not stmt.sym_name
+            or ability_crossing(stmt, TARGET_SERVER, TARGET_NATIVE) is not None {
+            continue;
+        }
+        name = stmt.sym_name;
+        if name in manifest.bindings {
+            manifest.bindings[name].callers.add(InteropContext.SERVER);
+            continue;
+        }
+        (ret_type, param_types, param_names) = self._signature_of_decl(stmt);
+        manifest.bindings[name] = InteropBinding(
+            name=name,
+            source_context=InteropContext.NATIVE,
+            callers={InteropContext.SERVER},
+            ret_type=ret_type,
+            param_types=param_types,
+            param_names=param_names,
+            ast_node=stmt
+        );
     }
 }
