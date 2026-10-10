@@ -8,7 +8,8 @@ import from jaclang.server.serving.authcrypt {
 import uuid;
 import from datetime { datetime, UTC }
 import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.server.identity.config { password_hash_cost }
+import from jaclang.server.identity.config { auth_settings, password_hash_cost }
+import from jaclang.server.identity.policy { VERIFY_BEFORE_LOGIN, verify_before_login }
 
 obj IdentityTakenError(Exception) {}
 
@@ -60,11 +61,18 @@ obj IdentityStorage {
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def set_user_role(user_id: str, role: str) -> bool;
     def get_user_role(user_id: str) -> str | None;
+    def holds_password(user_id: str, password: str) -> bool;
+    def password_reused(credentials: list[dict[str, any]], new_password: str) -> bool;
+    def write_password(
+        user_id: str, credentials: list[dict[str, any]], new_password: str
+    ) -> None;
+
+    def password_expired(user: dict[str, any], credential: dict[str, any]) -> bool;
     def update_password(
         user_id: str, current_password: str, new_password: str
-    ) -> dict[str, str];
+    ) -> dict[str, any];
 
-    def reset_password(user_id: str, new_password: str) -> dict[str, str];
+    def reset_password(user_id: str, new_password: str) -> dict[str, any];
     def expire_legacy_credentials(user_id: (str | None) = None) -> list[str];
     def get_root_id(user_id: str) -> str | None;
     def get_username(user_id: str) -> str | None;

@@ -103,7 +103,7 @@ test "authentication required" {
 test "list functions with auth" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("funcuser", "pass");
+        client.register_user("funcuser", "pass_Secure1");
         response = client.get("/functions");
         assert response.ok;
         assert "functions" in response.data;
@@ -115,7 +115,7 @@ test "list functions with auth" {
 test "call function" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("calluser", "pass");
+        client.register_user("calluser", "pass_Secure1");
         response = client.post("/function/add_numbers", json={"a": 10, "b": 25});
         assert response.ok;
         assert response.data["result"] == 35;
@@ -126,7 +126,7 @@ test "call function" {
 test "list walkers" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("walkuser", "pass");
+        client.register_user("walkuser", "pass_Secure1");
         response = client.get("/walkers");
         assert response.ok;
         assert "walkers" in response.data;
@@ -138,7 +138,7 @@ test "list walkers" {
 test "spawn walker" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("spawnuser", "pass");
+        client.register_user("spawnuser", "pass_Secure1");
         response = client.post(
             "/walker/CreateTask", json={"title": "Test Task", "priority": 2}
         );

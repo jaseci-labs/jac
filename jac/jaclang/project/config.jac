@@ -152,17 +152,6 @@ obj ServeWebSocketConfig {
         ping_timeout: float = 20.0;
 }
 
-obj ServeAuthConfig {
-    has secret: str = "",
-        algorithm: str = "HS256",
-        token_ttl_days: int = 7,
-        password_hash_cost: int = 14,
-        registration_challenge: bool = False,
-        registration_attempts_per_hour: int = 0,
-        registration_challenges_per_10_minutes: int = 0,
-        session_cookie: bool = False;
-}
-
 obj ServeConfig {
     has host: str = "0.0.0.0",
         port: int = 8000,
@@ -171,6 +160,7 @@ obj ServeConfig {
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ["*"],
+        public_origin: str = "",
         on_conflict: str = "retry",
         conflict_max_attempts: int = 5,
         conflict_backoff_ms: int = 0,
@@ -182,7 +172,7 @@ obj ServeConfig {
         access_log: ServeAccessLogConfig = ServeAccessLogConfig(),
         compression: ServeCompressionConfig = ServeCompressionConfig(),
         websocket: ServeWebSocketConfig = ServeWebSocketConfig(),
-        auth: ServeAuthConfig = ServeAuthConfig();
+        auth: dict[str, any] = {};
 }
 
 obj FormatConfig {

@@ -501,16 +501,16 @@ impl create_k8s_secret(
     return str(applied.metadata.resource_version or "") if applied else "";
 }
 
-impl resolve_signing_secret(
+impl resolve_minted_secret(
     core_v1: client.CoreV1Api,
     namespace: str,
     secret_name: str,
-    secret_data: dict[str, str]
+    secret_data: dict[str, str],
+    key: str,
+    fresh: str
 ) -> bool {
     import base64;
-    import secrets;
     import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
-    key = "JAC_SERVE_AUTH_SECRET";
     if secret_data.get(key) != PLACEHOLDER_JWT_SECRET {
         return False;
     }
@@ -535,7 +535,7 @@ impl resolve_signing_secret(
         secret_data[key] = kept;
         return False;
     }
-    secret_data[key] = secrets.token_urlsafe(48);
+    secret_data[key] = fresh;
     return True;
 }
 

@@ -379,9 +379,62 @@ ping_timeout = 20.0      # Seconds to answer the ping before the socket is close
 secret = ""              # JWT signing secret. JAC_SERVE_AUTH_SECRET. Required in a cluster; a laptop mints one per project
 algorithm = "HS256"
 token_ttl_days = 7
-password_hash_cost = 14  # log2 of the scrypt work factor, 10..17
 session_cookie = false   # Also set an HttpOnly jac_session cookie that authorizes GET/HEAD, for <img>/<video>/downloads. JAC_SERVE_AUTH_SESSION_COOKIE
+
+[serve.auth.identifiers]
+username = "optional"    # "required" | "optional" | "off". An account always needs at least one identifier
+email = "optional"       # "required" | "optional" | "off"
+login_with = []          # Identifier kinds that may log in; [] = both. "off" only stops new identifiers of a kind
+
+[serve.auth.username]
+min_length = 1
+max_length = 64
+pattern = ""             # Optional regex a new username must match. "@" is always rejected
+
+[serve.auth.email]
+verification = "none"    # "none" | "optional" | "required" (no session until the emailed link is used)
+allowed_domains = []     # [] = any domain
+verify_token_ttl_seconds = 86400
+reset_token_ttl_seconds = 1800
+verify_url_template = "" # "{token}" is replaced; empty mails the bare token
+reset_url_template = ""
+send_verification_per_hour = 5
+forgot_password_per_hour = 3
+
+[serve.auth.password]
+min_length = 8
+max_length = 128
+require = []             # Any of "lower", "upper", "digit", "symbol"
+reject_common = true     # Refuse passwords on the bundled common-password list
+reject_identifiers = true # Refuse a password that contains the username or the email local part
+breached_check = false   # Look the password up in a breach corpus by k-anonymity range; makes an outbound call
+history = 0              # Previous passwords that may not be reused; 0 = reuse allowed
+max_age_days = 0         # 0 = never expires
+hash_cost = 14           # log2 of the scrypt work factor, 10..17
+
+[serve.auth.registration]
+enabled = true           # false = no self-registration; accounts are created by an admin
+challenge = false        # Proof-of-work challenge before /user/register
+attempts_per_hour = 0    # Per source address; 0 = unlimited
+challenges_per_10_minutes = 0
+
+[serve.auth.lockout]
+max_attempts = 10        # Failed logins per source address and identity in the window; 0 = unlimited. Needs [serve.proxy] trusted behind an ingress
+window_seconds = 900
+
+[serve.auth.second_factor]
+issuer = ""              # Name shown in authenticator apps; empty = "Jac"
+attempts = 5
+lockout_seconds = 900
+challenge_ttl_seconds = 300
 ```
+
+Every `[serve.auth]` key can be overridden by an environment variable named
+`JAC_SERVE_AUTH_<TABLE>_<KEY>`, for example `JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH`
+or `JAC_SERVE_AUTH_SECOND_FACTOR_ISSUER`. An unknown key under `[serve.auth]`
+stops the server at startup, so a misspelled security setting is never silently
+ignored. See [Auth policy](../plugins/jac-scale-http.md#auth-policy) for what
+each table does.
 
 The served app's client is at `/`. Other client-capable apps in the workspace whose bundle exists (`jac build --all` writes `dist/<app>/`) are served at `/cl/<app-name>/` -- a fixed prefix with no config key. Serving apps answer under their `route` (default `/api/<name>`, see [`[apps]`](#apps)).
 

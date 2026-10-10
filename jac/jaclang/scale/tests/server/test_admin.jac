@@ -1,7 +1,10 @@
 """Tests for admin portal API endpoints using ScaleTestClient."""
 
+import os;
 import uuid;
+import from unittest.mock { patch }
 import from jaclang.scale.tests.scale_test_client {
+    ADMIN_BOOTSTRAP_PASSWORD,
     ScaleTestClient,
     make_client,
     extract_data,
@@ -11,7 +14,7 @@ import from jaclang.scale.tests.scale_test_client {
 import from jaclang.server.identity.config { signing_secret }
 import from jaclang.server.serving.authcrypt { jwt_decode }
 
-glob DEFAULT_ADMIN_PASSWORD: str = "changeme";
+glob DEFAULT_ADMIN_PASSWORD: str = ADMIN_BOOTSTRAP_PASSWORD;
 
 # ============================================================================
 # Admin Login Tests
@@ -406,22 +409,27 @@ test "admin reset password wrong current password" {
     }
 }
 
-test "admin reset password too short" {
-    client = make_client();
-    try {
-        token = client.admin_login();
+test "admin reset password is held to the shared password policy" {
+    # The suite lowers the password floor for its throwaway fixtures; this test
+    # runs against the shipped default of 8 characters.
+    with patch.dict(os.environ, {"JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH": "8"}) {
+        client = make_client();
+        try {
+            token = client.admin_login();
 
-        # After admin_login, the password is now "TestAdmin123!"
-        response = client.post(
-            "/admin/reset-password",
-            json={"current_password": "TestAdmin123!", "new_password": "short"},
-            headers={"Authorization": f"Bearer {token}"}
-        );
-        assert response.status_code == 400;
-        data = extract_data(response.json());
-        assert "8 characters" in data.get("error", "");
-    } finally {
-        client.close();
+            # After admin_login, the password is now "TestAdmin123!"
+            response = client.post(
+                "/admin/reset-password",
+                json={"current_password": "TestAdmin123!", "new_password": "short"},
+                headers={"Authorization": f"Bearer {token}"}
+            );
+            assert response.status_code == 400;
+            body = response.json();
+            assert body["error"]["code"] == "POLICY_VIOLATION" , body;
+            assert body["error"]["details"] == {"violations": ["PASSWORD_TOO_SHORT"]};
+        } finally {
+            client.close();
+        }
     }
 }
 

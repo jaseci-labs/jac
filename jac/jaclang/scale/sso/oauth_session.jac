@@ -1,5 +1,6 @@
 import re;
 import json;
+import from jaclang.runtime.object_model { asdict }
 import secrets;
 import hashlib;
 import base64;
@@ -8,6 +9,9 @@ import from urllib.parse { urlencode }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.identity.identity_storage { primary_username }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+import from jaclang.server.identity.assurance { METHOD_FEDERATED }
+import from jaclang.server.identity.config { auth_settings }
+import from jaclang.server.identity.policy { check_email }
 import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
 
 obj OAuthStart {
@@ -22,7 +26,58 @@ obj OAuthLogin {
     has ok: bool = False,
         token: str = "",
         username: str = "",
-        error: str = "";
+        error: str = "",
+        code: str = "",
+        challenge: dict[str, any] = {};
+}
+
+def holds_verified_email(user: dict[str, any], email: str) -> bool {
+    return any(
+        identity.get("type") == "email"
+            and identity.get("value_normalized") == email
+            and identity.get("verified") for identity in (user.get("identities") or [])
+    );
+}
+
+def federated_identities(
+    info: SSOUserInfo, platform: str
+) -> list[dict[str, any]] | OAuthLogin {
+    policy = auth_settings();
+    email = info.verified_email();
+    if not policy.registration.enabled {
+        return OAuthLogin(code="REGISTRATION_CLOSED", error="Registration is closed.");
+    }
+    if email and check_email(email) {
+        return OAuthLogin(
+            code="EMAIL_DOMAIN_NOT_ALLOWED",
+            error="This email domain is not accepted here."
+        );
+    }
+    if policy.identifiers.email == "required" and not email {
+        return OAuthLogin(
+            code="SSO_EMAIL_REQUIRED",
+            error="This provider did not share a verified email address, which an account here needs."
+        );
+    }
+    identities: list[dict[str, any]] = [];
+    if policy.identifiers.username != "off" {
+        identities.append(
+            {
+                "type": "username",
+                "value": platform
+                    + "_"
+                    + re.sub(r"[^A-Za-z0-9_]", "_", info.username or platform)[:24]
+                    + "_"
+                    + hashlib.sha256(info.external_id.encode()).hexdigest()[:10]
+            }
+        );
+    }
+    if email and policy.identifiers.email != "off" {
+        identities.append(
+            {"type": "email", "value": info.email.strip(), "verified": True}
+        );
+    }
+    return identities;
 }
 
 def challenge_of(verifier: str) -> str {
@@ -59,13 +114,23 @@ def complete_identity(
         }
         user_id = link_user;
     }
+    email = info.verified_email();
+    holder = manager.find_user_by_identity(email) if email and not user_id else None;
+    if holder {
+        if not holds_verified_email(holder, email) {
+            return OAuthLogin(
+                code="SSO_EMAIL_IN_USE",
+                error="An account already uses this email address. Sign in with its password, then connect this provider from your account."
+            );
+        }
+        user_id = str(holder.get("user_id") or "");
+    }
     if not user_id {
-        name = platform
-            + "_"
-            + re.sub(r"[^A-Za-z0-9_]", "_", login)[:24]
-            + "_"
-            + hashlib.sha256(external_id.encode()).hexdigest()[:10];
-        result = manager.create_user(name, secrets.token_urlsafe(48));
+        identities = federated_identities(info, platform);
+        if isinstance(identities, OAuthLogin) {
+            return identities;
+        }
+        result = manager.create_federated_user(identities);
         if result.get("error") {
             return OAuthLogin(error="Could not create your account. Please try again.");
         }
@@ -88,11 +153,24 @@ def complete_identity(
     profiles[platform] = info.profile_fields();
     profile["sso"] = profiles;
     manager.update_user_fields(user_id, {"profile": profile});
-    return OAuthLogin(
-        ok=True,
-        token=manager.create_jwt_token(user_id),
-        username=primary_username(user)
-    );
+    grant = manager.open_session(user_id, METHOD_FEDERATED);
+    if grant.unverified is not None {
+        return OAuthLogin(
+            code="EMAIL_NOT_VERIFIED", error="Verify your email address to sign in."
+        );
+    }
+    if grant.challenge {
+        return OAuthLogin(
+            ok=bool(link_user),
+            code="MFA_REQUIRED",
+            error=""
+                if link_user
+                else "This account needs its second factor to sign in.",
+            challenge={} if link_user else grant.challenge,
+            username=primary_username(user)
+        );
+    }
+    return OAuthLogin(ok=True, token=grant.token, username=primary_username(user));
 }
 
 obj OAuthSession {
@@ -242,14 +320,7 @@ obj OAuthSession {
             "INSERT INTO kv_state (key, value, expires_at) VALUES (:k, :v, now() + interval '2 minutes') ON CONFLICT (key) DO NOTHING",
             {
                 "k": "oauth-result:" + self.platform + ":" + str(data["poll_hash"]),
-                "v": json.dumps(
-                    {
-                        "ok": result.ok,
-                        "token": result.token,
-                        "username": result.username,
-                        "error": result.error
-                    }
-                )
+                "v": json.dumps(asdict(result))
             }
         );
         return "Sign-in completed. Return to the app to continue."

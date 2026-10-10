@@ -4,7 +4,11 @@ import logging;
 import secrets;
 import uuid;
 import from datetime { UTC, datetime }
-import from jaclang.server.identity.assurance { METHOD_RECOVERY, METHOD_TOTP }
+import from jaclang.server.identity.assurance {
+    METHOD_PASSWORD,
+    METHOD_RECOVERY,
+    METHOD_TOTP
+}
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.identity.identity_storage { IdentityStorage }
@@ -48,7 +52,7 @@ obj SecondFactorManager {
         user_id: str, factor_id: str, code: str, recovery_code: str
     ) -> dict[str, any];
 
-    def begin_login(user_id: str) -> dict[str, any];
+    def begin_login(user_id: str, method: str = METHOD_PASSWORD) -> dict[str, any];
     def complete_login(
         challenge_token: str, code: str, recovery_code: str
     ) -> dict[str, any];

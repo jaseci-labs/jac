@@ -5,9 +5,13 @@ import tempfile;
 import contextlib;
 import from pathlib { Path }
 
-# Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
+import from jaclang.scale.tests.fixture_policy {
+    ADMIN_BOOTSTRAP_PASSWORD,
+    apply_fixture_policy
+}
+
 with entry {
-    os.environ.setdefault('JAC_SERVE_AUTH_PASSWORD_HASH_COST', '10');
+    apply_fixture_policy();
 }
 
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
@@ -208,7 +212,9 @@ obj ScaleTestClient {
         return self.login_user(username, password);
     }
 
-    def admin_login(username: str = "admin", password: str = "changeme") -> str {
+    def admin_login(
+        username: str = "admin", password: str = ADMIN_BOOTSTRAP_PASSWORD
+    ) -> str {
         response = self.post(
             "/admin/login", json={"username": username, "password": password}
         );

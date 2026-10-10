@@ -761,7 +761,7 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
     walkers = introspector.get_walkers();
     user_mgr = UserManager(base_path=td);
     exec_mgr = ExecutionManager(base_path=td, user_manager=user_mgr);
-    user_mgr.create_user("voter", "pw");
+    user_mgr.create_internal_user("voter", "pw");
     mod = sys.modules[walkers["Vote"].__module__];
     mod.runs.clear();
     mod.rival_commits.clear();

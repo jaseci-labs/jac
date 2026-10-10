@@ -34,7 +34,7 @@ test "walker code reloads after file change" {
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
             # Register user for authenticated requests
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Call walker - should return 1
             response1 = client.post("/walker/get_value", json={});
@@ -86,7 +86,7 @@ test "global variable reloads" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Get version 1
             response1 = client.post("/walker/get_version", json={});
@@ -132,7 +132,7 @@ test "new walker available after reload" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # walker_one should work
             response1 = client.post("/walker/walker_one", json={});
@@ -188,7 +188,7 @@ test "multiple rapid reloads" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Perform multiple reloads with different values
             for i in range(1, 6) {
@@ -228,7 +228,7 @@ test "function code reloads" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Call function
             response1 = client.post("/function/get_message", json={});
@@ -269,7 +269,7 @@ test "auth token preserved after reload" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Verify auth works
             resp1 = client.post("/walker/get_status", json={});
@@ -325,13 +325,13 @@ test "user isolation without reload" {
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
             # User A stores a secret
-            client.register_user("userA", "passA");
+            client.register_user("userA", "passA_Secure1");
             resp1 = client.post("/walker/store_secret", json={"data": "A's secret"});
             assert resp1.ok;
 
             # User B stores a different secret
             client.clear_auth();
-            client.register_user("userB", "passB");
+            client.register_user("userB", "passB_Secure1");
             resp2 = client.post("/walker/store_secret", json={"data": "B's secret"});
             assert resp2.ok;
 
@@ -343,7 +343,7 @@ test "user isolation without reload" {
             assert "A's secret" not in secrets_b , "User isolation broken: B can see A's data";
 
             # User A should only see their own secret
-            client.login("userA", "passA");
+            client.login("userA", "passA_Secure1");
             resp4 = client.post("/walker/get_secrets", json={});
             assert resp4.ok;
             secrets_a = [r.get("data") for r in _as_any(resp4.data).get("reports", [])];
@@ -369,7 +369,7 @@ test "recovery from syntax error" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Verify initial code works
             resp1 = client.post("/walker/get_value", json={});
@@ -428,7 +428,7 @@ test "reload with code change preserves functionality" {
         );
         client = JacTestClient.from_file(str(app_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Test v1 logic
             resp1 = client.post("/function/compute", json={"x": 5});
@@ -698,7 +698,7 @@ test "server impl file reloads base jac file" {
         );
         client = JacTestClient.from_file(str(base_file), base_path=str(temp_project));
         try {
-            client.register_user("testuser", "password123");
+            client.register_user("testuser", "password123_Secure1");
 
             # Call walker - should return 8 (5 + 3)
             response1 = client.post("/walker/calculate", json={});

@@ -178,6 +178,47 @@ test "GitHub sign-in needs public identity only and no email permission" {
         assert info.email == "";
         api.assert_awaited_once_with("/user", "token");
     }
+
+    # An account that must hold an email is the one case that asks for it.
+    import from jaclang.server.identity.config { configure_identity }
+    import from jaclang.server.settings { AuthSettings, IdentifierSettings }
+    try {
+        configure_identity(
+            AuthSettings(
+                identifiers=IdentifierSettings(username="off", email="required")
+            ),
+            ""
+        );
+        assert p.scope() == "user:email";
+        with patch.object(
+            GithubSSOProvider,
+            "_api_get",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"id": 123, "login": "alice"},
+                [
+                    {"email": "old@corp.example", "primary": False, "verified": True},
+                    {"email": "alice@corp.example", "primary": True, "verified": True}
+                ]
+            ]
+        ) {
+            info = asyncio.run(p.fetch_user("token", {}));
+            assert info.verified_email() == "alice@corp.example";
+        }
+        with patch.object(
+            GithubSSOProvider,
+            "_api_get",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"id": 123, "login": "alice"},
+                [{"email": "alice@corp.example", "primary": True, "verified": False}]
+            ]
+        ) {
+            assert asyncio.run(p.fetch_user("token", {})).verified_email() == "";
+        }
+    } finally {
+        configure_identity(AuthSettings(), "");
+    }
 }
 
 test "SSO endpoint registration includes browser and native session APIs" {

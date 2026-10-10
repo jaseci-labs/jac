@@ -194,7 +194,13 @@ impl JacConfig.apply_profile(
         if section in profile {
             profile_section: dict[str, any] = profile[section];
             for (key, value) in profile_section.items() {
-                if hasattr(obj, key) {
+                if not hasattr(obj, key) {
+                    continue;
+                }
+                current = getattr(obj, key);
+                if isinstance(current, dict) and isinstance(value, dict) {
+                    setattr(obj, key, _deep_merge(current, value));
+                } else {
                     setattr(obj, key, value);
                 }
             }
@@ -1167,7 +1173,12 @@ impl _parse_toml_data(
         access_data: dict[str, any] = serve_data.get("access_log", {}) or {};
         compression_data: dict[str, any] = serve_data.get("compression", {}) or {};
         ws_data: dict[str, any] = serve_data.get("websocket", {}) or {};
-        auth_data: dict[str, any] = serve_data.get("auth", {}) or {};
+        auth_data = serve_data.get("auth", {});
+        if not isinstance(auth_data, dict) {
+            raise ValueError(
+                f"[serve.auth] must be a table, got {type(auth_data).__name__}"
+            );
+        }
         cors_raw = serve_data.get("cors_origins", ["*"]);
         config.serve = ServeConfig(
             host=str(serve_data.get("host", "0.0.0.0")),
@@ -1179,6 +1190,7 @@ impl _parse_toml_data(
             cors_origins=[str(_o) for _o in cors_raw]
                 if isinstance(cors_raw, list)
                 else [str(cors_raw)],
+            public_origin=str(serve_data.get("public_origin", "")),
             on_conflict=on_conflict,
             conflict_max_attempts=serve_data.get("conflict_max_attempts", 5),
             conflict_backoff_ms=serve_data.get("conflict_backoff_ms", 0),
@@ -1238,22 +1250,7 @@ impl _parse_toml_data(
                 ping_interval=float(ws_data.get("ping_interval", 20.0)),
                 ping_timeout=float(ws_data.get("ping_timeout", 20.0))
             ),
-            auth=ServeAuthConfig(
-                secret=str(auth_data.get("secret", "")),
-                algorithm=str(auth_data.get("algorithm", "HS256")),
-                token_ttl_days=int(auth_data.get("token_ttl_days", 7)),
-                password_hash_cost=int(auth_data.get("password_hash_cost", 14)),
-                registration_challenge=bool(
-                    auth_data.get("registration_challenge", False)
-                ),
-                registration_attempts_per_hour=max(
-                    0, int(auth_data.get("registration_attempts_per_hour", 0))
-                ),
-                registration_challenges_per_10_minutes=max(
-                    0, int(auth_data.get("registration_challenges_per_10_minutes", 0))
-                ),
-                session_cookie=bool(auth_data.get("session_cookie", False))
-            )
+            auth=auth_data
         );
     }
     if "format" in data {

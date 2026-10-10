@@ -1,20 +1,21 @@
 import logging;
-import from jaclang.server.identity.rate_limit { consume_limit }
+import from jaclang.server.identity.rate_limit { AttemptsExhausted, consume_limit }
 import traceback;
 import from jaclang.server.identity.config { auth_settings }
 import from jaclang.server.identity.registration_challenge {
     issue_challenge,
     consume_challenge
 }
-import from jaclang.server.identity.assurance { token_assurance }
 import from jaclang.server.identity.audit { client_ip, emit as audit }
 import from jaclang.server.identity.auth_models {
     AddIdentityRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     MeIdentity,
     MeResponse,
     RegisterRequest,
     ResetPasswordRequest,
+    SendVerificationRequest,
     UpdatePasswordRequest,
     UpdateProfileRequest,
     UpdateProfileResponse,
@@ -22,10 +23,9 @@ import from jaclang.server.identity.auth_models {
     VerifyIdentityRequest
 }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.identity.identity_storage {
-    IdentityTakenError,
-    primary_username
-}
+import from jaclang.server.identity.identity_storage { primary_username }
+import from jaclang.server.identity.mail { MailOutcome, VERIFY_PURPOSE }
+import from jaclang.server.identity.policy { POLICY_VIOLATION, public_policy }
 import from jaclang.server.identity.session_cookie { end_session, start_session }
 import from jaclang.server.identity.user_manager { UserRole }
 import from jaclang.server.middleware { bearer_token, require_user }
@@ -43,14 +43,49 @@ glob logger: logging.Logger = logging.getLogger('jaclang.serve');
 
 
 def fail(
-    code: str, message: str, status: int, extra: (dict[str, any] | None) = None
+    code: str,
+    message: str,
+    status: int,
+    extra: (dict[str, any] | None) = None,
+    details: (dict[str, any] | None) = None
 ) -> TransportResponse {
     meta_extra: dict[str, any] = {'http_status': status};
     if extra {
         meta_extra.update(extra);
     }
     return TransportResponse.fail(
-        code=code, message=message, meta=Meta(extra=meta_extra)
+        code=code, message=message, details=details, meta=Meta(extra=meta_extra)
+    );
+}
+
+
+def refused(
+    result: dict[str, any], fallback: str, statuses: (dict[str, int] | None) = None
+) -> TransportResponse {
+    code = str(result.get('code') or fallback);
+    violations = result.get('violations');
+    return fail(
+        code,
+        str(result.get('error') or 'Request refused'),
+        (statuses or {}).get(code, 400),
+        details={'violations': violations} if violations else None
+    );
+}
+
+
+def throttled(retry: int, what: str) -> TransportResponse {
+    if retry < 0 {
+        return fail(
+            'LIMIT_UNAVAILABLE',
+            f"{what} is temporarily unavailable. Please try again.",
+            503
+        );
+    }
+    return fail(
+        'RATE_LIMITED',
+        f"Too many attempts. Try again in {retry} seconds.",
+        429,
+        {'retry_after_seconds': retry}
     );
 }
 
@@ -66,47 +101,24 @@ def ok(
 }
 
 
-def normalize_identity(identity_input: any) -> tuple[str, str, str] {
-    identity = identity_input.model_dump(mode='json');
-    id_type = identity.get('type', '');
-    raw_value = identity.get('value', '') or '';
-    return (id_type, raw_value, raw_value.lower().strip());
-}
-
-
 def registration_limit(
     request: Request, scope: str, cap: int, seconds: int
 ) -> TransportResponse | None {
     retry = consume_limit(scope, client_ip(request), cap, seconds);
-    if retry < 0 {
-        return fail(
-            'LIMIT_UNAVAILABLE',
-            'Registration is temporarily unavailable. Please try again.',
-            503
-        );
-    }
-    if retry > 0 {
-        return fail(
-            'RATE_LIMITED',
-            f"Too many attempts. Try again in {retry} seconds.",
-            429,
-            {'retry_after_seconds': retry}
-        );
-    }
-    return None;
+    return throttled(retry, 'Registration') if retry != 0 else None;
 }
 
 def register_auth_endpoints(server: EndpointHost) {
     users = server.identity();
 
     def challenge_handler(request: Request) -> TransportResponse {
-        if not auth_settings().registration_challenge {
+        if not auth_settings().registration.challenge {
             return ok({'required': False});
         }
         limited = registration_limit(
             request,
             'registration-challenge',
-            auth_settings().registration_challenges_per_10_minutes,
+            auth_settings().registration.challenges_per_10_minutes,
             600
         );
         if limited is not None {
@@ -135,16 +147,19 @@ def register_auth_endpoints(server: EndpointHost) {
     def register_handler(
         body_data: RegisterRequest, request: Request
     ) -> TransportResponse {
+        if not auth_settings().registration.enabled {
+            return fail('REGISTRATION_CLOSED', 'Registration is closed', 403);
+        }
         limited = registration_limit(
             request,
             'registration-attempt',
-            auth_settings().registration_attempts_per_hour,
+            auth_settings().registration.attempts_per_hour,
             3600
         );
         if limited is not None {
             return limited;
         }
-        if auth_settings().registration_challenge {
+        if auth_settings().registration.challenge {
             try {
                 verified = consume_challenge(body_data.challenge);
             } except Exception {
@@ -173,14 +188,17 @@ def register_auth_endpoints(server: EndpointHost) {
             return fail('INTERNAL_ERROR', 'Registration failed', 500);
         }
         if 'error' in result {
-            return fail(
-                result.get('code', 'REGISTRATION_FAILED'),
-                result.get('error', 'Registration failed'),
-                400
-            );
+            return refused(result, 'REGISTRATION_FAILED');
         }
-        result['token'] = users.create_jwt_token(str(result.get('user_id', '')));
-        start_session(request, str(result['token']));
+        user_id = str(result.get('user_id', ''));
+        server.mailer().announce(users.get_user(user_id) or {}, client_ip(request));
+        grant = users.open_session(user_id);
+        if grant.unverified is not None {
+            result['verification_required'] = True;
+            return ok(result, status=201);
+        }
+        result['token'] = grant.token;
+        start_session(request, grant.token);
         return ok(result, status=201);
     }
     server.add_endpoint(
@@ -196,30 +214,52 @@ def register_auth_endpoints(server: EndpointHost) {
     );
 
     def login_handler(body_data: LoginRequest, request: Request) -> TransportResponse {
-        result = users.authenticate(
-            body_data.identity.value, body_data.credential.password
-        );
-        if not result {
+        source_ip = client_ip(request);
+        try {
+            result = users.authenticate(
+                body_data.identity.value, body_data.credential.password, source_ip
+            );
+        } except AttemptsExhausted as limit {
+            audit(
+                'login.rate_limited',
+                source_ip=source_ip,
+                retry_after_seconds=limit.retry_after
+            );
+            return throttled(limit.retry_after, 'Sign-in');
+        }
+        if not result
+            or result.pop('identity_type', '')
+                not in auth_settings().identifiers.login_identifiers() {
             return fail('UNAUTHORIZED', 'Invalid credentials', 401);
         }
-        user_id = result.get('user_id', '');
+        user_id = str(result.get('user_id', ''));
         if users.get_user_role(user_id) == UserRole.SYSTEM.value {
             return fail('UNAUTHORIZED', 'Invalid credentials', 401);
         }
-        if result.get('second_factor_required') {
-            try {
-                return ok(users.second_factors().begin_login(str(user_id)));
-            } except Exception as e {
-                logger.error(f"second factor challenge failed: {e}");
-                return fail(
-                    'SECOND_FACTOR_UNAVAILABLE',
-                    'Sign-in is temporarily unavailable. Please try again.',
-                    503
-                );
-            }
+        result.pop('second_factor_required', None);
+        try {
+            grant = users.open_session(user_id);
+        } except Exception as e {
+            logger.error(f"second factor challenge failed: {e}");
+            return fail(
+                'SECOND_FACTOR_UNAVAILABLE',
+                'Sign-in is temporarily unavailable. Please try again.',
+                503
+            );
         }
-        result['token'] = users.create_jwt_token(user_id);
-        start_session(request, str(result['token']));
+        if grant.unverified is not None {
+            server.mailer().send_verification(user_id, grant.unverified, source_ip);
+            return fail(
+                'EMAIL_NOT_VERIFIED',
+                'Verify your email address to sign in. A new link has been sent.',
+                403
+            );
+        }
+        if grant.challenge {
+            return ok(grant.challenge);
+        }
+        result['token'] = grant.token;
+        start_session(request, grant.token);
         return ok(dict[(str, JsonValue)](result));
     }
     server.add_endpoint(
@@ -306,9 +346,7 @@ def register_auth_endpoints(server: EndpointHost) {
             str(user_id), body_data.current_password, body_data.new_password
         );
         if 'error' in result {
-            return fail(
-                'UPDATE_FAILED', result.get('error', 'Password update failed'), 400
-            );
+            return refused(result, 'UPDATE_FAILED');
         }
         end_session(request);
         payload: dict[str, any] = dict(result);
@@ -346,17 +384,13 @@ def register_auth_endpoints(server: EndpointHost) {
         }
         result = users.rename_username(str(user_id), body_data.new_username);
         if 'error' in result {
-            code = str(result.get('code') or 'UPDATE_FAILED');
-            status = 400;
-            if code == 'NOT_FOUND' {
-                status = 404;
-            }
-            return fail(code, result.get('error', 'Username update failed'), status);
+            return refused(result, 'UPDATE_FAILED', {'NOT_FOUND': 404});
         }
-        result['token'] = users.create_jwt_token(
-            str(user_id), assurance=token_assurance(bearer_token(request))
-        );
-        start_session(request, str(result['token']));
+        renewed = users.refresh_jwt_token(bearer_token(request) or '');
+        if renewed {
+            result['token'] = renewed;
+            start_session(request, renewed);
+        }
         return ok(result);
     }
     server.add_endpoint(
@@ -496,30 +530,23 @@ def register_auth_endpoints(server: EndpointHost) {
         if error is not None {
             return error;
         }
-        (id_type, raw_value, normalized) = normalize_identity(body_data.identity);
-        if not normalized {
-            return fail('VALIDATION_ERROR', 'Identity value is required', 400);
+        result = users.add_identity(
+            str(user_id),
+            body_data.identity.type,
+            body_data.identity.value,
+            bool(body_data.is_recovery)
+        );
+        if 'error' in result {
+            return refused(
+                result, 'UPDATE_FAILED', {'IDENTITY_TAKEN': 409, 'NOT_FOUND': 404}
+            );
         }
-        taken_msg = f"This {id_type} is already registered";
-        if users.is_identity_taken(normalized) {
-            return fail('IDENTITY_TAKEN', taken_msg, 409);
-        }
-        identity_doc = {
-            'type': id_type,
-            'value_raw': raw_value,
-            'value_normalized': normalized,
-            'verified': False,
-            'is_recovery': bool(body_data.is_recovery)
-        };
-        try {
-            added = users.add_identity(str(user_id), identity_doc);
-        } except IdentityTakenError {
-            return fail('IDENTITY_TAKEN', taken_msg, 409);
-        }
-        if not added {
-            return fail('NOT_FOUND', 'User not found', 404);
-        }
-        return ok({'status': 'added', 'verified': False});
+        server.mailer().announce(
+            users.get_user(str(user_id)) or {},
+            client_ip(request),
+            body_data.identity.value.lower().strip()
+        );
+        return ok(result);
     }
     server.add_endpoint(
         JEndPoint(
@@ -538,7 +565,9 @@ def register_auth_endpoints(server: EndpointHost) {
         request: Request, body_data: VerifyIdentityRequest
     ) -> TransportResponse {
         source_ip = client_ip(request);
-        record = AuthTokenStore.instance().consume_token(body_data.token, 'verify');
+        record = AuthTokenStore.instance().consume_token(
+            body_data.token, VERIFY_PURPOSE
+        );
         if record is None {
             audit(
                 'identity_verification.failed',
@@ -611,42 +640,24 @@ def register_auth_endpoints(server: EndpointHost) {
         request: Request, body_data: ResetPasswordRequest
     ) -> TransportResponse {
         source_ip = client_ip(request);
-        record = AuthTokenStore.instance().consume_token(body_data.token, 'reset');
-        if record is None {
-            audit(
-                'password_reset.failed',
-                reason='invalid_or_expired_token',
-                source_ip=source_ip
-            );
-            return fail('INVALID_TOKEN', 'Reset token is invalid or expired', 400);
+        result = users.redeem_reset(body_data.token, body_data.new_password);
+        user_id = str(result.get('user_id') or '');
+        if 'error' in result {
+            if result.get('code') != POLICY_VIOLATION {
+                audit(
+                    'password_reset.failed',
+                    reason='user_gone' if user_id else 'invalid_or_expired_token',
+                    user_id=user_id,
+                    source_ip=source_ip
+                );
+            }
+            return refused(result, 'INVALID_TOKEN', {'NOT_FOUND': 404});
         }
-        user_id = record.get('user_id', '');
-        identity_value = record.get('identity_value', '') or '';
-        if not user_id {
-            audit(
-                'password_reset.failed',
-                reason='token_missing_user',
-                source_ip=source_ip
-            );
-            return fail('INVALID_TOKEN', 'Reset token is invalid', 400);
-        }
-        result = users.reset_password_by_user_id(user_id, body_data.new_password);
-        if result.get('error') {
-            audit(
-                'password_reset.failed',
-                reason='user_gone',
-                user_id=user_id,
-                identity_value=identity_value,
-                source_ip=source_ip
-            );
-            return fail('NOT_FOUND', result.get('error', 'User not found'), 404);
-        }
-        AuthTokenStore.instance().revoke_user_tokens(user_id, 'reset');
         end_session(request);
         audit(
             'password_reset.completed',
             user_id=user_id,
-            identity_value=identity_value,
+            identity_value=str(result.get('identity_value') or ''),
             source_ip=source_ip
         );
         return ok({'status': 'password_reset'});
@@ -663,8 +674,116 @@ def register_auth_endpoints(server: EndpointHost) {
         )
     );
 
+    def auth_policy_handler -> TransportResponse {
+        return ok(public_policy());
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/user/auth-policy',
+            callback=auth_policy_handler,
+            parameters=[],
+            tags=['User APIs'],
+            summary='Auth policy',
+            description='The identifier, password, email verification and registration rules a sign-up or sign-in form needs. Public.'
+        )
+    );
+
     import from jaclang.server.endpoints.second_factor {
         register_second_factor_endpoints
     }
     register_second_factor_endpoints(server);
+}
+
+
+def register_mail_endpoints(server: EndpointHost) {
+    users = server.identity();
+
+    async def send_verification_handler(
+        request: Request, body_data: SendVerificationRequest
+    ) -> TransportResponse {
+        (user_id, error) = require_user(request);
+        if error is not None {
+            return error;
+        }
+        if body_data.identity.type != 'email' {
+            return fail(
+                'VALIDATION_ERROR', 'Only email identities can be verified', 400
+            );
+        }
+        user = users.get_user(str(user_id));
+        if user is None {
+            return fail('NOT_FOUND', 'User not found', 404);
+        }
+        normalized = body_data.identity.value.lower().strip();
+        target = [
+            identity
+            for identity in (user.get('identities') or [])
+            if identity.get('type') == 'email'
+                and identity.get('value_normalized') == normalized
+        ];
+        if not target {
+            return fail('NOT_FOUND', 'Identity not found on this user', 404);
+        }
+        if target[0].get('verified') {
+            return ok({'status': 'already_verified'});
+        }
+        sent = server.mailer().send_verification(
+            str(user_id), target[0], client_ip(request)
+        );
+        if sent.outcome == MailOutcome.DISABLED {
+            return fail(
+                'EMAIL_DISABLED',
+                'Email features are not configured on this server',
+                503
+            );
+        }
+        if sent.outcome == MailOutcome.LIMITED {
+            return throttled(sent.retry_after, 'Email verification');
+        }
+        return ok(
+            {'status': 'pending_verification', 'email_sent': sent.sent()}, status=202
+        );
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/user/send-verification',
+            callback=send_verification_handler,
+            request_model=SendVerificationRequest,
+            tags=['User APIs'],
+            summary='Send a verification email for an unverified identity',
+            description='Issues a verification token for an email identity on the authenticated user and mails it. Idempotent for verified identities.',
+            requires_auth=True
+        )
+    );
+
+    async def forgot_password_handler(
+        request: Request, body_data: ForgotPasswordRequest
+    ) -> TransportResponse {
+        mailer = server.mailer();
+        user = users.find_user_by_identity(body_data.identity.value);
+        if not mailer.ready() {
+            logger.warning('/user/forgot-password called but no emailer is configured');
+        } elif user is not None {
+            mailer.send_reset(user, client_ip(request));
+        }
+        return ok(
+            {
+                'status': 'ok',
+                'message': 'If that account exists, a reset link has been sent.'
+            }
+        );
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/user/forgot-password',
+            callback=forgot_password_handler,
+            request_model=ForgotPasswordRequest,
+            tags=['User APIs'],
+            summary='Start a password reset flow',
+            description="Mails a reset link to the account's recovery email when the account exists. Always answers 200."
+        )
+    );
 }

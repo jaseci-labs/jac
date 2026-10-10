@@ -65,7 +65,7 @@ including direct API requests. A failed or expired challenge requires a fresh
 attempt. Verified GitHub OAuth account creation is exempt; a client cannot
 claim an SSO exemption through the password registration endpoint.
 
-This workspace enables the check with `[serve.auth] registration_challenge = true`.
+This workspace enables the check with `[serve.auth.registration] challenge = true`.
 Other Jac projects retain their existing registration behavior by default.
 The existing shared authentication token store provides replay protection
 across workers. The signup button performs the check automatically on web,

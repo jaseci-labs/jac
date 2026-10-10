@@ -63,7 +63,7 @@ def request_caller(server: JacAPIServer, request: Request) -> (str | None) {
         return None;
     }
     if not server.user_manager.user_exists(ident) {
-        server.user_manager.create_user(ident, '__no_password__');
+        server.user_manager.create_internal_user(ident, '__no_password__');
     }
     return ident;
 }

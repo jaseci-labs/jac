@@ -212,8 +212,16 @@ obj SSOExtension(ServerExtension) {
                 return result;
             }
             if result.ok {
-                token = result.data.get('token', '') if result.data else '';
-                return RedirectResponse(url=f"{frontend_url}?token={token}");
+                data = result.data or {};
+                if data.get('mfa_required') {
+                    return RedirectResponse(
+                        url=f"{frontend_url}?mfa_required=1&challenge_token="
+                        f"{quote(str(data.get('challenge_token') or ''))}"
+                    );
+                }
+                return RedirectResponse(
+                    url=f"{frontend_url}?token={data.get('token', '')}"
+                );
             }
             error_code = result.error.code if result.error else 'UNKNOWN_ERROR';
             message = result.error.message if result.error else 'Unknown error';

@@ -85,3 +85,8 @@ def create(config: dict[str, any]) -> Emailer | None {
     }
     return _instantiate(cls, provider, config, from_address, enabled);
 }
+
+def configured -> Emailer | None {
+    import from jaclang.scale.config.config_loader { get_scale_config }
+    return create(get_scale_config().get_emailer_config());
+}

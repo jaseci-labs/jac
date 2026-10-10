@@ -3,10 +3,11 @@ import from datetime { datetime, UTC, timedelta }
 import from concurrent.futures { ThreadPoolExecutor }
 import from jaclang.server.endpoints.auth { register_auth_endpoints }
 import from jaclang.server.identity.auth_models { RegisterRequest }
-import from jaclang.server.settings { AuthSettings }
+import from jaclang.server.settings { AuthSettings, RegistrationSettings }
 import from jaclang.scale.sso.oauth_session { complete_identity }
 import from jaclang.scale.sso.provider { SSOUserInfo }
 import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+import from jaclang.server.identity.user_manager { SessionGrant }
 import from jaclang.server.identity.registration_challenge {
     issue_challenge,
     consume_challenge
@@ -72,7 +73,7 @@ test "registration endpoint enforces challenge before creating account" {
     );
     with patch(
         register_auth_endpoints.__module__ + '.auth_settings',
-        return_value=AuthSettings(registration_challenge=True)
+        return_value=AuthSettings(registration=RegistrationSettings(challenge=True))
     ), patch(
         register_auth_endpoints.__module__ + '.consume_challenge', return_value=False
     ) {
@@ -81,7 +82,7 @@ test "registration endpoint enforces challenge before creating account" {
     }
     with patch(
         register_auth_endpoints.__module__ + '.auth_settings',
-        return_value=AuthSettings(registration_challenge=True)
+        return_value=AuthSettings(registration=RegistrationSettings(challenge=True))
     ), patch(
         register_auth_endpoints.__module__ + '.consume_challenge', return_value=True
     ) {
@@ -91,20 +92,20 @@ test "registration endpoint enforces challenge before creating account" {
 }
 
 test "registration challenge is opt in for other projects" {
-    assert not AuthSettings().registration_challenge;
+    assert not AuthSettings().registration.challenge;
 }
 
 test "verified GitHub identity can create an account without registration proof" {
     manager = MagicMock();
     manager.get_user_by_sso.return_value = None;
-    manager.create_user.return_value = {'user_id': 'github-user'};
+    manager.create_federated_user.return_value = {'user_id': 'github-user'};
     manager.link_sso_account.return_value = {};
     manager.get_user.return_value = {
         'status': 'active',
         'role': 'user',
         'identities': []
     };
-    manager.create_jwt_token.return_value = 'github-session';
+    manager.open_session.return_value = SessionGrant(token='github-session');
     with patch(register_auth_endpoints.__module__ + '.consume_challenge') as verify {
         result = complete_identity(
             manager,
@@ -113,7 +114,7 @@ test "verified GitHub identity can create an account without registration proof"
         );
         assert result.ok;
         assert result.token == 'github-session';
-        manager.create_user.assert_called_once();
+        manager.create_federated_user.assert_called_once();
         verify.assert_not_called();
     }
 }

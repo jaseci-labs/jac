@@ -47,11 +47,13 @@ def create_k8s_secret(
     secret_data: dict[str, str]
 ) -> str;
 
-def resolve_signing_secret(
+def resolve_minted_secret(
     core_v1: client.CoreV1Api,
     namespace: str,
     secret_name: str,
-    secret_data: dict[str, str]
+    secret_data: dict[str, str],
+    key: str,
+    fresh: str
 ) -> bool;
 
 def delete_k8s_secret(

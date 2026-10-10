@@ -1,18 +1,11 @@
 import base64;
 import hmac;
 import logging;
-import from jaclang.server.identity.audit { client_ip, emit as audit }
-import from jaclang.server.identity.auth_models {
-    ForgotPasswordRequest,
-    SendVerificationRequest
-}
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.middleware { require_user }
+import os;
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
 import from jaclang.server.serving.drain { HEALTH_PATHS }
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint }
-import from jaclang.server.transport { Meta, TransportResponse }
 import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
 import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
 import from jaclang.scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
@@ -22,11 +15,12 @@ import from jaclang.scale.admin.ops { JacAPIServerOps }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
 import from jaclang.scale.admin.traces { JacAPIServerTraces }
 import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
-import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.config.config_loader { ADMIN_PASSWORD_ENV, get_scale_config }
+import from jaclang.server.identity.policy { check_password }
 import from jaclang.scale.emailer.emailer { Emailer }
+import from jaclang.scale.emailer.factory { configured as configured_emailer }
+import from jaclang.server.endpoints.auth { register_mail_endpoints }
 import from jaclang.scale.observability.metrics { MetricsCollector }
-import from jaclang.scale.state.factory { get_state_backend }
-import from jaclang.scale.state.state_backend { StateBackend }
 import from jaclang.scale.server.jobs_ext { JobsExtension }
 import from jaclang.scale.server.sso_ext { ApiKeyExtension, SSOExtension }
 import from jaclang.scale.server.webhook_ext { WebhookExtension }
@@ -223,273 +217,25 @@ obj MetricsExtension(ServerExtension) {
 }
 
 
-obj RecoveryMailExtension(ServerExtension) {
+obj MailExtension(ServerExtension) {
     has emailer: (Emailer | None) = None,
-        state: (StateBackend | None) = None;
+        resolved: bool = False;
 
-    def _limiter(
-        kind: str, rate_per_hour: float, burst: float
-    ) -> Callable[[str], tuple[bool, float]] {
-        backend = self.state;
-        window = 3600;
-        allowance = max(1, int(burst));
-
-        def consume(key: str) -> tuple[bool, float] {
-            if backend is None or rate_per_hour <= 0 {
-                return (True, 0.0);
-            }
-            count = backend.increment(
-                f"ratelimit:{kind}:{key}", 1.0, ttl_seconds=window
-            );
-            if count <= allowance {
-                return (True, 0.0);
-            }
-            return (False, float(window));
+    def transport -> Emailer | None {
+        if not self.resolved {
+            self.emailer = configured_emailer();
+            self.resolved = True;
         }
-        return consume;
+        return self.emailer;
+    }
+
+    def mail_transport -> any {
+        return self.transport();
     }
 
     def register(server: JacAPIServer) {
-        import from jaclang.scale.emailer.factory { create as create_emailer }
-        emailer_cfg = get_scale_config().get_emailer_config();
-        self.emailer = create_emailer(emailer_cfg);
-        server.emailer = self.emailer;
-        settings = server.resolved_settings();
-        self.state = get_state_backend(shared=settings.workers.multi_process());
-        auth_cfg = get_scale_config().get_auth_config();
-        verify_limit = self._limiter(
-            'send_verification',
-            float(auth_cfg.get('send_verification_rate_per_hour', 5)),
-            float(auth_cfg.get('send_verification_burst', 5))
-        );
-        forgot_limit = self._limiter(
-            'forgot_password',
-            float(auth_cfg.get('forgot_password_rate_per_hour', 3)),
-            float(auth_cfg.get('forgot_password_burst', 3))
-        );
-        users = server.user_manager;
-        ext = self;
-
-        def _fail(
-            code: str, message: str, status: int, extra: (dict[str, any] | None) = None
-        ) -> TransportResponse {
-            meta_extra: dict[str, any] = {'http_status': status};
-            if extra {
-                meta_extra.update(extra);
-            }
-            return TransportResponse.fail(
-                code=code, message=message, meta=Meta(extra=meta_extra)
-            );
-        }
-        def _ok(data: dict[str, any], status: int = 200) -> TransportResponse {
-            return TransportResponse.success(
-                data=data, meta=Meta(extra={'http_status': status})
-            );
-        }
-        def _link_token(
-            user_id: str, purpose: str, identity_value: str, ttl: int, template: str
-        ) -> str {
-            store = AuthTokenStore.instance();
-            store.revoke_user_tokens(user_id, purpose);
-            token = store.create_token(
-                user_id=user_id,
-                purpose=purpose,
-                ttl_seconds=ttl,
-                identity_value=identity_value
-            );
-            return template.replace('{token}', token) if template else token;
-        }
-        def _mail_body(action: str, link: str, ttl: int, footer: str = '') -> str {
-            return (
-                f"Hello,\n\nUse the link below to {action}:\n\n{link}\n\n"
-                f"This link expires in {ttl // 60} minutes.\n\n"
-                f"If you did not request this, you can ignore this message{footer}."
-            );
-        }
-
-        async def send_verification(
-            request: Request, body_data: SendVerificationRequest
-        ) -> TransportResponse {
-            (user_id, auth_err) = require_user(request);
-            if auth_err is not None {
-                return auth_err;
-            }
-            identity: dict[str, any] = body_data.identity.model_dump(mode='json');
-            raw_value: str = str(identity.get('value', '') or '');
-            normalized: str = raw_value.lower().strip();
-            if not normalized {
-                return _fail('VALIDATION_ERROR', 'Identity value is required', 400);
-            }
-            if identity.get('type') != 'email' {
-                return _fail(
-                    'VALIDATION_ERROR', 'Only email identities can be verified', 400
-                );
-            }
-            user = users.get_user(str(user_id));
-            if user is None {
-                return _fail('NOT_FOUND', 'User not found', 404);
-            }
-            target: (dict[str, any] | None) = None;
-            for ident in user.get('identities', []) {
-                if ident.get('type') == 'email'
-                    and (ident.get('value_normalized') or '') == normalized {
-                    target = ident;
-                    break;
-                }
-            }
-            if target is None {
-                return _fail('NOT_FOUND', 'Identity not found on this user', 404);
-            }
-            if target.get('verified') {
-                return _ok({'status': 'already_verified'});
-            }
-            (allowed, retry_after) = verify_limit(str(user_id));
-            if not allowed {
-                audit(
-                    'identity_verification.rate_limited',
-                    user_id=user_id,
-                    identity_value=normalized,
-                    source_ip=client_ip(request),
-                    retry_after_seconds=int(retry_after) + 1
-                );
-                return _fail(
-                    'RATE_LIMITED',
-                    'Too many verification requests, please try again later',
-                    429,
-                    extra={'retry_after_seconds': int(retry_after) + 1}
-                );
-            }
-            emailer = ext.emailer;
-            if emailer is None or not emailer.is_ready() {
-                return _fail(
-                    'EMAIL_DISABLED',
-                    'Email features are not configured on this server',
-                    503
-                );
-            }
-            ttl = int(auth_cfg.get('verify_token_ttl_seconds', 86400));
-            link = _link_token(
-                str(user_id),
-                'verify',
-                normalized,
-                ttl,
-                str(auth_cfg.get('verify_url_template', ''))
-            );
-            sent = emailer.send_email(
-                to_addr=target.get('value_raw') or raw_value,
-                subject='Verify your email address',
-                body_text=_mail_body('verify your email address', link, ttl)
-            );
-            return _ok(
-                {'status': 'pending_verification', 'email_sent': bool(sent)}, status=202
-            );
-        }
-        server.add_endpoint(
-            JEndPoint(
-                method=HTTPMethod.POST,
-                path='/user/send-verification',
-                callback=send_verification,
-                request_model=SendVerificationRequest,
-                tags=['User APIs'],
-                summary='Send a verification email for an unverified identity',
-                description='Issues a verification token for an email identity on the authenticated user and mails it. Idempotent for verified identities.',
-                requires_auth=True
-            )
-        );
-
-        async def forgot_password(
-            request: Request, body_data: ForgotPasswordRequest
-        ) -> TransportResponse {
-            ok_response = _ok(
-                {
-                    'status': 'ok',
-                    'message': 'If that account exists, a reset link has been sent.'
-                }
-            );
-            identity: dict[str, any] = body_data.identity.model_dump(mode='json');
-            normalized: str = str(identity.get('value', '') or '').lower().strip();
-            if not normalized {
-                return ok_response;
-            }
-            emailer = ext.emailer;
-            if emailer is None or not emailer.is_ready() {
-                logger.warning(
-                    '/user/forgot-password called but no emailer is configured'
-                );
-                return ok_response;
-            }
-            user = users.find_user_by_identity(normalized);
-            if user is None {
-                return ok_response;
-            }
-            recipient_raw: (str | None) = None;
-            recipient_normalized: (str | None) = None;
-            for ident in user.get('identities', []) {
-                if ident.get('type') != 'email' or not ident.get('verified') {
-                    continue;
-                }
-                if ident.get('is_recovery') {
-                    recipient_raw = ident.get('value_raw');
-                    recipient_normalized = ident.get('value_normalized');
-                    break;
-                }
-                if recipient_raw is None {
-                    recipient_raw = ident.get('value_raw');
-                    recipient_normalized = ident.get('value_normalized');
-                }
-            }
-            if not recipient_raw {
-                return ok_response;
-            }
-            (allowed, retry_after) = forgot_limit(recipient_normalized or '');
-            if not allowed {
-                audit(
-                    'password_reset.rate_limited',
-                    user_id=user.get('user_id', ''),
-                    identity_value=recipient_normalized,
-                    source_ip=client_ip(request),
-                    retry_after_seconds=int(retry_after) + 1
-                );
-                return ok_response;
-            }
-            ttl = int(auth_cfg.get('reset_token_ttl_seconds', 1800));
-            link = _link_token(
-                str(user.get('user_id', '')),
-                'reset',
-                recipient_normalized or '',
-                ttl,
-                str(auth_cfg.get('reset_url_template', ''))
-            );
-            sent = emailer.send_email(
-                to_addr=recipient_raw,
-                subject='Reset your password',
-                body_text=_mail_body(
-                    'reset your password',
-                    link,
-                    ttl,
-                    footer=', your password will remain unchanged'
-                )
-            );
-            audit(
-                'password_reset.requested',
-                user_id=user.get('user_id', ''),
-                identity_value=recipient_normalized,
-                source_ip=client_ip(request),
-                email_sent=bool(sent)
-            );
-            return ok_response;
-        }
-        server.add_endpoint(
-            JEndPoint(
-                method=HTTPMethod.POST,
-                path='/user/forgot-password',
-                callback=forgot_password,
-                request_model=ForgotPasswordRequest,
-                tags=['User APIs'],
-                summary='Start a password reset flow',
-                description="Mails a reset link to the account's recovery email when the account exists. Always answers 200."
-            )
-        );
+        server.emailer = self.transport();
+        register_mail_endpoints(server);
     }
 }
 
@@ -568,6 +314,24 @@ obj EventsExtension(ServerExtension) {
 
 
 obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
+    def validate(server: JacAPIServer) -> list[str] {
+        admin = get_scale_config().get_admin_config();
+        password = str(admin.get('default_password') or '');
+        username = str(admin.get('username') or '');
+        if not admin.get('enabled', True)
+            or not password
+            or server.user_manager.find_user_by_identity(username) is not None {
+            return [];
+        }
+        violations = check_password(password, [username]);
+        return [
+            f"The bootstrap admin password ([scale.admin] default_password or {ADMIN_PASSWORD_ENV}) does not meet [serve.auth.password]: "
+                + ', '.join([v.value for v in violations])
+        ]
+            if violations
+            else [];
+    }
+
     def register(server: JacAPIServer) -> None {
         if not get_scale_config().get_admin_config().get('enabled', True) {
             return;
@@ -593,7 +357,7 @@ def scale_extensions -> list[ServerExtension] {
         FleetIdentityExtension(),
         ObservabilityExtension(),
         MetricsExtension(),
-        RecoveryMailExtension(),
+        MailExtension(),
         SSOExtension(),
         ApiKeyExtension(),
         WebhookExtension(),

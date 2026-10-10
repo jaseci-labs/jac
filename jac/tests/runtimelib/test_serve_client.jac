@@ -323,7 +323,7 @@ test "serve user login" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "bob"}],
-                "credential": {"type": "password", "password": "pass456"}
+                "credential": {"type": "password", "password": "pass456_Secure1"}
             }
         );
         create_data = create_response.data;
@@ -332,7 +332,7 @@ test "serve user login" {
             "/user/login",
             json={
                 "identity": {"type": "username", "value": "bob"},
-                "credential": {"type": "password", "password": "pass456"}
+                "credential": {"type": "password", "password": "pass456_Secure1"}
             }
         );
         assert login_response.ok;
@@ -358,7 +358,7 @@ test "serve register rejects legacy payload" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response = client.post(
-            "/user/register", json={"username": "legacy", "password": "pass123"}
+            "/user/register", json={"username": "legacy", "password": "pass123_Secure1"}
         );
         assert not response.ok;
         assert response.status_code == 422;
@@ -373,7 +373,7 @@ test "serve login with an unknown email identity is refused" {
             "/user/login",
             json={
                 "identity": {"type": "email", "value": "a@b.c"},
-                "credential": {"type": "password", "password": "pass"}
+                "credential": {"type": "password", "password": "pass_Secure1"}
             }
         );
         assert not response.ok;
@@ -477,14 +477,14 @@ test "serve get user info different users" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         # Register first user
-        client.register_user("user1", "pass1");
+        client.register_user("user1", "pass1_Secure1");
         user1_info_response = client.get("/user/info");
         assert user1_info_response.ok;
         user1_info = user1_info_response.data;
         user1_token = user1_info["token"];
         # Register second user
         client.clear_auth();
-        client.register_user("user2", "pass2");
+        client.register_user("user2", "pass2_Secure1");
         user2_info_response = client.get("/user/info");
         assert user2_info_response.ok;
         user2_info = user2_info_response.data;
@@ -521,7 +521,7 @@ test "serve authentication required" {
 test "serve list functions" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("funcuser", "pass");
+        client.register_user("funcuser", "pass_Secure1");
         response = client.get("/functions");
         assert response.ok;
         data = response.data;
@@ -535,7 +535,7 @@ test "serve list functions" {
 test "serve get function signature" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("siguser", "pass");
+        client.register_user("siguser", "pass_Secure1");
         response = client.get("/function/add_numbers");
         assert response.ok;
         data = response.data;
@@ -553,7 +553,7 @@ test "serve get function signature" {
 test "serve call function" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("calluser", "pass");
+        client.register_user("calluser", "pass_Secure1");
         # Call add_numbers
         response = client.post("/function/add_numbers", json={"a": 10, "b": 25});
         assert response.ok;
@@ -573,7 +573,7 @@ test "serve call function" {
 test "serve call function with defaults" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("defuser", "pass");
+        client.register_user("defuser", "pass_Secure1");
         response = client.post("/function/greet", json={});
         assert response.ok;
         data = response.data;
@@ -586,7 +586,7 @@ test "serve call function with defaults" {
 test "serve list walkers" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("walkuser", "pass");
+        client.register_user("walkuser", "pass_Secure1");
         response = client.get("/walkers");
         assert response.ok;
         data = response.data;
@@ -601,7 +601,7 @@ test "serve list walkers" {
 test "serve get walker info" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("infouser", "pass");
+        client.register_user("infouser", "pass_Secure1");
         response = client.get("/walker/CreateTask");
         assert response.ok;
         data = response.data;
@@ -621,7 +621,7 @@ test "serve get walker info" {
 test "serve spawn walker" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("spawnuser", "pass");
+        client.register_user("spawnuser", "pass_Secure1");
         # Spawn CreateTask walker
         response = client.post(
             "/walker/CreateTask", json={"title": "Test Task", "priority": 2}
@@ -658,7 +658,7 @@ test "serve user isolation" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user1"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         user1_data = user1_response.data;
@@ -667,7 +667,7 @@ test "serve user isolation" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user2"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         user2_data = user2_response.data;
@@ -692,7 +692,7 @@ test "serve user isolation" {
 test "serve invalid function" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("invaliduser", "pass");
+        client.register_user("invaliduser", "pass_Secure1");
         response = client.post("/function/nonexistent", json={});
         assert not response.ok or "error" in response.json();
         client.close();
@@ -702,7 +702,7 @@ test "serve invalid function" {
 test "serve invalid walker" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("invalidwalk", "pass");
+        client.register_user("invalidwalk", "pass_Secure1");
         response = client.post("/walker/NonExistentWalker", json={"fields": {}});
         assert not response.ok or "error" in response.json();
         client.close();
@@ -751,7 +751,7 @@ test "serve update username" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "olduser"}],
-                "credential": {"type": "password", "password": "pass123"}
+                "credential": {"type": "password", "password": "pass123_Secure1"}
             }
         );
         assert create_response.ok;
@@ -769,12 +769,12 @@ test "serve update username" {
         assert "token" in update_response.data;
         # Login with new username should work
         client.clear_auth();
-        login_response = client.login("newuser", "pass123");
+        login_response = client.login("newuser", "pass123_Secure1");
         assert login_response.ok;
         assert login_response.data["username"] == "newuser";
         # Login with old username should fail
         client.clear_auth();
-        old_login_response = client.login("olduser", "pass123");
+        old_login_response = client.login("olduser", "pass123_Secure1");
         assert not old_login_response.ok;
         client.close();
     }
@@ -787,7 +787,7 @@ test "serve update username requires auth" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "authtest"}],
-                "credential": {"type": "password", "password": "pass123"}
+                "credential": {"type": "password", "password": "pass123_Secure1"}
             }
         );
         client.clear_auth();
@@ -808,7 +808,7 @@ test "serve update username cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user1"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         user1_token = user1_response.data["token"];
@@ -817,7 +817,7 @@ test "serve update username cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user2"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         # User1 tries to update user2's username
@@ -839,7 +839,7 @@ test "serve update username already exists" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user_a"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         token = response1.data["token"];
@@ -848,7 +848,7 @@ test "serve update username already exists" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user_b"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         # Try to update user_a to user_b (already exists)
@@ -870,7 +870,7 @@ test "serve update password" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "passuser"}],
-                "credential": {"type": "password", "password": "oldpass"}
+                "credential": {"type": "password", "password": "oldpass_Secure1"}
             }
         );
         assert create_response.ok;
@@ -881,8 +881,8 @@ test "serve update password" {
             "/user/password",
             json={
                 "username": "passuser",
-                "current_password": "oldpass",
-                "new_password": "newpass"
+                "current_password": "oldpass_Secure1",
+                "new_password": "newpass_Secure1"
             }
         );
         assert update_response.ok;
@@ -890,11 +890,11 @@ test "serve update password" {
         assert "message" in update_response.data;
         # Login with new password should work
         client.clear_auth();
-        login_response = client.login("passuser", "newpass");
+        login_response = client.login("passuser", "newpass_Secure1");
         assert login_response.ok;
         # Login with old password should fail
         client.clear_auth();
-        old_login_response = client.login("passuser", "oldpass");
+        old_login_response = client.login("passuser", "oldpass_Secure1");
         assert not old_login_response.ok;
         client.close();
     }
@@ -907,7 +907,7 @@ test "serve update password requires auth" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "noauthpass"}],
-                "credential": {"type": "password", "password": "pass123"}
+                "credential": {"type": "password", "password": "pass123_Secure1"}
             }
         );
         client.clear_auth();
@@ -915,8 +915,8 @@ test "serve update password requires auth" {
             "/user/password",
             json={
                 "username": "noauthpass",
-                "current_password": "pass123",
-                "new_password": "newpass"
+                "current_password": "pass123_Secure1",
+                "new_password": "newpass_Secure1"
             }
         );
         assert not response.ok;
@@ -942,7 +942,7 @@ test "serve update password wrong current" {
             json={
                 "username": "wrongpass",
                 "current_password": "wrongpassword",
-                "new_password": "newpass"
+                "new_password": "newpass_Secure1"
             }
         );
         assert not response.ok;
@@ -958,7 +958,7 @@ test "serve update password cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "pass_user1"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         user1_token = user1_response.data["token"];
@@ -967,7 +967,7 @@ test "serve update password cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "pass_user2"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         # User1 tries to update user2's password
@@ -976,8 +976,8 @@ test "serve update password cannot update other users" {
             "/user/password",
             json={
                 "username": "pass_user2",
-                "current_password": "pass2",
-                "new_password": "hacked"
+                "current_password": "pass2_Secure1",
+                "new_password": "hacked_Secure1"
             }
         );
         assert not response.ok;
@@ -992,7 +992,7 @@ test "serve update password cannot update other users" {
 test "serve imported functions and walkers" {
     with TemporaryDirectory() as tmpdir {
         imports_client = make_imports_client(tmpdir);
-        imports_client.register_user("importuser", "pass");
+        imports_client.register_user("importuser", "pass_Secure1");
         # Test listing functions - should include both local and imported
         functions_response = imports_client.get("/functions");
         assert functions_response.ok;
@@ -1096,7 +1096,7 @@ test "serve protected function requires auth" {
 test "serve protected function with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("authuser", "pass123");
+        ac.register_user("authuser", "pass123_Secure1");
         response = ac.post("/function/protected_function", json={"message": "secret"});
         assert response.ok;
         data = response.data;
@@ -1119,7 +1119,7 @@ test "serve private function is not served without auth" {
 test "serve private function is not served even with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("privuser", "pass456");
+        ac.register_user("privuser", "pass456_Secure1");
         response = ac.post("/function/private_function", json={"secret": "topsecret"});
         assert not response.ok , ":priv is private, not an authenticated endpoint";
         assert response.status_code in (404, 405) , response.status_code;
@@ -1156,7 +1156,7 @@ test "serve protected walker requires auth" {
 test "serve protected walker with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("walkuser", "pass789");
+        ac.register_user("walkuser", "pass789_Secure1");
         response = ac.post("/walker/ProtectedWalker", json={"data": "mydata"});
         assert response.ok;
         data = response.data;
@@ -1178,7 +1178,7 @@ test "serve private walker is not served without auth" {
 test "serve private walker is not served even with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("privwalk", "pass000");
+        ac.register_user("privwalk", "pass000_Secure1");
         response = ac.post("/walker/PrivateWalker", json={"secret": "verysecret"});
         assert not response.ok , ":priv walkers are private, not authenticated endpoints";
         listing = ac.get("/walkers");
@@ -1236,7 +1236,7 @@ test "serve render client page returns html" {
     _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         client = make_client_app_client(tmpdir);
-        client.register_user("tester", "pass");
+        client.register_user("tester", "pass_Secure1");
         response = client.get("/cl/client_page");
         html = response.text;
         assert "<!DOCTYPE html>" in html;
@@ -1262,7 +1262,7 @@ test "serve render client page returns html" {
 test "serve render unknown page returns error" {
     with TemporaryDirectory() as tmpdir {
         client = make_client_app_client(tmpdir);
-        client.register_user("tester", "pass");
+        client.register_user("tester", "pass_Secure1");
         response = client.get("/cl/missing");
         assert not response.ok or "error" in response.text.lower();
         client.close();
@@ -1446,7 +1446,7 @@ test "serve imported protected walker requires auth" {
 test "serve imported protected walker with auth" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
-        iac.register_user("importuser", "pass123");
+        iac.register_user("importuser", "pass123_Secure1");
         response = iac.post(
             "/walker/ProtectedImportedWalker", json={"data": "authenticated data"}
         );
@@ -1561,7 +1561,7 @@ test "serve imported protected function requires auth" {
 test "serve imported protected function with auth" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
-        iac.register_user("importfuncuser", "pass123");
+        iac.register_user("importfuncuser", "pass123_Secure1");
         response = iac.post("/function/protectedImportedFunc", json={});
         assert response.ok;
         data = response.data;
@@ -1736,7 +1736,7 @@ test "serve unknown path returns 404 without base route app" {
 test "serve sync skips write access check on unchanged anchors" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("syncuser", "pass");
+        client.register_user("syncuser", "pass_Secure1");
         # Simulate server-restart conditions
         import from jaclang.runtime.runtime { JacRuntimeInterface as Jac }
         ctx = Jac.get_context();
@@ -1806,7 +1806,7 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         # Create a test user so spawn_walker can resolve a root
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
         _persist_system_root();
         # Each walker sleeps for 1 second. Launch 3 concurrently.
         # If they run in threads (concurrent): ~1s total.
@@ -1882,7 +1882,7 @@ test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
         walker_cls = introspector.get_walkers()["slow_blocking"];
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
         _persist_system_root();
         async def run -> tuple[any, ...] {
             # Explicit sync path: must still run concurrently via to_thread.
@@ -1932,7 +1932,7 @@ test "concurrent async walkers run concurrently end-to-end" {
         assert getattr(walker_cls, "__jac_async__", False) , "slow_async walker must be async";
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
         _persist_system_root();
         async def run -> float {
             start = time();
@@ -2156,7 +2156,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         users = [f"user_{i}" for i in range(3)];
         root_ids = {};
         for uname in users {
-            info = user_mgr.create_user(uname, "pw");
+            info = user_mgr.create_internal_user(uname, "pw");
             root_ids[uname] = info["root_id"];
         }
         # Sanity: each user got a unique root.
@@ -2220,7 +2220,7 @@ with no HTTP response at all."""
 test "orphaned user root is refused with a json error instead of dropping the connection" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        reg = client.register_user("orphan_user", "pw12345");
+        reg = client.register_user("orphan_user", "pw12345_Secure1");
         assert reg.ok , f"register should succeed: {reg.text}";
         # Point the users row at a root anchor id that does not exist in the
         # anchor store, simulating a store that was reset or migrated out from
