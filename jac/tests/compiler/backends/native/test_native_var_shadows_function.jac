@@ -23,6 +23,13 @@ test "a call through a local named like an unimported function calls the local" 
     assert get_func(engine, "local_call_probe", ctypes.c_int64)() == 101;
 }
 
+test "a local named like an unimported decorated or generic function is called" {
+    (engine, _module) = compile_native("var_shadows_function_kinds.jac");
+    assert get_func(engine, "decorated_name_probe", ctypes.c_int64)() == 201;
+    assert get_func(engine, "generic_name_probe", ctypes.c_int64)() == 301;
+    assert get_func(engine, "imported_probe", ctypes.c_int64)() == 8;
+}
+
 test "locals, parameters and imported functions bind as they did" {
     (engine, _module) = compile_native(MAIN);
     assert get_func(engine, "local_read_probe", ctypes.c_int64)() == 606;

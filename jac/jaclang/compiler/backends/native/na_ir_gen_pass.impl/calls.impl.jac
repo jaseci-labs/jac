@@ -2381,9 +2381,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_instantiation(nd, type_name_override=func_name);
     }
     _skipped_key = f"{_mod_qual}.{func_name}" if _mod_qual is not None else func_name;
+    declaration = self._callee_ability_of(nd);
+    _var_callee = declaration is None and self._binds_variable(nd.target);
     if (
         _skipped_key in self._native_skipped_methods
         and func_name not in self.generic_fns
+        and not _var_callee
         and not self._skip_is_other_module(nd, func_name, _mod_qual)
     ) {
         self.emit(
@@ -2398,14 +2401,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         );
         return None;
     }
-    if func_name in self.decorated_fns {
+    if func_name in self.decorated_fns and not _var_callee {
         return self._codegen_decorated_call(nd, func_name);
     }
-    func: ir.Function | None = self.func_symtab.get(func_name);
-    declaration = self._callee_ability_of(nd);
-    if func is not None and declaration is None and self._binds_variable(nd.target) {
-        func = None;
-    }
+    func: ir.Function | None = None if _var_callee else self.func_symtab.get(func_name);
     if declaration is not None and declaration.name_ref is not None {
         declaring_module = declaration.parent_scope;
         if isinstance(declaring_module, uni.Module) {
@@ -2435,7 +2434,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if source is not None
             else None;
     }
-    if func is None {
+    if func is None and not _var_callee {
         manifest = self.module.gen.interop_manifest;
         binding = manifest.bindings.get(func_name);
         _src_ab: (uni.Ability | None) = None;
@@ -2502,7 +2501,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             );
         }
     }
-    if func is None and func_name in self.generic_fns {
+    if func is None and func_name in self.generic_fns and not _var_callee {
         func = self._instantiate_generic(nd, func_name);
         if func is None {
             return None;
