@@ -174,29 +174,6 @@ def native_default_path_ok(path: str) -> bool {
     return _native_deps_ok(ap, deps, hold_exempt=exempt);
 }
 
-def place_unanalyzed(module: uni.Module, prog: JacProgram) {
-    """Run the placement solver for a module whose analysis schedule did not.
-    Client placement is read off syntax and symbol references, and it reaches
-    across modules: a client element pulls the helpers it imports. So it runs
-    for every module, decided or not. An undecided module also gets its plan
-    here; a module left unanalyzed was never a native candidate.""";
-    import from jaclang.compiler.placement.placement_facts { contexts_of, write_plan }
-    undecided = not module.gen.placement_mode;
-    given = contexts_of(module) if undecided else [];
-    if module.loc is not None {
-        prog.analysis.placement_refusals.pop(
-            os.path.realpath(module.loc.mod_path), None
-        );
-    }
-    refresh_placement_module(module, prog);
-    if solve_module_placement(module, prog) {
-        placement_work(prog).changed(module);
-    }
-    if undecided {
-        write_plan(module, given);
-    }
-}
-
 def native_placement_candidate(
     module: uni.Module, prog: JacProgram
 ) -> tuple[bool, str] {
@@ -613,6 +590,10 @@ def solve_module_placement(
         inferable.append(stmt);
     }
     has_seeds = bool(seed_ref_ids);
+    if module.gen.placement_mode == 'plan' {
+        client_tops = [];
+        native_tops = [];
+    }
     if ((not client_tops and not native_tops and not has_seeds) or not inferable) {
         _invalidate_stale_codegen();
         return stamp_count[0];
@@ -666,15 +647,7 @@ def solve_module_placement(
     }
     refusals = prog.analysis.placement_refusals.get(os.path.realpath(mod_path), {});
     cl_refused: set[int] = refusals.get('client', set());
-    na_refused: set[int] = set(refusals.get('native', set()));
-    if module.gen.placement_mode == 'plan' {
-        for elem in module.body {
-            if isinstance(elem, uni.ContextAwareNode)
-                and elem.code_context != CodeContext.NATIVE {
-                na_refused.add(id(elem));
-            }
-        }
-    }
+    na_refused: set[int] = refusals.get('native', set());
     cl_star = _hard_closure(cl_seed_ids) - cl_refused;
     na_star = _hard_closure(na_seed_ids) - na_refused;
     hard_remaining: list[uni.UniNode] = [];
@@ -963,4 +936,28 @@ def invalidate_importers_es(prog: JacProgram, mod_path: str) -> list[uni.Module]
         }
     }
     return cleared;
+}
+
+walker PlacementApplyPass(CompilerPass) {
+    def _run_impl(ir_in: uni.Module) -> uni.Module;
+    can run_walk with uni.Module entry;
+}
+
+impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
+    import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
+    if ir_in.loc is not None {
+        self.prog.analysis.placement_refusals.pop(
+            os.path.realpath(ir_in.loc.mod_path), None
+        );
+    }
+    refresh_placement_module(ir_in, self.prog);
+    if solve_module_placement(ir_in, self.prog) {
+        placement_work(self.prog).changed(ir_in);
+    }
+    report_serverless_kind_errors(self, ir_in);
+    return ir_in;
+}
+
+impl PlacementApplyPass.run_walk with uni.Module entry {
+    self.module = self._run_impl(here);
 }

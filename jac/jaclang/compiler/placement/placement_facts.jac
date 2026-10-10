@@ -61,6 +61,19 @@ def encode_plan(digest: str, placed: dict[str, str]) -> str {
 }
 
 
+def server_plan(module: uni.Module) -> str {
+    import from jaclang.compiler.frontend.constant { CodeContext }
+    kept: dict[str, str] = {};
+    for elem in module.body {
+        if isinstance(elem, uni.ContextAwareNode)
+            and elem.code_context == CodeContext.CLIENT {
+            kept[element_key(elem)] = SPACE_CLIENT;
+        }
+    }
+    return encode_plan(module.source.hash, kept);
+}
+
+
 def decode_plan(plan: str, digest: str) -> (dict[str, str] | None) {
     if not plan {
         return None;

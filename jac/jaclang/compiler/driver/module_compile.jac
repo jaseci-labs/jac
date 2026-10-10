@@ -30,6 +30,7 @@ import from jaclang.compiler.driver.module_analysis {
     ModuleAnalysis,
     analyze_module,
     cancelled,
+    carry_comptime_deps,
     record_phase
 }
 
@@ -392,20 +393,13 @@ def place_on_server(
     warnings_mark: int
 ) {
     import from jaclang.compiler.driver.session_compile { drop_native_bindings }
-    import from jaclang.compiler.placement.placement_facts { element_key, encode_plan }
+    import from jaclang.compiler.placement.placement_facts { server_plan }
     import from jaclang.compiler.placement.placement_solver { invalidate_importers_es }
     (code, detail, stage) = refusal;
     resolved = os.path.realpath(path);
-    kept: dict[str, str] = {};
-    for elem in module.body {
-        if isinstance(elem, uni.ContextAwareNode)
-            and elem.code_context == CodeContext.CLIENT {
-            kept[element_key(elem)] = 'client';
-        }
-    }
     host = active_host();
     host.record_native_coverage(resolved, 'demoted', code, f"[{stage}] {detail}");
-    host.record_placement_plan(path, encode_plan(module.source.hash, kept));
+    host.record_placement_plan(path, server_plan(module));
     del program.errors_had[errors_mark:];
     del program.warnings_had[warnings_mark:];
     program.invalidate_module(resolved);
@@ -437,14 +431,14 @@ def compile_task(
         );
     }
     if refusal is not None {
-        place_on_server(
-            program, path, analysis.module, refusal, errors_mark, warnings_mark
-        );
+        refused = analysis.module;
+        place_on_server(program, path, refused, refusal, errors_mark, warnings_mark);
         try {
             analysis = analyze_for_compile(program, path, options, source);
         } finally {
             active_host().record_placement_plan(path, "");
         }
+        carry_comptime_deps(refused, analysis.module);
         run_codegen_phases(session, program, analysis, options);
         again = native_refusal(program, analysis, len(program.errors_had), False);
         if again is not None {

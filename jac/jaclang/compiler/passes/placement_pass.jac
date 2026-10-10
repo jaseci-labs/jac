@@ -77,7 +77,6 @@ def top_element_of(mod: Module, nd: UniNode) -> (UniNode | None);
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
 def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
 def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
-def import_placed_native(prog: JacProgram, dep_path: str) -> bool;
 def settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None);
@@ -380,6 +379,7 @@ impl build_native_legality(
         native_capability_violations
     }
     import from jaclang.compiler.placement.placement { scan_native_blockers }
+    import from jaclang.compiler.placement.placement_solver { _native_deps_ok }
     import from jaclang.compiler.capability_notes { TARGET_NATIVE, capability_notes_of }
     import from jaclang.compiler.native_bindings { binding_gaps }
     legality = NativeLegality();
@@ -393,19 +393,17 @@ impl build_native_legality(
                 NativeRefusal(kind="module", name=blocker, site=mod)
             );
         }
-        for dep in deps {
-            if not import_placed_native(judging, dep) {
-                legality.blockers.append(
-                    NativeRefusal(
-                        kind="import",
-                        name=os.path.basename(dep),
-                        site=mod,
-                        help="The imported module is placed on the server, and "
-                        "native code cannot call into it."
-                    )
-                );
-                break;
-            }
+        if not blocker and not _native_deps_ok(os.path.abspath(mod_path), deps) {
+            legality.blockers.append(
+                NativeRefusal(
+                    kind="import closure",
+                    name=os.path.basename(mod_path),
+                    site=mod,
+                    help="A module this one imports, directly or through "
+                    "another import, cannot be placed native, and native code "
+                    "cannot call into it."
+                )
+            );
         }
         for note in capability_notes_of(judging, mod_path, TARGET_NATIVE) {
             noted = NativeRefusal(
@@ -588,27 +586,6 @@ impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
     return stamped;
 }
 
-impl import_placed_native(prog: JacProgram, dep_path: str) -> bool {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
-    resolved = os.path.realpath(dep_path);
-    placing = prog.analysis.native_placing;
-    if resolved in placing {
-        return True;
-    }
-    target = prog.mod.hub.get(resolved);
-    if target is None
-        or not prog.analysis.analyses_run.provides(target, AnalysisFact.CAPABILITY) {
-        placing.add(resolved);
-        try {
-            target = prog.compile(resolved, options=CompileOptions(no_cgen=True));
-        } finally {
-            placing.discard(resolved);
-        }
-    }
-    return target is not None and target.declares_codespace(CodeContext.NATIVE);
-}
-
 impl settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None) {
@@ -731,6 +708,13 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
             ir_in.gen.native_refusal_code = refused[0].code;
             ir_in.gen.native_refusal = refused[0].headline();
         } elif refused {
+            for unit_refusals in legality.units.values() {
+                for unit_refusal in unit_refusals {
+                    if unit_refusal.code == "E5090" {
+                        refused.append(unit_refusal);
+                    }
+                }
+            }
             seen: set[int] = set();
             for refusal in refused {
                 if refusal.site is None or id(refusal.site) in seen {
@@ -784,16 +768,9 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     native_refused = legality.refused_elements(ir_in);
     client_refused = client_refused_elements(ir_in);
     inferred_refused: set[int] = set(native_refused);
-    if legality.blockers {
-        for elem in ir_in.body {
-            if id(elem) not in required {
-                inferred_refused.add(id(elem));
-            }
-        }
-    }
     for elem in tentative {
         owner = top_element_of(ir_in, elem);
-        if owner is not None and id(owner) in inferred_refused {
+        if legality.blockers or (owner is not None and id(owner) in inferred_refused) {
             elem.code_context = CodeContext.SERVER;
         }
     }
@@ -930,19 +907,25 @@ impl PlacementPass._check_conformance(ir_in: Module) -> None {
     }
 }
 
+def unmet_label(need: NativeRefusal) -> tuple[str, str] {
+    site = need.site;
+    if isinstance(site, Name) {
+        return ("this use of native-only builtin", site.value);
+    }
+    return ("native-only construct", need.name);
+}
+
 impl PlacementPass._report_unmet(legality: NativeLegality, why: str) -> None {
     for (need, blocked) in legality.unmet() {
         if need.site is None {
             continue;
         }
-        builtin = isinstance(need.site, Name);
+        (kind, name) = unmet_label(need);
         self.ctx.emit(
             E5090,
             node_override=need.site,
-            kind="this use of native-only builtin"
-                if builtin
-                else "native-only construct",
-            name=need.site.value if builtin else need.name,
+            kind=kind,
+            name=name,
             help_text="This construct only exists natively, but the code that uses "
             f"it cannot be placed native: {blocked.headline()}"
         );
@@ -954,14 +937,12 @@ impl PlacementPass._report_unmet(legality: NativeLegality, why: str) -> None {
             if need.site is None {
                 continue;
             }
-            builtin = isinstance(need.site, Name);
+            (kind, name) = unmet_label(need);
             self.ctx.emit(
                 E5090,
                 node_override=need.site,
-                kind="this use of native-only builtin"
-                    if builtin
-                    else "native-only construct",
-                name=need.site.value if builtin else need.name,
+                kind=kind,
+                name=name,
                 help_text="This construct only exists natively, but this module "
                 f"is not a candidate for native placement: {why}"
             );

@@ -2199,7 +2199,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         symbol = js_sym;
                     } elif js_sym is not None
                         and symbol is None
-                        and self.neutral_site(expr) {
+                        and self.neutral_site(expr)
+                        and not self.names_a_member(expr) {
                         symbol = js_sym;
                         self.note_client(
                             expr, "E5096", f"'{expr.value}' is a browser global"
@@ -3642,6 +3643,11 @@ impl TypeEvaluator._is_strict_site(nd: UniNode) -> bool {
 impl TypeEvaluator.neutral_site(nd: UniNode) -> bool {
     import from jaclang.compiler.capability_notes { placement_neutral }
     return placement_neutral(nd);
+}
+
+impl TypeEvaluator.names_a_member(nd: Name) -> bool {
+    import from jaclang.compiler.placement.placement { _names_a_member }
+    return _names_a_member(nd);
 }
 
 impl TypeEvaluator.note_native(

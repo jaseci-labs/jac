@@ -207,7 +207,7 @@ def json_refusal(
     if head in JSON_MAPPINGS {
         if len(args) > 0 {
             (key, _key_args) = annotation_shape(args[0]);
-            if key != 'str' {
+            if key not in ('str', 'any', 'Any') {
                 return (
                     spelled,
                     f"a JSON object has string keys, so '{key}' keys arrive as "

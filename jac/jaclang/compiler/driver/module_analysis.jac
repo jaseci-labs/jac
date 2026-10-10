@@ -17,7 +17,8 @@ obj ModuleAnalysis {
         parse_failed: bool = False,
         blocked: bool = False,
         full_head: bool = False,
-        native: bool = False;
+        native: bool = False,
+        placement_only: bool = False;
 
     def postinit {
         self.module = Module.make_stub();
@@ -76,26 +77,13 @@ obj ModuleAnalysis {
     }
 
     def placement {
-        import from jaclang.compiler.placement.placement_solver {
-            place_unanalyzed,
-            solve_program_placement,
-            refresh_placement_module
-        }
-        if self.parse_failed {
-            return;
-        }
-        ledger = self.program.analysis.analyses_run;
-        if not ledger.provides(self.module, AnalysisFact.PLACED_IN) {
-            place_unanalyzed(self.module, self.program);
-            ledger.provided(self.module).add(AnalysisFact.PLACED_IN);
-        }
         if not self.options.symtab_ir_only and not self.blocked {
+            import from jaclang.compiler.placement.placement_solver {
+                solve_program_placement,
+                refresh_placement_module
+            }
             refresh_placement_module(self.module, self.program);
             solve_program_placement(self.module, self.program);
-            import from jaclang.compiler.frontend.constant { CodeContext as _Ctx }
-            self.native = self.module.declares_codespace(
-                _Ctx.NATIVE, path_hint=self.path
-            );
         }
     }
 
@@ -112,6 +100,7 @@ obj ModuleAnalysis {
             or (
                 self.module is not None
                 and not self.parse_failed
+                and not self.module.gen.placement_mode
                 and self.program.infers_native_codespace(self.path)
             );
 
@@ -126,16 +115,13 @@ obj ModuleAnalysis {
         host = active_host();
         _annex_of_base = host.path_facts(self.path).is_annex
             and host.base_file(str(self.path)) is not None;
+        _unasked = self.options.skip_analysis
+            or (self.program.internal and host.import_in_flight(self.path));
         _analyze = self.full_head
             and not _is_decl_stub
             and not _annex_of_base
-            and (
-                candidate
-                or not (
-                    self.options.skip_analysis
-                    or (self.program.internal and host.import_in_flight(self.path))
-                )
-            );
+            and (candidate or not _unasked);
+        self.placement_only = _analyze and _unasked and not self.native;
 
         if _analyze
             and not product_ready(
@@ -192,8 +178,8 @@ obj ModuleAnalysis {
 glob ANALYSIS_PHASES: list[CompilationPhase] = [
          CompilationPhase.PARSE,
          CompilationPhase.IR,
-         CompilationPhase.ANALYSIS,
          CompilationPhase.PLACEMENT,
+         CompilationPhase.ANALYSIS,
          CompilationPhase.BOUNDARIES
      ];
 
@@ -227,20 +213,47 @@ def run_analysis_phases(
     return task;
 }
 
+def carry_comptime_deps(judged: (uni.Module | None), placed: (uni.Module | None)) {
+    if judged is None or placed is None or judged is placed {
+        return;
+    }
+    for dep in judged.ct_file_deps {
+        if dep not in placed.ct_file_deps {
+            placed.ct_file_deps.append(dep);
+        }
+    }
+    for dep in judged.ct_body_deps {
+        if dep not in placed.ct_body_deps {
+            placed.ct_body_deps.append(dep);
+        }
+    }
+    for row in judged.ct_def_deps {
+        if row not in placed.ct_def_deps {
+            placed.ct_def_deps.append(row);
+        }
+    }
+}
+
 def analyze_module(
     program: JacProgram, path: str, options: CompileOptions, source: str | None = None
 ) -> ModuleAnalysis {
+    import from jaclang.compiler.placement.placement_facts { server_plan }
     errors_mark = len(program.errors_had);
     warnings_mark = len(program.warnings_had);
     task = run_analysis_phases(program, path, options, source);
     plan = task.module.gen.placement_plan
         if task.module is not None and not task.parse_failed
         else "";
-    if not plan or len(program.errors_had) > errors_mark or cancelled(options) {
+    failed = len(program.errors_had) > errors_mark;
+    if failed and task.placement_only and not cancelled(options) {
+        del program.errors_had[errors_mark:];
+        plan = server_plan(task.module);
+    } elif not plan or failed or cancelled(options) {
         return task;
     }
     host = active_host();
     host.record_placement_plan(path, plan);
+    judged = task.module;
     try {
         del program.warnings_had[warnings_mark:];
         program.invalidate_module(os.path.realpath(path));
@@ -248,6 +261,7 @@ def analyze_module(
     } finally {
         host.record_placement_plan(path, "");
     }
+    carry_comptime_deps(judged, task.module);
     if task.module is not None
         and not task.parse_failed
         and not task.module.gen.placement_mode {

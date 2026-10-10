@@ -22,7 +22,10 @@ import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.import_wiring_pass { ImportWiringPass }
 import from jaclang.compiler.passes.package_boundary_pass { PackageBoundaryPass }
 
-import from jaclang.compiler.placement.placement_solver { refresh_placement_module }
+import from jaclang.compiler.placement.placement_solver {
+    PlacementApplyPass,
+    refresh_placement_module
+}
 import from jaclang.compiler.frontend.host { active_host }
 import from jaclang.compiler.driver.pipeline_types {
     UtilityProduct,
@@ -57,16 +60,18 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              ),
              ()
          ),
-         'PlacementPass': PassContract(
-             (AnalysisFact.TYPE_OF, ),
+         'PlacementApplyPass': PassContract(
+             (AnalysisFact.SYM_OF, ),
              (
-                 AnalysisFact.CAPABILITY,
-                 AnalysisFact.CLIENT_CAPABILITY,
                  AnalysisFact.PLACED_IN,
                  AnalysisFact.DECIDED_CODESPACE,
                  AnalysisFact.CODESPACE_PULL,
 
              )
+         ),
+         'PlacementPass': PassContract(
+             (AnalysisFact.TYPE_OF, ),
+             (AnalysisFact.CAPABILITY, AnalysisFact.CLIENT_CAPABILITY, )
          ),
          'OwnershipCheckPass': PassContract(
              (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ), (AnalysisFact.OWNERSHIP, )
@@ -327,7 +332,8 @@ def get_symtab_ir_sched -> PassSchedule {
             ASTValidationPass,
             AbsorbImportsPass,
             SymTabBuildPass,
-            DeclImplMatchPass
+            DeclImplMatchPass,
+            PlacementApplyPass
         ],
         origin='symtab-ir schedule'
     );
@@ -493,6 +499,7 @@ def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> PassSc
             passes.append(MTIRGenPass);
         }
         passes.append(JsxIntrinsicGuardPass);
+        passes.append(PlacementApplyPass);
         import from jaclang.compiler.passes.comptime_resolve_pass {
             ComptimeResolvePass
         }

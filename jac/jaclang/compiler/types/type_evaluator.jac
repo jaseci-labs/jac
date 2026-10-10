@@ -595,6 +595,7 @@ walker TypeEvaluator {
     def _diag_unnarrowed_optional(nd: UniNode, ty: TypeBase, required: str) -> bool;
     def _in_native_context -> bool;
     def note_client(nd: UniNode, code: str, text: str) -> None;
+    def names_a_member(nd: Name) -> bool;
     def note_native(nd: UniNode, code: str, text: str, requires: bool = False) -> None;
     def neutral_site(nd: UniNode) -> bool;
     def is_typevar_class(ty: TypeBase) -> bool;

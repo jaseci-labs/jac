@@ -338,6 +338,7 @@ test "a docstring-only module is not a candidate for native placement" {
     }
     prog = JacProgram();
     mod = prog.compile(path, options=CompileOptions(no_cgen=True));
+    prog.options = CompileOptions(default_codespace="native");
     (ok, why) = native_placement_candidate(mod, prog);
     assert not ok , "an empty module was a native candidate";
     assert "empty module" in why , why;

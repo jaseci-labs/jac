@@ -483,6 +483,9 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
 impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> bool {
     import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
     opts = self.options;
+    if opts is not None and opts.no_cgen {
+        return False;
+    }
     if opts is not None and opts.native_unit {
         import from jaclang.compiler.native_scope {
             in_native_scope_path,
