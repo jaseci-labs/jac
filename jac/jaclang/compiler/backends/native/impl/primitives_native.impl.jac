@@ -6447,7 +6447,30 @@ impl NativeBuiltinEmitter.emit_set(
             return _se.emit_copy(_ctx2, val, []);
         }
     }
-    return None;
+    if not ctx.arg_nodes {
+        return None;
+    }
+    listed = self.emit_list(ctx, args);
+    if listed is None {
+        return None;
+    }
+    scalar = False;
+    for (lk, lhelpers) in p.list_helpers.items() {
+        ltype = p.list_types.get(lk);
+        if ltype is not None and listed.type == ltype.as_pointer() {
+            scalar = isinstance(
+                lhelpers["elem_type"], (ir.IntType, ir.DoubleType, ir.FloatType)
+            );
+            break;
+        }
+    }
+    if not scalar {
+        return None;
+    }
+    _ctx3 = ctx.__class__(pass_ref=p, type_key=ctx.type_key);
+    drained = self.emit_set(_ctx3, [listed]);
+    p._release_owned_args([p._mark_owned(listed)], op="set_iter");
+    return drained;
 }
 
 impl NativeBuiltinEmitter.emit_tuple(
