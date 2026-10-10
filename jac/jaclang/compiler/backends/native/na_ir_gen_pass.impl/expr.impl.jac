@@ -583,6 +583,16 @@ impl NaIRGenPass._binds_variable(nd: uni.Expr) -> bool {
         or isinstance(sym.decl.parent, (uni.ModuleItem, uni.ModulePath)) {
         return False;
     }
+    scope = sym.parent_tab;
+    while scope is not None and not isinstance(scope, uni.Module) {
+        scope = scope.parent_scope;
+    }
+    if scope is None
+        or (
+            scope is not self.module and scope is not nd.find_parent_of_type(uni.Module)
+        ) {
+        return False;
+    }
     kind = sym.sym_type;
     return (kind == SymbolType.VAR or kind == SymbolType.MOD_VAR)
         and ability_of_symbol(sym) is None;
