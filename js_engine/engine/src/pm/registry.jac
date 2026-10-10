@@ -11,7 +11,7 @@ Cache folder names follow bun (`<name>@<version>` plus `@@<host>` for a
 non-default registry) so a scoped package nests under its scope directory.
 """
 
-import from engine.src.pm.config { PmConfig, PmRegistry, PM_DEFAULT_REGISTRY }
+import from engine.src.pm.config { PmConfig, PmRegistry, PM_DEFAULT_REGISTRY, pm_npmrc_auth_for }
 import from engine.src.pm.http {
     HttpResponse,
     http_get,
@@ -72,40 +72,70 @@ def _registry_for_url(cfg: PmConfig, url: str) -> PmRegistry {
     return cfg.registry;
 }
 
-"""Authorization header(s) for a request to `url`: the credentials of the
-registry the URL belongs to, sent only to that registry's origin (scheme, host
-and port — a tarball URL on plain http or another port of the same host gets
-none) and only under the path they are keyed to (.npmrc //host/path/)."""
+def _same_origin(reg_url: str, uu: HttpUrl) -> bool {
+    ru: HttpUrl = http_parse_url(reg_url);
+    return ru.ok and http_origin(ru).lower() == http_origin(uu).lower();
+}
+
+"""The configured registry serving `url`'s origin: the one whose URL prefixes
+it, else any registry on the same scheme, host and port (GitHub Packages serves
+a scope's tarballs under /download/, outside the scope registry's path). An
+empty registry when the URL's origin is no registry's."""
+def _registry_for_auth(cfg: PmConfig, url: str, uu: HttpUrl) -> PmRegistry {
+    r: PmRegistry = _registry_for_url(cfg, url);
+    if _same_origin(r.url, uu) {
+        return r;
+    }
+    if _same_origin(cfg.registry.url, uu) {
+        return cfg.registry;
+    }
+    for scope in cfg.scopes {
+        s: PmRegistry = cfg.scopes[scope];
+        if _same_origin(s.url, uu) {
+            return s;
+        }
+    }
+    return PmRegistry();
+}
+
+"""Authorization header(s) for a request to `url`, sent only to the origin of a
+configured registry (scheme, host and port — a tarball URL on plain http or
+another port of the same host gets none). The credentials are those of the most
+specific .npmrc `//host/path/` key covering the URL (pm_npmrc_auth_for), else
+that registry's own bunfig/env ones."""
 def:pub pm_auth_headers(cfg: PmConfig, url: str) -> list[str] {
     out: list[str] = [];
-    r: PmRegistry = _registry_for_url(cfg, url);
-    ru: HttpUrl = http_parse_url(r.url);
     uu: HttpUrl = http_parse_url(url);
-    if not ru.ok or not uu.ok {
+    if not uu.ok {
         return out;
     }
-    if http_origin(uu).lower() != http_origin(ru).lower() {
+    r: PmRegistry = _registry_for_auth(cfg, url, uu);
+    if r.url == "" {
         return out;
     }
-    if not uu.path.startswith(r.auth_path) {
+    creds: list[str] = pm_npmrc_auth_for(cfg, url);
+    if len(creds) == 0 {
+        creds = r.inline_auth;
+        if len(creds) == 0 {
+            creds = [r.token, r.auth_basic, r.username, r.password];
+        }
+    }
+    if creds[0] != "" {
+        out.append("Authorization: Bearer " + creds[0]);
         return out;
     }
-    if r.token != "" {
-        out.append("Authorization: Bearer " + r.token);
+    if creds[1] != "" {
+        out.append("Authorization: Basic " + creds[1]);
         return out;
     }
-    if r.auth_basic != "" {
-        out.append("Authorization: Basic " + r.auth_basic);
-        return out;
-    }
-    if r.username != "" {
-        pw: str = r.password;
+    if creds[2] != "" {
+        pw: str = creds[3];
         dec: ByteBuf = b64_decode(pw);
         if dec.len > 0 {
             pw = bytebuf_to_str(dec);
         }
         bytebuf_free(dec);
-        cred: str = r.username + ":" + pw;
+        cred: str = creds[2] + ":" + pw;
         cp: int = str_to_cbuf(cred);
         out.append("Authorization: Basic " + b64_encode(cp, len(cred)));
         io_free(cp);

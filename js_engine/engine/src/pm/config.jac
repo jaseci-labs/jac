@@ -64,7 +64,7 @@ obj:pub PmRegistry {
         password: str = "",
         auth_basic: str = "",
         source: str = "",
-        auth_path: str = "/";  # credentials are sent only to URLs under this path
+        inline_auth: list[str] = [];  # bunfig/env [token, _auth, username, password], kept before .npmrc keys apply
 }
 
 # .npmrc `_password` is base64 — decoded when the request is built
@@ -663,15 +663,65 @@ def _cfg_apply_auth_to(r: PmRegistry, a: PmAuthEntry) -> None {
         r.username = a.value;
     } elif a.field == "_password" {
         r.password = a.value;
-    } else {
-        return;
     }
-    # A //host/path/ key scopes its credentials to that path, as in npm: keep
-    # the narrowest path among the entries that applied.
-    slash: int = a.prefix.find("/");
-    if slash >= 0 and len(a.prefix) - slash > len(r.auth_path) {
-        r.auth_path = a.prefix[slash:];
+}
+
+def _cfg_keep_inline_auth(r: PmRegistry) -> None {
+    if len(r.inline_auth) == 0 {
+        r.inline_auth = [r.token, r.auth_basic, r.username, r.password];
     }
+}
+
+def _cfg_auth_field_index(field: str) -> int {
+    if field == "_authToken" {
+        return 0;
+    }
+    if field == "_auth" {
+        return 1;
+    }
+    if field == "username" {
+        return 2;
+    }
+    if field == "_password" {
+        return 3;
+    }
+    return -1;
+}
+
+"""The .npmrc credentials for a request to `url`, chosen as npm does: of the
+`//host/path/` keys that prefix the URL (scheme dropped), the longest one that
+holds a token, `_auth` or a username. A key's fields go together (the last
+value of each wins) and never mix with another key's, so a broader key's token
+is not held to a narrower key's path. Returns [token, _auth, username,
+_password], or [] when no key covers `url`."""
+def:pub pm_npmrc_auth_for(cfg: PmConfig, url: str) -> list[str] {
+    key: str = _cfg_url_no_scheme(url);
+    by_prefix: dict[str, list[str]] = {};
+    for a in cfg.auth_entries {
+        idx: int = _cfg_auth_field_index(a.field);
+        if idx < 0 or not key.startswith(a.prefix) {
+            continue;
+        }
+        if not (a.prefix in by_prefix) {
+            by_prefix[a.prefix] = ["", "", "", ""];
+        }
+        creds: list[str] = by_prefix[a.prefix];
+        creds[idx] = a.value;
+    }
+    best: str = "";
+    found: bool = False;
+    for p in by_prefix {
+        c: list[str] = by_prefix[p];
+        usable: bool = c[0] != "" or c[1] != "" or c[2] != "";
+        if usable and (not found or len(p) > len(best)) {
+            best = p;
+            found = True;
+        }
+    }
+    if not found {
+        return [];
+    }
+    return by_prefix[best];
 }
 
 def:pub pm_config_finalize(cfg: PmConfig) {
@@ -694,6 +744,10 @@ def:pub pm_config_finalize(cfg: PmConfig) {
     if cfg.global_bin_dir == "" {
         cfg.global_bin_dir = inst_root + "/bin";
         _cfg_mark(cfg, "global_bin_dir", "default");
+    }
+    _cfg_keep_inline_auth(cfg.registry);
+    for s0 in cfg.scopes {
+        _cfg_keep_inline_auth(cfg.scopes[s0]);
     }
     for a in cfg.auth_entries {
         _cfg_apply_auth_to(cfg.registry, a);
