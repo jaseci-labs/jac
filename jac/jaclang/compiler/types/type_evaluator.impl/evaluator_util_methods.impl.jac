@@ -1977,7 +1977,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not spec {
         return None;
     }
-    if not node_.in_client_context() and not self.neutral_site(node_) {
+    if not node_.in_client_context() {
         return None;
     }
     mod_path = node_.loc.mod_path if node_.loc else None;

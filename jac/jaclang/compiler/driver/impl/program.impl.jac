@@ -551,12 +551,17 @@ impl JacProgram.parse_source(
         if plan is not None and native_placement_hard(self, file_path) {
             plan = None;
         }
+        infer_native = plan is None
+            and not codespace
+            and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
             source_str,
             file_path,
             self,
             annex_sources(file_path),
-            early_context='' if plan is not None else codespace
+            early_context=''
+                if plan is not None
+                else (codespace or ('' if infer_native else 'server'))
         );
         if plan is not None {
             apply_plan(parsed, plan);
@@ -570,6 +575,8 @@ impl JacProgram.parse_source(
         } elif codespace == 'server' {
             parsed.set_code_context(CodeContext.SERVER);
             parsed.gen.placement_mode = 'declared';
+        } else {
+            parsed.gen.native_undecided = infer_native;
         }
     }
     hub_key = self.hub_key(parsed.loc.mod_path);

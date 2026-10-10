@@ -438,24 +438,6 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
             }
             if isinstance(parent, Test) {
                 in_async = parent.in_client_context();
-                if not in_async {
-                    import from jaclang.compiler.capability_notes {
-                        TARGET_CLIENT,
-                        note_capability as _note_await,
-                        placement_neutral as _undecided
-                    }
-                    if _undecided(parent) {
-                        _note_await(
-                            self.prog,
-                            nd,
-                            TARGET_CLIENT,
-                            "E5096",
-                            "await in a test",
-                            True
-                        );
-                        in_async = True;
-                    }
-                }
                 break;
             }
             if isinstance(parent, Ability) {

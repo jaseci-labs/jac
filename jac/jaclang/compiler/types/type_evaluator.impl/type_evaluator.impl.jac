@@ -2197,14 +2197,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     js_sym = self.js_globals_module.names_in_scope.get(_js_name);
                     if js_sym is not None and expr.in_client_context() {
                         symbol = js_sym;
-                    } elif js_sym is not None
-                        and symbol is None
-                        and self.neutral_site(expr)
-                        and not self.names_a_member(expr) {
-                        symbol = js_sym;
-                        self.note_client(
-                            expr, "E5096", f"'{expr.value}' is a browser global"
-                        );
                     }
                 }
                 if symbol {
@@ -3645,11 +3637,6 @@ impl TypeEvaluator.neutral_site(nd: UniNode) -> bool {
     return placement_neutral(nd);
 }
 
-impl TypeEvaluator.names_a_member(nd: Name) -> bool {
-    import from jaclang.compiler.placement.placement { _names_a_member }
-    return _names_a_member(nd);
-}
-
 impl TypeEvaluator.note_native(
     nd: UniNode, code: str, text: str, requires: bool = False
 ) -> None {
@@ -3658,14 +3645,6 @@ impl TypeEvaluator.note_native(
     }
     import from jaclang.compiler.capability_notes { TARGET_NATIVE, note_capability }
     note_capability(self.program, nd, TARGET_NATIVE, code, text, requires);
-}
-
-impl TypeEvaluator.note_client(nd: UniNode, code: str, text: str) -> None {
-    if self._diagnostic_suppression_depth > 0 {
-        return;
-    }
-    import from jaclang.compiler.capability_notes { TARGET_CLIENT, note_capability }
-    note_capability(self.program, nd, TARGET_CLIENT, code, text, True);
 }
 
 impl TypeEvaluator._in_native_context -> bool {

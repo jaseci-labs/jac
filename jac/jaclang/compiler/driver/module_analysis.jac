@@ -213,6 +213,20 @@ def run_analysis_phases(
     return task;
 }
 
+def keep_hub_order(program: JacProgram, order: list[str]) {
+    hub = program.mod.hub;
+    held = [key for key in order if key in hub];
+    if list(hub.keys())[:len(held)] == held {
+        return;
+    }
+    entries = dict(hub);
+    hub.clear();
+    for key in held {
+        hub[key] = entries.pop(key);
+    }
+    hub.update(entries);
+}
+
 def carry_comptime_deps(judged: (uni.Module | None), placed: (uni.Module | None)) {
     if judged is None or placed is None or judged is placed {
         return;
@@ -254,6 +268,7 @@ def analyze_module(
     host = active_host();
     host.record_placement_plan(path, plan);
     judged = task.module;
+    order = list(program.mod.hub.keys());
     try {
         del program.warnings_had[warnings_mark:];
         program.invalidate_module(os.path.realpath(path));
@@ -261,6 +276,7 @@ def analyze_module(
     } finally {
         host.record_placement_plan(path, "");
     }
+    keep_hub_order(program, order);
     carry_comptime_deps(judged, task.module);
     if task.module is not None
         and not task.parse_failed

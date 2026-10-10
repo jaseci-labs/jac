@@ -31,6 +31,7 @@ import from jaclang.compiler.driver.module_analysis {
     analyze_module,
     cancelled,
     carry_comptime_deps,
+    keep_hub_order,
     record_phase
 }
 
@@ -432,12 +433,14 @@ def compile_task(
     }
     if refusal is not None {
         refused = analysis.module;
+        order = list(program.mod.hub.keys());
         place_on_server(program, path, refused, refusal, errors_mark, warnings_mark);
         try {
             analysis = analyze_for_compile(program, path, options, source);
         } finally {
             active_host().record_placement_plan(path, "");
         }
+        keep_hub_order(program, order);
         carry_comptime_deps(refused, analysis.module);
         run_codegen_phases(session, program, analysis, options);
         again = native_refusal(program, analysis, len(program.errors_had), False);

@@ -56,12 +56,14 @@ def forget_capability_notes(prog: JacProgram, mod_path: str) {
 }
 
 def placement_neutral(nd: UniNode) -> bool {
-    """Whether `nd` sits in a module whose placement has not been decided:
-    the first analysis of a module with no declared codespace. What only one
-    codespace has is then a fact to record for placement, not an error.""";
+    """Whether `nd` sits in code whose native placement is still open: the
+    first analysis of a module that has no declared codespace and may take
+    the project's native preference. What only native code can do is then a
+    fact to record for placement. Anywhere else it is what the checker says
+    it is.""";
     if nd.in_native_context() or nd.in_client_context() {
         return False;
     }
     mod = nd if isinstance(nd, Module) else nd.find_parent_of_type(Module);
-    return mod is not None and mod.gen.placement_mode == "";
+    return mod is not None and mod.gen.native_undecided;
 }

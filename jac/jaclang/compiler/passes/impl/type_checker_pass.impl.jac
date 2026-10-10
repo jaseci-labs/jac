@@ -1437,12 +1437,7 @@ impl TypeCheckPass._client_state_field_owner(nd: HasVar) -> (Ability | None) {
         return None;
     }
     if not nd.in_client_context() {
-        if not self.evaluator.neutral_site(nd) {
-            return None;
-        }
-        self.evaluator.note_client(
-            nd, "E5096", "component state declared in a function"
-        );
+        return None;
     }
     probes: list[Expr | None] = [nd.value, nd.type_tag.tag if nd.type_tag else None];
     for probe in probes {

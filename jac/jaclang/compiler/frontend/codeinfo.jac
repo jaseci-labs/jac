@@ -1162,6 +1162,7 @@ obj CodeGenTarget {
         native_refusal: str = "",
         native_refusal_code: str = "",
         placement_mode: str = "",
+        native_undecided: bool = False,
         placement_plan: str = "",
         _interop_manifest: (InteropManifest | None) = None,
         interop_py_funcs: dict[(str, any)] = {},

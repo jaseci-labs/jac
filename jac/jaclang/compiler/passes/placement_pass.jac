@@ -727,8 +727,9 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
         active_host().record_native_coverage(mod_path, 'native');
     }
     refresh_placement_module(ir_in, self.prog);
-    solve_module_placement(ir_in, self.prog);
-    placement_work(self.prog).changed(ir_in);
+    if solve_module_placement(ir_in, self.prog) {
+        placement_work(self.prog).changed(ir_in);
+    }
     report_serverless_kind_errors(self, ir_in);
     return ir_in;
 }
@@ -814,8 +815,10 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
             }
         }
     }
-    solve_module_placement(ir_in, self.prog);
-    placement_work(self.prog).changed(ir_in);
+    pulled = solve_module_placement(ir_in, self.prog);
+    if pulled or contexts_of(ir_in) != given {
+        placement_work(self.prog).changed(ir_in);
+    }
 
     placed: list[CodeContext] = [];
     seen: set[int] = set();
@@ -855,7 +858,9 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     ir_in.decided_codespace = uniform.value
         if uniform is not None and uniform != CodeContext.SERVER
         else "";
-    ir_in.codespace_inferred = bool(tentative);
+    ir_in.codespace_inferred = any(
+        elem.code_context == CodeContext.NATIVE for elem in tentative
+    );
     if CodeContext.NATIVE in placed {
         active_host().record_native_coverage(mod_path, 'native');
     } else {

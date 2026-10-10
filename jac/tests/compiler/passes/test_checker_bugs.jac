@@ -1134,12 +1134,11 @@ test "bug_withas_2_native_alias_typed_outside_a_pass" {
     assert len(opens) == 1 and len(uses) == 1 , f"fixture shape changed: {opens} {uses}";
     open_type = str(evaluator.get_type_of_expression(opens[0]));
     alias_type = str(evaluator.get_type_of_expression(uses[0]));
-    assert open_type == "BufferedReader" , (
-        f"Bug #WITHAS-2: `open(path, \"rb\")` typed {open_type}, not the Python "
-        f"interface's BufferedReader"
+    assert open_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: native `open(path, \"rb\")` typed {open_type}, not BinaryFile"
     );
-    assert alias_type == "BufferedReader" , (
-        f"Bug #WITHAS-2: the `with` alias typed {alias_type}, not BufferedReader"
+    assert alias_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: the `with` alias typed {alias_type}, not BinaryFile"
     );
 }
 

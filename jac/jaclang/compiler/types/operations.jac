@@ -758,13 +758,8 @@ def get_type_of_binary_operation(
         _jid_target = (
             isinstance(target_type, ClassType)
             and target_type.is_builtin("str")
-            and (expr.in_client_context() or evaluator.neutral_site(expr))
+            and expr.in_client_context()
         );
-        if _jid_target and not expr.in_client_context() {
-            evaluator.note_client(
-                target_node, "E1115", "a walker spawned on a node id string"
-            );
-        }
         if not _jid_target and not is_archetype_target(target_type) {
             evaluator.emit_diag(E1115, target_node, type=str(target_type));
         }
