@@ -84,10 +84,10 @@ obj ModuleAnalysis {
         if self.parse_failed {
             return;
         }
-        if not self.program.analysis.analyses_run.provides(
-            self.module, AnalysisFact.PLACED_IN
-        ) {
+        ledger = self.program.analysis.analyses_run;
+        if not ledger.provides(self.module, AnalysisFact.PLACED_IN) {
             place_unanalyzed(self.module, self.program);
+            ledger.provided(self.module).add(AnalysisFact.PLACED_IN);
         }
         if not self.options.symtab_ir_only and not self.blocked {
             refresh_placement_module(self.module, self.program);
