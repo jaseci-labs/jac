@@ -346,6 +346,42 @@ def _attach_call_cost(
 }
 
 
+def _attach_image_cost(
+    usage_obj: object, model_name: str, response: object, params: dict[str, any]
+) -> None {
+    if _existing_cost(usage_obj) is not None {
+        return;
+    }
+    def lookup -> object {
+        image_response = (
+            litellm.ImageResponse(**response)
+                if isinstance(response, dict)
+                else response
+        );
+        return litellm.completion_cost(
+            completion_response=image_response,
+            model=model_name,
+            call_type="image_generation",
+            size=params.get("size"),
+            quality=params.get("quality"),
+            n=params.get("n"),
+            optional_params=params
+        );
+    }
+    cost = _quiet_lookup(lookup, None);
+    if cost is None {
+        return;
+    }
+    if isinstance(usage_obj, dict) {
+        usage_obj["cost"] = cost;
+    } else {
+        try {
+            setattr(usage_obj, "cost", cost);
+        } except Exception {}
+    }
+}
+
+
 def _usage_to_dict(usage_obj: object) -> dict[str, any] {
     if usage_obj is None {
         return {};
@@ -2005,12 +2041,10 @@ impl BaseLLM.dispatch_image(mt_run: MTRuntime) -> object {
     }
     self.log_info(f"Calling image model: {self.model_name} with params: {params}");
     response = self.model_call_image(params);
-    _record_usage(
-        mt_run,
-        response.get("usage") or {},
-        str(response.get("model") or self.model_name),
-        call_kind="image_generation"
-    );
+    usage = response.get("usage") or {};
+    actual_model = str(response.get("model") or self.model_name);
+    _attach_image_cost(usage, actual_model, response, params);
+    _record_usage(mt_run, usage, actual_model, call_kind="image_generation");
     images = _images_from_response(response);
     return images if image_resp_kind(mt_run.resp_type) == "many" else images[0];
 }

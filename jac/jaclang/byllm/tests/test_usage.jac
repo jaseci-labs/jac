@@ -14,13 +14,14 @@ import unittest.mock;
 import types;
 import litellm;
 import jaclang.byllm.llm as _byllm_llm_mod;
-import from jaclang.byllm.lib { Model, MockLLM }
+import from jaclang.byllm.lib { Image, Model, MockLLM }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { MockToolCall, IterationContext }
 import from jaclang.byllm.telemetry { register_agent_callback, _agent_callbacks }
 import from support { TOKENS, call, events_of, finish, mk_run, say, scripted }
 
 glob MODEL = "gpt-4o-mini",
+     IMAGE_MODEL = "aiml/flux/dev",
      UNPRICEABLE = "openai/ft:definitely-not-a-real-model:acme::zzz",
      DISPATCH_PATHS = [
          "dispatch_no_streaming",
@@ -197,6 +198,69 @@ test "_attach_call_cost trusts a cost litellm already computed" {
         );
     }
     assert usage.cost == 0.0042 , "a cost litellm already attached must not be overwritten";
+}
+
+
+test "image generation records priced single and multi-image calls in sync and async paths" {
+    unit_cost = float(litellm.model_cost[IMAGE_MODEL]["output_cost_per_image"]);
+    assert unit_cost > 0.0 , f"litellm has no usable image price for {IMAGE_MODEL}";
+
+    sync_llm = MockLLM(
+        model_name=IMAGE_MODEL,
+        outputs=[["https://example.com/a.png", "https://example.com/b.png"]]
+    );
+    sync_run = mk_run(resp_type=list[Image], call_params={"n": 2});
+    sync_images = sync_llm.invoke(sync_run);
+    assert len(sync_images) == 2;
+    sync_cost = sync_run._usage_history[-1].get("cost");
+    assert sync_run._usage_history[-1]["call_kind"] == "image_generation";
+    assert sync_cost is not None and abs(sync_cost - 2 * unit_cost) < 1e-12 , (
+        f"two images cost {sync_cost}, expected {2 * unit_cost}"
+    );
+
+    async_llm = MockLLM(model_name=IMAGE_MODEL, outputs=["https://example.com/a.png"]);
+    async_run = mk_run(resp_type=Image);
+    async_image = asyncio.run(async_llm.ainvoke(async_run));
+    assert isinstance(async_image, Image);
+    async_cost = async_run._usage_history[-1].get("cost");
+    assert async_run._usage_history[-1]["call_kind"] == "image_generation";
+    assert async_cost is not None and abs(async_cost - unit_cost) < 1e-12 , (
+        f"one async image cost {async_cost}, expected {unit_cost}"
+    );
+}
+
+
+test "image generation preserves provider cost and leaves unknown prices absent" {
+    provider_usage = {"cost": 0.0042};
+    response = {"model": IMAGE_MODEL, "data": [{"url": "https://example.com/a.png"}]};
+    with unittest.mock.patch.object(
+        litellm, "completion_cost", return_value=999.0
+    ) as spy {
+        _byllm_llm_mod._attach_image_cost(
+            provider_usage, IMAGE_MODEL, response, {"n": 1}
+        );
+        assert spy.call_count == 0 , (
+            "a provider-reported image cost must not trigger recomputation"
+        );
+    }
+    assert provider_usage["cost"] == 0.0042 , (
+        "a provider-reported image cost must not be overwritten"
+    );
+
+    printed = io.StringIO();
+    unknown_llm = MockLLM(
+        model_name=UNPRICEABLE, outputs=["https://example.com/a.png"]
+    );
+    unknown_run = mk_run(resp_type=Image);
+    with contextlib.redirect_stdout(printed) {
+        unknown_llm.invoke(unknown_run);
+    }
+    assert unknown_run._usage_history[-1].get("cost") is None , (
+        "an unpriceable image model must remain unknown instead of appearing free"
+    );
+    assert "Provider List" not in printed.getvalue() , (
+        f"the swallowed image-cost lookup printed {printed.getvalue()!r}"
+    );
 }
 
 
