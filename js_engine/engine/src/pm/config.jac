@@ -63,7 +63,8 @@ obj:pub PmRegistry {
         username: str = "",
         password: str = "",
         auth_basic: str = "",
-        source: str = "";
+        source: str = "",
+        auth_path: str = "/";  # credentials are sent only to URLs under this path
 }
 
 # .npmrc `_password` is base64 — decoded when the request is built
@@ -662,6 +663,14 @@ def _cfg_apply_auth_to(r: PmRegistry, a: PmAuthEntry) -> None {
         r.username = a.value;
     } elif a.field == "_password" {
         r.password = a.value;
+    } else {
+        return;
+    }
+    # A //host/path/ key scopes its credentials to that path, as in npm: keep
+    # the narrowest path among the entries that applied.
+    slash: int = a.prefix.find("/");
+    if slash >= 0 and len(a.prefix) - slash > len(r.auth_path) {
+        r.auth_path = a.prefix[slash:];
     }
 }
 

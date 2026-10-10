@@ -15,6 +15,7 @@ import from engine.src.pm.config { PmConfig, PmRegistry, PM_DEFAULT_REGISTRY }
 import from engine.src.pm.http {
     HttpResponse,
     http_get,
+    http_origin,
     http_parse_url,
     HttpUrl,
     http_body_str
@@ -71,18 +72,22 @@ def _registry_for_url(cfg: PmConfig, url: str) -> PmRegistry {
     return cfg.registry;
 }
 
-"""Authorization header(s) for a request to `url`, matched like bun/npm: by
-the registry the URL belongs to."""
+"""Authorization header(s) for a request to `url`: the credentials of the
+registry the URL belongs to, sent only to that registry's origin (scheme, host
+and port — a tarball URL on plain http or another port of the same host gets
+none) and only under the path they are keyed to (.npmrc //host/path/)."""
 def:pub pm_auth_headers(cfg: PmConfig, url: str) -> list[str] {
     out: list[str] = [];
     r: PmRegistry = _registry_for_url(cfg, url);
-    same_host: bool = False;
     ru: HttpUrl = http_parse_url(r.url);
     uu: HttpUrl = http_parse_url(url);
-    if ru.ok and uu.ok and ru.host == uu.host {
-        same_host = True;
+    if not ru.ok or not uu.ok {
+        return out;
     }
-    if not same_host {
+    if http_origin(uu).lower() != http_origin(ru).lower() {
+        return out;
+    }
+    if not uu.path.startswith(r.auth_path) {
         return out;
     }
     if r.token != "" {

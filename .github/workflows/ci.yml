@@ -57,6 +57,7 @@ jobs:
       native: ${{ steps.filter.outputs.native }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
+      js_engine: ${{ steps.filter.outputs.js_engine }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -77,6 +78,8 @@ jobs:
               - 'jac/jaclang/byllm/**'
             site_journey:
               - 'scripts/site-browse-journey.sh'
+            js_engine:
+              - 'js_engine/**'
             pack_smoke:
               - 'scripts/ci_perf.jac'
               - 'scripts/ci_perf.test.jac'
@@ -391,7 +394,7 @@ jobs:
   # does.
   build-js-engine:
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -704,8 +707,8 @@ jobs:
         run: bash scripts/check-release-notes.sh
 
   test-compiler:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       # Per-leg, not per-step: jac-kit reads this to decide whether to seed the
@@ -751,6 +754,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # The ES backend tests run their generated JavaScript on it.
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Set up Zig for compiler runtime and ELF fixtures
         if: matrix.chunk == 'passes-native'
         uses: mlugg/setup-zig@v2
@@ -790,7 +797,7 @@ jobs:
   # Everything except the compiler tests.
   test-runtime:
     needs: [changes, build-kit, build-js-engine]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -896,7 +903,7 @@ jobs:
 
   test-client:
     needs: [changes, build-kit, build-js-engine]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -969,7 +976,7 @@ jobs:
 
   test-scale:
     needs: [changes, build-kit, build-js-engine]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: ""
@@ -1201,7 +1208,7 @@ jobs:
 
   test-jac-pack-smoke:
     needs: [changes, build-kit, build-js-engine]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # actions: read lets the performance report list main's runs and download
     # their pack-smoke-performance artifacts for the wall-time comparison.
@@ -1751,7 +1758,7 @@ jobs:
 
   test-jac-pack-eject:
     needs: [changes, build-kit, build-js-engine]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"

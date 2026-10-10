@@ -79,9 +79,9 @@ test "a boundary type the module also imports from its own module keeps one bind
     # identifier are a SyntaxError that leaves the whole page blank.
     assert re.search(r"import \{[^}]*\bRepoMeta\b[^}]*\} from", js) , js[:400];
     assert not re.search(r"^class RepoMeta\b", js, re.M) , "decoder reuses the imported name";
-    bun = get_bun();
-    if bun is None {
-        testskip("Bun is required to execute generated JavaScript");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required to execute generated JavaScript");
     }
     js = re.sub(r"import[^;]+;", "", js);
     harness = """
@@ -100,7 +100,7 @@ check(new RepoMeta().owner === 'local', 'imported class was replaced');
             f.write(harness.replace("const first", js + "\nconst first", 1));
         }
         result = subprocess.run(
-            [bun, script], capture_output=True, text=True, timeout=30
+            [js_engine, script], capture_output=True, text=True, timeout=30
         );
         assert result.returncode == 0 , result.stdout + result.stderr;
     }

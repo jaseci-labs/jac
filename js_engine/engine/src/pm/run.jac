@@ -47,12 +47,30 @@ def:pub pm_find_project_dir(start: str) -> str {
     }
 }
 
+# Characters sh takes literally in a word (Python's shlex.quote set).
+glob _SH_SAFE: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@%+=:,./-_";
+
+"""`arg` as one sh word: as is when every character is literal, otherwise in
+single quotes (an embedded ' as '\\''), the way npm and bun hand `run`
+arguments to the script."""
+def _sh_quote(arg: str) -> str {
+    if arg == "" {
+        return "''";
+    }
+    for ch in arg {
+        if _SH_SAFE.find(ch) < 0 {
+            return "'" + arg.replace("'", "'\\''") + "'";
+        }
+    }
+    return arg;
+}
+
 def _run_one(
     root_dir: str, pj: JVal, name: str, script: str, extra: list[str], silent: bool
 ) -> int {
     cmd: str = script;
-    if len(extra) > 0 {
-        cmd = cmd + " " + " ".join(extra);
+    for a in extra {
+        cmd = cmd + " " + _sh_quote(a);
     }
     if not silent {
         _err("$ " + cmd + "\n");
