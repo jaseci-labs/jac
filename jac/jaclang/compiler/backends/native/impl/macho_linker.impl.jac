@@ -667,6 +667,9 @@ impl MachOLinker._consolidate(
 
             cur_logical = tgt.size if tgt.size > len(tgt.data) else len(tgt.data);
             aligned = _align(cur_logical, max(ms.align, 1));
+            if ms.align > tgt.align {
+                tgt.align = ms.align;
+            }
             new_data = bytearray(tgt.data);
             if len(ms.data) > 0 {
                 new_data.extend(b"\x00" * (aligned - len(new_data)));
@@ -830,7 +833,7 @@ impl MachOLinker._allocate_commons -> None {
                 addr=0,
                 size=0,
                 data=b"",
-                align=3,
+                align=8,
                 flags=0,
                 reserved1=0,
                 reserved2=0
@@ -839,6 +842,7 @@ impl MachOLinker._allocate_commons -> None {
     }
     sec = self.sections[target];
     blob = bytearray(sec.data);
+    sec_align = sec.align if sec.align > 8 else 8;
 
     for name in sorted(self._commons.keys()) {
         if name in already {
@@ -848,6 +852,9 @@ impl MachOLinker._allocate_commons -> None {
         align = 1 << align_log2 if align_log2 > 0 else 1;
         if align < 1 {
             align = 1;
+        }
+        if align > sec_align {
+            sec_align = align;
         }
         start = _align(len(blob), align);
         blob.extend(b"\x00" * (start - len(blob)));
@@ -866,9 +873,7 @@ impl MachOLinker._allocate_commons -> None {
     }
     sec.data = bytes(blob);
     sec.size = len(blob);
-    if sec.align < 3 {
-        sec.align = 3;
-    }
+    sec.align = sec_align;
 }
 
 
@@ -921,6 +926,9 @@ impl MachOLinker.build_executable -> bytes {
 
     sec_placement: dict[int, tuple[str, int]] = {};
     dropped_secs: set[str] = set();
+    code_align: int = 16;
+    rodata_align: int = 16;
+    data_align: int = 16;
 
     for (sec_idx, sec) in enumerate(self.sections) {
         if sec.name.startswith("__debug")
@@ -940,14 +948,23 @@ impl MachOLinker.build_executable -> bytes {
             off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
             code_sections[sec_key] = (off, len(sec.data));
             sec_placement[sec_idx] = ("code", off);
+            if sec.align > code_align {
+                code_align = sec.align;
+            }
         } elif is_rodata {
             off = _append_to_blob(rodata_data, sec.data, sec.align, len(sec.data));
             rodata_sections[sec_key] = (off, len(sec.data));
             sec_placement[sec_idx] = ("rodata", off);
+            if sec.align > rodata_align {
+                rodata_align = sec.align;
+            }
         } elif is_data and sec.size > 0 {
             off = _append_to_blob(data_data, sec.data, sec.align, sec.size);
             data_sections[sec_key] = (off, sec.size);
             sec_placement[sec_idx] = ("data", off);
+            if sec.align > data_align {
+                data_align = sec.align;
+            }
         } else {
             dropped_secs.add(sec_key);
         }
@@ -1097,17 +1114,17 @@ impl MachOLinker.build_executable -> bytes {
     text_seg_start = 0;
     header_area = mh_size + lc_total_size;
 
-    text_sec_foff = _align(header_area, 16);
+    text_sec_foff = _align(header_area, code_align);
     text_sec_size = len(code_data);
 
     stubs_sec_foff = _align(text_sec_foff + text_sec_size, 4) if num_stubs > 0 else 0;
 
     if num_stubs > 0 {
-        const_sec_foff = _align(stubs_sec_foff + stubs_total_size, 16)
+        const_sec_foff = _align(stubs_sec_foff + stubs_total_size, rodata_align)
             if len(rodata_data) > 0
             else 0;
     } else {
-        const_sec_foff = _align(text_sec_foff + text_sec_size, 16)
+        const_sec_foff = _align(text_sec_foff + text_sec_size, rodata_align)
             if len(rodata_data) > 0
             else 0;
     }
@@ -1135,9 +1152,9 @@ impl MachOLinker.build_executable -> bytes {
     data_sec_vaddr = 0;
     if len(data_data) > 0 {
         if num_got > 0 {
-            data_sec_foff = _align(got_sec_foff + got_total_size, 16);
+            data_sec_foff = _align(got_sec_foff + got_total_size, data_align);
         } else {
-            data_sec_foff = data_seg_foff;
+            data_sec_foff = _align(data_seg_foff, data_align);
         }
         data_sec_vaddr = base_vmaddr + data_sec_foff;
     }
@@ -1612,7 +1629,7 @@ impl MachOLinker.build_executable -> bytes {
         text_sec_vaddr,
         text_sec_size,
         text_sec_foff,
-        4,
+        _align_log2(code_align),
         S_REGULAR | S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS,
         0,
         0
@@ -1646,7 +1663,7 @@ impl MachOLinker.build_executable -> bytes {
             const_sec_vaddr,
             len(rodata_data),
             const_sec_foff,
-            4,
+            _align_log2(rodata_align),
             S_REGULAR,
             0,
             0
@@ -1700,7 +1717,7 @@ impl MachOLinker.build_executable -> bytes {
                 data_sec_vaddr,
                 len(data_data),
                 data_sec_foff,
-                4,
+                _align_log2(data_align),
                 S_REGULAR,
                 0,
                 0
@@ -1900,6 +1917,9 @@ impl MachOLinker.build_shared_object -> bytes {
     data_sections: dict[str, tuple[int, int]] = {};
     sec_placement: dict[int, tuple[str, int]] = {};
     dropped_secs: set[str] = set();
+    code_align: int = 16;
+    rodata_align: int = 16;
+    data_align: int = 16;
     for (sec_idx, sec) in enumerate(self.sections) {
         if sec.name.startswith("__debug")
             or sec.name.startswith("__apple")
@@ -1917,14 +1937,23 @@ impl MachOLinker.build_shared_object -> bytes {
             off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
             code_sections[sec_key] = (off, len(sec.data));
             sec_placement[sec_idx] = ("code", off);
+            if sec.align > code_align {
+                code_align = sec.align;
+            }
         } elif is_rodata {
             off = _append_to_blob(rodata_data, sec.data, sec.align, len(sec.data));
             rodata_sections[sec_key] = (off, len(sec.data));
             sec_placement[sec_idx] = ("rodata", off);
+            if sec.align > rodata_align {
+                rodata_align = sec.align;
+            }
         } elif is_data and sec.size > 0 {
             off = _append_to_blob(data_data, sec.data, sec.align, sec.size);
             data_sections[sec_key] = (off, sec.size);
             sec_placement[sec_idx] = ("data", off);
+            if sec.align > data_align {
+                data_align = sec.align;
+            }
         } else {
             dropped_secs.add(sec_key);
         }
@@ -2079,15 +2108,15 @@ impl MachOLinker.build_shared_object -> bytes {
     }
 
     header_area = mh_size + lc_total_size;
-    text_sec_foff = _align(header_area, 16);
+    text_sec_foff = _align(header_area, code_align);
     text_sec_size = len(code_data);
     stubs_sec_foff = _align(text_sec_foff + text_sec_size, 4) if num_stubs > 0 else 0;
     if num_stubs > 0 {
-        const_sec_foff = _align(stubs_sec_foff + stubs_total_size, 16)
+        const_sec_foff = _align(stubs_sec_foff + stubs_total_size, rodata_align)
             if len(rodata_data) > 0
             else 0;
     } else {
-        const_sec_foff = _align(text_sec_foff + text_sec_size, 16)
+        const_sec_foff = _align(text_sec_foff + text_sec_size, rodata_align)
             if len(rodata_data) > 0
             else 0;
     }
@@ -2111,9 +2140,9 @@ impl MachOLinker.build_shared_object -> bytes {
     data_sec_vaddr = 0;
     if len(data_data) > 0 {
         if num_got > 0 {
-            data_sec_foff = _align(got_sec_foff + got_total_size, 16);
+            data_sec_foff = _align(got_sec_foff + got_total_size, data_align);
         } else {
-            data_sec_foff = data_seg_foff;
+            data_sec_foff = _align(data_seg_foff, data_align);
         }
         data_sec_vaddr = base_vmaddr + data_sec_foff;
     }
@@ -2550,7 +2579,7 @@ impl MachOLinker.build_shared_object -> bytes {
         text_sec_vaddr,
         text_sec_size,
         text_sec_foff,
-        4,
+        _align_log2(code_align),
         S_REGULAR | S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS,
         0,
         0
@@ -2582,7 +2611,7 @@ impl MachOLinker.build_shared_object -> bytes {
             const_sec_vaddr,
             len(rodata_data),
             const_sec_foff,
-            4,
+            _align_log2(rodata_align),
             S_REGULAR,
             0,
             0
@@ -2634,7 +2663,7 @@ impl MachOLinker.build_shared_object -> bytes {
                 data_sec_vaddr,
                 len(data_data),
                 data_sec_foff,
-                4,
+                _align_log2(data_align),
                 S_REGULAR,
                 0,
                 0
@@ -2827,6 +2856,15 @@ impl MachOLinker.build_shared_object -> bytes {
     }
 
     return bytes(output);
+}
+
+
+def _align_log2(alignment: int) -> int {
+    shift = 0;
+    while (1 << (shift + 1)) <= alignment {
+        shift += 1;
+    }
+    return shift;
 }
 
 
