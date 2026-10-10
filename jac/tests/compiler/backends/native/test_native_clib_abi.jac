@@ -249,3 +249,67 @@ test "clib imported record returns preserve inferred fields and ABI" {
         assert fields(-10) == -43;
     }
 }
+
+test "clib record arguments read from an optional slot pass the record, not its tag" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        csrc = os.path.join(tmpdir, "optional.c");
+        with open(csrc, "w") as fh {
+            fh.write(
+                "#include <stdint.h>\n"
+                "typedef struct { int64_t x, y; } Pair;\n"
+                "typedef struct { int64_t a, b, c, d, e; } Record;\n"
+                "Pair make_pair(int64_t n) { return (Pair){n, n+1}; }\n"
+                "Record make_record(int64_t n) { return (Record){n,n+1,n+2,n+3,n+4}; }\n"
+                "int64_t pair_sum(Pair p) { return p.x + p.y; }\n"
+                "int64_t record_sum(Record r) { return r.a + r.b + r.c + r.d + r.e; }\n"
+            );
+        }
+        library = os.path.join(tmpdir, "liboptional.so");
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", csrc, "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        # `pair` and `record` are narrowed to their records by the time C is
+        # called, but each still lives in an optional's slot: one small enough
+        # to pass in registers, one passed in memory.
+        code = (
+            f"import from \"{library}\" {{\n"
+            "obj Pair { has x:i64, y:i64; }\n"
+            "obj Record { has a:i64, b:i64, c:i64, d:i64, e:i64; }\n"
+            "def make_pair(n:i64) -> Pair;\n"
+            "def make_record(n:i64) -> Record;\n"
+            "def pair_sum(p:Pair) -> i64;\n"
+            "def record_sum(r:Record) -> i64;\n}\n"
+            "obj Holder { has pair: Pair | None = None, record: Record | None = None; }\n"
+            "def sums(n:i64, held:i64) -> i64 {\n"
+            "holder = Holder();\n"
+            "if held != 0 { holder.pair = make_pair(n); holder.record = make_record(n); }\n"
+            "pair = holder.pair;\n"
+            "if pair is None { pair = make_pair(100); }\n"
+            "record = holder.record;\n"
+            "if record is None { record = make_record(1000); }\n"
+            "return pair_sum(pair) + record_sum(record);\n}\n"
+        );
+        prog = JacProgram();
+        ir = prog.compile(
+            file_path=os.path.join(tmpdir, "consumer.jac"),
+            use_str=code,
+            options=native_force_opts()
+        );
+        assert not prog.errors_had , str(prog.errors_had);
+        assert ir.gen.native_engine is not None;
+        sums = get_func(
+            ir.gen.native_engine, "sums", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+        );
+        # held: (10+11) + (10+11+12+13+14); not held: (100+101) + (1000+...+1004).
+        assert sums(10, 1) == 81;
+        assert sums(10, 0) == 5211;
+    }
+}

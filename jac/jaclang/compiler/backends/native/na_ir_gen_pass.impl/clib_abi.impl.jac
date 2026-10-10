@@ -71,6 +71,14 @@ impl NaIRGenPass._clib_alloc_box(name: str) -> ir.Value {
 
 impl NaIRGenPass._clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value {
     ct = self._clib_c_type(name).as_pointer();
+    # A record read from an optional slot still travels with its tag, even
+    # where the checker has narrowed None away; C takes the record itself.
+    _present = self._opt_unwrap_guarded(
+        jac_ptr, "clib.rec", f"C record argument '{name}' cannot be None"
+    );
+    if _present is not None {
+        jac_ptr = _present;
+    }
     if jac_ptr.type != ct {
         return self.builder.bitcast(jac_ptr, ct, name="clib.cptr");
     }
