@@ -182,14 +182,36 @@ test "pack_jab without a pod binary is a hard error (a .jab requires a seal)" {
 }
 
 
-test "an unrunnable pod binary fails the seal instead of shipping unsealed" {
-    caught = False;
-    try {
-        pack_jab(_mini_app(), b"not-an-elf");
-    } except Exception {
-        caught = True;
+test "a seal that cannot yield a bootable .jab fails the pack instead of the pod" {
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
+    cases = [
+        ("an unrunnable pod binary", "", b"not-an-elf", []),
+        (
+            "a bake that writes no manifest over a stale local copy",
+            'entry-point="missing"\n',
+            b"",
+            ["RuntimeError", SERVE_MANIFEST_REL, "sealing without serve payloads"]
+        )
+    ];
+    for (label, entry_line, binary, expected) in cases {
+        base = Path(_mini_app());
+        (base / "jac.toml").write_text(
+            f'[project]\nname="mini"\n{entry_line}\n[scale]\nfat_bundle = false\n'
+        );
+        (base / ".jac").mkdir();
+        (base / ".jac" / "serve_manifest.json").write_text('{"stale": true}\n');
+        seal_binary = binary or require_pod_binary().read_bytes();
+        caught = "";
+        try {
+            pack_jab(str(base), seal_binary);
+        } except Exception as e {
+            caught = f"{type(e).__name__}: {e}";
+        }
+        assert caught , label;
+        for text in expected {
+            assert text in caught , (label, text, caught);
+        }
     }
-    assert caught;
 }
 
 

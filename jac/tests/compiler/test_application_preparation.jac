@@ -40,6 +40,16 @@ test "sealing retains each colocated service's access metadata" {
             assert 'private_score' not in modules['scoring.jac']['surface'] , (
                 "the served surface lists only exposed declarations"
             );
+            for entry_manifest in [manifest, *modules.values()] {
+                assert 'root' not in entry_manifest , (
+                    "a baked manifest must not pin the seal stage's path"
+                );
+                for rec in (entry_manifest.get('surface') or {}).values() {
+                    assert 'module' not in rec , (
+                        "a baked surface entry must not pin the seal stage's path"
+                    );
+                }
+            }
         } finally {
             forget(str(path));
         }

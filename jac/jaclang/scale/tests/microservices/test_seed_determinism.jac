@@ -28,7 +28,7 @@ test "identical content packs to identical bytes (content-address stable)" {
     require_pod_binary();
     binary = _JAC_BIN.read_bytes();
     d = tempfile.mkdtemp();
-    src = Path(d, "svc.jac");
+    src = Path(d, "main.jac");
     src.write_text("with entry { print(\"ok\"); }");
     first = pack_jab(d, binary);
     # A different mtime on the same content must not change the digest.
