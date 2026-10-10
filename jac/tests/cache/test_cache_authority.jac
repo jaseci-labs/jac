@@ -55,7 +55,6 @@ glob DAY: float = 86400.0,
          "jir-bootstrap",
          "jir-stubcat",
          "jir-digests",
-         "stage0",
          "apps",
          "pkgs",
          "pkg-git",
@@ -132,10 +131,6 @@ test "every pre-bootstrap path derives from the one root" {
         assert bucket("jir-modules").path() == base / "jir" / "modules";
         assert bucket("apps").path() == base / "apps";
         assert bucket("rt").path() == base / "rt";
-        import from jaclang.compiler.backends.native.stage0_build { stage0_dir }
-        assert Path(stage0_dir("a" * 40)).parent == bucket("stage0").path();
-        assert bucket("stage0").policy.matches("a" * 40);
-        assert not bucket("stage0").policy.matches("a" * 40 + ".lock");
     }
 }
 

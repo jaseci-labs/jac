@@ -504,6 +504,8 @@ jobs:
               assert not hasattr(sys, "_jacpython_compile");
               assert not hasattr(sys, "_jacpython_image");
               assert eval("6 * 7") == 42;
+              import from jaclang.compiler.native_compiler { ensure_loaded }
+              assert ensure_loaded() is not None , "a shipped binary carries the native compiler kernel";
               print("Python compiler verified");
           }
           EOF

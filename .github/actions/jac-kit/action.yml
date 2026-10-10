@@ -110,6 +110,9 @@ runs:
     # checkout has no kernel (libjac_* is gitignored), and the kit was built
     # from these sources, so the run must adopt the kit's kernel, not derive
     # one, and a second run must keep it. See cli/docs/internals/native-units.md.
+    # A pull request's kit carries no kernel (ci.yml build-kit): there the run
+    # must leave none beside the loader either, because a lane that derived
+    # its own would pay the very build the kit skipped.
     - name: Warm the runtime cache
       shell: bash
       env:
@@ -133,6 +136,14 @@ runs:
         tree, kit, stat_out = sys.argv[1:]
         found = [p for p in glob.glob(os.path.join(tree, "libjac_compiler.*"))
                  if not p.endswith((".layout.json", ".lock"))]
+        manifest = os.path.join(os.path.dirname(kit), "_precompiled", "MANIFEST.json")
+        native = json.load(open(manifest)).get("native") or {}
+        if native.get("kernel") == "none" and not native.get("artifact"):
+            if found:
+                fail(f"the kit carries no kernel, but the first run built {found}")
+            print("kit carries no kernel: the lane runs the bytecode compiler")
+            open(stat_out, "w").write("")
+            sys.exit(0)
         if len(found) != 1:
             fail(f"the first run left {found or 'no kernel'} beside the loader")
         lib = found[0]
@@ -151,7 +162,10 @@ runs:
         grep -q 49 <<<"$out"
         python3 - "$WORK/kernel.stat" <<'PY'
         import os, sys
-        lib, ino, mtime = open(sys.argv[1]).read().split()
+        recorded = open(sys.argv[1]).read().split()
+        if not recorded:
+            sys.exit(0)
+        lib, ino, mtime = recorded
         st = os.stat(lib)
         if (st.st_ino, st.st_mtime_ns) != (int(ino), int(mtime)):
             print("::error::the second run replaced a kernel whose inputs had not moved")
