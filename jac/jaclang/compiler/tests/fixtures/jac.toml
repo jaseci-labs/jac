@@ -192,6 +192,7 @@
 "prim_difflib.difflib_na" = "native"
 "prim_enums.enums_cl" = "client"
 "prim_enums.enums_na" = "native"
+"prim_errno._alias_code_na" = "native"
 "prim_errno.errno_cl" = "client"
 "prim_errno.errno_na" = "native"
 "prim_errno.from:errno" = "native"

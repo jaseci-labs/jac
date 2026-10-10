@@ -12,8 +12,6 @@ def:pub plat_uname_ok -> bool {
     return uname(_PLAT_UTS) == 0;
 }
 
-# Reads a NUL-terminated field out of the utsname buffer straight into
-# Jac-owned bytes; no C allocation, so nothing leaks on the way out.
 def _uts_str(offset: int) -> str {
     address = _PLAT_UTS + offset;
     length = strlen(address);

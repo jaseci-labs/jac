@@ -66,9 +66,6 @@ def _processor -> str {
 }
 
 def:pub uname -> uname_result {
-    # The scalar fields stay cached, but each call builds a new result: the
-    # archetype's `has` fields are writable, and a shared instance would let
-    # one caller's mutation leak into every later uname()/platform() call.
     _load_uname();
     return uname_result(
         system=_UC.system,
@@ -126,10 +123,6 @@ def:pub architecture(
 def:pub libc_ver(
     executable: str = "", lib: str = "", version: str = ""
 ) -> tuple[(str, str)] {
-    # CPython scans `executable` for embedded version strings; the native
-    # backend only probes the running host's libc, so `executable` is
-    # accepted for call compatibility and ignored. `lib`/`version` keep
-    # their CPython role as fallbacks when detection finds nothing.
     if not _UC.ldone {
         _UC.libc_n = plat_libc_name();
         _UC.libc_v = plat_libc_version();

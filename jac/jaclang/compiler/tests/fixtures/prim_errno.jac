@@ -8,7 +8,10 @@ the range -- the ``errorcode`` dict lookups for those values, and the
 ``KeyError`` raised for a code with no name. ``EDEADLOCK`` exists only where
 the host exports it (Linux aliases it to EDEADLK; Darwin has EDEADLK alone),
 so it is pinned through a reverse ``errorcode`` lookup: the alias's code on
-hosts that have it, -1 where it does not. ES/JS opts out.
+hosts that have it, -1 where it does not. The na lane does that lookup
+through the pinned `_alias_code_na` helper (na-side helpers are pinned per
+the `prim_math`/`prim_base64` convention); the sv lane uses `_alias_code`.
+ES/JS opts out.
 """
 
 import from errno {
@@ -72,6 +75,16 @@ def _alias_code(name: str) -> int {
     # `errorcode` maps code -> first-defined name, so aliased constants hide
     # behind the shared code; scanning for a name recovers a host alias like
     # EDEADLOCK without importing a symbol Darwin does not export.
+    for code in errorcode {
+        if errorcode[code] == name {
+            return code;
+        }
+    }
+    return -1;
+}
+
+
+def _alias_code_na(name: str) -> int {
     for code in errorcode {
         if errorcode[code] == name {
             return code;
@@ -189,7 +202,7 @@ def errno_na -> dict[str, any] {
         "c_edom": EDOM,
         "c_erange": ERANGE,
         "c_edeadlk": EDEADLK,
-        "c_edeadlock": _alias_code("EDEADLOCK"),
+        "c_edeadlock": _alias_code_na("EDEADLOCK"),
         "c_einprogress": EINPROGRESS,
         "c_enotsock": ENOTSOCK,
         "c_eaddrinuse": EADDRINUSE,
