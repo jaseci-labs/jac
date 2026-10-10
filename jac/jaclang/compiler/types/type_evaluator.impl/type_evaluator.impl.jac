@@ -4852,7 +4852,7 @@ impl TypeEvaluator._get_type_from_flow_node(
             }
         }
 
-        if isinstance(pred, AssertStmt) {
+        if isinstance(pred, AssertStmt) and not self._node_encloses(pred, flow_node) {
             predicate = self._find_predicate_for(target, pred.condition);
             if predicate is not None {
                 narrowed = self._apply_narrowing(

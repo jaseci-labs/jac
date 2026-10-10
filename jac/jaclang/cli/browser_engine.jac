@@ -162,12 +162,15 @@ def _insert_text(cdp: CDP, text: str);
 
 def _key_code(ch: str) -> str;
 
+def _key_down(key: str, modifiers: int = 0) -> dict[str, any];
+
 def _press(cdp: CDP, key: str, modifiers: int = 0);
 
 def _parse_key_combo(combo: str) -> tuple[str, int];
 
 
 def cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> str;
+def _normalize_url(url: str) -> str;
 def cmd_navigate(session: str, url: str) -> str;
 def cmd_eval(session: str, expr: str) -> any;
 def cmd_click(session: str, selector: str) -> str;

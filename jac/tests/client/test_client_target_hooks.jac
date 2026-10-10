@@ -155,6 +155,14 @@ test "ensure_ready on the base target consults requires_setup" {
     }
 }
 
+"""A stand-in `setup` that records the target it ran for."""
+def _recording_setup(calls: list[str], name: str) -> Callable[[Path], None] {
+    def _fake_setup(project_dir: Path) {
+        calls.append(name);
+    }
+    return _fake_setup;
+}
+
 """Web, static and desktop provision inline (Vite, the webview host); none of
 them needs a setup step, so `ensure_ready` must never call `setup()` on them."""
 test "web, static and desktop ensure_ready are no-ops" {
@@ -170,11 +178,9 @@ test "web, static and desktop ensure_ready are no-ops" {
             assert target is not None , name;
             assert target.requires_setup == False , f"{name} needs no setup step";
             calls: list[str] = [];
-
-            def _fake_setup(project_dir: Path) {
-                calls.append(name);
-            }
-            with unittest.mock.patch.object(target, "setup", _fake_setup) {
+            with unittest.mock.patch.object(
+                target, "setup", _recording_setup(calls, name)
+            ) {
                 target.ensure_ready(proj);
             }
             assert calls == [] , f"{name}.ensure_ready must not provision: {calls}";

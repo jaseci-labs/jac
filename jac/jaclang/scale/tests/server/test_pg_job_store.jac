@@ -207,42 +207,45 @@ test "concurrent creates for one account stay under the cap" {
     store_b = _store();
     pod_a = PgJobStore(store=store_a, _collection='jobs_quota');
     pod_b = PgJobStore(store=store_b, _collection='jobs_quota');
-    try {
-        for rnd in range(8) {
-            creator = f"racer-{rnd}";
-            gate = threading.Barrier(3);
-            won: list[bool] = [];
-            errors: list[str] = [];
-            guard = threading.Lock();
-            def create(js: PgJobStore, n: int) {
-                gate.`wait();
-                try {
-                    ok = js.insert_within_quota(
-                        _job(f"q-{rnd}-{n}", created_by=creator), creator, 1
-                    );
-                    with guard {
-                        won.append(ok);
-                    }
-                } except Exception as e {
-                    with guard {
-                        errors.append(f"{type(e).__name__}: {e}");
-                    }
+    def race(rnd: int, store: PgStore) {
+        creator = f"racer-{rnd}";
+        gate = threading.Barrier(3);
+        won: list[bool] = [];
+        errors: list[str] = [];
+        guard = threading.Lock();
+        def create(js: PgJobStore, n: int) {
+            gate.`wait();
+            try {
+                ok = js.insert_within_quota(
+                    _job(f"q-{rnd}-{n}", created_by=creator), creator, 1
+                );
+                with guard {
+                    won.append(ok);
+                }
+            } except Exception as e {
+                with guard {
+                    errors.append(f"{type(e).__name__}: {e}");
                 }
             }
-            workers = [
-                threading.Thread(target=create, args=(pod_a, 0)),
-                threading.Thread(target=create, args=(pod_a, 1)),
-                threading.Thread(target=create, args=(pod_b, 2))
-            ];
-            for t in workers {
-                t.start();
-            }
-            for t in workers {
-                t.join();
-            }
-            assert errors == [] , errors;
-            assert sorted(won) == [False, False, True] , f"round {rnd}: {won}";
-            assert _active_for(store_a, 'jobs_quota', creator) == 1;
+        }
+        workers = [
+            threading.Thread(target=create, args=(pod_a, 0)),
+            threading.Thread(target=create, args=(pod_a, 1)),
+            threading.Thread(target=create, args=(pod_b, 2))
+        ];
+        for t in workers {
+            t.start();
+        }
+        for t in workers {
+            t.join();
+        }
+        assert errors == [] , errors;
+        assert sorted(won) == [False, False, True] , f"round {rnd}: {won}";
+        assert _active_for(store, 'jobs_quota', creator) == 1;
+    }
+    try {
+        for rnd in range(8) {
+            race(rnd, store_a);
         }
     } finally {
         pod_a.close();

@@ -1944,7 +1944,7 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
     }
     for owner in self._mro_of(type_name) {
         member = self._drop_member_of(owner);
-        if member is not None and not member.is_def {
+        if member is not None and (not member.is_def or member.is_static) {
             return None;
         }
         hook = self.func_symtab.get(f"{owner}.drop");
@@ -1953,6 +1953,9 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
             hook = self.func_symtab.get(f"{owner}.drop");
         }
         if hook is not None {
+            if len(hook.args) != 1 {
+                return None;
+            }
             self.struct_drop_hooks[type_name] = hook;
             return hook;
         }
@@ -2912,9 +2915,11 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     _node_lay = self._arch_layout(arch_name);
     if self._osp_pins_refs()
         and _node_lay is not None
-        and _node_lay.arch_type == "node" {
+        and _node_lay.arch_type in ("node", "edge") {
         b.call(
-            self._osp_reclaim_hook(),
+            self._osp_reclaim_hook()
+                if _node_lay.arch_type == "node"
+                else self._osp_edge_reclaim_hook(),
             [b.ptrtoint(release_fn.args[0], i64, name="osp.forget.h")]
         );
     }

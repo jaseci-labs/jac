@@ -572,6 +572,32 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     return anon_fn;
 }
 
+impl NaIRGenPass._binds_variable(nd: uni.Expr) -> bool {
+    import from jaclang.compiler.frontend.constant { SymbolType }
+    import from jaclang.compiler.frontend.unitree { ability_of_symbol }
+    if not isinstance(nd, uni.Name) or nd.sym is None {
+        return False;
+    }
+    sym = nd.sym;
+    if sym.imported_from is not None
+        or isinstance(sym.decl.parent, (uni.ModuleItem, uni.ModulePath)) {
+        return False;
+    }
+    scope = sym.parent_tab;
+    while scope is not None and not isinstance(scope, uni.Module) {
+        scope = scope.parent_scope;
+    }
+    if scope is None
+        or (
+            scope is not self.module and scope is not nd.find_parent_of_type(uni.Module)
+        ) {
+        return False;
+    }
+    kind = sym.sym_type;
+    return (kind == SymbolType.VAR or kind == SymbolType.MOD_VAR)
+        and ability_of_symbol(sym) is None;
+}
+
 impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     if isinstance(nd, uni.SpecialVarRef) and nd.value == "root" {
         self.emit(
@@ -629,6 +655,10 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         and not (
             var_name in self.global_vars
             and self.func_symtab[var_name] is self.clib_extern_fns.get(var_name)
+        )
+        and not (
+            isinstance(self.func_symtab[var_name], ir.Function)
+            and self._binds_variable(nd)
         ) {
         return self.func_symtab[var_name];
     }

@@ -106,3 +106,44 @@ test "python backend: an event ability named drop is not a drop hook" {
     del crate;
     assert log == [];
 }
+
+# Nor is a `def drop` that takes arguments: a destructor hook is called with
+# nothing but the object, so only a parameterless `def drop` is one.
+obj Shelf {
+    has names: list[str] = [];
+
+    def drop(name: str) {
+        self.names.remove(name);
+        log.append(len(self.names));
+    }
+}
+
+obj Tray(Res) {
+    def drop(extra: int) {
+        log.append(self.id + extra);
+    }
+}
+
+obj Bin {
+    static def drop(extra: int = 7) {
+        log.append(extra);
+    }
+}
+
+test "python backend: a def drop that takes arguments is not a drop hook" {
+    log.clear();
+    in Region() {
+        shelf = Shelf(names=["a", "b"]);
+        shelf.drop("a");
+        tray = Tray(id=40);
+        bin = Bin();
+    }
+    assert log == [1] , f"log={log}";
+    assert not getattr(bin, "_jac_drop_done", False);
+    assert shelf.names == ["b"];
+    assert not getattr(shelf, "_jac_drop_done", False);
+    tray.drop(2);
+    del shelf;
+    del tray;
+    assert log == [1, 42] , f"log={log}";
+}

@@ -83,6 +83,21 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     return result;
 }
 
+"""Analyze a fixture and emit its JavaScript whatever the analysis reported.
+
+Returns the program, so a test can read the diagnostics, beside the JS.
+"""
+def analyze_fixture_and_emit_js(
+    fixture_name: str, fixture_dir: str = ""
+) -> tuple[JacProgram, str] {
+    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path, no_cgen=True);
+    es_ast = run_pass(EsastGenPass, ir, prog).module.gen.es_ast;
+    assert isinstance(es_ast, EsNode) , "es_ast should be an EsNode";
+    return (prog, es_to_js(es_ast));
+}
+
 """Compile a fixture through the normal production codegen path."""
 def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -> str {
     fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
