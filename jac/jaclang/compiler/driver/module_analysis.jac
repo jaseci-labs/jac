@@ -219,7 +219,11 @@ def run_analysis_phases(
 
 def keep_hub_order(program: JacProgram, order: list[str]) {
     hub = program.mod.hub;
-    held = [key for key in order if key in hub];
+    held = [
+        key
+        for key in order
+        if key in hub
+    ];
     if list(hub.keys())[:len(held)] == held {
         return;
     }

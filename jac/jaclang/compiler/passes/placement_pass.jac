@@ -710,7 +710,9 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
         } elif refused {
             reached: set[int] = {id(refusal) for refusal in legality.reach};
             direct: list[NativeRefusal] = [
-                refusal for refusal in refused if id(refusal) not in reached
+                refusal
+                for refusal in refused
+                if id(refusal) not in reached
             ];
             if direct {
                 for unit_refusals in legality.units.values() {

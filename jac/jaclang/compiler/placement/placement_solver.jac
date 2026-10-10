@@ -209,9 +209,7 @@ def native_placement_candidate(
     return (True, '');
 }
 
-def native_preference_open(
-    module: uni.Module, prog: JacProgram
-) -> tuple[bool, str] {
+def native_preference_open(module: uni.Module, prog: JacProgram) -> tuple[bool, str] {
     (candidate, why) = native_placement_candidate(module, prog);
     if not candidate {
         return (False, why);
