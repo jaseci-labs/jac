@@ -2624,10 +2624,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self.rc_ops_elided += 1;
                     }
                     if not _ip_handled
-                        and not (
-                            self._nogc_headerless()
-                            and nd.na_overwrite_consumed
-                        )
+                        and not (self._nogc_headerless() and nd.na_overwrite_consumed)
                         and not (
                             self._gc_mode() == "none" and var_name in self.borrowed_vars
                         ) {
