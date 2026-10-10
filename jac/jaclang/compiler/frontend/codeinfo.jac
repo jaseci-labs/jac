@@ -186,6 +186,7 @@ def _reserved_c_symbols -> frozenset[str] {
         "clock difftime mktime time timespec_get asctime ctime gmtime gmtime_r "
         "localtime localtime_r strftime clock_gettime nanosleep sleep usleep "
         "open openat creat close read pread write lseek stat fstat lstat access "
+        "mmap msync munmap "
         "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
         "opendir readdir closedir getpid getpwuid_r getpwnam_r errno __error "
         "pipe poll waitpid posix_spawnp posix_spawn_file_actions_init "
