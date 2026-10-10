@@ -1166,40 +1166,6 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
     );
 }
 
-impl NaIRGenPass._emit_jid(nd: uni.FuncCall) -> (ir.Value | None) {
-    params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
-    if len(params_l) != 1 or isinstance(params_l[0], uni.KWPair) {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="builtin call",
-            name="jid",
-            help_text="jid() takes exactly one positional graph object argument."
-        );
-        return None;
-    }
-    arg_node = params_l[0];
-    arg_val = self._codegen_expr(arg_node);
-    if arg_val is None {
-        self._emit_unsupported_builtin_call(nd, "jid");
-        return None;
-    }
-    result = self._dispatch_builtin(
-        "jid",
-        [arg_val],
-        kw_node=nd,
-        type_key=(self._type_key_of(arg_node) or ""),
-        arg_nodes=[arg_node]
-    );
-    if isinstance(arg_val.type, ir.PointerType) and self._is_owned(arg_val) {
-        self._emit_rc_release_simple(arg_val, op="jid_arg", loc="");
-    }
-    if result is None {
-        self._emit_unsupported_builtin_call(nd, "jid");
-    }
-    return result;
-}
-
 impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
     params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params_l or any([isinstance(p, uni.KWPair) for p in params_l]) {

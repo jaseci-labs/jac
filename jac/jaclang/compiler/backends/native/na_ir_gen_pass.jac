@@ -849,7 +849,6 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _emit_new(nd: uni.FuncCall) -> (ir.Value | None);
-    def _emit_jid(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
     def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_buffer_isinstance(
@@ -1572,12 +1571,6 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
     def _emit_yield_suspend(v: ir.Value) -> None;
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
-    def _finish_lambda_ret(
-        nd: uni.LambdaExpr,
-        body_value: (ir.Value | None),
-        ret_type: ir.Type,
-        err_count: int
-    ) -> None;
 
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
@@ -2869,7 +2862,6 @@ walker NaIRGenPass(CompilerPass) {
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
     def _opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None);
-    def _peer_container_of(t: ir.Type) -> (ir.Type | None);
     def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
     def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
