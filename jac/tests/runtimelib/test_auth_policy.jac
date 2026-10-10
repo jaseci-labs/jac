@@ -854,7 +854,7 @@ test "each address keeps its own verification link and adding one mails only it"
             assert created.ok and [m['to'] for m in emailer.sent] == [first];
 
             request = Request(client_host='192.0.2.10');
-            request.state.username = str(created.data['user_id']);
+            setattr(request.state, 'username', str(created.data['user_id']));
             added = asyncio.run(
                 host.routes['/user/add-identity'](
                     request,
