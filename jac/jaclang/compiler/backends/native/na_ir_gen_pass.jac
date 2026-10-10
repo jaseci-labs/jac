@@ -3079,6 +3079,8 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_arch_eq(op: str, left: ir.Value, right: ir.Value) -> (ir.Value | None);
     def _eq_fn_new(cache_key: str, left_ty: ir.Type, right_ty: ir.Type) -> ir.Function;
     def _eq_fn_prologue(fn: ir.Function) -> tuple[ir.Block, ir.Block];
+    def _emit_mixed_list_eq(left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _widen_list_number(value: ir.Value, list_key: str, as_float: bool) -> ir.Value;
     def _emit_dict_eq(
         left: ir.Value, right: ir.Value, dict_key: str, val_ty: (TypeBase | None)
     ) -> (ir.Value | None);

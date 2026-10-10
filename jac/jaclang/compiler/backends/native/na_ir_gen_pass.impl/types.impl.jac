@@ -4207,6 +4207,123 @@ impl NaIRGenPass._emit_mixed_jacval_comparison(
     return None;
 }
 
+impl NaIRGenPass._emit_mixed_list_eq(
+    left: ir.Value, right: ir.Value
+) -> (ir.Value | None) {
+    left_key: (str | None) = None;
+    right_key: (str | None) = None;
+    for (lkey, ltype) in self.list_types.items() {
+        if left.type == ltype.as_pointer() {
+            left_key = lkey;
+        }
+        if right.type == ltype.as_pointer() {
+            right_key = lkey;
+        }
+    }
+    if left_key is None or right_key is None or left_key == right_key {
+        return None;
+    }
+    left_h = self.list_helpers.get(left_key);
+    right_h = self.list_helpers.get(right_key);
+    if left_h is None or right_h is None {
+        return None;
+    }
+    left_et = left_h["elem_type"];
+    right_et = right_h["elem_type"];
+    left_float = isinstance(left_et, (ir.DoubleType, ir.FloatType));
+    right_float = isinstance(right_et, (ir.DoubleType, ir.FloatType));
+    tagged = False;
+    if self.jacval_type is not None {
+        peer_et = right_et if left_et == self.jacval_type else left_et;
+        tagged = (left_et == self.jacval_type or right_et == self.jacval_type)
+            and isinstance(peer_et, (ir.IntType, ir.DoubleType, ir.PointerType));
+    }
+    if not tagged
+        and (
+            (not left_float and not isinstance(left_et, ir.IntType))
+            or (not right_float and not isinstance(right_et, ir.IntType))
+        ) {
+        return None;
+    }
+    as_float = left_float or right_float;
+    i64 = ir.IntType(64);
+    i1_t = ir.IntType(1);
+    b = self.builder;
+    left_len = b.call(left_h["len"], [left], name="lmix.la");
+    right_len = b.call(right_h["len"], [right], name="lmix.lb");
+    func = b.basic_block.function;
+    loop_bb = func.append_basic_block(name="lmix.loop");
+    body_bb = func.append_basic_block(name="lmix.body");
+    false_bb = func.append_basic_block(name="lmix.false");
+    done_bb = func.append_basic_block(name="lmix.done");
+    entry_bb = b.basic_block;
+    b.cbranch(
+        b.icmp_unsigned("==", left_len, right_len, name="lmix.leq"), loop_bb, false_bb
+    );
+    b.position_at_start(loop_bb);
+    index = b.phi(i64, name="lmix.i");
+    index.add_incoming(ir.Constant(i64, 0), entry_bb);
+    b.cbranch(
+        b.icmp_unsigned(">=", index, left_len, name="lmix.end"), done_bb, body_bb
+    );
+    b.position_at_start(body_bb);
+    left_e: ir.Value = b.call(left_h["get"], [left, index], name="lmix.ea");
+    right_e: ir.Value = b.call(right_h["get"], [right, index], name="lmix.eb");
+    differ: ir.Value;
+    if tagged {
+        differ = b.not_(
+            self._emit_jacval_eq(
+                self._box_to_jacval(left_e), self._box_to_jacval(right_e)
+            ),
+            name="lmix.ene"
+        );
+    } else {
+        left_e = self._widen_list_number(left_e, left_key, as_float);
+        right_e = self._widen_list_number(right_e, right_key, as_float);
+        differ = b.fcmp_unordered("!=", left_e, right_e, name="lmix.ene")
+            if as_float
+            else b.icmp_signed("!=", left_e, right_e, name="lmix.ene");
+    }
+    next_index = b.add(index, ir.Constant(i64, 1), name="lmix.ni");
+    index.add_incoming(next_index, b.basic_block);
+    b.cbranch(differ, false_bb, loop_bb);
+    b.position_at_start(false_bb);
+    b.branch(done_bb);
+    b.position_at_start(done_bb);
+    equal = b.phi(i1_t, name="lmix.result");
+    equal.add_incoming(ir.Constant(i1_t, 1), loop_bb);
+    equal.add_incoming(ir.Constant(i1_t, 0), false_bb);
+    return equal;
+}
+
+impl NaIRGenPass._widen_list_number(
+    value: ir.Value, list_key: str, as_float: bool
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    f64 = ir.DoubleType();
+    b = self.builder;
+    if isinstance(value.type, ir.DoubleType) {
+        return value;
+    }
+    if isinstance(value.type, ir.FloatType) {
+        return b.fpext(value, f64, name="lmix.fpext");
+    }
+    unsigned = list_key.startswith("u");
+    wide: ir.Value = value;
+    if isinstance(value.type, ir.IntType) and value.type.width < 64 {
+        unsigned = unsigned or value.type.width == 1;
+        wide = b.zext(value, i64, name="lmix.zext")
+            if unsigned
+            else b.sext(value, i64, name="lmix.sext");
+    }
+    if as_float {
+        return b.uitofp(wide, f64, name="lmix.utof")
+            if unsigned
+            else b.sitofp(wide, f64, name="lmix.itof");
+    }
+    return wide;
+}
+
 impl NaIRGenPass._emit_comparison(
     op: str,
     left: ir.Value,
@@ -4484,6 +4601,16 @@ impl NaIRGenPass._emit_comparison(
                 return self.builder.icmp_signed(">=", cmp_result, zero, name="strge");
             }
             return None;
+        }
+
+        if op == Tok.EE or op == Tok.NE {
+            mixed_equal = self._emit_mixed_list_eq(left, right);
+            if mixed_equal is not None {
+                if op == Tok.NE {
+                    return self.builder.not_(mixed_equal, name="lmix.ne");
+                }
+                return mixed_equal;
+            }
         }
 
         for (lcmp_key, lcmp_type) in self.list_types.items() {
