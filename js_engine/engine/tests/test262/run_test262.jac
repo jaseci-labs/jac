@@ -36,7 +36,8 @@ glob SCRIPT_DIR = Path(__file__).resolve().parent,
      TEST_DIR = TEST262_ROOT / "test",
      LOG_ROOT = JS_ENGINE_ROOT / "regression_logs" / "test262",
      DEFAULT_ENGINE = JS_ENGINE_ROOT / "bin" / "js_engine",
-     SKIP_MANIFEST_PATH = SCRIPT_DIR / "skip_manifest.json";
+     SKIP_MANIFEST_PATH = SCRIPT_DIR / "skip_manifest.json",
+     PIN_PATH = SCRIPT_DIR / "test262.sha";
 
 # ---------------------------------------------------------------------------
 # YAML front-matter parser
@@ -1058,7 +1059,10 @@ Persist this run's per-test records so a subsequent --save-baseline can
 promote them without re-running the suite.
 """
 def _write_run_log(
-    filter_glob: str | None, records: dict[str, dict[str, any]], jobs: int
+    filter_glob: str | None,
+    records: dict[str, dict[str, any]],
+    jobs: int,
+    run_meta: dict[str, any] | None = None
 ) -> Path {
     path = _run_log_path(filter_glob);
     path.parent.mkdir(parents=True, exist_ok=True);
@@ -1067,6 +1071,7 @@ def _write_run_log(
         "filter": filter_glob,
         "created_at": time.time(),
         "jobs": jobs,
+        "meta": run_meta or {},
         "tests": {rel: records[rel] for rel in sorted(records)},
 
     };
@@ -1121,79 +1126,148 @@ def _describe_log_age(created_at: float) -> tuple[float, str] {
 }
 
 """
-Write a JSON baseline of per-test results and performance metrics.
-
-Format (version 3):
-    {
-      "version": 3,
-      "meta": {
-        "run_id": "...",
-        "engine_revision": "...",
-        "test262_revision": "...",
-        "command": "...",
-        "timeout_s": 10.0,
-        "mem_limit_gb": 0.5
-      },
-      "tests": {
-        "<relative/path.js>": {
-          "result": "PASS", "reason": "ok",
-          "time_s": 0.042, "peak_kb": 15230
-        },
-        ...
-      }
-    }
-
-Only passing tests carry meaningful perf numbers; we still record the
-functional result for every test so --check-baseline can detect both
-functional and performance regressions.
+The known-failures list: every test262 test js_engine does not pass at the
+pinned test262 commit (test262.sha), one "<path>\t<FAIL|HANG>" line per test,
+sorted. Passing tests are not listed (anything that runs and is not listed must
+pass) and neither are tests the skip manifest skips. Timing and memory stay in
+the run logs (.run_logs/), which are not committed.
 """
-def _write_baseline(
-    path: str, records: dict[str, dict[str, any]], run_meta: dict[str, any] | None = None
-) {
-    payload = {
-        "version": 3,
-        "meta": run_meta or {},
-        "tests": {rel: records[rel] for rel in sorted(records)},
+glob KNOWN_FAILURES_HEADER: str = (
+         "# test262 tests js_engine does not pass at the pinned test262 commit\n"
+         "# (engine/tests/test262/test262.sha): one \"<path>\\t<FAIL|HANG>\" line per test.\n"
+         "# --check-baseline fails on a test that runs, is not listed here and does not\n"
+         "# pass, and reports listed tests that now pass. Refresh the lines for a scope:\n"
+         "#   make test_language T262_ARGS=\"--save-baseline engine/tests/test262/known_failures.txt\"\n"
+     );
 
-    };
-    with open(path, "w", encoding="utf-8") as f {
-        json.dump(payload, f, indent=2, sort_keys=True);
-        f.write("\n");
+"""
+Write the known-failures list at `path`: this run's FAIL/HANG tests replace
+the lines for every test in `scope` (the tests this run discovered), and lines
+for tests outside it are kept, so a --filter run updates only its own part.
+Returns (listed, added, removed).
+"""
+def _write_known_failures(
+    path: str, records: dict[str, dict[str, any]], scope: set[str]
+) -> tuple[int, int, int] {
+    known: dict[str, str] = {};
+    if os.path.exists(path) {
+        known = _load_known_failures(path);
     }
+    before = set(known);
+    for rel in list(known) {
+        if rel in scope {
+            del known[rel];
+        }
+    }
+    for (rel, rec) in records.items() {
+        result = str(rec.get("result", ""));
+        if result in (FAIL, HANG) {  # jac:ignore[E1032]
+            known[rel] = result;
+        }
+    }
+    with open(path, "w", encoding="utf-8") as f {
+        f.write(KNOWN_FAILURES_HEADER);
+        for rel in sorted(known) {
+            f.write(f"{rel}\t{known[rel]}\n");
+        }
+    }
+    after = set(known);
+    return (len(known), len(after - before), len(before - after));
 }
 
 """
-Load a baseline file, returning {rel_path: {result, time_s, peak_kb}}.
+Load a known-failures list, returning {rel_path: "FAIL" | "HANG"}.
 
-Supports both the JSON format (version 2, with perf metrics) and the
-legacy text format ('ok  <path>' per line) so older baselines keep
-working for functional-regression checks (without perf data).
+A JSON baseline from older runners ({"tests": {path: {"result": ...}}}) is
+read as the list of its FAIL/HANG tests, so it can still be checked against
+(and converted by --save-baseline).
 """
-def _load_baseline(path: str) -> dict[str, dict[str, any]] {
+def _load_known_failures(path: str) -> dict[str, str] {
     try {
         with open(path, encoding="utf-8") as f {
             content = f.read();
         }
     } except FileNotFoundError {
-        print(f"ERROR: baseline file not found: {path}", file=sys.stderr);
+        print(f"ERROR: known-failures file not found: {path}", file=sys.stderr);
         sys.`exit(1);
     }
-
-    stripped = content.lstrip();
-    if stripped.startswith("{") {
+    known: dict[str, str] = {};
+    if content.lstrip().startswith("{") {
         data = json.loads(content);
-        return dict(data.get("tests", {}));
+        for (rel, rec) in dict(data.get("tests", {})).items() {
+            result = str(rec.get("result", "")) if isinstance(rec, dict) else "";
+            if result in (FAIL, HANG) {  # jac:ignore[E1032]
+                known[rel] = result;
+            }
+        }
+        return known;
     }
-
-    # Legacy text format: 'ok  <relative/path>' lines, no perf metrics.
-    records: dict[str, dict[str, any]] = {};
     for line in content.splitlines() {
         line = line.strip();
-        if line.startswith("ok  ") {
-            records[line[4:]] = {"result": "PASS", "time_s": None, "peak_kb": None};
+        if not line or line.startswith("#") {
+            continue;
         }
+        parts = line.split();
+        known[parts[0]] = parts[1] if len(parts) > 1 else FAIL;
     }
-    return records;
+    return known;
+}
+
+"""
+Per-test records ({rel_path: {result, time_s, peak_kb}}) from a run log or a
+JSON baseline, for the perf comparison. None when the file is missing or not
+JSON.
+"""
+def _load_perf_records(path: str) -> dict[str, dict[str, any]] | None {
+    try {
+        with open(path, encoding="utf-8") as f {
+            data = json.load(f);
+        }
+    } except (OSError, json.JSONDecodeError) {
+        return None;
+    }
+    return dict(data.get("tests", {}));
+}
+
+"""The test262 commit the known-failures list is recorded against (test262.sha)."""
+def _pinned_test262 -> str {
+    try {
+        for line in PIN_PATH.read_text(encoding="utf-8").splitlines() {
+            line = line.strip();
+            if line and not line.startswith("#") {
+                return line;
+            }
+        }
+    } except OSError {}
+    return "";
+}
+
+"""Warn when vendor/ is not the pinned test262 commit: results (and the
+known-failures list) only line up with the suite at that commit."""
+def _warn_if_unpinned {
+    pinned = _pinned_test262();
+    if not pinned {
+        return;
+    }
+    try {
+        head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=TEST262_ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip();
+    } except (OSError, subprocess.CalledProcessError) {
+        head = "";
+    }
+    if head != pinned {
+        found = head or "not a git checkout";
+        print(
+            f"WARNING: {TEST262_ROOT} is at {found}, not the pinned test262 commit "
+            f"{pinned} ({PIN_PATH.name}); known failures may not line up. "
+            f"Run tools/fetch_test_deps.sh test262 from {JS_ENGINE_ROOT}.",
+            file=sys.stderr
+        );
+    }
 }
 
 """Return a stable revision for run provenance."""
@@ -1260,95 +1334,76 @@ def _check_perf(
 }
 
 """
-Compare current results against baseline.
-Only compares tests that were actually discovered and run this time — tests
-outside the current --filter scope are ignored, so a partial run doesn't
-report the rest of the baseline as regressions.
+Compare this run against the known-failures list at `known_path`.
 
-Reports:
-  - functional regressions (was PASS, now FAIL/HANG)
-  - improvements (now PASS, was FAIL/HANG or absent)
-  - performance regressions (time/memory grew beyond threshold) when
-    perf_check is True and the baseline carries perf metrics.
-
-Returns the total number of regressions (functional + perf); 0 = clean.
+Only tests this run discovered count (ran_paths), so a --filter run checks
+just its scope. A test that FAILs or HANGs and is not listed is a regression;
+a listed test that now passes is reported so its line can be dropped (it does
+not fail the check). With `perf_records` (an earlier run of this scope, from a
+run log or an explicit --perf-baseline file) per-test time and memory of tests
+passing in both runs are compared too, and growth past the threshold counts as
+a regression.
+Returns the number of regressions (functional + perf); 0 = clean.
 """
 def _check_baseline(
-    baseline_path: str,
+    known_path: str,
     current: dict[str, dict[str, any]],
     ran_paths: set[str],
-    perf_check: bool = True,
+    perf_records: dict[str, dict[str, any]] | None = None,
+    perf_source: str = "",
     perf_pct: float = 50.0,
     perf_time_floor_ms: float = 20.0,
     perf_mem_floor_mb: float = 5.0
 ) -> int {
-    baseline = _load_baseline(baseline_path);
-
-    passed_now = {
+    known = _load_known_failures(known_path);
+    known_in_scope = {rel for rel in known if rel in ran_paths};
+    func_regressions = sorted(
         rel
         for (rel, r) in current.items()
-        if r.get("result") == "PASS"
-    };
-    baseline_passing = {
+        if rel in ran_paths
+            and r.get("result") in (FAIL, HANG)  # jac:ignore[E1032]
+            and rel not in known
+    );
+    now_passing = sorted(
         rel
-        for (rel, r) in baseline.items()
-        if r.get("result") == "PASS"
-    };
+        for rel in known_in_scope
+        if current.get(rel, {}).get("result") == PASS
+    );
 
-    # Restrict to tests that were in scope for this run
-    baseline_in_scope = baseline_passing & ran_paths;
-
-    func_regressions = sorted(baseline_in_scope - passed_now);
-    improvements = sorted(passed_now - baseline_in_scope);
-
-    if improvements {
-        print(f"\nImprovements ({len(improvements)} tests newly passing):");
-        for p in improvements[:30] {
+    if now_passing {
+        print(
+            f"\nNow passing ({len(now_passing)} listed tests) — drop them from "
+            f"{known_path} (rerun with --save-baseline {known_path}):"
+        );
+        for p in now_passing[:30] {
             print(f"  + {p}");
         }
-        if len(improvements) > 30 {
-            print(f"  ... and {len(improvements) - 30} more");
+        if len(now_passing) > 30 {
+            print(f"  ... and {len(now_passing) - 30} more");
         }
     }
 
     if func_regressions {
         print(
-            f"\nFUNCTIONAL REGRESSIONS ({len(
+            f"\nREGRESSIONS ({len(
                 func_regressions
-            )} tests that were passing are now failing):"
+            )} tests fail that are not in {known_path}):"
         );
         for p in func_regressions {
-            print(f"  - {p}");
+            r = current[p];
+            print(f"  - {p}  {r.get('result')} {r.get('reason', '')}".rstrip());
         }
     } else {
         print(
-            f"\n✓ No functional regressions — all {len(
-                baseline_in_scope
-            )} in-scope baseline tests still pass"
+            f"\n✓ No regressions — every test that ran passes or is listed in "
+            f"{known_path} ({len(known_in_scope)} listed in scope)"
         );
-        if improvements {
-            print(
-                f"  ({len(
-                    improvements
-                )} newly passing — consider updating the baseline)"
-            );
-        }
     }
 
-    # Performance regressions
     perf_regressions: list[tuple[str, str, float, float]] = [];
-    baseline_has_perf = any(
-        r.get("time_s") is not None or r.get("peak_kb") is not None
-        for r in baseline.values()
-    );
-    if perf_check and not baseline_has_perf {
-        print(
-            "\n(perf check skipped — baseline has no performance metrics; "
-            "re-run --save-baseline with this version to record them)"
-        );
-    } elif perf_check {
+    if perf_records is not None {
         perf_regressions = _check_perf(
-            baseline,
+            perf_records,
             current,
             ran_paths,
             perf_pct,
@@ -1359,17 +1414,15 @@ def _check_baseline(
             print(
                 f"\nPERFORMANCE REGRESSIONS ({len(
                     perf_regressions
-                )} metric(s) exceeded "
-                f"+{perf_pct:g}% threshold):"
+                )} metric(s) exceeded +{perf_pct:g}% against {perf_source}):"
             );
             for (rel, metric, old, new) in perf_regressions {
+                delta = (new / old - 1.0) * 100.0;
                 if metric == "time" {
-                    delta = (new / old - 1.0) * 100.0;
                     print(
                         f"  ~ {rel}  time {_fmt_time(old)} → {_fmt_time(new)}  (+{delta:.0f}%)"
                     );
                 } else {
-                    delta = (new / old - 1.0) * 100.0;
                     print(
                         f"  ~ {rel}  mem {_fmt_mem(int(old))} → {_fmt_mem(int(new))}  (+{delta:.0f}%)"
                     );
@@ -1377,7 +1430,7 @@ def _check_baseline(
             }
         } else {
             print(
-                f"\n✓ No performance regressions "
+                f"\n✓ No performance regressions against {perf_source} "
                 f"(threshold +{perf_pct:g}%, floors {perf_time_floor_ms:g}ms / {perf_mem_floor_mb:g}MB)"
             );
         }
@@ -1388,8 +1441,7 @@ def _check_baseline(
         print(
             f"\n✗ {len(func_regressions)} functional + {len(
                 perf_regressions
-            )} performance "
-            f"regression(s) detected — baseline: {baseline_path}"
+            )} performance regression(s) — known failures: {known_path}"
         );
     }
     return total;
@@ -1504,11 +1556,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace {
         metavar="FILE",
         `default=None,
         help=(
-            "Write a baseline file recording which tests passed. "
-            "If a run log for this --filter already exists it is promoted without "
-            "re-running the suite (pass --rerun to force a fresh run); otherwise "
-            "the suite runs now and its results are saved. "
-            "Use with --check-baseline on subsequent runs to catch regressions."
+            "Refresh the known-failures list FILE (known_failures.txt): the FAIL/HANG "
+            "tests of this --filter scope replace its lines for that scope, and lines "
+            "for other scopes are kept. If a run log for this --filter already exists "
+            "it is used without re-running the suite (pass --rerun to force a fresh "
+            "run); otherwise the suite runs now."
         )
     );
     p.add_argument(
@@ -1535,17 +1587,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace {
         metavar="FILE",
         `default=None,
         help=(
-            "Compare this run's results against a previously saved baseline file. "
-            "Exits non-zero if any test that was passing in the baseline is now FAIL/HANG, "
-            "or if a test's time/memory regressed beyond the perf threshold. "
-            "Newly passing tests are reported as improvements."
+            "Check this run against the known-failures list FILE: exits non-zero if a "
+            "test that ran FAILs or HANGs and is not listed. Listed tests that now "
+            "pass are reported for removal (they do not fail the check). An older "
+            "JSON baseline is accepted and read as its FAIL/HANG tests."
         )
     );
     p.add_argument(
         "--perf-check",
         action="store_true",
-        help="With --check-baseline, also compare time/memory against the baseline "
-        "(off by default — only functional regressions are checked)."
+        help="With --check-baseline, also compare per-test time/memory with the "
+        "previous run of this --filter scope on this machine (its run log in "
+        ".run_logs/). Off by default."
+    );
+    p.add_argument(
+        "--perf-baseline",
+        metavar="FILE",
+        `default=None,
+        help="With --check-baseline, compare per-test time/memory with this run log "
+        "(a .run_logs/<scope>.json kept from an earlier run, e.g. a CI artifact) "
+        "instead of the previous run."
     );
     p.add_argument(
         "--no-perf-check",
@@ -1607,21 +1668,13 @@ def main(argv: list[str] | None = None) -> int {
                 );
             }
             log_records = dict(log.get("tests", {}));
-            _write_baseline(args.save_baseline, log_records);
-            n_pass_log = sum(
-                1
-                for r in log_records.values()
-                if r.get("result") == "PASS"
-            );
-            n_perf_log = sum(
-                1
-                for r in log_records.values()
-                if r.get("time_s") is not None
+            (n_listed, n_added, n_removed) = _write_known_failures(
+                args.save_baseline, log_records, set(log_records)
             );
             scope = args.filter or "full suite";
             print(
-                f"Baseline saved → {args.save_baseline}  "
-                f"({n_pass_log} passing, {n_perf_log} with perf metrics)"
+                f"Known failures saved → {args.save_baseline}  "
+                f"({n_listed} listed: +{n_added} / -{n_removed})"
             );
             print(
                 f"  Promoted from run log {log_path} "
@@ -1645,6 +1698,7 @@ def main(argv: list[str] | None = None) -> int {
         print(f"ERROR: test262 harness not found at {HARNESS_DIR}", file=sys.stderr);
         return 1;
     }
+    _warn_if_unpinned();
 
     # Safety net: remove any temp artifacts left by a hard-killed run.  The current
     # runner never writes inside a vendor source file (self/cyclic tests run in an
@@ -2035,26 +2089,44 @@ def main(argv: list[str] | None = None) -> int {
 
     # Always record this run so a later --save-baseline can promote it without
     # re-running. Keyed by --filter so different scopes never clobber each other.
-    run_log_path = _write_run_log(args.filter, records, args.jobs);
-
-    # --save-baseline: write per-test results + perf metrics as JSON
-    if args.save_baseline {
-        _write_baseline(args.save_baseline, records, run_meta);
-        n_with_perf = sum(
-            1
-            for r in records.values()
-            if r.get("time_s") is not None
-        );
-        print(
-            f"\nBaseline saved → {args.save_baseline}  "
-            f"({len(passed_paths)} passing, {n_with_perf} with perf metrics)"
-        );
-        if args.jobs > 1 {
+    # Perf is compared against an earlier run, not the committed list: the
+    # previous run of this scope on this machine (--perf-check, read before
+    # this run's log replaces it) or an explicit run log (--perf-baseline).
+    perf_records: dict[str, dict[str, any]] | None = None;
+    perf_source = "";
+    if args.check_baseline and args.perf_baseline {
+        perf_records = _load_perf_records(args.perf_baseline);
+        perf_source = args.perf_baseline;
+        if perf_records is None {
             print(
-                f"  NOTE: run with --jobs 1 for stable perf baselines "
-                f"(parallel timing is contended; this run used --jobs {args.jobs})."
+                f"WARNING: --perf-baseline {args.perf_baseline} is missing or not a "
+                "JSON run log; perf check skipped",
+                file=sys.stderr
             );
         }
+    } elif args.check_baseline and args.perf_check {
+        prev_log = _load_run_log(args.filter);
+        if prev_log is None {
+            print(
+                "(perf check skipped — no earlier run log for this scope on this machine)"
+            );
+        } else {
+            perf_records = dict(prev_log.get("tests", {}));
+            perf_source = f"the previous run ({_run_log_path(args.filter)})";
+        }
+    }
+
+    run_log_path = _write_run_log(args.filter, records, args.jobs, run_meta);
+
+    # --save-baseline: refresh this scope's lines of the known-failures list
+    if args.save_baseline {
+        (n_listed, n_added, n_removed) = _write_known_failures(
+            args.save_baseline, records, set(records)
+        );
+        print(
+            f"\nKnown failures saved → {args.save_baseline}  "
+            f"({n_listed} listed: +{n_added} / -{n_removed})"
+        );
     } else {
         print(f"\nRun log → {run_log_path}");
         print(
@@ -2078,7 +2150,8 @@ def main(argv: list[str] | None = None) -> int {
             args.check_baseline,
             records,
             ran_paths,
-            perf_check=args.perf_check,
+            perf_records=perf_records,
+            perf_source=perf_source,
             perf_pct=args.perf_pct,
             perf_time_floor_ms=args.perf_time_floor,
             perf_mem_floor_mb=args.perf_mem_floor
@@ -2119,8 +2192,10 @@ def main(argv: list[str] | None = None) -> int {
         }
     }
 
-    if regression_count > 0 {
-        return 1;
+    # With a known-failures list the list is the gate: listed failures are
+    # expected, so only regressions fail the run. Without one, any failure does.
+    if args.check_baseline {
+        return 1 if regression_count > 0 else 0;
     }
     return 0 if n_fail == 0 and n_hang == 0 else 1;
 }

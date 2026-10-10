@@ -410,6 +410,48 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # test262 against that engine, at the test262 commit pinned in
+  # js_engine/engine/tests/test262/test262.sha: fails on any test that does not
+  # pass and is not in known_failures.txt. A per-test timeout above the
+  # runner's default keeps a slower runner from turning passes into HANGs.
+  test262:
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.js_engine == 'true' || needs.changes.outputs.native == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [language, built-ins]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
+      - name: Restore the test262 checkout
+        uses: actions/cache@v4
+        with:
+          path: js_engine/engine/tests/test262/vendor
+          key: test262-${{ hashFiles('js_engine/engine/tests/test262/test262.sha') }}
+      - name: Fetch test262 at the pinned commit
+        run: js_engine/tools/fetch_test_deps.sh test262
+      - name: Run test262 ${{ matrix.suite }}
+        working-directory: js_engine
+        run: >-
+          jac engine/tests/test262/run_test262.jac --engine "$JAC_JS_ENGINE" --gc
+          --timeout 30 --filter ${{ matrix.suite }}
+          --check-baseline engine/tests/test262/known_failures.txt
+      - name: Upload the run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test262-${{ matrix.suite }}-run-log
+          path: js_engine/engine/tests/test262/.run_logs
+          retention-days: 7
+          if-no-files-found: ignore
+
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -1932,6 +1974,7 @@ jobs:
       - changes
       - build-kit
       - build-js-engine
+      - test262
       - macos-native
       - jac-check
       - contribution-checks

@@ -325,26 +325,25 @@ run: $(BIN)
 	$(BIN) $(FILE)
 
 # ── test262 conformance (engine/tests/test262) ──────────────────────────────
-# Runs one test262 directory against bin/js_engine and fails on any test that
-# passes in its saved baseline but not now (newly passing tests are reported).
-# Needs the test262 checkout in engine/tests/test262/vendor:
-#   git clone --depth 1 https://github.com/tc39/test262 engine/tests/test262/vendor
-# Extra runner flags via T262_ARGS, e.g. T262_ARGS="--jobs 4 -v", or
-# T262_ARGS="--save-baseline engine/tests/test262/language_baseline.json".
+# Runs one test262 directory against bin/js_engine, at the test262 commit pinned
+# in engine/tests/test262/test262.sha (tools/fetch_test_deps.sh puts it in
+# engine/tests/test262/vendor), and fails on any test that does not pass and is
+# not in known_failures.txt; listed tests that now pass are reported.
+# Extra runner flags via T262_ARGS, e.g. T262_ARGS="--jobs 4 -v", or refresh
+# the list's lines for the directory with
+# T262_ARGS="--save-baseline engine/tests/test262/known_failures.txt".
 T262      := engine/tests/test262
 T262_ARGS ?=
 define run_test262
-	@test -d $(T262)/vendor/test || { \
-	    echo "test262 checkout missing: git clone --depth 1 https://github.com/tc39/test262 $(T262)/vendor"; \
-	    exit 1; }
-	jac $(T262)/run_test262.jac --gc --filter $(1) --check-baseline $(T262)/$(2) $(T262_ARGS)
+	@tools/fetch_test_deps.sh test262
+	jac $(T262)/run_test262.jac --gc --filter $(1) --check-baseline $(T262)/known_failures.txt $(T262_ARGS)
 endef
 
 test_language: $(BIN) $(BIN_PACK)
-	$(call run_test262,language,language_baseline.json)
+	$(call run_test262,language)
 
 test_builtins: $(BIN) $(BIN_PACK)
-	$(call run_test262,built-ins,builtins_baseline.json)
+	$(call run_test262,built-ins)
 
 # ── Relocatable runtime tree (what the jac binary bundles) ───────────────────
 # Everything sits in bin/: the engine finds its builtins next to itself
@@ -436,8 +435,8 @@ help:
 	@echo "  dist             Stage a relocatable runtime tree in dist/ (what the jac binary bundles)"
 	@echo "  pm-resources     Regenerate engine/src/pm/resources_gen.jac from pm/help/*.txt + pm/data/*.txt"
 	@echo "  check-pm-resources  Fail if the committed pm/resources_gen.jac is stale"
-	@echo "  test_language    Run test262 language/ tests; fail on regressions vs language_baseline.json"
-	@echo "  test_builtins    Run test262 built-ins/ tests; fail on regressions vs builtins_baseline.json"
+	@echo "  test_language    Run test262 language/ tests; fail on any not in known_failures.txt"
+	@echo "  test_builtins    Run test262 built-ins/ tests; fail on any not in known_failures.txt"
 	@echo "  napi_shim        Build lib/libnapi_shim.so (NAPI ABI surface)"
 	@echo "  tz_shim          Build lib/libtz_shim.so (IANA TZif timezone shim)"
 	@echo "  icu_shim         Build lib/libicu_shim.so (ICU Intl shim)"
