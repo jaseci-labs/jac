@@ -386,6 +386,15 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "bundled functools",
+             "prim_functools.jac",
+             "functools_py",
+             "functools_cl",
+             "functools_na",
+             ["na"],
+             ["cmp_sort", "wraps_name"]
+         ),
+         (
              "bundled statistics",
              "prim_statistics.jac",
              "statistics_py",
