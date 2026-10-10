@@ -2002,7 +2002,9 @@ impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
     return alloca;
 }
 
-impl NaIRGenPass._stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
+impl NaIRGenPass._stack_entry_alloca(
+    var_type: ir.Type, name: str, count: (ir.Value | None) = None
+) -> ir.Value {
     func = self.builder.function;
     entry_block = func.entry_basic_block;
     cur_block = self.builder.block;
@@ -2011,7 +2013,7 @@ impl NaIRGenPass._stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
     } else {
         self.builder.position_at_start(entry_block);
     }
-    alloca = self.builder.alloca(var_type, name=name);
+    alloca = self.builder.alloca(var_type, size=count, name=name);
     self.builder.position_at_end(cur_block);
     return alloca;
 }
