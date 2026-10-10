@@ -183,6 +183,11 @@ def place_unanalyzed(module: uni.Module, prog: JacProgram) {
     import from jaclang.compiler.placement.placement_facts { contexts_of, write_plan }
     undecided = not module.gen.placement_mode;
     given = contexts_of(module) if undecided else [];
+    if module.loc is not None {
+        prog.analysis.placement_refusals.pop(
+            os.path.realpath(module.loc.mod_path), None
+        );
+    }
     refresh_placement_module(module, prog);
     if solve_module_placement(module, prog) {
         placement_work(prog).changed(module);
@@ -661,7 +666,15 @@ def solve_module_placement(
     }
     refusals = prog.analysis.placement_refusals.get(os.path.realpath(mod_path), {});
     cl_refused: set[int] = refusals.get('client', set());
-    na_refused: set[int] = refusals.get('native', set());
+    na_refused: set[int] = set(refusals.get('native', set()));
+    if module.gen.placement_mode == 'plan' {
+        for elem in module.body {
+            if isinstance(elem, uni.ContextAwareNode)
+                and elem.code_context != CodeContext.NATIVE {
+                na_refused.add(id(elem));
+            }
+        }
+    }
     cl_star = _hard_closure(cl_seed_ids) - cl_refused;
     na_star = _hard_closure(na_seed_ids) - na_refused;
     hard_remaining: list[uni.UniNode] = [];

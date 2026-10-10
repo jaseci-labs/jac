@@ -150,10 +150,10 @@ test "the host runs a native module from its kernel record without analysing it"
     }
 }
 
-"""Placement is optimistic: a module pinned or inferred native that cannot be
-lowered is demoted and compiled again on the server. In a kernel session that
-retry happens inside the session, and the host learns of it from the unit's
-placement record and the session's notes, not by compiling the module."""
+"""A module pinned or inferred native that cannot be lowered is placed on the
+server and compiled again. In a kernel session that happens inside the
+session, and the host learns of it from the unit's placement record and the
+session's notes, not by compiling the module."""
 test "a module that cannot be lowered is demoted inside the session" {
     import json;
     with TemporaryDirectory() as td {
@@ -183,7 +183,7 @@ test "a module that cannot be lowered is demoted inside the session" {
         assert emitted.jcir , "the demoted module has no server code";
         assert not emitted.native_ir , "a demoted module still carries native IR";
         summary = json.loads(emitted.placement);
-        assert summary.get("native_verdict_code") == "E5092" , summary;
+        assert summary.get("decided") != "native" , summary;
         notes = [
             row[2]
             for row in outcome.analysis.events

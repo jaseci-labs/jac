@@ -15,10 +15,6 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 import from jaclang.compiler.capability_notes { capability_notes_of }
-import from jaclang.compiler.passes.placement_pass {
-    build_native_legality,
-    native_unit_name
-}
 import from jaclang.compiler.driver.session_compile { drop_native_bindings }
 import from jaclang.compiler.placement.placement_solver {
     invalidate_importers_es,
@@ -41,8 +37,23 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    return helper(other(x));\n"
          "}\n\n"
      ),
-     SEAM_ENTRY = "with entry {\n    print(other(2));\n}\n",
      REACHING_ENTRY = "with entry {\n    print(other(2));\n    print(mid(3));\n}\n",
+     DRAG_SRC = (
+         "def helper(xs: list[int]) -> str {\n"
+         "    s = \"abc\";\n"
+         "    return f\"{s!a}{len(xs)}\";\n"
+         "}\n\n"
+         "def other(x: int) -> int {\n"
+         "    return x * 2;\n"
+         "}\n\n"
+         "def mid(x: int) -> str {\n"
+         "    return helper([other(x)]);\n"
+         "}\n\n"
+         "with entry {\n"
+         "    print(other(2));\n"
+         "    print(mid(3));\n"
+         "}\n"
+     ),
      LATE_SRC = (
          "def other(x: int) -> int {\n"
          "    return x * 2;\n"
@@ -65,11 +76,23 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "def pretty(x: dict[str, int]) -> str {\n"
          "    return json.dumps(x, indent=2);\n"
          "}\n\n"
-         "def plain(x: dict[str, int]) -> str {\n"
-         "    return json.dumps(x);\n"
+         "def double(n: int) -> int {\n"
+         "    return n * 2;\n"
          "}\n\n"
          "with entry {\n"
-         "    print(plain({\"a\": 1}));\n"
+         "    print(double(2));\n"
+         "}\n"
+     ),
+     SHARED_GAP_SRC = (
+         "import json;\n\n"
+         "def pretty(x: dict[str, int]) -> str {\n"
+         "    return json.dumps(x, indent=2);\n"
+         "}\n\n"
+         "def plain(n: int) -> str {\n"
+         "    return json.dumps([n, n + 1]);\n"
+         "}\n\n"
+         "with entry {\n"
+         "    print(plain(1));\n"
          "}\n"
      ),
      ERASED_SRC = (
@@ -100,12 +123,12 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "}\n"
      ),
      NATIVE_ONLY_SRC = (
-         "with entry {\n"
-         "    a = [1];\n"
-         "    b = [2];\n"
-         "    swap(a, b);\n"
+         "def size(f: File) -> int {\n"
          "    s = \"x\";\n"
-         "    print(f\"{s!a}\", a, b);\n"
+         "    return len(f\"{s!a}\");\n"
+         "}\n\n"
+         "with entry {\n"
+         "    print(1);\n"
          "}\n"
      );
 
@@ -153,15 +176,6 @@ def placed_by_name(mod: uni.Module) -> dict[str, str] {
     return out;
 }
 
-def refused_units(prog: JacProgram, mod: uni.Module) -> list[str] {
-    legality = build_native_legality(mod, prog);
-    return sorted(
-        native_unit_name(owner)
-        for (key, owner) in legality.owners.items()
-        if key in legality.units
-    );
-}
-
 test "an inferred native module is judged once, then typed again under its plan" {
     (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
@@ -171,29 +185,33 @@ test "an inferred native module is judged once, then typed again under its plan"
     assert mod.gen.llvm_ir is not None;
 }
 
-test "a refused unit and every unit that reaches it are placed in Python statically" {
-    (prog, mod, path, parses) = compile_native_default(SEAM_SRC + SEAM_ENTRY);
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert refused_units(prog, mod) == ["helper", "mid"];
-    assert not build_native_legality(mod, prog).module_refused();
-    placed = placed_by_name(mod);
-    assert placed["helper"] == 'server' and placed["mid"] == 'server' , placed;
-    assert placed["other"] == 'native' , placed;
-    iface = mod.gen.native_iface;
-    assert iface is not None and "other" not in iface.demoted;
-}
-
 test "placement is per element: what cannot be native stays in Python, the rest is native" {
     (prog, mod, path, parses) = compile_native_default(SEAM_SRC + REACHING_ENTRY);
     assert parses == 2 , f"the plan is applied once, got {parses} analyses";
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     placed = placed_by_name(mod);
-    assert placed["other"] == 'native' , placed;
-    assert placed["helper"] == 'server' and placed["mid"] == 'server' , placed;
-    assert placed["entry"] == 'server' , (
-        f"the entry reaches `mid`, whose str result cannot cross into native code: {placed}"
+    assert placed["helper"] == 'server' , placed;
+    assert placed["other"] == 'native' and placed["entry"] == 'native' , placed;
+    assert placed["mid"] == 'native' , (
+        f"`mid` calls `helper` with an int and gets a str back, and both cross: {placed}"
     );
     assert mod.decided_codespace != 'native' , "a mixed module is not whole-module native";
+    assert mod.gen.llvm_ir is not None;
+}
+
+test "a caller stays native only when its call can cross the boundary" {
+    (prog, mod, path, parses) = compile_native_default(DRAG_SRC);
+    assert parses == 2 , f"the plan is applied once, got {parses} analyses";
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    placed = placed_by_name(mod);
+    assert placed["helper"] == 'server' , placed;
+    assert placed["mid"] == 'server' , (
+        f"`mid` passes `helper` a list, which cannot cross into Python: {placed}"
+    );
+    assert placed["other"] == 'native' , placed;
+    assert placed["entry"] == 'native' , (
+        f"the entry reaches `mid` with an int and gets a str back: {placed}"
+    );
 }
 
 test "a refusal only the backend can see sends the module to the server once" {
@@ -213,9 +231,27 @@ test "a native library gap refuses the function that uses it, not the module" {
         f"a parameter the native json lacks is a placement fact, not a type "
         f"error: {[str(e) for e in prog.errors_had]}"
     );
-    assert refused_units(prog, mod) == ["pretty"];
+    assert parses == 2 , f"the plan is applied once, got {parses} analyses";
     placed = placed_by_name(mod);
-    assert placed["pretty"] == 'server' and placed["plain"] == 'native' , placed;
+    assert placed["pretty"] == 'server' and placed["double"] == 'native' , placed;
+    imports = [
+        s
+        for s in mod.body
+        if isinstance(s, uni.Import)
+    ];
+    assert imports[0].code_context.value == 'server' , (
+        "an import no native element uses stays with the Python code that uses it"
+    );
+}
+
+test "a gap behind an import that native code shares sends the module to the server" {
+    (prog, mod, path, parses) = compile_native_default(SHARED_GAP_SRC);
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert parses == 3 , (
+        f"the judgment, the plan, and one fallback to the server, got {parses}"
+    );
+    assert set(placed_by_name(mod).values()) == {'server'} , placed_by_name(mod);
+    assert mod.gen.llvm_ir is None;
 }
 
 test "what only matters natively is a note on the typed module, never a type error" {

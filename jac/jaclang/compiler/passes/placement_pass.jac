@@ -693,6 +693,7 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
     }
     import from jaclang.compiler.placement.placement_facts { apply_plan, decode_plan }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    self.prog.analysis.placement_refusals.pop(os.path.realpath(mod_path), None);
     if ir_in.gen.placement_mode == 'plan' and ir_in.source is not None {
         held = decode_plan(active_host().placement_plan(mod_path), ir_in.source.hash);
         if held is not None {
@@ -817,6 +818,25 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         }
     }
     refresh_placement_module(ir_in, self.prog);
+    if carries_native and inferred_refused {
+        refs = placement_work(self.prog).refs(ir_in);
+        reached: set[int] = set();
+        for elem in ir_in.body {
+            if isinstance(elem, ContextAwareNode)
+                and elem.code_context == CodeContext.NATIVE
+                and not isinstance(elem, Import) {
+                reached.update(refs.get(id(elem), set()));
+            }
+        }
+        for elem in tentative {
+            if isinstance(elem, Import)
+                and elem.parent is ir_in
+                and elem.code_context == CodeContext.NATIVE
+                and id(elem) not in reached {
+                elem.code_context = CodeContext.SERVER;
+            }
+        }
+    }
     solve_module_placement(ir_in, self.prog);
     placement_work(self.prog).changed(ir_in);
 
@@ -915,11 +935,14 @@ impl PlacementPass._report_unmet(legality: NativeLegality, why: str) -> None {
         if need.site is None {
             continue;
         }
+        builtin = isinstance(need.site, Name);
         self.ctx.emit(
             E5090,
             node_override=need.site,
-            kind="native-only construct",
-            name=need.name,
+            kind="this use of native-only builtin"
+                if builtin
+                else "native-only construct",
+            name=need.site.value if builtin else need.name,
             help_text="This construct only exists natively, but the code that uses "
             f"it cannot be placed native: {blocked.headline()}"
         );
@@ -931,11 +954,14 @@ impl PlacementPass._report_unmet(legality: NativeLegality, why: str) -> None {
             if need.site is None {
                 continue;
             }
+            builtin = isinstance(need.site, Name);
             self.ctx.emit(
                 E5090,
                 node_override=need.site,
-                kind="native-only construct",
-                name=need.name,
+                kind="this use of native-only builtin"
+                    if builtin
+                    else "native-only construct",
+                name=need.site.value if builtin else need.name,
                 help_text="This construct only exists natively, but this module "
                 f"is not a candidate for native placement: {why}"
             );
