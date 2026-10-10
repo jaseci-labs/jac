@@ -575,8 +575,11 @@ impl JacProgram.parse_source(
         } elif codespace == 'server' {
             parsed.set_code_context(CodeContext.SERVER);
             parsed.gen.placement_mode = 'declared';
-        } else {
-            parsed.gen.native_undecided = infer_native;
+        } elif infer_native and not had_error {
+            import from jaclang.compiler.placement.placement_solver {
+                native_preference_open
+            }
+            parsed.gen.native_undecided = native_preference_open(parsed, self);
         }
     }
     hub_key = self.hub_key(parsed.loc.mod_path);

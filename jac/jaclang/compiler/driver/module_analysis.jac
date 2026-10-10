@@ -141,6 +141,10 @@ obj ModuleAnalysis {
             and self.program.count_module_errors(self.module_path) > 0 {
             self.blocked = True;
         }
+        if _analyze and not self.blocked {
+            import from jaclang.compiler.placement.placement_solver { placement_work }
+            placement_work(self.program).drain(self.program);
+        }
         self.native = self.module is not None
             and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
     }

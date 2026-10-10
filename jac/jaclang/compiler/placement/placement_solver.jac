@@ -209,6 +209,20 @@ def native_placement_candidate(
     return (True, '');
 }
 
+def native_preference_open(module: uni.Module, prog: JacProgram) -> bool {
+    (candidate, _why) = native_placement_candidate(module, prog);
+    if not candidate {
+        return False;
+    }
+    mod_path = module.loc.mod_path if module.loc is not None else '';
+    base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
+    (blocker, deps) = scan_native_blockers(module, base_dir);
+    if blocker {
+        return False;
+    }
+    return _native_deps_ok(os.path.abspath(mod_path), deps);
+}
+
 def _endpoint_veto_applies(module: uni.Module) -> bool {
     import from jaclang.compiler.placement.placement { project_has_server }
     return project_has_server(module);
@@ -557,7 +571,9 @@ def solve_module_placement(
         }
     }
 
-    stamp_count[0] += _seed_from_summary(module, prog);
+    if module.gen.placement_mode != 'plan' {
+        stamp_count[0] += _seed_from_summary(module, prog);
+    }
     pinned_idx: set[int] = set();
     for pes in get_module_summary(module, prog).elements {
         if pes.pinned {
