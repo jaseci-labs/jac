@@ -1,8 +1,8 @@
-"""Fixture: per-item handlers that each keep their own item (issue #8168).
+"""Fixture: per-item handlers built in `for` slots (issue #8168).
 
-A parameter is bound per call, a lambda-body local per invocation (#8130)
-and the loop target per iteration, so none of these handlers shares a
-binding with its siblings and none is reported.
+Every handler must act on its own item: the loop target, a local the slot
+body assigns (bare or annotated), a `.map()` lambda-body local and a
+parameter-bound factory alike.
 """
 
 def:pub Handlers(items: any, sink: Callable[[str], None]) -> JsxElement {
@@ -16,6 +16,22 @@ def:pub Handlers(items: any, sink: Callable[[str], None]) -> JsxElement {
 
     return
         <div>
+            <div id="for_slot">
+                {for s in items {
+                    slotId = str(s.id);
+                    <button onClick={lambda { fire("for_slot:" + slotId); }}>
+                        {slotId}
+                    </button>;
+                }}
+            </div>
+            <div id="annotated">
+                {for a in items {
+                    annId: str = str(a.id);
+                    <button onClick={lambda { fire("annotated:" + annId); }}>
+                        {annId}
+                    </button>;
+                }}
+            </div>
             <div id="factory">
                 {for f in items {
                     facId = str(f.id);

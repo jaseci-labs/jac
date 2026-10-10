@@ -556,63 +556,14 @@ test "lambda assignment to an enclosing local stays a closure rebind" {
     assert_balanced_syntax(js_code, temp_path);
 }
 
-"""The names E2097 reported for a program, in source order."""
-def loop_capture_names(prog: JacProgram) -> list[str] {
-    import re;
-    hits = sorted(
-        [
-            (e.loc.first_line, str(e.msg))
-            for e in prog.errors_had
-            if e.code is not None and e.code.code == "E2097"
-        ]
-    );
-    names: list[str] = [];
-    for (_line, msg) in hits {
-        found = re.search(r"'(\w+)'", msg);
-        assert found is not None , f"E2097 must name the captured variable: {msg}";
-        names.append(found.group(1));
-    }
-    return names;
-}
-
-test "for-slot handlers over a loop-body local are rejected and the local stays function-owned" {
-    # #8168: a local assigned in a `for` body is owned by the component, so the
-    # `let` is hoisted and every handler reads the last item. Scoping is
-    # intended (#7925); the capture is reported. An annotation is not a scoping
-    # construct, so the annotated local is hoisted and reported exactly like
-    # the bare one.
-    fixture_file_path = os.path.join(FIXTURES, "for_slot_capture.jac");
-    (prog, js_code) = analyze_fixture_and_emit_js(fixture_file_path);
-    assert loop_capture_names(prog) == ["slotId", "annId"] , (
-        "both the bare and the annotated for-slot local must be E2097: "
-        f"{[e.pretty_print() for e in prog.errors_had]}"
-    );
-
-    loop_start = js_code.find("for (const s of");
-    assert loop_start >= 0 , js_code;
-    for name in ["slotId", "annId"] {
-        hoist_pos = js_code.find(f"let {name};");
-        assert 0 <= hoist_pos < loop_start , (
-            f"'{name}' is owned by the component, so its declaration is hoisted "
-            f"above the loops whether or not it is annotated:\n{js_code}"
-        );
-        assert f"let {name} = " not in js_code , (
-            f"'{name}' must not get a per-iteration declaration; an annotation "
-            f"does not change which scope owns a binding:\n{js_code}"
-        );
-    }
-    assert_balanced_syntax(js_code, fixture_file_path);
-}
-
-test "binding the item through a parameter gives every for-slot handler its own item" {
-    # The migration E2097 asks for: `handlerFor(itemId)` binds per call. The
-    # .map() lambda-body local (#8130) and the loop target are the controls.
-    fixture_file_path = os.path.join(FIXTURES, "for_slot_param_binding.jac");
+test "every handler a for slot builds acts on its own item" {
+    # #8168: a local assigned in a `for` slot body, bare or annotated, is local
+    # to the loop, so each handler keeps its own iteration's value. The loop
+    # target, a .map() lambda-body local (#8130) and a parameter-bound factory
+    # are the same contract.
+    fixture_file_path = os.path.join(FIXTURES, "for_slot_handlers.jac");
     (prog, js_code) = analyze_fixture_and_emit_js(fixture_file_path);
     assert not prog.errors_had , "\n".join(e.pretty_print() for e in prog.errors_had);
-
-    assert '"onClick": handlerFor(facId)' in js_code , js_code;
-    assert "let mapId = " in js_code and "let mapId;" not in js_code , js_code;
 
     harness = (
         "\nfunction __jacJsx(tag, props, kids) {"
@@ -639,10 +590,10 @@ test "binding the item through a parameter gives every for-slot handler its own 
         f"for-slot handlers crashed in Node:\nstderr={result.stderr!r}\njs:\n{js_code}"
     );
     got = json.loads(result.stdout.strip());
-    for section in ["factory", "map_lambda", "loop_target"] {
+    for section in ["for_slot", "annotated", "factory", "map_lambda", "loop_target"] {
         assert got.get(section)
             == [f"{section}:{item}" for item in ["first", "second", "last"]] , (
-            f"every '{section}' handler must act on its own item, got {got}"
+            f"every '{section}' handler must act on its own item, got {got}\njs:\n{js_code}"
         );
     }
     assert_balanced_syntax(js_code, fixture_file_path);
