@@ -1160,6 +1160,14 @@ Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
              []
          ),
          (
+             "assert_own_condition_narrowing",
+             "checker",
+             "checker_assert_own_condition_narrowing.jac",
+             0,
+             True,
+             []
+         ),
+         (
              "type_subscript_member_access",
              "checker",
              "checker_type_subscript_member.jac",

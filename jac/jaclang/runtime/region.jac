@@ -120,19 +120,29 @@ def instrument_drops(cls: any) {
 }
 
 def is_drop_hook(member: any) -> bool {
-    return callable(member)
-        and not getattr(member, "__jac_entry", False)
-        and not getattr(member, "__jac_exit", False);
+    if isinstance(member, (staticmethod, classmethod))
+        or not callable(member)
+        or getattr(member, "__jac_entry", False)
+        or getattr(member, "__jac_exit", False) {
+        return False;
+    }
+    import inspect;
+    try {
+        declared = len(inspect.signature(member).parameters);
+    } except (TypeError, ValueError) {
+        return True;
+    }
+    return declared == 1;
 }
 
 def run_drop(item: any) {
-    if getattr(item, "_jac_drop_done", False) {
+    if item is None or getattr(item, "_jac_drop_done", False) {
         return;
     }
-    drop = item?.drop;
-    if not is_drop_hook(drop) {
+    import inspect;
+    if not is_drop_hook(inspect.getattr_static(type(item), "drop", None)) {
         return;
     }
     item._jac_drop_done = True;
-    drop();
+    item.drop();
 }
