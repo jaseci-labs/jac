@@ -90,6 +90,7 @@ with entry {
 }
 
 glob mixed: dict[str, any] = {"b": 1, "a": "x", "c": [1, 2]};
+
 with entry {
     print(nested_shape(mixed));
     print(total_of([1, 2, 3]));
@@ -100,6 +101,7 @@ with entry {
 }
 
 glob flags: dict[str, bool] = {"on": True, "off": False};
+
 with entry {
     print(json.dumps(flags));
     print(json.dumps({"b": 1, "a": 2}));

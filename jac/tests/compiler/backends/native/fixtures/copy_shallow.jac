@@ -36,7 +36,7 @@ class Point {
     has x: int = 0,
         y: int = 0;
 
-    def __init__(self: Point, x: int = 0, y: int = 0) {
+    def init(self: Point, x: int = 0, y: int = 0) {
         self.x = x;
         self.y = y;
     }

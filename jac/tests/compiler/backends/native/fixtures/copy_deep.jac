@@ -105,7 +105,12 @@ def cycles {
 
 def atomics_and_dynamic {
     tt = (1, "two", (3, 4));
-    print(copy.deepcopy(tt) == tt, copy.deepcopy("s"), copy.deepcopy(3), copy.deepcopy(2.5));
+    print(
+        copy.deepcopy(tt) == tt,
+        copy.deepcopy("s"),
+        copy.deepcopy(3),
+        copy.deepcopy(2.5)
+    );
     d = Dog(name="rex", marks=["m"], tricks=["sit"]);
     pet: Animal = d;
     dc = copy.deepcopy(pet);

@@ -224,6 +224,7 @@ def _reserved_c_symbols -> frozenset[str] {
         "__mt_genrand_u32 __mt_getrandbits __mt_init_by_array __mt_randbelow "
         "GC_malloc "
         "clock_settime clock_nanosleep inflateInit2_ inflate inflateEnd zlibVersion "
+        "regcomp regexec regerror regfree "
         "__connect "
         "sqlite3_open sqlite3_open_v2 sqlite3_close sqlite3_exec sqlite3_free "
         "sqlite3_errmsg sqlite3_errcode sqlite3_extended_errcode sqlite3_libversion "
