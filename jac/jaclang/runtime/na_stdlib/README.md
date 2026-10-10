@@ -16,13 +16,15 @@ name declares. That is the rule the compiler checks (`E5114`):
   constructor parameter in the interface is public; `init`, `postinit` and
   `drop` are not part of the surface.
 - Anything else a module needs is internal: no `:pub`, or a leading
-  underscore for a member. User code is typed against the interface on every
-  backend, so it could not have named those anyway.
-- Inside this tree a bare import (`import from datetime { date }`) means the
-  interface, bound to the native module by the compiler's binding table. A
-  relative import (`import from ._hex { to_hex }`,
-  `import from .datetime { _ord2ymd }`) means the sibling implementation and
-  is the only way to reach an internal name.
+  underscore for a member. Code whose placement is still open is typed
+  against the Python interface before it is placed, so it cannot rely on a
+  name the interface lacks.
+- Inside this tree a bare import of a standard-library name
+  (`import from datetime { date }`) resolves to the native module of that
+  name, as it does in any native code. An internal helper is imported
+  relatively (`import from ._hex { to_hex }`,
+  `import from .datetime { _ord2ymd }`), so a helper is never taken for a
+  standard-library module of the same name.
 - Every platform variant of a module exposes the same public surface.
 
 ## How resolution works

@@ -111,10 +111,11 @@ graph TD
         FE6[CFGBuildPass]
         FE7[MTIRGenPass]
         FE8[JsxIntrinsicGuardPass]
+        FE9[PlacementApplyPass]
         FE10[ComptimeResolvePass]
     end
 
-    FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8 --> FE10
+    FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8 --> FE9 --> FE10
     FE10 --> TYPECK["Analysis (unconditional)<br/>TypeCheckPass / StaticAnalysisPass / AccessCheckPass / OwnershipCheckPass /<br/>PlacementPass / PortabilityWarnPass / JacLintCheckPass"]
     TYPECK --> INTEROP["BoundaryAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[JcirGenPass + JcirBytecodeGenPass]
@@ -244,68 +245,71 @@ imports), its references to sibling elements, and its value-flow escapes.
 Summaries are serialized into the module's `.jir` as a `SEC_PLACEMENT`
 section and memoized on the program keyed by resolved path.
 
-Placement is one judgment, made once, after analysis. Nothing is stamped at
-parse time and the type checker never asks which codespace it is in.
+Placement is decided in three places, each from what is known at that
+point.
 
-1. **Requirements and refusals** (`PlacementPass`, the last analysis pass
-   that touches placement): every top-level element is typed by the same
-   rules. The pass then reads what the typed module says about each target.
-   A *requirement* pins an element: a pin or project kind, a forced
-   codespace, a C library declaration, or a construct that only one target
-   has (a browser global, a native-only builtin), recorded by the checker in
-   `compiler/capability_notes.jac`. A *refusal* rules a target out: a
-   capability rule, a checker note, a native library gap from
-   `compiler/native_bindings.jac`. An element with no requirement takes the
-   project's default target when nothing refuses it. A required target that
-   is refused is an error; any other refusal just leaves the element where
-   it can run.
-2. **Boundaries** (`compiler/boundary_rules.jac`): a reference between two
-   elements placed apart is allowed when the callee's signature has a wire
-   form for that pair of codespaces. Otherwise the referencing element is
-   refused for its target too. Between native and Python code the wire is
-   the ctypes scalars. Between client and server code it is what a request
-   can carry, judged structurally over the declared signature: scalars,
-   lists, tuples and sets of types that cross, dicts with `str` keys, enums,
-   archetypes whose fields all cross, and unions of those; an upload only as
-   a parameter and a generator only as a streamed result (`E5115`).
-3. **Per-module seeding and fixpoint** (`solve_module_placement`, called by
-   the pass): seeds are read off
-   the summary (JSX and string-path imports stamp CLIENT, clib externs
-   stamp NATIVE, browser-global references stamp CLIENT in unanchored
-   modules), then placement flows across resolved symbol references to a
-   fixpoint in two colors. A hard phase pulls transitive dependents of
-   seeds unconditionally; the soft phase pulls dependencies gated by
-   pullability (archetypes, endpoint-tagged abilities in anchored modules,
-   and non-portable python imports stay server, where both sides bridge to
+1. **Declared at parse** (`JacProgram.parse_source`): a module whose
+   codespace is declared (a native-only or client location, a pin, a native
+   unit, a forced or ahead-of-time build, the project kind) is stamped
+   before symbol tables are built and is typed once in that codespace. Any
+   other module is left on the server, and the parse records on the tree
+   whether it may still take the project's native preference
+   (`gen.native_undecided`): the default is native, the compile generates
+   code, and the syntactic scan of the module and its import closure finds
+   no blocker.
+2. **Seeded before typing** (`PlacementApplyPass`, scheduled in both
+   `get_symtab_ir_sched` and `get_ir_gen_sched`, then the program stage):
+   what syntax and symbols decide. Seeds are read off the summary (JSX and
+   string-path imports stamp CLIENT, clib externs stamp NATIVE,
+   browser-global references stamp CLIENT in unanchored modules), then
+   placement flows across resolved symbol references to a fixpoint in two
+   colors. A hard phase pulls transitive dependents of seeds
+   unconditionally; the soft phase pulls dependencies gated by pullability
+   (archetypes, endpoint-tagged abilities in anchored modules, and
+   non-portable python imports stay server, where both sides bridge to
    them). An element claimed by both colors stays on the server.
-   `[placement.pins]` entries feed `ElementSummary.pinned` exactly like the
-   old source markers did: pinned elements never propagate and are never
-   overridden.
-4. **Program stage** (in `_compile_once`, after the ir schedule and before
-   type checking / codegen): client-context plain imports pull their
-   pullable target closures dual (`codespace_dual`) across module
-   boundaries to a program-wide fixpoint, materializing missing `.jac`
-   targets symtab-only and stamping every instance of a target the program
-   holds. Because this runs before codegen, `jac check` sees the same
-   cross-module placements as `jac build`; stale ES output is invalidated
-   when stamps change.
+   `[placement.pins]` entries feed `ElementSummary.pinned`: pinned elements
+   never propagate and are never overridden. The program stage (the
+   placement phase, after the ir schedule and before type checking) then
+   pulls client-context plain imports' target closures dual
+   (`codespace_dual`) across module boundaries to a program-wide fixpoint,
+   materializing missing `.jac` targets symtab-only. Because this runs
+   before type checking, client code is typed as client code, and
+   `jac check` sees the same client placements as `jac build`.
+3. **The native preference, after typing** (`PlacementPass`): a module
+   whose native preference is still open was typed with no codespace
+   assumed. Where native code alone can do something the checker recorded a
+   *requirement* (`compiler/capability_notes.jac`); where native code is
+   stricter or the native library lacks a member it recorded a *refusal*
+   (the same table, and `compiler/native_bindings.jac`). The pass places
+   each top-level element native unless a capability rule or a recorded
+   refusal rules it out, and a reference between two elements placed apart
+   is allowed when the callee's signature can cross
+   (`compiler/boundary_rules.jac`): between native and Python code the
+   ctypes scalars. A required placement that is refused is an error; any
+   other refusal leaves the element in Python. The result is a *plan*: the
+   elements that are not on the server, named by position.
 
-Every stamp records an evidence note (`jac check --placements` prints the
-chains). There is one type analysis for every codespace: what only matters
-natively is recorded on the typed module as a note (`compiler/native_notes.jac`),
-a requirement, or a native library gap (`compiler/native_bindings.jac`), and
-is read by placement rather than raised as a type error. A module that
-prefers native but cannot lower is placed on the server from those facts,
-never from a caught failure.
-`PlacementPass` applies the static rules and propagates them over the
-module's reference graph: a unit (function, method or test) that references
-a refused unit is refused, and module-level code that reaches a refused unit
-refuses the module during analysis, before the native backend runs. A
-refusal only the backend can see is recorded on the same table as a late
-refusal and re-places the module once. A backend exception is a compiler
-error and is never absorbed as a refusal. Client-pulled (dual) elements that
-fail ES generation are un-stamped back to the server with a note, their call
-sites bridging instead.
+A module the plan moves is analyzed a second time with the plan applied at
+parse (`analyze_module`), so the native backend sees types from the native
+library and the passes that only run for native code see native code. Under
+a plan the solver adds nothing. If that analysis, or a backend, still
+refuses native, the module is placed on the server and analyzed once more.
+A backend exception is a compiler error and is never absorbed as a refusal.
+Nothing about a placement is stored between compiles: a plan is held by the
+compiling process for the source it was computed from and dropped after the
+analysis that uses it.
+
+Between client and server code the same boundary rule judges what a request
+can carry, structurally over the declared signature: scalars, lists, tuples
+and sets of types that cross, dicts with `str` keys, enums, archetypes whose
+fields all cross, and unions of those; an upload only as a parameter and a
+generator only as a streamed result (`E5115`).
+
+Every stamp records an evidence note (`jac explain placement` prints each
+element's codespace and the diagnostics that decided it). Client-pulled
+(dual) elements that fail ES generation are un-stamped back to the server
+with a note, their call sites bridging instead.
 
 On the Python backend, inferred-native declarations in mixed modules are
 pruned from the server projection (mirroring the client pruning), with the
@@ -331,6 +335,7 @@ The ir-gen schedule (`get_ir_gen_sched`):
 | `ASTValidationPass` | [`compiler/passes/ast_validation_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ast_validation_pass.jac) | Structural validation of the parsed tree |
 | `SymTabBuildPass` | [`compiler/passes/sym_tab_build_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/sym_tab_build_pass.jac) | Builds symbol tables; enforces sealed-field rules for archetypes |
 | `DeclImplMatchPass` | [`compiler/passes/decl_impl_match_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/decl_impl_match_pass.jac) | Pairs declarations in `.jac` files with bodies in `.impl.jac` annexes |
+| `PlacementApplyPass` | [`compiler/placement/placement_solver.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/placement/placement_solver.jac) | Applies the placement solver's per-module stage before typing: summary-driven seeding plus the CLIENT/NATIVE reference fixpoint (see stage 2) |
 | `SemanticAnalysisPass` | [`compiler/passes/semantic_analysis_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/semantic_analysis_pass.jac) | Name resolution, scope analysis |
 | `SemDefMatchPass` | [`compiler/passes/sem_def_match_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/sem_def_match_pass.jac) | Matches `sem` blocks to definitions for `by llm` |
 | `CFGBuildPass` | [`compiler/passes/cfg_build_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/cfg_build_pass.jac) | Builds control-flow graphs |
@@ -347,7 +352,7 @@ on every compile:
 | `StaticAnalysisPass` | [`compiler/passes/static_analysis_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/static_analysis_pass.jac) | Unreachable code, unused variables, import refusals (`E1122`-`E1125`) |
 | `AccessCheckPass` | [`compiler/passes/access_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/access_check_pass.jac) | Access-modifier (`:pub`/`:protect`/`:priv`) enforcement |
 | `OwnershipCheckPass` | [`compiler/passes/ownership_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ownership_check_pass.jac) | Ownership and borrow analysis (see the [Ownership Fact Schema](ownership-checker-spec.md)) |
-| `PlacementPass` | [`compiler/passes/placement_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/placement_pass.jac) | Decides, after analysis, where every top-level element runs: reads requirements and refusals for each target off the typed module, applies the boundary rule to references between elements, runs the placement fixpoint, and reports a required target that is refused |
+| `PlacementPass` | [`compiler/passes/placement_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/placement_pass.jac) | Decides, after typing, whether each top-level element of a module that may prefer native is placed native: reads the requirements and refusals the checker recorded, applies the capability rules and the boundary rule, writes the plan the second analysis runs under, and reports a required placement that is refused. For a decided module it holds the placement to account and checks native library conformance (`E5114`) |
 | `PortabilityWarnPass` | [`compiler/passes/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/capability_check_pass.jac) | Emits portability warnings (W6001-W6004) for JS-idiom violations; diagnostic-only |
 | `JacLintCheckPass` | [`compiler/tools/jac_auto_lint_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/tools/jac_auto_lint_pass.jac) | Lint rules (W3xxx / E3xxx) |
 
