@@ -317,10 +317,13 @@ obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry,
     def validate(server: JacAPIServer) -> list[str] {
         admin = get_scale_config().get_admin_config();
         password = str(admin.get('default_password') or '');
-        if not admin.get('enabled', True) or not password {
+        username = str(admin.get('username') or '');
+        if not admin.get('enabled', True)
+            or not password
+            or server.user_manager.find_user_by_identity(username) is not None {
             return [];
         }
-        violations = check_password(password, [str(admin.get('username') or '')]);
+        violations = check_password(password, [username]);
         return [
             f"The bootstrap admin password ([scale.admin] default_password or {ADMIN_PASSWORD_ENV}) does not meet [serve.auth.password]: "
                 + ', '.join([v.value for v in violations])

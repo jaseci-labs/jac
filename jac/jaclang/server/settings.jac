@@ -168,7 +168,10 @@ obj AuthSettings {
         lockout: LockoutSettings = LockoutSettings(),
         second_factor: SecondFactorSettings = SecondFactorSettings();
 
-    static def from_table(table: dict[str, any]) -> AuthSettings;
+    static def from_table(
+        table: dict[str, any], environ: (dict[str, str] | None) = None
+    ) -> AuthSettings;
+
     def problems -> list[str];
     def resolve_secret(base_path: str) -> str;
 }
@@ -213,7 +216,12 @@ obj ServeSettings {
 
 def secret_home(base_path: str) -> str;
 def overlay_table(
-    target: object, table: dict[str, any], env: str, section: str, moved: dict[str, str]
+    target: object,
+    table: dict[str, any],
+    env: str,
+    section: str,
+    moved: dict[str, str],
+    environ: (dict[str, str] | None) = None
 ) -> None;
 
 def removed_table(config: (JacConfig | None)) -> list[str];
@@ -223,8 +231,8 @@ def in_cluster -> bool {
     return bool(os.environ.get('KUBERNETES_SERVICE_HOST', '').strip());
 }
 
-def env_value(name: str) -> (str | None) {
-    raw = os.environ.get(ENV_PREFIX + name);
+def env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None) {
+    raw = (os.environ if environ is None else environ).get(ENV_PREFIX + name);
     if raw is None {
         return None;
     }

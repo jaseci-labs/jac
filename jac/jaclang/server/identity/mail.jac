@@ -76,7 +76,9 @@ obj IdentityMailer {
 
     def link(user_id: str, purpose: str, address: str, ttl: int, template: str) -> str {
         store = AuthTokenStore.instance();
-        store.revoke_user_tokens(user_id, purpose);
+        store.revoke_user_tokens(
+            user_id, purpose, address if purpose == VERIFY_PURPOSE else None
+        );
         token = store.create_token(
             user_id=user_id, purpose=purpose, ttl_seconds=ttl, identity_value=address
         );
@@ -126,12 +128,14 @@ obj IdentityMailer {
         return MailResult(outcome=MailOutcome.SENT if sent else MailOutcome.FAILED);
     }
 
-    def announce(user: dict[str, any], source_ip: str = '') {
+    def announce(user: dict[str, any], source_ip: str = '', address: str = '') {
         if auth_settings().email.verification == 'none' {
             return;
         }
         for identity in (user.get('identities') or []) {
-            if identity.get('type') == 'email' and not identity.get('verified') {
+            if identity.get('type') == 'email'
+                and not identity.get('verified')
+                and (not address or identity.get('value_normalized') == address) {
                 self.send_verification(
                     str(user.get('user_id') or ''), identity, source_ip
                 );

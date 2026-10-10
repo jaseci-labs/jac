@@ -676,7 +676,7 @@ obj ManifestBuilder {
         if user_secret is not None {
             bundle["user_secret"] = user_secret;
             bundle["admin_password_rules"] = AuthSettings.from_table(
-                self._serve_config().auth
+                self._serve_config().auth, dict(user_secret["stringData"])
             ).password;
         }
         ingress_cfg: dict[str, any] = self._gateway_cfg().get("ingress", {});

@@ -87,19 +87,25 @@ test "required verification without a mail transport stops any server" {
     assert verification_problems('required', RecordingEmailer()) == [];
 
     assert MailExtension().mail_transport() is None;
-    configured = MailExtension(emailer=RecordingEmailer(), resolved=True);
+    transport: any = RecordingEmailer();
+    configured = MailExtension(emailer=transport, resolved=True);
     assert verification_problems('required', configured.mail_transport()) == [];
 }
 
 
 test "a configured admin password is held to the password policy from any source" {
     target = AdminExtension.__module__ + '.get_scale_config';
+    # The check guards the account the bootstrap is about to create.
+    fresh: any = MagicMock();
+    fresh.user_manager.find_user_by_identity.return_value = None;
+    bootstrapped: any = MagicMock();
+    bootstrapped.user_manager.find_user_by_identity.return_value = {'user_id': 'a'};
     try {
         configure_identity(AuthSettings(password=PasswordSettings(hash_cost=10)), '');
         for from_env in ['', 'changeme'] {
             with patch.dict(os.environ, {'JAC_SCALE_ADMIN_PASSWORD': from_env}) {
                 with patch(target, return_value=admin_config('changeme')) {
-                    problems = AdminExtension().validate(MagicMock());
+                    problems = AdminExtension().validate(fresh);
                     assert len(problems) == 1 and 'PASSWORD_COMMON' in problems[0] , (
                         from_env,
                         problems
@@ -107,14 +113,20 @@ test "a configured admin password is held to the password policy from any source
                 }
             }
         }
+        with patch(target, return_value=admin_config('changeme')) {
+            assert AdminExtension().validate(bootstrapped) == [] , (
+                'once the admin exists the bootstrap password creates nothing, so a '
+                'stricter policy must not stop a server whose admin has moved on'
+            );
+        }
         with patch(target, return_value=admin_config('correct horse battery')) {
-            assert AdminExtension().validate(MagicMock()) == [];
+            assert AdminExtension().validate(fresh) == [];
         }
         with patch(target, return_value=admin_config('')) {
-            assert AdminExtension().validate(MagicMock()) == [];
+            assert AdminExtension().validate(fresh) == [];
         }
         with patch(target, return_value=admin_config('changeme', enabled=False)) {
-            assert AdminExtension().validate(MagicMock()) == [];
+            assert AdminExtension().validate(fresh) == [];
         }
 
         # What the server and the deploy mint must pass the strictest policy.

@@ -92,31 +92,41 @@ def table_value(current: any, raw: any, label: str) -> any {
 }
 
 
-def env_typed(current: any, name: str) -> any {
+def env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any {
+    raw = str(env_value(name, environ));
     if isinstance(current, bool) {
-        raw = str(env_value(name)).lower();
-        if raw not in ENV_TRUE + ENV_FALSE {
+        if raw.lower() not in ENV_TRUE + ENV_FALSE {
             raise ServeConfigError(
                 f"{ENV_PREFIX}{name} must be true or false, got {raw!r}"
             );
         }
-        return raw in ENV_TRUE;
+        return raw.lower() in ENV_TRUE;
     }
-    if isinstance(current, int) {
-        return env_int(name, current);
-    }
-    if isinstance(current, float) {
-        return env_float(name, current);
+    if isinstance(current, (int, float)) {
+        try {
+            return int(raw) if isinstance(current, int) else float(raw);
+        } except ValueError {
+            raise ServeConfigError(f"{ENV_PREFIX}{name} must be a number, got {raw!r}");
+        }
     }
     if isinstance(current, list) {
-        return env_list(name, current);
+        return [
+            part.strip()
+            for part in raw.split(',')
+            if part.strip()
+        ];
     }
-    return env_value(name);
+    return raw;
 }
 
 
 impl overlay_table(
-    target: object, table: dict[str, any], env: str, section: str, moved: dict[str, str]
+    target: object,
+    table: dict[str, any],
+    env: str,
+    section: str,
+    moved: dict[str, str],
+    environ: (dict[str, str] | None) = None
 ) -> None {
     names = [f.name for f in fields(target)];
     for key in table {
@@ -138,9 +148,11 @@ impl overlay_table(
             if not isinstance(nested, dict) {
                 raise ServeConfigError(f"[{section}.{name}] must be a table");
             }
-            overlay_table(current, nested, env_name + '_', f"{section}.{name}", {});
-        } elif env_value(env_name) {
-            setattr(target, name, env_typed(current, env_name));
+            overlay_table(
+                current, nested, env_name + '_', f"{section}.{name}", {}, environ
+            );
+        } elif env_value(env_name, environ) {
+            setattr(target, name, env_typed(current, env_name, environ));
         } elif name in table {
             setattr(
                 target, name, table_value(current, table[name], f"[{section}] {name}")
@@ -185,9 +197,11 @@ impl IdentifierSettings.login_identifiers -> list[str] {
 }
 
 
-impl AuthSettings.from_table(table: dict[str, any]) -> AuthSettings {
+impl AuthSettings.from_table(
+    table: dict[str, any], environ: (dict[str, str] | None) = None
+) -> AuthSettings {
     settings = AuthSettings();
-    overlay_table(settings, table, 'AUTH_', 'serve.auth', AUTH_MOVED_KEYS);
+    overlay_table(settings, table, 'AUTH_', 'serve.auth', AUTH_MOVED_KEYS, environ);
     settings.password.hash_cost = max(10, min(17, settings.password.hash_cost));
     return settings;
 }

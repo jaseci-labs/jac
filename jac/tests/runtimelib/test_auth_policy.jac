@@ -6,13 +6,18 @@ must be, whether email must be verified and whether registration is open under
 locks out an account that already exists.
 """
 
+import asyncio;
 import os;
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from uuid { uuid4 }
 import from jaclang.project.config { JacConfig }
 import from jaclang.server.endpoints.auth { register_auth_endpoints }
-import from jaclang.server.identity.auth_models { LoginRequest, RegisterRequest }
+import from jaclang.server.identity.auth_models {
+    AddIdentityRequest,
+    LoginRequest,
+    RegisterRequest
+}
 import from jaclang.server.identity.config { configure_identity }
 import from jaclang.server.identity.policy {
     Violation,
@@ -124,6 +129,15 @@ test "auth settings load nested tables and env, and name moved or unknown keys" 
     assert loaded.password.min_length == 12 and loaded.password.require == ['digit'];
     assert loaded.password.hash_cost == 17;
     assert AuthSettings.from_table({}).password.min_length == 8;
+    # A deploy computes the rules its pods will run under from the environment
+    # it hands them, not from the shell it runs in.
+    with patch.dict(os.environ, {'JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH': '9'}) {
+        pods = AuthSettings.from_table(
+            {}, {'JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH': '64'}
+        );
+        assert pods.password.min_length == 64;
+        assert AuthSettings.from_table({}, {}).password.min_length == 8;
+    }
     assert AuthSettings.from_table({}).identifiers.username == 'optional';
 
     with patch.dict(
@@ -803,6 +817,71 @@ test "required verification holds the session until the emailed link is used" {
                 Request(client_host='192.0.2.9')
             );
             assert closed_to_usernames.error.code == 'UNAUTHORIZED';
+            host.users.close();
+        } finally {
+            configure_identity(AuthSettings(), '');
+        }
+    }
+}
+
+
+test "each address keeps its own verification link and adding one mails only it" {
+    import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+    with TemporaryDirectory() as tmpdir {
+        try {
+            configure_identity(
+                AuthSettings(
+                    email=EmailSettings(
+                        verification='optional',
+                        verify_url_template='https://app.example.test/v?t={token}'
+                    ),
+                    password=PasswordSettings(hash_cost=10)
+                ),
+                tmpdir
+            );
+            emailer = RecordingEmailer();
+            host = Host(users=UserManager(base_path=tmpdir), emailer=emailer);
+            register_auth_endpoints(host);
+            tag = unique('hal');
+            first = tag + '@corp.example';
+            second = tag + '@other.example';
+            created = host.routes['/user/register'](
+                register_body(
+                    {'username': tag, 'email': first}, 'correct horse battery'
+                ),
+                Request(client_host='192.0.2.10')
+            );
+            assert created.ok and [m['to'] for m in emailer.sent] == [first];
+
+            request = Request(client_host='192.0.2.10');
+            request.state.username = str(created.data['user_id']);
+            added = asyncio.run(
+                host.routes['/user/add-identity'](
+                    request,
+                    AddIdentityRequest.from_dict(
+                        {'identity': {'type': 'email', 'value': second}}
+                    )
+                )
+            );
+            assert added.ok , added.error;
+            assert [m['to'] for m in emailer.sent] == [first, second] , (
+                'adding an address mails that address only'
+            );
+
+            def token_in(mail: dict[str, str]) -> str {
+                for line in mail['body'].splitlines() {
+                    if line.startswith('https://app.example.test/v?t=') {
+                        return line.partition('=')[2];
+                    }
+                }
+                return '';
+            }
+            store = AuthTokenStore.instance();
+            assert store.consume_token(token_in(emailer.sent[0]), 'verify')
+                is not None , (
+                "the second address's link must not revoke the first address's"
+            );
+            assert store.consume_token(token_in(emailer.sent[1]), 'verify') is not None;
             host.users.close();
         } finally {
             configure_identity(AuthSettings(), '');

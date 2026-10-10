@@ -75,8 +75,10 @@ impl AuthTokenStore.consume_token(token: str, purpose: str) -> (dict[str, any] |
     return record;
 }
 
-impl AuthTokenStore.revoke_user_tokens(user_id: str, purpose: str) -> int {
-    return self._delete_user(user_id, purpose);
+impl AuthTokenStore.revoke_user_tokens(
+    user_id: str, purpose: str, identity_value: (str | None) = None
+) -> int {
+    return self._delete_user(user_id, purpose, identity_value);
 }
 
 impl AuthTokenStore._persist(record: dict[str, any]) -> None {
@@ -148,18 +150,23 @@ impl AuthTokenStore._delete(token_hash: str) -> bool {
     return self._in_memory.pop(token_hash, None) is not None;
 }
 
-impl AuthTokenStore._delete_user(user_id: str, purpose: str) -> int {
+impl AuthTokenStore._delete_user(
+    user_id: str, purpose: str, identity_value: (str | None) = None
+) -> int {
     if self._db is not None {
         try {
+            scoped = " AND value::jsonb->>'identity_value' = :i"
+                if identity_value is not None
+                else "";
             rows = self._db.rows(
                 """
                 DELETE FROM kv_state
                 WHERE key LIKE 'authtok:%'
                       AND value::jsonb->>'user_id' = :u
-                      AND value::jsonb->>'purpose' = :p
-                RETURNING key
-                """,
-                {'u': user_id, 'p': purpose}
+                      AND value::jsonb->>'purpose' = :p"""
+                    + scoped
+                    + "\nRETURNING key",
+                {'u': user_id, 'p': purpose, 'i': identity_value}
             );
             return len(rows);
         } except Exception as e {
@@ -170,7 +177,9 @@ impl AuthTokenStore._delete_user(user_id: str, purpose: str) -> int {
     to_delete = [
         h
         for (h, r) in self._in_memory.items()
-        if r.get('user_id') == user_id and r.get('purpose') == purpose
+        if r.get('user_id') == user_id
+            and r.get('purpose') == purpose
+            and (identity_value is None or r.get('identity_value') == identity_value)
     ];
     for h in to_delete {
         del self._in_memory[h];

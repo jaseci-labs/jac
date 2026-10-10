@@ -542,7 +542,9 @@ def register_auth_endpoints(server: EndpointHost) {
             );
         }
         server.mailer().announce(
-            users.get_user(str(user_id)) or {}, client_ip(request)
+            users.get_user(str(user_id)) or {},
+            client_ip(request),
+            body_data.identity.value.lower().strip()
         );
         return ok(result);
     }
