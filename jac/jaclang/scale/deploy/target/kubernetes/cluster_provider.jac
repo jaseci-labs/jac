@@ -8,7 +8,6 @@ obj ClusterProvider {
         lb_endpoint: (str | None), ingress_node_port: int
     ) -> (str | None) abst;
 
-    def prometheus_scrape_port(container_port: int) -> int abst;
     def ingress_controller_service(
         service_name: str, namespace: str, controller_name: str, ingress_node_port: int
     ) -> dict[str, any] abst;
@@ -31,10 +30,6 @@ obj AWSProvider(ClusterProvider) {
             return f"http://{lb_endpoint}";
         }
         return None;
-    }
-
-    def prometheus_scrape_port(container_port: int) -> int {
-        return container_port;
     }
 
     def ingress_controller_service(
@@ -114,10 +109,6 @@ obj LocalProvider(ClusterProvider) {
 
     def service_url(lb_endpoint: (str | None), ingress_node_port: int) -> (str | None) {
         return f"http://localhost:{ingress_node_port}";
-    }
-
-    def prometheus_scrape_port(container_port: int) -> int {
-        return container_port;
     }
 
     def ingress_controller_service(
