@@ -588,6 +588,18 @@ impl uncrossable_native(mod: Module, prog: JacProgram) -> set[int] {
     changed = True;
     while changed {
         changed = False;
+        mixed = any(e.code_context == CodeContext.NATIVE for e in tops.values())
+            and any(e.code_context == CodeContext.SERVER for e in tops.values());
+        if mixed {
+            for (eid, elem) in tops.items() {
+                if isinstance(elem, ModuleCode)
+                    and elem.code_context == CodeContext.NATIVE {
+                    _stamp_context_element(elem, CodeContext.SERVER);
+                    moved.add(eid);
+                    changed = True;
+                }
+            }
+        }
         for (eid, elem) in tops.items() {
             if elem.code_context == CodeContext.CLIENT {
                 continue;

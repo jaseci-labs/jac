@@ -191,9 +191,12 @@ test "placement is per element: what cannot be native stays in Python, the rest 
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     placed = placed_by_name(mod);
     assert placed["helper"] == 'server' , placed;
-    assert placed["other"] == 'native' and placed["entry"] == 'native' , placed;
+    assert placed["other"] == 'native' , placed;
     assert placed["mid"] == 'native' , (
         f"`mid` calls `helper` with an int and gets a str back, and both cross: {placed}"
+    );
+    assert placed["entry"] == 'server' , (
+        f"a module with Python elements runs its entry block in Python: {placed}"
     );
     assert mod.decided_codespace != 'native' , "a mixed module is not whole-module native";
     assert mod.gen.llvm_ir is not None;
@@ -209,9 +212,7 @@ test "a caller stays native only when its call can cross the boundary" {
         f"`mid` passes `helper` a list, which cannot cross into Python: {placed}"
     );
     assert placed["other"] == 'native' , placed;
-    assert placed["entry"] == 'native' , (
-        f"the entry reaches `mid` with an int and gets a str back: {placed}"
-    );
+    assert placed["entry"] == 'server' , placed;
 }
 
 test "a refusal only the backend can see sends the module to the server once" {
@@ -234,6 +235,7 @@ test "a native library gap refuses the function that uses it, not the module" {
     assert parses == 2 , f"the plan is applied once, got {parses} analyses";
     placed = placed_by_name(mod);
     assert placed["pretty"] == 'server' and placed["double"] == 'native' , placed;
+    assert placed["entry"] == 'server' , placed;
     imports = [
         s
         for s in mod.body
