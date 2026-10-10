@@ -63,6 +63,22 @@ glob FIXTURES = os.path.join(
          + "def span_width(s: Span) -> int {\n    return int(s.hi - s.lo);\n}\n\n"
          + "def measured(x: int) -> int {\n    m = Meter();\n    m.add(x);\n    return m.n;\n}\n"
      ),
+     EMBED_DECL = (
+         "import from c {\n    obj Inner {\n        has lo: i64,\n            hi: i64;\n    }\n"
+         + "    def labs(x: i64) -> i64;\n}\n\n"
+         + "def inner_width(lo: int, hi: int) -> int {\n    return int(labs(hi - lo));\n}\n"
+     ),
+     EMBED_USER = (
+         "import from embed_decl { Inner }\nimport from embed_decl { inner_width }\n"
+         + "import from c {\n    obj Outer {\n        has count: i64,\n            inner: Inner;\n    }\n"
+         + "    def llabs(x: i64) -> i64;\n}\n\n"
+         + "obj Holder {\n    has outer: Outer | None = None,\n        n: int = 3;\n}\n\n"
+         + "def held(x: int) -> int {\n    return Holder().n + int(llabs(x)) + inner_width(2, 7);\n}\n"
+     ),
+     EMBED_MAIN = (
+         "import from embed_user { held }\n\n"
+         + "with entry {\n    print(held(-4));\n}\n"
+     ),
      SPAN_TESTS = (
          "import from span_user { measured }\n\n"
          + 'test "a C struct re-exported by an inferred-native module" {\n'
@@ -272,6 +288,64 @@ test "a python importer binds a C struct re-exported by an inferred-native modul
             cwd=proj
         );
         assert proc.returncode == 0 , (proc.stdout + proc.stderr)[-1500:];
+    }
+}
+
+"""Write the embedding project: `embed_decl` declares the C record `Inner`;
+`embed_user` declares `Outer`, which holds an `Inner` by value, and names
+`Outer` (never `Inner`) in code its Python side emits; `main` is pinned to
+the server, so it reaches `embed_user` through that Python side."""
+def _embed_project(proj: str) {
+    files = {
+        "jac.toml": '[project]\nname = "embed"\n\n[placement.pins]\nmain = "server"\n',
+        "embed_decl.jac": EMBED_DECL,
+        "embed_user.jac": EMBED_USER,
+        "main.jac": EMBED_MAIN
+    };
+    for (name, text) in files.items() {
+        Path(proj, name).write_text(text, encoding="utf-8");
+    }
+}
+
+test "an import a kept C block's declarations are typed by is kept with it" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _embed_project(proj);
+        prog = JacProgram();
+        mod = prog.compile(
+            file_path=os.path.join(proj, "embed_user.jac"), options=CompileOptions()
+        );
+        assert mod.decided_codespace == "native" , mod.decided_codespace;
+        assert "Inner" not in python_side_name_refs(mod) , (
+            "the premise is gone: embed_user's python side names Inner itself"
+        );
+        blocks = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if imp.clib_decls
+        ];
+        assert len(blocks) == 1 and not blocks[0].native_only_drop , (
+            "Holder names Outer on embed_user's python side, so its C block stays"
+        );
+        inner = [
+            imp
+            for imp in mod.get_all_sub_nodes(uni.Import)
+            if "Inner" in import_bound_names(imp)
+        ];
+        assert len(inner) == 1;
+        assert not inner[0].native_only_drop , (
+            "the kept C block binds Outer as it loads, and Outer holds an Inner: "
+            "dropping the import leaves `Inner` unbound there"
+        );
+    }
+}
+
+test "a python caller binds a C record that embeds another module's record" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _embed_project(proj);
+        # Holder().n + llabs(-4) + labs(7 - 2).
+        assert _run_anchor_main(proj) == "12";
     }
 }
 
