@@ -463,6 +463,11 @@ impl JacCompiler.kernel_native_entry(
     } else {
         self._adopt_kernel_compile(path, actual, options);
     }
+    import from jaclang.compiler.placement.placement { summary_store }
+    placed = summary_store(actual).get(os.path.abspath(path));
+    if placed is None or placed.decided != 'native' {
+        return (True, None);
+    }
     carrier = actual.hub.artifacts.get(path);
     return (True, carrier.native_engine if carrier is not None else None);
 }

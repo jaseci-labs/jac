@@ -388,6 +388,9 @@ class AnalysisCaches {
     def reset_module_state(self: AnalysisCaches) {
         self.analyses_run.clear();
         self.placement_work = None;
+        self.capability_notes.clear();
+        self.placement_refusals.clear();
+        self.native_bindings = None;
         self.early_passes.clear();
         self.product_tasks.clear();
         self.completed_passes.clear();

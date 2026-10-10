@@ -565,6 +565,15 @@ impl JacProgram.parse_source(
         );
         if plan is not None {
             apply_plan(parsed, plan);
+            placed = [
+                elem.code_context
+                for elem in parsed.body
+                if isinstance(elem, uni.ContextAwareNode)
+            ];
+            if placed and all(ctx == CodeContext.NATIVE for ctx in placed) {
+                _coerce_native_module(parsed);
+                parsed.codespace_inferred = True;
+            }
             parsed.gen.placement_mode = 'plan';
         } elif codespace == 'client' {
             _coerce_client_module(parsed);
