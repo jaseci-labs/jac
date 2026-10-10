@@ -1540,6 +1540,7 @@ walker NaIRGenPass(CompilerPass) {
     def _mark_local_unlowered(name: str) -> None;
     def _mark_targets_unlowered(targets: list[uni.UniNode]) -> None;
     def _reads_unlowered_local(nd: uni.UniNode) -> bool;
+    def _binds_variable(nd: uni.Expr) -> bool;
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _ct_type_param_owner(nd: uni.Name) -> (str | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
