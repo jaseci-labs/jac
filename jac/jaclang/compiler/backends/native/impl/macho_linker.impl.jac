@@ -1154,7 +1154,7 @@ impl MachOLinker.build_executable -> bytes {
         if num_got > 0 {
             data_sec_foff = _align(got_sec_foff + got_total_size, data_align);
         } else {
-            data_sec_foff = data_seg_foff;
+            data_sec_foff = _align(data_seg_foff, data_align);
         }
         data_sec_vaddr = base_vmaddr + data_sec_foff;
     }
@@ -2142,7 +2142,7 @@ impl MachOLinker.build_shared_object -> bytes {
         if num_got > 0 {
             data_sec_foff = _align(got_sec_foff + got_total_size, data_align);
         } else {
-            data_sec_foff = data_seg_foff;
+            data_sec_foff = _align(data_seg_foff, data_align);
         }
         data_sec_vaddr = base_vmaddr + data_sec_foff;
     }

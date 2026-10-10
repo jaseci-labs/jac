@@ -967,3 +967,52 @@ test "data aligned past 16 bytes is placed on its own alignment" {
         }
     }
 }
+
+
+"""Where a linked image maps the named segment."""
+def segment_address(img: bytes, segname: str) -> int {
+    off = 32;
+    for _ in range(struct.unpack_from("<I", img, 16)[0]) {
+        (cmd, size) = struct.unpack_from("<II", img, off);
+        if cmd == 0x19
+            and img[off + 8:off + 24].split(b"\x00")[0].decode() == segname {
+            return struct.unpack_from("<Q", img, off + 24)[0];
+        }
+        off += size;
+    }
+    raise AssertionError(f"the image has no {segname} segment");
+}
+
+
+test "data aligned past a page is placed on its own alignment without a GOT" {
+    # With nothing imported there is no GOT ahead of __data, which then starts
+    # the __DATA segment: on a page boundary, and no stricter unless asked.
+    for triple in [MACHO_TRIPLE, MACHO_TRIPLE_X86] {
+        relobj = emit_pic_object(
+            f'target triple = "{triple}"\n'
+                + '@jac_wide_data = global i64 5, section "__DATA,__data", '
+                + 'align 32768\n'
+                + 'define i32 @main() {\nentry:\n  ret i32 0\n}\n',
+            triple
+        );
+        for shared in [False, True] {
+            where = f"{triple}, shared={shared}";
+            with tempfile.TemporaryDirectory() as directory {
+                img = link_image([relobj], shared, directory, []);
+            }
+            secs = output_sections(img);
+            addrs = symbol_addresses(img);
+            assert addrs["_jac_wide_data"] % 32768 == 0 , (
+                f"{where}: the 32768-byte-aligned global sits at "
+                f"{hex(addrs['_jac_wide_data'])}"
+            );
+            assert secs["__data"][2] == 15 , secs["__data"];
+            assert "__got" not in secs
+                and segment_address(img, "__DATA") % 32768 != 0 , (
+                f"{where}: premise gone: __data no longer opens a __DATA segment "
+                "that starts off a 32768-byte boundary, so page alignment "
+                "would pass too"
+            );
+        }
+    }
+}
