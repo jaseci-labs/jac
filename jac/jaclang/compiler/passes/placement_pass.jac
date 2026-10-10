@@ -77,6 +77,7 @@ def top_element_of(mod: Module, nd: UniNode) -> (UniNode | None);
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
 def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
 def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
+def uncrossable_native(mod: Module, prog: JacProgram) -> set[int];
 def settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None);
@@ -563,6 +564,59 @@ impl client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]
     return out;
 }
 
+impl uncrossable_native(mod: Module, prog: JacProgram) -> set[int] {
+    import from jaclang.compiler.boundary_rules { ability_crossing }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
+    import from jaclang.compiler.placement.placement_solver {
+        placement_work,
+        refresh_placement_module
+    }
+    import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
+    refresh_placement_module(mod, prog);
+    refs = placement_work(prog).refs(mod);
+    tops: dict[int, ContextAwareNode] = {};
+    for elem in mod.body {
+        if isinstance(elem, ContextAwareNode) and not isinstance(elem, Import) {
+            tops[id(elem)] = elem;
+        }
+    }
+    def crosses(callee: ContextAwareNode, src: str, dst: str) -> bool {
+        return isinstance(callee, Ability)
+            and ability_crossing(callee, src, dst) is None;
+    }
+    moved: set[int] = set();
+    changed = True;
+    while changed {
+        changed = False;
+        for (eid, elem) in tops.items() {
+            if elem.code_context == CodeContext.CLIENT {
+                continue;
+            }
+            caller_native = elem.code_context == CodeContext.NATIVE;
+            for target_id in refs.get(eid, set()) {
+                target = tops.get(target_id);
+                if target is None or target.code_context == CodeContext.CLIENT {
+                    continue;
+                }
+                target_native = target.code_context == CodeContext.NATIVE;
+                if caller_native == target_native {
+                    continue;
+                }
+                src = TARGET_NATIVE if caller_native else TARGET_SERVER;
+                dst = TARGET_SERVER if caller_native else TARGET_NATIVE;
+                if crosses(target, src, dst) {
+                    continue;
+                }
+                native_side = elem if caller_native else target;
+                _stamp_context_element(native_side, CodeContext.SERVER);
+                moved.add(id(native_side));
+                changed = True;
+            }
+        }
+    }
+    return moved;
+}
+
 impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
     stamped: list[ContextAwareNode] = [];
     for elem in mod.body {
@@ -791,6 +845,9 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         if legality.blockers or (owner is not None and id(owner) in inferred_refused) {
             elem.code_context = CodeContext.SERVER;
         }
+    }
+    if tentative {
+        inferred_refused.update(uncrossable_native(ir_in, self.prog));
     }
     self.prog.analysis.placement_refusals[os.path.realpath(mod_path)] = {
         'native': inferred_refused,
