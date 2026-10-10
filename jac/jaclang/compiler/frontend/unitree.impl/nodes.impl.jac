@@ -1813,7 +1813,10 @@ impl ModulePath.native_variant_path -> (str | None) {
     for _ in range(self.level - 1) {
         base = os.path.dirname(base);
     }
-    candidate = os.path.join(base, *[p.value for p in self.path]);
+    candidate = base;
+    for segment in self.path {
+        candidate = os.path.join(candidate, segment.value);
+    }
     if os.path.isfile(candidate + ".jac") or os.path.isdir(candidate) {
         return None;
     }
