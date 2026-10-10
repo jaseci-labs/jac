@@ -102,7 +102,7 @@ obj OspGraph {
         holes_out: dict[int, int] = {},
         holes_in: dict[int, int] = {},
         jids: dict[int, str] = {},
-        jid_next: int = 0;
+        jid_next: int = 0,
         any_undirected: bool = False;
 
     def adj_of(h: int) -> OspAdj {
