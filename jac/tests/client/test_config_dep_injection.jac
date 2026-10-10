@@ -162,12 +162,12 @@ test "npm provider rolls back the manifest when the install fails" {
         );
         provider = NpmProvider();
         ctx = InstallContext();
-        # add: a bun/network failure must not record the new dep.
+        # add: a js_engine/network failure must not record the new dep.
         config = JacConfig.load(config_path);
         raised = False;
         with patch(
             "jaclang.client.npm_provider.regenerate_and_install",
-            side_effect=RuntimeError("bun unavailable")
+            side_effect=RuntimeError("js_engine unavailable")
         ) {
             try {
                 provider.add_package(config, "leftpad", "^1.0.0", False, ctx);
@@ -182,7 +182,7 @@ test "npm provider rolls back the manifest when the install fails" {
         config = JacConfig.load(config_path);
         with patch(
             "jaclang.client.npm_provider.regenerate_and_install",
-            side_effect=RuntimeError("bun unavailable")
+            side_effect=RuntimeError("js_engine unavailable")
         ) {
             try {
                 provider.add_package(config, "lodash", "^5.0.0", False, ctx);
@@ -193,7 +193,7 @@ test "npm provider rolls back the manifest when the install fails" {
         config = JacConfig.load(config_path);
         with patch(
             "jaclang.client.npm_provider.regenerate_and_install",
-            side_effect=RuntimeError("bun unavailable")
+            side_effect=RuntimeError("js_engine unavailable")
         ) {
             try {
                 provider.remove_package(config, "lodash", False, ctx);

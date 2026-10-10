@@ -131,8 +131,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         return {"id": jid(task), "title": task.title, "done": task.done};
         ```
 
-    ??? question "`jac create --kind web-static` fails or asks about Bun."
-        The `web-static` kind requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+    ??? question "`jac create --kind web-static` fails or asks about js_engine."
+        The `web-static` kind requires js_engine, the JavaScript runtime bundled in the `jac` binary, for frontend bundling. In a source checkout, build it with `make` in `js_engine/` or point `JAC_JS_ENGINE` at a js_engine binary.
 
 ??? "Debugging & Support"
 

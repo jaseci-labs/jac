@@ -1878,19 +1878,19 @@ def _run_entry_point(
 def _run_node_tool(name: str, bin_path: Path, args: list[str]) -> int {
     import subprocess;
     import from jaclang.project.config { get_config }
-    import from jaclang.client.bun_installer { get_bun }
+    import from jaclang.client.js_engine { get_js_engine }
 
-    bun = get_bun();
-    if bun is None {
+    js_engine = get_js_engine();
+    if js_engine is None {
         console.error(
-            f"Cannot run npm tool '{name}': the bun runtime is unavailable.",
-            hint="Install bun, or run the project once (e.g. 'jac run') to let jac provision it."
+            f"Cannot run npm tool '{name}': the js_engine runtime is unavailable.",
+            hint="Set JAC_JS_ENGINE to a js_engine binary, or build one with `make` in js_engine/."
         );
         return 1;
     }
     config = get_config();
     cwd = str(config.project_root) if config and config.project_root else None;
-    result = subprocess.run([bun, str(bin_path)] + list(args), cwd=cwd);
+    result = subprocess.run([js_engine, str(bin_path)] + list(args), cwd=cwd);
     return result.returncode;
 }
 

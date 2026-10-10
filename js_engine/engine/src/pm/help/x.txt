@@ -1,0 +1,15 @@
+Usage: bunx [flags] <package><@version> [flags and arguments for the package]
+Execute an npm package executable (CLI), automatically installing into a global shared cache if not installed in node_modules.
+
+Flags:
+  --bun                  Force the command to run with Bun instead of Node.js
+  -p, --package <package>    Specify package to install when binary name differs from package name
+  --no-install           Skip installation if package is not already installed
+  --verbose              Enable verbose output during installation
+  --silent               Suppress output during installation
+
+Examples:
+  bunx prisma migrate
+  bunx prettier foo.js
+  bunx -p @angular/cli ng new my-app
+  bunx --bun vite dev foo.js

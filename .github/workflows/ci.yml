@@ -57,6 +57,7 @@ jobs:
       native: ${{ steps.filter.outputs.native }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
+      js_engine: ${{ steps.filter.outputs.js_engine }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -77,6 +78,8 @@ jobs:
               - 'jac/jaclang/byllm/**'
             site_journey:
               - 'scripts/site-browse-journey.sh'
+            js_engine:
+              - 'js_engine/**'
             pack_smoke:
               - 'scripts/ci_perf.jac'
               - 'scripts/ci_perf.test.jac'
@@ -381,6 +384,74 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # js_engine's dist tree (`make dist`: the engine plus the shared libraries it
+  # loads from beside itself), built once per run with the kit's jac
+  # (setup-js-engine: cached on the engine and native-backend sources, built on
+  # a miss) and uploaded for the lanes that run JavaScript, which download it
+  # instead of each restoring or compiling their own. A separate job rather
+  # than part of build-kit, so a cold engine build (~15-20 min) holds up only
+  # those lanes. Its `if` is the union of theirs: it runs whenever one of them
+  # does.
+  build-js-engine:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' || needs.changes.outputs.js_engine == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+      - name: Upload the engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-engine
+          path: js_engine/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  # test262 against that engine, at the test262 commit pinned in
+  # js_engine/engine/tests/test262/test262.sha: fails on any test that does not
+  # pass and is not in known_failures.txt. A per-test timeout above the
+  # runner's default keeps a slower runner from turning passes into HANGs.
+  test262:
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.js_engine == 'true' || needs.changes.outputs.native == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [language, built-ins]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
+      - name: Restore the test262 checkout
+        uses: actions/cache@v4
+        with:
+          path: js_engine/engine/tests/test262/vendor
+          key: test262-${{ hashFiles('js_engine/engine/tests/test262/test262.sha') }}
+      - name: Fetch test262 at the pinned commit
+        run: js_engine/tools/fetch_test_deps.sh test262
+      - name: Run test262 ${{ matrix.suite }}
+        working-directory: js_engine
+        run: >-
+          jac engine/tests/test262/run_test262.jac --engine "$JAC_JS_ENGINE" --gc
+          --timeout 30 --filter ${{ matrix.suite }}
+          --check-baseline engine/tests/test262/known_failures.txt
+      - name: Upload the run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test262-${{ matrix.suite }}-run-log
+          path: js_engine/engine/tests/test262/.run_logs
+          retention-days: 7
+          if-no-files-found: ignore
+
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -482,7 +553,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|^js_engine/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -490,7 +561,7 @@ jobs:
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           else
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|^js_engine/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       # Autofix push mirrors pre-commit.ci. Without a JAC_AUTOFIX_TOKEN secret
@@ -511,7 +582,7 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|^js_engine/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -z "$FILES" ]; then
             echo "No formattable .jac files to fix."
             exit 0
@@ -538,7 +609,7 @@ jobs:
         if: steps.fmt.outcome == 'failure'
         run: |
           set -euo pipefail
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|^js_engine/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -n "$FILES" ]; then
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --lintfix || true
@@ -678,8 +749,8 @@ jobs:
         run: bash scripts/check-release-notes.sh
 
   test-compiler:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       # Per-leg, not per-step: jac-kit reads this to decide whether to seed the
@@ -725,6 +796,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # The ES backend tests run their generated JavaScript on it.
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Set up Zig for compiler runtime and ELF fixtures
         if: matrix.chunk == 'passes-native'
         uses: mlugg/setup-zig@v2
@@ -763,8 +838,8 @@ jobs:
 
   # Everything except the compiler tests.
   test-runtime:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -782,13 +857,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install the serve deps the plugin-integration test needs
         run: jac install "python-dotenv>=1.2.1,<2.0.0" "requests>=2.32.0,<3.0.0" --global
       # tests/client is test-client's lane (it needs the serial runner). The
-      # jsdom suites in tests/runtimelib gate on bun being present, which the
-      # Bun setup above provides -- with JAC_TEST_STRICT=1 they must run here,
+      # jsdom suites in tests/runtimelib gate on js_engine being present, which the
+      # js_engine setup above provides -- with JAC_TEST_STRICT=1 they must run here,
       # so a new jsdom suite is covered the moment it exists instead of when
       # someone remembers to name it in this file.
       - name: Runtime suite via the binary
@@ -868,8 +944,8 @@ jobs:
   # (tests/compiler/test_no_llvm_degradation.jac, via JAC_LLVM_SHIM=none).
 
   test-client:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -882,8 +958,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install the scale dep the in-process dispatch tests import
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
       - name: Run all client tests
@@ -896,7 +973,7 @@ jobs:
           JAC_TEST_STRICT: "1"
         run: jac test jac/tests/client
 
-  # The jsdom suites gate on bun being on PATH and run in test-runtime under
+  # The jsdom suites gate on js_engine being available and run in test-runtime under
   # JAC_TEST_STRICT=1; the desktop tests live in tests/client (test-client).
 
   # In-package suites (jaclang/byllm/tests, jaclang/scale/tests) run through
@@ -940,8 +1017,8 @@ jobs:
             jac/tests/cli/test_docs_code_blocks.jac
 
   test-scale:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: ""
@@ -953,12 +1030,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           submodules: true
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
       # The bundle tests read the pod binary from jac/zig-out/bin via a
       # __file__-relative lookup and silently self-skip when it is missing.
       # Reroute lane for the same reason as test-packages-and-docs above.
       - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install scale deps + test deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
@@ -1171,8 +1249,8 @@ jobs:
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
 
   test-jac-pack-smoke:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # actions: read lets the performance report list main's runs and download
     # their pack-smoke-performance artifacts for the wall-time comparison.
@@ -1191,9 +1269,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
 
       - name: Validate performance accounting
         timeout-minutes: 2
@@ -1720,8 +1799,8 @@ jobs:
           if-no-files-found: error
 
   test-jac-pack-eject:
-    needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
+    needs: [changes, build-kit, build-js-engine]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' || needs.changes.outputs.js_engine == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -1732,8 +1811,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/jac-kit
+      - uses: ./.github/actions/setup-js-engine
+        with:
+          artifact: js-engine
       - name: Install the C export toolchain
         run: |
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /usr/share/keyrings/llvm.asc >/dev/null
@@ -1892,6 +1973,8 @@ jobs:
     needs:
       - changes
       - build-kit
+      - build-js-engine
+      - test262
       - macos-native
       - jac-check
       - contribution-checks

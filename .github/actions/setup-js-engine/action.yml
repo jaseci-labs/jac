@@ -1,0 +1,67 @@
+name: Set up js_engine
+description: >
+  Provide the js_engine JavaScript runtime that jac's client toolchain runs
+  (package installs, Vite, the cl test runner) as js_engine/dist: the
+  relocatable tree `make dist` stages, which carries the engine's own shared
+  libraries (shims, Wasmtime, llhttp, PCRE2 10.45) beside it and needs only the
+  system libraries installed below. Without `artifact` it builds that tree:
+  restores one cached on the engine sources and, on a miss, runs `make dist`
+  with the jac already on PATH (so it runs after jac-kit) — ci.yml's
+  build-js-engine job does this once per run and uploads the result. With
+  `artifact` it downloads that tree instead. Either way it exports
+  JAC_JS_ENGINE for sealed lanes, which cannot see the checkout, and puts the
+  engine on PATH for the suites that gate on `require_tool("js_engine")`.
+inputs:
+  artifact:
+    description: >
+      Name of an uploaded js_engine dist tree (as build-js-engine publishes it)
+      to use instead of building. Empty builds.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install js_engine system libraries
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          cmake libuv1 libssl3 zlib1g libnghttp2-14 libbrotli1 libzstd1 \
+          libicu-dev libpcre2-dev libnode-dev tzdata
+
+    - name: Restore cached js_engine build
+      if: inputs.artifact == ''
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: js_engine/dist
+        key: js-engine-dist-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('js_engine/engine/src/**', 'js_engine/napi/**', 'js_engine/native/**', 'js_engine/Makefile', 'js_engine/jac.toml', 'jac/jaclang/compiler/backends/native/**') }}
+
+    - name: Build js_engine
+      if: inputs.artifact == '' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: make -C js_engine dist
+
+    - name: Download the js_engine build
+      if: inputs.artifact != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact }}
+        path: js_engine/dist
+
+    - name: Restore the engine's executable bit
+      if: inputs.artifact != ''
+      shell: bash
+      run: chmod +x js_engine/dist/bin/js_engine
+
+    - name: Smoke-test the engine
+      shell: bash
+      run: |
+        out="$(js_engine/dist/bin/js_engine -e 'console.log(/(?<=a+)b/.test("aab"))')"
+        [ "$out" = "true" ] || { echo "::error::js_engine smoke test printed '$out', expected 'true'"; exit 1; }
+
+    - name: Export the engine path
+      shell: bash
+      run: |
+        echo "JAC_JS_ENGINE=$GITHUB_WORKSPACE/js_engine/dist/bin/js_engine" >> "$GITHUB_ENV"
+        echo "$GITHUB_WORKSPACE/js_engine/dist/bin" >> "$GITHUB_PATH"

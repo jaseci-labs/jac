@@ -365,7 +365,10 @@ def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) ->
 def run_npm_add_global(packages: list[str], dev: bool) -> int {
     import subprocess;
     import from jaclang.cli.console { console }
-    import from jaclang.client.bun_installer { get_bun, bun_unavailable_message }
+    import from jaclang.client.js_engine {
+        get_js_engine,
+        js_engine_unavailable_message
+    }
     import from jaclang.project.tool_paths { node_root }
 
     if not packages {
@@ -375,9 +378,9 @@ def run_npm_add_global(packages: list[str], dev: bool) -> int {
         );
         return 1;
     }
-    bun = get_bun();
-    if bun is None {
-        console.error(bun_unavailable_message());
+    js_engine = get_js_engine();
+    if js_engine is None {
+        console.error(js_engine_unavailable_message());
         return 1;
     }
     dest = node_root("global");
@@ -389,7 +392,7 @@ def run_npm_add_global(packages: list[str], dev: bool) -> int {
             '{\n  "name": "jac-global-tools",\n  "private": true\n}\n', encoding="utf-8"
         );
     }
-    cmd: list[str] = [bun, "add"];
+    cmd: list[str] = [js_engine, "add"];
     if dev {
         cmd.append("--dev");
     }

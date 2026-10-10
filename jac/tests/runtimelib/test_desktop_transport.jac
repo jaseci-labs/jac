@@ -1,4 +1,4 @@
-"""Client-runtime transport inside the desktop shell (run under bun via the cl
+"""Client-runtime transport inside the desktop shell (run under js_engine via the cl
 test runner).
 
 The desktop host serves the app on a loopback origin, so a desktop bundle

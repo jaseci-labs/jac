@@ -1,0 +1,16 @@
+Usage: bun why [flags] <package><@version> [property path]
+Explain why a package is installed
+
+Arguments:
+  <package>     The package name to explain (supports glob patterns like '@org/*')
+
+Options:
+  --top         Show only the top dependency tree instead of nested ones
+  --depth <NUM> Maximum depth of the dependency tree to display
+
+Examples:
+  $ bun why react
+  $ bun why "@types/*" --depth 2
+  $ bun why "*-lodash" --top
+
+Full documentation is available at https://bun.com/docs/cli/why

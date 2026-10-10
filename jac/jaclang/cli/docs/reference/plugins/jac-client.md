@@ -1382,7 +1382,7 @@ proxy = "http://proxy.company.com:8080"
 _authToken = "${NODE_AUTH_TOKEN}"
 ```
 
-The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
+The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and js_engine also resolve natively.
 
 The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac run`, or `jac build`).
 
@@ -1895,7 +1895,7 @@ A mobile app is a **mobUI** app: one source tree that compiles to both native (A
 
 **Prerequisites:**
 
-- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
+- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the js_engine runtime bundled with the `jac` binary (`JAC_JS_ENGINE` overrides which js_engine is used)
 - **Android**: JDK 21 and Android SDK are provisioned automatically; SDK license acceptance is required
 - **iOS** (macOS only): Xcode and its Command Line Tools; Jac provisions Ruby and CocoaPods
 
@@ -2347,7 +2347,7 @@ def:pub Footer() -> JsxElement {
 
 ### Prerequisites
 
-jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary for package management and bundling. Native build subprocesses use managed Node.js 22 for Expo/React Native compatibility; no manual Node.js/npm installation is needed. Set `JAC_BUN` to substitute a specific bun binary.
+jac-client uses js_engine, the JavaScript runtime written in Jac, for package management and JavaScript bundling. A js_engine runtime ships inside the `jac` binary for package management and bundling. Native build subprocesses use managed Node.js 22 for Expo/React Native compatibility; no manual Node.js/npm installation is needed. Set `JAC_JS_ENGINE` to substitute a specific js_engine binary.
 
 ### Start Server
 

@@ -49,7 +49,7 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
 
 obj MkPayloadOpts {
     has shim_so: str | None = None,
-        bun_bin: str | None = None,
+        js_engine_dir: str | None = None,
         skip_precompile: bool = False,
         link_source: str | None = None,
         musl_dir: str | None = None,
@@ -75,7 +75,7 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
-def _bundle_bun(site: str, opts: MkPayloadOpts);
+def _bundle_js_engine(site: str, opts: MkPayloadOpts);
 def strip_kernel_best_effort(site: str);
 def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);

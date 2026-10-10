@@ -20,10 +20,10 @@ def _as_any(v: any) -> any {
     return v;
 }
 
-"""Skip unless the Vite/Bun client toolchain is available."""
+"""Skip unless the Vite/js_engine client toolchain is available."""
 def _require_client_integration {
     import from jaclang.testing.requires { require_tool }
-    require_tool("bun");
+    require_tool("js_engine");
 }
 
 def _get_free_port -> int {
@@ -90,7 +90,7 @@ def _start_preact_server(project_dir: Path) -> tuple[any, ...] {
         [*jac_cmd, "run", "--serve", "-p", str(port)], cwd=str(project_dir), env=env,
     );
     _wait_for_port("127.0.0.1", port);
-    # First client bundle can take a while (bun install + vite build).
+    # First client bundle can take a while (js_engine install + vite build).
     time.sleep(8);
     return (proc, port, f"http://127.0.0.1:{port}");
 }

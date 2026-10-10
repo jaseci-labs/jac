@@ -9,7 +9,7 @@ If what you want is a home-screen install of an existing web app rather than nat
 > **Prerequisites**
 >
 > - Completed: [Project Setup](setup.md) -- you have a working `jac run` web app
-> - Node.js is **not** required -- all JS tooling runs on the Bun runtime bundled with `jac`
+> - Node.js is **not** required -- all JS tooling runs on the js_engine runtime bundled with `jac`
 > - **Android**: JDK 21 and Android SDK are provisioned automatically; SDK license acceptance is required
 > - **iOS** (macOS only): Xcode and its Command Line Tools; Jac provisions Ruby and CocoaPods
 > - Time: ~15 minutes for setup, longer on first build
@@ -133,7 +133,7 @@ jac run --dev mobile                    # native: Metro Fast Refresh on a device
 jac run --dev --platform web mobile     # the same screens in a browser (Vite HMR)
 ```
 
-The native dev loop launches a Jac backend, compiles `.jac` to JS, and runs `expo start` on the bundled Bun. Metro serves both platforms -- pick the device in the Expo CLI (press `a` for Android, `i` for the iOS simulator) or scan the QR code in Expo Go. Editing a `.jac` file recompiles and Metro Fast Refreshes the device. The dev API base URL is injected into `app.json` and restored on exit. Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`, override with `JAC_RN_DEV_HOST`); Metro defaults to port `8081` (`JAC_RN_METRO_PORT`); `adb reverse` is auto-attempted for Android.
+The native dev loop launches a Jac backend, compiles `.jac` to JS, and runs `expo start` on the bundled js_engine. Metro serves both platforms -- pick the device in the Expo CLI (press `a` for Android, `i` for the iOS simulator) or scan the QR code in Expo Go. Editing a `.jac` file recompiles and Metro Fast Refreshes the device. The dev API base URL is injected into `app.json` and restored on exit. Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`, override with `JAC_RN_DEV_HOST`); Metro defaults to port `8081` (`JAC_RN_METRO_PORT`); `adb reverse` is auto-attempted for Android.
 
 The web platform needs no device and hot-reloads in seconds, so iterate there first and check native as you go.
 

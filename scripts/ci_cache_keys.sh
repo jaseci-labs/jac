@@ -62,7 +62,7 @@ tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/examples/tiny_jacyac \
   jac.toml jac/jac.toml | emit binary
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
-  jac/jaclang/client/bun_installer.jac jac/jaclang/compiler/backends/native/wasm_rt |
+  jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers
 # The kernel's stage-0 compiler as the committed pin names it: a pinned commit,
 # or "self" when this checkout's compiler builds its own kernel (also when the

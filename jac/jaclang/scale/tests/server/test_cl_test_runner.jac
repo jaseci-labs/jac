@@ -4,9 +4,9 @@ jac-scale swaps in its own `JacAPIServer` (native-serving `NativeJServer`) via
 the `get_api_server_class` / `create_server` plugin hooks. This test guards that
 the cl test runner boots the *active plugin's* server -- not a hard-coded base
 class -- by running a real full-stack cl test (signup -> login -> walker spawn)
-through bun against a jac-scale backend the runner boots on an ephemeral port.
+through js_engine against a jac-scale backend the runner boots on an ephemeral port.
 
-bun is auto-installed on demand by the runner, so no toolchain setup is needed.
+js_engine is resolved by the runner, so no toolchain setup is needed.
 """
 
 import from pathlib { Path }

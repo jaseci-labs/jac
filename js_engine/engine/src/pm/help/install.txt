@@ -1,0 +1,57 @@
+
+Usage: bun install [flags] <name>@<version>
+Alias: bun i
+
+  Install the dependencies listed in package.json.
+
+Flags:
+  -c, --config=<val>                 Specify path to config file (bunfig.toml)
+  -y, --yarn                         Write a yarn.lock file (yarn v1)
+  -p, --production                   Don't install devDependencies
+      --no-save                      Don't update package.json or save a lockfile
+      --save                         Save to package.json (true by default)
+      --ca=<val>                     Provide a Certificate Authority signing certificate
+      --cafile=<val>                 The same as `--ca`, but is a file path to the certificate
+      --dry-run                      Perform a dry run without making changes
+      --frozen-lockfile              Disallow changes to lockfile
+  -f, --force                        Always request the latest versions from the registry & reinstall all dependencies
+      --cache-dir=<val>              Store & load cached data from a specific directory path
+      --no-cache                     Ignore manifest cache entirely
+      --silent                       Don't log anything
+      --quiet                        Only show tarball name when packing
+      --verbose                      Excessively verbose logging
+      --no-progress                  Disable the progress bar
+      --no-summary                   Don't print a summary
+      --no-verify                    Skip verifying integrity of newly downloaded packages
+      --ignore-scripts               Skip lifecycle scripts in the project's package.json (dependency scripts are never run)
+      --trust                        Add to trustedDependencies in the project's package.json and install the package(s)
+  -g, --global                       Install globally
+      --cwd=<val>                    Set a specific cwd
+      --backend=<val>                Platform-specific optimizations for installing dependencies. Possible values: "hardlink" (default), "symlink", "copyfile"
+      --registry=<val>               Use a specific registry by default, overriding .npmrc, bunfig.toml and environment variables
+      --concurrent-scripts=<val>     Maximum number of concurrent jobs for lifecycle scripts (default: 2x CPU cores)
+      --network-concurrency=<val>    Maximum number of concurrent network requests (default 48)
+      --save-text-lockfile           Save a text-based lockfile
+      --omit=<val>                   Exclude 'dev', 'optional', or 'peer' dependencies from install
+      --lockfile-only                Generate a lockfile without installing dependencies
+      --linker=<val>                 Linker strategy (one of "isolated" or "hoisted")
+      --minimum-release-age=<val>    Only install packages published at least N seconds ago (security feature)
+      --cpu=<val>                    Override CPU architecture for optional dependencies (e.g., x64, arm64, * for all)
+      --os=<val>                     Override operating system for optional dependencies (e.g., linux, darwin, * for all)
+  -h, --help                         Print this help menu
+  -d, --dev                          Add dependency to "devDependencies"
+      --optional                     Add dependency to "optionalDependencies"
+      --peer                         Add dependency to "peerDependencies"
+  -E, --exact                        Add the exact version instead of the ^range
+      --filter=<val>                 Install packages for the matching workspaces
+  -a, --analyze                      Analyze & install all dependencies of files passed as arguments recursively (using Bun's bundler)
+      --only-missing                 Only add dependencies to package.json if they are not already present
+
+Examples:
+  Install the dependencies for the current project
+  bun install
+
+  Skip devDependencies
+  bun install --production
+
+Full documentation is available at https://bun.com/docs/cli/install.

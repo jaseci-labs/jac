@@ -1,5 +1,5 @@
 """Dependency staleness: node_modules must re-sync when the generated
-manifest changes (editing [dependencies.npm] previously never re-ran bun
+manifest changes (editing [dependencies.npm] previously never re-ran js_engine
 install once node_modules existed, so new packages failed to resolve)."""
 
 import hashlib;

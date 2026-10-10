@@ -1,10 +1,10 @@
 """Tests for the core client bundle builder base.
 
 The base `ClientBundleBuilder` provides the shared compile-to-JS + manifest
-extraction + caching used by the built-in client framework's Vite/Bun builder.
+extraction + caching used by the built-in client framework's Vite/js_engine builder.
 Concrete bundling (`_compile_bundle`) is provided by the built-in client
 framework that ships with jaclang core; invoked standalone the base raises,
-since there is a single client pathway (Vite/Bun) and no bare-serve inline
+since there is a single client pathway (Vite/js_engine) and no bare-serve inline
 bundler anymore.
 """
 
@@ -201,7 +201,7 @@ test "dev config wires the raw client-event transport; build config does not" {
     }
 }
 
-"""Lay out a build dir the way `bun install` does: the real package plus the
+"""Lay out a build dir the way `js_engine install` does: the real package plus the
 `node_modules/.bin/vite` shim, which carries Vite's `#!/usr/bin/env node`
 shebang."""
 def _stub_vite_install(build_dir: Path) {
@@ -218,25 +218,25 @@ def _stub_vite_install(build_dir: Path) {
     (shim_dir / "vite").symlink_to("../vite/bin/vite.js");
 }
 
-test "vite builds run under bun with no node on PATH" {
+test "vite builds run under js_engine with no node on PATH" {
     import os;
     import subprocess;
     import sys;
     import tempfile;
-    import from jaclang.client { get_bun }
+    import from jaclang.client { get_js_engine }
     import from jaclang.client.vite_bundler { _build_vite_command }
 
     if sys.platform == "win32" {
         testskip("shebang dispatch is POSIX-only");
     }
-    if get_bun() is None {
-        testskip("bun is required but could not be located/installed");
+    if get_js_engine() is None {
+        testskip("js_engine is required but could not be located/installed");
     }
     with tempfile.TemporaryDirectory() as tmp {
         build_dir = Path(tmp) / "client";
         build_dir.mkdir();
         _stub_vite_install(build_dir);
-        # Jac provisions bun and never provisions node, so a client build has to
+        # Jac provisions js_engine and never provisions node, so a client build has to
         # work on a machine that has no node at all.
         empty_dir = Path(tmp) / "empty-path";
         empty_dir.mkdir();
@@ -258,22 +258,22 @@ test "vite builds run under bun with no node on PATH" {
 
 test "vite commands address vite's js entry, not the bunx shim" {
     import tempfile;
-    import from jaclang.client { get_bun }
+    import from jaclang.client { get_js_engine }
     import from jaclang.client.vite_bundler {
         _build_vite_command,
         _build_vite_dev_command
     }
 
-    if get_bun() is None {
-        testskip("bun is required but could not be located/installed");
+    if get_js_engine() is None {
+        testskip("js_engine is required but could not be located/installed");
     }
     with tempfile.TemporaryDirectory() as tmp {
         build_dir = Path(tmp) / "client";
         build_dir.mkdir();
         _stub_vite_install(build_dir);
         build_cmd = _build_vite_command(build_dir, ["build", "--config", "c.js"]);
-        # `bun x vite` hands off to the .bin shim and its node shebang; naming
-        # the entry keeps the run inside bun.
+        # `js_engine x vite` hands off to the .bin shim and its node shebang; naming
+        # the entry keeps the run inside js_engine.
         assert "x" not in build_cmd;
         assert build_cmd[1].endswith("vite.js");
         assert build_cmd[2:] == ["build", "--config", "c.js"];
@@ -288,15 +288,15 @@ test "vite commands address vite's js entry, not the bunx shim" {
 
 test "a missing vite install is an error, not a silent bunx fallback" {
     import tempfile;
-    import from jaclang.client { get_bun }
+    import from jaclang.client { get_js_engine }
     import from jaclang.client.client_bundle { ClientBundleError }
     import from jaclang.client.vite_bundler { _build_vite_command }
 
-    if get_bun() is None {
-        testskip("bun is required but could not be located/installed");
+    if get_js_engine() is None {
+        testskip("js_engine is required but could not be located/installed");
     }
     # install_packages runs before every build, so an unresolvable vite means
-    # that install failed. Falling back to `bun x vite` would paper over it by
+    # that install failed. Falling back to `js_engine x vite` would paper over it by
     # reintroducing the node dependency this whole path exists to remove.
     with tempfile.TemporaryDirectory() as tmp {
         build_dir = Path(tmp) / "client";

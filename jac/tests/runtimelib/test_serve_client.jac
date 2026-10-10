@@ -53,14 +53,14 @@ def _persist_system_root {
 
 """Skip a test unless client integration is explicitly enabled.
 
-Rendering a client page now runs the real Vite/Bun pipeline (bun + npm install
+Rendering a client page now runs the real Vite/js_engine pipeline (js_engine + npm install
 + vite build), so these are integration tests rather than fast unit tests. They
 run only when JAC_CLIENT_INTEGRATION is set (and are covered by jac-client's own
 suite); core CI skips them.
 """
 def _require_client_integration {
     import from jaclang.testing.requires { require_tool }
-    require_tool("bun");
+    require_tool("js_engine");
 }
 
 def fixture_abs_path(filename: str) -> str {
@@ -2294,26 +2294,28 @@ test "stdlib server answers health endpoints" {
     }
 }
 
-"""A missing bun is an environmental precondition, cheap to re-check - the
-bundle layer must retry it on every request (so fetching bun fixes serving
+"""A missing js_engine is an environmental precondition, cheap to re-check - the
+bundle layer must retry it on every request (so fetching js_engine fixes serving
 without a restart), while genuine build failures stay memoized."""
-test "ensure_bundle retries a missing-bun failure and a build error alike" {
+test "ensure_bundle retries a missing-js_engine failure and a build error alike" {
     import from unittest.mock { MagicMock }
     import from jaclang.server.server { ModuleIntrospector }
-    import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
+    import from jaclang.client.client_bundle { ClientBundleError, MissingJsEngineError }
     intro = ModuleIntrospector("serve_api", FIXTURES);
     intro._module = types.ModuleType("serve_api");
     intro._module.__file__ = fixture_abs_path("serve_api.jac");
-    bun_missing = MagicMock();
-    bun_missing.build.side_effect = MissingBunError("bun is not available");
-    intro._bundle_builder = bun_missing;
+    engine_missing = MagicMock();
+    engine_missing.build.side_effect = MissingJsEngineError(
+        "js_engine is not available"
+    );
+    intro._bundle_builder = engine_missing;
     for _ in range(2) {
         try {
             intro.ensure_bundle();
-            assert False , "ensure_bundle should raise while bun is missing";
+            assert False , "ensure_bundle should raise while js_engine is missing";
         } except ClientBundleError {}
     }
-    assert bun_missing.build.call_count == 2 , "missing bun must be re-checked on every call, not memoized";
+    assert engine_missing.build.call_count == 2 , "missing js_engine must be re-checked on every call, not memoized";
 
     intro2 = ModuleIntrospector("serve_api", FIXTURES);
     intro2._module = types.ModuleType("serve_api");
@@ -2465,9 +2467,9 @@ process.exit(failed ? 1 : 0);
 """The stdlib server serves /graph, /graph/data and /docs, and the /graph login
 modal signs in against it (#8951)."""
 test "stdlib server serves graph visualizer and docs" {
-    import from jaclang.client.bun_installer { get_bun }
+    import from jaclang.client.js_engine { get_js_engine }
     import from jaclang.server.settings { ServeSettings }
-    import from .react_jsdom_harness { REACT_JSDOM_DEPS, bun_install, run_harness }
+    import from .react_jsdom_harness { REACT_JSDOM_DEPS, npm_install, run_harness }
 
     with TemporaryDirectory() as tmpdir {
         client = JacTestClient.from_file(
@@ -2492,8 +2494,8 @@ test "stdlib server serves graph visualizer and docs" {
         assert "/walker/leave_note" in paths , "openapi should list the module's walkers";
         assert "/user/login" in paths , "openapi should list auth endpoints";
         _require_client_integration();
-        bun = get_bun();
-        assert bun is not None , "bun is on PATH but get_bun() could not locate it";
+        js_engine = get_js_engine();
+        assert js_engine is not None , "js_engine is on PATH but get_js_engine() could not locate it";
         registered = client.register_user("graph_viewer", "pw12345678");
         assert registered.ok , f"register failed: {registered.text}";
         client.server.settings = ServeSettings.load(
@@ -2503,10 +2505,12 @@ test "stdlib server serves graph visualizer and docs" {
         try {
             work = Path(tmpdir) / "graph_login";
             work.mkdir();
-            bun_install(bun, work, "graph-login", {"jsdom": REACT_JSDOM_DEPS["jsdom"]});
+            npm_install(
+                js_engine, work, "graph-login", {"jsdom": REACT_JSDOM_DEPS["jsdom"]}
+            );
             (work / "harness.mjs").write_text(_GRAPH_LOGIN_HARNESS, encoding="utf-8");
             run_harness(
-                bun,
+                js_engine,
                 work,
                 [
                     f"http://127.0.0.1:{client.server.port}",

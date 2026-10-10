@@ -1,5 +1,5 @@
 """The fetch subcommands end to end, offline: `http_get` is swapped for an
-in-memory server so fetch-typeshed and fetch-bun run their real
+in-memory server so fetch-typeshed runs its real
 verify + extract + idempotence logic against synthetic release assets."""
 
 import contextlib;
@@ -14,7 +14,7 @@ import zipfile;
 
 import jaclang.dist.payload.fetch as fetch_mod;
 import from jaclang.dist.payload.cli { main }
-import from jaclang.dist.payload.fetch { BUN_VERSION, BUN_BASE, TYPESHED_TARBALL_BASE }
+import from jaclang.dist.payload.fetch { TYPESHED_TARBALL_BASE }
 import from jaclang.dist.payload.fsutil { PayloadDie, extract_tar }
 
 # tarfile/zipfile constants are `Final` in typeshed, which the checker cannot
@@ -192,56 +192,6 @@ test "fetch-typeshed pins the decompressed tar sha, lifts stdlib + LICENSE, stam
             f"fetch-typeshed: fetching typeshed @ {commit}\npayload: fetch-typeshed: tarball checksum mismatch @ {commit}\n"
         );
         assert len(http.calls) == 2;
-    } finally {
-        http.uninstall();
-        shutil.rmtree(base, ignore_errors=True);
-    }
-}
-
-test "fetch-bun verifies SHASUMS256.txt and writes the zip's bun member" {
-    buf = io.BytesIO();
-    with zipfile.ZipFile(buf, "w") as zf {
-        zf.writestr(
-            "bun-linux-x64/bun", b"\x7fELF bun\n" * 2048, compress_type=ZIP_DEFLATED
-        );
-    }
-    zip_bytes = buf.getvalue();
-    sums = f"{hashlib.sha256(zip_bytes).hexdigest()}  bun-linux-x64.zip\n".encode();
-    http = FakeHttp(
-        table={
-            f"{BUN_BASE}/bun-v{BUN_VERSION}/bun-linux-x64.zip": zip_bytes,
-            f"{BUN_BASE}/bun-v{BUN_VERSION}/SHASUMS256.txt": sums
-        },
-        calls=[]
-    );
-    base = tempfile.mkdtemp(prefix="jac-payload-bun-");
-    http.install();
-    try {
-        dest = os.path.join(base, "bun-build");
-        err = io.StringIO();
-        with contextlib.redirect_stderr(err) {
-            assert main(["fetch-bun", "linux-x86_64", dest]) == 0;
-        }
-        out = os.path.join(dest, "bun");
-        assert rf(out) == b"\x7fELF bun\n" * 2048;
-        assert err.getvalue()
-            == f"fetch-bun: downloading bun-linux-x64.zip\nfetch-bun: ready at {out} (0 MiB)\n";
-
-        err = io.StringIO();
-        with contextlib.redirect_stderr(err) {
-            assert main(["fetch-bun", "linux-x86_64", dest]) == 0;
-        }
-        assert err.getvalue() == f"fetch-bun: already present at {out}\n";
-        assert len(http.calls) == 2;
-
-        http.table[f"{BUN_BASE}/bun-v{BUN_VERSION}/SHASUMS256.txt"] = b"";
-        err = io.StringIO();
-        with contextlib.redirect_stderr(err) {
-            assert main(["fetch-bun", "linux-x86_64", os.path.join(base, "other")])
-                == 1;
-        }
-        assert "payload: fetch-bun: no checksum for bun-linux-x64.zip in SHASUMS256.txt\n"
-            in err.getvalue();
     } finally {
         http.uninstall();
         shutil.rmtree(base, ignore_errors=True);

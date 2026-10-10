@@ -7,7 +7,7 @@ import os;
 import from inspect { iscoroutine }
 import from typing { get_type_hints }
 import from jaclang.data.serializer { Serializer }
-import from jaclang.client.artifact { ClientBundleError, MissingBunError }
+import from jaclang.client.artifact { ClientBundleError, MissingJsEngineError }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
 import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.server.exchange { forget_response_choice }
@@ -903,7 +903,7 @@ impl ModuleIntrospector.ensure_bundle -> str {
             self._bundle_error = None;
             self._bundle_epoch += 1;
             return self._bundle.hash;
-        } except MissingBunError {
+        } except MissingJsEngineError {
             self._bundle_epoch += 1;
             raise;
         } except Exception as exc {

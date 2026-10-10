@@ -2,9 +2,9 @@
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-import from jaclang.client.bun_installer { get_bun }
+import from jaclang.client.js_engine { get_js_engine }
 import from .react_jsdom_harness {
-    bun_install,
+    npm_install,
     compile_page,
     require_client_integration,
     run_harness,
@@ -56,9 +56,9 @@ dom.window.close();
 
 test "returned lifecycle cleanup releases the correct resource" {
     require_client_integration("React lifecycle cleanup");
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required");
     }
     fixture = Path(__file__).parent.parent
         / "compiler"
@@ -72,7 +72,7 @@ test "returned lifecycle cleanup releases the correct resource" {
         (work / "component.js").write_text(component, encoding="utf-8");
         write_runtime(work);
         (work / "harness.mjs").write_text(HARNESS, encoding="utf-8");
-        bun_install(bun, work, "jac-effect-cleanup-test");
-        run_harness(bun, work, [], "React lifecycle cleanup");
+        npm_install(js_engine, work, "jac-effect-cleanup-test");
+        run_harness(js_engine, work, [], "React lifecycle cleanup");
     }
 }

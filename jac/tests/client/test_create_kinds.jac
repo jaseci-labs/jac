@@ -2,7 +2,7 @@
 
 jac-client contributes the project kinds it owns -- `web-app`, `web-static`,
 and `mobile` -- to the kind-aware `jac create`. Each scaffolds with `[project]
-kind` stamped and the right entry-point. npm/Bun install is skipped via
+kind` stamped and the right entry-point. npm/js_engine install is skipped via
 JAC_CLIENT_SKIP_NPM_INSTALL so the scaffold is offline and fast."""
 
 import os;

@@ -31,7 +31,7 @@ import from urllib.error { HTTPError }
 import from urllib.request { urlopen }
 
 import from .test_helpers {
-    get_env_with_bun,
+    get_env_with_js_engine,
     get_jac_command,
     request_endpoint,
     start_app_server,
@@ -112,7 +112,7 @@ the binary's bundled jaclang. Rewrite it to the absolute checked-out tree so
 the scaffold builds with the compiler under test.
 
 Returns ``(project_dir, jac_cmd, env)``. Fails the test if ``jac install --npm``
-fails (bun/npm unavailable or a dependency cannot be resolved).
+fails (js_engine/npm unavailable or a dependency cannot be resolved).
 """
 def _setup_site_project(temp_dir: any) -> tuple[any, ...] {
     project_dir = os.path.join(temp_dir, "jaclang-org-e2e");
@@ -139,7 +139,7 @@ def _setup_site_project(temp_dir: any) -> tuple[any, ...] {
     }
 
     jac_cmd = get_jac_command();
-    env = get_env_with_bun();
+    env = get_env_with_js_engine();
 
     add_result = run(
         [*jac_cmd, "install", "--npm"],
@@ -150,7 +150,7 @@ def _setup_site_project(temp_dir: any) -> tuple[any, ...] {
     );
     if add_result.returncode != 0 {
         testfail(
-            f"jac install --npm failed for jaclang_org (bun/npm unavailable?)\n"
+            f"jac install --npm failed for jaclang_org (js_engine/npm unavailable?)\n"
             f"STDOUT:\n{add_result.stdout[:2000]}\n"
             f"STDERR:\n{add_result.stderr[:2000]}\n"
         );

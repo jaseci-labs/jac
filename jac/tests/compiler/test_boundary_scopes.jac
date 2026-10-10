@@ -5,7 +5,7 @@ import re;
 import subprocess;
 import from tempfile { TemporaryDirectory }
 import from tests.support { JAC_ROOT }
-import from jaclang.client.bun_installer { get_bun }
+import from jaclang.client.js_engine { get_js_engine }
 import from jaclang.compiler.driver.program { JacProgram }
 
 test "JavaScript boundary types preserve provider scopes and aliases" {
@@ -22,9 +22,9 @@ test "JavaScript boundary types preserve provider scopes and aliases" {
     mod = prog.compile(path);
     assert not prog.errors_had , str(prog.errors_had);
     js = mod.gen.js;
-    bun = get_bun();
-    if bun is None {
-        testskip("Bun is required to execute generated JavaScript");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required to execute generated JavaScript");
     }
     # Run the emitted codecs with only the HTTP transport replaced.
     js = re.sub(r"import[^;]+;", "", js);
@@ -53,7 +53,7 @@ check(left.meta._jac_type_id !== right.meta._jac_type_id, 'nested identities col
             f.write(js + harness);
         }
         result = subprocess.run(
-            [bun, script], capture_output=True, text=True, timeout=30
+            [js_engine, script], capture_output=True, text=True, timeout=30
         );
         assert result.returncode == 0 , result.stdout + result.stderr;
     }
@@ -79,9 +79,9 @@ test "a boundary type the module also imports from its own module keeps one bind
     # identifier are a SyntaxError that leaves the whole page blank.
     assert re.search(r"import \{[^}]*\bRepoMeta\b[^}]*\} from", js) , js[:400];
     assert not re.search(r"^class RepoMeta\b", js, re.M) , "decoder reuses the imported name";
-    bun = get_bun();
-    if bun is None {
-        testskip("Bun is required to execute generated JavaScript");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required to execute generated JavaScript");
     }
     js = re.sub(r"import[^;]+;", "", js);
     harness = """
@@ -100,7 +100,7 @@ check(new RepoMeta().owner === 'local', 'imported class was replaced');
             f.write(harness.replace("const first", js + "\nconst first", 1));
         }
         result = subprocess.run(
-            [bun, script], capture_output=True, text=True, timeout=30
+            [js_engine, script], capture_output=True, text=True, timeout=30
         );
         assert result.returncode == 0 , result.stdout + result.stderr;
     }

@@ -109,18 +109,18 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
 
 
 def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
-    import from jaclang.client { get_bun }
+    import from jaclang.client { get_js_engine }
     import from jaclang.client.targets.web_target { WebTarget }
 
     import from jaclang.project.client_paths { client_app_dir_for }
     dist = client_app_dir_for(config, str(entry_file)) / 'dist';
-    bun = None;
+    js_engine = None;
     try {
-        bun = get_bun();
+        js_engine = get_js_engine();
     } except Exception {
-        bun = None;
+        js_engine = None;
     }
-    if bun {
+    if js_engine {
         console.print("  Building client bundle (web)", style="muted");
         try {
             WebTarget().build(entry_file, Path(config.project_root));
@@ -132,7 +132,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
     }
     if dist.is_dir() and any(dist.`glob('client.*.js')) {
         console.print(
-            "  ⚠ bun unavailable; baking the existing client dist as-is",
+            "  ⚠ js_engine unavailable; baking the existing client dist as-is",
             style="warning"
         );
         return dist;
@@ -140,7 +140,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
     console.error(
         "This app has client code but no client bundle could be built or "
         f"found ({dist}).",
-        hint="Install bun (jac will fetch it on demand) or prebuild the client."
+        hint="Set JAC_JS_ENGINE to a js_engine binary or prebuild the client."
     );
     return None;
 }

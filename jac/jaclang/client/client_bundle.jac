@@ -6,7 +6,7 @@ import from types { ModuleType }
 import from jaclang.client.artifact {
     ClientBundle,
     ClientBundleError,
-    MissingBunError,
+    MissingJsEngineError,
     prebuilt_bundle
 }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }

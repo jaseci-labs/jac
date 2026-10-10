@@ -13,7 +13,7 @@ API at import time, so the shim can't load in bare `node` -- a jsdom DOM plus th
 `browser` resolver condition (which selects solid's DOM build over its SSR build)
 is what makes it runnable.
 
-Integration test: it does a real `bun install` of jsdom + solid-js & friends, so
+Integration test: it does a real `js_engine install` of jsdom + solid-js & friends, so
 it runs only when `JAC_CLIENT_INTEGRATION` is set (mirrors `test_preact_e2e.jac`).
 Core CI exercises it in a dedicated `test-solid-jsdom` job that sets that flag.
 """
@@ -34,7 +34,7 @@ import from jaclang.client.client_surface { with_runtime_globals }
 import from tests.runtimelib.react_jsdom_harness { write_runtime_support }
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
 import from jaclang.compiler.backends.es.jac_runtime_js { point_jac_prelude_at }
-import from jaclang.client.bun_installer { get_bun }
+import from jaclang.client.js_engine { get_js_engine }
 import from jaclang.client.solid_entry { build_pages_solid_entry_script }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures"),
@@ -786,10 +786,10 @@ console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure
 process.exit(failures.length ? 1 : 0);
 """;
 
-"""Skip unless the bun/npm client toolchain is present (mirrors preact e2e)."""
+"""Skip unless the js_engine/npm client toolchain is present (mirrors preact e2e)."""
 def _require_client_integration {
     import from jaclang.testing.requires { require_tool }
-    require_tool("bun");
+    require_tool("js_engine");
 }
 
 """Compile a `.jac` to JS with the Solid backend; type errors are non-fatal."""
@@ -832,9 +832,9 @@ def _compile_page(path: str, backend: any) -> str {
 
 test "solid counter mounts and reacts in jsdom" {
     _require_client_integration();
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
 
     backend = SolidBackend();
@@ -872,20 +872,24 @@ test "solid counter mounts and reacts in jsdom" {
             encoding="utf-8"
         );
         install = subprocess.run(
-            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+            [js_engine, "install"],
+            cwd=str(work),
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         assert install.returncode == 0 , (
-            f"bun install failed (exit {install.returncode}):\n"
+            f"js_engine install failed (exit {install.returncode}):\n"
             f"{install.stdout}\n{install.stderr}"
         );
         # node with the `browser` condition selects solid's DOM build (not SSR);
-        # fall back to bun if node is unavailable on the runner. (`node` is a Jac
+        # fall back to js_engine if node is unavailable on the runner. (`node` is a Jac
         # keyword, so the binary path is held in `node_bin`.)
         node_bin = shutil.which("node");
         if node_bin {
             cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
         } else {
-            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+            cmd = [js_engine, "--conditions=browser", "run", str(work / "harness.mjs")];
         }
         run = subprocess.run(
             cmd, cwd=str(work), capture_output=True, text=True, timeout=120
@@ -903,9 +907,9 @@ test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch
     # (not just emit plausible JSX strings — the unit tests pin the strings, this
     # pins the runtime behaviour). Same opt-in + toolchain as the counter test.
     _require_client_integration();
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
 
     backend = SolidBackend();
@@ -942,17 +946,21 @@ test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch
             encoding="utf-8"
         );
         install = subprocess.run(
-            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+            [js_engine, "install"],
+            cwd=str(work),
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         assert install.returncode == 0 , (
-            f"bun install failed (exit {install.returncode}):\n"
+            f"js_engine install failed (exit {install.returncode}):\n"
             f"{install.stdout}\n{install.stderr}"
         );
         node_bin = shutil.which("node");
         if node_bin {
             cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
         } else {
-            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+            cmd = [js_engine, "--conditions=browser", "run", str(work / "harness.mjs")];
         }
         run = subprocess.run(
             cmd, cwd=str(work), capture_output=True, text=True, timeout=120
@@ -973,9 +981,9 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
     # shapes the generated entry never writes: an `element=` parent route and a
     # layout wrapping `<Outlet/>`. Same opt-in + toolchain as the counter test.
     _require_client_integration();
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
 
     backend = SolidBackend();
@@ -1051,10 +1059,14 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
             encoding="utf-8"
         );
         install = subprocess.run(
-            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+            [js_engine, "install"],
+            cwd=str(work),
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         assert install.returncode == 0 , (
-            f"bun install failed (exit {install.returncode}):\n"
+            f"js_engine install failed (exit {install.returncode}):\n"
             f"{install.stdout}\n{install.stderr}"
         );
         node_bin = shutil.which("node");
@@ -1081,7 +1093,7 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
                 ];
             } else {
                 cmd = [
-                    bun,
+                    js_engine,
                     "--conditions=browser",
                     "run",
                     str(work / "harness.mjs"),
@@ -1113,9 +1125,9 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
     # onSubmit fires) is verified end-to-end. Same opt-in + toolchain as the
     # counter test.
     _require_client_integration();
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
 
     backend = SolidBackend();
@@ -1149,17 +1161,21 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
             encoding="utf-8"
         );
         install = subprocess.run(
-            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+            [js_engine, "install"],
+            cwd=str(work),
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         assert install.returncode == 0 , (
-            f"bun install failed (exit {install.returncode}):\n"
+            f"js_engine install failed (exit {install.returncode}):\n"
             f"{install.stdout}\n{install.stderr}"
         );
         node_bin = shutil.which("node");
         if node_bin {
             cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
         } else {
-            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+            cmd = [js_engine, "--conditions=browser", "run", str(work / "harness.mjs")];
         }
         run = subprocess.run(
             cmd, cwd=str(work), capture_output=True, text=True, timeout=120
@@ -1180,11 +1196,11 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
     #     element, not null.
     # 2.3 Callback prop: a plain function passed as a component prop fires exactly
     #     once on click — Solid does NOT call it as a reactive accessor.
-    # All three share one bun install (same _DEPS) for faster CI.
+    # All three share one js_engine install (same _DEPS) for faster CI.
     _require_client_integration();
-    bun = get_bun();
-    if bun is None {
-        testskip("bun is required but could not be located/installed");
+    js_engine = get_js_engine();
+    if js_engine is None {
+        testskip("js_engine is required but could not be located/installed");
     }
 
     backend = SolidBackend();
@@ -1231,17 +1247,21 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
             encoding="utf-8"
         );
         install = subprocess.run(
-            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+            [js_engine, "install"],
+            cwd=str(work),
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         assert install.returncode == 0 , (
-            f"bun install failed (exit {install.returncode}):\n"
+            f"js_engine install failed (exit {install.returncode}):\n"
             f"{install.stdout}\n{install.stderr}"
         );
         node_bin = shutil.which("node");
         if node_bin {
             cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
         } else {
-            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+            cmd = [js_engine, "--conditions=browser", "run", str(work / "harness.mjs")];
         }
         run = subprocess.run(
             cmd, cwd=str(work), capture_output=True, text=True, timeout=120

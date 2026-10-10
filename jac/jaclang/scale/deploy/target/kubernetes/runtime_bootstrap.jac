@@ -120,7 +120,7 @@ def build_runtime_install_commands(
 
 
 def runtime_path -> str {
-    return f"{JAC_HOME}/.local/bin:{JAC_HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin";
+    return f"{JAC_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin";
 }
 
 

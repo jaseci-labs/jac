@@ -32,12 +32,6 @@ cd "$(git rev-parse --show-toplevel)"
 # the linked compiler loads it.
 ( cd jac && zig build fetch-llvm )
 
-# Place the pinned, contained bun runtime into the source tree
-# (jac/jaclang/client/_bun) so the -Ddev linked binary below can
-# resolve it for client/cl work via get_bun(). Release binaries bundle bun into
-# the payload instead; this is the editable/source-checkout equivalent.
-( cd jac && zig build fetch-bun )
-
 # Build the dev binary (needs zig 0.16.0 + network; no zstd/curl/git -- the Jac payload tool
 # does it all in std). zig build fetches the pinned typeshed stdlib stubs itself
 # (the fetch-typeshed step), so there is no submodule to check out. -Ddev links the

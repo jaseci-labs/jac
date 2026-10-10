@@ -1456,7 +1456,7 @@ def _stage0_kernel_workdir(pkg_path: Path, artifact_name: str) -> tuple[Path, Pa
         ignore=shutil.ignore_patterns(
             "__pycache__",
             "_precompiled",
-            "_bun",
+            "_js_engine",
             "*.so",
             "*.so.*",
             "*.dylib",

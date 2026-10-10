@@ -31,7 +31,7 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _TRANSIENT_CLIENT_BUILD_MARKERS: tuple[str, ...] = (
          "dependency installation failed",
          "failed to install dependencies",
-         "bun install failed",
+         "js_engine install failed",
          "econnreset",
          "econnrefused",
          "enotfound",

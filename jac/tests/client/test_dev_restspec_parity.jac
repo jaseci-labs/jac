@@ -239,7 +239,7 @@ def _reset_config {
 
 test "in dev the API port never builds a production client bundle" {
     # The hang: the SPA fallback called ensure_bundle() inside the request
-    # thread, which in dev is a cold `bun install` plus a full vite build,
+    # thread, which in dev is a cold `js_engine install` plus a full vite build,
     # untimed and under a lock, so the request never got a response head.
     #
     # Both halves have to bite. The fixture exports a client root named `app`,

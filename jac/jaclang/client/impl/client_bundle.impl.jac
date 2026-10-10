@@ -90,7 +90,7 @@ impl ClientBundleBuilder._compile_bundle(
     module: ModuleType, module_path: Path
 ) -> ClientBundle {
     raise ClientBundleError(
-        "Client bundling requires the built-in client framework (Vite/Bun pipeline), "
+        "Client bundling requires the built-in client framework (Vite/js_engine pipeline), "
         "which ships with jaclang core; the base builder cannot bundle client "
         "code on its own."
     );

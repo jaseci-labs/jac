@@ -50,7 +50,7 @@ runs:
     # neither jaclang nor the launcher would hit it) yet a high pool cost
     # (~0.1-0.2 GB each). Left unbounded it dominated the 10 GB pool -- dozens of
     # per-branch binaries -- and its LRU churn evicted the Linux read-mostly
-    # caches (Python/bun) this action relies on. PR jobs still build their own
+    # caches (Python) this action relies on. PR jobs still build their own
     # binary on a miss (and ci.yml publishes it as an artifact for the same-run
     # test jobs); only main seeds the shared copy. Exact-key match only (no
     # restore-keys), so a stale binary can never be served.
@@ -85,7 +85,7 @@ runs:
         path: jac/jaclang/vendor/typeshed/stdlib
         key: typeshed-stdlib-${{ hashFiles('jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256', 'jac/launcher/payload.zig') }}
 
-    # The four caches below (Python, shim, LLVM, bun) are big (0.2-0.6 GB each).
+    # The three caches below (Python, shim, LLVM) are big (0.2-0.6 GB each).
     # They use restore/save split with SAVES GATED TO MAIN: PR
     # branches read main's entries (cross-branch restore from the default
     # branch), and a per-PR save would only duplicate ~1.2 GB per ref into the repo's 10 GB
@@ -124,7 +124,7 @@ runs:
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
     # wheel anymore). Cache the pruned ~0.5 GB tree, keyed on the single-sourced
-    # slice pin (bootstrap/pins.json) so unrelated payload-tool churn (bun/Python/pip
+    # slice pin (bootstrap/pins.json) so unrelated payload-tool churn (Python/pip
     # pins) does not orphan a 0.5 GB entry. Only engaged on a binary miss AND a
     # shim miss (a cached shim needs no LLVM at all).
     - name: Restore cached LLVM (jacllvm shim deps)
@@ -134,19 +134,6 @@ runs:
       with:
         path: jac/.llvm-build
         key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
-
-    # The contained bun runtime is fetched + sha256-verified and bundled into the
-    # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
-    # miss does not re-download it, keyed on the resolver pin in
-    # bun_installer.jac (the one definition; the Jac payload tool imports it, so no lockstep
-    # check). Only engaged on a binary miss.
-    - name: Restore cached bun runtime
-      id: bun-cache
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache/restore@v4
-      with:
-        path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
 
     # The JIR precompile is mkpayload's single most expensive stage (~24 min:
     # it compiles every bundled jaclang module). ONE tree per (code version,
@@ -347,16 +334,6 @@ runs:
       with:
         path: jac/.llvm-build
         key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
-
-    - name: Save bun cache (trusted refs only)
-      if: >-
-        github.ref == 'refs/heads/main' &&
-        steps.cache.outputs.cache-hit != 'true' &&
-        steps.bun-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
 
     # cache-hit is only 'true' on an exact-key match, so a restore-keys prefix
     # hit still saves here -- that is what keeps the entry tracking HEAD (each
