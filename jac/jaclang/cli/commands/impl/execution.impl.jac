@@ -1069,9 +1069,9 @@ def _exec_file(
                                 _na_manifest,
                                 ir_mod.gen.interop_py_funcs,
                                 base_path=os.path.dirname(full_path),
-                                default_module=os.path.splitext(os.path.basename(full_path))[
-                                    0
-                                ]
+                                default_module=os.path.splitext(
+                                    os.path.basename(full_path)
+                                )[0]
                             );
                         }
                     }

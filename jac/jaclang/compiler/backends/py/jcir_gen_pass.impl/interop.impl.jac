@@ -162,7 +162,7 @@ impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
         if not isinstance(item, ModuleItem) {
             continue;
         }
-        item_name = getattr(item.name, 'value', str(item.name));
+        item_name = item.name.value;
         local_name = item.alias.sym_name if item.alias else item_name;
         if item_name in stubbed or local_name in stubbed {
             continue;
