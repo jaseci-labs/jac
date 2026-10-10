@@ -345,6 +345,51 @@ def:pub ItemList(items: list[str]) -> JsxElement {
 
 Loop slots that emit keyless JSX get a warning -- `W2019` for a `while` loop and `W2021` for a `for` loop. Siblings produced by a loop need a stable `key=` (as in the `<li key={i}>` above) so a re-render keeps their identity.
 
+#### Per-item handlers
+
+A handler built in a loop slot may read the loop target directly; each iteration has its own:
+
+```jac
+def:pub Picker(items: list[str], onPick: Callable[[str], None]) -> JsxElement {
+    <ul>
+        {for (i, item) in enumerate(items) {
+            <li key={i} onClick={lambda { onPick(item); }}>{item}</li>
+        }}
+    </ul>
+}
+```
+
+A local assigned in the slot body is different. It belongs to the component, not to one iteration (annotated or not), so every handler would read the value the last iteration assigned. The compiler rejects that capture with `E2097`:
+
+<!-- jac-skip -->
+```jac
+{for item in items {
+    label = item.upper();
+    <li onClick={lambda { onPick(label); }}>{label}</li>;   # E2097
+}}
+```
+
+Give the handler its value through a parameter instead. A parameter is bound per call, so each row keeps its own:
+
+```jac
+def:pub Picker(items: list[str], onPick: Callable[[str], None]) -> JsxElement {
+    def pick(label: str) -> Callable[[], None] {
+        return lambda { onPick(label); };
+    }
+
+    <ul>
+        {for (i, item) in enumerate(items) {
+            label = item.upper();
+            <li key={i} onClick={pick(label)}>{label}</li>;
+        }}
+    </ul>
+}
+```
+
+Reading the local for the row's own content (`{label}` above) is fine: that runs during the iteration.
+
+If the handler goes through a call before it reaches the element (`onClick={debounce(lambda { onPick(label); })}`, or a props dict passed to a helper), the compiler cannot see whether that call keeps it, so it reports a warning (`W2084`) instead of the error. The fix is the same. See [Variables and Scope](../../reference/language/variables-and-scope.md#4-scope-rules) for the rule.
+
 ### `has`-fields and Handlers
 
 A `def:pub -> JsxElement` body can declare `has`-fields and nested `def` handlers exactly like a regular component. `has`-fields keep the auto-`useState` wiring -- assigning to one rewrites to the generated setter:

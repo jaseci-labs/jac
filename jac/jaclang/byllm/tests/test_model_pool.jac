@@ -38,6 +38,15 @@ def _pool_reply(content: str) -> Callable {
 }
 
 
+"""The same reply on the Router's async path."""
+def _async_pool_reply(content: str) -> Callable {
+    async def _acompletion(**_kwargs: object) -> dict[str, any] {
+        return _pool_reply(content)();
+    }
+    return _acompletion;
+}
+
+
 def _pool(strategy: str, names: list[str]) -> ModelPool {
     return ModelPool(
         models=[Model(model_name=n, api_key="sk-test") for n in names],
@@ -67,10 +76,7 @@ test "every routing strategy dispatches through the router and answers" {
 
         answer = f"{strategy}_answer";
         if is_async {
-            async def _acompletion(**_kwargs: object) -> dict[str, any] {
-                return _pool_reply(answer)();
-            }
-            router(pool).acompletion = _acompletion;
+            router(pool).acompletion = _async_pool_reply(answer);
         } else {
             router(pool).completion = _pool_reply(answer);
         }

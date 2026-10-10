@@ -23,6 +23,7 @@ import from jaclang.cli.browser_engine {
     connect,
     _walk_ax,
     _key_code,
+    _normalize_url,
     _cookie_param,
     _chrome_args,
     _parse_viewport,
@@ -352,6 +353,30 @@ test "_key_code maps letters and digits to DOM codes, passes through the rest" {
     assert _key_code("7") == "Digit7";
     assert _key_code("-") == "-";
     assert _key_code(".") == ".";
+}
+
+
+test "a bare host:port is a host, and local hosts default to http" {
+    assert _normalize_url("localhost:8010") == "http://localhost:8010";
+    assert _normalize_url("localhost") == "http://localhost";
+    assert _normalize_url("127.0.0.1:3000/app") == "http://127.0.0.1:3000/app";
+    assert _normalize_url("[::1]:8000") == "http://[::1]:8000";
+    assert _normalize_url("app.localhost:8000") == "http://app.localhost:8000";
+    assert _normalize_url("example.com") == "https://example.com";
+    assert _normalize_url("example.com:8443/a") == "https://example.com:8443/a";
+    assert _normalize_url("localhost.example.com") == "https://localhost.example.com";
+}
+
+test "urls that already carry a scheme pass through" {
+    for url in [
+        "http://localhost:8010/",
+        "https://example.com",
+        "about:blank",
+        "data:text/html,<p>hi</p>",
+        "file:///tmp/page.html"
+    ] {
+        assert _normalize_url(url) == url;
+    }
 }
 
 

@@ -10,6 +10,74 @@
 # so its exit code is honoured before any transition is inspected.
 set -euo pipefail
 
+# The cycle under test ends at the first return to inactive after a wake out of
+# inactive reached active. Anything before that wake is the deploy settling,
+# which can itself pass through active before KEDA first idles the target.
+CYCLE_CUT='$2=="inactive" { woke=1 } woke && $4=="active" { seen=1 } seen && $4=="inactive" { done=1; exit }'
+
+cycle_of() {
+    awk "{ print } ${CYCLE_CUT}" "$1"
+}
+
+cycle_complete() {
+    awk "${CYCLE_CUT} END { exit !done }" "$1"
+}
+
+check_cycle() {
+    local transitions="$1" cycle states
+    if [[ ! -s "${transitions}" ]]; then
+        echo "FAIL: the observer recorded no transitions during a cycle that completed" >&2
+        return 1
+    fi
+    if ! cycle_complete "${transitions}"; then
+        echo "FAIL: never observed a return to 'inactive' after 'active'" >&2
+        cat "${transitions}" >&2
+        return 1
+    fi
+    cycle="$(cycle_of "${transitions}")"
+    echo "=== cycle under test (teardown excluded) ==="
+    echo "${cycle}"
+
+    # A watch that yields events is the claim the unit tests cannot make, so assert
+    # on the states actually observed rather than on a count.
+    states="$(awk '{print $4}' <<<"${cycle}" | tr '\n' ' ')"
+    echo "observed states: ${states}"
+
+    # Dedup is the property that makes the stream usable: the same state must never
+    # be emitted twice in a row for one target.
+    if awk '{ key=$1; state=$4; if (key==lk && state==ls) { print; } lk=key; ls=state; }' \
+            <<<"${cycle}" | grep -q .; then
+        echo "FAIL: the same state was emitted twice in a row for one target" >&2
+        return 1
+    fi
+    echo "ok: no consecutive duplicate state for any target"
+
+    # A transition must never claim a previous state it did not observe, and the
+    # first sighting of a target is the only place 'none' is legitimate.
+    if awk 'NR>1 && $2=="none"' <<<"${cycle}" | grep -q .; then
+        echo "FAIL: a later transition reported no previous state" >&2
+        return 1
+    fi
+    echo "ok: previous_state is only absent on a first sighting"
+
+    # A healthy cycle must never report degraded. This is the assertion that was
+    # missing when this e2e first ran: it recorded two spurious inactive -> degraded
+    # transitions from KEDA's HPA reporting ScalingActive False at zero replicas,
+    # and passed anyway because it only checked that active and inactive appeared.
+    if grep -qE " -> degraded( |$)" <<<"${cycle}"; then
+        echo "FAIL: a healthy cycle reported degraded" >&2
+        grep -E " -> degraded( |$)" <<<"${cycle}" >&2
+        return 1
+    fi
+    echo "ok: no degraded transition during a healthy cycle"
+}
+
+# Checks a recorded transitions file without a cluster.
+if [[ "${1:-}" == "--check" ]]; then
+    check_cycle "$2"
+    exit $?
+fi
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FIXTURE_DIR="${1:-${HERE}/../fixtures/keda_http_activation_e2e}"
 INNER_E2E="${HERE}/keda_http_activation_real_e2e.sh"
@@ -44,7 +112,6 @@ echo "fixture namespace: ${NAMESPACE}"
 
 TRANSITIONS="$(mktemp)"
 RECORDER_LOG="$(mktemp)"
-CYCLE=""
 RECORDER_PID=""
 
 cleanup() {
@@ -57,7 +124,7 @@ cleanup() {
     cat "${RECORDER_LOG}" || true
     echo "=== transitions recorded ==="
     cat "${TRANSITIONS}" || true
-    rm -f "${TRANSITIONS}" "${RECORDER_LOG}" "${CYCLE:-}"
+    rm -f "${TRANSITIONS}" "${RECORDER_LOG}"
     # The inner e2e hands its namespace over rather than deleting it, so the
     # recorder above could read a settled idle state instead of a terminating
     # one. Teardown lands here, after the recorder is stopped.
@@ -102,18 +169,14 @@ echo "=== stop the observer and inspect what it saw ==="
 # teardown: the last transition landed on degraded or unknown, never on
 # inactive.
 #
-# The wait is for the transition, not for a fixed time. The inner e2e returns
-# at its first ten-second poll that reads zero replicas, which is anywhere
-# from a moment to ten seconds after the scale-down, and the ScaledObject's
-# next update follows the scale-down by ten seconds or more. A fixed fifteen
-# seconds held only while the scale-down happened to land early in that poll.
+# The wait is for the cycle's return to inactive, not for a fixed time. The
+# inner e2e returns at its first ten-second poll that reads zero replicas, and
+# the ScaledObject's next update follows the scale-down by ten seconds or more.
 SETTLE_SECONDS="${E2E_SETTLE_SECONDS:-150}"
-for _ in $(seq 1 "${SETTLE_SECONDS}"); do
-    if grep -qE " -> inactive( |$)" "${TRANSITIONS}" 2>/dev/null; then
-        break
-    fi
+deadline=$((SECONDS + SETTLE_SECONDS))
+until cycle_complete "${TRANSITIONS}" || (( SECONDS >= deadline )); do
     kill -0 "${RECORDER_PID}" 2>/dev/null || break
-    sleep 1
+    sleep 2
 done
 if kill -0 "${RECORDER_PID}" 2>/dev/null; then
     kill "${RECORDER_PID}" 2>/dev/null || true
@@ -121,72 +184,6 @@ if kill -0 "${RECORDER_PID}" 2>/dev/null; then
 fi
 RECORDER_PID=""
 
-if [[ ! -s "${TRANSITIONS}" ]]; then
-    echo "FAIL: the observer recorded no transitions during a cycle that completed" >&2
-    exit 1
-fi
-
-# The cycle under test ends when the target returns to inactive. The wrapped
-# e2e deletes the namespace from its own cleanup trap, which runs before the
-# observer is stopped, so anything recorded after that point is teardown: the
-# ScaledObject going unready as it is removed, then the Deployment vanishing.
-# Asserting over those would make this fail on how fast a namespace deletes,
-# which is not what the cycle is being judged on. Truncate at the first
-# inactive, and fail loudly if the cycle never got there.
-CYCLE="$(mktemp)"
-if ! grep -qE " -> inactive( |$)" "${TRANSITIONS}"; then
-    echo "FAIL: never observed a transition into 'inactive'" >&2
-    cat "${TRANSITIONS}" >&2
-    exit 1
-fi
-awk '{ print } / -> inactive( |$)/ { exit }' "${TRANSITIONS}" > "${CYCLE}"
-echo "=== cycle under test (teardown excluded) ==="
-cat "${CYCLE}"
-
-# A watch that yields events is the claim the unit tests cannot make, so assert
-# on the states actually observed rather than on a count.
-STATES="$(awk '{print $4}' "${CYCLE}" | tr '\n' ' ')"
-echo "observed states: ${STATES}"
-
-assert_saw() {
-    if ! grep -qE " -> $1( |$)" "${CYCLE}"; then
-        echo "FAIL: never observed a transition into '$1'" >&2
-        exit 1
-    fi
-    echo "ok: observed a transition into '$1'"
-}
-
-# The wake is the half a Deployment-only watch would also catch; inactive is the
-# half that only exists because the floor is read from the live ScaledObject.
-assert_saw "active"
-assert_saw "inactive"
-
-# Dedup is the property that makes the stream usable: the same state must never
-# be emitted twice in a row for one target.
-if awk '{ key=$1; state=$4; if (key==lk && state==ls) { print; } lk=key; ls=state; }' \
-        "${CYCLE}" | grep -q .; then
-    echo "FAIL: the same state was emitted twice in a row for one target" >&2
-    exit 1
-fi
-echo "ok: no consecutive duplicate state for any target"
-
-# A transition must never claim a previous state it did not observe, and the
-# first sighting of a target is the only place 'none' is legitimate.
-if awk 'NR>1 && $2=="none"' "${CYCLE}" | grep -q .; then
-    echo "FAIL: a later transition reported no previous state" >&2
-    exit 1
-fi
-echo "ok: previous_state is only absent on a first sighting"
-
-# A healthy cycle must never report degraded. This is the assertion that was
-# missing when this e2e first ran: it recorded two spurious inactive -> degraded
-# transitions from KEDA's HPA reporting ScalingActive False at zero replicas,
-# and passed anyway because it only checked that active and inactive appeared.
-if grep -qE " -> degraded( |$)" "${CYCLE}"; then
-    echo "FAIL: a healthy cycle reported degraded" >&2
-    grep -E " -> degraded( |$)" "${CYCLE}" >&2
-    exit 1
-fi
-echo "ok: no degraded transition during a healthy cycle"
+check_cycle "${TRANSITIONS}"
 
 echo "=== KEDA observer REAL e2e PASSED ==="
