@@ -124,14 +124,22 @@ obj Tray(Res) {
     }
 }
 
+obj Bin {
+    static def drop(extra: int = 7) {
+        log.append(extra);
+    }
+}
+
 test "python backend: a def drop that takes arguments is not a drop hook" {
     log.clear();
     in Region() {
         shelf = Shelf(names=["a", "b"]);
         shelf.drop("a");
         tray = Tray(id=40);
+        bin = Bin();
     }
     assert log == [1] , f"log={log}";
+    assert not getattr(bin, "_jac_drop_done", False);
     assert shelf.names == ["b"];
     assert not getattr(shelf, "_jac_drop_done", False);
     tray.drop(2);

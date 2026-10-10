@@ -35,3 +35,12 @@ test "a def drop that takes arguments hides an inherited destructor hook" {
     assert count() == before;
     assert get_func(engine, "tray_probe", ctypes.c_int64)() == before + 300;
 }
+
+test "a static def drop is not a destructor hook" {
+    (engine, _) = compile_native(FIXTURE);
+    release = get_func(engine, "release_bin", None);
+    count = get_func(engine, "drop_count", ctypes.c_int64);
+    before = count();
+    release();
+    assert count() == before;
+}

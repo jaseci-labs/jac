@@ -806,7 +806,7 @@ obj Res {
 }
 ```
 
-Only a `def drop` that declares no parameters is the hook. A method named `drop` that takes arguments, like an event ability named `drop`, is an ordinary member: it is never called on destruction, and it hides a hook the archetype would otherwise inherit.
+Only an instance `def drop` that declares no parameters is the hook. A method named `drop` that takes arguments, a `static def drop`, and an event ability named `drop` are ordinary members: it is never called on destruction, and it hides a hook the archetype would otherwise inherit.
 
 `drop` fires under every native memory profile, at the same program point for a uniquely-owned value:
 
