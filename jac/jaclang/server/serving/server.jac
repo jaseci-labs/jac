@@ -389,9 +389,15 @@ obj ServingServer {
             self._busy.add(task);
             wrote = False;
             bytes_sent = 0;
+            recycle = False;
             try {
                 response = await self._dispatch(request);
-                keep_alive = self._should_keep_alive(request) and not self._stopping;
+                self.requests_served += 1;
+                recycle = self.request_budget > 0
+                    and self.requests_served >= self.request_budget;
+                keep_alive = self._should_keep_alive(request)
+                    and not self._stopping
+                    and not recycle;
                 (wrote, bytes_sent) = await self._write_response(
                     writer, request, response, keep_alive
                 );
@@ -400,14 +406,11 @@ obj ServingServer {
                 self._release_body(request);
             }
             self._log_access(request, response, bytes_sent, started);
-            self.requests_served += 1;
-            if self.request_budget > 0
-                and self.requests_served >= self.request_budget {
+            if recycle {
                 _logger.info(
                     f"worker served {self.requests_served} requests; recycling"
                 );
                 self.request_stop(EXIT_RECYCLE);
-                keep_alive = False;
             }
             if not wrote {
                 return;
