@@ -1022,7 +1022,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
                     }
                 )
             ];
-            if has_memory_request {
+            if cfg.get("memory_request_configured", False) {
                 triggers.append(
                     Trigger(
                         type="memory",

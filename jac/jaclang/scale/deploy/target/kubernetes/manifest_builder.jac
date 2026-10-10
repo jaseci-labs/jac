@@ -1277,11 +1277,13 @@ obj ManifestBuilder {
         return env;
     }
 
-    def _resolved_memory_request(svc_cfg: dict[str, any], is_gateway: bool) -> str {
+    def _configured_memory_request(svc_cfg: dict[str, any]) -> str | None {
         val = svc_cfg.get("memory_request");
-        if val is None {
-            val = self.k8s_config.memory_request;
-        }
+        return self.k8s_config.memory_request if val is None else val;
+    }
+
+    def _resolved_memory_request(svc_cfg: dict[str, any], is_gateway: bool) -> str {
+        val = self._configured_memory_request(svc_cfg);
         if val is None {
             val = "2Gi" if is_gateway else "1Gi";
         }
@@ -1634,6 +1636,7 @@ obj ManifestBuilder {
             "has_memory_request": bool(
                 self._resolved_memory_request(svc, svc_name == GATEWAY_NAME)
             ),
+            "memory_request_configured": bool(self._configured_memory_request(svc)),
             "triggers": raw_triggers,
             "behavior": dict(behavior)
         };
