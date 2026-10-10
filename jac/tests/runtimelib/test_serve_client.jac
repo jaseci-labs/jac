@@ -30,6 +30,27 @@ def _as_any(v: any) -> any {
     return v;
 }
 
+"""Run one execution-manager call the way a transport does: inside a request
+scope of its own, on the database the process context uses."""
+async def _in_request_scope(call: any) -> any {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.server.request_scope { RequestScope }
+    ambient = Jac.get_context();
+    with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
+        return await call;
+    }
+}
+
+"""Persist the system root the way server start-up does. A bare
+ExecutionManager skips that step, and concurrent first calls on sessions of
+their own would otherwise each try to create it."""
+def _persist_system_root {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    ambient = Jac.get_context();
+    assert ambient.system_root is not None;
+    ambient.mem.commit();
+}
+
 """Skip a test unless client integration is explicitly enabled.
 
 Rendering a client page now runs the real Vite/js_engine pipeline (js_engine + npm install
@@ -1786,14 +1807,16 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         # Create a test user so spawn_walker can resolve a root
         user_mgr.create_user("testuser", "testpass");
+        _persist_system_root();
         # Each walker sleeps for 1 second. Launch 3 concurrently.
         # If they run in threads (concurrent): ~1s total.
         # If they run serially on event loop: ~3s total.
         async def run_concurrent_walkers -> float {
             start = time();
             tasks = [
-                exec_mgr.spawn_walker(walker_cls, {"duration": 1.0}, "testuser")
-                for _ in range(3)
+                _in_request_scope(
+                    exec_mgr.spawn_walker(walker_cls, {"duration": 1.0}, "testuser")
+                ) for _ in range(3)
             ];
             results = await asyncio.gather(*tasks);
             elapsed = time() - start;
@@ -1860,12 +1883,16 @@ test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         user_mgr.create_user("testuser", "testpass");
+        _persist_system_root();
         async def run -> tuple[any, ...] {
             # Explicit sync path: must still run concurrently via to_thread.
             start = time();
             tasks = [
-                exec_mgr.spawn_walker_sync(walker_cls, {"duration": 0.5}, "testuser")
-                for _ in range(3)
+                _in_request_scope(
+                    exec_mgr.spawn_walker_sync(
+                        walker_cls, {"duration": 0.5}, "testuser"
+                    )
+                ) for _ in range(3)
             ];
             results = await asyncio.gather(*tasks);
             sync_elapsed = time() - start;
@@ -1906,11 +1933,15 @@ test "concurrent async walkers run concurrently end-to-end" {
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         user_mgr.create_user("testuser", "testpass");
+        _persist_system_root();
         async def run -> float {
             start = time();
             tasks = [
-                exec_mgr.spawn_walker_async(walker_cls, {"duration": 0.5}, "testuser")
-                for _ in range(3)
+                _in_request_scope(
+                    exec_mgr.spawn_walker_async(
+                        walker_cls, {"duration": 0.5}, "testuser"
+                    )
+                ) for _ in range(3)
             ];
             results = await asyncio.gather(*tasks);
             for r in results {
@@ -2130,10 +2161,12 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         }
         # Sanity: each user got a unique root.
         assert len(set(root_ids.values())) == 3;
+        _persist_system_root();
         async def run_probe(walker_cls: any) -> list[any] {
             tasks = [
-                exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
-                for uname in users
+                _in_request_scope(
+                    exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
+                ) for uname in users
             ];
             gathered = await asyncio.gather(*tasks);
             return _as_any(gathered);
