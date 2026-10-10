@@ -237,6 +237,84 @@ impl NaIRGenPass._codegen_c_interop_trailer(
             self._c_load_scalar(self._pinned_value_slot(box), elem, "pinned.value")
         );
     }
+    if nd.is_attr {
+        sname = self._foreign_struct_name_of_type(target_type);
+        if sname is None {
+            tname = self._get_name(nd.target);
+            gv = self.global_vars.get(tname) if tname is not None else None;
+            cand_ty: (ir.Type | None) = None;
+            if gv is not None {
+                if isinstance(gv.type, ir.PointerType) {
+                    cand_ty = gv.type.pointee;
+                }
+            } elif tname is not None {
+                lv = self.local_vars.get(tname);
+                if lv is not None and isinstance(lv.type, ir.PointerType) {
+                    inner = lv.type.pointee;
+                    if isinstance(inner, ir.PointerType) {
+                        cand_ty = inner.pointee;
+                    } else {
+                        cand_ty = inner;
+                    }
+                }
+            }
+            if (
+                isinstance(cand_ty, ir.IdentifiedStructType)
+                and cand_ty.name in self.clib_struct_names
+            ) {
+                sname = cand_ty.name;
+            }
+        }
+        if sname is not None {
+            fname = self._get_name(nd.right);
+            order = self.struct_field_order.get(sname);
+            ftype = self.struct_field_types.get(sname, {}).get(fname)
+                if fname is not None
+                else None;
+            # Function-pointer fields keep the generic path: loading one as a
+            # Jac Callable would wrap the C code address in a closure.
+            fn_field = isinstance(ftype, ir.PointerType)
+                and isinstance(ftype.pointee, ir.FunctionType);
+            if fname is not None and order and fname in order and not fn_field {
+                base = self._codegen_expr(nd.target);
+                if (
+                    base is not None
+                    and isinstance(base.type, ir.PointerType)
+                ) {
+                    idx = order.index(fname);
+                    slot = self.builder.gep(
+                        base,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), idx)
+                        ],
+                        name=f"c.field.{fname}.ptr"
+                    );
+                    if self._foreign_struct_name_of_type(nd.right.type)
+                        is not None {
+                        return (True, slot);
+                    }
+                    return (
+                        True,
+                        self._c_load_scalar(slot, nd.right.type, "c.field")
+                    );
+                }
+            }
+        }
+    }
+    if nd.is_attr and is_ptr_type(target_type) {
+        got = self._foreign_ptr_field_slot(
+            self._codegen_expr(nd.target), target_type, self._get_name(nd.right)
+        );
+        if got is None {
+            return (False, None);
+        }
+        (slot, _field_type) = got;
+        if isinstance(slot.type, ir.IntType) {
+            return (True, slot);
+        }
+        return (True, self._c_load_scalar(slot, nd.right.type, "c.ptr.field"));
+    }
     return (False, None);
 }
 
@@ -263,6 +341,46 @@ impl NaIRGenPass._c_interop_store(
         elem = c_type_arg(target_type);
         sname = self._foreign_struct_name_of_type(elem);
         slot = box if sname is not None else self._pinned_value_slot(box);
+    } elif target.is_attr and is_ptr_type(target_type) {
+        got = self._foreign_ptr_field_slot(
+            self._codegen_expr(target.target), target_type, self._get_name(target.right)
+        );
+        if got is None {
+            return False;
+        }
+        (slot, _field_type) = got;
+        if isinstance(slot.type, ir.IntType) {
+            self.ctx.emit(
+                E5092,
+                node_override=target,
+                kind="assignment",
+                name="nested C struct field through a pointer"
+            );
+            return True;
+        }
+        if nd.aug_op is not None {
+            current = self._c_load_scalar(slot, target.right.type, "c.aug.cur");
+            updated = self._apply_scalar_aug_op(
+                current,
+                value,
+                nd.aug_op.value,
+                nd.value,
+                unsigned=self._is_unsigned_node(target),
+                checked=self._is_sized_node(target) or self._is_sized_node(nd.value)
+            );
+            if updated is None {
+                self.ctx.emit(
+                    E5092,
+                    node_override=target,
+                    kind="augmented assignment",
+                    name=nd.aug_op.value
+                );
+                return True;
+            }
+            value = updated;
+        }
+        self._c_store_scalar(value, slot, target.right.type);
+        return True;
     } else {
         return False;
     }
@@ -428,7 +546,145 @@ impl NaIRGenPass._codegen_c_interop_call(
         with_addr = b.insert_value(empty, addr, 0, name="c.view.addr");
         return (True, b.insert_value(with_addr, count, 1, name="c.view.n"));
     }
+    fn_call = self._codegen_c_fnfield_call(nd, recv, method, params);
+    if fn_call is not None {
+        return (True, fn_call);
+    }
     return (False, None);
+}
+
+impl NaIRGenPass._codegen_c_fnfield_call(
+    nd: uni.FuncCall,
+    recv: uni.Expr,
+    method: (str | None),
+    params: list[uni.Expr | uni.KWPair]
+) -> (ir.Value | None) {
+    # `p.field(args)` on `ptr[T]` where `field` is a C function pointer in
+    # the C-layout struct T: load the code address and call it directly,
+    # as C's `p->field(args)` does.
+    import from jaclang.compiler.c_interop { c_type_arg }
+    if method is None {
+        return None;
+    }
+    sname = self._foreign_struct_name_of_type(c_type_arg(recv.type));
+    if sname is None or sname not in self.struct_field_order {
+        return None;
+    }
+    order = self.struct_field_order[sname];
+    fty = self.struct_field_types.get(sname, {}).get(method);
+    if method not in order
+        or not isinstance(fty, ir.PointerType)
+        or not isinstance(fty.pointee, ir.FunctionType) {
+        return None;
+    }
+    fn_ty: ir.FunctionType = fty.pointee;
+    if len(params) != len(fn_ty.args)
+        or any(isinstance(p, uni.KWPair) for p in params) {
+        return None;
+    }
+    addr = self._codegen_expr(recv);
+    if addr is None or not isinstance(addr.type, ir.IntType) {
+        return None;
+    }
+    args: list[ir.Value] = [];
+    for (p, want) in zip(params, fn_ty.args) {
+        v = self._codegen_expr(p);
+        if v is None {
+            return None;
+        }
+        args.append(self._coerce_type(v, want));
+    }
+    b = self.builder;
+    i64 = ir.IntType(64);
+    offset = self._clib_struct_layout(sname)[2][order.index(method)][0];
+    field_addr = b.add(addr, ir.Constant(i64, offset), name=f"c.fn.{method}.addr");
+    slot = b.inttoptr(field_addr, fty.as_pointer(), name=f"c.fn.{method}.slot");
+    fn = b.load(slot, name=f"c.fn.{method}");
+    return b.call(fn, args, name=f"c.fn.{method}.ret")
+        if not isinstance(fn_ty.return_type, ir.VoidType)
+        else b.call(fn, args);
+}
+
+impl NaIRGenPass._foreign_ptr_field_slot(
+    addr: (ir.Value | None), ptr_type: any, field_name: (str | None)
+) -> (tuple[ir.Value, any] | None) {
+    # `p.field` on `ptr[T]` where T is a C-layout struct. Returns the
+    # field's slot (typed pointer) for scalar fields, or the field's raw
+    # address (i64, no copy) for nested-struct fields. `None` when the
+    # receiver is not a pointer to a known C-layout struct.
+    import from jaclang.compiler.c_interop { c_type_arg }
+    if addr is None or field_name is None {
+        return None;
+    }
+    sname = self._foreign_struct_name_of_type(c_type_arg(ptr_type));
+    if sname is None or sname not in self.struct_field_order {
+        return None;
+    }
+    order = self.struct_field_order[sname];
+    if field_name not in order {
+        return None;
+    }
+    layout = self._clib_struct_layout(sname);
+    offset = layout[2][order.index(field_name)][0];
+    i64 = ir.IntType(64);
+    field_addr = self.builder.add(addr, ir.Constant(i64, offset), name="c.field.addr");
+    llt = self.struct_field_types.get(sname, {}).get(field_name);
+    if isinstance(llt, ir.PointerType) and isinstance(llt.pointee, ir.FunctionType) {
+        # A function-pointer field reads as its raw code address (i64), so
+        # `p.fn == 0` tests the pointer; calls through it do not lower.
+        fslot = self.builder.inttoptr(field_addr, i64.as_pointer(), name="c.fnfield.slot");
+        return (self.builder.load(fslot, name="c.fnfield"), None);
+    }
+    if llt is None
+        or not isinstance(llt, (ir.IntType, ir.FloatType, ir.DoubleType)) {
+        return (field_addr, None);
+    }
+    slot = self.builder.inttoptr(field_addr, llt.as_pointer(), name="c.field.slot");
+    return (slot, None);
+}
+
+impl NaIRGenPass._codegen_ptr_arith(
+    op: str, nd: uni.BinaryExpr, left: ir.Value, right: ir.Value
+) -> (ir.Value | None) {
+    # `ptr[T]` values are addresses (i64). C parity: `p + n` and `p - n`
+    # scale by `sizeof(T)`; `p - q` is the element count between them. An
+    # untyped operand (bare `ptr`, unknown element) scales by one byte.
+    import from jaclang.compiler.c_interop { c_type_arg, is_ptr_type }
+    import from jaclang.compiler.frontend.constant { Tokens as Tok }
+    i64 = ir.IntType(64);
+    b = self.builder;
+    l_is_ptr = is_ptr_type(nd.left.type);
+    r_is_ptr = is_ptr_type(nd.right.type);
+    if not l_is_ptr and not r_is_ptr {
+        return None;
+    }
+    if l_is_ptr and r_is_ptr {
+        if op != Tok.MINUS {
+            return None;
+        }
+        diff = b.sub(left, right, name="ptr.diff");
+        info = self._c_elem_info(c_type_arg(nd.left.type));
+        if info is None {
+            return diff;
+        }
+        return b.sdiv(diff, self._sizeof_llvm(info[0]), name="ptr.elemdiff");
+    }
+    if not l_is_ptr {
+        return None;
+    }
+    if not isinstance(right.type, ir.IntType) {
+        return None;
+    }
+    off = self._coerce_type(right, i64);
+    info = self._c_elem_info(c_type_arg(nd.left.type));
+    scaled = off;
+    if info is not None {
+        scaled = b.mul(off, self._sizeof_llvm(info[0]), name="ptr.scale");
+    }
+    if op == Tok.MINUS {
+        return b.sub(left, scaled, name="ptr.sub");
+    }
+    return b.add(left, scaled, name="ptr.add");
 }
 
 impl NaIRGenPass._codegen_pin(arg: uni.Expr) -> (ir.Value | None) {

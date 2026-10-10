@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 65 C files / 117,547 lines; 44 headers / 16,784 lines.
-#   Total: 109 files / 134,331 source lines.
+#   Excluded: 66 C files / 117,759 lines; 44 headers / 16,784 lines.
+#   Total: 110 files / 134,543 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -215,13 +215,13 @@ Python/uniqueid.c
 
 # Builtin objects
 Objects/abstract.c
-Objects/boolobject.c
+# Objects/boolobject.c  # removed: 227 source lines
 Objects/bytearrayobject.c
 Objects/bytes_methods.c
 Objects/bytesobject.c
 Objects/call.c
-Objects/capsule.c
-Objects/cellobject.c
+# Objects/capsule.c  # removed: 366 source lines
+# Objects/cellobject.c  # removed: 212 source lines
 Objects/classobject.c
 Objects/clinic/bytearrayobject.c.h
 Objects/clinic/bytesobject.c.h
@@ -251,7 +251,7 @@ Objects/codeobject.c
 Objects/complexobject.c
 Objects/descrobject.c
 Objects/dictobject.c
-Objects/enumobject.c
+# Objects/enumobject.c  # removed: 585 source lines
 Objects/exceptions.c
 Objects/fileobject.c
 Objects/floatobject.c
@@ -260,7 +260,7 @@ Objects/funcobject.c
 Objects/genericaliasobject.c
 Objects/genobject.c
 Objects/interpolationobject.c
-Objects/iterobject.c
+# Objects/iterobject.c  # removed: 541 source lines
 Objects/listobject.c
 Objects/longobject.c
 Objects/memoryobject.c
@@ -289,14 +289,14 @@ Objects/mimalloc/segment.c
 Objects/mimalloc/static.c
 Objects/mimalloc/stats.c
 Objects/moduleobject.c
-Objects/namespaceobject.c
+# Objects/namespaceobject.c  # removed: 332 source lines
 Objects/object.c
 Objects/obmalloc.c
 Objects/odictobject.c
 Objects/picklebufobject.c
-Objects/rangeobject.c
+# Objects/rangeobject.c  # removed: 1320 source lines
 Objects/setobject.c
-Objects/sliceobject.c
+# Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
 Objects/structseq.c
 Objects/templateobject.c

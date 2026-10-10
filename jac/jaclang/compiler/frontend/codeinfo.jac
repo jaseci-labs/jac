@@ -215,7 +215,7 @@ def _reserved_c_symbols -> frozenset[str] {
         "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
         "SSL_write SSL_shutdown SSL_free X509_verify_cert_error_string "
         "ERR_reason_error_string "
-        "Py_DecRef PyBool_FromLong PyBytes_AsString PyDict_New PyDict_SetItemString "
+        "Py_DecRef PyBytes_AsString PyDict_New PyDict_SetItemString "
         "PyErr_Print PyFloat_AsDouble PyFloat_FromDouble PyGILState_Ensure "
         "PyGILState_Release PyImport_ImportModule PyLong_AsLongLong "
         "PyLong_FromLongLong PyObject_Call PyObject_GetAttrString PyObject_IsTrue "

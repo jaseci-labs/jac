@@ -223,6 +223,32 @@ def get_complex_arith_result_type(
     return None;
 }
 
+def get_pointer_arith_result_type(
+    evaluator: TypeEvaluator, left_type: TypeBase, right_type: TypeBase, op: str
+) -> TypeBase | None {
+    # C parity: `p + n` and `p - n` stay `ptr[T]`; `p - q` is the integer
+    # offset; `n + p` is rejected (falls through to the magic-method lookup).
+    l_ptr = _is_builtin_instance_named(left_type, "ptr");
+    r_ptr = _is_builtin_instance_named(right_type, "ptr");
+    if op == Tok.MINUS and l_ptr and r_ptr {
+        int_class = evaluator.prefetch.int_class;
+        if int_class is None {
+            return None;
+        }
+        return evaluator._convert_to_instance(int_class);
+    }
+    if not l_ptr {
+        return None;
+    }
+    if op != Tok.PLUS and op != Tok.MINUS {
+        return None;
+    }
+    if not is_int_kind_type(right_type) {
+        return None;
+    }
+    return left_type;
+}
+
 def get_pow_result_type(
     evaluator: TypeEvaluator,
     left_type: TypeBase,
@@ -435,6 +461,12 @@ def get_type_of_binary_operation(
                 if pow_type is not None {
                     return pow_type;
                 }
+            }
+            pointer_type = get_pointer_arith_result_type(
+                evaluator, left_type, right_type, expr.op.name
+            );
+            if pointer_type is not None {
+                return pointer_type;
             }
             promoted_type = get_numeric_promotion_type(
                 evaluator,

@@ -13,6 +13,18 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_source_kind,
     jacpy_tuple_set_owned
 }
+import from jaclang.runtime.python.cellobject { PyCell_Type }
+import from jaclang.runtime.python.boolobject { PyBool_FromLong }
+import from jaclang.runtime.python.namespaceobject { _PyNamespace_New }
+import from jaclang.runtime.python.capsule { PyCapsule_New }
+import from jaclang.runtime.python.iterobject { PySeqIter_New, PyCallIter_New }
+import from jaclang.runtime.python.enumobject { PyEnum_Type, PyReversed_Type }
+import from jaclang.runtime.python.sliceobject { PySlice_New, PyEllipsis_Type }
+import from jaclang.runtime.python.rangeobject {
+    PyRange_Type,
+    PyRangeIter_Type,
+    PyLongRangeIter_Type
+}
 import from jaclang.runtime.python.bindings.pickle { PyInit__pickle }
 import from jaclang.runtime.python.bindings.array { PyInit_array }
 import from jaclang.runtime.python.bindings.itertools { PyInit_itertools }

@@ -345,23 +345,53 @@ def helpers -> tuple[
 def used_names(functions: dict[str, tuple[str, list[tuple[str, str]]]]) -> set[str] {
     names: set[str] = set();
     # Functions a JacPython source defines under their C names (the interpreter
-    # hooks of atexit) are provided, not called through a declaration.
+    # hooks of atexit) are provided, not called through a declaration, unless
+    # another source calls them through C (PyBool_FromLong): those callers
+    # still need it. A Jac-to-Jac import needs no C declaration.
     defined: set[str] = set();
+    called_by: dict[str, set[Path]] = {};
+    defined_in: dict[str, set[Path]] = {};
     for tree in SOURCES {
         for path in tree.rglob("*.jac") {
             if path == OUTPUT {
                 continue;
             }
             # Comments and docstrings mention C names without calling them.
+            # String literals too: an error message may quote a C name.
             text = re.sub(r'"""(?:.|\n)*?"""', "", path.read_text());
             text = re.sub(r"(?m)^\s*#.*$", "", text);
+            text = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text);
             names.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text));
-            CALLED.update(re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text));
-            defined.update(
-                re.findall(
-                    r"(?m)^def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text
-                )
+            calls = re.findall(r"\b((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text);
+            # A file that declares a C name in its own `import from c` block
+            # brings its own declaration.
+            local_decls = set(
+                re.findall(r"(?m)^ +def ((?:_?Py|jacpy_)[A-Za-z0-9_]*)\s*\(", text)
             );
+            CALLED.update(calls);
+            jac_imported: set[str] = set();
+            for (module, items) in re.findall(
+                r"import from (jaclang\.[\w.]+)\s*\{([^}]*)\}", text
+            ) {
+                if not module.endswith(".cpython_api") {
+                    jac_imported.update(re.findall(r"\w+", items));
+                }
+            }
+            for name in calls {
+                if name not in jac_imported and name not in local_decls {
+                    called_by.setdefault(name, set()).add(path);
+                }
+            }
+            for name in re.findall(
+                r"(?m)^def(?::\w+)?\s+((?:_?Py|jacpy_)[A-Za-z0-9_]*)\b", text
+            ) {
+                defined_in.setdefault(name, set()).add(path);
+            }
+        }
+    }
+    for (name, homes) in defined_in.items() {
+        if not (called_by.get(name, set()) - homes) {
+            defined.add(name);
         }
     }
     CALLED.difference_update(defined);

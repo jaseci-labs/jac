@@ -72,6 +72,13 @@ compiled.verify()
 object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
+# The interpreter's ThinLTO link can fold this module in only when its LLVM
+# matches ours: bitcode readers reject newer writers. build.sh compares this
+# version against zig's clang and falls back to the machine-code object.
+(output / "llvm-version").write_text(
+    ".".join(map(str, llvm.llvm_version_info)) + "\n"
+)
+(output / "jacpython.bc").write_bytes(compiled.as_bitcode())
 
 
 def lowered_sources():

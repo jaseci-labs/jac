@@ -652,6 +652,21 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
 
     if var_name in self.global_vars {
         global_var = self.global_vars[var_name];
+        if (
+            isinstance(global_var.type, ir.PointerType)
+            and isinstance(global_var.type.pointee, ir.IdentifiedStructType)
+            and global_var.type.pointee.name in self.clib_struct_names
+        ) {
+            """Static C-layout struct globals are used through their address
+            (the symbol IS the struct), matching C `extern struct` semantics
+            and the pointer-flavoured uses of boxed struct globs.""";
+            return global_var;
+        }
+        if isinstance(
+            global_var.type, (ir.LiteralStructType, ir.IdentifiedStructType)
+        ) {
+            return global_var;
+        }
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
     if var_name == "__file__" and self.module?.loc and self.module.loc.mod_path {
@@ -748,6 +763,12 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     right = self._codegen_expr(nd.right);
     if left is None or right is None {
         return None;
+    }
+    if isinstance(nd.op, uni.Token) and op in (Tok.PLUS, Tok.MINUS) {
+        _ptr_arith = self._codegen_ptr_arith(op, nd, left, right);
+        if _ptr_arith is not None {
+            return _ptr_arith;
+        }
     }
     result: (ir.Value | None);
     _unsigned = self._is_unsigned_node(nd) or self._is_unsigned_node(nd.left);

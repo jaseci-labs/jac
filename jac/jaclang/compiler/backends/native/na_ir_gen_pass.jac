@@ -314,6 +314,7 @@ walker NaIRGenPass(CompilerPass) {
         arch_type_params: dict[str, list[str]] = {},
         struct_field_inline: dict[str, set[str]] = {},
         struct_field_borrow: dict[str, set[str]] = {},
+        static_struct_inits: list[tuple[str, str, uni.FuncCall]] = [],
         _subclassed_arch_names: (set[str] | None) = None,
         _aos_deciding: set[str] = set(),
         _self_owned: bool = False,
@@ -1000,6 +1001,18 @@ walker NaIRGenPass(CompilerPass) {
     def _pinned_value_slot(box: ir.Value) -> ir.Value;
     def _codegen_c_interop_call(nd: uni.FuncCall) -> tuple[bool, (ir.Value | None)];
     def _codegen_pin(arg: uni.Expr) -> (ir.Value | None);
+    def _codegen_ptr_arith(
+        op: str, nd: uni.BinaryExpr, left: ir.Value, right: ir.Value
+    ) -> (ir.Value | None);
+    def _codegen_c_fnfield_call(
+        nd: uni.FuncCall,
+        recv: uni.Expr,
+        method: (str | None),
+        params: list[uni.Expr | uni.KWPair]
+    ) -> (ir.Value | None);
+    def _foreign_ptr_field_slot(
+        addr: (ir.Value | None), ptr_type: any, field_name: (str | None)
+    ) -> (tuple[ir.Value, any] | None);
     def _c_release_temp(val: ir.Value) -> None;
     def _clib_param_info(p: uni.ParamVar) -> dict[str, any];
     def _clib_ret_is_cptr(sig: uni.FuncSignature) -> bool;
@@ -1768,6 +1781,16 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_const_expr(
         nd: uni.UniNode, target_type: ir.Type
     ) -> (ir.Constant | None);
+    def _static_struct_init_name(assign: uni.Assignment) -> (str | None);
+    def _static_struct_name_of_call(nd: uni.UniNode) -> (str | None);
+    def _build_static_struct_const(
+        sname: str, call: uni.FuncCall, depth: int
+    ) -> (ir.Constant | None);
+    def _build_static_field_const(
+        ftype: ir.Type, nd: (uni.UniNode | None), depth: int
+    ) -> (ir.Value | None);
+    def _static_c_string_global(text: str, want: ir.Type) -> (ir.Value | None);
+    def _flush_static_struct_inits() -> None;
 
     def _emit_hash_core_helpers(
         family: str,

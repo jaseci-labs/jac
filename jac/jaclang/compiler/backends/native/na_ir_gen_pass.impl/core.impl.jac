@@ -219,6 +219,9 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
     self._finish_osp_reclaim_hook();
+    if self.static_struct_inits {
+        self._flush_static_struct_inits();
+    }
 
     if self.has_native_code {
         if self.ctx.errors_had {
@@ -1889,6 +1892,56 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                     self.clib_extern_names.add(fn_name);
                     if _cur_lib is not None {
                         self._clib_symbol_lib[fn_name] = _cur_lib;
+                    }
+                }
+            }
+        }
+
+        for decl in stmt.clib_decls {
+            if isinstance(decl, uni.GlobalVars) {
+                for assign in decl.assignments {
+                    targets = (
+                        assign.target
+                        if isinstance(assign.target, (list, tuple))
+                        else [assign.target]
+                    );
+                    for target in targets {
+                        var_name = self._get_name(target);
+                        if var_name is None or assign.type_tag is None {
+                            continue;
+                        }
+                        tag_name = (
+                            self._get_name(assign.type_tag.tag)
+                            if assign.type_tag.tag
+                            else None
+                        );
+                        var_type: (ir.Type | None) = (
+                            self.struct_types.get(tag_name)
+                            if tag_name is not None
+                            else None
+                        );
+                        if var_type is None {
+                            var_type = self._resolve_decl_type(
+                                assign.type_tag, None
+                            );
+                        }
+                        if var_type is None {
+                            continue;
+                        }
+                        if var_name in self.global_vars {
+                            continue;
+                        }
+                        try {
+                            global_var = ir.GlobalVariable(
+                                self.llvm_module, var_type, name=var_name
+                            );
+                        } except Exception as _dup_err {
+                            continue;
+                        }
+                        global_var.linkage = "external";
+                        self.global_vars[var_name] = global_var;
+                        self.global_var_types[var_name] = var_type;
+                        self.has_native_code = True;
                     }
                 }
             }

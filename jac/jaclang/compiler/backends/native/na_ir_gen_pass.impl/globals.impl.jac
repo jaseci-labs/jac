@@ -130,16 +130,21 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
 
             var_type: ir.Type = ir.IntType(64);
+            _static_sname = self._static_struct_init_name(assign);
             if assign.type_tag is not None {
-                _widened = self._widened_tuple_decl_type(assign.type_tag, assign.value);
-                if (
-                    _widened is None
-                    and self._quiet_glob_type(assign.type_tag) is None
-                    and not self._glob_native_use_exists(target)
-                ) {
-                    continue;
+                if _static_sname is not None {
+                    var_type = self._clib_c_type(_static_sname);
+                } else {
+                    _widened = self._widened_tuple_decl_type(assign.type_tag, assign.value);
+                    if (
+                        _widened is None
+                        and self._quiet_glob_type(assign.type_tag) is None
+                        and not self._glob_native_use_exists(target)
+                    ) {
+                        continue;
+                    }
+                    var_type = self._resolve_decl_type(assign.type_tag, assign.value);
                 }
-                var_type = self._resolve_decl_type(assign.type_tag, assign.value);
             } elif assign.value is not None {
                 inferred = self._infer_global_init_type(assign.value);
                 if inferred is not None {
@@ -178,13 +183,26 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
-            const_init = self._codegen_const_expr(assign.value, var_type)
-                if assign.value is not None
-                else None;
-            if const_init is not None {
-                global_var.initializer = const_init;
-            } else {
+            const_init: (ir.Constant | None) = None;
+            if _static_sname is not None {
                 global_var.initializer = ir.Constant(var_type, None);
+                _static_call = (
+                    assign.value if isinstance(assign.value, uni.FuncCall) else None
+                );
+                if _static_call is not None {
+                    self.static_struct_inits.append(
+                        (var_name, _static_sname, _static_call)
+                    );
+                }
+            } else {
+                const_init = self._codegen_const_expr(assign.value, var_type)
+                    if assign.value is not None
+                    else None;
+                if const_init is not None {
+                    global_var.initializer = const_init;
+                } else {
+                    global_var.initializer = ir.Constant(var_type, None);
+                }
             }
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
@@ -194,7 +212,11 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 else "(current module)";
             self.has_native_code = True;
 
-            if assign.value is not None and const_init is None {
+            if (
+                assign.value is not None
+                and const_init is None
+                and _static_sname is None
+            ) {
                 self._global_init_nodes.append((var_name, assign.value, var_type));
             }
         }
@@ -284,4 +306,293 @@ impl NaIRGenPass._register_enums(module: uni.Module) -> None {
             self._codegen_enum(stmt, quiet=True);
         }
     }
+}
+
+impl NaIRGenPass._static_struct_name_of_call(nd: uni.UniNode) -> (str | None) {
+    if not isinstance(nd, uni.FuncCall) {
+        return None;
+    }
+    callee = self._arch_ref_key(nd.target);
+    if callee is None or callee not in self.clib_struct_names {
+        return None;
+    }
+    if callee not in self.struct_types
+        or not self.struct_field_order.get(callee)
+    {
+        return None;
+    }
+    return callee;
+}
+
+impl NaIRGenPass._static_struct_init_name(assign: uni.Assignment) -> (str | None) {
+    if assign.value is None or assign.type_tag is None {
+        return None;
+    }
+    declared = self._static_struct_name_of_call(assign.value);
+    if declared is None {
+        return None;
+    }
+    tag_name = self._get_name(assign.type_tag.tag)
+        if isinstance(assign.type_tag, uni.SubTag)
+        else None;
+    if tag_name != declared {
+        return None;
+    }
+    return declared;
+}
+
+impl NaIRGenPass._build_static_struct_const(
+    sname: str, call: uni.FuncCall, depth: int
+) -> (ir.Constant | None) {
+    if depth > 8 {
+        return None;
+    }
+    stype = self.struct_types.get(sname);
+    field_order = self.struct_field_order.get(sname) or [];
+    if stype is None or not field_order {
+        return None;
+    }
+    pos: list[uni.Expr] = [];
+    kw: dict[str, uni.Expr] = {};
+    for p in (call.params or []) {
+        if isinstance(p, uni.KWPair) {
+            k = self._get_name(p.key);
+            if k is None {
+                return None;
+            }
+            kw[k] = p.value;
+        } else {
+            pos.append(p);
+        }
+    }
+    ctor_order = self.struct_constructor_order.get(sname) or field_order;
+    if len(pos) > len(ctor_order) {
+        return None;
+    }
+    given: dict[str, uni.Expr] = dict(kw);
+    for (i, v) in enumerate(pos) {
+        given[ctor_order[i]] = v;
+    }
+    consts: list[ir.Value] = [];
+    for fname in field_order {
+        ftype = self.struct_field_types.get(sname, {}).get(fname);
+        if ftype is None {
+            return None;
+        }
+        nd = given.get(fname);
+        if nd is None {
+            nd = self.struct_field_defaults.get(sname, {}).get(fname);
+        }
+        c = self._build_static_field_const(ftype, nd, depth + 1);
+        if c is None {
+            self.emit(
+                E5092,
+                kind="static struct member",
+                name=f"{sname}.{fname}",
+                help_text=(
+                    "This member's value could not be lowered to a "
+                    f"compile-time constant for the static struct initializer "
+                    f"(field lowers to '{ftype}'; member AST node is "
+                    f"{type(nd).__name__})."
+                ),
+            );
+            return None;
+        }
+        consts.append(c);
+    }
+    return ir.Constant(stype, consts);
+}
+
+impl NaIRGenPass._build_static_field_const(
+    ftype: ir.Type, nd: (uni.UniNode | None), depth: int
+) -> (ir.Value | None) {
+    if nd is None {
+        return ir.Constant(ftype, None);
+    }
+    nm = self._get_name(nd);
+    if nm == "None" {
+        return ir.Constant(ftype, None);
+    }
+    if isinstance(nd, uni.AtomUnit) {
+        # A parenthesized atom wraps the real constant expression.
+        if isinstance(nd.value, uni.Expr) {
+            return self._build_static_field_const(ftype, nd.value, depth);
+        }
+    }
+    if isinstance(nd, (uni.String, uni.MultiString)) {
+        lit = nd.lit_value;
+        if isinstance(lit, str) {
+            return self._static_c_string_global(lit, ftype);
+        }
+    }
+    if isinstance(nd, uni.FuncCall) {
+        # `ptr[T]()` / `ptr()` is the null-pointer constant; the generic form
+        # parses as an AtomTrailer over the `ptr` name.
+        ptr_tgt = nd.target;
+        if isinstance(ptr_tgt, uni.AtomTrailer) {
+            ptr_tgt = ptr_tgt.target;
+        }
+        callee_name = self._get_name(ptr_tgt);
+        if (
+            callee_name == "ptr"
+            and (nd.params is None or not nd.params)
+        ) {
+            if isinstance(ftype, ir.PointerType) or ftype == ir.IntType(64) {
+                return ir.Constant(ftype, None);
+            }
+            return None;
+        }
+        nested = self._static_struct_name_of_call(nd);
+        if nested is not None and ftype == self.struct_types.get(nested) {
+            return self._build_static_struct_const(nested, nd, depth);
+        }
+        return None;
+    }
+    cv = nd.ct_value if isinstance(nd, uni.Expr) else None;
+    if cv is not None and not cv.is_deferred {
+        if isinstance(cv, CtBool) {
+            return ir.Constant(ftype, 1 if cv.value else 0);
+        }
+        if isinstance(cv, CtInt) and not cv.mag {
+            if isinstance(ftype, ir.PointerType) {
+                # `= 0` on a pointer/function-pointer field is NULL.
+                if cv.small == 0 {
+                    return ir.Constant(ftype, None);
+                }
+                return ir.Constant(ir.IntType(64), cv.small).inttoptr(ftype);
+            }
+            return ir.Constant(ftype, cv.small);
+        }
+        if isinstance(cv, CtFloat) {
+            return ir.Constant(ftype, cv.value);
+        }
+    }
+    import from jaclang.compiler.frontend.const_fold { fold_const }
+    (ok, v) = fold_const(nd);
+    if ok {
+        if isinstance(v, bool) {
+            return ir.Constant(ftype, 1 if v else 0);
+        }
+        if isinstance(v, int) and isinstance(ftype, ir.PointerType) {
+            if v == 0 {
+                return ir.Constant(ftype, None);
+            }
+            return ir.Constant(ir.IntType(64), v).inttoptr(ftype);
+        }
+        if isinstance(v, (int, float)) {
+            return ir.Constant(ftype, v);
+        }
+    }
+    if nm is not None {
+        fn = self.func_symtab.get(nm);
+        if fn is None {
+            for _pub in (True, False) {
+                _g = self.llvm_module.globals.get(self._symbol_for(nm, None, _pub));
+                if isinstance(_g, ir.Function) {
+                    fn = _g;
+                    break;
+                }
+            }
+        }
+        if fn is not None {
+            if isinstance(ftype, ir.PointerType)
+                and isinstance(ftype.pointee, ir.FunctionType) {
+                return fn.bitcast(ftype);
+            }
+            if ftype == ir.IntType(64) {
+                return fn.ptrtoint(ir.IntType(64));
+            }
+            if ftype == ir.IntType(8).as_pointer() {
+                return fn.bitcast(ftype);
+            }
+            return None;
+        }
+        gv = self.global_vars.get(nm);
+        if gv is None {
+            for _pub in (True, False) {
+                _g = self.llvm_module.globals.get(self._symbol_for(nm, None, _pub));
+                if isinstance(_g, ir.GlobalVariable) {
+                    gv = _g;
+                    break;
+                }
+            }
+        }
+        if gv is not None {
+            if ftype == ir.IntType(64) {
+                return gv.ptrtoint(ir.IntType(64));
+            }
+            if isinstance(ftype, ir.PointerType) {
+                return gv.bitcast(ftype);
+            }
+            return None;
+        }
+        return None;
+    }
+    if isinstance(nd, uni.AtomTrailer) and nd.is_attr {
+        a = self._get_name(nd.target);
+        b = self._get_name(nd.right);
+        if a is not None and b is not None {
+            key = f"{a}.{b}";
+            if key in self.enum_values {
+                if isinstance(ftype, ir.IntType) {
+                    ordinal = self.enum_member_ordinal.get(key, 0);
+                    return ir.Constant(ftype, ordinal);
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._static_c_string_global(
+    text: str, want: ir.Type
+) -> (ir.Value | None) {
+    data = (text + "\0").encode("utf8");
+    key = f".cstr\x00{text}";
+    g = self._interned_strs.get(key);
+    if g is None {
+        arr = ir.ArrayType(ir.IntType(8), len(data));
+        g = ir.GlobalVariable(
+            self.llvm_module, arr, name=f".cstr.{self._str_count}"
+        );
+        self._str_count = self._str_count + 1;
+        g.linkage = "private";
+        g.global_constant = True;
+        g.initializer = ir.Constant(arr, bytearray(data));
+        self._interned_strs[key] = g;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    if isinstance(want, ir.PointerType) {
+        return g.bitcast(want);
+    }
+    if want == ir.IntType(64) {
+        return g.bitcast(i8p).ptrtoint(ir.IntType(64));
+    }
+    return None;
+}
+
+impl NaIRGenPass._flush_static_struct_inits -> None {
+    for (var_name, sname, call) in self.static_struct_inits {
+        gv = self.global_vars.get(var_name);
+        if gv is None {
+            continue;
+        }
+        c = self._build_static_struct_const(sname, call, 0);
+        if c is None {
+            self.emit(
+                E5092,
+                kind="static struct initializer",
+                name=var_name,
+                help_text=(
+                    f"Global '{var_name}' has C struct type '{sname}' and is "
+                    "exposed to C linkers; every member must be a compile-time "
+                    "constant (integer/float literal, string literal, None, "
+                    "enum member, named function, or another static struct)."
+                ),
+            );
+            continue;
+        }
+        gv.initializer = c;
+    }
+    self.static_struct_inits = [];
 }

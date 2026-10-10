@@ -4,6 +4,12 @@
 #include <Python.h>
 #include <errno.h>
 #include <stdint.h>
+#include "internal/pycore_cell.h"
+#include "internal/pycore_gc.h"
+#include "internal/pycore_object.h"
+#include "internal/pycore_ceval.h"
+#include "internal/pycore_long.h"
+#include "internal/pycore_abstract.h"
 
 /* libpython is built with hidden visibility, so only marked symbols reach a
  * native library that dlopens into this runtime. These entry points ARE that
@@ -722,4 +728,441 @@ int64_t jacpy_hacl_simd_features(void) {
 #endif
 #endif
     return features;
+}
+
+/* cellobject.jac: PyCell_Check and the fixed-arity form of PyArg_UnpackTuple
+ * for cell's (0, 1) signature. */
+int64_t jacpy_is_cell(PyObject *handle) { return PyCell_Check(handle); }
+
+/* cell_new: formatted TypeError for extra arguments (varargs formatting is
+ * C residue; see the migration doc). */
+void jacpy_cell_new_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "cell expected at most 1 arguments, got %zd", nargs);
+}
+
+/* bool_new: formatted TypeError for extra arguments (same residue rule). */
+void jacpy_bool_new_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "bool expected at most 1 arguments, got %zd", nargs);
+}
+
+/* bool_vectorcall: args is PyObject *const * in C; the element load stays C
+ * (native checker does not type pointer-to-pointer subscripts yet). */
+PyObject *jacpy_vectorcall_arg(void *args, Py_ssize_t index) {
+    return ((PyObject *const *)args)[index];
+}
+
+/* namespaceobject: varargs formatters (PyUnicode_FromFormat/PyErr_Format
+ * with %U/%R/%s/%S/%N/%T specifiers) stay C; see the residue table in the
+ * migration doc. */
+void jacpy_namespace_too_many(const char *name, Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "%s expected at most 1 arguments, got %zd", name, nargs);
+}
+
+PyObject *jacpy_namespace_pair(PyObject *key, PyObject *value) {
+    return PyUnicode_FromFormat("%U=%R", key, value);
+}
+
+PyObject *jacpy_namespace_repr_closed(const char *name, PyObject *pairs) {
+    return PyUnicode_FromFormat("%s(%S)", name, pairs);
+}
+
+PyObject *jacpy_namespace_repr_selfref(const char *name) {
+    return PyUnicode_FromFormat("%s(...)", name);
+}
+
+PyObject *jacpy_namespace_reduce_pack(PyObject *tp, PyObject *args,
+                                      PyObject *dict) {
+    return PyTuple_Pack(3, tp, args, dict);
+}
+
+void jacpy_namespace_replace_type_error(PyObject *ns_type, PyObject *self,
+                                        PyObject *result) {
+    PyErr_Format(PyExc_TypeError,
+                 "expect %N type, but %T() returned '%T' object",
+                 ns_type, self, result);
+}
+
+/* capsule: GC-track macros write GC header bits; keep them beside the other
+ * pycore accessors here. */
+int jacpy_capsule_is_tracked(PyObject *op) {
+    return _PyObject_GC_IS_TRACKED(op);
+}
+
+void jacpy_capsule_track(PyObject *op) { _PyObject_GC_TRACK(op); }
+
+/* capsule: PyCapsule_Import mangles the duplicated name in place. */
+char *jacpy_capsule_split(char *trace) {
+    char *dot = strchr(trace, '.');
+    if (dot) {
+        *dot++ = '\0';
+        return dot;
+    }
+    return NULL;
+}
+
+PyObject *jacpy_capsule_repr(PyObject *o, const char *name, const char *quote) {
+    return PyUnicode_FromFormat("<capsule object %s%s%s at %p>",
+                                quote, name, quote, o);
+}
+
+void jacpy_capsule_import_module_error(const char *trace) {
+    PyErr_Format(PyExc_ImportError,
+                 "PyCapsule_Import could not import module \"%s\"", trace);
+}
+
+void jacpy_capsule_import_attr_error(const char *name) {
+    PyErr_Format(PyExc_AttributeError,
+                 "PyCapsule_Import \"%s\" is not valid", name);
+}
+
+/* Calls through PyCapsule's function-pointer fields (no native indirect
+   calls yet). */
+void jacpy_capsule_call_destructor(void *fn, PyObject *op) {
+    ((PyCapsule_Destructor)fn)(op);
+}
+
+int jacpy_capsule_call_traverse(void *fn, PyObject *op, void *visit, void *arg) {
+    return ((traverseproc)fn)(op, (visitproc)visit, arg);
+}
+
+int jacpy_capsule_call_clear(void *fn, PyObject *op) {
+    return ((inquiry)fn)(op);
+}
+
+/* Py_VISIT: tp_traverse receives `visit` as a C function pointer, which a
+ * Jac Callable parameter cannot call. */
+int jacpy_visit(void *visit, PyObject *o, void *arg) {
+    return ((visitproc)visit)(o, arg);
+}
+
+/* iterobject: Py_BuildValue formats and the PyObject_CallMethod proxy stay
+ * C; the cached `iter` builtin keeps the _Py_ID static-identifier machinery
+ * beside its consumer. */
+PyObject *jacpy_iter_builtin(void) {
+    return _PyEval_GetBuiltin(&_Py_ID(iter));
+}
+
+PyObject *jacpy_iter_reduce_seq(PyObject *iter, PyObject *seq,
+                                Py_ssize_t index) {
+    return Py_BuildValue("N(O)n", iter, seq, index);
+}
+
+PyObject *jacpy_iter_reduce_empty(PyObject *iter) {
+    return Py_BuildValue("N(())", iter);
+}
+
+PyObject *jacpy_iter_reduce_pair(PyObject *iter, PyObject *callable,
+                                 PyObject *sentinel) {
+    return Py_BuildValue("N(OO)", iter, callable, sentinel);
+}
+
+PyObject *jacpy_iter_proxy(PyObject *awaitable, const char *meth,
+                           PyObject *arg) {
+    if (arg == NULL) {
+        return PyObject_CallMethod(awaitable, meth, NULL);
+    }
+    return PyObject_CallMethod(awaitable, meth, "O", arg);
+}
+
+/* enumobject: _PyLong_GetOne is static inline; borrowed tuple item access
+ * is macro field access; the formatters carry %S/%.200s/%zd. */
+PyObject *jacpy_long_one(void) { return _PyLong_GetOne(); }
+
+PyObject *jacpy_enum_new_args(PyObject *args, PyObject *kwargs) {
+    static char *kwlist[] = {"iterable", "start", NULL};
+    PyObject *iterable, *start = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O:enumerate", kwlist,
+                                     &iterable, &start)) {
+        return NULL;
+    }
+    return start ? PyTuple_Pack(2, iterable, start) : PyTuple_Pack(1, iterable);
+}
+
+#include "internal/pycore_modsupport.h"
+int jacpy_reversed_reject_kwargs(PyTypeObject *type, PyObject *kwargs) {
+    PyTypeObject *base_tp = &PyReversed_Type;
+    return (type == base_tp || type->tp_init == base_tp->tp_init) &&
+           !_PyArg_NoKeywords("reversed", kwargs);
+}
+
+PyObject *jacpy_tuple_borrow(PyObject *t, Py_ssize_t index) {
+    return ((PyTupleObject *)t)->ob_item[index];
+}
+
+/* _PyTuple_Recycle is static inline: re-track a reused enumerate/reversed
+ * result tuple and reset its hash cache (bpo-42536). */
+#include "internal/pycore_tuple.h"
+void jacpy_tuple_recycle(PyObject *op) { _PyTuple_Recycle(op); }
+
+void jacpy_tuple_set_item(PyObject *t, Py_ssize_t index, PyObject *v) {
+    ((PyTupleObject *)t)->ob_item[index] = v;
+}
+
+PyObject *jacpy_enum_result_tuple(void) {
+    return PyTuple_Pack(2, Py_None, Py_None);
+}
+
+void jacpy_enum_bad_keyword(PyObject *kw) {
+    PyErr_Format(PyExc_TypeError,
+                 "'%S' is an invalid keyword argument for enumerate()", kw);
+}
+
+void jacpy_enum_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "enumerate() takes at most 2 arguments (%zd given)", nargs);
+}
+
+void jacpy_enum_new_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "enumerate expected at most 2 arguments, got %zd", nargs);
+}
+
+void jacpy_reversed_new_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "reversed expected at most 1 arguments, got %zd", nargs);
+}
+
+void jacpy_enum_not_reversible(const char *tp_name) {
+    PyErr_Format(PyExc_TypeError, "'%.200s' object is not reversible",
+                 tp_name);
+}
+
+PyObject *jacpy_reversed_lookup(PyObject *seq) {
+    return _PyObject_LookupSpecial(seq, &_Py_ID(__reversed__));
+}
+
+PyObject *jacpy_enum_reduce_long(PyObject *tp, PyObject *sit,
+                                 PyObject *longindex) {
+    return Py_BuildValue("O(OO)", tp, sit, longindex);
+}
+
+PyObject *jacpy_enum_reduce_plain(PyObject *tp, PyObject *sit,
+                                  Py_ssize_t index) {
+    return Py_BuildValue("O(On)", tp, sit, index);
+}
+
+PyObject *jacpy_reversed_reduce_seq(PyObject *tp, PyObject *seq,
+                                    Py_ssize_t index) {
+    return Py_BuildValue("O(O)n", tp, seq, index);
+}
+
+PyObject *jacpy_reversed_reduce_empty(PyObject *tp) {
+    return Py_BuildValue("O(())", tp);
+}
+
+/* sliceobject: formatters, arg-count errors, static-inline long getters,
+ * pointer out-param stores, and the u64 xxHash mixing stay C. The
+ * PySliceObject struct and the hash constants are file-local in
+ * Objects/sliceobject.c, so they are mirrored here. */
+void jacpy_slice_too_few(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "slice expected at least 1 arguments, got %zd", nargs);
+}
+
+void jacpy_slice_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "slice expected at most 3 arguments, got %zd", nargs);
+}
+
+PyObject *jacpy_slice_repr(PyObject *start, PyObject *stop, PyObject *step) {
+    return PyUnicode_FromFormat("slice(%R, %R, %R)", start, stop, step);
+}
+
+PyObject *jacpy_slice_indices_tuple(PyObject *start, PyObject *stop,
+                                    PyObject *step) {
+    return Py_BuildValue("(NNN)", start, stop, step);
+}
+
+PyObject *jacpy_slice_reduce_tuple(PyObject *tp, PyObject *start,
+                                   PyObject *stop, PyObject *step) {
+    return Py_BuildValue("O(OOO)", tp, start, stop, step);
+}
+
+PyObject *jacpy_slice_pack3(PyObject *a, PyObject *b, PyObject *c) {
+    return PyTuple_Pack(3, a, b, c);
+}
+
+PyObject *jacpy_long_zero(void) { return _PyLong_GetZero(); }
+
+void jacpy_isize_store(Py_ssize_t *p, Py_ssize_t v) { *p = v; }
+
+Py_ssize_t jacpy_isize_load(Py_ssize_t *p) { return *p; }
+
+void jacpy_ptr_store3(PyObject **a, PyObject **b, PyObject **c,
+                      PyObject *s, PyObject *t, PyObject *u) {
+    if (a) *a = s;
+    if (b) *b = t;
+    if (c) *c = u;
+}
+
+Py_hash_t jacpy_slice_hash(PyObject *op) {
+    typedef struct {
+        PyObject_HEAD
+        PyObject *start;
+        PyObject *stop;
+        PyObject *step;
+    } _jacpy_PySliceObject;
+    _jacpy_PySliceObject *v = (_jacpy_PySliceObject *)op;
+    const Py_uhash_t xxprime1 = 11400714785074694791ULL;
+    const Py_uhash_t xxprime2 = 14029467366897019727ULL;
+    const Py_uhash_t xxprime5 = 2870177450012600261ULL;
+    Py_uhash_t acc = xxprime5;
+    Py_uhash_t lane;
+
+    lane = (Py_uhash_t)PyObject_Hash(v->start);
+    if (lane == (Py_uhash_t)-1) return -1;
+    acc += lane * xxprime2;
+    acc = (acc << 31) | (acc >> 33);
+    acc *= xxprime1;
+
+    lane = (Py_uhash_t)PyObject_Hash(v->stop);
+    if (lane == (Py_uhash_t)-1) return -1;
+    acc += lane * xxprime2;
+    acc = (acc << 31) | (acc >> 33);
+    acc *= xxprime1;
+
+    lane = (Py_uhash_t)PyObject_Hash(v->step);
+    if (lane == (Py_uhash_t)-1) return -1;
+    acc += lane * xxprime2;
+    acc = (acc << 31) | (acc >> 33);
+    acc *= xxprime1;
+
+    if (acc == (Py_uhash_t)-1) {
+        return 1546275796;
+    }
+    return (Py_hash_t)acc;
+}
+
+/* cell_repr: varargs PyUnicode_FromFormat plus a tp_name read through the
+ * opaque type stay C (see the residue table in the migration doc). */
+PyObject *jacpy_cell_repr(PyObject *self) {
+    PyObject *ref = PyCell_GetRef((PyCellObject *)self);
+    PyObject *res;
+    if (ref == NULL) {
+        return PyUnicode_FromFormat("<cell at %p: empty>", self);
+    }
+    res = PyUnicode_FromFormat(
+        "<cell at %p: %.80s object at %p>", self, Py_TYPE(ref)->tp_name, ref);
+    Py_DECREF(ref);
+    return res;
+}
+
+/* boolobject: the long type's number-slot fallbacks call through function
+ * pointers loaded from PyLong_Type.tp_as_number (un-lowerable indirect
+ * calls), and Py_True/Py_False are macros over the Jac-owned structs (no
+ * linkable symbol), so the singleton getters return new references. */
+PyObject *jacpy_bool_fallback_invert(PyObject *v) {
+    return PyLong_Type.tp_as_number->nb_invert(v);
+}
+
+PyObject *jacpy_bool_fallback_and(PyObject *a, PyObject *b) {
+    return PyLong_Type.tp_as_number->nb_and(a, b);
+}
+
+PyObject *jacpy_bool_fallback_or(PyObject *a, PyObject *b) {
+    return PyLong_Type.tp_as_number->nb_or(a, b);
+}
+
+PyObject *jacpy_bool_fallback_xor(PyObject *a, PyObject *b) {
+    return PyLong_Type.tp_as_number->nb_xor(a, b);
+}
+
+PyObject *jacpy_bool_repr_str(int value) {
+    return value ? &_Py_ID(True) : &_Py_ID(False);
+}
+
+PyObject *jacpy_bool_true(void) {
+    PyObject *o = Py_True;
+    Py_IncRef(o);
+    return o;
+}
+
+PyObject *jacpy_bool_false(void) {
+    PyObject *o = Py_False;
+    Py_IncRef(o);
+    return o;
+}
+
+/* rangeobject: APIs hidden in rangeobject.c include the exact index check,
+ * fixed-format diagnostics/reprs/reductions, and type-aware allocation. */
+#include "internal/pycore_freelist.h"
+
+/* The slice and range freelists, exactly as sliceobject.c / rangeobject.c
+ * use them. */
+PyObject *jacpy_slice_alloc(void) {
+    PyObject *op = _PyFreeList_Pop(&_Py_freelists_GET()->slices);
+    return op ? op : _PyObject_GC_New(&PySlice_Type);
+}
+
+void jacpy_slice_free(PyObject *op) {
+    _Py_FREELIST_FREE(slices, op, PyObject_GC_Del);
+}
+
+PyObject *jacpy_range_obj_alloc(PyTypeObject *type) {
+    PyObject *op = _PyFreeList_Pop(&_Py_freelists_GET()->ranges);
+    return op ? op : _PyObject_New(type);
+}
+
+void jacpy_range_obj_free(PyObject *op) {
+    _Py_FREELIST_FREE(ranges, op, PyObject_Free);
+}
+
+PyObject *jacpy_rangeiter_alloc(void) {
+    PyObject *op = _PyFreeList_Pop(&_Py_freelists_GET()->range_iters);
+    return op ? op : _PyObject_New(&PyRangeIter_Type);
+}
+
+void jacpy_rangeiter_free(PyObject *op) {
+    _Py_FREELIST_FREE(range_iters, op, PyObject_Free);
+}
+
+PyObject *jacpy_range_alloc(PyTypeObject *type, Py_ssize_t size) {
+    PyObject *op = PyObject_Malloc((size_t)size);
+    if (op == NULL) return NULL;
+    return PyObject_Init(op, type);
+}
+
+int64_t jacpy_range_index_check(PyObject *item) {
+    return _PyIndex_Check(item);
+}
+
+void jacpy_range_new_too_many(Py_ssize_t nargs) {
+    PyErr_Format(PyExc_TypeError,
+                 "range expected at most 3 arguments, got %zd", nargs);
+}
+
+void jacpy_range_bad_index(PyObject *item) {
+    PyErr_Format(PyExc_TypeError,
+                 "range indices must be integers or slices, not %.200s",
+                 Py_TYPE(item)->tp_name);
+}
+
+PyObject *jacpy_range_repr(PyObject *start, PyObject *stop, PyObject *step,
+                           int include_step) {
+    if (include_step)
+        return PyUnicode_FromFormat("range(%R, %R, %R)", start, stop, step);
+    return PyUnicode_FromFormat("range(%R, %R)", start, stop);
+}
+
+PyObject *jacpy_range_reduce(PyObject *type, PyObject *start, PyObject *stop,
+                             PyObject *step) {
+    return Py_BuildValue("(O(OOO))", type, start, stop, step);
+}
+
+PyObject *jacpy_range_iter_reduce(PyObject *range) {
+    PyObject *iter = _PyEval_GetBuiltin(&_Py_ID(iter));
+    if (iter == NULL) {
+        Py_DECREF(range);
+        return NULL;
+    }
+    PyObject *result = Py_BuildValue("O(O)O", iter, range, Py_None);
+    Py_DECREF(range);
+    return result;
+}
+
+void jacpy_range_iter_bad_state(PyObject *state) {
+    PyErr_Format(PyExc_TypeError, "state must be an int, not %T", state);
 }

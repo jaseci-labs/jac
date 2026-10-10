@@ -1,0 +1,181 @@
+name: JacPython object perf
+
+# Builds three runtimes of the same pinned CPython: the stock C build, main's
+# JacPython (CPython's C objects) and this branch's JacPython (the ported
+# Objects/*.c files). Runs the CPython tests for the ported objects under the
+# branch runtime, then benchmarks all three; branch/main is the parity number.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [jacpython-perf]
+  pull_request:
+    paths:
+      - "jac/jaclang/runtime/python/**"
+      - "jac/bootstrap/python/**"
+      - "scripts/jacpython/**"
+      - ".github/workflows/jacpython-perf.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main-src
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: LLVMPY shim + typeshed (branch and main)
+        run: |
+          set -euo pipefail
+          for root in jac main-src/jac; do
+            (cd "$root" && zig build fetch-llvm --summary all \
+              && zig build jacllvm --summary all \
+              && zig build fetch-typeshed --summary all)
+          done
+
+      - name: Build the stock C runtime
+        working-directory: jac
+        run: zig build build-python --summary all
+
+      - name: Build main's JacPython runtime
+        working-directory: main-src/jac
+        env:
+          JACPYTHON: "1"
+        run: zig build build-python --summary all
+
+      - name: Build this branch's JacPython runtime
+        working-directory: jac
+        env:
+          JACPYTHON: "1"
+        run: zig build build-python --summary all
+
+      - name: Locate interpreters
+        id: py
+        run: |
+          set -euo pipefail
+          # The JacPython build also leaves a stock build-host CPython under
+          # jacpython/<os-arch>.host; take the runtime itself.
+          osarch=$(ls jac/.python-build/jacpython | grep -v '\.' | grep -v '^sources$' | head -1)
+          c="$PWD/jac/.python-build/cpython/$osarch/python/install/bin/python3.14"
+          m="$PWD/main-src/jac/.python-build/jacpython/$osarch/python/install/bin/python3.14"
+          b="$PWD/jac/.python-build/jacpython/$osarch/python/install/bin/python3.14"
+          test -x "$c" && test -x "$m" && test -x "$b"
+          echo "c=$c" >> "$GITHUB_OUTPUT"
+          echo "m=$m" >> "$GITHUB_OUTPUT"
+          echo "b=$b" >> "$GITHUB_OUTPUT"
+
+      - name: CPython tests for the ported objects (branch JacPython)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          src=
+          for t in jac/.python-build/jacpython/sources/*.tar.gz; do
+            first=$(tar -tzf "$t" 2>/dev/null | head -1 || true)
+            case "$first" in Python-*) src=$t ;; esac
+          done
+          test -n "$src"
+          mkdir -p "$RUNNER_TEMP/cpy"
+          tar -xzf "$src" -C "$RUNNER_TEMP/cpy" --wildcards '*/Lib/test'
+          lib=$(ls -d "$RUNNER_TEMP"/cpy/*/Lib)
+          PYTHONPATH="$lib" "${{ steps.py.outputs.b }}" -m test -j2 \
+            test_bool test_range test_slice test_enumerate test_iter test_iterlen \
+            test_types test_scope test_funcattrs test_itertools test_contains \
+            test_index test_int test_long test_list test_tuple test_builtin
+
+      - name: Benchmark C vs main JacPython vs branch JacPython
+        run: |
+          set -euo pipefail
+          bench="$RUNNER_TEMP/bench_objects.jacbench"
+          cat > "$bench" <<'PY'
+          # Micro-benchmarks for the Objects/*.c ports: ns per op, best of 5.
+          import sys, time, types
+          B = {
+           "range_iter":      ("for i in r: pass", "r=range(1000)", 2000),
+           "range_neg_iter":  ("for i in r: pass", "r=range(1000,0,-1)", 2000),
+           "range_new":       ("range(10)", "", 200000),
+           "range_slice":     ("r[1:50:2]", "r=range(100)", 200000),
+           "range_index":     ("r[5]", "r=range(100)", 500000),
+           "range_contains":  ("50 in r", "r=range(100)", 500000),
+           "reversed_range":  ("for i in reversed(r): pass", "r=range(1000)", 2000),
+           "range_len":       ("len(r)", "r=range(100)", 500000),
+           "slice_new":       ("slice(1,2,3)", "", 500000),
+           "list_slice":      ("l[1:5]", "l=list(range(10))", 500000),
+           "slice_indices":   ("s.indices(100)", "s=slice(1,50,2)", 300000),
+           "enumerate":       ("for i,x in enumerate(l): pass", "l=list(range(1000))", 2000),
+           "reversed_list":   ("for x in reversed(l): pass", "l=list(range(1000))", 2000),
+           "seqiter":         ("for x in S(): pass", "class S:\n def __getitem__(s,i):\n  if i>=200: raise IndexError\n  return i", 2000),
+           "calliter":        ("c[0] = 0\nfor x in iter(f, 200): pass", "c=[0]\ndef f():\n c[0]+=1\n return c[0]", 2000),
+           "bool_ops":        ("a & b; a | b; a ^ b", "a=True; b=False", 500000),
+           "bool_new":        ("bool(x)", "x=5", 500000),
+           "bool_repr":       ("repr(a)", "a=True", 500000),
+           "closure_cell":    ("f()", "def g():\n x=1\n def f(): return x\n return f\nf=g()", 500000),
+           "namespace":       ("types.SimpleNamespace(a=1).a", "import types", 200000),
+           # Controls: C objects only (no ported code). A gap here is build-wide.
+           "ctl_list_index":  ("l[5]", "l=list(range(10))", 500000),
+           "ctl_int_add":     ("a + b", "a=1000; b=2000", 500000),
+           "ctl_dict_get":    ("d['k']", "d={'k': 1}", 500000),
+           "ctl_list_iter":   ("for x in l: pass", "l=list(range(1000))", 2000),
+           "ctl_call":        ("f()", "def f(): return 1", 500000),
+           "ctl_len_list":    ("len(l)", "l=[1]", 500000),
+          }
+          # timeit drives its loop with itertools.repeat, which is itself a port (and
+          # not under test here); loop with range instead and subtract the empty loop.
+          def per_op(stmt, setup, n):
+              body = "\n".join("        " + line for line in stmt.split("\n"))
+              src = (
+                  "def _bench(_n):\n"
+                  + "\n".join("    " + line for line in setup.split("\n") if line) + "\n"
+                  + "    _t = _perf()\n"
+                  + "    for _ in range(_n):\n"
+                  + body + "\n"
+                  + "    return _perf() - _t\n"
+              )
+              ns = {"_perf": time.perf_counter}
+              exec(src, ns)
+              return min(ns["_bench"](n) for _ in range(5)) / n * 1e9
+
+
+          only = sys.argv[1:] or list(B)
+          empty = per_op("pass", "", 200000)
+          for k in only:
+              stmt, setup, n = B[k]
+              print(f"{k} {max(per_op(stmt, setup, n) - empty, 0.0):.1f}", flush=True)
+          PY
+          # Three interleaved rounds per interpreter; keep the per-bench minimum.
+          for round in 1 2 3; do
+            "${{ steps.py.outputs.c }}" -I "$bench" > "c$round.txt"
+            "${{ steps.py.outputs.m }}" -I "$bench" > "m$round.txt"
+            "${{ steps.py.outputs.b }}" -I "$bench" > "b$round.txt"
+          done
+          for k in c m b; do
+            cat "${k}1.txt" "${k}2.txt" "${k}3.txt" \
+              | awk '!($1 in v) || $2 < v[$1] {v[$1]=$2} END {for (n in v) print n, v[n]}' \
+              | sort > "$k.txt"
+          done
+          {
+            echo "| bench | C | main JacPython | branch JacPython | branch/main | branch/C |"
+            echo "|---|---:|---:|---:|---:|---:|"
+            join c.txt m.txt | join - b.txt \
+              | awk '{m=($3>0?$3:0.1); c=($2>0?$2:0.1); printf "| %s | %.1f | %.1f | %.1f | %.2f | %.2f |\n", $1, $2, $3, $4, $4/m, $4/c}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jacpython-perf
+          path: |
+            c*.txt
+            m*.txt
+            b*.txt

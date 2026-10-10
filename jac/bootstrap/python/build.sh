@@ -153,7 +153,24 @@ cpython() {
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
         cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
-        cp "$work/native/jacpython.o" Python/jacpython.o
+        if [ -f "$work/native/jacpython.bc" ] &&
+           [ -f "$work/native/llvm-version" ]; then
+            # Bitcode readers reject newer writers: fold jacpython into the
+            # ThinLTO link only when zig's clang matches Jac's LLVM major.
+            jac_llvm=$(cut -d. -f1 "$work/native/llvm-version")
+            clang_llvm=$("$zig" cc --version 2>/dev/null |
+                sed -n 's/^clang version \([0-9]*\)\..*/\1/p')
+            if [ -n "$clang_llvm" ] && [ "$clang_llvm" -eq "$jac_llvm" ]; then
+                "$zig" cc -c -x ir -flto=thin -fPIC \
+                    "$work/native/jacpython.bc" -o Python/jacpython.o
+                echo "build-python: jacpython.o from ThinLTO bitcode (LLVM $jac_llvm)"
+            else
+                echo "build-python: machine-code jacpython.o; zig clang ${clang_llvm:-?} vs Jac LLVM $jac_llvm" >&2
+                cp "$work/native/jacpython.o" Python/jacpython.o
+            fi
+        else
+            cp "$work/native/jacpython.o" Python/jacpython.o
+        fi
     fi
     # cpython-sources.txt decides what the extracted tree holds; detach the
     # upstream rules that still name pruned paths. This runs second because

@@ -699,6 +699,36 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
             if expr.is_attr {
+                import from jaclang.compiler.c_interop {
+                    c_type_arg,
+                    foreign_struct_of_type,
+                    is_ptr_type
+                }
+                if is_ptr_type(base_type) and isinstance(expr.right, Name) {
+                    _fs_arch = foreign_struct_of_type(c_type_arg(base_type));
+                    if _fs_arch is not None {
+                        _fs_cls = self.get_type_of_class(_fs_arch);
+                        if isinstance(_fs_cls, ClassType) {
+                            _fld = self._lookup_object_member(
+                                _fs_cls.clone_as_instance(), expr.right.value
+                            );
+                            if _fld is not None {
+                                _fld_sym_type = self.get_type_of_symbol(_fld.symbol);
+                                if isinstance(_fld_sym_type, UnknownType)
+                                    and _fld_sym_type.is_incomplete {
+                                    return _fld_sym_type;
+                                }
+                                if isinstance(_fld_sym_type, ClassType)
+                                    and not _fld_sym_type.is_instance() {
+                                    _fld_sym_type = _fld_sym_type.clone_as_instance();
+                                }
+                                _fld.symbol.add_use(expr.right);
+                                expr.right.type = _fld_sym_type;
+                                return _fld_sym_type;
+                            }
+                        }
+                    }
+                }
                 if isinstance(base_type, UnknownType) {
                     assert isinstance(expr.right, Name);
 
@@ -3727,6 +3757,7 @@ impl TypeEvaluator.assign_type(
     }
 
     if self._in_native_context() {
+        import from jaclang.compiler.c_interop { is_ptr_type }
         if (
             isinstance(dest_type, FunctionType)
             and isinstance(src_type, ClassType)
@@ -3738,6 +3769,31 @@ impl TypeEvaluator.assign_type(
                 and dest_type.is_builtin("int")
             ) {
             return True;
+        }
+        if (
+            isinstance(src_type, ClassType)
+            and src_type.is_literal_type()
+            and isinstance(src_type.get_literal_value(), str)
+        ) {
+            if is_ptr_type(dest_type) {
+                return True;
+            }
+        }
+        # C address decay: a clib struct-typed global used where a pointer is
+        # expected denotes its address (extern struct object semantics), e.g.
+        # passing PyType_Type for a `tp` parameter.
+        if (
+            isinstance(src_type, ClassType)
+            and src_type.is_class_instance()
+            and is_ptr_type(dest_type)
+        ) {
+            _clib_tab = src_type.shared.symbol_table;
+            if (
+                isinstance(_clib_tab, Archetype)
+                and _clib_tab.find_parent_of_type(Import) is not None
+            ) {
+                return True;
+            }
         }
     }
 

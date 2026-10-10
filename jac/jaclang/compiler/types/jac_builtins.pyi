@@ -184,15 +184,18 @@ def region_of(__x: object) -> Region | None: ...
 # ── C interop ──────────────────────────────────────────────────────
 # `ptr[T]` is a non-owning address of C memory holding T (a sized scalar, a
 # foreign struct, or an opaque C type); bare `ptr` is `void*`. It is plain
-# data: it can be compared, null-tested and passed back to C, never
-# dereferenced, offset or freed from Jac. `ptr[T](p)` retypes an address.
+# data: it can be compared, null-tested, passed back to C, offset by an
+# integer (`p + n`, `p - n`, `p - q`) and converted to and from an integer
+# address (`int(p)`, `ptr[T](i)`); it is never dereferenced or freed from
+# Jac. `ptr[T](p)` retypes an address.
 _PtrT = TypeVar("_PtrT", covariant=True)
 _ViewT = TypeVar("_ViewT")
 _PinT = TypeVar("_PinT")
 
 class ptr(Generic[_PtrT]):
-    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address.
-    def __init__(self, address: ptr[object] = ...) -> None: ...
+    # `ptr[T]()` is the null pointer; `ptr[T](p)` retypes an address;
+    # `ptr[T](i)` converts an integer address. `int(p)` converts back.
+    def __init__(self, address: ptr[object] | int = ...) -> None: ...
     def is_null(self) -> bool: ...
     # A borrowed, bounds-checked window of `n` elements starting at the
     # address. It is a local view: it may not outlive its scope.
@@ -200,6 +203,8 @@ class ptr(Generic[_PtrT]):
     def __eq__(self, other: object) -> bool: ...
     def __ne__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
+    # Integer address form of the pointer (ptrtoint), for tag-bit math.
+    def __int__(self) -> int: ...
 
 class PtrView(Generic[_ViewT]):
     def __len__(self) -> int: ...
