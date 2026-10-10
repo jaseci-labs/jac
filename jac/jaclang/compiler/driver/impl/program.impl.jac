@@ -693,6 +693,9 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
             drop = not any(name in py_refs for name in import_bound_names(imp));
         }
         imp.native_only_drop = drop;
+        if drop and target is not None {
+            imp.native_only_target = target;
+        }
     }
 }
 

@@ -677,7 +677,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         self.emit(
             E5092,
             node_override=nd,
-            kind="function (native emitter error in)",
+            kind=f"function (native emitter error in: "
+            f"{type(_codegen_exc).__name__}: {_codegen_exc})",
             name=name,
             help_text=f"The native backend raised {type(_codegen_exc).__name__} "
             f"while lowering this function; it falls back to its Python "
@@ -705,6 +706,39 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
 }
 
+impl NaIRGenPass._test_call_reaches_demoted(
+    call: uni.FuncCall, seen: set[str]
+) -> bool {
+    """True when this call, or anything it reaches, demoted to Python-only.
+
+    A demoted function's native symbol is an abort() stub, so a native test
+    that calls one dies at runtime instead of failing honestly. The walk is
+    transitive: the demotion may sit several calls deep.
+    """;
+    _tname = self._get_name(call.target);
+    if _tname is not None {
+        _short = _tname.rsplit(".", 1)[-1];
+        if _tname in self._native_skipped_methods
+            or _short in self._native_skipped_methods {
+            return True;
+        }
+        if _tname in seen {
+            return False;
+        }
+        seen.add(_tname);
+    }
+    _decl = call.callee_decl;
+    if not isinstance(_decl, uni.Ability) or _decl.body is None {
+        return False;
+    }
+    for _nested in _decl.get_all_sub_nodes(uni.FuncCall) {
+        if self._test_call_reaches_demoted(_nested, seen) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_test_symbol }
     i8p = ir.IntType(8).as_pointer();
@@ -713,6 +747,20 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         self._declare_exception_runtime();
     }
     test_name = nd.name.sym_name;
+
+    import from jaclang.compiler.placement.placement { native_blocker_in }
+    _test_blocker = native_blocker_in(nd);
+    if _test_blocker {
+        nd.code_context = CodeContext.SERVER;
+        return;
+    }
+
+    for _tfc in nd.get_all_sub_nodes(uni.FuncCall) {
+        if self._test_call_reaches_demoted(_tfc, set()) {
+            nd.code_context = CodeContext.SERVER;
+            return;
+        }
+    }
     line = nd.loc.first_line if nd.loc else 0;
     symbol = native_test_symbol(test_name, line, self._own_prefix());
     fnty = ir.FunctionType(i8p, []);
@@ -771,7 +819,8 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
         self.emit(
             E5092,
             node_override=nd,
-            kind="test (native emitter error in)",
+            kind=f"test (native emitter error in: "
+            f"{type(_codegen_exc).__name__}: {_codegen_exc})",
             name=test_name,
             help_text=f"The native backend raised {type(_codegen_exc).__name__} "
             f"while lowering this test; it runs in the server codespace "

@@ -196,7 +196,11 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
             _entry_nodes.append(stmt);
-        } elif isinstance(stmt, uni.Test) {
+        }
+    }
+
+    for stmt in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Test) {
             self._codegen_test(stmt);
         }
     }

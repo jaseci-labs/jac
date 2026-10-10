@@ -456,11 +456,14 @@ impl JcirGenPass.exit_import with Import exit {
         classify_cross_app_import,
         import_binds_client_native
     }
-    if (
-        import_binds_client_native(here, self.module.gen.interop_manifest)
-        or here.native_only_drop
-    ) {
+    if import_binds_client_native(here, self.module.gen.interop_manifest) {
         self.set_out(here, []);
+        return;
+    }
+    if here.native_only_drop {
+        if not self._gen_native_import_mirrors(here) {
+            self.set_out(here, []);
+        }
         return;
     }
     if here.clib_decls {
