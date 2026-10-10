@@ -306,11 +306,7 @@ test "clib record arguments read from an optional slot pass the record, not its 
         assert not prog.errors_had , str(prog.errors_had);
         assert ir.gen.native_engine is not None;
         sums = get_func(
-            ir.gen.native_engine,
-            "sums",
-            ctypes.c_int64,
-            ctypes.c_int64,
-            ctypes.c_int64
+            ir.gen.native_engine, "sums", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
         );
         # held: (10+11) + (10+11+12+13+14); not held: (100+101) + (1000+...+1004).
         assert sums(10, 1) == 81;
