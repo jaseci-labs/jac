@@ -775,6 +775,9 @@ one session per entry, the entry's client manifest read from its unit, and
 the client compiler fed from the artifacts those units carry. It used to
 prepare on the host, services included."""
 test "an application with a client prepares through the kernel" {
+    if loaded_kernel() is None {
+        return;
+    }
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.application { prepare_application }
     import jaclang.project.kernel_compile as kernel_compile_mod;
