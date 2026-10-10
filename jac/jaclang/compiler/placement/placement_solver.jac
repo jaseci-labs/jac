@@ -209,18 +209,23 @@ def native_placement_candidate(
     return (True, '');
 }
 
-def native_preference_open(module: uni.Module, prog: JacProgram) -> bool {
-    (candidate, _why) = native_placement_candidate(module, prog);
+def native_preference_open(
+    module: uni.Module, prog: JacProgram
+) -> tuple[bool, str] {
+    (candidate, why) = native_placement_candidate(module, prog);
     if not candidate {
-        return False;
+        return (False, why);
     }
     mod_path = module.loc.mod_path if module.loc is not None else '';
     base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
     (blocker, deps) = scan_native_blockers(module, base_dir);
     if blocker {
-        return False;
+        return (False, blocker);
     }
-    return _native_deps_ok(os.path.abspath(mod_path), deps);
+    if not _native_deps_ok(os.path.abspath(mod_path), deps) {
+        return (False, "import-closure (sv dep or cap)");
+    }
+    return (True, '');
 }
 
 def _endpoint_veto_applies(module: uni.Module) -> bool {

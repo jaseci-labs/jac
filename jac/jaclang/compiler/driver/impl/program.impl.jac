@@ -579,7 +579,9 @@ impl JacProgram.parse_source(
             import from jaclang.compiler.placement.placement_solver {
                 native_preference_open
             }
-            parsed.gen.native_undecided = native_preference_open(parsed, self);
+            (opened, closed_why) = native_preference_open(parsed, self);
+            parsed.gen.native_undecided = opened;
+            parsed.gen.native_closed_why = closed_why;
         }
     }
     hub_key = self.hub_key(parsed.loc.mod_path);

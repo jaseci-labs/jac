@@ -751,6 +751,7 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         'native': CodeContext.NATIVE
     };
     import from jaclang.compiler.placement.placement_facts { contexts_of, write_plan }
+    import from jaclang.compiler.capability_notes { capability_notes_of }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
     given = contexts_of(ir_in);
 
@@ -764,12 +765,16 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     (candidate, why) = native_placement_candidate(ir_in, self.prog);
     if candidate and not ir_in.gen.native_undecided {
         candidate = False;
-        why = "the module was parsed without the native preference";
+        why = ir_in.gen.native_closed_why
+            or "the module was parsed without the native preference";
     }
     tentative: list[ContextAwareNode] = stamp_native(ir_in, set(required.keys()))
         if candidate
         else [];
-    legality = build_native_legality(ir_in, self.prog);
+    judged = candidate
+        or ModuleFacts.has_native_context_stmts(ir_in)
+        or bool(capability_notes_of(self.prog, mod_path));
+    legality = build_native_legality(ir_in, self.prog) if judged else NativeLegality();
     native_refused = legality.refused_elements(ir_in);
     client_refused = client_refused_elements(ir_in);
     inferred_refused: set[int] = set(native_refused);
@@ -892,13 +897,17 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
 }
 
 impl PlacementPass._check_conformance(ir_in: Module) -> None {
+    import from jaclang.project.modresolver { in_native_library }
+    mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
+    if not in_native_library(mod_path) and os.path.basename(mod_path).count(".") < 2 {
+        return;
+    }
     import from jaclang.compiler.native_bindings {
         conformance_mismatches,
         native_library_module_name,
         typeshed_stub_path,
         variant_mismatches
     }
-    mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
     for (decl, why) in variant_mismatches(ir_in, self.prog) {
         self.ctx.emit(E5114, node_override=decl, reason=why);
     }
