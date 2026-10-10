@@ -15,8 +15,64 @@ import from jaclang.runtime.prepared {
     initialize_application
 }
 
+glob SERVE_MANIFEST_SHAPES: dict[int, dict[str, set[str]]] = {
+    3: {
+        'manifest': {
+            'app',
+            'client',
+            'endpoint_effects',
+            'format',
+            'jaclang_version',
+            'module_manifests',
+            'persistence',
+            'private_declarations',
+            'root',
+            'spa_routes',
+            'surface'
+        },
+        'module': {
+            'app',
+            'client',
+            'endpoint_effects',
+            'persistence',
+            'private_declarations',
+            'root',
+            'spa_routes',
+            'surface'
+        },
+        'surface': {
+            'explicit_access',
+            'exposure',
+            'kind',
+            'module',
+            'placement',
+            'reflect',
+            'route',
+            'scheduled',
+            'src'
+        }
+    }
+};
+
+def serve_manifest_shape(manifest: dict[str, any]) -> dict[str, set[str]] {
+    """Collect the key names of a serve manifest, its module records, and their surface entries."""
+    modules = list(manifest['module_manifests'].values());
+    return {
+        'manifest': set(manifest),
+        'module': {key for record in modules for key in record},
+        'surface': {
+            key
+            for record in modules
+            for entry in (record.get('surface') or {}).values()
+            for key in entry
+        }
+    };
+}
+
 test "sealing retains each colocated service's access metadata" {
     import from jaclang.dist.seal { build_serve_manifest }
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_FORMAT }
+    import from jaclang.cli.manifest_route { resolve_cli_version }
     with tempfile.TemporaryDirectory() as tmp {
         base = Path(tmp);
         (base / 'jac.toml').write_text(
@@ -33,6 +89,14 @@ test "sealing retains each colocated service's access metadata" {
         try {
             manifest = build_serve_manifest(path, base);
             assert manifest is not None;
+            assert manifest['format'] == SERVE_MANIFEST_FORMAT;
+            assert manifest['jaclang_version'] == resolve_cli_version();
+            shape = serve_manifest_shape(manifest);
+            assert shape == SERVE_MANIFEST_SHAPES.get(SERVE_MANIFEST_FORMAT) , (
+                f'serve manifest shape changed under format {SERVE_MANIFEST_FORMAT}: '
+                    + f'{shape}. If older readers cannot handle the change, bump '
+                    + 'SERVE_MANIFEST_FORMAT; then record the new shape in SERVE_MANIFEST_SHAPES.'
+            );
             modules = manifest['module_manifests'];
             assert modules['main.jac']['app'] == 'web';
             assert modules['scoring.jac']['app'] == 'scoring';
@@ -245,7 +309,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     site_before = sys.modules['site'];
     images_before = list(sealed._images);
     import from jaclang.compiler.driver.jir { get_module_cache_path }
-    import from jaclang.server.sealed_serve { client_dist_for }
+    import from jaclang.server.sealed_serve { client_dist_for, serve_manifest_stamp }
     import from jaclang.cli.console { console }
     for package_name in ['prepared_sealed_test', 'site'] {
         with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as raw_tmp {
@@ -347,6 +411,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                     json.dumps(
                         {
                             ** first.manifests[str(path)],
+                            ** serve_manifest_stamp(),
                             'module_manifests': {
                                 os.path.relpath(source, tmp): metadata
                                 for application in [first, *first.applications]
@@ -423,14 +488,35 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 assert prepared.client_compiler is None;
                 assert client_dist_for(str(path)) == dist;
                 assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
-                (base / '.jac' / 'serve_manifest.json').unlink();
-                caught = '';
-                try {
-                    prepare_application(str(path), JacProgram(), tmp, dev=False);
-                } except RuntimeError as e {
-                    caught = str(e);
+                serve_manifest = base / '.jac' / 'serve_manifest.json';
+                for (stale, expected) in [
+                    (
+                        {'module_manifests': {}},
+                        'built by an older jac (serve manifest format unstamped)'
+                    ),
+                    (
+                        {
+                            'format': 2,
+                            'jaclang_version': '0.37.11',
+                            'module_manifests': {}
+                        },
+                        'built by jac 0.37.11 (serve manifest format 2)'
+                    ),
+                    (None, 'Sealed application has no serving manifest')
+                ] {
+                    if stale is None {
+                        serve_manifest.unlink();
+                    } else {
+                        serve_manifest.write_text(json.dumps(stale));
+                    }
+                    caught = '';
+                    try {
+                        prepare_application(str(path), JacProgram(), tmp, dev=False);
+                    } except RuntimeError as e {
+                        caught = str(e);
+                    }
+                    assert expected in caught , caught;
                 }
-                assert 'Sealed application has no serving manifest' in caught , caught;
             } finally {
                 for (name, loaded) in list(sys.modules.items()) {
                     if str(getattr(loaded, '__file__', '') or '').startswith(

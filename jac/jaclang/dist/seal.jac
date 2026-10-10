@@ -76,6 +76,7 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
     import from jaclang.project.config { get_config_for_path }
     import from jaclang.project.app_kinds { kind_has_server }
     import from jaclang.server.assembly { service_apps }
+    import from jaclang.server.sealed_serve { serve_manifest_stamp }
     try {
         config = get_config_for_path(proj_root);
         services: list[AppConfig] = [];
@@ -98,6 +99,7 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict[str, any] |
             for application in [prepared, *prepared.applications]
             for (path, manifest) in application.manifests.items()
         };
+        result.update(serve_manifest_stamp());
         return result;
     } except Exception as e {
         console.error(f"Seal aborted: application preparation failed: {e}");
