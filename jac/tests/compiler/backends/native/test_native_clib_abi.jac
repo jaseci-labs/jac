@@ -249,3 +249,76 @@ test "clib imported record returns preserve inferred fields and ABI" {
         assert fields(-10) == -43;
     }
 }
+
+test "clib record embedding another module's clib record lays the field out inline" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        csrc = os.path.join(tmpdir, "embedded.c");
+        with open(csrc, "w") as fh {
+            fh.write(
+                "#include <stdint.h>\n"
+                "typedef struct { int32_t id, w, h; } Inner;\n"
+                "typedef struct { int32_t count; Inner inner; int64_t tail; } Outer;\n"
+                "Inner make_inner(int64_t n) { return (Inner){(int32_t)n, (int32_t)(n+1), (int32_t)(n+2)}; }\n"
+                "Outer make_outer(int64_t n) {\n"
+                "  return (Outer){(int32_t)n, {(int32_t)(n+1), (int32_t)(n+2), (int32_t)(n+3)}, n+4};\n"
+                "}\n"
+                "int64_t sum_outer(Outer o) {\n"
+                "  return o.count + o.inner.id + o.inner.w + o.inner.h + o.tail;\n"
+                "}\n"
+            );
+        }
+        library = os.path.join(tmpdir, "libembedded.so");
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", csrc, "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        # The embedded record is declared by another module; the unit that
+        # embeds it lays its own records out before that module's are walked.
+        with open(os.path.join(tmpdir, "inner_decl.jac"), "w") as fh {
+            fh.write(
+                f"import from \"{library}\" {{\n"
+                "obj Inner { has id:i32, w:i32, h:i32; }\n"
+                "def make_inner(n:i64) -> Inner;\n}\n"
+            );
+        }
+        code = (
+            "import from inner_decl { Inner, make_inner }\n"
+            f"import from \"{library}\" {{\n"
+            "obj Outer { has count:i32, inner:Inner, tail:i64; }\n"
+            "def make_outer(n:i64) -> Outer;\n"
+            "def sum_outer(o:Outer) -> i64;\n}\n"
+            "def fields(n:i64) -> i64 {\n"
+            "outer = make_outer(n);\n"
+            "return int(outer.count) + int(outer.inner.w) + outer.tail + int(make_inner(n).h);\n}\n"
+            "def round_trip(n:i64) -> i64 {\n"
+            "return sum_outer(make_outer(n));\n}\n"
+        );
+        prog = JacProgram();
+        ir = prog.compile(
+            file_path=os.path.join(tmpdir, "consumer.jac"),
+            use_str=code,
+            options=native_force_opts()
+        );
+        assert not prog.errors_had , str(prog.errors_had);
+        assert ir.gen.native_engine is not None;
+        fields = get_func(
+            ir.gen.native_engine, "fields", ctypes.c_int64, ctypes.c_int64
+        );
+        # count n, inner.w n+2, tail n+4, make_inner(n).h n+2.
+        assert fields(10) == 48;
+        assert fields(-10) == -32;
+        round_trip = get_func(
+            ir.gen.native_engine, "round_trip", ctypes.c_int64, ctypes.c_int64
+        );
+        # n + (n+1) + (n+2) + (n+3) + (n+4).
+        assert round_trip(10) == 60;
+        assert round_trip(-3) == -5;
+    }
+}

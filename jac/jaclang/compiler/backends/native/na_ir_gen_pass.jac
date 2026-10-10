@@ -1281,6 +1281,9 @@ walker NaIRGenPass(CompilerPass) {
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
     def _process_clib_imports(module: uni.Module) -> None;
+    def _declare_clib_struct(decl: uni.Archetype) -> (str | None);
+    def _define_clib_struct(decl: uni.Archetype) -> None;
+    def _ensure_clib_struct(t: any) -> (str | None);
     def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type, pointee_names: dict[str, str]) -> str;
