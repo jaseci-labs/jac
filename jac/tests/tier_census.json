@@ -1,0 +1,714 @@
+{
+  "summary": {
+    "same": 46,
+    "refused": 61,
+    "fails": 0,
+    "differs": 1,
+    "hangs": 0,
+    "crashes": 1,
+    "skipped": 78
+  },
+  "programs": {
+    "examples/chess/chess.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/auth/components/ShoppingPanel.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/auth/components/TasksPanel.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/auth/frontend.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/basic/main.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/walkers/components/ShoppingPanel.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/walkers/components/TasksPanel.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/day_planner/walkers/frontend.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/mini_todo/bench_local.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/mini_todo/main.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/mini_todo/test_local.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/notes-app/main.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/harness/audit.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/harness/erase.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/harness/measure.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/harness/rbench.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/harness/rerase.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/kernels/own_aos.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_binarytrees.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_deriv.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_histogram.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_parse.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_rbtree.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_strops.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_vecdot.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/own_vm.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/probe_rcleak.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/probe_tuple.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/reg_graph.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/reg_overhead.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/ownbench/kernels/reg_transfer.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/ownbench/kernels/reg_wspawn.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/raylib_shooter/shooter.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/raylib_shooter/shooter_headless.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "examples/raylib_shooter/web/main.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/tiny_jacyac/cli.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/tiny_jacyac/core/ui.jac": {
+      "class": "refused",
+      "reason": "E1032 Type is Unknown, cannot access attribute \"__JAC_API_BASE_URL__\""
+    },
+    "examples/tiny_jacyac/desktop.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "examples/todo_app/main.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/abc_check.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for constructor '_'"
+    },
+    "tests/language/fixtures/anonymous_ability_test.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/arch_create_util.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/arch_rel_import_creation.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/archetype_def_bug.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/arithmetic_bug.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/as_cast.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for builtin call 'sum'"
+    },
+    "tests/language/fixtures/as_cast_precedence.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/as_cast_with_except.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'contextlib'"
+    },
+    "tests/language/fixtures/assign_compr.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for subscript/index access '[ListVal]'"
+    },
+    "tests/language/fixtures/assign_compr_dup.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for subscript/index access '[ListVal]'"
+    },
+    "tests/language/fixtures/async_ability.jac": {
+      "class": "refused",
+      "reason": "E2018 Undefined name 'W' in native type position \u2014 this position requires a defined type"
+    },
+    "tests/language/fixtures/async_function.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'asyncio'"
+    },
+    "tests/language/fixtures/async_walker.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'asyncio'"
+    },
+    "tests/language/fixtures/attr_pattern_case.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/backward_edge_visit.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
+    },
+    "tests/language/fixtures/bidirectional_edge_traversal.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for event ability 'travel_generic.visit_generic'"
+    },
+    "tests/language/fixtures/blankwithentry.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/builtin_printgraph.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/builtin_printgraph_json.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/builtin_printgraph_mermaid.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/by_operator.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/chandra_bugs.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for tuple unpacking 'TupleVal'"
+    },
+    "tests/language/fixtures/chandra_bugs2.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 're'"
+    },
+    "tests/language/fixtures/check_diag_brackets_e0049.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/check_diag_brackets_e1001.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/check_disable_error_code_e1030.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/circle.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for constructor '_'"
+    },
+    "tests/language/fixtures/circle_clean.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for constructor '_'"
+    },
+    "tests/language/fixtures/circle_pure.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for constructor '_'"
+    },
+    "tests/language/fixtures/cls_method.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for method '_'"
+    },
+    "tests/language/fixtures/concurrency.jac": {
+      "class": "skipped",
+      "reason": "its output depends on thread timing"
+    },
+    "tests/language/fixtures/connect_traverse_syntax.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/console_edge_cases.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/create_dynamic_archetype.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'jaclang'"
+    },
+    "tests/language/fixtures/dblhello.jac": {
+      "class": "differs"
+    },
+    "tests/language/fixtures/decl_defn_param_name.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/deep/deeper/deep_outer_import.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/deep/deeper/deep_outer_import2.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/deep_import.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'deep.one_lev'"
+    },
+    "tests/language/fixtures/deep_import_interp.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'deep.one_lev'"
+    },
+    "tests/language/fixtures/deep_import_mods.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'deep.one_lev'"
+    },
+    "tests/language/fixtures/deep_walker_chain.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/deferred_field.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/del_clean.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/del_dead_anchor.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for event ability 'Sweep.look'"
+    },
+    "tests/language/fixtures/del_semantics.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'collections'"
+    },
+    "tests/language/fixtures/disconn.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support expression 'EdgeRefTrailer'"
+    },
+    "tests/language/fixtures/disconn_typed.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support expression 'EdgeRefTrailer'"
+    },
+    "tests/language/fixtures/disconn_undir.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/dynamic_archetype.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/edge_ability.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
+    },
+    "tests/language/fixtures/edge_node_walk.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/edge_ops.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/edges_walk.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/edgetypeissue.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
+    },
+    "tests/language/fixtures/entry_exit.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/enum_inside_archtype.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'AtomTrailer'"
+    },
+    "tests/language/fixtures/enum_typed_base.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support comparison 'i64 against i8*'"
+    },
+    "tests/language/fixtures/err_runtime.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/escape_sequences.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/escaped_quote_strings.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/expr_type.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/foo.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/for_else.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/forever_loop.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/fstring_encoding.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/fstring_quote_segments.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/funccall_genexpr.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for function '_'"
+    },
+    "tests/language/fixtures/gendot_bubble_sort.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/glob_multivar_statement.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/guess_game.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/guide_hint_type_error.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/has_goodness.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/hash_init_check.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for constructor '_'"
+    },
+    "tests/language/fixtures/hashcheck.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for field assignment 'b'"
+    },
+    "tests/language/fixtures/hashcheck_dup.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for field assignment 'b'"
+    },
+    "tests/language/fixtures/hello.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/here_usage_error.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/here_visitor_usage.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/ignore.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/ignore_dup.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/iife_functions_client.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/implicit_return.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+    },
+    "tests/language/fixtures/index_slice.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/inferred_async_walker.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support Python module import 'asyncio'"
+    },
+    "tests/language/fixtures/inherit_check.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for expression 'EdgeRefTrailer'"
+    },
+    "tests/language/fixtures/iter_for_continue.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for statement 'Archetype'"
+    },
+    "tests/language/fixtures/jp_importer.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/jp_importer_auto.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/lambda.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/lambda_arg_annotation.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/lambda_compound_header.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/lambda_decorator_arg.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+    },
+    "tests/language/fixtures/lambda_decorator_has_combo.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support decorator 'on A'"
+    },
+    "tests/language/fixtures/lambda_default_arg.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+    },
+    "tests/language/fixtures/lambda_enum_decorator.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support decorator 'on ?'"
+    },
+    "tests/language/fixtures/lambda_func_deco_body_combo.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+    },
+    "tests/language/fixtures/lambda_has_default.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+    },
+    "tests/language/fixtures/lambda_method_body.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'FuncCall'"
+    },
+    "tests/language/fixtures/lambda_per_instance_default.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/loop_else_break.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/match_class_pattern.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for function '_'"
+    },
+    "tests/language/fixtures/match_multi_ex.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/needs_import.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/needs_import_dup.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/node_del.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/node_trigger.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/nosigself.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/object_type_assignment.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/objref.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/operator_precedence.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support statement 'PyInlineCode'"
+    },
+    "tests/language/fixtures/params/test_complex_params.jac": {
+      "class": "crashes",
+      "reason": "the program"
+    },
+    "tests/language/fixtures/params/test_failing_kwonly.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for call through a value '_'"
+    },
+    "tests/language/fixtures/params/test_failing_posonly.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'Name'"
+    },
+    "tests/language/fixtures/params/test_failing_varargs.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support call argument unpacking '**'"
+    },
+    "tests/language/fixtures/params/test_kwonly_params.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/prop_multi.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/prop_native.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/py_run.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/raw_byte_string.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for print argument 'Name'"
+    },
+    "tests/language/fixtures/refs_target.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support expression 'EdgeRefTrailer'"
+    },
+    "tests/language/fixtures/root_builtin.jac": {
+      "class": "skipped",
+      "reason": "the Python tier is not repeatable"
+    },
+    "tests/language/fixtures/root_keyword_trigger_err.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/safe_call_operator.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for attribute access 'name'"
+    },
+    "tests/language/fixtures/self_type.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for integer operator layout 'PLUS on %\"Money\"* vs %\"Money\"*'"
+    },
+    "tests/language/fixtures/self_type_errors.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for method '_'"
+    },
+    "tests/language/fixtures/simple_archs.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/simple_walk.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/spawn_loc_list.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for connect operand 'root'"
+    },
+    "tests/language/fixtures/sub_abil_sep.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for function '_'"
+    },
+    "tests/language/fixtures/sub_abil_sep_multilev.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/switch_case.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/trailing_comma.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for statement 'Archetype'"
+    },
+    "tests/language/fixtures/try_finally.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/tupleunpack.jac": {
+      "class": "refused",
+      "reason": "E5090 Native pathway does not yet support starred unpack target '*'"
+    },
+    "tests/language/fixtures/tuplytuples.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for tuple unpacking 'TupleVal'"
+    },
+    "tests/language/fixtures/type_alias_generics.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/unicode_strings.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for expression 'subscript of an element-erased collection'"
+    },
+    "tests/language/fixtures/visit_order.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/visit_sequence.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/visit_traversal.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/walker_override.jac": {
+      "class": "refused",
+      "reason": "E5092 Native lowering failed for type 'Root'"
+    },
+    "tests/language/fixtures/walker_update.jac": {
+      "class": "skipped",
+      "reason": "the Python tier fails"
+    },
+    "tests/language/fixtures/warnings_only.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/while_else.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/with_context.jac": {
+      "class": "same"
+    },
+    "tests/language/fixtures/workspace/cli/main.jac": {
+      "class": "same"
+    }
+  }
+}

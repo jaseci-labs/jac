@@ -552,6 +552,8 @@ walker JcirGenPass(TreePass) {
     def _recipe_ambient_names(v: any) -> list[str];
     def resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> CgNode;
     def resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem];
+    def _ctrl_owner(nd: UniNode) -> UniNode | None;
+    def _continue_out(nd: UniNode) -> list[CgItem];
     def resolve_stmt_block(
         nd:
             (

@@ -2821,6 +2821,21 @@ walker NaIRGenPass(CompilerPass) {
     ) -> bool;
 
     def _unpack_target_ok(target: uni.UniNode) -> bool;
+    def _unpack_into(
+        targets: Sequence[uni.UniNode],
+        tuple_val: ir.Value,
+        tuple_node: (uni.UniNode | None),
+        replaced: list[tuple[str, ir.Value]]
+    ) -> bool;
+
+    def _unpack_store_global(
+        var_name: str,
+        value: ir.Value,
+        moved: bool,
+        at: uni.UniNode,
+        replaced: list[tuple[str, ir.Value]]
+    ) -> bool;
+
     def _codegen_tuple_index(
         tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
     ) -> (ir.Value | None);
@@ -3148,6 +3163,12 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_class_name_const(arch_name: str) -> ir.Constant;
+    def _default_repr_fn(arch_name: str) -> (ir.Function | None);
+    def _repr_active_fns -> tuple[ir.Function, ir.Function];
+    def _default_repr_piece(
+        value: ir.Value, arch_name: str, field_name: str, decl: uni.HasVar
+    ) -> (ir.Value | None);
+
     def _emit_class_display_const(arch_name: str) -> ir.Constant;
     def _emit_class_display_fn -> ir.Function;
     def _emit_runtime_class_name_fn -> (ir.Function | None);

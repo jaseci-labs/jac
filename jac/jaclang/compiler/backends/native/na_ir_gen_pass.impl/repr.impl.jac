@@ -400,6 +400,402 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     return fn;
 }
 
+impl NaIRGenPass._default_repr_piece(
+    value: ir.Value, arch_name: str, field_name: str, decl: uni.HasVar
+) -> (ir.Value | None) {
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    value = self._str_norm(value);
+    shape = value.type;
+    if isinstance(shape, (ir.IntType, ir.FloatType, ir.DoubleType))
+        or shape == i8p
+        or (self.jacval_type is not None and shape == self.jacval_type) {
+        return self._emit_value_repr(value, decl.name);
+    }
+    payload_type = self._opt_payload_of(shape);
+    if payload_type is not None {
+        fn = b.function;
+        none_bb = fn.append_basic_block(f"rp.d.{field_name}.none");
+        some_bb = fn.append_basic_block(f"rp.d.{field_name}.some");
+        done_bb = fn.append_basic_block(f"rp.d.{field_name}.done");
+        tag = b.extract_value(value, 0, name=f"rp.d.{field_name}.tag");
+        b.cbranch(
+            b.icmp_signed(
+                "==", tag, ir.Constant(i8, 0), name=f"rp.d.{field_name}.isnone"
+            ),
+            none_bb,
+            some_bb
+        );
+        b.position_at_end(none_bb);
+        absent = self._rc_strdup(
+            self._make_global_string("None", name_prefix=".repr.none"),
+            name=f"rp.d.{field_name}.nonetext"
+        );
+        b.branch(done_bb);
+        b.position_at_end(some_bb);
+        present = self._default_repr_piece(
+            b.extract_value(value, 1, name=f"rp.d.{field_name}.payload"),
+            arch_name,
+            field_name,
+            decl
+        );
+        if present is None {
+            return None;
+        }
+        present = self._coerce_type(present, i8p);
+        some_end = b.block;
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        merged = b.phi(i8p, name=f"rp.d.{field_name}.text");
+        merged.add_incoming(self._coerce_type(absent, i8p), none_bb);
+        merged.add_incoming(present, some_end);
+        return self._mark_owned(merged);
+    }
+    for (cls, cls_type) in self.struct_types.items() {
+        if shape == cls_type {
+            held = b.alloca(shape, name=f"rp.d.{field_name}.inline");
+            b.store(value, held);
+            value = held;
+            shape = value.type;
+            break;
+        }
+    }
+    keys = self.struct_field_elem_keys.get(arch_name, {}).get(field_name);
+    typed_keys = bool(keys) and all(k is not None for k in (keys or []));
+    if isinstance(shape, ir.LiteralStructType) and typed_keys {
+        held = b.alloca(shape, name=f"rp.d.{field_name}.tuple");
+        b.store(value, held);
+        value = held;
+        shape = value.type;
+    }
+    if not isinstance(shape, ir.PointerType) {
+        return None;
+    }
+    piece_fn: (ir.Function | None) = None;
+    for (cls, cls_type) in self.struct_types.items() {
+        if shape == cls_type.as_pointer() {
+            piece_fn = self._repr_obj_fn(cls);
+            break;
+        }
+    }
+    if piece_fn is None and typed_keys and keys is not None {
+        layout = _named_struct_name(shape.pointee);
+        type_key = "";
+        if isinstance(shape.pointee, ir.LiteralStructType) {
+            type_key = "tuple[" + ",".join([str(k) for k in keys]) + "]";
+        } elif layout.startswith("List.") {
+            type_key = f"list[{keys[0]}]";
+        } elif layout.startswith("Set.") {
+            type_key = f"set[{keys[0]}]";
+        } elif layout.startswith("Dict.") and len(keys) == 2 {
+            type_key = f"dict[{keys[0]},{keys[1]}]";
+        }
+        if type_key {
+            piece_fn = self._repr_fn_for_type_key(type_key);
+        }
+    }
+    if piece_fn is None {
+        return None;
+    }
+    return self._repr_call_elem_fn(piece_fn, value);
+}
+
+impl NaIRGenPass._repr_active_fns -> tuple[ir.Function, ir.Function] {
+    enter_name = "__jac_repr_enter";
+    leave_name = "__jac_repr_leave";
+    if enter_name in self.extern_funcs {
+        return (self.extern_funcs[enter_name], self.extern_funcs[leave_name]);
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    void = ir.VoidType();
+    zero = ir.Constant(i64, 0);
+    block_type = ir.LiteralStructType([i64, i64, i8p.as_pointer()]);
+    block_ptr = block_type.as_pointer();
+    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    free_fn = self._get_or_declare_extern("free", void, [i8p]);
+    field_at = [ir.Constant(i32, 0), ir.Constant(i32, 1), ir.Constant(i32, 2)];
+
+    drop_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(void, [i8p]), name="__jac_repr_tls_free"
+    );
+    drop_fn.linkage = "linkonce_odr";
+    db = ir.IRBuilder(drop_fn.append_basic_block("entry"));
+    dropped = db.bitcast(drop_fn.args[0], block_ptr, name="rp.t.block");
+    db.call(
+        free_fn,
+        [
+            db.bitcast(
+                db.load(
+                    db.gep(dropped, [field_at[0], field_at[2]], name="rp.t.items.p"),
+                    name="rp.t.items"
+                ),
+                i8p
+            )
+        ]
+    );
+    db.call(free_fn, [drop_fn.args[0]]);
+    db.ret_void();
+    (get_fn, set_fn) = self._emit_tls_slot(
+        "__jac_repr_tls", "__jac_repr_tls_get", "__jac_repr_tls_set", drop_fn
+    );
+
+    enter_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [i8p]), name=enter_name
+    );
+    enter_fn.linkage = "linkonce_odr";
+    enter_fn.args[0].name = "obj";
+    leave_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(void, [i64]), name=leave_name
+    );
+    leave_fn.linkage = "linkonce_odr";
+    leave_fn.args[0].name = "depth";
+    self.extern_funcs[enter_name] = enter_fn;
+    self.extern_funcs[leave_name] = leave_fn;
+
+    entry_bb = enter_fn.append_basic_block("entry");
+    make_bb = enter_fn.append_basic_block("make");
+    have_bb = enter_fn.append_basic_block("have");
+    scan_bb = enter_fn.append_basic_block("scan");
+    probe_bb = enter_fn.append_basic_block("probe");
+    cycle_bb = enter_fn.append_basic_block("cycle");
+    fresh_bb = enter_fn.append_basic_block("fresh");
+    grow_bb = enter_fn.append_basic_block("grow");
+    push_bb = enter_fn.append_basic_block("push");
+    eb = ir.IRBuilder(entry_bb);
+    scan_i = eb.alloca(i64, name="rp.t.i");
+    eb.store(zero, scan_i);
+    held = eb.call(get_fn, [], name="rp.t.held");
+    held_block = eb.inttoptr(held, block_ptr, name="rp.t.held.p");
+    eb.cbranch(eb.icmp_unsigned("==", held, zero, name="rp.t.none"), make_bb, have_bb);
+    eb.position_at_end(make_bb);
+    made = eb.call(malloc_fn, [ir.Constant(i64, 24)], name="rp.t.made");
+    made_block = eb.bitcast(made, block_ptr, name="rp.t.made.p");
+    eb.store(zero, eb.gep(made_block, [field_at[0], field_at[0]]));
+    eb.store(zero, eb.gep(made_block, [field_at[0], field_at[1]]));
+    eb.store(
+        ir.Constant(i8p.as_pointer(), None),
+        eb.gep(made_block, [field_at[0], field_at[2]])
+    );
+    eb.call(set_fn, [eb.ptrtoint(made, i64, name="rp.t.made.i")]);
+    eb.branch(have_bb);
+    eb.position_at_end(have_bb);
+    block = eb.phi(block_ptr, name="rp.t.block");
+    block.add_incoming(held_block, entry_bb);
+    block.add_incoming(made_block, make_bb);
+    depth_at = eb.gep(block, [field_at[0], field_at[0]], name="rp.t.depth.p");
+    room_at = eb.gep(block, [field_at[0], field_at[1]], name="rp.t.room.p");
+    items_at = eb.gep(block, [field_at[0], field_at[2]], name="rp.t.items.p");
+    depth = eb.load(depth_at, name="rp.t.depth");
+    items = eb.load(items_at, name="rp.t.items");
+    eb.branch(scan_bb);
+    eb.position_at_end(scan_bb);
+    at = eb.load(scan_i, name="rp.t.at");
+    eb.cbranch(eb.icmp_signed("<", at, depth, name="rp.t.more"), probe_bb, fresh_bb);
+    eb.position_at_end(probe_bb);
+    seen = eb.load(eb.gep(items, [at], name="rp.t.slot"), name="rp.t.seen");
+    eb.store(eb.add(at, ir.Constant(i64, 1), name="rp.t.next"), scan_i);
+    eb.cbranch(
+        eb.icmp_unsigned("==", seen, enter_fn.args[0], name="rp.t.same"),
+        cycle_bb,
+        scan_bb
+    );
+    eb.position_at_end(cycle_bb);
+    eb.ret(ir.Constant(i64, -1));
+    eb.position_at_end(fresh_bb);
+    room = eb.load(room_at, name="rp.t.room");
+    eb.cbranch(eb.icmp_signed("<", depth, room, name="rp.t.fits"), push_bb, grow_bb);
+    eb.position_at_end(grow_bb);
+    wider = eb.add(
+        eb.mul(room, ir.Constant(i64, 2), name="rp.t.double"),
+        ir.Constant(i64, 16),
+        name="rp.t.wider"
+    );
+    moved = eb.bitcast(
+        eb.call(
+            realloc_fn,
+            [
+                eb.bitcast(items, i8p, name="rp.t.items.raw"),
+                eb.mul(wider, ir.Constant(i64, 8), name="rp.t.bytes")
+            ],
+            name="rp.t.moved.raw"
+        ),
+        i8p.as_pointer(),
+        name="rp.t.moved"
+    );
+    eb.store(moved, items_at);
+    eb.store(wider, room_at);
+    eb.branch(push_bb);
+    eb.position_at_end(push_bb);
+    eb.store(
+        enter_fn.args[0],
+        eb.gep(eb.load(items_at, name="rp.t.items.now"), [depth], name="rp.t.mine")
+    );
+    eb.store(eb.add(depth, ir.Constant(i64, 1), name="rp.t.deeper"), depth_at);
+    eb.ret(depth);
+
+    lb = ir.IRBuilder(leave_fn.append_basic_block("entry"));
+    back_bb = leave_fn.append_basic_block("back");
+    done_bb = leave_fn.append_basic_block("done");
+    kept = lb.call(get_fn, [], name="rp.t.held");
+    lb.cbranch(lb.icmp_unsigned("==", kept, zero, name="rp.t.none"), done_bb, back_bb);
+    lb.position_at_end(back_bb);
+    lb.store(
+        leave_fn.args[0],
+        lb.gep(
+            lb.inttoptr(kept, block_ptr, name="rp.t.held.p"),
+            [field_at[0], field_at[0]],
+            name="rp.t.depth.p"
+        )
+    );
+    lb.branch(done_bb);
+    lb.position_at_end(done_bb);
+    lb.ret_void();
+    return (enter_fn, leave_fn);
+}
+
+impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
+    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    cache_key = "default:" + arch_name;
+    cached = self._repr_fns.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    unwritable_key = "default-unwritable:" + arch_name;
+    struct_type = self.struct_types.get(arch_name);
+    if struct_type is None
+        or self._builder is None
+        or unwritable_key in self._repr_fns {
+        return None;
+    }
+    diagnostics_before = len(self.ctx.errors_had);
+    fields: list[tuple[str, str, uni.HasVar]] = [];
+    for cls in reversed(self._mro_of(arch_name)) {
+        declared = self.arch_ast_map.get(cls);
+        if declared is None {
+            continue;
+        }
+        for var in declared.get_has_vars() {
+            owner = var.find_parent_of_type(uni.ArchHas);
+            if var.name is None
+                or var.accessors
+                or (owner is not None and owner.is_static) {
+                continue;
+            }
+            fields = [
+                f
+                for f in fields
+                if f[0] != var.name.value
+            ];
+            fields.append((var.name.value, cls, var));
+        }
+    }
+    i8p = ir.IntType(8).as_pointer();
+    fn: ir.Function = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(i8p, [struct_type.as_pointer()]),
+        name=f"__jac_default_repr_{native_safe_sym(arch_name)}"
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "obj";
+    self._repr_fns[cache_key] = fn;
+    saved_builder = self._builder;
+    saved_locals = self.local_vars;
+    self.local_vars = {};
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    self._builder = b;
+    i64 = ir.IntType(64);
+    (enter_fn, leave_fn) = self._repr_active_fns();
+    me = b.bitcast(fn.args[0], i8p, name="rp.d.me");
+    outer = b.call(enter_fn, [me], name="rp.d.outer");
+    again_bb = fn.append_basic_block("rp.d.again");
+    fresh_bb = fn.append_basic_block("rp.d.fresh");
+    b.cbranch(
+        b.icmp_signed("<", outer, ir.Constant(i64, 0), name="rp.d.cycle"),
+        again_bb,
+        fresh_bb
+    );
+    b.position_at_end(again_bb);
+    b.ret(
+        self._rc_strdup(
+            self._make_global_string("...", name_prefix=".repr.cycle"),
+            name="rp.d.cycletext"
+        )
+    );
+    b.position_at_end(fresh_bb);
+    guarded = not self._slot_lowering_active();
+    if guarded {
+        if self._exc_raise_fn is None {
+            self._declare_exception_runtime();
+        }
+        fn.attributes.add("optnone");
+        fn.attributes.add("noinline");
+        raised_bb = fn.append_basic_block("rp.d.raised");
+        body_bb = fn.append_basic_block("rp.d.body");
+        (raised, region_depth) = self._push_exception_handler(raised_bb, body_bb);
+        b.position_at_end(raised_bb);
+        self._region_unwind(b.load(region_depth));
+        thrown = self._exception_values(raised);
+        b.call(self._exc_pop_fn, []);
+        b.call(leave_fn, [outer]);
+        b.call(self._exc_raise_fn, [thrown[1], thrown[0], thrown[2]]);
+        b.unreachable();
+        b.position_at_end(body_bb);
+    }
+    cur: any = self._rc_strdup(
+        self._make_global_string(
+            self._arch_display(arch_name) + "(", name_prefix=".repr.open"
+        ),
+        name="rp.d.acc0"
+    );
+    complete = True;
+    for (position, (field_name, _owner, decl)) in enumerate(fields) {
+        value = self._read_field_or_refuse(decl, fn.args[0], field_name, arch_name);
+        piece = self._default_repr_piece(value, arch_name, field_name, decl)
+            if value is not None
+            else None;
+        if piece is None {
+            complete = False;
+            break;
+        }
+        label = self._make_global_string(
+            (", " if position else "") + field_name + "=", name_prefix=".repr.field"
+        );
+        labelled: any = self._emit_binary_op(Tok.PLUS, cur, label);
+        self._emit_rc_release_simple(cur, op="mstr_old", loc="");
+        joined: any = self._emit_binary_op(
+            Tok.PLUS, labelled, self._coerce_type(piece, i8p)
+        );
+        self._emit_rc_release_simple(labelled, op="mstr_old", loc="");
+        if self._is_owned(piece) {
+            self._emit_rc_release_simple(piece, op="mstr_val", loc="");
+        }
+        cur = joined;
+    }
+    closed: any = self._emit_binary_op(
+        Tok.PLUS, cur, self._make_global_string(")", name_prefix=".repr.close")
+    );
+    self._emit_rc_release_simple(cur, op="mstr_old", loc="");
+    self._emit_set_type_tag(self.builder, closed, "str");
+    if guarded {
+        self.builder.call(self._exc_pop_fn, []);
+    }
+    self.builder.call(leave_fn, [outer]);
+    self.builder.ret(closed);
+    self._builder = saved_builder;
+    self.local_vars = saved_locals;
+    del self.ctx.errors_had[diagnostics_before:];
+    if not complete {
+        self._repr_fns.pop(cache_key, None);
+        self._repr_fns[unwritable_key] = fn;
+        return None;
+    }
+    return fn;
+}
+
 impl NaIRGenPass._repr_seq_fn(
     fn_name: str,
     cont_ptr_ty: ir.Type,

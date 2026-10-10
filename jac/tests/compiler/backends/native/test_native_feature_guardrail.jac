@@ -215,7 +215,7 @@ test "guardrail: yield without a generator return type is rejected" {
 # neighbour over an edge with declared endpoints) IS supported and reads
 # correctly on native; see test_osp_equivalence.jac "osp field access" and
 # "osp typed edge endpoints".
-test "guardrail: field access on an untyped (any) node-ref element demotes the ability with a filter hint" {
+test "guardrail: field access on an untyped (any) node-ref element refuses the ability with a filter hint" {
     (prog, ir, log) = compile_na_inline_demote(
         "node_ref_any_field",
         "node N { has tag: int = 0; }\n"
@@ -229,15 +229,15 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
         "}\n"
         "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
     );
-    assert not has_error_code(prog, "E5090") , f"An ability-owned violation must demote, not fail the module: {fmt_errors(
+    assert not has_error_code(prog, "E5090") , f"An ability-owned violation is reported once, against the ability: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , f"whole-module native compile aborted: {fmt_errors(
-        prog
-    )}\n{log}";
-    assert "W.go" not in by_source_name(layout.methods) , (
-        "the violating ability must be demoted out of the native layout"
+    # A demoted function refuses its native callers. An ability has none: the
+    # graph engine runs it, and would reach the stub. So the module is refused,
+    # naming the ability.
+    refused = [str(e) for e in prog.errors_had];
+    assert any("event ability" in r and "go" in r for r in refused) , (
+        f"a walker with an ability that cannot lower must refuse the module: {refused}"
     );
     assert "NA_DEBUG demote W.go" in log , f"no demotion recorded for W.go in:\n{log}";
     assert "[?:" in log , f"the demotion diagnostic should suggest a `[?:Type]` filter:\n{log}";
