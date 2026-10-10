@@ -587,6 +587,9 @@ impl binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str] {
         return [];
     }
     if owner is not None {
+        if owner.scope_name.startswith("_") {
+            return [];
+        }
         bound = table.get(owner.scope_name);
         if bound is None {
             return [f"'{lib}.{owner.scope_name}' has no native implementation"];
