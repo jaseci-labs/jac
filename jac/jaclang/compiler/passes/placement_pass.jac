@@ -708,15 +708,21 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
             ir_in.gen.native_refusal_code = refused[0].code;
             ir_in.gen.native_refusal = refused[0].headline();
         } elif refused {
-            for unit_refusals in legality.units.values() {
-                for unit_refusal in unit_refusals {
-                    if unit_refusal.code == "E5090" {
-                        refused.append(unit_refusal);
+            reached: set[int] = {id(refusal) for refusal in legality.reach};
+            direct: list[NativeRefusal] = [
+                refusal for refusal in refused if id(refusal) not in reached
+            ];
+            if direct {
+                for unit_refusals in legality.units.values() {
+                    for unit_refusal in unit_refusals {
+                        if unit_refusal.code == "E5090" {
+                            direct.append(unit_refusal);
+                        }
                     }
                 }
             }
             seen: set[int] = set();
-            for refusal in refused {
+            for refusal in direct {
                 if refusal.site is None or id(refusal.site) in seen {
                     continue;
                 }
