@@ -10,7 +10,7 @@ def:pub load(fp: File) -> any {
 
 
 def:pub dumps(
-    value: any,
+    `obj: any,
     sort_keys: bool = False,
     separators: (tuple[str, str] | None) = None,
     ensure_ascii: bool = True
@@ -21,7 +21,7 @@ def:pub dumps(
         style.item_sep = item_sep;
         style.key_sep = key_sep;
     }
-    return _dump_value(value, style);
+    return _dump_value(`obj, style);
 }
 
 

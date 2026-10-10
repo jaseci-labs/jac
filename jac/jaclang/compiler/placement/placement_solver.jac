@@ -1,4 +1,4 @@
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
+import from jaclang.compiler.passes.context { CompilerPass }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
@@ -21,12 +21,12 @@ obj NativeDepScan {
         deps: list[str];
 }
 
-glob _na_scan_memo: dict[str, NativeDepScan] = {},
-     _SPACE_BY_NAME: dict[str, CodeContext] = {
+glob _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
          'native': CodeContext.NATIVE
-     };
+     },
+     _na_scan_memo: dict[str, NativeDepScan] = {};
 
 def native_scan_memo_clear {
     _na_scan_memo.clear();
@@ -48,11 +48,7 @@ def refresh_placement_module(module: uni.Module, prog: JacProgram) {
 def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
-    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
     import from jaclang.compiler.driver.program { JacProgram }
-    if module_native_demoted(os.path.realpath(path)) {
-        return ("previously-demoted", []);
-    }
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
     files = [path]
@@ -178,14 +174,18 @@ def native_default_path_ok(path: str) -> bool {
     return _native_deps_ok(ap, deps, hold_exempt=exempt);
 }
 
-def native_default_verdict(
-    module: uni.Module,
-    prog: (JacProgram | None) = None,
-    native_unit_compile: bool = False
+def native_placement_candidate(
+    module: uni.Module, prog: JacProgram
 ) -> tuple[bool, str] {
     import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
-
+    import from jaclang.compiler.native_scope { in_native_scope_path }
+    mod_path = module.loc.mod_path if module.loc is not None else '';
+    if not mod_path {
+        return (False, "no module path");
+    }
+    if not prog.infers_native_codespace(mod_path) {
+        return (False, "the default codespace is not native");
+    }
     if module.app_kind == 'web-app' {
         return (False, "web-app project: native is opt-in");
     }
@@ -193,24 +193,32 @@ def native_default_verdict(
     if not env_ok {
         return (False, env_reason);
     }
-    mod_path = module.loc.mod_path if module.loc is not None else '';
-    if not mod_path {
-        return (False, "no module path");
-    }
-    if module_native_demoted(os.path.realpath(mod_path), prog) {
-        return (False, "previously-demoted");
-    }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
+    native_unit_compile = bool(prog.options is not None and prog.options.native_unit);
     if in_native_scope_path(mod_path) and not native_unit_compile {
         return (False, "compiler frontend module: native only inside the kernel build");
     }
     if not any([isinstance(e, uni.ElementStmt) for e in module.body]) {
         return (False, "empty module: nothing to lower");
     }
+    for elem in module.body {
+        if isinstance(elem, uni.ContextAwareNode)
+            and elem.code_context == CodeContext.CLIENT {
+            return (False, "declares client elements");
+        }
+    }
+    return (True, '');
+}
+
+def native_preference_open(module: uni.Module, prog: JacProgram) -> tuple[bool, str] {
+    (candidate, why) = native_placement_candidate(module, prog);
+    if not candidate {
+        return (False, why);
+    }
+    mod_path = module.loc.mod_path if module.loc is not None else '';
     base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
-    (sv_reason, deps) = scan_native_blockers(module, base_dir);
-    if sv_reason {
-        return (False, sv_reason);
+    (blocker, deps) = scan_native_blockers(module, base_dir);
+    if blocker {
+        return (False, blocker);
     }
     if not _native_deps_ok(os.path.abspath(mod_path), deps) {
         return (False, "import-closure (sv dep or cap)");
@@ -566,7 +574,9 @@ def solve_module_placement(
         }
     }
 
-    stamp_count[0] += _seed_from_summary(module, prog);
+    if module.gen.placement_mode != 'plan' {
+        stamp_count[0] += _seed_from_summary(module, prog);
+    }
     pinned_idx: set[int] = set();
     for pes in get_module_summary(module, prog).elements {
         if pes.pinned {
@@ -599,6 +609,10 @@ def solve_module_placement(
         inferable.append(stmt);
     }
     has_seeds = bool(seed_ref_ids);
+    if module.gen.placement_mode == 'plan' {
+        client_tops = [];
+        native_tops = [];
+    }
     if ((not client_tops and not native_tops and not has_seeds) or not inferable) {
         _invalidate_stale_codegen();
         return stamp_count[0];
@@ -650,8 +664,11 @@ def solve_module_placement(
         }
         return result;
     }
-    cl_star = _hard_closure(cl_seed_ids);
-    na_star = _hard_closure(na_seed_ids);
+    refusals = prog.analysis.placement_refusals.get(os.path.realpath(mod_path), {});
+    cl_refused: set[int] = refusals.get('client', set());
+    na_refused: set[int] = refusals.get('native', set());
+    cl_star = _hard_closure(cl_seed_ids) - cl_refused;
+    na_star = _hard_closure(na_seed_ids) - na_refused;
     hard_remaining: list[uni.UniNode] = [];
     for elem in inferable {
         in_cl = id(elem) in cl_star;
@@ -680,17 +697,19 @@ def solve_module_placement(
         remaining: list[uni.UniNode] = [];
         for elem in inferable {
             refs = uses_map[id(elem)];
-            want_cl = (
-                (pull_dependents and not cl_sources.isdisjoint(refs))
-                or (
-                    id(elem) in cl_ref_ids
-                    and _pullable_by_client_reference(elem, module, body_refs)
-                )
-            );
-            want_na = (
-                not na_sources.isdisjoint(refs)
-                or (id(elem) in na_ref_ids and _pullable_native(elem))
-            );
+            want_cl = id(elem) not in cl_refused
+                and (
+                    (pull_dependents and not cl_sources.isdisjoint(refs))
+                    or (
+                        id(elem) in cl_ref_ids
+                        and _pullable_by_client_reference(elem, module, body_refs)
+                    )
+                );
+            want_na = id(elem) not in na_refused
+                and (
+                    not na_sources.isdisjoint(refs)
+                    or (id(elem) in na_ref_ids and _pullable_native(elem))
+                );
             if (want_cl and want_na) {
                 continue;
             }
@@ -744,7 +763,7 @@ def _emit_solver_warning(
             Alert(
                 msg=diag.format_message(name=name),
                 loc=nd.loc.span(),
-                from_pass=PlacementApplyPass,
+                from_pass=CompilerPass,
                 code=diag,
                 help_text=diag.format_help(name=name)
             )
@@ -938,62 +957,6 @@ def invalidate_importers_es(prog: JacProgram, mod_path: str) -> list[uni.Module]
     return cleared;
 }
 
-def demote_client_pulled_elements(
-    module: uni.Module, prog: JacProgram, err_mark: int, warn_mark: int
-) -> bool {
-    mod_path = module.loc.mod_path or '';
-    demoted: list[str] = [];
-    demote_pinned: set[int] = set();
-    for des in get_module_summary(module, prog).elements {
-        if des.pinned {
-            demote_pinned.add(des.index);
-        }
-    }
-    for (idx, stmt) in enumerate(module.body) {
-        if (
-            isinstance(stmt, uni.ContextAwareNode)
-            and stmt.codespace_dual
-            and stmt.code_context == CodeContext.CLIENT
-            and idx not in demote_pinned
-        ) {
-            stmt.code_context = CodeContext.SERVER;
-            stmt.codespace_dual = False;
-            ps = get_module_summary(module, prog);
-            dname = ps.elements[idx].name if idx < len(ps.elements) else 'element';
-            demoted.append(dname);
-            record_placement_evidence(
-                prog,
-                mod_path,
-                idx,
-                "demoted server: pulled client but failed ES lowering"
-            );
-        }
-    }
-    if not demoted {
-        return False;
-    }
-    first_err = '';
-    if err_mark < len(prog.errors_had) {
-        try {
-            first_err = prog.errors_had[err_mark].pretty_print().splitlines()[0];
-        } except Exception {
-            first_err = '';
-        }
-    }
-    del prog.errors_had[err_mark:];
-    del prog.warnings_had[warn_mark:];
-    import from jaclang.compiler.driver.pipeline { invalidate_client_product }
-    invalidate_client_product(prog, module);
-    placement_work(prog).changed(module);
-    invalidate_importers_es(prog, mod_path);
-    import from jaclang.compiler.frontend.host { active_host }
-    active_host().note(
-        f"note: {mod_path} was pulled into the client but did not lower; "
-        f"demoted {', '.join(demoted)} back to the server ({first_err})"
-    );
-    return True;
-}
-
 walker PlacementApplyPass(CompilerPass) {
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
@@ -1001,6 +964,11 @@ walker PlacementApplyPass(CompilerPass) {
 
 impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
     import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
+    if ir_in.loc is not None {
+        self.prog.analysis.placement_refusals.pop(
+            os.path.realpath(ir_in.loc.mod_path), None
+        );
+    }
     refresh_placement_module(ir_in, self.prog);
     if solve_module_placement(ir_in, self.prog) {
         placement_work(self.prog).changed(ir_in);

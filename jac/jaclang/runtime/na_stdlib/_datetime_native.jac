@@ -4,7 +4,7 @@ import from c { def localtime_r(timep: int, result: int) -> int;  }
 import from c { def gmtime_r(timep: int, result: int) -> int;  }
 import from c { def strftime(s: int, max: u64, format: str, tm: int) -> u64;  }
 import from c { def strdup(s: int) -> str;  }
-import from _errno_native { last_errno, raise_os_error }
+import from ._errno_native { last_errno, raise_os_error }
 
 glob _DT_S: int = malloc(u64(2176));
 glob _DT_TV: int = _DT_S,

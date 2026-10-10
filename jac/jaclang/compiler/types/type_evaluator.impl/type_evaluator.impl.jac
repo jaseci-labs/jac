@@ -2166,6 +2166,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if na_sym is not None {
                         symbol = na_sym;
                     }
+                } elif symbol is None and self.neutral_site(expr) {
+                    na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
+                    if na_sym is not None {
+                        symbol = na_sym;
+                        self.note_native(
+                            expr,
+                            "E5090",
+                            f"'{expr.value}' is a native-only builtin",
+                            requires=True
+                        );
+                    }
                 }
 
                 if symbol is None and expr.value == "Self" {
@@ -3592,7 +3603,15 @@ impl TypeEvaluator._diag_unnarrowed_optional(
     if not _has_none {
         return False;
     }
-    if not self._in_native_context() or not self._is_strict_site(nd) {
+    if not self._is_strict_site(nd) {
+        return False;
+    }
+    if not self._in_native_context() {
+        if self.neutral_site(nd) {
+            self.note_native(
+                nd, "E1121", E1121.format_message(type=str(ty), required=required)
+            );
+        }
         return False;
     }
     self.emit_diag(E1121, nd, type=str(ty), required=required);
@@ -3611,6 +3630,21 @@ impl TypeEvaluator._is_strict_site(nd: UniNode) -> bool {
     result = not mod.is_raised_from_py;
     self._strict_site_cache[id(mod)] = result;
     return result;
+}
+
+impl TypeEvaluator.neutral_site(nd: UniNode) -> bool {
+    import from jaclang.compiler.capability_notes { placement_neutral }
+    return placement_neutral(nd);
+}
+
+impl TypeEvaluator.note_native(
+    nd: UniNode, code: str, text: str, requires: bool = False
+) -> None {
+    if self._diagnostic_suppression_depth > 0 {
+        return;
+    }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, note_capability }
+    note_capability(self.program, nd, TARGET_NATIVE, code, text, requires);
 }
 
 impl TypeEvaluator._in_native_context -> bool {
@@ -3726,17 +3760,27 @@ impl TypeEvaluator.assign_type(
         return True;
     }
 
-    if self._in_native_context() {
-        if (
-            isinstance(dest_type, FunctionType)
-            and isinstance(src_type, ClassType)
-            and src_type.is_builtin("int")
-        )
-            or (
-                isinstance(src_type, FunctionType)
-                and isinstance(dest_type, ClassType)
-                and dest_type.is_builtin("int")
-            ) {
+    if (
+        isinstance(dest_type, FunctionType)
+        and isinstance(src_type, ClassType)
+        and src_type.is_builtin("int")
+    )
+        or (
+            isinstance(src_type, FunctionType)
+            and isinstance(dest_type, ClassType)
+            and dest_type.is_builtin("int")
+        ) {
+        if self._in_native_context() {
+            return True;
+        }
+        cur = self._pass?.current_node;
+        if isinstance(cur, UniNode) and self.neutral_site(cur) {
+            self.note_native(
+                cur,
+                "E5090",
+                "a function address converts to and from int only natively",
+                requires=True
+            );
             return True;
         }
     }

@@ -1,4 +1,4 @@
-import from _math_native {
+import from ._math_native {
     m_asinh,
     m_atan2,
     m_copysign,

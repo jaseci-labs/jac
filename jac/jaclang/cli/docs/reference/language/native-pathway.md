@@ -1219,7 +1219,7 @@ A method the backend cannot lower is *demoted*: it falls back to its Python impl
 JAC_NA_DEBUG=1 jac build --native program.jac
 ```
 
-Each demotion emits `NA_DEBUG demote <Type>.<method>` followed by every diagnostic that made the method un-lowerable, with source context. When the emitter raised outright rather than reporting a diagnostic, the line is `NA_DEBUG raise <Type>.<method>` followed by the Python traceback pointing at the codegen site. The flag also forces the seam warning on when `[check] warn_native_seams = false` would otherwise silence it.
+Each demotion emits `NA_DEBUG demote <Type>.<method>` followed by every diagnostic that made the method un-lowerable, with source context. When the emitter raises outright rather than reporting a diagnostic, that is a compiler bug and the build fails with an `E5092` error naming the callable; under the flag the line `NA_DEBUG raise <Type>.<method>` and the Python traceback pointing at the codegen site are printed as well. Pin the module to the server codespace under `[placement.pins]` to keep working until the bug is fixed. The flag also forces the seam warning on when `[check] warn_native_seams = false` would otherwise silence it.
 
 ### Bytecode Cache
 

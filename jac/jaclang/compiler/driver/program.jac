@@ -97,7 +97,6 @@ class JacProgram {
 
     def declared_codespace(self: JacProgram, file_path: str) -> str;
     def infers_native_codespace(self: JacProgram, file_path: str) -> bool;
-    def anchors_native_under_default(self: JacProgram, mod: uni.Module) -> bool;
     def resolve_absorb_imports(self: JacProgram, mod: uni.Module) -> None;
     def stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None;
     def stamp_app_facts(self: JacProgram, mod: uni.Module) -> None;

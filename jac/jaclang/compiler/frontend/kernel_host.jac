@@ -9,7 +9,6 @@ import from jaclang.compiler.frontend.host {
     HostPlatform,
     HostServices,
     LintSettings,
-    NativeVerdict,
     PathFacts,
     ProjectDefaults,
     ProjectFacts
@@ -295,7 +294,6 @@ obj KernelHost(HostServices) {
         closure: (CompileOptions | None) = None,
         census: HostCensus = HostCensus(),
         events: list[HostEvent] = [],
-        demoted: dict[str, NativeVerdict] = {},
         _imports: dict[str, ImportResolution] = {},
         _locals: dict[str, LocalResolution] = {},
         _npm: dict[str, NpmAnswer] = {},
@@ -1201,22 +1199,28 @@ obj KernelHost(HostServices) {
         return answer;
     }
 
-    def native_verdict(
-        path: str, program: (JacProgram | None) = None
-    ) -> (NativeVerdict | None) {
-        self.census.count("native_verdict");
-        recorded = self.demoted.get(os.path.realpath(path));
-        if recorded is not None {
-            return recorded;
+    def placement_plan(path: str) -> str {
+        self.census.count("placement_plan");
+        key = os.path.realpath(path);
+        if key in self.inputs.plans {
+            return self.inputs.plans[key];
         }
-        if path in self.inputs.verdicts {
-            return self.inputs.verdicts[path];
+        with self.missing("placement_plan", key) as host {
+            answer = host.placement_plan(key);
         }
-        with self.missing("native_verdict", path) as host {
-            answer = host.native_verdict(path, program);
-        }
-        self.inputs.verdicts[path] = answer;
+        self.inputs.plans[key] = answer;
         return answer;
+    }
+
+    def record_placement_plan(path: str, plan: str) {
+        key = os.path.realpath(path);
+        self.inputs.plans[key] = plan;
+        if self.kernel_only("record_placement_plan") {
+            return;
+        }
+        with self.delegating("record_placement_plan") as host {
+            host.record_placement_plan(key, plan);
+        }
     }
 
     def record_native_coverage(
@@ -1232,20 +1236,6 @@ obj KernelHost(HostServices) {
             ),
             "record_native_coverage"
         );
-    }
-
-    def record_native_verdict(program: JacProgram, path: str, code: str, detail: str) {
-        self.demoted[os.path.realpath(path)] = NativeVerdict(
-            demoted=True, code=code, detail=detail
-        );
-        if self.kernel_only("record_native_verdict") {
-            import from jaclang.compiler.placement.placement { note_native_verdict }
-            note_native_verdict(program, os.path.realpath(path), code, detail);
-            return;
-        }
-        with self.delegating("record_native_verdict") as host {
-            host.record_native_verdict(program, path, code, detail);
-        }
     }
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {

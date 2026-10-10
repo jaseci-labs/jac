@@ -98,19 +98,19 @@ def:pub isleap(year: int) -> bool {
 }
 
 
-def:pub leapdays(y1_in: int, y2_in: int) -> int {
-    y1: int = y1_in - 1;
-    y2: int = y2_in - 1;
-    return (y2 // 4 - y1 // 4) - (y2 // 100 - y1 // 100) + (y2 // 400 - y1 // 400);
+def:pub leapdays(y1: int, y2: int) -> int {
+    lo: int = y1 - 1;
+    hi: int = y2 - 1;
+    return (hi // 4 - lo // 4) - (hi // 100 - lo // 100) + (hi // 400 - lo // 400);
 }
 
 
-def:pub weekday(year_in: int, month: int, day: int) -> int {
-    year: int = year_in;
-    if not (1 <= year and year <= 9999) {
-        year = 2000 + year % 400;
+def:pub weekday(year: int, month: int, day: int) -> int {
+    shown: int = year;
+    if not (1 <= shown and shown <= 9999) {
+        shown = 2000 + shown % 400;
     }
-    return date(year, month, day).weekday();
+    return date(shown, month, day).weekday();
 }
 
 
@@ -597,13 +597,13 @@ def:pub month(theyear: int, themonth: int, w: int = 0, l: int = 0) -> str {
 }
 
 
-def:pub calendar(year: int, w: int = 2, l: int = 1, c: int = 6, m: int = 3) -> str {
-    return _c.formatyear(year, w, l, c, m);
+def:pub calendar(theyear: int, w: int = 2, l: int = 1, c: int = 6, m: int = 3) -> str {
+    return _c.formatyear(theyear, w, l, c, m);
 }
 
 
-def:pub prcal(year: int, w: int = 0, l: int = 0, c: int = 6, m: int = 3) {
-    _c.pryear(year, w, l, c, m);
+def:pub prcal(theyear: int, w: int = 0, l: int = 0, c: int = 6, m: int = 3) {
+    _c.pryear(theyear, w, l, c, m);
 }
 
 
@@ -611,15 +611,15 @@ glob:pub EPOCH: int = 1970;
 glob _EPOCH_ORD: int = 719163;
 
 
-def:pub timegm(t: (list[int] | struct_time)) -> int {
+def:pub timegm(`tuple: (list[int] | struct_time)) -> int {
     year: int;
     month: int;
     day: int;
     hour: int;
     minute: int;
     second: int;
-    if isinstance(t, struct_time) {
-        st: struct_time = t as struct_time;
+    if isinstance(`tuple, struct_time) {
+        st: struct_time = `tuple as struct_time;
         year = st.tm_year;
         month = st.tm_mon;
         day = st.tm_mday;
@@ -627,7 +627,7 @@ def:pub timegm(t: (list[int] | struct_time)) -> int {
         minute = st.tm_min;
         second = st.tm_sec;
     } else {
-        lst: list[int] = t as list[int];
+        lst: list[int] = `tuple as list[int];
         year = lst[0];
         month = lst[1];
         day = lst[2];

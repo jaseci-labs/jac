@@ -365,7 +365,6 @@ impl JacCompiler._adopt_kernel_compile(
                 );
             }
             sections = unit_sections(unit, bytecode);
-            self._adopt_native_verdict(unit, program, sections);
             if unit.native_ir {
                 try {
                     sections.update(
@@ -426,23 +425,27 @@ impl JacCompiler._demote_adopted_native(
     if options.aot_mode or options.force_codespace {
         return False;
     }
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.unitree { Source }
+    import from jaclang.compiler.placement.placement_facts { encode_plan }
     resolved = os.path.realpath(unit_path);
-    registry = program.native_units();
-    if registry.is_demoted(resolved) {
+    host = active_host();
+    held = encode_plan(Source(host.read_source(resolved), resolved).hash, {});
+    if host.placement_plan(resolved) == held {
         return False;
     }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
-    import from jaclang.compiler.driver.session_compile { na_demotion_note }
-    import from jaclang.compiler.frontend.host { active_host }
     detail = f"Native compilation failed: {failure}".split("\n")[0];
-    host = active_host();
     host.record_native_coverage(resolved, "demoted", "E5020", detail);
-    registry.record_verdict(resolved, "E5020", detail);
+    host.record_placement_plan(resolved, held);
     try {
         get_module_cache_path(resolved).unlink();
     } except OSError {}
-    (note, style) = na_demotion_note(unit_path, detail, False);
-    host.note(note, style);
+    host.note(
+        f"note: {unit_path} preferred native but did not lower; "
+        f"compiled in the server codespace ({detail})",
+        "dim"
+    );
     return True;
 }
 
@@ -460,29 +463,13 @@ impl JacCompiler.kernel_native_entry(
     } else {
         self._adopt_kernel_compile(path, actual, options);
     }
+    import from jaclang.compiler.placement.placement { summary_store }
+    placed = summary_store(actual).get(os.path.abspath(path));
+    if placed is None or placed.decided != 'native' {
+        return (True, None);
+    }
     carrier = actual.hub.artifacts.get(path);
     return (True, carrier.native_engine if carrier is not None else None);
-}
-
-impl JacCompiler._adopt_native_verdict(
-    unit: UnitProducts, program: JacProgram, sections: dict[int, bytes]
-) {
-    if not unit.placement {
-        return;
-    }
-    import json;
-    import from jaclang.compiler.driver.nativecache { native_verdict_dep_rows }
-    summary = json.loads(unit.placement);
-    code = str(summary.get("native_verdict_code", ""));
-    if not code {
-        return;
-    }
-    resolved = os.path.realpath(unit.path);
-    program.native_units().record_verdict(
-        resolved, code, str(summary.get("native_verdict", ""))
-    );
-    summary["native_verdict_deps"] = native_verdict_dep_rows(resolved);
-    sections[SEC_PLACEMENT] = json.dumps(summary).encode("utf-8");
 }
 
 impl JacCompiler._adopt_native_unit(

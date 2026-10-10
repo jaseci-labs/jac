@@ -1,6 +1,6 @@
 import from os.path { splitext, isfile }
-import from _file_native { read_file_bytes }
-import from _mimetypes_tables {
+import from ._file_native { read_file_bytes }
+import from ._mimetypes_tables {
     _default_knownfiles,
     _default_suffix_map,
     _default_encodings_map,
@@ -251,11 +251,11 @@ obj:pub MimeTypes {
         }
     }
 
-    def strict_map -> dict[str, str] {
+    def _strict_table -> dict[str, str] {
         return self._strict_map;
     }
 
-    def lax_map -> dict[str, str] {
+    def _lax_table -> dict[str, str] {
         return self._lax_map;
     }
 }
@@ -278,8 +278,8 @@ glob:pub inited: bool = True;
 
 glob:pub suffix_map: dict[str, str] = _DB.suffix_map,
      encodings_map: dict[str, str] = _DB.encodings_map,
-     types_map: dict[str, str] = _DB.strict_map(),
-     common_types: dict[str, str] = _DB.lax_map();
+     types_map: dict[str, str] = _DB._strict_table(),
+     common_types: dict[str, str] = _DB._lax_table();
 
 
 def:pub init(files: (list[str] | None) = None) {
@@ -330,5 +330,5 @@ def:pub read_mime_types(file: str) -> dict[str, str] | None {
     }
     fresh: MimeTypes = MimeTypes();
     fresh.read(file, True);
-    return fresh.strict_map();
+    return fresh._strict_table();
 }

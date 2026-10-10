@@ -2,7 +2,7 @@ import os;
 import from os.path { abspath, normpath }
 import from io { BytesIO }
 import from compression.zstd { ZstdFile }
-import from _tarfile_native {
+import from ._tarfile_native {
     tar_read_file,
     tar_create,
     tar_write,
@@ -60,7 +60,7 @@ obj:pub ExtractError(TarError) {}
 obj:pub HeaderError(TarError) {}
 
 
-obj:pub InvalidHeaderError(HeaderError) {}
+obj InvalidHeaderError(HeaderError) {}
 
 
 obj:pub FilterError(TarError) {}
@@ -366,7 +366,7 @@ obj:pub TarInfo {
 }
 
 
-def:pub frombuf(buf: bytes, dircheck: bool = True) -> TarInfo {
+def frombuf(buf: bytes, dircheck: bool = True) -> TarInfo {
     if len(buf) == 0 {
         raise HeaderError("empty header");
     }
@@ -471,10 +471,10 @@ obj:pub TarFile {
         mode: str = "r",
         stream: bool = False,
         offset: int = 0,
-        closed: bool = False,
-        members: list[TarInfo] = [],
+        _closed: bool = False,
+        _members: list[TarInfo] = [],
         pax_headers: dict[str, str] = {},
-        firstmember: (TarInfo | None) = None,
+        _firstmember: (TarInfo | None) = None,
         _loaded: bool = False,
         _src: (ZstdFile | None) = None,
         _window: bytes = b"",
@@ -496,17 +496,17 @@ obj:pub TarFile {
         self.name = name;
         self.mode = mode;
         self.stream = stream;
-        self.closed = False;
-        self.members = [];
+        self._closed = False;
+        self._members = [];
         self.pax_headers = {};
         self._loaded = False;
         self.offset = 0;
-        self.firstmember = None;
-        self.firstmember = self.next();
+        self._firstmember = None;
+        self._firstmember = self.next();
     }
 
     def _check {
-        if self.closed {
+        if self._closed {
             raise OSError("TarFile is closed");
         }
     }
@@ -683,9 +683,9 @@ obj:pub TarFile {
 
     def next -> (TarInfo | None) {
         self._check();
-        if self.firstmember is not None {
-            m = self.firstmember;
-            self.firstmember = None;
+        if self._firstmember is not None {
+            m = self._firstmember;
+            self._firstmember = None;
             return m;
         }
         if self._loaded {
@@ -702,7 +702,7 @@ obj:pub TarFile {
             return None;
         }
         if not self.stream {
-            self.members.append(info);
+            self._members.append(info);
         }
         return info;
     }
@@ -726,7 +726,7 @@ obj:pub TarFile {
                 break;
             }
         }
-        return self.members;
+        return self._members;
     }
 
     def getnames -> list[str] {
@@ -1004,7 +1004,7 @@ obj:pub TarFile {
     }
 
     def close {
-        self.closed = True;
+        self._closed = True;
     }
 
     def __enter__ -> TarFile {

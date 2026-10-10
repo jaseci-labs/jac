@@ -5,6 +5,28 @@ Python-congruent **standard library for the native (na) compiler pathway**
 (issues [#6404] / [#6940]). This is **Mechanism B**: ordinary Jac compiled and
 linked like user code, with zero per-module backend work.
 
+## The interface is Python's
+
+Each public module here implements the interface the Python stub of the same
+name declares. That is the rule the compiler checks (`E5114`):
+
+- A name is public (`def:pub`, `obj:pub`) only if the interface declares it,
+  and its parameters and members are ones the interface declares. A parameter
+  the interface takes by position only may have any name. A field that is a
+  constructor parameter in the interface is public; `init`, `postinit` and
+  `drop` are not part of the surface.
+- Anything else a module needs is internal: no `:pub`, or a leading
+  underscore for a member. Code whose placement is still open is typed
+  against the Python interface before it is placed, so it cannot rely on a
+  name the interface lacks.
+- Inside this tree a bare import of a standard-library name
+  (`import from datetime { date }`) resolves to the native module of that
+  name, as it does in any native code. An internal helper is imported
+  relatively (`import from ._hex { to_hex }`,
+  `import from .datetime { _ord2ymd }`), so a helper is never taken for a
+  standard-library module of the same name.
+- Every platform variant of a module exposes the same public surface.
+
 ## How resolution works
 
 `jaclang.compiler.frontend.codeinfo.resolve_native_module` is the single shared resolver
@@ -61,7 +83,7 @@ native layout records the emitted name separately from its source-level key.
   pinned byte-for-byte against CPython in the native suite.)
 - **`datetime.jac`** (#6940 Phase 1 / #6951, extended to the full surface) --
   a faithful port of CPython's `_pydatetime.py`: `timedelta`, `date`,
-  `tzinfo`, `time`, `datetime`, `timezone`, `struct_time`, and
+  `tzinfo`, `time`, `datetime`, `timezone`, `struct_time`, and the internal
   `IsoCalendarDate`, with the same class hierarchy (`datetime(date)`,
   `timezone(tzinfo)`). Civil-date math uses the proleptic-Gregorian ordinal
   algorithms; timezone-aware math rides the `tzinfo` protocol
@@ -326,7 +348,7 @@ native layout records the emitted name separately from its source-level key.
   `.set(value)` and `.reset(token)`. `get` walks CPython's precedence -- the
   value last `set`, else the default the call passed, else the default the
   constructor took, else `LookupError(name)`. `set` returns a `Token[T]`
-  (the class is `ContextVarToken`, with `Token` its alias, because a native
+  (the class is the internal `ContextVarToken`, with `Token` its public alias, because a native
   program identifies classes by bare name and the compiler has its own
   `Token`) carrying `.var` and `.old_value`, and `reset(token)` restores the value the
   variable held before that `set`, or unsets it when it held none. As in
@@ -415,8 +437,9 @@ native layout records the emitted name separately from its source-level key.
   SCOPE: an IPv6 address is an unsigned 128-bit `(hi, lo)` i64 pair, so there
   is no `.int`; `hosts()`/`subnets()` materialize a list rather than returning
   a generator; `__hash__`, pickling, and `ipaddress.v4_int_to_packed`-style
-  private helpers are not provided. `IPv6Address.teredo` is split into
-  `teredo_server` and `teredo_client` (each `IPv4Address | None`): CPython's
+  private helpers are not provided. `IPv6Address.teredo` is not provided; its
+  halves exist only as the internal `_teredo_server` and `_teredo_client`
+  (each `IPv4Address | None`): CPython's
   single 2-tuple-or-`None` property has to be typed `any` here, and a tuple of
   objects boxed into `any` does not lower -- it fails a native build closure
   outright ("Declarations in the native closure could not lower") and, worse,
@@ -450,8 +473,8 @@ native layout records the emitted name separately from its source-level key.
   `locale_encoding_alias`, generated verbatim) -- the `LC_*` category
   constants (per-OS, from the floor), `CHAR_MAX`, `Error`, `setlocale`,
   `localeconv`, `getencoding`, `getpreferredencoding`, `getlocale`,
-  `getdefaultlocale`, `strcoll`, `strxfrm`, `normalize`, `_parse_localename`,
-  `_build_localename`, `atof`, `atoi`, `delocalize`, `localize`,
+  `getdefaultlocale`, `strcoll`, `strxfrm`, `normalize`, `atof`, `atoi`,
+  `delocalize`, `localize`,
   `format_string` and `currency`. `normalize` is CPython's four-stage lookup
   including the `@euro` modifier rewrite and the `:`-as-encoding-delimiter
   form; `_group`/`_strip_padding`/`localize`/`currency` are its grouping and
@@ -465,32 +488,29 @@ native layout records the emitted name separately from its source-level key.
   `windows_locale` is absent; `_replace_encoding` consults
   `locale_encoding_alias` but not `encodings.aliases`; and `setlocale` takes
   a locale *string* (`None` queries, `""` sets from the environment) rather
-  than also accepting a `(language, encoding)` iterable -- compose it with
-  `normalize(_build_localename(lang, enc))` yourself.
+  than also accepting a `(language, encoding)` iterable -- compose the
+  string yourself and pass it through `normalize`.
 
 - **`gettext.jac`** (#6978) -- `NullTranslations` and `GNUTranslations`
   (`gettext`, `ngettext`, `pgettext`, `npgettext`, `add_fallback`, `info`,
   `charset`), a `.mo` parser that handles both endiannesses, the catalogue
   metadata block (`Content-Type` charset and `Plural-Forms`), `find`,
-  `find_all`, `translation`, `textdomain`, `bindtextdomain`, `dgettext`,
+  `translation`, `c2py`, `textdomain`, `bindtextdomain`, `dgettext`,
   `dngettext`, `dpgettext`, `dnpgettext` and the module-level
-  `gettext`/`ngettext`/`pgettext`/`npgettext`, plus `_expand_lang` over the
-  bundled `locale.normalize`.
+  `gettext`/`ngettext`/`pgettext`/`npgettext`.
 
   The C plural-form expression is the interesting part: CPython's `c2py`
   compiles it to a Python lambda through `exec`, which the native pathway
-  cannot do. Here `c2py_ast` tokenizes and parses the same grammar (the same
+  cannot do. Here `c2py` tokenizes and parses the same grammar (the same
   operator set, the same six precedence levels, the same left-associative
-  chained comparisons and low-priority `?:`) into an AST, and
-  `plural_index(tree, n)` evaluates it -- C truthiness, `/` as floor division,
+  chained comparisons and low-priority `?:`) into an AST, and returns a
+  closure that evaluates it -- C truthiness, `/` as floor division,
   the same `ValueError` messages for an invalid token, an unexpected token, an
   unbalanced parenthesis, and an over-long (>1000 character) expression.
 
-  SCOPE: `c2py` returns an AST (`c2py_ast`) evaluated by `plural_index` instead
-  of a callable; `install`/`NullTranslations.install` cannot inject `_` into
+  SCOPE: `install`/`NullTranslations.install` cannot inject `_` into
   builtins and are absent; `translation` takes no `class_` and does not cache
-  parsed catalogues; `find` returns `str | None` with `find_all` as the
-  `all=True` form; catalogues are read as bytes by path (no file objects); and
+  parsed catalogues; `find` returns `str | None` and has no `all=True` form; catalogues are read as bytes by path (no file objects); and
   the plural lookup is keyed by msgid into a `dict[str, list[str]]` rather than
   CPython's `(msgid, index)` tuple keys.
 
@@ -635,7 +655,7 @@ native layout records the emitted name separately from its source-level key.
   pure-Jac generators: `count` (int and float start/step), `cycle`,
   `repeat`, `accumulate` (default `+` over int/float/str plus a custom
   `func`, `initial=` included), `batched` (`strict=` included), `chain`
-  (+ `chain_from_iterable`), `combinations`,
+`combinations`,
   `combinations_with_replacement`, `compress`, `dropwhile`, `takewhile`,
   `filterfalse` (`None` predicate falls back to truthiness), `groupby`,
   `islice`, `pairwise`, `permutations`, `product` (`repeat=` included),
@@ -651,8 +671,8 @@ native layout records the emitted name separately from its source-level key.
   (`"r must be non-negative"`, `"repeat argument cannot be negative"`,
   `"n must be at least one"`, `"n must be >= 0"`, `"batched():
   incomplete batch"`). SCOPE/divergences: `chain.from_iterable` cannot be
-  spelled on na (`chain` is a function, not a class) -- the same
-  operation is exported as the module-level `chain_from_iterable`;
+  spelled on na (`chain` is a function, not a class), so code that uses it
+  is placed in Python;
   the zero-argument `zip_longest()` and the zero/five-argument `islice`
   arity `TypeError`s behave as CPython does at runtime but are probed
   standalone (the sv lane's checker enforces the typeshed arity, so those

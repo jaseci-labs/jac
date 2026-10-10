@@ -1,5 +1,5 @@
 import from io { BytesIO }
-import from _zstd_native {
+import from .._zstd_native {
     zstd_version_number,
     zstd_is_error,
     zstd_error_name,

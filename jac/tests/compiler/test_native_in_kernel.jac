@@ -150,10 +150,10 @@ test "the host runs a native module from its kernel record without analysing it"
     }
 }
 
-"""Placement is optimistic: a module pinned or inferred native that cannot be
-lowered is demoted and compiled again on the server. In a kernel session that
-retry happens inside the session, and the host learns of it from the unit's
-placement record and the session's notes, not by compiling the module."""
+"""A module pinned or inferred native that cannot be lowered is placed on the
+server and compiled again. In a kernel session that happens inside the
+session, and the host learns of it from the unit's placement record and the
+session's notes, not by compiling the module."""
 test "a module that cannot be lowered is demoted inside the session" {
     import json;
     with TemporaryDirectory() as td {
@@ -183,7 +183,7 @@ test "a module that cannot be lowered is demoted inside the session" {
         assert emitted.jcir , "the demoted module has no server code";
         assert not emitted.native_ir , "a demoted module still carries native IR";
         summary = json.loads(emitted.placement);
-        assert summary.get("native_verdict_code") == "E5092" , summary;
+        assert summary.get("decided") != "native" , summary;
         notes = [
             row[2]
             for row in outcome.analysis.events
@@ -238,9 +238,9 @@ test "a default run lowers a bundled native import the way the host does" {
 
 """The host can still fail after the kernel has lowered a module: the IR may
 not link, because a dependency turned out not to be a native unit. Where
-placement only inferred native, that is a demotion like any other. The host
-holds the verdict and asks the kernel again, and the second session compiles
-the module for the server."""
+placement only inferred native, the module goes to the server like any other
+refusal. The host holds a plan that places it there and asks the kernel again,
+and the second session compiles the module for the server."""
 test "a module the host cannot link is demoted and compiled again for the server" {
     import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
     import from jaclang.compiler.driver.compiler { JacCompiler }
@@ -262,13 +262,13 @@ test "a module the host cannot link is demoted and compiled again for the server
             }
         }
         assert link.call_count == 1 , (
-            "the module came back native after its verdict was held"
+            "the module came back native after its server plan was held"
         );
         assert code is not None , "the demoted module has no server code";
-        verdict = program.native_units().verdict_for(entry_file);
-        assert verdict is not None and verdict.demoted , verdict;
-        assert verdict.code == "E5020" , verdict.code;
-        assert "helper.jac is not a native unit" in verdict.detail , verdict.detail;
+        held = active_host().placement_plan(entry_file);
+        assert held.endswith("||") , (
+            f"the host holds no plan placing the module on the server: {held!r}"
+        );
     }
 }
 

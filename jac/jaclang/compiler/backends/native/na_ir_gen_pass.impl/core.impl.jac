@@ -139,34 +139,104 @@ impl NaIRGenPass.postinit -> None {
 }
 
 impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
-    import from jaclang.compiler.passes.capability_check_pass {
-        native_capability_violations,
-        partition_native_capability_violations
+    try {
+        self._lower_module();
+    } except Exception as _lower_exc {
+        self._internal_error(
+            self.module,
+            "module",
+            os.path.basename(self.module.loc.mod_path),
+            _lower_exc
+        );
     }
-    self._capability_demotions = {};
-    self._claimed_capability_demotions = set();
-    _viols = native_capability_violations(self.module);
-    if _viols {
-        (_fatal_viols, _demotable) = partition_native_capability_violations(_viols);
-        if _fatal_viols {
-            if not self.module.native_viols_reported {
-                _report = list(_fatal_viols);
-                for _unit_viols in _demotable.values() {
-                    _report.extend(_unit_viols);
-                }
-                for (_vnode, _vkind, _vname, _vhelp) in _report {
+    self._settle_module();
+    return self.module;
+}
+
+impl NaIRGenPass._static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | None) {
+    if self._legality is None {
+        return None;
+    }
+    return self._legality.units.get(id(owner));
+}
+
+impl NaIRGenPass._settle_module -> None {
+    """Decide the module once its lowering has run. Diagnostics still pending
+    here belong to no unit: on a module whose native placement is a preference
+    they are a refusal the static legality rules did not predict, recorded on
+    the legality table for the driver to place the module in the server
+    codespace. On a module that must be native they stay errors. A backend
+    crash is never a refusal.""";
+    import from jaclang.compiler.passes.placement_pass { settle_native_module }
+    if self._internal_errors {
+        self.ctx.errors_had.extend(self._internal_errors);
+        self._internal_errors = [];
+        return;
+    }
+    refusal = settle_native_module(
+        self.module, self.prog, self.ctx.errors_had, self.ctx.warnings_had
+    );
+    if refusal is not None and self._legality is not None {
+        self._legality.refuse_module(refusal);
+    }
+}
+
+impl NaIRGenPass._internal_error(
+    nd: uni.UniNode, kind: str, name: str, exc: Exception, mark: int = 0
+) -> None {
+    """A backend exception is a compiler defect, reported as one. It is held
+    apart from the pending refusals so no unit or module can absorb it. Two
+    exceptions are not defects. `NativeRefused` is how a deep helper refuses:
+    it joins the pending refusals like any diagnostic. And an exception raised
+    after the unit already recorded a refusal since `mark` says nothing new:
+    the unit is being given up, and what its lowering does past the construct
+    it could not lower is not evidence about the backend.""";
+    if isinstance(exc, NativeRefused) {
+        self.emit(E5092, node_override=nd, kind=kind, name=f"{name} ({exc})");
+        return;
+    }
+    if self._na_debug_on() {
+        import sys;
+        sys.stderr.write(f"NA_DEBUG raise {name}: {type(exc).__name__}: {exc}\n");
+    }
+    if len(self.ctx.errors_had) > mark {
+        return;
+    }
+    mark = len(self.ctx.errors_had);
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind=f"{kind} (native emitter error in)",
+        name=name,
+        help_text=f"The native backend raised {type(exc).__name__} while lowering "
+        f"this {kind}: {exc}. This is a compiler bug -- please report it. Pin the "
+        f"module to the server codespace under [placement.pins] in jac.toml to "
+        f"keep working until it is fixed."
+    );
+    self._internal_errors.extend(self.ctx.errors_had[mark:]);
+    del self.ctx.errors_had[mark:];
+}
+
+impl NaIRGenPass._lower_module -> None {
+    import from jaclang.compiler.passes.placement_pass { build_native_legality }
+    self._legality = build_native_legality(self.module, self.prog);
+    self._claimed_units = set();
+    self._internal_errors = [];
+    if self._legality.module {
+        if not self.module.native_viols_reported {
+            for _refusal in self._legality.module {
+                if _refusal.site is not None {
                     self.emit(
                         E5090,
-                        node_override=_vnode,
-                        kind=_vkind,
-                        name=_vname,
-                        help_text=_vhelp
+                        node_override=_refusal.site,
+                        kind=_refusal.kind,
+                        name=_refusal.name,
+                        help_text=_refusal.help
                     );
                 }
             }
-            return self.module;
         }
-        self._capability_demotions = _demotable;
+        return;
     }
 
     self._emit_rc_helpers();
@@ -202,27 +272,34 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     self._propagate_seam_demotions();
     _unclaimed = False;
-    for (_ck, _cviols) in self._capability_demotions.items() {
-        if _ck in self._claimed_capability_demotions {
+    for (_ck, _crefusals) in self._legality.units.items() {
+        if _ck in self._claimed_units or _ck in self._legality.reached {
             continue;
         }
-        _unclaimed = True;
-        for (_vnode, _vkind, _vname, _vhelp) in _cviols {
+        for _refusal in _crefusals {
+            if _refusal.late or _refusal.site is None {
+                continue;
+            }
+            _unclaimed = True;
             self.emit(
-                E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
+                E5090,
+                node_override=_refusal.site,
+                kind=_refusal.kind,
+                name=_refusal.name,
+                help_text=_refusal.help
             );
         }
     }
     if _unclaimed {
-        return self.module;
+        return;
     }
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
     self._finish_osp_reclaim_hook();
 
     if self.has_native_code {
-        if self.ctx.errors_had {
-            return self.module;
+        if self.ctx.errors_had or self._internal_errors {
+            return;
         }
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
@@ -264,7 +341,6 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         self._export_native_layout();
         self._export_native_iface();
     }
-    return self.module;
 }
 
 impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
@@ -552,21 +628,34 @@ impl NaIRGenPass._is_kernel_unit -> bool {
     return bool(self.module?.loc) and is_kernel_unit_path(self.module.loc.mod_path);
 }
 
-impl NaIRGenPass._predemote_capability_unit(
+impl NaIRGenPass._stub_refused_unit(
     full_name: str,
     func: ir.Function,
-    viols: list[tuple[uni.UniNode, str, str, str | None]],
+    refusals: list[NativeRefusal],
     keep_func: bool = False
 ) -> bool {
-    _local_mark = len(self.ctx.errors_had);
-    for (_vnode, _vkind, _vname, _vhelp) in viols {
-        self.emit(
-            E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
-        );
+    """Place a unit the legality analysis already refused on its Python-only
+    implementation without lowering its body. Where the module requires native,
+    the refusals are reported as the errors they are.""";
+    if not refusals {
+        return False;
     }
-    return self._demote_method_if_unlowerable(
-        full_name, func, _local_mark, keep_func=keep_func
-    );
+    if self.prog.options.native_required_for(self.module.loc.mod_path) {
+        for _refusal in refusals {
+            if _refusal.site is None {
+                continue;
+            }
+            self.emit(
+                E5090 if _refusal.code == "E5090" else E5092,
+                node_override=_refusal.site,
+                kind=_refusal.kind,
+                name=_refusal.name,
+                help_text=_refusal.help
+            );
+        }
+    }
+    self._place_unit_python(full_name, func, refusals, keep_func=keep_func);
+    return True;
 }
 
 impl NaIRGenPass._rename_demoted_symbol(name: str, func: ir.Function) -> None {
@@ -1740,7 +1829,7 @@ impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
     }
     import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     if not require_product(self.prog, dep_mod, CompilationProduct.ANALYSIS) {
-        raise RuntimeError(
+        raise NativeRefused(
             f"Native dependency analysis failed: {dep_mod.loc.mod_path}"
         );
     }

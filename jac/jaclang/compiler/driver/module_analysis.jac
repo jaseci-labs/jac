@@ -17,7 +17,8 @@ obj ModuleAnalysis {
         parse_failed: bool = False,
         blocked: bool = False,
         full_head: bool = False,
-        native: bool = False;
+        native: bool = False,
+        placement_only: bool = False;
 
     def postinit {
         self.module = Module.make_stub();
@@ -95,8 +96,15 @@ obj ModuleAnalysis {
         import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
         self.native = self.module is not None
             and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
+        candidate = self.native
+            or (
+                self.module is not None
+                and not self.parse_failed
+                and not self.module.gen.placement_mode
+                and self.program.infers_native_codespace(self.path)
+            );
 
-        if self.native {
+        if candidate {
             self.options.need_full_ast = True;
         }
 
@@ -107,16 +115,13 @@ obj ModuleAnalysis {
         host = active_host();
         _annex_of_base = host.path_facts(self.path).is_annex
             and host.base_file(str(self.path)) is not None;
+        _unasked = self.options.skip_analysis
+            or (self.program.internal and host.import_in_flight(self.path));
         _analyze = self.full_head
             and not _is_decl_stub
             and not _annex_of_base
-            and (
-                self.native
-                or not (
-                    self.options.skip_analysis
-                    or (self.program.internal and host.import_in_flight(self.path))
-                )
-            );
+            and (candidate or not _unasked);
+        self.placement_only = _analyze and _unasked and not self.native;
 
         if _analyze
             and not product_ready(
@@ -136,6 +141,12 @@ obj ModuleAnalysis {
             and self.program.count_module_errors(self.module_path) > 0 {
             self.blocked = True;
         }
+        if _analyze and not self.blocked {
+            import from jaclang.compiler.placement.placement_solver { placement_work }
+            placement_work(self.program).drain(self.program);
+        }
+        self.native = self.module is not None
+            and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
     }
 
     def run_phase(phase: CompilationPhase) {
@@ -187,9 +198,10 @@ def cancelled(options: CompileOptions) -> bool {
     return options.cancel_token is not None and options.cancel_token.is_set();
 }
 
-def analyze_module(
-    program: JacProgram, path: str, options: CompileOptions, source: str | None = None
+def run_analysis_phases(
+    program: JacProgram, path: str, options: CompileOptions, source: str | None
 ) -> ModuleAnalysis {
+    program.analysis.capability_notes.pop(os.path.realpath(path), None);
     task = ModuleAnalysis(program, path, options, source);
     for phase in ANALYSIS_PHASES {
         if cancelled(options) {
@@ -201,6 +213,86 @@ def analyze_module(
         } finally {
             record_phase(program, phase, started);
         }
+    }
+    return task;
+}
+
+def keep_hub_order(program: JacProgram, order: list[str]) {
+    hub = program.mod.hub;
+    held = [
+        key
+        for key in order
+        if key in hub
+    ];
+    if list(hub.keys())[:len(held)] == held {
+        return;
+    }
+    entries = dict(hub);
+    hub.clear();
+    for key in held {
+        hub[key] = entries.pop(key);
+    }
+    hub.update(entries);
+}
+
+def carry_comptime_deps(judged: (uni.Module | None), placed: (uni.Module | None)) {
+    if judged is None or placed is None or judged is placed {
+        return;
+    }
+    for dep in judged.ct_file_deps {
+        if dep not in placed.ct_file_deps {
+            placed.ct_file_deps.append(dep);
+        }
+    }
+    for dep in judged.ct_body_deps {
+        if dep not in placed.ct_body_deps {
+            placed.ct_body_deps.append(dep);
+        }
+    }
+    for row in judged.ct_def_deps {
+        if row not in placed.ct_def_deps {
+            placed.ct_def_deps.append(row);
+        }
+    }
+}
+
+def analyze_module(
+    program: JacProgram, path: str, options: CompileOptions, source: str | None = None
+) -> ModuleAnalysis {
+    import from jaclang.compiler.placement.placement_facts { server_plan }
+    errors_mark = len(program.errors_had);
+    warnings_mark = len(program.warnings_had);
+    task = run_analysis_phases(program, path, options, source);
+    plan = task.module.gen.placement_plan
+        if task.module is not None and not task.parse_failed
+        else "";
+    failed = len(program.errors_had) > errors_mark;
+    if failed and task.placement_only and not cancelled(options) {
+        del program.errors_had[errors_mark:];
+        plan = server_plan(task.module);
+    } elif not plan or failed or cancelled(options) {
+        return task;
+    }
+    host = active_host();
+    host.record_placement_plan(path, plan);
+    judged = task.module;
+    order = list(program.mod.hub.keys());
+    try {
+        del program.warnings_had[warnings_mark:];
+        program.invalidate_module(os.path.realpath(path));
+        task = run_analysis_phases(program, path, options, source);
+    } finally {
+        host.record_placement_plan(path, "");
+    }
+    keep_hub_order(program, order);
+    carry_comptime_deps(judged, task.module);
+    if task.module is not None
+        and not task.parse_failed
+        and not task.module.gen.placement_mode {
+        raise RuntimeError(
+            f"the placement plan for {path} was not applied to its second "
+            f"analysis ({plan})"
+        );
     }
     return task;
 }

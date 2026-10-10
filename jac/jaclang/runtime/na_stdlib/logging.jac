@@ -1,6 +1,6 @@
 import sys;
 import time;
-import from _logging_native {
+import from ._logging_native {
     log_strftime,
     log_fopen,
     log_fputs,
@@ -605,13 +605,13 @@ def:pub exception(msg: str) {
 }
 
 
-def:pub log_msg(level: int, msg: str) {
+def log_msg(level: int, msg: str) {
     _ensure_root();
     _ROOT.log(level, msg);
 }
 
 
-def:pub shutdown_handlers {
+def shutdown_handlers {
     for h in _ROOT.handlers {
         h.flush();
         h.close();

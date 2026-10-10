@@ -125,8 +125,8 @@ def _cycle_gen[C: Iterable](src: C) -> Iterator[any] {
     }
 }
 
-def:pub repeat(x: any, times: int | None = None) -> Iterator[any] {
-    return _repeat_gen(x, times);
+def:pub repeat(object: any, times: int | None = None) -> Iterator[any] {
+    return _repeat_gen(object, times);
 }
 
 def _repeat_gen(x: any, times: int | None) -> Iterator[any] {
@@ -233,7 +233,7 @@ def:pub chain(*iterables: any) -> Iterator[any] {
     }
 }
 
-def:pub chain_from_iterable[C: Iterable](iterable: C) -> Iterator[any] {
+def chain_from_iterable[C: Iterable](iterable: C) -> Iterator[any] {
     return _chain_fi_gen(iterable);
 }
 

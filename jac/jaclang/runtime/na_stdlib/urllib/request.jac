@@ -1,16 +1,6 @@
 import from socket { create_connection }
 import from ssl { create_default_context }
-
-
-obj:pub HTTPResponse {
-    has status: int,
-        body_length: int,
-        reason: str,
-        url: str,
-        body: bytes,
-        header_names: list[str],
-        header_values: list[str];
-}
+import from ..http.client { HTTPResponse }
 
 
 obj _Url {
@@ -135,25 +125,12 @@ def _parse_response(raw: bytes, url: str) -> HTTPResponse {
     }
     return HTTPResponse(
         status=status,
-        body_length=len(body),
         reason=reason,
-        url=url,
-        body=body,
-        header_names=names,
-        header_values=values
+        _url=url,
+        _body=body,
+        _header_names=names,
+        _header_values=values
     );
-}
-
-
-def _header_value(resp: HTTPResponse, name: str) -> str {
-    i: int = 0;
-    while i < len(resp.header_names) {
-        if resp.header_names[i] == name {
-            return resp.header_values[i];
-        }
-        i += 1;
-    }
-    return "";
 }
 
 
@@ -177,8 +154,8 @@ def:pub urlopen(url: str) -> HTTPResponse {
         raw = _fetch_raw(pu);
         resp = _parse_response(raw, cur);
         if resp.status >= 300 and resp.status < 400 {
-            loc = _header_value(resp, "location");
-            if len(loc) > 0 {
+            loc = resp.getheader("location", "");
+            if loc is not None and len(loc) > 0 {
                 cur = _resolve_redirect(pu, loc);
                 redirects += 1;
                 continue;

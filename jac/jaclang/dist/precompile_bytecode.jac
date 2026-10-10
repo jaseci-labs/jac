@@ -630,6 +630,16 @@ def precompile_unit_context(
     }
 }
 
+def raised_at(err: BaseException) -> str {
+    import traceback;
+    frames = traceback.extract_tb(err.__traceback__);
+    if not frames {
+        return "";
+    }
+    last = frames[-1];
+    return f" (raised in {last.name} at {os.path.basename(last.filename)}:{last.lineno})";
+}
+
 def precompile_unit(
     jac_path: str,
     pkg_root: str,
@@ -1995,7 +2005,7 @@ def run_precompile(
             return {
                 "status": "failed",
                 "rel": str(rel),
-                "message": f"FAIL: {rel} - {e}"
+                "message": f"FAIL: {rel} - {type(e).__name__}: {e}{raised_at(e)}"
             };
         }
     }

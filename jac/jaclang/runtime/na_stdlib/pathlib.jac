@@ -1,6 +1,6 @@
 import os;
-import from _directory_native { directory_names }
-import from _file_native { read_file_bytes }
+import from ._directory_native { directory_names }
+import from ._file_native { read_file_bytes }
 
 def _root_of(p: str) -> str {
     if p.startswith("//") and not p.startswith("///") {

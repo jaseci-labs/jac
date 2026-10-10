@@ -1,4 +1,4 @@
-import from _file_native {
+import from ._file_native {
     close_stream,
     open_stream,
     read_stream,

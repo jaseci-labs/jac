@@ -3,8 +3,8 @@ import from c { def access(path: str, mode: i32) -> i32;  }
 import from c { def unlink(path: str) -> i32;  }
 import from c { def rmdir(path: str) -> i32;  }
 import from c { def rename(oldp: str, newp: str) -> i32;  }
-import from _directory_native { try_directory_names }
-import from _errno_native { errno_message }
+import from ._directory_native { try_directory_names }
+import from ._errno_native { errno_message }
 
 
 def:pub which(cmd: str) -> (str | None) {

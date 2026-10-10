@@ -148,6 +148,6 @@ def _format(value: any) -> str {
 }
 
 
-def:pub pformat(value: any) -> str {
-    return _format(value);
+def:pub pformat(object: any) -> str {
+    return _format(object);
 }

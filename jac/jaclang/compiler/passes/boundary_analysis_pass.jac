@@ -9,6 +9,7 @@ import from jaclang.compiler.frontend.unitree {
     Assignment,
     AstSymbolNode,
     AtomTrailer,
+    ContextAwareNode,
     BinaryExpr,
     Bool,
     BuiltinType,
@@ -113,6 +114,7 @@ walker BoundaryAnalysisPass(TreePass) {
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
     can finish with exit;
     def _record_surface(manifest: InteropManifest) -> None;
+    def _export_mixed_native(manifest: InteropManifest) -> None;
     def _route_facts(
         item: (Ability | Archetype)
     ) -> tuple[(dict[str, any] | None), bool, bool];

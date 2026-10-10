@@ -30,6 +30,8 @@ import from jaclang.compiler.driver.module_analysis {
     ModuleAnalysis,
     analyze_module,
     cancelled,
+    carry_comptime_deps,
+    keep_hub_order,
     record_phase
 }
 
@@ -319,17 +321,22 @@ def module_pipeline -> list[CompilationPhase] {
     return phases;
 }
 
-def compile_task(
-    session: SessionHooks,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: str | None = None
+def analyze_for_compile(
+    program: JacProgram, path: str, options: CompileOptions, source: str | None
 ) -> ModuleAnalysis {
     analysis = active_host().native_analyze(program, path, options, source);
     if analysis is None {
         analysis = analyze_module(program, path, options, source);
     }
+    return analysis;
+}
+
+def run_codegen_phases(
+    session: SessionHooks,
+    program: JacProgram,
+    analysis: ModuleAnalysis,
+    options: CompileOptions
+) {
     task = ModuleCompilation(session, analysis);
     for phase in CODEGEN_PHASES {
         if cancelled(options) {
@@ -342,7 +349,129 @@ def compile_task(
             record_phase(program, phase, started);
         }
     }
+}
+
+def native_refusal(
+    program: JacProgram,
+    analysis: ModuleAnalysis,
+    errors_mark: int,
+    analyzed: bool,
+    late: bool = False
+) -> (tuple[str, str, str] | None) {
+    import from jaclang.compiler.placement.placement_facts { native_placement_soft }
+    module = analysis.module;
+    if analysis.parse_failed
+        or module is None
+        or not module.gen.placement_mode
+        or not native_placement_soft(program, module) {
+        return None;
+    }
+    if analyzed and len(program.errors_had) > errors_mark {
+        first = program.errors_had[errors_mark];
+        return (
+            first.code.code if first.code is not None else "",
+            first.pretty_print().split('\n')[0],
+            "analysis"
+        );
+    }
+    gen = module.gen;
+    if gen is not None and gen.native_refusal {
+        return (
+            gen.native_refusal_code,
+            gen.native_refusal,
+            "late" if late else "static"
+        );
+    }
+    return None;
+}
+
+def place_on_server(
+    program: JacProgram,
+    path: str,
+    module: uni.Module,
+    refusal: tuple[str, str, str],
+    errors_mark: int,
+    warnings_mark: int
+) {
+    import from jaclang.compiler.driver.session_compile { drop_native_bindings }
+    import from jaclang.compiler.placement.placement_facts { server_plan }
+    import from jaclang.compiler.placement.placement_solver { invalidate_importers_es }
+    (code, detail, stage) = refusal;
+    resolved = os.path.realpath(path);
+    host = active_host();
+    host.record_native_coverage(resolved, 'demoted', code, f"[{stage}] {detail}");
+    host.record_placement_plan(path, server_plan(module));
+    del program.errors_had[errors_mark:];
+    del program.warnings_had[warnings_mark:];
+    program.invalidate_module(resolved);
+    for stale in invalidate_importers_es(program, resolved) {
+        drop_native_bindings(stale, resolved);
+    }
+    host.note(
+        f"note: {path} preferred native but did not lower; "
+        f"compiled in the server codespace ({detail})",
+        "dim"
+    );
+}
+
+def compile_task(
+    session: SessionHooks,
+    program: JacProgram,
+    path: str,
+    options: CompileOptions,
+    source: str | None = None
+) -> ModuleAnalysis {
+    errors_mark = len(program.errors_had);
+    warnings_mark = len(program.warnings_had);
+    analysis = analyze_for_compile(program, path, options, source);
+    refusal = native_refusal(program, analysis, errors_mark, True);
+    if refusal is None {
+        run_codegen_phases(session, program, analysis, options);
+        refusal = native_refusal(
+            program, analysis, errors_mark, analysis.blocked, late=True
+        );
+    }
+    if refusal is not None {
+        refused = analysis.module;
+        order = list(program.mod.hub.keys());
+        place_on_server(program, path, refused, refusal, errors_mark, warnings_mark);
+        try {
+            analysis = analyze_for_compile(program, path, options, source);
+        } finally {
+            active_host().record_placement_plan(path, "");
+        }
+        keep_hub_order(program, order);
+        carry_comptime_deps(refused, analysis.module);
+        run_codegen_phases(session, program, analysis, options);
+        again = native_refusal(program, analysis, len(program.errors_had), False);
+        if again is not None {
+            report_native_refusal(program, analysis.module, again[1]);
+        }
+    }
     return analysis;
+}
+
+def report_native_refusal(program: JacProgram, mod: uni.Module, detail: str) {
+    import from jaclang.compiler.driver.pass_driver { deliver_alerts }
+    import from jaclang.compiler.frontend.diagnostics { E5092 }
+    import from jaclang.compiler.passes.context { Alert }
+    mod_path = mod.loc.mod_path if mod?.loc else '';
+    deliver_alerts(
+        [
+            Alert(
+                msg=E5092.format_message(
+                    kind='module', name=os.path.basename(mod_path)
+                ),
+                loc=mod.loc.span(),
+                from_pass=JcirGenPass,
+                code=E5092,
+                help_text=f"The module is declared native and cannot run in the "
+                f"server codespace, but it did not lower: {detail}"
+            )
+        ],
+        [],
+        program
+    );
 }
 
 def compile_module(

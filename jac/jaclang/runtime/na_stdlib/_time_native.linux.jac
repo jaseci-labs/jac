@@ -1,7 +1,7 @@
 import from c { def clock_gettime(clk: i32, ts: int) -> i32;  }
 import from c { def clock_nanosleep(clk: i32, flags: i32, req: int, rem: int) -> i32;  }
-import from _errno_native { EINTR, last_errno, raise_errno }
-import from _time_common { NS_PER_SEC }
+import from ._errno_native { EINTR, last_errno, raise_errno }
+import from ._time_common { NS_PER_SEC }
 
 glob CLK_REALTIME: int = 0,
      CLK_MONOTONIC: int = 1,

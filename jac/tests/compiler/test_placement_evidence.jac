@@ -242,7 +242,7 @@ test "unpinned rootless archetypes pull into client closures" {
 # so it no longer blocks native placement; inline ::py:: remains the
 # statically-known native-incompatible construct.
 test "solver does not propose native for capability-violating modules" {
-    import from jaclang.compiler.placement.placement_solver { native_default_verdict }
+    import from jaclang.compiler.passes.placement_pass { build_native_legality }
     d = _proj(
         {
             "pymod.jac": (
@@ -258,8 +258,9 @@ test "solver does not propose native for capability-violating modules" {
     try {
         prog = JacProgram();
         mod = prog.compile(os.path.join(d, "pymod.jac"), no_cgen=True);
-        (ok, reason) = native_default_verdict(mod);
-        assert not ok , "capability-violating module must not prefer native";
+        assert mod.decided_codespace != 'native' , "capability-violating module must not be placed native";
+        legality = build_native_legality(mod, prog);
+        assert legality.blockers , "the refusal must be a recorded legality fact";
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }

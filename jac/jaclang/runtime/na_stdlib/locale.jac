@@ -1,4 +1,4 @@
-import from _locale_native {
+import from ._locale_native {
     loc_categories,
     loc_query,
     loc_set,
@@ -8,7 +8,7 @@ import from _locale_native {
     loc_strcoll,
     loc_strxfrm
 }
-import from _locale_tables { _load_alias, _load_encalias }
+import from ._locale_tables { _load_alias, _load_encalias }
 import os;
 
 glob:pub CHAR_MAX: int = 127;
@@ -270,7 +270,7 @@ def:pub normalize(localename: str) -> str {
 }
 
 
-def:pub _parse_localename(localename: str) -> tuple[str | None, str | None] {
+def _parse_localename(localename: str) -> tuple[str | None, str | None] {
     code: str = normalize(localename);
     at: int = code.find("@");
     if at >= 0 {
@@ -299,7 +299,7 @@ def:pub _parse_localename(localename: str) -> tuple[str | None, str | None] {
 }
 
 
-def:pub _build_localename(language: str = "", encoding: str = "") -> str {
+def _build_localename(language: str = "", encoding: str = "") -> str {
     lang: str = language;
     if lang == "" {
         lang = "C";
@@ -438,17 +438,15 @@ def _strip_padding(s: str, amount: int) -> str {
 }
 
 
-def:pub localize(
-    formatted: str, grouping: bool = False, monetary: bool = False
-) -> str {
+def:pub localize(string: str, grouping: bool = False, monetary: bool = False) -> str {
     dp_idx: int = 0;
     if monetary {
         dp_idx = 5;
     }
-    if "." in formatted {
-        cut: int = formatted.find(".");
-        head: str = formatted[0:cut];
-        tail: str = formatted[cut + 1:];
+    if "." in string {
+        cut: int = string.find(".");
+        head: str = string[0:cut];
+        tail: str = string[cut + 1:];
         seps: int = 0;
         if grouping {
             grouped: tuple[str, int] = _group(head, monetary);
@@ -462,7 +460,7 @@ def:pub localize(
         return out;
     }
     seps = 0;
-    out = formatted;
+    out = string;
     if grouping {
         grouped = _group(out, monetary);
         out = grouped[0];

@@ -1,5 +1,5 @@
 import os;
-import from _user_home { user_home }
+import from .._user_home { user_home }
 
 
 glob sep: str = "/",
@@ -15,25 +15,25 @@ def:pub isfile(path: str) -> bool {
     return os.path.isfile(path);
 }
 
-def:pub isdir(path: str) -> bool {
-    return os.path.isdir(path);
+def:pub isdir(s: str) -> bool {
+    return os.path.isdir(s);
 }
 
-def:pub realpath(path: str) -> str {
-    return os.path.realpath(path);
+def:pub realpath(filename: str) -> str {
+    return os.path.realpath(filename);
 }
 
-def:pub getsize(path: str) -> int {
-    return os.path.getsize(path);
+def:pub getsize(filename: str) -> int {
+    return os.path.getsize(filename);
 }
 
-def:pub getmtime(path: str) -> float {
-    return os.path.getmtime(path);
+def:pub getmtime(filename: str) -> float {
+    return os.path.getmtime(filename);
 }
 
 
-def:pub isabs(p: str) -> bool {
-    return p.startswith("/");
+def:pub isabs(s: str) -> bool {
+    return s.startswith("/");
 }
 
 
@@ -136,21 +136,21 @@ def:pub join(
 }
 
 
-def:pub abspath(p: str) -> str {
-    if not isabs(p) {
-        p = join(os.getcwd(), p);
+def:pub abspath(path: str) -> str {
+    if not isabs(path) {
+        path = join(os.getcwd(), path);
     }
-    return normpath(p);
+    return normpath(path);
 }
 
 
-def:pub normcase(p: str) -> str {
-    return p;
+def:pub normcase(s: str) -> str {
+    return s;
 }
 
 
-def:pub relpath(p: str, start: str = ".") -> str {
-    if p == "" {
+def:pub relpath(path: str, start: str = ".") -> str {
+    if path == "" {
         raise ValueError("no path specified");
     }
     start_list: list[str] = [];
@@ -160,7 +160,7 @@ def:pub relpath(p: str, start: str = ".") -> str {
         }
     }
     path_list: list[str] = [];
-    for seg in abspath(p).split(sep) {
+    for seg in abspath(path).split(sep) {
         if seg != "" {
             path_list.append(seg);
         }
@@ -190,19 +190,19 @@ def:pub relpath(p: str, start: str = ".") -> str {
 }
 
 
-def:pub normpath(p: str) -> str {
-    if p == "" {
+def:pub normpath(path: str) -> str {
+    if path == "" {
         return ".";
     }
     initial_slashes: int = 0;
-    if p.startswith("/") {
+    if path.startswith("/") {
         initial_slashes = 1;
 
-        if p.startswith("//") and not p.startswith("///") {
+        if path.startswith("//") and not path.startswith("///") {
             initial_slashes = 2;
         }
     }
-    comps: list[str] = p.split("/");
+    comps: list[str] = path.split("/");
     new_comps: list[str] = [];
     for comp in comps {
         if comp == "" or comp == "." {

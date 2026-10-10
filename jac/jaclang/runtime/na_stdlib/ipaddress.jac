@@ -1675,8 +1675,8 @@ obj:pub IPv6Address {
     has packed: bytes { getter; }
     has ipv4_mapped: (IPv4Address | None) { getter; }
     has sixtofour: (IPv4Address | None) { getter; }
-    has teredo_server: (IPv4Address | None) { getter; }
-    has teredo_client: (IPv4Address | None) { getter; }
+    has _teredo_server: (IPv4Address | None) { getter; }
+    has _teredo_client: (IPv4Address | None) { getter; }
     has scope_id: (str | None) { getter; }
     has is_multicast: bool { getter; }
     has is_reserved: bool { getter; }
@@ -1807,7 +1807,7 @@ obj:pub IPv6Address {
         return s;
     }
 
-    def is_v4mapped -> bool {
+    def _is_v4mapped -> bool {
         return _v6_is_v4mapped(self._hi, self._lo);
     }
 }
@@ -1875,7 +1875,7 @@ impl IPv6Address.sixtofour.getter -> IPv4Address | None {
 }
 
 
-impl IPv6Address.teredo_server.getter -> IPv4Address | None {
+impl IPv6Address._teredo_server.getter -> IPv4Address | None {
     if ((self._hi >> 32) & 4294967295) != 536936448 {
         return None;
     }
@@ -1883,7 +1883,7 @@ impl IPv6Address.teredo_server.getter -> IPv4Address | None {
 }
 
 
-impl IPv6Address.teredo_client.getter -> IPv4Address | None {
+impl IPv6Address._teredo_client.getter -> IPv4Address | None {
     if ((self._hi >> 32) & 4294967295) != 536936448 {
         return None;
     }

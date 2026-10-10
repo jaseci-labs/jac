@@ -61,7 +61,8 @@ glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
          "project_facts",
          "workspace",
          "app_for_path",
-         "lint_settings"
+         "lint_settings",
+         "placement_plan"
      ),
      THIRD_PARTY_DIRS: tuple[str, ...] = ("/site-packages/", "/dist-packages/"),
      _TOTALS: list[HostCensus] = [],
@@ -365,8 +366,6 @@ obj KernelSnapshot(HostAsker) {
             learner.client_stub_globals();
         } elif method == "check_settings" {
             learner.check_settings(key);
-        } elif method == "native_verdict" {
-            learner.native_verdict(key, self.program);
         } elif method == "is_untyped_third_party" {
             learner.is_untyped_third_party(key);
         } elif method == "sibling_declaration" {
@@ -417,6 +416,8 @@ obj KernelSnapshot(HostAsker) {
             learner.app_for_path(path);
         } elif method == "lint_settings" {
             learner.lint_settings(path);
+        } elif method == "placement_plan" {
+            learner.placement_plan(path);
         }
     }
 

@@ -338,8 +338,11 @@ impl TypeCheckPass.exit_compare_expr with CompareExpr exit {
 impl TypeCheckPass._diag_erased_membership(
     nd: CompareExpr, hay: Expr, op_text: str
 ) -> None {
-    if not self.evaluator._in_native_context()
-        or not self.evaluator._is_strict_site(nd) {
+    if not self.evaluator._is_strict_site(nd) {
+        return;
+    }
+    native = self.evaluator._in_native_context();
+    if not native and not self.evaluator.neutral_site(nd) {
         return;
     }
     hay_t = self.evaluator.get_type_of_expression(hay);
@@ -348,12 +351,14 @@ impl TypeCheckPass._diag_erased_membership(
         or isinstance(hay_t, UnknownType)
         or hay_t.is_any_type()
         or hay_t.is_any_instance() {
-        self.ctx.emit(
-            E1124,
-            node_override=hay,
-            op=op_text,
-            type=str(hay_t) if hay_t is not None else "<unknown>"
-        );
+        shown = str(hay_t) if hay_t is not None else "<unknown>";
+        if native {
+            self.ctx.emit(E1124, node_override=hay, op=op_text, type=shown);
+        } else {
+            self.evaluator.note_native(
+                hay, "E1124", E1124.format_message(op=op_text, type=shown)
+            );
+        }
     }
 }
 

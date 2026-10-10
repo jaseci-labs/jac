@@ -5,7 +5,6 @@ import from jaclang.compiler.frontend.host {
     CheckSettings,
     HostPlatform,
     LintSettings,
-    NativeVerdict,
     ProjectDefaults,
     ProjectFacts
 }
@@ -229,8 +228,8 @@ obj KernelInputs {
         app_of: dict[str, str] = {},
         project_root_of: dict[str, str] = {},
         lint_of: dict[str, LintSettings] = {},
-        verdicts: dict[str, (NativeVerdict | None)] = {},
         untyped: dict[str, bool] = {},
+        plans: dict[str, str] = {},
         siblings: dict[str, str] = {},
         client_pulls: dict[str, str] = {},
         native_ifaces: dict[str, str] = {},
@@ -559,27 +558,6 @@ def workspace_from_dict(raw: dict[str, any]) -> WorkspaceSpec {
     );
 }
 
-def verdict_to_dict(verdict: (NativeVerdict | None)) -> (dict[str, any] | None) {
-    if verdict is None {
-        return None;
-    }
-    return {
-        "demoted": verdict.demoted,
-        "code": verdict.code,
-        "detail": verdict.detail,
-        "deps": [list(row) for row in verdict.deps]
-    };
-}
-
-def verdict_from_dict(raw: dict[str, any]) -> NativeVerdict {
-    return NativeVerdict(
-        demoted=bool(raw.get("demoted", False)),
-        code=str(raw.get("code", "")),
-        detail=str(raw.get("detail", "")),
-        deps=json_str_pairs(raw.get("deps"))
-    );
-}
-
 def layout_to_dict(layout: LayoutTables) -> dict[str, any] {
     return {
         "jac_suffix": layout.jac_suffix,
@@ -781,11 +759,8 @@ def answers_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "lint_of": {
             path: lint_to_dict(lint) for (path, lint) in inputs.lint_of.items()
         },
-        "verdicts": {
-            path: verdict_to_dict(verdict)
-            for (path, verdict) in inputs.verdicts.items()
-        },
         "untyped": dict(inputs.untyped),
+        "plans": dict(inputs.plans),
         "siblings": dict(inputs.siblings),
         "client_pulls": dict(inputs.client_pulls),
         "native_ifaces": dict(inputs.native_ifaces),
@@ -863,6 +838,7 @@ def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
     merge_str_map(inputs.app_of, raw.get("app_of"));
     merge_str_map(inputs.project_root_of, raw.get("project_root_of"));
     merge_bool_map(inputs.untyped, raw.get("untyped"));
+    merge_str_map(inputs.plans, raw.get("plans"));
     merge_str_map(inputs.siblings, raw.get("siblings"));
     merge_str_map(inputs.client_pulls, raw.get("client_pulls"));
     merge_str_map(inputs.native_ifaces, raw.get("native_ifaces"));
@@ -889,11 +865,6 @@ def merge_answers(inputs: KernelInputs, raw: dict[str, any]) {
     }
     for (path, lint) in json_map(raw.get("lint_of")).items() {
         inputs.lint_of[path] = lint_from_dict(json_map(lint));
-    }
-    for (path, verdict) in json_map(raw.get("verdicts")).items() {
-        inputs.verdicts[path] = verdict_from_dict(json_map(verdict))
-            if verdict is not None
-            else None;
     }
     for r in json_maps(raw.get("imports")) {
         inputs.imports.append(

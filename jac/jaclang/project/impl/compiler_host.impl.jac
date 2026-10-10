@@ -368,31 +368,11 @@ impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     return program._natives;
 }
 
-impl ProjectHost.native_verdict(
-    path: str, program: (JacProgram | None) = None
-) -> (NativeVerdict | None) {
-    try {
-        if program is not None {
-            return program.native_units().verdict_for(path);
-        }
-        import from jaclang.compiler.driver.nativecache { read_native_verdict }
-        return read_native_verdict(path);
-    } except Exception {
-        return None;
-    }
-}
-
 impl ProjectHost.record_native_coverage(
     path: str, outcome: str, code: str = "", detail: str = ""
 ) {
     import from jaclang.compiler.driver.na_coverage { na_coverage_record }
     na_coverage_record(path, outcome, code, detail);
-}
-
-impl ProjectHost.record_native_verdict(
-    program: JacProgram, path: str, code: str, detail: str
-) {
-    program.native_units().record_verdict(path, code, detail);
 }
 
 impl ProjectHost.native_analyze(
@@ -664,6 +644,16 @@ impl ProjectHost.run_module_pipeline(
 impl ProjectHost.native_session_active(program: JacProgram) -> bool {
     natives = program._natives;
     return natives is not None and natives.session is not None;
+}
+
+impl ProjectHost.placement_plan(path: str) -> str {
+    import from jaclang.compiler.placement.placement_facts { held_plan }
+    return held_plan(path);
+}
+
+impl ProjectHost.record_placement_plan(path: str, plan: str) {
+    import from jaclang.compiler.placement.placement_facts { hold_plan }
+    hold_plan(path, plan);
 }
 
 impl ProjectHost.internal_program(program: JacProgram) -> (JacProgram | None) {

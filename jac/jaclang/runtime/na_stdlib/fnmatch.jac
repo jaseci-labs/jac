@@ -98,7 +98,7 @@ def _match(name: str, pat: str) -> bool {
     return j == m;
 }
 
-def:pub normcase(s: str) -> str {
+def normcase(s: str) -> str {
     return s;
 }
 

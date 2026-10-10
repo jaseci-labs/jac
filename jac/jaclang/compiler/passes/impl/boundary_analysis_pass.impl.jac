@@ -1376,10 +1376,10 @@ impl BoundaryAnalysisPass.finish with exit {
         return;
     }
     import from jaclang.compiler.frontend.diagnostics { E5093 }
-    import from jaclang.runtime.scalars { sized_scalar_names }
+    import from jaclang.compiler.frontend.diagnostics { E5115 }
     manifest = self.module.gen.interop_manifest;
+    self._export_mixed_native(manifest);
 
-    ctypes_wire: set[str] = {'int', 'float', 'bool', 'str'} | set(sized_scalar_names());
     for binding in manifest.bindings.values() {
         crosses_ctypes = (
             binding.source_context == InteropContext.SERVER
@@ -1392,27 +1392,44 @@ impl BoundaryAnalysisPass.finish with exit {
         err_node = binding.ast_node
             if isinstance(binding.ast_node, UniNode)
             else self.module;
-        for (i, pt) in enumerate(binding.param_types) {
-            if pt not in ctypes_wire {
-                pname = binding.param_names[i]
-                    if i < len(binding.param_names)
-                    else str(i);
-                self.ctx.emit(
-                    E5093,
-                    node_override=err_node,
-                    type=pt,
-                    what=f"parameter '{pname}'",
-                    name=binding.name
-                );
-            }
-        }
-        if binding.ret_type not in ctypes_wire and binding.ret_type != 'None' {
+        import from jaclang.compiler.boundary_rules { signature_crossings }
+        for (what, spelled, _why) in signature_crossings(
+            list(binding.param_names),
+            list(binding.param_types),
+            binding.ret_type,
+            'native',
+            'server'
+        ) {
             self.ctx.emit(
                 E5093,
                 node_override=err_node,
-                type=binding.ret_type,
-                what="the return",
+                type=spelled,
+                what=what,
                 name=binding.name
+            );
+        }
+    }
+
+    for binding in manifest.server_exports_to_client {
+        exported = binding.ast_node;
+        unsent: list[tuple[str, str, str]] = [];
+        if isinstance(exported, (Ability, Archetype)) {
+            import from jaclang.compiler.boundary_rules {
+                archetype_refusals,
+                signature_refusals
+            }
+            unsent = signature_refusals(exported, 'client', 'server')
+                if isinstance(exported, Ability)
+                else archetype_refusals(exported, 'client', 'server');
+        }
+        for (what, spelled, why) in unsent {
+            self.ctx.emit(
+                E5115,
+                node_override=exported,
+                type=spelled,
+                what=what,
+                name=binding.name,
+                reason=why
             );
         }
     }
@@ -1618,5 +1635,42 @@ impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
         }
         import from jaclang.compiler.frontend.diagnostics { E5112 }
         self.ctx.emit(E5112, node_override=here, name=scope.sym_name);
+    }
+}
+
+impl BoundaryAnalysisPass._export_mixed_native(manifest: InteropManifest) -> None {
+    contexts: set[CodeContext] = set();
+    for stmt in self.module.body {
+        if isinstance(stmt, ContextAwareNode) and not isinstance(stmt, Import) {
+            contexts.add(stmt.code_context);
+        }
+    }
+    if CodeContext.NATIVE not in contexts or CodeContext.SERVER not in contexts {
+        return;
+    }
+    import from jaclang.compiler.boundary_rules { ability_crossing }
+    import from jaclang.compiler.capability_notes { TARGET_NATIVE, TARGET_SERVER }
+    for stmt in self.module.body {
+        if not isinstance(stmt, Ability)
+            or stmt.code_context != CodeContext.NATIVE
+            or not stmt.sym_name
+            or ability_crossing(stmt, TARGET_SERVER, TARGET_NATIVE) is not None {
+            continue;
+        }
+        name = stmt.sym_name;
+        if name in manifest.bindings {
+            manifest.bindings[name].callers.add(InteropContext.SERVER);
+            continue;
+        }
+        (ret_type, param_types, param_names) = self._signature_of_decl(stmt);
+        manifest.bindings[name] = InteropBinding(
+            name=name,
+            source_context=InteropContext.NATIVE,
+            callers={InteropContext.SERVER},
+            ret_type=ret_type,
+            param_types=param_types,
+            param_names=param_names,
+            ast_node=stmt
+        );
     }
 }

@@ -1,5 +1,5 @@
-import from _hex { to_hex }
-import from _hashlib_native {
+import from ._hex { to_hex }
+import from ._hashlib_native {
     evp_md_for,
     digest_size_for,
     block_size_for,
@@ -12,7 +12,7 @@ import from _hashlib_native {
 }
 
 
-obj:pub Hash {
+obj Hash {
     has _ctx: int,
         digest_size: int,
         block_size: int,

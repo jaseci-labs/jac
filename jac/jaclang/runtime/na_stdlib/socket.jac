@@ -1,4 +1,4 @@
-import from _socket_native {
+import from ._socket_native {
     resolve_all,
     gai_str,
     sock_open,
@@ -7,8 +7,8 @@ import from _socket_native {
     sock_recv,
     sock_close
 }
-import from _socket_abi { IPV6_FAMILY, address_family }
-import from _errno_native { errno_message }
+import from ._socket_abi { IPV6_FAMILY, address_family }
+import from ._errno_native { errno_message }
 
 glob AF_UNSPEC: int = 0,
      AF_INET: int = 2,
@@ -27,12 +27,12 @@ glob SHUT_RD: int = 0,
 
 obj:pub socket {
     has family: int = 2,
-        socktype: int = 1,
+        _socktype: int = 1,
         proto: int = 0,
         _fd: int = -1;
 
     def postinit {
-        self._fd = sock_open(self.family, self.socktype, self.proto);
+        self._fd = sock_open(self.family, self._socktype, self.proto);
     }
 
     def fileno -> int {
@@ -115,7 +115,7 @@ def:pub create_connection(address: tuple[(str, int)]) -> socket {
     }
     for sa in addrs {
         fam = address_family(sa);
-        s = socket(family=fam, socktype=1, proto=0);
+        s = socket(family=fam, _socktype=1, proto=0);
         if s.fileno() < 0 {
             continue;
         }

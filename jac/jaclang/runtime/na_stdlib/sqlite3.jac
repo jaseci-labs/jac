@@ -1,4 +1,4 @@
-import from _sqlite3_native {
+import from ._sqlite3_native {
     sq3_open_v2,
     sq3_open_err,
     sq3_close,
@@ -1220,25 +1220,25 @@ def:pub connect(
 }
 
 
-def:pub complete_statement(sql: any) -> bool {
-    if not isinstance(sql, str) {
+def:pub complete_statement(statement: any) -> bool {
+    if not isinstance(statement, str) {
         raise TypeError(
             "complete_statement() argument 'statement' must be str, not "
-                + _type_name(sql)
+                + _type_name(statement)
         );
     }
-    return sq3_complete(sql) != 0;
+    return sq3_complete(statement) != 0;
 }
 
 
-def:pub Binary(b: any) -> bytes {
-    if isinstance(b, bytes) {
-        return b;
+def:pub Binary(`obj: any) -> bytes {
+    if isinstance(`obj, bytes) {
+        return `obj;
     }
-    if isinstance(b, bytearray) {
-        return bytes(b);
+    if isinstance(`obj, bytearray) {
+        return bytes(`obj);
     }
     raise TypeError(
-        "memoryview: a bytes-like object is required, not '" + _type_name(b) + "'"
+        "memoryview: a bytes-like object is required, not '" + _type_name(`obj) + "'"
     );
 }
