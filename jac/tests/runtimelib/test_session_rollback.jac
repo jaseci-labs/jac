@@ -34,6 +34,7 @@ import from jaclang.runtime.archetype { NodeAnchor }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.runtime.exceptions { WriteConflict }
 import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.server.request_scope { RequestScope }
 import from jaclang.server.session { MAX_RETRIES, RO_UNITS_ENV, Session }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
@@ -770,8 +771,16 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
 }
 
 
+"""Run one walker the way a transport does: inside a request scope of its
+own, on the database the process context uses."""
 def _spawn(exec_mgr: any, walker_cls: any) -> dict[str, any] {
-    return _as_any(asyncio.run(exec_mgr.spawn_walker(walker_cls, {}, "voter")));
+    ambient = JacRuntime.get_context();
+    async def scoped -> any {
+        with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
+            return await exec_mgr.spawn_walker(walker_cls, {}, "voter");
+        }
+    }
+    return _as_any(asyncio.run(scoped()));
 }
 
 

@@ -558,6 +558,7 @@ class JacRuntime(JacRuntimeInterface) {
     ) -> None;
 
     static def set_context(context: ExecutionContext) -> None;
+    static def request_context -> (ExecutionContext | None);
     static def push_request_context(context: ExecutionContext) -> any;
     static def reset_request_context(token: any) -> None;
     static def after_fork_in_child -> None;

@@ -2124,6 +2124,10 @@ impl JacRuntime.set_context(context: ExecutionContext) -> None {
     JacRuntime.exec_ctx = context;
 }
 
+impl JacRuntime.request_context -> (ExecutionContext | None) {
+    return _request_context.get();
+}
+
 impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
     return _request_context.set(context);
 }

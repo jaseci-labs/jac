@@ -20,7 +20,7 @@ import os;
 import struct;
 import sys;
 import tempfile;
-import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
+import from jaclang.compiler.backends.native.macho_linker { MachOLinker, MachOSection }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
 glob MACHO_TRIPLE = "arm64-apple-darwin",
@@ -588,5 +588,431 @@ test "linked images keep internal functions' names as local symbols" {
                 if i < 0x80000000
             );
         assert "_malloc" in imports , imports;
+    }
+}
+
+
+"""Emit a position-independent object, the way a dylib's units are emitted."""
+def emit_pic_object(ir_txt: str, triple: str) -> bytes {
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    mod = llvm.parse_assembly(ir_txt);
+    mod.verify();
+    tm = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, reloc="pic", codemodel="small"
+    );
+    return tm.emit_object(mod);
+}
+
+
+"""A linker holding one parsed object and nothing merged into it yet."""
+def parsed_linker(relobj: bytes) -> MachOLinker {
+    lk = MachOLinker(
+        obj_data=relobj, sections=[], symbols=[], relocations=[], needed_libs=[]
+    );
+    assert lk.parse_object() , "not a Mach-O relocatable object";
+    return lk;
+}
+
+
+"""The section a linker holds as `segname:name`."""
+def held_section(lk: MachOLinker, segname: str, name: str) -> MachOSection {
+    for sec in lk.sections {
+        if sec.segname == segname and sec.name == name {
+            return sec;
+        }
+    }
+    raise AssertionError(f"the linker holds no {segname}:{name} section");
+}
+
+
+"""Link the objects as an executable or a dylib; return the image's bytes."""
+def link_image(
+    objects: list[bytes], shared: bool, directory: str, exports: list[str]
+) -> bytes {
+    out = os.path.join(directory, "probe.dylib" if shared else "probe");
+    ok = MachOLinker.link(
+        objects=objects,
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        shared=shared,
+        export_symbols=exports,
+        soname="probe.dylib" if shared else ""
+    );
+    assert ok , f"MachOLinker.link(shared={shared}) returned False";
+    with open(out, "rb") as f {
+        return f.read();
+    }
+}
+
+
+"""Each output section of a linked image: its address, size and the log2
+alignment its header declares."""
+def output_sections(img: bytes) -> dict[str, tuple[int, int, int]] {
+    found: dict[str, tuple[int, int, int]] = {};
+    off = 32;
+    for _ in range(struct.unpack_from("<I", img, 16)[0]) {
+        (cmd, size) = struct.unpack_from("<II", img, off);
+        if cmd == 0x19 {
+            for i in range(struct.unpack_from("<I", img, off + 64)[0]) {
+                sec = off + 72 + 80 * i;
+                name = img[sec:sec + 16].split(b"\x00")[0].decode();
+                (addr, length) = struct.unpack_from("<QQ", img, sec + 32);
+                found[name] = (
+                    addr,
+                    length,
+                    struct.unpack_from("<I", img, sec + 52)[0]
+                );
+            }
+        }
+        off += size;
+    }
+    return found;
+}
+
+
+"""The address a linked image gives each named symbol."""
+def symbol_addresses(img: bytes) -> dict[str, int] {
+    (entries, _ranges, _indirect) = symbol_table(img);
+    found: dict[str, int] = {};
+    for (name, _n_type, _n_sect, value) in entries {
+        found[name] = value;
+    }
+    return found;
+}
+
+
+"""Whether this host can load and run an image built for the triple."""
+def host_runs(triple: str) -> bool {
+    if sys.platform != "darwin" {
+        return False;
+    }
+    import platform;
+    return (platform.machine() == "arm64") == (triple == MACHO_TRIPLE);
+}
+
+
+test "a merged section takes the strictest alignment of its parts" {
+    # The merge aligns each incoming part inside the merged section, which
+    # only reaches the final address if the section itself is placed on the
+    # strictest of those alignments.
+    lk = MachOLinker(
+        obj_data=b"",
+        sections=[
+            MachOSection(
+                name="__const",
+                segname="__TEXT",
+                addr=0,
+                size=8,
+                data=b"\x11" * 8,
+                align=8,
+                flags=0,
+                reserved1=0,
+                reserved2=0
+            )
+        ],
+        symbols=[],
+        relocations=[],
+        needed_libs=[]
+    );
+    for (fill, align) in [(b"\x22", 16), (b"\x33", 4)] {
+        lk._consolidate(
+            [
+                MachOSection(
+                    name="__const",
+                    segname="__TEXT",
+                    addr=0,
+                    size=align,
+                    data=fill * align,
+                    align=align,
+                    flags=0,
+                    reserved1=0,
+                    reserved2=0
+                )
+            ],
+            [],
+            []
+        );
+    }
+    assert len(lk.sections) == 1 , [sec.name for sec in lk.sections];
+    merged = lk.sections[0];
+    expected = b"\x11" * 8 + b"\x00" * 8 + b"\x22" * 16 + b"\x33" * 4;
+    assert merged.data == expected , merged.data;
+    assert merged.align == 16 , (
+        f"the merged section is placed on a {merged.align}-byte boundary but "
+        "holds a part its object aligned to 16: that part lands wherever the "
+        "first part's alignment happens to put it"
+    );
+}
+
+
+glob WIDE_LO = 0x0123456789ABCDEF,
+     WIDE_HI = 0x1032547698BADCFE;
+
+
+"""The first unit of the merge: eight bytes of another read-only section,
+then a `__TEXT,__const` that only needs 8-byte alignment."""
+def narrow_unit_ir(triple: str) -> str {
+    return (
+        f'target triple = "{triple}"\n'
+        + '@jac_lead = constant i64 1, section "__TEXT,__lead", align 8\n'
+        + '@jac_narrow = constant i64 2, section "__TEXT,__const", align 8\n'
+        + 'define i32 @main() {\nentry:\n  ret i32 0\n}\n'
+    );
+}
+
+
+"""A later unit whose `__TEXT,__const` holds a 16-byte vector, read back with
+the aligned load a vectorized loop uses for its constants."""
+def wide_unit_ir(triple: str) -> str {
+    return (
+        f'target triple = "{triple}"\n'
+        + f'@jac_wide = constant <2 x i64> <i64 {WIDE_LO}, i64 {WIDE_HI}>, '
+        + 'section "__TEXT,__const", align 16\n'
+        + 'define i64 @jac_wide_fold() {\n'
+        + 'entry:\n'
+        + '  %v = load volatile <2 x i64>, ptr @jac_wide, align 16\n'
+        + '  %lo = extractelement <2 x i64> %v, i32 0\n'
+        + '  %hi = extractelement <2 x i64> %v, i32 1\n'
+        + '  %x = xor i64 %lo, %hi\n'
+        + '  ret i64 %x\n'
+        + '}\n'
+        + 'define i64 @jac_wide_addr() {\n'
+        + 'entry:\n'
+        + '  %a = ptrtoint ptr @jac_wide to i64\n'
+        + '  ret i64 %a\n'
+        + '}\n'
+    );
+}
+
+
+test "a 16-byte constant merged behind an 8-byte one lands on a 16-byte address" {
+    # arm64 reads such a constant with `adrp` + `ldr q, [x, #pageoff]`, whose
+    # offset field counts 16-byte units: off a 16-byte address the load reads
+    # the bytes before the constant. x86_64's `movdqa` faults instead.
+    for triple in [MACHO_TRIPLE, MACHO_TRIPLE_X86] {
+        first = emit_pic_object(narrow_unit_ir(triple), triple);
+        second = emit_pic_object(wide_unit_ir(triple), triple);
+        first_align = held_section(parsed_linker(first), "__TEXT", "__const").align;
+        second_align = held_section(parsed_linker(second), "__TEXT", "__const").align;
+        assert (first_align, second_align) == (8, 16) , (
+            f"{triple}: premise gone: the two units no longer bring a "
+            "__TEXT,__const of alignment 8 then 16, so this test merges nothing"
+        );
+        lk = parsed_linker(first);
+        assert lk._merge_member(second);
+        assert held_section(lk, "__TEXT", "__const").align == 16 , (
+            f"{triple}: merged __TEXT,__const kept the first unit's alignment"
+        );
+        for shared in [False, True] {
+            with tempfile.TemporaryDirectory() as directory {
+                img = link_image(
+                    [first, second],
+                    shared,
+                    directory,
+                    ["jac_wide_fold", "jac_wide_addr"]
+                );
+                addrs = symbol_addresses(img);
+                where = f"{triple}, shared={shared}";
+                assert addrs["_jac_wide"] % 16 == 0 , (
+                    f"{where}: the 16-byte-aligned constant sits at "
+                    f"{hex(addrs['_jac_wide'])}"
+                );
+                # The eight bytes ahead of the merged section are what would
+                # put it, and so the constant, 8 bytes off a 16-byte address.
+                assert addrs["_jac_narrow"] - addrs["_jac_lead"] == 16 , (
+                    f"{where}: premise gone: __lead no longer sits eight bytes "
+                    "ahead of the merged __const, so the address above is "
+                    "aligned whatever the merge does"
+                );
+                if shared and host_runs(triple) {
+                    lib = ctypes.CDLL(os.path.join(directory, "probe.dylib"));
+                    lib.jac_wide_addr.restype = ctypes.c_uint64;
+                    lib.jac_wide_fold.restype = ctypes.c_uint64;
+                    assert lib.jac_wide_addr() % 16 == 0;
+                    assert lib.jac_wide_fold() == WIDE_LO ^ WIDE_HI , (
+                        f"{where}: the aligned load read "
+                        f"{hex(lib.jac_wide_fold())}, not the constant"
+                    );
+                }
+            }
+        }
+    }
+}
+
+
+test "common symbols are allocated on their own alignment" {
+    # A common symbol states its alignment as a power of two; the section the
+    # linker allocates it in has to be placed at least that strictly.
+    for triple in [MACHO_TRIPLE, MACHO_TRIPLE_X86] {
+        first = emit_pic_object(
+            f'target triple = "{triple}"\n'
+                + '@jac_odd = global i8 7, section "__DATA,__lead"\n'
+                + 'define i32 @main() {\nentry:\n  ret i32 0\n}\n',
+            triple
+        );
+        second = emit_pic_object(
+            f'target triple = "{triple}"\n'
+                + '@jac_common = common global [2 x i64] zeroinitializer, align 16\n'
+                + 'define i32 @jac_unit() {\nentry:\n  ret i32 0\n}\n',
+            triple
+        );
+        lk = parsed_linker(first);
+        assert lk._merge_member(second);
+        assert lk._commons.get("_jac_common") == (16, 4) , (
+            f"{triple}: premise gone: the second unit no longer declares a "
+            f"16-byte common aligned to 16: {lk._commons}"
+        );
+        lk._allocate_commons();
+        assert held_section(lk, "__DATA", "__data").align == 16 , (
+            f"{triple}: the section holding a 16-byte-aligned common is placed "
+            f"on a {held_section(lk, '__DATA', '__data').align}-byte boundary"
+        );
+        for shared in [False, True] {
+            with tempfile.TemporaryDirectory() as directory {
+                addrs = symbol_addresses(
+                    link_image([first, second], shared, directory, [])
+                );
+                where = f"{triple}, shared={shared}";
+                assert addrs["_jac_common"] % 16 == 0 , (
+                    f"{where}: the 16-byte-aligned common sits at "
+                    f"{hex(addrs['_jac_common'])}"
+                );
+                assert addrs["_jac_common"] - addrs["_jac_odd"] == 16 , (
+                    f"{where}: premise gone: the common no longer follows a "
+                    "one-byte section, so its address is aligned whatever the "
+                    "allocation does"
+                );
+            }
+        }
+    }
+}
+
+
+"""A unit whose read-only and writable data both ask for a 64-byte boundary,
+behind `pads` one-instruction functions that move where the code ends."""
+def cache_line_unit_ir(triple: str, pads: int) -> str {
+    ir_txt = (
+        f'target triple = "{triple}"\n'
+        + 'declare ptr @malloc(i64)\n'
+        + 'declare void @free(ptr)\n'
+        + '@jac_line_const = constant [64 x i8] zeroinitializer, '
+        + 'section "__TEXT,__const", align 64\n'
+        + '@jac_line_data = global i64 5, section "__DATA,__data", align 64\n'
+        + 'define i32 @main() {\n'
+        + 'entry:\n'
+        + '  %p = call ptr @malloc(i64 8)\n'
+        + '  call void @free(ptr %p)\n'
+        + '  ret i32 0\n'
+        + '}\n'
+    );
+    for i in range(pads) {
+        ir_txt += f'define void @jac_pad_{i}() {{\nentry:\n  ret void\n}}\n';
+    }
+    return ir_txt;
+}
+
+
+test "data aligned past 16 bytes is placed on its own alignment" {
+    # The output's __const and __data each gather every input section of their
+    # kind; they have to start on the strictest boundary any of those asked
+    # for, not on a fixed 16 bytes.
+    for triple in [MACHO_TRIPLE, MACHO_TRIPLE_X86] {
+        for shared in [False, True] {
+            where = f"{triple}, shared={shared}";
+            const_floor: list[int] = [];
+            data_floor: list[int] = [];
+            for pads in range(4) {
+                relobj = emit_pic_object(cache_line_unit_ir(triple, pads), triple);
+                with tempfile.TemporaryDirectory() as directory {
+                    img = link_image([relobj], shared, directory, []);
+                }
+                secs = output_sections(img);
+                addrs = symbol_addresses(img);
+                for (symbol, section) in [
+                    ("_jac_line_const", "__const"),
+                    ("_jac_line_data", "__data")
+                ] {
+                    assert addrs[symbol] % 64 == 0 , (
+                        f"{where}, pads={pads}: the 64-byte-aligned {symbol} "
+                        f"sits at {hex(addrs[symbol])}"
+                    );
+                    assert secs[section][2] == 6 , (
+                        f"{where}, pads={pads}: {section} declares alignment "
+                        f"2^{secs[section][2]} for 64-byte-aligned contents"
+                    );
+                }
+                # Where each output section would start on a 16-byte boundary:
+                # right behind the stubs, and right behind the GOT.
+                (stubs_addr, stubs_size, _) = secs["__stubs"];
+                (got_addr, got_size, _) = secs["__got"];
+                const_floor.append((stubs_addr + stubs_size + 15) & ~15);
+                data_floor.append((got_addr + got_size + 15) & ~15);
+            }
+            off_const = [
+                a
+                for a in const_floor
+                if a % 64 != 0
+            ];
+            off_data = [
+                a
+                for a in data_floor
+                if a % 64 != 0
+            ];
+            assert off_const and off_data , (
+                f"{where}: premise gone: every link already ends its stubs "
+                f"({const_floor}) and its GOT ({data_floor}) on a 64-byte "
+                "boundary, so 16-byte placement would pass too"
+            );
+        }
+    }
+}
+
+
+"""Where a linked image maps the named segment."""
+def segment_address(img: bytes, segname: str) -> int {
+    off = 32;
+    for _ in range(struct.unpack_from("<I", img, 16)[0]) {
+        (cmd, size) = struct.unpack_from("<II", img, off);
+        if cmd == 0x19
+            and img[off + 8:off + 24].split(b"\x00")[0].decode() == segname {
+            return struct.unpack_from("<Q", img, off + 24)[0];
+        }
+        off += size;
+    }
+    raise AssertionError(f"the image has no {segname} segment");
+}
+
+
+test "data aligned past a page is placed on its own alignment without a GOT" {
+    # With nothing imported there is no GOT ahead of __data, which then starts
+    # the __DATA segment: on a page boundary, and no stricter unless asked.
+    for triple in [MACHO_TRIPLE, MACHO_TRIPLE_X86] {
+        relobj = emit_pic_object(
+            f'target triple = "{triple}"\n'
+                + '@jac_wide_data = global i64 5, section "__DATA,__data", '
+                + 'align 32768\n'
+                + 'define i32 @main() {\nentry:\n  ret i32 0\n}\n',
+            triple
+        );
+        for shared in [False, True] {
+            where = f"{triple}, shared={shared}";
+            with tempfile.TemporaryDirectory() as directory {
+                img = link_image([relobj], shared, directory, []);
+            }
+            secs = output_sections(img);
+            addrs = symbol_addresses(img);
+            assert addrs["_jac_wide_data"] % 32768 == 0 , (
+                f"{where}: the 32768-byte-aligned global sits at "
+                f"{hex(addrs['_jac_wide_data'])}"
+            );
+            assert secs["__data"][2] == 15 , secs["__data"];
+            assert "__got" not in secs
+                and segment_address(img, "__DATA") % 32768 != 0 , (
+                f"{where}: premise gone: __data no longer opens a __DATA segment "
+                "that starts off a 32768-byte boundary, so page alignment "
+                "would pass too"
+            );
+        }
     }
 }
