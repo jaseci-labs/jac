@@ -599,7 +599,12 @@ impl JacProgram.parse_source(
         self.install_module(hub_key, parsed);
         return parsed;
     }
-    if self.mod.main.stub_only {
+    main = self.mod.main;
+    superseded = not main.stub_only
+        and main.loc is not None
+        and self.hub_key(main.loc.mod_path) == hub_key
+        and self.mod.hub.get(hub_key) is not main;
+    if main.stub_only or superseded {
         old_hub = self.mod.hub;
         self.reset_module_root(uni.ProgramModule(main_mod=parsed));
 
