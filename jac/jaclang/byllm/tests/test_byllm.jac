@@ -19,6 +19,9 @@ import from jaclang.byllm.exceptions {
     McpError
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
+import from jaclang.byllm.schema { type_display_name }
+import typing;
+import from typing { Optional }
 import from jaclang.byllm.types { Tool, Message, MessageRole }
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
@@ -274,23 +277,66 @@ obj _TestFieldless {}
 
 
 test "parse_response raises OutputConversionError with the raw output attached" {
-    for (why, raw) in [
-        ("plain text", "Alice is a 30 year old engineer."),
-        ("markdown fenced json", "```json\n{\"name\": \"Alice\", \"age\": 30}\n```"),
-        ("wrong json structure", "{\"foo\": \"bar\", \"baz\": 99}")
+    # Union and generic returns must fail the same way, named as written.
+    for (why, resp_type, raw, name) in [
+        (
+            "plain text",
+            _TestPerson,
+            "Alice is a 30 year old engineer.",
+            "'_TestPerson'"
+        ),
+        (
+            "markdown fenced json",
+            _TestPerson,
+            "```json\n{\"name\": \"Alice\", \"age\": 30}\n```",
+            "'_TestPerson'"
+        ),
+        (
+            "wrong json structure",
+            _TestPerson,
+            "{\"foo\": \"bar\", \"baz\": 99}",
+            "'_TestPerson'"
+        ),
+        ("optional return", int | None, "not json", "'int | None'"),
+        ("multi-member union", int | float | None, "not json", "'int | float | None'"),
+        ("generic return", list[_TestPerson], "not json", "'list[_TestPerson]'")
     ] {
         raised = False;
         try {
-            mk_run(resp_type=_TestPerson).parse_response(raw);
+            mk_run(resp_type=resp_type).parse_response(raw);
         } except OutputConversionError as e {
             raised = True;
             err: any = e;
             assert err.raw_output == raw , (
                 f"{why}: raw_output should carry the model output, got '{err.raw_output}'"
             );
-            assert "Person" in str(e) , f"{why}: error message should name the target type";
+            assert name in str(e) , f"{why}: error message should name {name}, got: {e}";
+            assert e.__cause__ is not None , f"{why}: the parse failure must be chained";
         }
         assert raised , f"{why}: expected OutputConversionError";
+    }
+}
+
+test "return types are named the way they are written" {
+    # Error messages and the retry prompt name the return type with this. A union
+    # has no usable __name__ (missing before Python 3.14, just "Union" on 3.14),
+    # so composite annotations are spelled out member by member.
+    for (ty, expected) in [
+        (int, "int"),
+        (_TestPerson, "_TestPerson"),
+        (None, "None"),
+        (int | None, "int | None"),
+        (Optional[int], "int | None"),
+        (_TestPerson | int | None, "_TestPerson | int | None"),
+        (list[_TestPerson], "list[_TestPerson]"),
+        (dict[str, list[int | None]], "dict[str, list[int | None]]"),
+        (tuple[int, ...], "tuple[int, ...]"),
+        (Literal["low", 2], "Literal['low', 2]"),
+        (Callable[[int], str], "Callable[[int], str]"),
+        (typing.Any, "Any")
+    ] {
+        got = type_display_name(ty);
+        assert got == expected , f"{ty!r}: expected '{expected}', got '{got}'";
     }
 }
 
@@ -337,16 +383,26 @@ test "unregistered tool call is recovered not fatal" {
 }
 
 test "finish tool error on type mismatch" {
-    finish_tool = Tool.make_finish_tool(_TestPerson);
+    for (resp_type, sent, name) in [
+        (_TestPerson, {"wrong_key": "value"}, "'_TestPerson'"),
+        (int | None, "not a value", "'int | None'"),
+        (int | float, "not a value", "'int | float'"),
+        (list[_TestPerson], "not a value", "'list[_TestPerson]'")
+    ] {
+        finish_tool = Tool.make_finish_tool(resp_type);
 
-    raised = False;
-    try {
-        finish_tool({"wrong_key": "value"});
-    } except FinishToolError as e {
-        raised = True;
-        assert "Person" in str(e) , f"Error should name the target type, got: {e}";
+        raised = False;
+        try {
+            finish_tool(sent);
+        } except FinishToolError as e {
+            raised = True;
+            assert f"does not match expected type {name}" in str(e) , (
+                f"{name}: error should name the target type, got: {e}"
+            );
+            assert e.__cause__ is not None , f"{name}: the validation error must be chained";
+        }
+        assert raised , f"{name}: expected FinishToolError for mismatched input type";
     }
-    assert raised , "Expected FinishToolError for mismatched input type";
 }
 
 test "finish tool error not raised for valid type" {

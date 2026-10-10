@@ -332,6 +332,43 @@ impl _name_of_type(ty: type, info: (Info | TypeForm | str | None) = None) -> str
     return "type";
 }
 
+impl type_display_name(ty: object) -> str {
+    if ty is None or ty is type(None) {
+        return "None";
+    }
+    if isinstance(ty, EllipsisType) {
+        return "...";
+    }
+    if isinstance(ty, str) {
+        return ty;
+    }
+    if isinstance(ty, list) {
+        items = ", ".join(type_display_name(a) for a in ty);
+        return f"[{items}]";
+    }
+    origin = get_origin(ty);
+    args = get_args(ty);
+    if origin in (Union, UnionType) {
+        return " | ".join(type_display_name(a) for a in args);
+    }
+    if origin is Literal {
+        values = ", ".join(repr(a) for a in args);
+        return f"Literal[{values}]";
+    }
+    if origin is not None {
+        head = type_display_name(origin);
+        if not args {
+            return head;
+        }
+        params = ", ".join(type_display_name(a) for a in args);
+        return f"{head}[{params}]";
+    }
+    if isinstance(ty, type) {
+        return ty.__name__;
+    }
+    return str(ty).removeprefix("typing.");
+}
+
 impl _convert_dict_to_schema(ty_dict: type) -> dict[str, any] {
     if get_origin(ty_dict) is not dict {
         raise ConfigurationError(f"Expected a dictionary type, got {ty_dict}.");

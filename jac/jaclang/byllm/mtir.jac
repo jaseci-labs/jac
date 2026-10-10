@@ -3,7 +3,7 @@ import json;
 import from jaclang.runtime.semantic { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { get_type_hints }
-import from jaclang.byllm.schema { json_to_instance, type_to_schema }
+import from jaclang.byllm.schema { json_to_instance, type_display_name, type_to_schema }
 import from jaclang.byllm.exceptions { ConfigurationError, OutputConversionError }
 import from jaclang.byllm.config_loader { get_byllm_config }
 import from jaclang.byllm.types {

@@ -72,7 +72,7 @@ import from jaclang.byllm.parallel {
     _index_by_identity,
     _PARALLEL_TOOL_HINT
 }
-import from jaclang.byllm.schema { inject_schema_hint }
+import from jaclang.byllm.schema { inject_schema_hint, type_display_name }
 import from jaclang.byllm.tool_protocol {
     inject_tool_hint,
     recover_tool_calls,
