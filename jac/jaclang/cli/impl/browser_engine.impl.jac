@@ -219,19 +219,36 @@ impl _find_chrome -> str {
         }
     }
 
-    for pw in [
+    pw_dirs = [
         Path.home() / ".cache" / "ms-playwright",
         Path.home() / "Library" / "Caches" / "ms-playwright",
 
-    ] {
+    ];
+    pw_env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH");
+    if pw_env and pw_env != "0" {
+        pw_dirs.insert(0, Path(pw_env));
+    }
+    for pw in pw_dirs {
         if not pw.exists() {
             continue;
         }
-        for d in sorted(pw.`glob("chromium-*"), reverse=True) {
+        for d in (
+            sorted(pw.`glob("chromium-*"), reverse=True)
+            + sorted(pw.`glob("chromium_headless_shell-*"), reverse=True)
+        ) {
             for rel in [
                 "chrome-linux64/chrome",
                 "chrome-linux/chrome",
-                "chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+                "chrome-linux-arm64/chrome",
+                "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+                "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+                "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+                "chrome-linux/headless_shell",
+                "chrome-mac/headless_shell",
+                "chrome-headless-shell-linux64/chrome-headless-shell",
+                "chrome-headless-shell-linux-arm64/chrome-headless-shell",
+                "chrome-headless-shell-mac-x64/chrome-headless-shell",
+                "chrome-headless-shell-mac-arm64/chrome-headless-shell"
             ] {
                 exe = d / rel;
                 if exe.exists() {
@@ -240,7 +257,11 @@ impl _find_chrome -> str {
             }
         }
     }
-    raise FileNotFoundError("no Chrome/Chromium found; set JACBROWSER_CHROME");
+    searched = ", ".join(str(pw) for pw in pw_dirs);
+    raise FileNotFoundError(
+        f"no Chrome/Chromium found; searched Playwright directories: {searched}; "
+            + "set JACBROWSER_CHROME"
+    );
 }
 
 impl _state_path(session: str) -> Path {

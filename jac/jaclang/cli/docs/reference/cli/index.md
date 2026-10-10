@@ -830,7 +830,10 @@ A launched browser stays alive between CLI calls -- each invocation reconnects t
 |----------|-------------|
 | `JACBROWSER_SESSION` | Default session name (overridden by `-s`) |
 | `JACBROWSER_CHROME` | Path to the Chrome/Chromium binary |
+| `PLAYWRIGHT_BROWSERS_PATH` | Playwright browser directory, searched before the default Playwright caches; `0` leaves the default cache search unchanged |
 | `JACBROWSER_CACHE` | Cache directory for session, ref, and screenshot files |
+
+Browser discovery uses `JACBROWSER_CHROME`, then Chrome/Chromium on `PATH` and common application paths, then Playwright installations. Both Chromium and Chromium headless shell are supported. If no browser is found, the error lists the Playwright directories searched.
 
 **Examples:**
 
