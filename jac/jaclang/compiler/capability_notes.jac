@@ -44,11 +44,14 @@ def capability_notes_of(
     if found is None {
         return [];
     }
-    return [
-        note
-        for note in found.values()
-        if not target or note.target == target
-    ];
+    out: list[CapabilityNote] = [];
+    for key in found {
+        note = found[key];
+        if not target or note.target == target {
+            out.append(note);
+        }
+    }
+    return out;
 }
 
 def forget_capability_notes(prog: JacProgram, mod_path: str) {

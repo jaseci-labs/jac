@@ -897,9 +897,9 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
 }
 
 impl PlacementPass._check_conformance(ir_in: Module) -> None {
-    import from jaclang.project.modresolver { in_native_library }
     mod_path = ir_in.loc.mod_path if ir_in.loc is not None else "";
-    if not in_native_library(mod_path) and os.path.basename(mod_path).count(".") < 2 {
+    if "/runtime/na_stdlib/" not in mod_path.replace("\\", "/")
+        and os.path.basename(mod_path).count(".") < 2 {
         return;
     }
     import from jaclang.compiler.native_bindings {
