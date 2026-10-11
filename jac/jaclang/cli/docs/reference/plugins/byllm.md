@@ -1468,6 +1468,12 @@ with entry {
 
 The function returns a generator that yields raw string tokens as they arrive from the LLM.
 
+Plain text streaming also works with `Model(model_name="local:<alias>")` and
+`LocalLLM`, in both synchronous and asynchronous calls. The local adapter accepts
+llama.cpp dictionary chunks, including role announcements and empty terminal
+deltas. It retains the reported model and finish reason, and records token usage
+when the engine supplies it; missing token counts are not estimated.
+
 ### Streaming with Tools
 
 Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is streamed token by token:

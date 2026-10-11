@@ -1648,21 +1648,23 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
         try {
             response = self.model_call_with_stream(params);
             for chunk in response {
-                stream_model = chunk?.model or stream_model;
-                if chunk?.choices and chunk?.choices?[0]?.finish_reason {
-                    finish_reason = str(chunk?.choices?[0]?.finish_reason);
+                stream_model = str(response_field(chunk, "model") or stream_model);
+                choices = response_field(chunk, "choices");
+                choice = choices[0] if isinstance(choices, list) and choices else None;
+                reason = response_field(choice, "finish_reason");
+                if reason {
+                    finish_reason = str(reason);
                 }
-                chunk_usage = chunk?.usage;
+                chunk_usage = response_field(chunk, "usage");
                 if chunk_usage {
-                    chunk_model: str = chunk?.model or self.model_name;
-                    _attach_call_cost(chunk_usage, chunk_model);
+                    _attach_call_cost(chunk_usage, stream_model);
                     _record_usage(
-                        mt_run, chunk_usage, chunk_model, finish_reason=finish_reason
+                        mt_run, chunk_usage, stream_model, finish_reason=finish_reason
                     );
                 }
-                if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk?.choices?[0]?.delta;
-                    yield delta?.content or "";
+                delta = response_field(choice, "delta");
+                if delta {
+                    yield str(response_field(delta, "content") or "");
                 }
             }
             break;
@@ -1880,21 +1882,23 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
         try {
             response = await self.model_call_with_stream_async(params);
             async for chunk in response {
-                stream_model = chunk?.model or stream_model;
-                if chunk?.choices and chunk?.choices?[0]?.finish_reason {
-                    finish_reason = str(chunk?.choices?[0]?.finish_reason);
+                stream_model = str(response_field(chunk, "model") or stream_model);
+                choices = response_field(chunk, "choices");
+                choice = choices[0] if isinstance(choices, list) and choices else None;
+                reason = response_field(choice, "finish_reason");
+                if reason {
+                    finish_reason = str(reason);
                 }
-                chunk_usage = chunk?.usage;
+                chunk_usage = response_field(chunk, "usage");
                 if chunk_usage {
-                    chunk_model: str = chunk?.model or self.model_name;
-                    _attach_call_cost(chunk_usage, chunk_model);
+                    _attach_call_cost(chunk_usage, stream_model);
                     _record_usage(
-                        mt_run, chunk_usage, chunk_model, finish_reason=finish_reason
+                        mt_run, chunk_usage, stream_model, finish_reason=finish_reason
                     );
                 }
-                if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk?.choices?[0]?.delta;
-                    yield str(delta?.content or "");
+                delta = response_field(choice, "delta");
+                if delta {
+                    yield str(response_field(delta, "content") or "");
                 }
             }
             break;
