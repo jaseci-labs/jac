@@ -133,7 +133,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                 continue;
             }
             try {
-                if intent.is_delete() {
+                if intent.is_delete() or intent.op == WriteOp.FIELD_UPDATE {
                     self.l2.invalidate(intent.anchor.id);
                     cast(RedisBackend, self.l2).publish_invalidation(
                         str(intent.anchor.id), self._l1_id
@@ -195,6 +195,7 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
 
     if l2_misses and self.l3 {
+        leases = cast(RedisBackend, self.l2).lease(l2_misses) if self.l2 else {};
         l3_results: dict[UUID, Anchor] = {};
         if hasattr(self.l3, 'batch_get') {
             l3_results = self.l3.batch_get(l2_misses);
@@ -208,9 +209,7 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         for (id, anchor) in l3_results.items() {
             self.__mem__[id] = anchor;
             if self.l2 {
-                try {
-                    self.l2.put(anchor);
-                } except Exception { }
+                cast(RedisBackend, self.l2).fill(anchor, leases.get(id));
             }
             result[id] = anchor;
         }
@@ -263,7 +262,20 @@ impl ScaleTieredMemory._refresh_if_stale(id: UUID) -> None {
 
 impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
     self._refresh_if_stale(id);
-    return super.get(id);
+    if not self.l2 or id in self.__mem__ {
+        return super.get(id);
+    }
+    if (anchor := self.l2.get(id)) {
+        self.__mem__[anchor.id] = anchor;
+        return anchor;
+    }
+    leases = cast(RedisBackend, self.l2).lease([id]);
+    if self.l3 and (anchor := self.l3.get(id)) {
+        self.__mem__[anchor.id] = anchor;
+        cast(RedisBackend, self.l2).fill(anchor, leases.get(id));
+        return anchor;
+    }
+    return None;
 }
 
 impl ScaleTieredMemory.query(

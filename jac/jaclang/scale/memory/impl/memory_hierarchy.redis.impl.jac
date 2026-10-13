@@ -1,5 +1,20 @@
 import from jaclang.scale.runtime.context.tracing { start_memory_span, end_memory_span }
 
+glob _FILL_IF_LEASED = """
+if redis.call('GET', KEYS[2]) ~= ARGV[1] then return 0 end
+redis.call('DEL', KEYS[2])
+if tonumber(ARGV[3]) > 0 then
+    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+else
+    redis.call('SET', KEYS[1], ARGV[2])
+end
+return 1
+""";
+
+def _lease_key(key: str) -> str {
+    return f"lease:{key}";
+}
+
 def _deserialize_cached(data: dict) -> (Anchor | None) {
     anchor = Serializer.deserialize(data);
     if anchor is not None {
@@ -90,12 +105,15 @@ impl RedisBackend.put(anchor: Anchor) -> None {
         db_config = _get_db_config();
         ttl = db_config.get('redis_default_ttl', 0);
 
+        pipe = self.redis_client.pipeline();
         if ttl > 0 {
-            self.redis_client.setex(key, ttl, json.dumps(data));
+            pipe.setex(key, ttl, json.dumps(data));
             logger.debug(f"Stored anchor {anchor.id} in Redis with TTL={ttl}s");
         } else {
-            self.redis_client.set(key, json.dumps(data));
+            pipe.set(key, json.dumps(data));
         }
+        pipe.delete(_lease_key(key));
+        pipe.execute();
     } except Exception as e {
         logger.debug(f"Redis put failed: {e}");
     } finally {
@@ -109,9 +127,49 @@ impl RedisBackend.delete(id: UUID) -> None {
     }
     try {
         key = storage_key(to_uuid(id));
-        self.redis_client.delete(key);
+        self.redis_client.delete(key, _lease_key(key));
     } except Exception as e {
         logger.debug(f"Redis delete failed: {e}");
+    }
+}
+
+impl RedisBackend.lease(ids: list[UUID]) -> dict[UUID, str] {
+    if self.redis_client is None or not ids {
+        return {};
+    }
+    leases = {id: uuid4().hex for id in ids};
+    try {
+        pipe = self.redis_client.pipeline(transaction=False);
+        for (id, token) in leases.items() {
+            pipe.set(
+                _lease_key(storage_key(to_uuid(id))), token, px=_REFILL_LEASE_MS, nx=True
+            );
+        }
+        taken = pipe.execute();
+    } except Exception as e {
+        logger.debug(f"Redis lease failed: {e}");
+        return {};
+    }
+    return {id: leases[id] for (id, ok) in zip(leases, taken) if ok};
+}
+
+impl RedisBackend.fill(anchor: Anchor, token: (str | None)) -> None {
+    if self.redis_client is None or token is None {
+        return;
+    }
+    self.put_count += 1;
+    span = start_memory_span(
+        "memory.put redis", {"db.system": "redis", "mem.tier": "L2", "mem.op": "put"}
+    );
+    try {
+        key = storage_key(anchor.id);
+        data = json.dumps(Serializer.serialize(anchor, include_type=True));
+        ttl = _get_db_config().get('redis_default_ttl', 0);
+        self.redis_client.eval(_FILL_IF_LEASED, 2, key, _lease_key(key), token, data, ttl);
+    } except Exception as e {
+        logger.debug(f"Redis fill failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
 }
 
