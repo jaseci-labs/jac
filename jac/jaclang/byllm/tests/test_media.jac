@@ -3,7 +3,7 @@
 Assert on the request byLLM actually sent, not on a rendered string.
 """
 
-import from jaclang.byllm.lib { Image, Video }
+import from jaclang.byllm.lib { Image, Text, Video }
 import from jaclang.byllm.lib { ConfigurationError, MockLLM }
 import from jaclang.testing.requires { require_module }
 import from support {
@@ -57,6 +57,87 @@ test "an image argument is inlined in its own format, under a system prompt" {
             f"{filename}: expected {mime}, got {data_url(images[0])[:40]!r}"
         );
     }
+}
+
+
+test "a list of images is inlined as images, in order" {
+    llm = MockLLM(outputs=[say("White, Black")]);
+
+    def name_colours(images: list[Image]) -> str by llm();
+
+    urls = ["https://example.com/white.png", "https://example.com/black.png"];
+    assert name_colours([Image(url=u) for u in urls]) == "White, Black";
+
+    assert [data_url(b) for b in media_blocks(llm)] == urls , (
+        f"each image is a block of its own, in order, got {media_blocks(llm)}"
+    );
+    spelled_out = [
+        b
+        for b in user_blocks(llm)
+        if "example.com" in b.get("text", "")
+    ];
+    assert spelled_out == [] , f"the list must not also be spelled out as text: {spelled_out}";
+}
+
+
+test "a list that is not wholly media is described in text, not inlined" {
+    image = Image(url="https://example.com/white.png");
+    for items in [[], [image, "a caption"]] {
+        llm = MockLLM(outputs=[say("ok")]);
+
+        def describe(items: list[any]) -> str by llm();
+
+        assert describe(items) == "ok";
+        assert media_blocks(llm) == [] , f"{items}: nothing to inline, got {media_blocks(
+            llm
+        )}";
+        assert "items" in user_blocks(llm)[0]["text"] , (
+            f"{items}: the argument must still reach the prompt, got {user_blocks(llm)}"
+        );
+    }
+}
+
+
+test "a list of media in incl_info is inlined as images" {
+    llm = MockLLM(outputs=[say("ok")]);
+    references = [
+        Image(url="https://example.com/ref_1.png"),
+        Image(url="https://example.com/ref_2.png")
+    ];
+
+    def critique(sketch: str) -> str by llm(incl_info={"references": references});
+
+    assert critique("a cat") == "ok";
+    assert [data_url(b) for b in media_blocks(llm)] == [r.url for r in references] , (
+        f"got {media_blocks(llm)}"
+    );
+}
+
+
+test "a list mixing media kinds keeps each element's own block, in order" {
+    llm = MockLLM(outputs=[say("ok")]);
+
+    def review(attachments: list[Image | Text]) -> str by llm();
+
+    assert review([Image(url="https://example.com/white.png"), Text("A white square.")])
+        == "ok";
+    assert [b["type"] for b in user_blocks(llm)[1:]] == ["image_url", "text"] , (
+        f"got {user_blocks(llm)}"
+    );
+    assert user_blocks(llm)[-1]["text"] == "A white square.";
+}
+
+
+test "a Text argument reaches the model as a text block of its own" {
+    llm = MockLLM(outputs=[say("MANGO")]);
+
+    def read_note(note: Text) -> str by llm();
+
+    assert read_note(Text("The secret word is MANGO.")) == "MANGO";
+    assert user_blocks(llm)[-1]
+        == {"type": "text", "text": "The secret word is MANGO."} , (
+        f"got {user_blocks(llm)}"
+    );
 }
 
 

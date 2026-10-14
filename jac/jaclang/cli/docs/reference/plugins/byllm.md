@@ -1753,6 +1753,23 @@ with entry {
 }
 ```
 
+### Several Images
+
+Pass a `list` of media to send every item, in order. A list counts as media only when every element is; an empty list, or one that mixes in plain values, is described in the prompt as text instead.
+
+```jac
+import from jaclang.byllm.lib { Image }
+
+"""Name the main colour of each image."""
+def name_colours(images: list[Image]) -> str by llm();
+
+with entry {
+    print(name_colours([Image("red.png"), Image("blue.png")]));
+}
+```
+
+Lists given through `incl_info` are sent the same way. `Text` is exported next to `Image` for a text block of its own, so a list can mix both: `list[Image | Text]`.
+
 ### Structured Output from Images
 
 Image inputs combine with all return types -- primitives, enums, objects, and lists:

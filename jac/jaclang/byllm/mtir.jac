@@ -7,9 +7,9 @@ import from jaclang.byllm.schema { json_to_instance, type_display_name, type_to_
 import from jaclang.byllm.exceptions { ConfigurationError, OutputConversionError }
 import from jaclang.byllm.config_loader { get_byllm_config }
 import from jaclang.byllm.types {
+    as_media_list,
     image_resp_kind,
     LiteLLMMessage,
-    Media,
     Message,
     MessageRole,
     MessageType,

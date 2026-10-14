@@ -118,7 +118,7 @@ def _messages_text(mt_run: MTRuntime) -> str {
 
 
 impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
-    import from jaclang.byllm.types { Media }
+    import from jaclang.byllm.types { as_media_list }
 
     owner = mt_run.mtir;
     if owner is None {
@@ -132,7 +132,7 @@ impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
     state: dict[str, any] = {};
     for (idx, key) in enumerate(list(owner.args.keys())) {
         value = owner.args[key];
-        if isinstance(value, Media) {
+        if as_media_list(value) is not None {
             return None;
         }
         if isinstance(key, str) {
@@ -152,7 +152,7 @@ impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
     incl_info = (owner.call_params or {}).get("incl_info");
     if isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
-            if isinstance(value, Media) {
+            if as_media_list(value) is not None {
                 return None;
             }
             state[str(key)] = _state_value(value);

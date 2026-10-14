@@ -22,6 +22,15 @@ test "normalize_tool_result preserves list[Media]" {
 }
 
 
+test "normalize_tool_result wraps one Media and stringifies what is not wholly media" {
+    image = Image(url="https://example.com/x.png");
+    assert normalize_tool_result(image) == [image];
+    assert normalize_tool_result([]) == "[]";
+    assert normalize_tool_result([image, "caption"]) == str([image, "caption"]);
+    assert normalize_tool_result(3) == "3";
+}
+
+
 test "ToolCallResultMsg.to_dict serializes Media to image_url block" {
     msg = ToolCallResultMsg(
         content=[Text(text="PASS"), Image(url="https://example.com/x.png")],

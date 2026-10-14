@@ -213,10 +213,7 @@ def serialize_media_content(content: list[any]) -> list[dict[str, any]] {
 }
 
 
-def normalize_tool_result(value: any) -> str | list[Media] {
-    if isinstance(value, str) {
-        return value;
-    }
+def as_media_list(value: any) -> list[Media] | None {
     if isinstance(value, Media) {
         return [value];
     }
@@ -227,7 +224,13 @@ def normalize_tool_result(value: any) -> str | list[Media] {
     ) {
         return value;
     }
-    return str(value);
+    return None;
+}
+
+
+def normalize_tool_result(value: any) -> str | list[Media] {
+    media = as_media_list(value);
+    return str(value) if media is None else media;
 }
 
 
