@@ -9,7 +9,9 @@ then vanish".
 The standard model compiles: you own it (`root_id`), it is granted to everyone
 (`access.all`), it is granted to you by name (`access.roots.anchors`), or the
 root that owns it grants it to you or to everyone (a record owned by an org root
-is reached through the one grant on that root). A
+is reached through the one grant on that root). These are read in the order the
+access check reads them, so an entry that names you with `NO_ACCESS` on the
+record or on its owning root shuts out a broader grant. A
 per-root grant does not scale to a large audience, so a grant may also name a
 *group*, and membership is an edge -- one grant, one membership per member,
 instead of one dict entry per member on every object.
@@ -259,6 +261,127 @@ test "a grant on the owning root reaches its records through a typed hop" {
                 );
                 assert untyped == want , (
                     f"the untyped hop returned {untyped}, expected {want}"
+                );
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx2.close();
+            }
+        }
+    }
+}
+
+
+"""Owner `org` holds one Doc; set `member`'s grants on the org root, the Doc, and a team the member belongs to."""
+def _seed_grants(
+    ctx: ExecutionContext,
+    org: any,
+    member: any,
+    grants: tuple[int, (int | None), int, (int | None), (int | None)]
+) {
+    (org_all, org_member, doc_all, doc_member, doc_team) = grants;
+    mk = str(member.id);
+    d = Doc(label="d").__jac__;
+    d.persistent = True;
+    setattr(d, "root", org.id);
+    ctx.mem.put(d);
+    e = EdgeAnchor(archetype=GenericEdge(), source=org, target=d, is_undirected=False);
+    e.persistent = True;
+    org.edges.append(e);
+    d.edges.append(e);
+    ctx.mem.put(e);
+    if org_all > -1 {
+        org.own_access().all = AccessLevel(org_all);
+    }
+    if org_member is not None {
+        org.own_access().roots.anchors[mk] = AccessLevel(org_member);
+    }
+    if doc_all > -1 {
+        d.own_access().all = AccessLevel(doc_all);
+    }
+    if doc_member is not None {
+        d.own_access().roots.anchors[mk] = AccessLevel(doc_member);
+    }
+    if doc_team is not None {
+        team = Team(name="t").__jac__;
+        team.persistent = True;
+        setattr(team, "root", org.id);
+        ctx.mem.put(team);
+        m = EdgeAnchor(
+            archetype=MemberOf(), source=member, target=team, is_undirected=False
+        );
+        m.persistent = True;
+        member.edges.append(m);
+        team.edges.append(m);
+        ctx.mem.put(m);
+        d.own_access().groups.anchors[str(team.id)] = AccessLevel(doc_team);
+    }
+    ctx.mem.put(org);
+    ctx.mem.put(d);
+}
+
+
+test "a typed hop gives the access check's answer for every grant and override" {
+    # (label, org all, org entry for member, doc all, doc entry for member,
+    #  doc grant to member's team, visible)
+    rows = [
+        ("no grant", -1, None, -1, None, None, 0),
+        ("grant on the org root", -1, 0, -1, None, None, 1),
+        ("grant on the doc", -1, None, -1, 0, None, 1),
+        ("doc granted to all", -1, None, 0, None, None, 1),
+        ("org root granted to all", 0, None, -1, None, None, 1),
+        ("org root grant, doc blocks the member", -1, 0, -1, -1, None, 0),
+        ("doc granted to all, doc blocks the member", -1, None, 0, -1, None, 0),
+        ("doc granted to all, org root blocks the member", -1, -1, 0, None, None, 0),
+        (
+            "org root granted to all, org root blocks the member",
+            0,
+            -1,
+            -1,
+            None,
+            None,
+            0
+        ),
+        ("doc blocks the member and grants nothing else", -1, None, -1, -1, None, 0),
+        ("team grant", -1, None, -1, None, 0, 1),
+        ("team entry at NO_ACCESS", -1, None, -1, None, -1, 0),
+        ("org root grant, team entry at NO_ACCESS", -1, 0, -1, None, -1, 1),
+        ("doc blocks the member, team grant lifts it", -1, None, -1, -1, 0, 1),
+
+    ];
+    for (label, org_all, org_member, doc_all, doc_member, doc_team, want) in rows {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            org_id: str;
+            member_id: str;
+            try {
+                org = _mk_root(ctx.mem);
+                member = _mk_root(ctx.mem);
+                _seed_grants(
+                    ctx,
+                    org,
+                    member,
+                    (org_all, org_member, doc_all, doc_member, doc_team)
+                );
+                ctx.mem.commit();
+                org_id = str(org.id);
+                member_id = str(member.id);
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+            ctx2 = _ctx(td);
+            JacRuntime.exec_ctx = ctx2;
+            try {
+                ctx2.set_user_root(member_id);
+                hub = ctx2.mem.get(UUID(org_id));
+                assert hub is not None;
+                untyped = len([_as_any(hub).archetype-->]);
+                typed = len([_as_any(hub).archetype-->[?:Doc]]);
+                assert untyped == want , f"{label}: the access check admitted {untyped}";
+                assert typed == want , (
+                    f"{label}: a typed hop returned {typed}, the access check {want}"
                 );
             } finally {
                 JacRuntime.exec_ctx = old;
