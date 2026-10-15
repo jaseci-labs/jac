@@ -1,5 +1,6 @@
 import json;
 import sys;
+import types;
 import type from jaclang.runtime.prepared { PreparedApplication }
 import threading;
 import from weakref { WeakValueDictionary, finalize, ref }
@@ -133,11 +134,7 @@ def resolve_type(module_name: str, name: str) -> type {
         if cached is not None {
             return cached;
         }
-        import from jaclang.runtime.prepared { load_prepared_module }
-        module = load_prepared_module(
-            application.persistence_modules[module_name], application
-        );
-        candidate = getattr(module, name, None);
+        candidate = getattr(module_for(module_name, application), name, None);
         if isinstance(candidate, type) and type_module(candidate) == module_name {
             register_type(candidate);
             _remember_type(application, key, candidate);
@@ -160,6 +157,27 @@ def resolve_type(module_name: str, name: str) -> type {
     }
     raise UnavailableType(
         f'Cannot resolve persistent type {key} in the active app; prepare its schema and select a persistence scope'
+    );
+}
+
+def module_for(
+    module_name: str, application: PreparedApplication | None
+) -> types.ModuleType {
+    if not module_name.startswith('jac:') {
+        module = sys.modules.get(module_name);
+        if module is None {
+            raise UnavailableType(f'Module {module_name} is not loaded');
+        }
+        return module;
+    }
+    if application is None or module_name not in application.persistence_modules {
+        raise UnavailableType(
+            f'Persistent module {module_name} is not part of the active application'
+        );
+    }
+    import from jaclang.runtime.prepared { load_prepared_module }
+    return load_prepared_module(
+        application.persistence_modules[module_name], application
     );
 }
 

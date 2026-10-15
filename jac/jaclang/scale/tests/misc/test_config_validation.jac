@@ -464,6 +464,49 @@ test "valid scheduler bounds are accepted quietly" {
 }
 
 
+test "a [scale.jobs] setting that could never run a job is flagged" {
+    cases: list[tuple[dict[str, any], list[str]]] = [
+        ({"queues": {"agents": {"concurrency": 2, "lease_s": 90}}}, []),
+        ({"queues": {"agents": {"concurrency": 4.0}}, "poll_seconds": 0.25}, []),
+        ({"retention_seconds": 0}, []),
+        (
+            {"queues": {"agents": {"concurrency": 0}}},
+            ["concurrency", "whole number 1 or more"]
+        ),
+        (
+            {"queues": {"agents": {"concurrency": 1.5}}},
+            ["concurrency", "whole number 1 or more"]
+        ),
+        ({"queues": {"agents": {"lease_s": 0.5}}}, ["lease_s", "1 or more"]),
+        ({"queues": {"agents": 3}}, ["queues.agents must be a table"]),
+        ({"poll_seconds": 0}, ["poll_seconds", "greater than 0"]),
+        ({"poll_seconds": -1.0}, ["poll_seconds", "greater than 0"]),
+        ({"retention_seconds": "1w"}, ["retention_seconds", "0 or more"]),
+        ({"retention_seconds": -60}, ["retention_seconds", "0 or more"])
+    ];
+    for (jobs, expected) in cases {
+        msgs = validate_scale_config({"jobs": jobs});
+        if not expected {
+            assert msgs == [] , f"{jobs!r}: expected no findings, got {msgs}";
+            continue;
+        }
+        assert len(msgs) == 1 , f"{jobs!r}: expected 1 finding, got {msgs}";
+        for part in expected {
+            assert part in msgs[0] , f"{jobs!r}: {part!r} missing from {msgs[0]}";
+        }
+    }
+    with tempfile.TemporaryDirectory() as project {
+        Path(project, "jac.toml").write_text(
+            "[project]\nname = \"jobs-app\"\n\n"
+            "[plugins.scale.jobs]\npoll_seconds = 0\nretention_seconds = \"1w\"\n"
+        );
+        loaded = JacScaleConfig(project_dir=Path(project)).get_jobs_config();
+        assert (loaded["poll_seconds"], loaded["retention_seconds"])
+            == (1.0, 604800.0) , loaded;
+    }
+}
+
+
 test "a fractional job cap is rejected, not truncated to unlimited" {
     import from jaclang.scale.config.validation { scheduler_job_cap }
 

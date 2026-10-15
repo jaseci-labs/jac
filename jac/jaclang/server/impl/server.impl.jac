@@ -577,6 +577,16 @@ impl ModuleIntrospector._load_surface -> None {
     self._manifest_root = str(manifest.get('root') or '');
 }
 
+impl ModuleIntrospector.application -> (PreparedApplication | None) {
+    import from jaclang.runtime.prepared { application_for }
+    if self._module is None {
+        return None;
+    }
+    return application_for(
+        getattr(self._module, '__file__', '') or '', self._module.__name__
+    );
+}
+
 impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.server.sealed_serve { sealed_root_for }
@@ -587,10 +597,8 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
     src_path = os.path.join(img_root, rel)
         if (img_root and not os.path.isabs(rel))
         else rel;
-    import from jaclang.runtime.prepared { application_for, source_for_origin }
-    application = application_for(own_file, self._module.__name__)
-        if self._module is not None
-        else None;
+    import from jaclang.runtime.prepared { source_for_origin }
+    application = self.application();
     if application is not None {
         try {
             src_path = source_for_origin(application, rel);
@@ -1231,6 +1239,16 @@ impl JacAPIServer.request_scope -> RequestScope {
     );
 }
 
+impl JacAPIServer.run_target(target: any, args: dict[str, any], username: str) -> any {
+    import from jaclang.runtime.constructs { WalkerArchetype }
+    with self.request_scope() {
+        if isinstance(target, type) and issubclass(target, WalkerArchetype) {
+            return await self.execution_manager.spawn_walker(target, args, username);
+        }
+        return await self.execution_manager.execute_function(target, args, username);
+    }
+}
+
 impl JacAPIServer._install_middleware -> None {
     import from jaclang.server.middleware { jwt_middleware, request_context_middleware }
 
@@ -1561,16 +1579,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            with _self.request_scope() {
-                if is_walker {
-                    return await _self.execution_manager.spawn_walker(
-                        registry[name], {}, SYSTEM_USER
-                    );
-                }
-                return await _self.execution_manager.execute_function(
-                    registry[name], {}, SYSTEM_USER
-                );
-            }
+            return await _self.run_target(registry[name], {}, SYSTEM_USER);
         }
         def target {
             outcome = asyncio.run(_run());

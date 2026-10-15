@@ -17,6 +17,7 @@ import from jaclang.server.settings { ServeSettings }
 import from jaclang.server.task_scheduler { Scheduler }
 import from jaclang { JacRuntime as Jac }
 import type from jaclang.runtime.constructs { WalkerArchetype }
+import type from jaclang.runtime.prepared { PreparedApplication }
 
 glob JsonValue: TypeAlias = None
          | str
@@ -203,6 +204,7 @@ obj ModuleIntrospector {
     def _reset_targets -> None;
     def _collect_client_functions -> None;
     def _resolve_declared(rel: str, name: str) -> any;
+    def application -> (PreparedApplication | None);
     def served(kind: str) -> list[any];
     def target(name: str) -> any;
     def route_spec(name: str) -> any;
@@ -280,6 +282,7 @@ obj JacAPIServer(EndpointHost) {
     def add_middleware(fn: Callable[..., any]) -> None;
     def add_shutdown_hook(fn: Callable[..., any]) -> None;
     def request_scope -> RequestScope;
+    async def run_target(target: any, args: dict[str, any], username: str) -> any;
     def build_app -> ServingApp;
     def register_endpoints -> None;
     def _install_middleware -> None;

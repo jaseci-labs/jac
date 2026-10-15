@@ -768,23 +768,13 @@ impl JacScaleScheduler._execute_task(
         }
 
         async def _run {
-            with self._server.request_scope() {
-                if is_walker {
-                    result = await self._server.execution_manager.spawn_walker(
-                        target, {}, user_id
-                    );
-                } else {
-                    result = await self._server.execution_manager.execute_function(
-                        target, {}, user_id
-                    );
-                }
-                if isinstance(result, dict) and 'error' in result {
-                    err = str(result.get('error'));
-                    logger.error(f"Scheduled {label} '{name}' error: {err}");
-                    self._mark_failed(job_id, err);
-                } elif job_id {
-                    self._record_run(job_id, 'succeeded');
-                }
+            result = await self._server.run_target(target, {}, user_id);
+            if isinstance(result, dict) and 'error' in result {
+                err = str(result.get('error'));
+                logger.error(f"Scheduled {label} '{name}' error: {err}");
+                self._mark_failed(job_id, err);
+            } elif job_id {
+                self._record_run(job_id, 'succeeded');
             }
         }
 
