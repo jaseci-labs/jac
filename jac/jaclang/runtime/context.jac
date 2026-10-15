@@ -27,6 +27,7 @@ obj ExecutionContext {
         call_state: ContextVar[CallState] = ContextVar('call_state'),
         base_path_dir: (str | None) = None,
         full_target_path: (str | None) = None,
+        default_owner: (UUID | None) = None,
         _parent: (ExecutionContext | None) = None,
         _own_session: bool = False,
         _system_root: (NodeAnchor | None) = None,

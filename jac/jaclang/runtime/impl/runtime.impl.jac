@@ -1374,6 +1374,9 @@ impl JacPersistence.save(
         );
     }
     if (not anchor.persistent and not anchor.root) {
+        if owner is None {
+            owner = jctx.default_owner;
+        }
         if (owner is not None and owner != jctx.user_root.id) {
             target = jctx.mem.get(owner);
             if not isinstance(target, NodeAnchor) or not target.is_populated() {
