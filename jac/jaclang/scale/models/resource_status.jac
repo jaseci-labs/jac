@@ -57,6 +57,13 @@ def replica_floor_of(deployment: any) -> int {
     }
 }
 
+def container_crashlooping(cs: any, min_restarts: int = 1) -> bool {
+    if cs is None or field_of(cs, "ready") {
+        return False;
+    }
+    return _count(cs, "restart_count") >= min_restarts;
+}
+
 def assess_workload(
     deployment: any, crashlooping: bool = False, replica_floor: (int | None) = None
 ) -> ResourceStatusInfo {
