@@ -88,22 +88,39 @@ impl JacAccessValidation._check_acl_write(to: Anchor) -> bool {
         or not JacAccessValidation._is_org_owned(to) {
         return True;
     }
-    diag = PermissionDenied(
-        operation="org_acl_write",
-        target_id=str(to.id),
-        target_type=to.archetype.__class__.__name__,
-        target_owner=str(to.root) if to.root else None,
-        required=AccessLevel.WRITE,
-        actual=JacRuntimeInterface.check_access_level(to)
-    );
-    try {
-        jctx.diagnostics.append(diag);
-    } except Exception {}
+    diag = JacAccessValidation._org_acl_denied(to, to.root);
     if JacRuntime.strict_permissions {
         raise PermissionError(diag.message());
     }
     logger.warning(diag.message());
     return False;
+}
+
+impl JacAccessValidation._carries_acl(to: Anchor) -> bool {
+    access = to.access;
+    return access is not None
+        and (
+            access.all.value > AccessLevel.NO_ACCESS.value
+            or bool(access.roots.anchors)
+            or bool(access.groups.anchors)
+        );
+}
+
+impl JacAccessValidation._org_acl_denied(
+    to: Anchor, owner: (UUID | None)
+) -> PermissionDenied {
+    diag = PermissionDenied(
+        operation="org_acl_write",
+        target_id=str(to.id),
+        target_type=to.archetype.__class__.__name__,
+        target_owner=str(owner) if owner else None,
+        required=AccessLevel.WRITE,
+        actual=JacRuntimeInterface.check_access_level(to)
+    );
+    try {
+        JacRuntimeInterface.get_context().diagnostics.append(diag);
+    } except Exception {}
+    return diag;
 }
 
 impl JacAccessValidation.allow_root(
@@ -1370,6 +1387,13 @@ impl JacPersistence.save(
                 raise PermissionError(
                     f"caller root may not create content owned by root {owner}: "
                     'requires WRITE on that root'
+                );
+            }
+            if jctx.user_root != jctx.system_root
+                and JacAccessValidation._carries_acl(anchor)
+                and JacAccessValidation._is_org_owned(target) {
+                raise PermissionError(
+                    JacAccessValidation._org_acl_denied(anchor, owner).message()
                 );
             }
         }

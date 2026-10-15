@@ -243,6 +243,8 @@ class JacAccessValidation {
     static def _is_shared_root(to: Anchor) -> bool;
     static def _is_org_owned(to: Anchor) -> bool;
     static def _check_acl_write(to: Anchor) -> bool;
+    static def _carries_acl(to: Anchor) -> bool;
+    static def _org_acl_denied(to: Anchor, owner: (UUID | None)) -> PermissionDenied;
     static def allow_root(
         archetype: Archetype,
         root_id: UUID,

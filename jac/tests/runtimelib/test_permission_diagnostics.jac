@@ -502,6 +502,115 @@ test "only the system root changes access on an org root or what it owns" {
 }
 
 
+test "a node cannot carry access rules into org ownership unless the system root saves it" {
+    # (label, rule set before the save, caller, owner, resolver registered, outcome)
+    rows = [
+        (
+            "member grants an outsider, saves under the org",
+            "root",
+            "member",
+            "org",
+            True,
+            "refused"
+        ),
+        (
+            "member opens it to all, saves under the org",
+            "all",
+            "member",
+            "org",
+            True,
+            "refused"
+        ),
+        (
+            "member grants a group, saves under the org",
+            "group",
+            "member",
+            "org",
+            True,
+            "refused"
+        ),
+        (
+            "member adds no rule, saves under the org",
+            "none",
+            "member",
+            "org",
+            True,
+            "org"
+        ),
+        (
+            "system grants an outsider, saves under the org",
+            "root",
+            "system",
+            "org",
+            True,
+            "org"
+        ),
+        (
+            "member grants an outsider, saves under the org (no resolver)",
+            "root",
+            "member",
+            "org",
+            False,
+            "org"
+        ),
+        ("member grants an outsider, keeps it", "root", "member", "self", True, "self"),
+
+    ];
+    old_ctx = Jac.exec_ctx;
+    for (label, rule, caller, owner, registered, outcome) in rows {
+        with TemporaryDirectory() as td {
+            ctx = ExecutionContext(
+                base_path_dir=td, full_target_path=str(Path(td) / "org_app.jac")
+            );
+            Jac.exec_ctx = ctx;
+            try {
+                org = _persisted(Root(), None);
+                member = _persisted(Root(), None);
+                org.own_access().roots.anchors[str(member.id)] = AccessLevel.WRITE;
+                org_key = str(org.id);
+                Jac.set_org_root_resolver(
+                    OrgRoots(ids={org_key}) if registered else None
+                );
+                ctx.set_user_root(
+                    str(ctx.system_root.id) if caller == "system" else str(member.id)
+                );
+                doc = OrgDoc(title="plan");
+                if rule == "root" {
+                    JacRuntimeInterface.allow_root(doc, uuid4(), AccessLevel.WRITE);
+                } elif rule == "all" {
+                    JacRuntimeInterface.perm_grant(doc, AccessLevel.READ);
+                } elif rule == "group" {
+                    JacRuntimeInterface.allow_group(doc, uuid4(), AccessLevel.READ);
+                }
+                ctx.diagnostics.clear();
+                refused = False;
+                try {
+                    Jac.save(doc, owner=org.id if owner == "org" else None);
+                } except PermissionError {
+                    refused = True;
+                }
+                anch: any = doc.__jac__;
+                ops_seen = [d.operation for d in ctx.diagnostics];
+                if outcome == "refused" {
+                    assert refused , f"{label}: the save was allowed";
+                    assert not anch.persistent , f"{label}: the node was persisted";
+                    assert ops_seen == ["org_acl_write"] , f"{label}: got {ops_seen}";
+                } else {
+                    assert not refused , f"{label}: the save was refused";
+                    want = org.id if outcome == "org" else ctx.user_root.id;
+                    assert anch.root == want , f"{label}: owned by {anch.root}";
+                    assert ops_seen == [] , f"{label}: unexpected {ops_seen}";
+                }
+            } finally {
+                Jac.set_org_root_resolver(None);
+                Jac.exec_ctx = old_ctx;
+                ctx.close();
+            }
+        }
+    }
+}
+
+
 test "strict mode raises PermissionError when a member changes access on org data" {
     old_ctx = Jac.exec_ctx;
     orig_strict = Jac.strict_permissions;
