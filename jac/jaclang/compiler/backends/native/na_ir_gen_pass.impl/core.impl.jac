@@ -1175,7 +1175,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
                 }
             }
         }
-        wq.append((mod_name, entry_base, None, bool(imp.is_typed)));
+        wq.append((mod_name, entry_base, None, bool(imp.is_typed or imp.is_comptime)));
         """A name this module imports from a module is bound to that module:
         another imported module defining a global of the same name (two
         generated constant tables both named CONSTANTS) must not supply it.""";
@@ -1285,7 +1285,12 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             sub_name = self._extract_import_module_name(sub_imp);
             if sub_name {
                 wq.append(
-                    (sub_name, sub_base, abs_key, typed or bool(sub_imp.is_typed))
+                    (
+                        sub_name,
+                        sub_base,
+                        abs_key,
+                        typed or bool(sub_imp.is_typed or sub_imp.is_comptime)
+                    )
                 );
             }
         }
