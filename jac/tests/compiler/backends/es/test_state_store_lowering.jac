@@ -152,3 +152,56 @@ test "preact lowers a shorthand jsx attribute as a state read" {
     js = compile_with_backend("state_shorthand_attr.jac", PreactBackend());
     assert_shorthand_read(js, "preact");
 }
+
+# Each face binds the whole value first (its shape after `const [T_0, `), then writes
+# every name with its temporary: `a`/`b` through the setter, any other as a local.
+glob UNPACK_FACES = [
+         (r"\1_1\] = \[\(?__jacS_b\.val \+ 1\)?, \(?__jacS_a\.val \+ 1\)?\];", "a b"),
+         (r"\1_1\] = \[\(?__jacS_b\.val \+ 2\)?, \(?__jacS_a\.val \+ 2\)?\];", "a b"),
+         (r"\1_1\] = \[5, 6\];", "a x"),
+         (r"\.\.\.\1_1\] = __jacS_items\.val;", "a rest"),
+         (r"\[\1_1, \1_2\]\] = ", "a b y")
+     ];
+
+def assert_written(js: str, name: str, temp: str, backend_name: str) {
+    if name in ("a", "b") {
+        assert re.search(rf"__jacS_{name}\.set\(\(?{temp}\)?\)", js) , (
+            f"[{backend_name}] `{name}` must be set from `{temp}`:\n{js}"
+        );
+    } else {
+        assert re.search(rf"\blet {name} = {temp};", js) , (
+            f"[{backend_name}] local `{name}` must be declared from `{temp}`:\n{js}"
+        );
+    }
+}
+
+def assert_state_unpack(js: str, backend_name: str) {
+    assert re.search(r"\[\s*a\s*,", js) is None , (
+        f"[{backend_name}] no write may destructure into bare field names:\n{js}"
+    );
+    for (shape, names) in UNPACK_FACES {
+        bound = re.search(r"const \[(__jac_unpack_\d+)_0, " + shape, js);
+        assert bound is not None , (
+            f"[{backend_name}] no unpack matches `{shape}`:\n{js}"
+        );
+        temp = bound.group(1);
+        for (i, name) in enumerate(names.split()) {
+            assert_written(js[bound.end():], name, f"{temp}_{i}", backend_name);
+        }
+    }
+    chained = re.search(r"const (__jac_unpack_\d+) = 7;", js);
+    assert chained is not None , f"[{backend_name}] `a = b = 7` must bind once:\n{js}";
+    for name in ("a", "b") {
+        assert_written(js[chained.end():], name, chained.group(1), backend_name);
+    }
+}
+
+test "react routes tuple and chained writes to state through setters" {
+    js = compile_with_backend("state_tuple_unpack.jac", ReactBackend());
+    assert_state_unpack(js, "react");
+}
+
+test "preact routes tuple and chained writes to state through setters" {
+    js = compile_with_backend("state_tuple_unpack.jac", PreactBackend());
+    assert_state_unpack(js, "preact");
+}

@@ -185,6 +185,7 @@ walker EsastGenPass(TreePass) {
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         match_seq: int = 0,
+        _unpack_seq: int = 0,
         _view_stack: list[(str | None)] = [],
         _view_used_base: bool = False,
         _view_acc_counter: int = 0,
@@ -600,6 +601,19 @@ walker EsastGenPass(TreePass) {
 
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
     can exit_assignment with uni.Assignment exit;
+    def _lower_plain_assignment(
+        targets: Sequence[uni.Expr],
+        value_expr: (es.Expression | None),
+        here: uni.Assignment
+    ) -> list[es.Statement];
+
+    def _lower_state_assignment(
+        here: uni.Assignment, value_expr: (es.Expression | None)
+    ) -> list[es.Statement];
+
+    def _unpack_pattern(
+        node: uni.Expr, prefix: str, leaves: list[tuple[uni.Expr, str]]
+    ) -> es.Pattern;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_route_role(rt: uni.Expr) -> (str | None);
