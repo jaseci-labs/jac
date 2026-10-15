@@ -7,6 +7,18 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### A local `jac run` listens on loopback, not every interface (unreleased)
+
+`jac run --serve` and `jac run --dev` used to bind `0.0.0.0` and print every LAN address as a "Network" URL, which published a development server (and anything reachable without a login) to every network the machine was on. The default is now `127.0.0.1`. A pod, the official Docker image and mobile dev against a LAN address keep binding every interface.
+
+| To reach the server from another device | Before | Now |
+|---|---|---|
+| a laptop on the LAN | nothing | `jac run --host 0.0.0.0`, `[serve] host = "0.0.0.0"` or `JAC_SERVE_HOST=0.0.0.0` |
+| your own `docker run -p` image | nothing | `ENV JAC_SERVE_HOST=0.0.0.0` (the official image sets it) |
+| a Kubernetes pod | nothing | nothing: the manifest sets `JAC_SERVE_HOST` |
+
+The startup banner lists "Network" URLs only for interfaces the server is bound to, and says when it is listening on this machine only. The dev Vite server and the local fleet gateway (`[scale.gateway] gateway_host`, now unset by default) follow the same default instead of always listening on every interface. A pod never inherits a loopback `[serve] host`: the manifest emits `0.0.0.0` unless the pinned host is a real address.
+
 ### A closure created in a loop body keeps its own iteration's values (unreleased)
 
 A `lambda` or nested `def` created in a loop body used to share every name with the rest of the function, so a closure kept past its iteration saw whatever the last iteration assigned: in a JSX `for` slot every per-item handler acted on the last item, and on the server a list of callbacks built in a loop all read the final value. A name whose every assignment is inside the loop (the loop target, or a local the body introduces) is now shared with such a closure only while its pass through the body lasts; when the pass ends, the closure keeps that pass's value. This holds in every codespace.

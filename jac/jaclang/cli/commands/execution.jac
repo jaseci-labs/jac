@@ -142,10 +142,10 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  `default=None,
                  short="",
                  help=(
-                     "Interface to bind (serving only; default [serve] host, 0.0.0.0). "
-                     "Use 127.0.0.1 to keep a dev server off the network. For mobile "
-                     "dev (--client mobile --dev) this is also the host the device "
-                     "reaches this machine on."
+                     "Interface to bind (serving only; default [serve] host, else "
+                     "127.0.0.1, or 0.0.0.0 in a pod). Pass 0.0.0.0 to serve other "
+                     "devices on the network. For mobile dev (--client mobile "
+                     "--dev) this is also the host the device reaches this machine on."
                  )
              ),
              Arg.create(

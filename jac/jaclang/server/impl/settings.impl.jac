@@ -422,7 +422,7 @@ impl ServeSettings.load(
             else env_int('PORT', cfg.port)
     );
     host_override = given.get('host');
-    host = str(host_override) if host_override else (env_value('HOST') or cfg.host);
+    host = str(host_override) if host_override else serve_host(cfg.host);
 
     settings = ServeSettings(
         base_path=base_path,

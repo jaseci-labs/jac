@@ -297,26 +297,64 @@ test "a mobile app served on the web platform gets its client prepared" {
     assert not execution._serves_web_client("desktop", None);
 }
 
-test "dev banner headlines vite port not api port" {
-    with TemporaryDirectory() as tmpdir {
-        captured_output = io.StringIO();
-        with patch(
-            "jaclang.cli.commands.execution._get_network_ips", return_value=[]
-        ) {
-            with redirect_stdout(captured_output) {
-                execution._print_startup_message(
-                    dev=True,
-                    no_client=False,
-                    primary_port=8000,
-                    api_port=8001,
-                    base_path=tmpdir
-                );
+test "dev banner headlines vite port not api port and lists only bound interfaces" {
+    ips = ["192.168.1.7", "10.0.0.4"];
+    local_only = "this machine only";
+    # (bound host, network IPs found, text that must appear, text that must not)
+    cases = [
+        (
+            "0.0.0.0",
+            ips,
+            ["http://192.168.1.7:8000/", "http://10.0.0.4:8000/"],
+            [local_only]
+        ),
+        (
+            "::",
+            ips,
+            ["http://192.168.1.7:8000/", "http://10.0.0.4:8000/"],
+            [local_only]
+        ),
+        ("10.0.0.4", ips, ["http://10.0.0.4:8000/"], ["192.168.1.7", local_only]),
+        ("127.0.0.1", ips, [local_only], ["192.168.1.7", "10.0.0.4", "Network"]),
+        ("localhost", ips, [local_only], ["192.168.1.7", "10.0.0.4", "Network"]),
+        ("::1", ips, [local_only], ["192.168.1.7", "10.0.0.4", "Network"]),
+        (
+            "2001:db8::1",
+            ips,
+            ["http://[2001:db8::1]:8000/"],
+            ["http://2001:db8::1:8000/", local_only]
+        ),
+        ("0.0.0.0", [], [], [local_only, "Network"]),
+        ("::", [], [], [local_only, "Network"])
+    ];
+    for (bound, found, shown, hidden) in cases {
+        with TemporaryDirectory() as tmpdir {
+            captured_output = io.StringIO();
+            with patch(
+                "jaclang.cli.commands.execution._get_network_ips", return_value=found
+            ) {
+                with redirect_stdout(captured_output) {
+                    execution._print_startup_message(
+                        dev=True,
+                        no_client=False,
+                        primary_port=8000,
+                        api_port=8001,
+                        base_path=tmpdir,
+                        host=bound
+                    );
+                }
+            }
+            output = captured_output.getvalue();
+            assert "Local:     http://localhost:8000/" in output , f"{bound}: {output}";
+            assert "App:  http://localhost:8000/" in output , f"{bound}: {output}";
+            assert "API:  http://localhost:8001/" in output , f"{bound}: {output}";
+            for text in shown {
+                assert text in output , f"{bound}: {text} missing:\n{output}";
+            }
+            for gone in hidden {
+                assert gone not in output , f"{bound}: {gone} advertised:\n{output}";
             }
         }
-        output = captured_output.getvalue();
-        assert "Local:     http://localhost:8000/" in output;
-        assert "App:  http://localhost:8000/" in output;
-        assert "API:  http://localhost:8001/" in output;
     }
 }
 

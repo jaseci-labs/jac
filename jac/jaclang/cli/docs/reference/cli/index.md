@@ -160,7 +160,7 @@ Serving only -- rejected when the resolved action is *execute* or *build*:
 | `--api-port` | Separate API port for HMR mode (0 = same as `--port`) | `0` |
 | `--no-client` | Skip client bundling/serving (API only) | `False` |
 | `-f, --faux` | Print endpoint docs only, no server | `False` |
-| `--host` | Mobile dev: optional host/IP the device reaches this machine on (a LAN address is auto-selected when omitted) | `""` |
+| `--host` | Interface to bind (default `127.0.0.1`; `0.0.0.0` in a pod). Pass `0.0.0.0` to serve other devices on the network. Mobile dev: also the host/IP the device reaches this machine on (a LAN address is auto-selected when omitted, and the backend then binds every interface) | `""` |
 | `--platform` | Mobile apps: `android` or `ios` runs on a device or simulator, `web` runs the same app in a browser via react-native-web; `auto` = the app's `[apps.<name>] platform`, else `android` | `auto` |
 | `--fleet` | Run the workspace's service apps as separate local processes behind this server instead of colocating them in it | `False` |
 

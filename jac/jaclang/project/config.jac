@@ -152,7 +152,7 @@ obj ServeWebSocketConfig {
 }
 
 obj ServeConfig {
-    has host: str = "0.0.0.0",
+    has host: str = "",
         port: int = 8000,
         session: str = "",
         main: bool = True,

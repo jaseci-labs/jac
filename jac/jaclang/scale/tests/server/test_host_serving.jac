@@ -200,3 +200,74 @@ test "prepare_inprocess_runtime colocates the workspace's service apps" {
         _reset(tmp);
     }
 }
+
+
+"""Run `action` with the environment overlaid by `values` (None unsets), and
+put back exactly what was there before."""
+def _with_env(values: dict[str, str | None], action: any) -> any {
+    previous = {key: os.environ.get(key) for key in values};
+    for (key, value) in values.items() {
+        if value is None {
+            os.environ.pop(key, None);
+        } else {
+            os.environ[key] = value;
+        }
+    }
+    try {
+        return action();
+    } finally {
+        for (key, value) in previous.items() {
+            if value is None {
+                os.environ.pop(key, None);
+            } else {
+                os.environ[key] = value;
+            }
+        }
+    }
+}
+
+test "the serve host defaults to loopback outside a cluster and binds all interfaces inside one" {
+    # (label, in a cluster, JAC_SERVE_HOST, CLI override, [serve] host, expected)
+    cases = [
+        ("nothing configured, local", False, None, None, "", "127.0.0.1"),
+        ("nothing configured, in a pod", True, None, None, "", "0.0.0.0"),
+        ("env opts in, local", False, "0.0.0.0", None, "", "0.0.0.0"),
+        ("config opts in, local", False, None, None, "0.0.0.0", "0.0.0.0"),
+        ("CLI beats env", False, "0.0.0.0", "127.0.0.1", "", "127.0.0.1"),
+        ("env beats config", False, "127.0.0.1", None, "0.0.0.0", "127.0.0.1"),
+        ("an empty CLI host falls through", False, None, "", "", "127.0.0.1"),
+        ("a pinned loopback survives a pod", True, "127.0.0.1", None, "", "127.0.0.1"),
+        (
+            "a pinned config host survives a pod",
+            True,
+            None,
+            None,
+            "10.1.2.3",
+            "10.1.2.3"
+        )
+    ];
+    for (label, in_pod, env_host, cli_host, toml_host, expected) in cases {
+        tmp = tempfile.mkdtemp(prefix="jac_serve_host_");
+        try {
+            manifest = '[project]\nname = "hostcheck"\n';
+            if toml_host {
+                manifest += f'\n[serve]\nhost = "{toml_host}"\n';
+            }
+            (Path(tmp) / "jac.toml").write_text(manifest);
+            overrides = {"host": cli_host} if cli_host is not None else {};
+            def _load -> str {
+                return ServeSettings.load(tmp, overrides).host;
+            }
+            got = _with_env(
+                {
+                    "KUBERNETES_SERVICE_HOST": "10.96.0.1" if in_pod else None,
+                    "JAC_SERVE_HOST": env_host
+                },
+                _load
+            );
+            assert got == expected , f"{label}: expected {expected}, got {got}";
+        } finally {
+            shutil.rmtree(tmp, ignore_errors=True);
+        }
+    }
+}

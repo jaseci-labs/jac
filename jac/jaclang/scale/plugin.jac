@@ -6,6 +6,7 @@ import from jaclang.cli.console { console }
 import from jaclang.project.kinds { RunPlan }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.server.server { JacAPIServer as JacServer }
+import from jaclang.server.settings { serve_host }
 import from .config.app_config { deployed_tree }
 import from .config.config_loader { get_scale_config }
 import from .config.project_env { load_project_env }
@@ -39,12 +40,17 @@ def _print_local_fleet_banner(fleet: any) {
     }
 }
 
+def fleet_gateway_host(cli_host: str, configured: str, serve_configured: str) -> str {
+    return cli_host or configured or serve_host(serve_configured);
+}
+
 def scale_local_serve(
     served: RunPlan,
     fleet: list[RunPlan],
     port: int = 8000,
     dev: bool = False,
-    no_client: bool = False
+    no_client: bool = False,
+    host: str = ''
 ) -> int | None {
     mark_scale_runtime();
     if not fleet or os.environ.get("JAC_SV_SIBLING") == "1" {
@@ -75,6 +81,9 @@ def scale_local_serve(
         gateway_cfg["gateway_port"] = int(port);
         gateway_cfg["gateway_port_pinned"] = True;
     }
+    gateway_cfg["gateway_host"] = fleet_gateway_host(
+        host, str(gateway_cfg.get("gateway_host") or ""), cfg.serve.host
+    );
     gateway_cfg["dev"] = dev and not no_client;
     gateway_cfg["app_serves_client"] = not no_client;
     _print_local_fleet_banner(spec);

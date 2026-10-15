@@ -2,6 +2,7 @@ import time;
 import atexit;
 import logging;
 import from jaclang.cli.console { console }
+import from jaclang.server.settings { serve_host }
 import from jaclang.scale.runtime.fleet { FleetSpec, ROOT_PREFIX }
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
@@ -11,10 +12,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
 import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 import from jaclang.scale.runtime.orchestrator.local_deployer { LocalDeployer }
 import from jaclang.scale.runtime.gateway.process_gateway { ProcessGateway }
-import from jaclang.scale.runtime.context.util {
-    DEFAULT_GATEWAY_PORT,
-    DEFAULT_GATEWAY_HOST
-}
+import from jaclang.scale.runtime.context.util { DEFAULT_GATEWAY_PORT }
 
 glob logger = logging.getLogger(__name__),
      _BOOT_RECHECK_INTERVAL: float = 2.0;
@@ -37,7 +35,7 @@ obj FleetOrchestrator {
     }
 
     def _gateway_host -> str {
-        return str(self.gateway_config.get("gateway_host", DEFAULT_GATEWAY_HOST));
+        return str(self.gateway_config.get("gateway_host") or serve_host());
     }
 
     def _port_pinned -> bool {

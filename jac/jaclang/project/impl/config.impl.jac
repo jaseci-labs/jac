@@ -1181,7 +1181,7 @@ impl _parse_toml_data(
         }
         cors_raw = serve_data.get("cors_origins", ["*"]);
         config.serve = ServeConfig(
-            host=str(serve_data.get("host", "0.0.0.0")),
+            host=str(serve_data.get("host", "")),
             port=serve_data.get("port", 8000),
             session=serve_data.get("session", ""),
             main=serve_data.get("main", True),

@@ -1489,6 +1489,8 @@ host = "0.0.0.0"
 cors = true
 ```
 
+Under `jac run --dev`, the dev server listens on the resolved `[serve] host` (loopback by default). A `host` set in `[client.vite.server]` takes precedence over it.
+
 ### Generic Config File Generation
 
 `[client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
