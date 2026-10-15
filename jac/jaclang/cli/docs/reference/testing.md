@@ -212,6 +212,12 @@ A `test` block runs in the codespace its surrounding context compiles to, so tes
 
 All of them report through the same `jac test` pass/fail pipeline, and the CLI options above apply uniformly. A test in a native-placed module compiles to native code and runs with native semantics -- a failing `assert` reports the failing source location (`file:line`). See [Native Compilation -- Testing](language/native-pathway.md#testing) for native-specific details and limitations.
 
+For client tests, `--filter` and `--test_name` select tests by their descriptions
+before any test body runs. Excluded tests cannot change state used by the selected
+tests. If nothing matches, the command exits with code `5` without starting the
+client test harness or its backend server. Compilation still occurs to discover
+the tests.
+
 ---
 
 ## Tests in a Workspace

@@ -619,7 +619,9 @@ impl run_file(
     }
     if is_client {
         try {
-            results = run_cl_test_file(abs_path);
+            results = run_cl_test_file(
+                abs_path, selector=selector.matches if selector is not None else None
+            );
         } except Exception as exc {
             return [
                 TestOutcome(
@@ -632,9 +634,6 @@ impl run_file(
         }
         for res in results {
             label = res.description or res.name;
-            if (selector is not None) and not selector.matches(label) {
-                continue;
-            }
             outcomes.append(
                 TestOutcome(
                     file=abs_path,
