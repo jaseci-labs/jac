@@ -115,7 +115,7 @@ You can widen or move it by editing the value -- `>=0.34.3`, `<=0.34.3`, `>=0.34
 At deploy time (`jac scale deploy`), the pin selects the **pod runtime**: the deployer downloads the released `jac` binary, admin console, and base image from the release that satisfies `jac-version` and ships them to the pods, so the app runs on the toolchain it was built against -- not on whatever `latest` happens to be. Resolution rules:
 
 - **Unset** -> the latest published release.
-- **Exact pin** (`==X` / `X`) -> the `vX` release.
+- **Exact pin** (`==X` / `X`) -> the `vX` release, downloaded directly without a GitHub API request.
 - **Range** -> the newest published release that satisfies it.
 - **No published release satisfies the pin** (or the matching release lacks the pod's CPU arch or a `jac-*` asset) -> the deploy **aborts** with an error naming the pin; a pinned deploy never silently ships a different version. Fix or remove `jac-version` to proceed.
 
