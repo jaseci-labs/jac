@@ -675,7 +675,7 @@ class JacScalePluginConfig {
                         "service_account_name": {
                             "type": "string",
                             "default": "",
-                            "description": "ServiceAccount assigned to app pods; empty uses the namespace default"
+                            "description": "ServiceAccount assigned to app pods; empty uses the namespace default. With ops_console on, the gateway runs as its own <app>-ops ServiceAccount instead"
                         },
                         "ops_console": {
                             "type": "bool",

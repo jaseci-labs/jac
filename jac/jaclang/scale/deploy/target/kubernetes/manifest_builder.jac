@@ -14,6 +14,7 @@ import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
 import from jaclang.scale.runtime.fleet { FleetSpec, fleet_from_config, solo_fleet }
 import from jaclang.scale.models.deploy_context { DATABASE_URL_ENV, DeployContext }
 import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
+import from jaclang.scale.deploy.target.kubernetes.ops_rbac { ops_sa_name }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -689,10 +690,28 @@ obj ManifestBuilder {
             import from jaclang.scale.deploy.target.kubernetes.ops_rbac {
                 build_ops_rbac
             }
+            if self._service_account_name() == ops_sa_name(self.k8s_config.app_name) {
+                raise ValueError(
+                    f"[scale.kubernetes].service_account_name = "
+                    f"'{self._service_account_name()}' is the ServiceAccount the "
+                    f"Ops Console Role is bound to, so every pod would run as it "
+                    f"and inherit the console's rights. Set service_account_name "
+                    f"to another account, or leave it empty."
+                );
+            }
+            if self._service_account_name() and self.logger {
+                self.logger.warning(
+                    f"[scale.kubernetes].service_account_name = "
+                    f"'{self._service_account_name()}' does not apply to the "
+                    f"gateway while ops_console is on: it runs as "
+                    f"'{ops_sa_name(self.k8s_config.app_name)}'. Pre-create that "
+                    f"ServiceAccount to give the gateway a cloud identity."
+                );
+            }
             bundle["ops_rbac"] = build_ops_rbac(
                 self.k8s_config.app_name,
                 self.k8s_config.namespace,
-                self._service_account_name(),
+                ops_sa_name(self.k8s_config.app_name),
                 bool(getattr(self.k8s_config, "ops_console_mutations", False))
             );
         } elif getattr(self.k8s_config, "ops_console_mutations", False) {
@@ -1217,6 +1236,14 @@ obj ManifestBuilder {
 
     def _service_account_name -> str {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
+    }
+
+    def _pod_service_account(svc_name: str) -> str {
+        if svc_name == GATEWAY_NAME
+            and getattr(self.k8s_config, "ops_console", False) {
+            return ops_sa_name(self.k8s_config.app_name);
+        }
+        return self._service_account_name();
     }
 
     def _peer_dns_url(peer_name: str) -> str {
@@ -1889,7 +1916,7 @@ obj ManifestBuilder {
                 + _EXIT_CUSHION_S
                 + self._alb_deregistration_cushion()
         };
-        sa_name = self._service_account_name();
+        sa_name = self._pod_service_account(svc_name);
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
