@@ -175,6 +175,16 @@ def _is_transient_error(exc: object) -> bool {
 }
 
 
+def _is_unsupported_tool_choice_error(exc: object) -> bool {
+    if not isinstance(exc, litellm.exceptions.BadRequestError) {
+        return False;
+    }
+    message = str(exc).lower();
+    return "tool_choice" in message
+        and ("not support" in message or "unsupported" in message);
+}
+
+
 def _retry_sleep(attempt: int) {
     base = _streaming_config.get("retry_backoff", 1.0);
     time.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
@@ -2132,7 +2142,15 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     }
     mt_run._call_kind = "final_answer_restream";
     try {
-        final_resp = self.dispatch_no_streaming(mt_run);
+        try {
+            final_resp = self.dispatch_no_streaming(mt_run);
+        } except litellm.exceptions.BadRequestError as e {
+            if not finish_tool_obj or not _is_unsupported_tool_choice_error(e) {
+                raise;
+            }
+            mt_run.call_params["tool_choice"] = "auto";
+            final_resp = self.dispatch_no_streaming(mt_run);
+        }
         if final_resp.tool_calls {
             for tool_call in final_resp.tool_calls {
                 if tool_call.is_finish_call() {

@@ -2,7 +2,9 @@
 
 import from jaclang.byllm.types { IterationAction, IterationContext }
 import from jaclang.byllm.lib { MockLLM, MockRawResponse }
-import from support { call, finish, prompt_text, say, tool_names }
+import from support { call, fail, finish, mk_run, prompt_text, say, tool_names }
+
+import litellm;
 
 
 """A chat message from one person."""
@@ -83,6 +85,47 @@ test "the answer is extracted however the model delivers it past max iterations"
     ] {
         answers(label, final);
     }
+}
+
+
+test "a rejected forced tool choice retries the final answer with automatic selection" {
+    unsupported = litellm.exceptions.BadRequestError(
+        message='tool_choice: type "tool" and "any" are not supported for this model.',
+        model="claude-opus-5-5",
+        llm_provider="anthropic"
+    );
+    llm = MockLLM(outputs=[fail(unsupported), say("FINAL_REPORT")]);
+    mt_run = mk_run(tools=[get_mood], call_params={"tool_choice": "required"});
+
+    assert llm._force_final_answer(mt_run) == "FINAL_REPORT";
+    assert len(llm.seen) == 2 and llm.exhausted() , (
+        f"expected one forced call and one automatic retry, got {len(llm.seen)}"
+    );
+    assert llm.seen[0]["tool_choice"]
+        == {"type": "function", "function": {"name": "finish_tool"}};
+    assert llm.seen[1]["tool_choice"] == "auto";
+    assert mt_run.call_params["tool_choice"] == "required" , (
+        "the caller's tool choice must be restored after the retry"
+    );
+}
+
+
+test "an unrelated bad request is not retried as a tool choice failure" {
+    unrelated = litellm.exceptions.BadRequestError(
+        message="the requested token limit is invalid",
+        model="claude-opus-5-5",
+        llm_provider="anthropic"
+    );
+    llm = MockLLM(outputs=[fail(unrelated), say("must not be consumed")]);
+    raised: Exception | None = None;
+    try {
+        llm._force_final_answer(mk_run(tools=[get_mood]));
+    } except Exception as e {
+        raised = e;
+    }
+
+    assert raised is unrelated , f"the original provider error was lost: {raised!r}";
+    assert len(llm.seen) == 1 , f"an unrelated bad request was retried: {llm.seen}";
 }
 
 
