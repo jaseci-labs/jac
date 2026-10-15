@@ -13,6 +13,7 @@ jac/examples/todo_app) through the programmatic SDK instead of
 
 Env: SDK_DEPLOY_SOURCE (required), SDK_DEPLOY_APP_NAME, SDK_DEPLOY_NAMESPACE,
 SDK_DEPLOY_STORAGE_CLASS, SDK_DEPLOY_GREETING, SDK_DEPLOY_SECRET,
+SDK_DEPLOY_COMPONENT (destroy only; empty tears down the whole app),
 E2E_POD_BASE_IMAGE.
 """
 import json;
@@ -26,6 +27,7 @@ glob SOURCE: str = os.environ.get("SDK_DEPLOY_SOURCE", ""),
      STORAGE_CLASS: str = os.environ.get("SDK_DEPLOY_STORAGE_CLASS", ""),
      GREETING: str = os.environ.get("SDK_DEPLOY_GREETING", "hello"),
      SECRET: str = os.environ.get("SDK_DEPLOY_SECRET", "s3cret-demo"),
+     COMPONENT: str = os.environ.get("SDK_DEPLOY_COMPONENT", ""),
      POD_BASE_IMAGE: str = os.environ.get("E2E_POD_BASE_IMAGE", "");
 
 
@@ -68,7 +70,7 @@ with entry {
     } elif action == "url" {
         print(ScaleClient().service_url(APP_NAME, NAMESPACE) or "");
     } else {
-        ScaleClient().destroy(APP_NAME, NAMESPACE);
+        ScaleClient().destroy(APP_NAME, NAMESPACE, COMPONENT);
         print("DESTROY_OK");
     }
 }

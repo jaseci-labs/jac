@@ -11,6 +11,8 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 import from jaclang.scale.deploy.target.kubernetes { target as target_mod }
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
 import from jaclang.scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
 import from jaclang.scale.injector.pvc_injector { bundle_pvc_name }
 
@@ -35,7 +37,9 @@ def _run_destroy(
     component: str = "",
     monitoring: any = None,
     owned: bool = True,
-    logger: any = None
+    logger: any = None,
+    policy_v1: any = None,
+    networking_v1: any = None
 ) {
     monitoring_deployer = unittest.mock.MagicMock();
     if monitoring is not None {
@@ -44,8 +48,8 @@ def _run_destroy(
     fake_client = SimpleNamespace(
         AppsV1Api=lambda { apps_v1; },
         CoreV1Api=lambda { core_v1; },
-        PolicyV1Api=lambda { unittest.mock.MagicMock(); },
-        NetworkingV1Api=lambda { unittest.mock.MagicMock(); },
+        PolicyV1Api=lambda { policy_v1 or unittest.mock.MagicMock(); },
+        NetworkingV1Api=lambda { networking_v1 or unittest.mock.MagicMock(); },
         RbacAuthorizationV1Api=lambda { unittest.mock.MagicMock(); }
     );
     with unittest.mock.patch.multiple(
@@ -289,6 +293,155 @@ test "removing the application names the co-tenant whose workloads went too" {
         "budgets to the namespace-wide sweep without a word, so nobody knows "
         "to redeploy it"
     );
+}
+
+
+test "removing the application spares the database and monitoring beside it" {
+    builder = ManifestBuilder(
+        k8s_config=KubernetesConfig(app_name=APP, namespace=NS),
+        app_overrides={"orders_app": {"replicas": 3, "hpa": {"enabled": False}}}
+    );
+    gateway_ingress: dict[str, str] = builder._build_ingress_manifest(
+        {"enabled": True, "host": "shop.example.com"}
+    )["metadata"]["labels"];
+    fleet_objects: dict[str, dict[str, str]] = {
+        "Service": builder._build_service_manifest("orders_app")["metadata"]["labels"],
+        "gateway Service": builder._build_service_manifest(GATEWAY_NAME)["metadata"][
+            "labels"
+        ],
+        "PodDisruptionBudget": builder._build_pdb_manifest("orders_app")["metadata"][
+            "labels"
+        ],
+        "Ingress": gateway_ingress
+    };
+    for (kind, labels) in fleet_objects.items() {
+        assert labels.get("jac-scale.role") in ("microservice", "gateway") , (
+            f"the {kind} is built without a fleet role, so the application-only "
+            "sweep cannot tell it from the database's or monitoring's objects"
+        );
+    }
+
+    (apps_v1, core_v1) = _co_tenant_apis();
+    policy_v1 = unittest.mock.MagicMock();
+    networking_v1 = unittest.mock.MagicMock();
+
+    _run_destroy(
+        apps_v1,
+        core_v1,
+        unittest.mock.MagicMock(),
+        component="application",
+        policy_v1=policy_v1,
+        networking_v1=networking_v1
+    );
+
+    # Which objects a selector matches is the API server's call and is asserted
+    # against real objects in destroy_reclaim_real_e2e.sh; here the sweeps must
+    # ask for the fleet roles and nothing broader.
+    for (kind, selectors) in [
+        (
+            "Deployment",
+            [apps_v1.delete_collection_namespaced_deployment.call_args.kwargs]
+        ),
+        (
+            "PodDisruptionBudget",
+            [
+                policy_v1.delete_collection_namespaced_pod_disruption_budget.call_args.kwargs
+            ]
+        ),
+        (
+            "Ingress",
+            [networking_v1.delete_collection_namespaced_ingress.call_args.kwargs]
+        ),
+        ("Service", [core_v1.list_namespaced_service.call_args_list[0].kwargs])
+    ] {
+        for kwargs in selectors {
+            assert kwargs["label_selector"] == target_mod.FLEET_SELECTOR , (
+                f"the {kind} sweep selects '{kwargs['label_selector']}', which "
+                "reaches objects that are not the application's"
+            );
+        }
+    }
+}
+
+
+test "removing the application also removes the fleet's Services and PDBs built before they carried a role" {
+    apps_v1 = unittest.mock.MagicMock();
+    apps_v1.list_namespaced_deployment.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(metadata=SimpleNamespace(labels={"app": "orders-app"})),
+            SimpleNamespace(metadata=SimpleNamespace(labels={"app": "gateway"})),
+            SimpleNamespace(metadata=SimpleNamespace(labels={"app": "orders-app"}))
+        ]
+    );
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.list_namespaced_service.return_value = SimpleNamespace(items=[]);
+    policy_v1 = unittest.mock.MagicMock();
+
+    for component in ["application", ""] {
+        core_v1.reset_mock();
+        policy_v1.reset_mock();
+        _run_destroy(
+            apps_v1,
+            core_v1,
+            unittest.mock.MagicMock(),
+            component=component,
+            policy_v1=policy_v1
+        );
+
+        services = sorted(
+            call.args[0] for call in core_v1.delete_namespaced_service.call_args_list
+        );
+        budgets = sorted(
+            call.args[0]
+            for call in policy_v1.delete_namespaced_pod_disruption_budget.call_args_list
+        );
+        assert services == ["gateway-service", "orders-app-service"] , (
+            f"destroy (component '{component}') left a pre-role fleet Service "
+            f"behind, or removed another: {services}"
+        );
+        assert budgets == ["gateway-pdb", "orders-app-pdb"] , (
+            f"destroy (component '{component}') left a pre-role fleet PDB "
+            f"behind, or removed another: {budgets}"
+        );
+    }
+
+    # A sweep that fails after the Deployments are gone must not strand them:
+    # the next destroy finds no fleet Deployment to name them from.
+    for component in ["application", ""] {
+        core_v1.reset_mock();
+        policy_v1.reset_mock();
+        policy_v1.delete_collection_namespaced_pod_disruption_budget.side_effect = (
+            ApiException(status=403)
+        );
+        failed = False;
+        try {
+            _run_destroy(
+                apps_v1,
+                core_v1,
+                unittest.mock.MagicMock(),
+                component=component,
+                policy_v1=policy_v1
+            );
+        } except ApiException {
+            failed = True;
+        }
+        assert failed , f"the 403 on the PDB sweep (component '{component}') was swallowed";
+        services = sorted(
+            call.args[0] for call in core_v1.delete_namespaced_service.call_args_list
+        );
+        budgets = sorted(
+            call.args[0]
+            for call in policy_v1.delete_namespaced_pod_disruption_budget.call_args_list
+        );
+        assert services == ["gateway-service", "orders-app-service"] , (
+            f"a failed sweep (component '{component}') stranded a pre-role Service: "
+            f"{services}"
+        );
+        assert budgets == ["gateway-pdb", "orders-app-pdb"] , (
+            f"a failed sweep (component '{component}') stranded a pre-role PDB: "
+            f"{budgets}"
+        );
+    }
 }
 
 
