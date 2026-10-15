@@ -359,6 +359,11 @@ jac create [-h] [-f] [-k KIND] [--app APP] [--path PATH] [-u USE] [--awesome] [-
 
 `--kind` and `--use` are mutually exclusive.
 
+Creating from a template substitutes `{{name}}` in configuration string values
+and preserves their TOML values, including quotes, backslashes, and newlines.
+Table keys such as `"@scope/pkg"` or `"literal.dot"` remain single keys. The
+generated configuration is checked for valid TOML before it is written.
+
 **Examples:**
 
 ```bash

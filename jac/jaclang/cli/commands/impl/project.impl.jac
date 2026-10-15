@@ -637,12 +637,18 @@ def _resolve_template(use: str, registry: TemplateRegistry) -> ProjectTemplate |
     return named;
 }
 
+def _quote_toml_string(value: str) -> str {
+    import json;
+
+    return json.dumps(value, ensure_ascii=False).replace(chr(127), "\\u007f");
+}
+
 def _quote_toml_key(k: str) -> str {
     stripped: str = k.replace('_', '').replace('-', '');
-    if stripped.isalnum() and len(k) > 0 {
+    if k and k.isascii() and (not stripped or stripped.isalnum()) {
         return k;
     }
-    return f'"{k}"';
+    return _quote_toml_string(k);
 }
 
 def _render_config_to_toml(config: dict[str, any], project_name: str) -> str {
@@ -651,7 +657,7 @@ def _render_config_to_toml(config: dict[str, any], project_name: str) -> str {
     def render_value(v: any) -> str {
         if isinstance(v, str) {
             v = v.replace("{{name}}", project_name);
-            return f'"{v}"';
+            return _quote_toml_string(v);
         } elif isinstance(v, bool) {
             return "true" if v else "false";
         } elif isinstance(v, (int, float)) {
@@ -659,6 +665,12 @@ def _render_config_to_toml(config: dict[str, any], project_name: str) -> str {
         } elif isinstance(v, list) {
             items = [render_value(item) for item in v];
             return "[" + ", ".join(items) + "]";
+        } elif isinstance(v, dict) {
+            pairs = [
+                f"{_quote_toml_key(k)} = {render_value(item)}"
+                for (k, item) in v.items()
+            ];
+            return "{ " + ", ".join(pairs) + " }";
         } else {
             return str(v);
         }
@@ -691,27 +703,24 @@ def _render_config_to_toml(config: dict[str, any], project_name: str) -> str {
         }
 
         for (k, v) in nested_sections.items() {
-            nested_name = f"{section_name}.{k}" if section_name else k;
+            key = _quote_toml_key(k);
+            nested_name = f"{section_name}.{key}" if section_name else key;
             render_section(nested_name, v);
             lines.append("");
         }
     }
 
-    for (section, data) in config.items() {
-        if isinstance(data, dict) {
-            render_section(section, data);
-            lines.append("");
-        } else {
-            lines.append(f"{section} = {render_value(data)}");
-        }
-    }
+    render_section("", config);
 
     while lines and lines[-1] == "" {
         lines.pop();
     }
     lines.append("");
 
-    return "\n".join(lines);
+    rendered = "\n".join(lines);
+    import tomllib;
+    tomllib.loads(rendered);
+    return rendered;
 }
 
 def _create_root_gitignore(project_path: Path, entries: list[str]) {
