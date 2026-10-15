@@ -1620,7 +1620,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids, damaged_ids);
 
     usage_data = response.get("usage", {});
-    _attach_call_cost(usage_data, self.model_name, response);
+    _attach_call_cost(usage_data, actual_model, response);
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     _raise_if_empty_truncation(finish_reason, output_content, tool_calls_list);
     output_value = mt_run.parse_response(output_content)
@@ -1886,7 +1886,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     tool_calls_list: list[any] = _tc_raw if isinstance(_tc_raw, list) else [];
     tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids, damaged_ids);
     usage_data = response.get("usage", {});
-    _attach_call_cost(usage_data, self.model_name, response);
+    _attach_call_cost(usage_data, actual_model, response);
     _record_usage(mt_run, usage_data, actual_model, finish_reason=finish_reason);
     _raise_if_empty_truncation(finish_reason, output_content, tool_calls_list);
     output_value = mt_run.parse_response(output_content)
