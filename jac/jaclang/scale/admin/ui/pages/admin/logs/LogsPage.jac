@@ -349,7 +349,11 @@ def:pub LogsPage -> JsxElement {
                     <code className="mx-1 font-mono text-fg">
                         [scale.gateway.logs].enabled
                     </code>
-                    is true and the Loki + Alloy stack is running in the deployment namespace.
+                    is true and the Loki + Alloy stack is running in the deployment namespace, or keep it off and set
+                    <code className="mx-1 font-mono text-fg">
+                        [scale.kubernetes].ops_console
+                    </code>
+                    to true to read pod logs directly.
                 </span>
             </div>}
         {errorMsg
