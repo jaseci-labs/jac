@@ -779,8 +779,13 @@ test "usage_step correctly attributes an interleaved compaction call" {
         keep_recent_iterations=1
     );
 
-    steps = [e.data for e in events_of(list(task("go")), "usage_step")];
+    events = list(task("go"));
+    steps = [e.data for e in events_of(events, "usage_step")];
     assert llm.exhausted() , f"the summary was never requested: {llm.outputs}";
+    reported = [
+        (e.data["reason"], e.data["by"]) for e in events_of(events, "compaction")
+    ];
+    assert reported == [("threshold", "builtin")] , f"compaction events {reported}";
     compacted = [
         step
         for step in steps

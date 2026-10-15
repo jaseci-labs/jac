@@ -363,7 +363,7 @@ graph import byllm {
     types --> byllm.parallel { ToolCallResultMsg, normalize_tool_result }
     types --> byllm.tests.support { Message, MessageRole, StreamEvent, Tool }
     types --> byllm.tests.test_byllm { Message, MessageRole, Tool }
-    types --> byllm.tests.test_compaction { MockToolCall }
+    types --> byllm.tests.test_compaction { MockToolCall, StreamEvent }
     types --> byllm.tests.test_conversation { Message, MessageRole }
     types --> byllm.tests.test_multimodal_tool_results {
         Image,
@@ -486,6 +486,8 @@ graph import byllm.tests {
     }
     support --> byllm.tests.test_compaction {
         call,
+        event_types,
+        events_of,
         fail,
         finish,
         fixture_path,

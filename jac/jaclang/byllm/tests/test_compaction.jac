@@ -5,11 +5,20 @@ import litellm;
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { Model, ModelPool, MockLLM }
 import from jaclang.byllm.llm { BaseLLM, LocalLLM }
-import from jaclang.byllm.types { MockToolCall }
+import from jaclang.byllm.types { MockToolCall, StreamEvent }
 import from jaclang.byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
 import from pathlib { Path }
-import from support { call, capture_loguru, fail, finish, fixture_path, scripted }
+import from support {
+    call,
+    capture_loguru,
+    event_types,
+    events_of,
+    fail,
+    finish,
+    fixture_path,
+    scripted
+}
 
 
 glob COMPACTION_TOML_FIXTURE = fixture_path("compaction_config");
@@ -418,61 +427,87 @@ test "on_compaction hook returning invalid types raises ConfigurationError" {
 }
 
 
-test "streaming path triggers compaction and respects compaction_enabled" {
-    llm1 = MockLLM(
-        ctx_window=1000,
-        outputs=[
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {}),
-            "done"
-        ]
-    );
+test "streaming reports each applied compaction once and respects compaction_enabled" {
+    def overflow -> Exception {
+        return litellm.exceptions.ContextWindowExceededError(
+            message="ctx exceeded", model="mockllm", llm_provider="openai"
+        );
+    }
 
-    fired1 = [False];
-    def hook1(msgs: list[any], keep_recent: int) -> list[any] {
-        fired1[0] = True;
+    def shrink(msgs: list[any], keep_recent: int) -> list[any] {
         return msgs[:2];
     }
 
-    def task1(q: str) -> str by llm1(
-        tools=[step_a],
-        stream=True,
-        logging=True,
-        threshold_ratio=0.80,
-        on_compaction=hook1
-    );
-
-    for event in task1("test") {}
-    assert fired1[0];
-
-    llm2 = MockLLM(
-        ctx_window=1000,
-        outputs=[
-            (
-                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-                {"prompt_tokens": 950}
-            ),
-            "done"
-        ]
-    );
-
-    fired2 = [False];
-    def hook2(msgs: list[any], keep_recent: int) -> list[any] {
-        fired2[0] = True;
-        return msgs[:2];
+    def unchanged(msgs: list[any], keep_recent: int) -> list[any] {
+        return msgs;
     }
 
-    def task2(q: str) -> str by llm2(
-        tools=[step_a],
-        stream=True,
-        logging=True,
-        threshold_ratio=0.80,
-        compaction_enabled=False,
-        on_compaction=hook2
-    );
+    step = (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100});
+    big = (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850});
+    done = (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {});
+    over = [step, big, done, "ok"];
+    retry = [step, fail(overflow()), done, "ok"];
+    retry_fails = [step, fail(overflow()), fail(overflow())];
+    applied = {
+        "reason": "threshold",
+        "by": "hook",
+        "iteration": 2,
+        "messages_before": 5,
+        "messages_after": 2
+    };
+    overflowed = {"reason": "overflow", "by": "hook"};
+    # (label, model script, hook, compaction_enabled, event fields (None = no event), raises)
+    rows: list[tuple[str, list, any, bool, dict[str, any] | None, bool]] = [
+        ("applied compaction", over, shrink, True, applied, False),
+        ("compaction disabled", over, shrink, False, None, False),
+        ("discarded compaction", over, unchanged, True, None, False),
+        ("emergency compaction", retry, shrink, True, overflowed, False),
+        ("emergency retry that fails", retry_fails, shrink, True, overflowed, True)
+    ];
+    for (label, outputs, hook, enabled, want, raises) in rows {
+        llm = MockLLM(model_name="test-model", ctx_window=1000, outputs=list(outputs));
+        hook_calls = [0];
+        def counted(msgs: list[any], keep_recent: int) -> list[any] {
+            hook_calls[0] += 1;
+            return hook(msgs, keep_recent);
+        }
 
-    for event in task2("test") {}
-    assert not fired2[0];
+        def task(q: str) -> str by llm(
+            tools=[step_a],
+            stream=True,
+            logging=True,
+            threshold_ratio=0.80,
+            compaction_enabled=enabled,
+            on_compaction=counted
+        );
+
+        seen: list[StreamEvent] = [];
+        raised = False;
+        try {
+            for event in task("go") {
+                seen.append(event);
+            }
+        } except litellm.exceptions.ContextWindowExceededError {
+            raised = True;
+        }
+        assert raised == raises , f"{label}: raised={raised}, want {raises}";
+        assert (hook_calls[0] > 0) == enabled , f"{label}: hook ran {hook_calls[
+            0
+        ]} times";
+        kinds = event_types(seen);
+        reported = events_of(seen, "compaction");
+        assert len(reported) == (0 if want is None else 1) , f"{label}: events {kinds}";
+        if want is not None {
+            info = reported[0].data;
+            for (key, value) in want.items() {
+                assert info[key] == value , f"{label}: {key} is {info[key]!r}, want {value!r}";
+            }
+            assert 0 < info["tokens_after"] < info["tokens_before"] , f"{label}: tokens {info}";
+            if not raises {
+                assert kinds.index("compaction") < kinds.index("steps_done") , f"{label}: {kinds}";
+            }
+        }
+    }
 }
 
 

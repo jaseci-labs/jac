@@ -399,6 +399,17 @@ def _usage_step_events(
 }
 
 
+def _compaction_events(
+    mt_run: MTRuntime, compactions_base: int, iteration: int
+) -> Generator[StreamEvent, None, None] {
+    for record in mt_run._compactions[compactions_base:] {
+        yield StreamEvent(
+            event_type="compaction", data={** record, "iteration": iteration}
+        );
+    }
+}
+
+
 def _usage_history_total_cost(mt_run: MTRuntime) -> float {
     return sum(
         float(record.get("cost", 0.0) or 0.0) for record in mt_run._usage_history
@@ -651,7 +662,7 @@ impl BaseLLM._maybe_compact(
             f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
             "Compacting message history."
         );
-        if self._compact_messages(mt_run, cp) {
+        if self._compact_messages(mt_run, cp, "threshold") {
             return True;
         }
         logger.warning(
@@ -663,9 +674,9 @@ impl BaseLLM._maybe_compact(
 }
 
 
-impl BaseLLM._emergency_compact_retry(
+impl BaseLLM._emergency_compact(
     mt_run: MTRuntime, just_compacted: bool, cp: dict[str, any]
-) -> CompletionResult {
+) -> None {
     if not bool(cp["enabled"]) {
         raise;
     }
@@ -679,17 +690,19 @@ impl BaseLLM._emergency_compact_retry(
     logger.warning(
         "byLLM compaction: context window exceeded, triggering emergency compaction."
     );
-    if not self._compact_messages(mt_run, cp) and len(mt_run.messages) >= 4 {
+    if not self._compact_messages(mt_run, cp, "overflow")
+        and len(mt_run.messages) >= 4 {
         raise CompactionNotEffectiveError(
             "Compaction produced no reduction in message history - "
             "check on_compaction hook or compaction model."
         );
     }
-    return self.dispatch_no_streaming(mt_run);
 }
 
 
-impl BaseLLM._compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool {
+impl BaseLLM._compact_messages(
+    mt_run: MTRuntime, cp: dict[str, any], reason: str
+) -> bool {
     keep_recent = int(cp["keep_recent"]);
     comp_model = cp["model"];
     on_compaction = (
@@ -728,6 +741,16 @@ impl BaseLLM._compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool {
         return False;
     }
     mt_run.messages = compacted;
+    mt_run._compactions.append(
+        {
+            "reason": reason,
+            "by": "hook" if on_compaction else "builtin",
+            "messages_before": original_len,
+            "messages_after": len(compacted),
+            "tokens_before": tokens_before,
+            "tokens_after": tokens_after
+        }
+    );
     logger.info(
         f"byLLM compaction: reduced message list from {original_len} to "
         f"{len(compacted)} messages, about {tokens_before} to {tokens_after} tokens"
@@ -1157,8 +1180,9 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         try {
             resp = self.dispatch_no_streaming(mt_run);
         } except litellm.exceptions.ContextWindowExceededError {
-            resp = self._emergency_compact_retry(mt_run, just_compacted, _cp);
+            self._emergency_compact(mt_run, just_compacted, _cp);
             just_compacted = True;
+            resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
@@ -2298,6 +2322,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
         while True {
             iter_count += 1;
             _usage_base = len(mt_run._usage_history);
+            _compactions_base = len(mt_run._compactions);
 
             if on_iteration and iter_count > 1 {
                 ctx = IterationContext(
@@ -2428,8 +2453,11 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     );
                 }
                 mt_run._tool_arg_deltas = [];
-                resp = self._emergency_compact_retry(mt_run, just_compacted, _cp);
+                self._emergency_compact(mt_run, just_compacted, _cp);
                 just_compacted = True;
+                yield from _compaction_events(mt_run, _compactions_base, iter_count);
+                _compactions_base = len(mt_run._compactions);
+                resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
                 if _emitted_deltas {
                     _emitted_deltas = False;
@@ -2458,6 +2486,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
             );
 
             just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
+            yield from _compaction_events(mt_run, _compactions_base, iter_count);
 
             yield StreamEvent(
                 event_type="llm_timing",

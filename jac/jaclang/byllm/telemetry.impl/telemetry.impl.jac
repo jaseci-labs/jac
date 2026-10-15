@@ -99,7 +99,8 @@ impl _emit_agent_telemetry(
         "latency_ms": latency_ms,
         "status": status,
         "error": str(error)[:1000] if error else None,
-        "tokens": tokens
+        "tokens": tokens,
+        "compactions": list(mt_run._compactions)
     };
 
     for callback in _agent_callbacks {
