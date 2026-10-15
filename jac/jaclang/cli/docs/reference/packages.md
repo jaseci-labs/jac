@@ -82,6 +82,14 @@ jac install --plan                   # show every dependency and where it came f
 
 A bare name without a slash is not a Jac package: `jac install numpy` fails with a hint to use `--pypi`.
 
+Dependency edits and `jac fix dependencies` preserve comments and formatting
+when the edited TOML represents the intended configuration. For layouts that
+cannot be safely edited in place, such as removing a multiline value, Jac
+rewrites the document while preserving its values; comments and formatting
+may change.
+Configuration commands such as `jac config set` and `jac config unset` also
+preserve multiline string values when rewriting the document.
+
 ### What `jac install` does
 
 1. **Resolves** the Jac package graph with a PubGrub solver: one version of each package per graph, the newest that satisfies every requirement. A version whose `jac-version` excludes the running compiler is skipped. When no solution exists, the error explains the chain of requirements that conflict.

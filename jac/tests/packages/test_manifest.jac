@@ -120,3 +120,23 @@ test "jac fix dependencies moves PyPI entries without touching the rest" {
         assert not migrate_manifest(path).moved;
     }
 }
+
+test "dependency migration preserves multiline values" {
+    with tempfile.TemporaryDirectory() as tmp {
+        path = Path(tmp) / "jac.toml";
+        path.write_text(
+            '[project]\nname = "repro"\n\n[dependencies]\n'
+                + 'httpx = """\\\n~=0.28\\\n"""\nbcrypt = ">=4"\n'
+        );
+        result = migrate_manifest(path);
+        assert not result.lossless;
+        assert sorted(result.moved) == ["dependencies.bcrypt", "dependencies.httpx"];
+        assert tomllib.loads(result.text)
+            == {
+                "project": {"name": "repro"},
+                "dependencies": {"pypi": {"httpx": "~=0.28", "bcrypt": ">=4"}}
+            };
+        path.write_text(result.text);
+        assert not migrate_manifest(path).moved;
+    }
+}
