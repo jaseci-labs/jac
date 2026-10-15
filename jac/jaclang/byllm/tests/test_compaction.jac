@@ -28,32 +28,46 @@ def finish_tool(final_output: str) -> str {
 # Pipeline tests compact through a hook so they check when compaction fires,
 # not how _default_compact slices; that is verified separately.
 test "above threshold compacts and next iteration sees shortened messages" {
-    llm = MockLLM(
-        ctx_window=1000,
-        outputs=[
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
-        ]
-    );
-
-    hook_call_count = [0];
-    def shrinking_hook(msgs: list[any], keep_recent: int) -> list[any] {
-        hook_call_count[0] += 1;
+    def new_list(msgs: list[any], keep_recent: int) -> list[any] {
         return [msgs[0], msgs[1]];
     }
 
-    def my_task(q: str) -> str by llm(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=shrinking_hook
-    );
+    def in_place(msgs: list[any], keep_recent: int) -> list[any] {
+        del msgs[2:];
+        return msgs;
+    }
 
-    result = my_task("test");
+    for (label, hook) in [
+        ("hook returns a new list", new_list),
+        ("hook shrinks the list in place", in_place)
+    ] {
+        llm = MockLLM(
+            ctx_window=1000,
+            outputs=[
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+            ]
+        );
 
-    assert result == "ok";
-    assert hook_call_count[0] == 1;
-    # Without compaction iter 3 would be at 6 messages; hook collapses to 3.
-    iter_msgs = [len(sent) for sent in llm.sent("messages")];
-    assert iter_msgs == [2, 4, 3] , f"Expected [2, 4, 3], got {iter_msgs}";
+        hook_calls = [0];
+        def counted(msgs: list[any], keep_recent: int) -> list[any] {
+            hook_calls[0] += 1;
+            return hook(msgs, keep_recent);
+        }
+
+        def my_task(q: str) -> str by llm(
+            tools=[step_a], threshold_ratio=0.80, on_compaction=counted
+        );
+
+        assert my_task("test") == "ok" , f"{label}: the call must finish";
+        assert hook_calls[0] == 1 , f"{label}: the hook must run once, ran {hook_calls[
+            0
+        ]}";
+        # Without compaction iter 3 would be at 6 messages; the hook collapses it to 3.
+        iter_msgs = [len(sent) for sent in llm.sent("messages")];
+        assert iter_msgs == [2, 4, 3] , f"{label}: expected [2, 4, 3], got {iter_msgs}";
+    }
 }
 
 
@@ -318,33 +332,46 @@ test "a proactive compaction that does not reduce the history lets the call cont
 }
 
 
-test "an emergency compaction that does not reduce the history raises CompactionNotEffectiveError" {
-    llm = MockLLM(
-        outputs=[
-            (MockToolCall(tool=step_a, args={}), {}),
-            fail(
-                litellm.exceptions.ContextWindowExceededError(
-                    message="ctx exceeded", model="mockllm", llm_provider="openai"
-                )
-            )
-        ]
-    );
-
-    def noop_hook(msgs: list[any], keep_recent: int) -> list[any] {
+test "an emergency compaction raises CompactionNotEffectiveError only when it does not reduce the history" {
+    def noop(msgs: list[any], keep_recent: int) -> list[any] {
         return msgs;
     }
 
-    def my_task(q: str) -> str by llm(tools=[step_a], on_compaction=noop_hook);
-
-    raised = False;
-    try {
-        my_task("test");
-    } except CompactionNotEffectiveError as e {
-        raised = True;
-        assert "no reduction" in str(e);
+    def in_place(msgs: list[any], keep_recent: int) -> list[any] {
+        del msgs[2:];
+        return msgs;
     }
-    assert raised;
-    assert len(llm.seen) == 2 , "a compaction that did nothing must not retry the call";
+
+    # (label, hook, raises)
+    for (label, hook, raises) in [
+        ("hook changes nothing", noop, True),
+        ("hook shrinks the list in place", in_place, False)
+    ] {
+        llm = MockLLM(
+            outputs=[
+                (MockToolCall(tool=step_a, args={}), {}),
+                fail(
+                    litellm.exceptions.ContextWindowExceededError(
+                        message="ctx exceeded", model="mockllm", llm_provider="openai"
+                    )
+                ),
+                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+            ]
+        );
+
+        def my_task(q: str) -> str by llm(tools=[step_a], on_compaction=hook);
+
+        raised = False;
+        try {
+            assert my_task("test") == "ok" , f"{label}: the retried call must finish";
+        } except CompactionNotEffectiveError as e {
+            raised = True;
+            assert "no reduction" in str(e) , f"{label}: unexpected message {e}";
+        }
+        assert raised == raises , f"{label}: raised={raised}, want {raises}";
+        (calls, want_calls) = (len(llm.seen), 2 if raises else 3);
+        assert calls == want_calls , f"{label}: want {want_calls} calls, got {calls}";
+    }
 }
 
 

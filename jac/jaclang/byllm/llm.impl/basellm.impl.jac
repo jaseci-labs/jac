@@ -697,6 +697,7 @@ impl BaseLLM._compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool {
     );
     original_len = len(mt_run.messages);
     msg_dicts = mt_run.get_msg_list();
+    tokens_before = _estimate_tokens(msg_dicts);
     if on_compaction {
         compacted = on_compaction(msg_dicts, keep_recent);
         if not isinstance(compacted, list) or len(compacted) < 2 {
@@ -722,7 +723,6 @@ impl BaseLLM._compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool {
             msg_dicts, keep_recent, model_for_compaction, mt_run, int(cp["ctx_window"])
         );
     }
-    tokens_before = _estimate_tokens(msg_dicts);
     tokens_after = _estimate_tokens(compacted);
     if tokens_after >= tokens_before {
         return False;
