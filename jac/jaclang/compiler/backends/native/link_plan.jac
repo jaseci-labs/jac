@@ -444,7 +444,8 @@ def build_link_plan(
     roots: list[str],
     options: (CompileOptions | None) = None,
     mode: str = "",
-    native_unit: bool = False
+    native_unit: bool = False,
+    validated: (set[str] | None) = None
 ) -> LinkPlan {
     import from jaclang.compiler.driver.nativecache { NativeBuildSession }
     opts = options if options is not None else CompileOptions();
@@ -454,7 +455,7 @@ def build_link_plan(
     }
     registry = prog.native_units();
     if registry.session is not None {
-        return _build_link_plan(prog, roots, opts, mode, native_unit);
+        return _build_link_plan(prog, roots, opts, mode, native_unit, validated);
     }
     session = NativeBuildSession(registry=registry, options=opts);
     registry.session = session;
@@ -464,7 +465,7 @@ def build_link_plan(
     }
     target_token = push_native_target(opts.native_target or "");
     try {
-        plan = _build_link_plan(prog, roots, opts, mode, native_unit);
+        plan = _build_link_plan(prog, roots, opts, mode, native_unit, validated);
         session.finish([unit.path for unit in plan.units]);
         return plan;
     } finally {
@@ -479,7 +480,8 @@ def _build_link_plan(
     roots: list[str],
     options: (CompileOptions | None) = None,
     mode: str = "",
-    native_unit: bool = False
+    native_unit: bool = False,
+    validated: (set[str] | None) = None
 ) -> LinkPlan {
     opts = options if options is not None else CompileOptions();
     if native_unit and not opts.native_unit {
@@ -509,7 +511,11 @@ def _build_link_plan(
         }
         errs_before = len(prog.errors_had);
         ent = registry.ensure(
-            path, compile_on_miss=False, options=opts, check_deps=False
+            path,
+            compile_on_miss=False,
+            options=opts,
+            check_deps=False,
+            validated=validated
         );
         if ent is None and os.path.isfile(path) {
             ent = registry.compile_unit(path, opts);
@@ -1612,9 +1618,14 @@ def jit_engine_for_module(
 }
 
 def jit_engine_for_cached(
-    prog: JacProgram, path: str, options: CompileOptions
+    prog: JacProgram,
+    path: str,
+    options: CompileOptions,
+    validated: (set[str] | None) = None
 ) -> (ExecutionEngine | None) {
-    plan = build_link_plan(prog, [path], options, mode=NATIVE_LINK_MODE_BITCODE);
+    plan = build_link_plan(
+        prog, [path], options, mode=NATIVE_LINK_MODE_BITCODE, validated=validated
+    );
     return jit_engine(plan);
 }
 

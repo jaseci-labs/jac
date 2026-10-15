@@ -118,6 +118,35 @@ test "a class or enum digest covers that declaration and nothing else" {
     }
 }
 
+# A prepared-application restore re-verifies every input's content+annex digest
+# before loading sections, so row checks against those files would only
+# re-derive equal digests. `validated` names that caller-checked set: rows for
+# its files are trusted, anything else is still re-digested.
+test "validated inputs skip re-checking rows for files already digested" {
+    with TemporaryDirectory() as directory {
+        (decl, annex) = write_module(directory);
+        section = ct_deps_section([], [], definitions=[(str(decl), "Box.first")]);
+        validated = {os.path.realpath(str(decl))};
+        annex.write_text(IMPL.replace("self.items[0]", "self.items[2]"));
+        assert ct_dep_text_fresh(section.decode("utf-8"), validated=validated);
+    }
+}
+
+test "rows outside the validated set are still checked" {
+    with TemporaryDirectory() as directory {
+        (decl, annex) = write_module(directory);
+        stray = Path(directory) / "stray.jac";
+        stray.write_text("def stray -> int { return 1; }\n");
+        section = ct_deps_section(
+            [str(stray)], [], definitions=[(str(decl), "Box.first")]
+        );
+        validated = {os.path.realpath(str(decl))};
+        assert ct_dep_text_fresh(section.decode("utf-8"), validated=validated);
+        stray.write_text("def stray -> int { return 2; }\n");
+        assert not ct_dep_text_fresh(section.decode("utf-8"), validated=validated);
+    }
+}
+
 """Whoever compiled a module already knows where its definitions sit. The
 positions read off an analysed tree, annexes included, give the same digests
 as parsing the files again, so the session that holds the tree can hand them
