@@ -110,15 +110,12 @@ impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str,
 }
 
 impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
+    resolved_config = JacByllmConfig(project_dir);
     if (
-        _byllm_config_instance is not None
-        and project_dir is not None
-        and _byllm_config_instance.project_dir != project_dir
+        _byllm_config_instance is None
+        or _byllm_config_instance.project_dir != resolved_config.project_dir
     ) {
-        _byllm_config_instance = None;
-    }
-    if _byllm_config_instance is None {
-        _byllm_config_instance = JacByllmConfig(project_dir);
+        _byllm_config_instance = resolved_config;
     }
     return _byllm_config_instance;
 }
