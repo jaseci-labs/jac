@@ -25,6 +25,7 @@ import os;
 import sys;
 import jaclang.compiler.backends.native.llvm.ir as ir;
 import from jaclang.compiler.backends.native.primitives_native {
+    EmitArgs,
     NativeEmitCtx,
     NativeSetEmitter,
     NativeDictEmitter
@@ -467,7 +468,7 @@ walker NaIRGenPass(CompilerPass) {
         _binary_file_helpers_emitted: bool = False,
         _bytes_struct_type: (ir.Type | None) = None,
         _bytes_repr_function: (ir.Function | None) = None,
-        _bytes_search_function: (ir.Function | None) = None,
+        _mem_search_function: (ir.Function | None) = None,
         _bytes_decode_function: (ir.Function | None) = None,
         _name_lookup_function: (ir.Function | None) = None,
         _codec_lookup_function: (ir.Function | None) = None,
@@ -740,6 +741,7 @@ walker NaIRGenPass(CompilerPass) {
         slice_node: uni.Slice, src_len: ir.Value
     ) -> (tuple[ir.Value, ir.Value, ir.Value, ir.Value] | None);
 
+    def _emit_clamp_bound(bound: ir.Value, length: ir.Value) -> ir.Value;
     def _codegen_list_slice(
         target_val: ir.Value, slice_node: uni.Slice, elem_type_name: str
     ) -> (ir.Value | None);
@@ -796,7 +798,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
-    def _bytes_search_fn -> ir.Function;
+    def _mem_search_fn -> ir.Function;
     def _emit_bytes_needle(
         needle: ir.Value
     ) -> (tuple[ir.Value, ir.Value, ir.Value] | None);
@@ -805,7 +807,17 @@ walker NaIRGenPass(CompilerPass) {
         target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
     ) -> (ir.Value | None);
 
+    def _emit_mem_search(
+        data: ir.Value,
+        length: ir.Value,
+        needle: tuple[ir.Value, ir.Value, ir.Value],
+        bounds: list[ir.Value],
+        mode: str,
+        missing: str = ""
+    ) -> (ir.Value | None);
+
     def _decode_literal(arg_node: (uni.UniNode | None)) -> (str | None);
+    def _is_utf8_literal(arg_node: (uni.UniNode | None)) -> bool;
     def _private_cstr(data: bytes, name: str) -> ir.Value;
     def _name_lookup_fn -> ir.Function;
     def _codec_lookup_fn -> ir.Function;
@@ -1438,6 +1450,10 @@ walker NaIRGenPass(CompilerPass) {
         type_key: str,
         kwargs: (dict[str, uni.UniNode] | None) = None,
         kw_node: (uni.UniNode | None) = None
+    ) -> (ir.Value | None);
+
+    def _refuse_unread_args(
+        name: str, args: EmitArgs, result: (ir.Value | None), site: (uni.UniNode | None)
     ) -> (ir.Value | None);
 
     def _dispatch_builtin(

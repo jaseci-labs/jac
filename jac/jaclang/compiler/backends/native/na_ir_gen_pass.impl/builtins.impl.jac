@@ -992,6 +992,18 @@ impl NaIRGenPass._emit_norm_slice_bounds(
     return (start_val, stop_val, step_val, step_pos);
 }
 
+impl NaIRGenPass._emit_clamp_bound(bound: ir.Value, length: ir.Value) -> ir.Value {
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    b = self.builder;
+    value = self._coerce_type(bound, i64);
+    value = b.select(
+        b.icmp_signed("<", value, zero), b.add(value, length), value, name="bnd.wrap"
+    );
+    value = b.select(b.icmp_signed("<", value, zero), zero, value, name="bnd.lo");
+    return b.select(b.icmp_signed(">", value, length), length, value, name="bnd.hi");
+}
+
 impl NaIRGenPass._codegen_list_slice(
     target_val: ir.Value, slice_node: object, elem_type_name: str
 ) -> (ir.Value | None) {

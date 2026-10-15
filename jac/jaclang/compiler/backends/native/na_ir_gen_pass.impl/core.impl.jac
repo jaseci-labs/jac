@@ -2326,8 +2326,8 @@ impl NaIRGenPass._dispatch_primitive_method(
 ) -> (ir.Value | None) {
     target = self._str_norm(target);
     originals = list(args);
-    args = [self._str_borrow(_a) for _a in args];
     import jaclang.compiler.backends.native.primitives_native as _pm_pn;
+    args = _pm_pn.EmitArgs([self._str_borrow(_a) for _a in args]);
     _emitter = self._ensure_emitters().get(type_name);
     if not isinstance(_emitter, PrimitiveEmitter) {
         return None;
@@ -2352,9 +2352,19 @@ impl NaIRGenPass._dispatch_primitive_method(
         return None;
     }
     _ctx = NativeEmitCtx(pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {}));
-    if isinstance(kw_node, uni.FuncCall)
-        and isinstance(kw_node.target, uni.AtomTrailer) {
-        _ctx.receiver_node = kw_node.target.target;
+    if isinstance(kw_node, uni.FuncCall) {
+        _ctx.call_node = kw_node;
+        _positional = [
+            param
+            for param in (kw_node.params or [])
+            if not isinstance(param, uni.KWPair)
+        ];
+        if len(_positional) == len(args) {
+            _ctx.arg_nodes = _positional;
+        }
+        if isinstance(kw_node.target, uni.AtomTrailer) {
+            _ctx.receiver_node = kw_node.target.target;
+        }
     }
     try {
         result: (ir.Value | None) = None;
@@ -2373,6 +2383,9 @@ impl NaIRGenPass._dispatch_primitive_method(
                 f"emit_{method_name}() takes 3 positional arguments but 4 were given"
             );
         }
+        result = self._refuse_unread_args(
+            f"{type_name}.{method_name}", args, result, kw_node
+        );
         if result is not None {
             self._consume_str_args(originals);
         }
@@ -2398,6 +2411,26 @@ impl NaIRGenPass._dispatch_primitive_method(
         );
         return None;
     }
+}
+
+impl NaIRGenPass._refuse_unread_args(
+    name: str, args: EmitArgs, result: (ir.Value | None), site: (uni.UniNode | None)
+) -> (ir.Value | None) {
+    unread = args.unread() if result is not None else [];
+    if not unread {
+        return result;
+    }
+    self.emit(
+        E5092,
+        node_override=site,
+        kind="positional argument for native method",
+        name=f"{name}(argument {', '.join(str(index + 1) for index in unread)})",
+        help_text="The native lowering of this method did not read every positional "
+        "argument it was given, so the call would have run with those arguments "
+        "dropped and returned a different result than Python. The enclosing "
+        "function runs in its Python implementation instead."
+    );
+    return None;
 }
 
 impl NaIRGenPass._dispatch_builtin(

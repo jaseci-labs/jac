@@ -2770,15 +2770,14 @@ impl NaIRGenPass._dispatch_receiver_method(
 ) -> (ir.Value | None) {
     originals = self._codegen_call_args(nd);
     arguments = [self._str_view(argument) for argument in originals];
-    takes_kwargs = self._primitive_method_takes_kwargs(type_name, method_name);
     result = self._dispatch_primitive_method(
         type_name,
         method_name,
         receiver,
         arguments,
         "",
-        kwargs=self._split_call_kwargs(nd) if takes_kwargs else None,
-        kw_node=nd if takes_kwargs else None
+        kwargs=self._split_call_kwargs(nd),
+        kw_node=nd
     );
     if result is None {
         return None;
@@ -3078,11 +3077,28 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         else None;
     if isinstance(_static_emitter, PrimitiveEmitter)
         and method_name in _static_emitter.static_names() {
-        _static_result = _static_emitter.dispatch_static(
-            method_name,
-            NativeEmitCtx(pass_ref=self, type_key=""),
-            self._codegen_call_args(nd)
-        );
+        _static_args = EmitArgs(self._codegen_call_args(nd));
+        _static_kwargs = self._split_call_kwargs(nd);
+        _static_result: (ir.Value | None) = None;
+        if _static_kwargs {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="keyword argument for native method",
+                name=f"{method_name}({', '.join(_static_kwargs.keys())}=...)"
+            );
+        } else {
+            _static_result = self._refuse_unread_args(
+                f"{target_name}.{method_name}",
+                _static_args,
+                _static_emitter.dispatch_static(
+                    method_name,
+                    NativeEmitCtx(pass_ref=self, type_key="", call_node=nd),
+                    _static_args
+                ),
+                nd
+            );
+        }
         if _static_result is None {
             self._refuse_unlowered_method_call(nd, method_name, None, _mc_mark);
         }
@@ -3201,7 +3217,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 }
             }
             result = self._dispatch_primitive_method(
-                "set", method_name, set_val, arg_vals, elem_type_name
+                "set",
+                method_name,
+                set_val,
+                arg_vals,
+                elem_type_name,
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
             if result is not None {
                 return result;
@@ -3215,7 +3237,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if tuple_val is not None {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
-                "tuple", method_name, tuple_val, arg_vals, tuple_type_key
+                "tuple",
+                method_name,
+                tuple_val,
+                arg_vals,
+                tuple_type_key,
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
             if result is not None {
                 return result;
@@ -3256,7 +3284,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
-                "int", method_name, int_val, arg_vals, ""
+                "int",
+                method_name,
+                int_val,
+                arg_vals,
+                "",
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
             if result is not None {
                 return result;
@@ -3269,7 +3303,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         if float_val is not None and isinstance(float_val.type, ir.DoubleType) {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
-                "float", method_name, float_val, arg_vals, ""
+                "float",
+                method_name,
+                float_val,
+                arg_vals,
+                "",
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
             if result is not None {
                 return result;
@@ -3281,7 +3321,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         cval = self._codegen_receiver(trailer.target);
         if cval is not None and cval.type == self.complex_struct_type.as_pointer() {
             result = self._dispatch_primitive_method(
-                "complex", method_name, cval, [], ""
+                "complex",
+                method_name,
+                cval,
+                self._codegen_call_args(nd),
+                "",
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
             if result is not None {
                 return result;
@@ -3295,7 +3341,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
             if rng_val is not None {
                 arg_vals = self._codegen_call_args(nd);
                 result = self._dispatch_primitive_method(
-                    "range", method_name, rng_val, arg_vals, ""
+                    "range",
+                    method_name,
+                    rng_val,
+                    arg_vals,
+                    "",
+                    kwargs=self._split_call_kwargs(nd),
+                    kw_node=nd
                 );
                 if result is not None {
                     return result;
@@ -3374,7 +3426,13 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                         );
                     }
                     result = self._dispatch_primitive_method(
-                        "list", method_name, obj_val, arg_vals, elem_type_name
+                        "list",
+                        method_name,
+                        obj_val,
+                        arg_vals,
+                        elem_type_name,
+                        kwargs=self._split_call_kwargs(nd),
+                        kw_node=nd
                     );
                     self._clear_rc_ctx();
                     if result is not None {

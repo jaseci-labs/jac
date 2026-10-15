@@ -27,6 +27,13 @@ obj NativeEmitCtx {
         receiver_node: UniNode | None = None;
 }
 
+class EmitArgs(list) {
+    def init(self: EmitArgs, values: list[ir.Value]) -> None;
+    def __getitem__(self: EmitArgs, key: any) -> any;
+    def __iter__(self: EmitArgs) -> any;
+    def unread(self: EmitArgs) -> list[int];
+}
+
 
 def get_builder(p: NaIRGenPass) -> ir.IRBuilder {
     b = p.builder;
@@ -264,6 +271,15 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_search(
+        self: NativeStrEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        mode: str,
+        missing: str = ""
+    ) -> (ir.Value | None);
+
     def emit_count(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -419,6 +435,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_pad(
+        self: NativeStrEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        align: str
+    ) -> (ir.Value | None);
+
     def emit_center(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -546,6 +570,10 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         target: ir.Value,
         args: list[ir.Value]
     ) -> (ir.Value | None);
+
+    def _utf8_codec_args(
+        self: NativeStrEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
+    ) -> bool;
 
     def emit_encode(
         self: NativeStrEmitter,

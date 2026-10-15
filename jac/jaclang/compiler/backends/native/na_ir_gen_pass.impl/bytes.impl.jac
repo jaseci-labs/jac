@@ -528,33 +528,51 @@ impl NaIRGenPass._emit_bytes_needle(
 impl NaIRGenPass._emit_bytes_search(
     target: ir.Value, args: list[ir.Value], mode: str, missing: str = ""
 ) -> (ir.Value | None) {
-    i64 = ir.IntType(64);
-    modes = {"find": 0, "rfind": 1, "count": 2};
-    if not args or len(args) > 3 or mode not in modes {
+    if not args or len(args) > 3 {
         return None;
     }
-    for bound in args[1:] {
+    needle = self._emit_bytes_needle(args[0]);
+    if needle is None {
+        return None;
+    }
+    return self._emit_mem_search(
+        self._bytes_data_ptr(target),
+        self._bytes_len_val(target),
+        needle,
+        args[1:],
+        mode,
+        missing
+    );
+}
+
+impl NaIRGenPass._emit_mem_search(
+    data: ir.Value,
+    length: ir.Value,
+    needle: tuple[ir.Value, ir.Value, ir.Value],
+    bounds: list[ir.Value],
+    mode: str,
+    missing: str = ""
+) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    modes = {"find": 0, "rfind": 1, "count": 2};
+    if len(bounds) > 2 or mode not in modes {
+        return None;
+    }
+    for bound in bounds {
         if not isinstance(bound.type, ir.IntType) {
             return None;
         }
     }
-    parts = self._emit_bytes_needle(args[0]);
-    if parts is None {
-        return None;
-    }
-    (data, size, byte) = parts;
-    start = self._coerce_type(args[1], i64) if len(args) > 1 else ir.Constant(i64, 0);
-    end = self._coerce_type(args[2], i64)
-        if len(args) > 2
-        else self._bytes_len_val(target);
+    start = self._coerce_type(bounds[0], i64) if bounds else ir.Constant(i64, 0);
+    end = self._coerce_type(bounds[1], i64) if len(bounds) > 1 else length;
     result = self.builder.call(
-        self._bytes_search_fn(),
-        [target, data, size, byte, start, end, ir.Constant(i64, modes[mode])],
-        name=f"by.{mode}"
+        self._mem_search_fn(),
+        [data, length, *needle, start, end, ir.Constant(i64, modes[mode])],
+        name=f"mem.{mode}"
     );
     if missing {
         self._emit_runtime_raise(
-            self.builder.icmp_signed("<", result, ir.Constant(i64, 0), name="by.miss"),
+            self.builder.icmp_signed("<", result, ir.Constant(i64, 0), name="mem.miss"),
             "ValueError",
             missing
         );
@@ -562,9 +580,9 @@ impl NaIRGenPass._emit_bytes_search(
     return result;
 }
 
-impl NaIRGenPass._bytes_search_fn -> ir.Function {
-    if self._bytes_search_function is not None {
-        return self._bytes_search_function;
+impl NaIRGenPass._mem_search_fn -> ir.Function {
+    if self._mem_search_function is not None {
+        return self._mem_search_function;
     }
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
@@ -573,13 +591,13 @@ impl NaIRGenPass._bytes_search_fn -> ir.Function {
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
     minus_one = ir.Constant(i64, -1);
-    bt_ptr = self._get_bytes_struct_type().as_pointer();
-    fnty = ir.FunctionType(i64, [bt_ptr, i8p, i64, i64, i64, i64, i64]);
-    fn = ir.Function(self.llvm_module, fnty, name="__jac_bytes_search");
+    fnty = ir.FunctionType(i64, [i8p, i64, i8p, i64, i64, i64, i64, i64]);
+    fn = ir.Function(self.llvm_module, fnty, name="__jac_mem_search");
     fn.linkage = "private";
-    (hay, needle, needle_len, byte, raw_start, raw_end, mode) = fn.args;
+    (data, length, needle, needle_len, byte, raw_start, raw_end, mode) = fn.args;
     for (arg, name) in zip(
-        fn.args, ["hay", "needle", "needle_len", "byte", "start", "end", "mode"]
+        fn.args,
+        ["data", "length", "needle", "needle_len", "byte", "start", "end", "mode"]
     ) {
         arg.name = name;
     }
@@ -588,12 +606,6 @@ impl NaIRGenPass._bytes_search_fn -> ir.Function {
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     byte_slot = b.alloca(i8, name="s.byte");
     b.store(b.trunc(byte, i8), byte_slot);
-    length = b.load(
-        b.gep(hay, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="s.len"
-    );
-    data = b.bitcast(
-        b.gep(hay, [ir.Constant(i32, 0), ir.Constant(i32, 1)]), i8p, name="s.data"
-    );
     is_byte = b.icmp_unsigned("==", needle, ir.Constant(i8p, None), name="s.isbyte");
     nd = b.select(is_byte, byte_slot, needle, name="s.nd");
     nd_len = b.select(is_byte, one, needle_len, name="s.ndlen");
@@ -711,7 +723,7 @@ impl NaIRGenPass._bytes_search_fn -> ir.Function {
     b.position_at_end(count_done);
     b.ret(total);
 
-    self._bytes_search_function = fn;
+    self._mem_search_function = fn;
     return fn;
 }
 
@@ -729,6 +741,12 @@ impl NaIRGenPass._decode_literal(arg_node: (uni.UniNode | None)) -> (str | None)
         return None;
     }
     return value if isinstance(value, str) else None;
+}
+
+impl NaIRGenPass._is_utf8_literal(arg_node: (uni.UniNode | None)) -> bool {
+    literal = self._decode_literal(arg_node);
+    return literal is not None
+        and active_host().native_fact(FACT_CODEC_NAME, literal) == "utf-8";
 }
 
 impl NaIRGenPass._private_cstr(data: bytes, name: str) -> ir.Value {
