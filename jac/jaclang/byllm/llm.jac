@@ -208,6 +208,10 @@ obj BaseLLM {
         mt_run: MTRuntime, fallback: str | None = None
     ) -> Generator[str, None, None];
 
+    def _stream_final_answer_events(
+        mt_run: MTRuntime, fallback: str | None = None
+    ) -> Generator[StreamEvent, None, None];
+
     def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
     def _yield_recovery_result(

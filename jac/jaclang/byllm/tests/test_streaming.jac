@@ -331,6 +331,50 @@ test "a mid-stream drop is retried only when the error is transient" {
 }
 
 
+test "a final-answer retry resets the logging stream and stored answer" {
+    import from litellm.exceptions { APIConnectionError }
+    transient = APIConnectionError(
+        message="incomplete chunked read", llm_provider="anthropic", model="m"
+    );
+    def save_data(name: str) -> str {
+        return name;
+    }
+    model = Model(model_name="gpt-4o-mini");
+    mt = mk_run(tools=[save_data], stream=True);
+    with scripted(
+        model,
+        [
+            finish("committed answer"),
+            fail(transient, content="partial answer", after=1),
+            say("full answer")
+        ]
+    ) {
+        events = list(model._invoke_streaming(mt));
+    }
+
+    answer_parts: list[str] = [];
+    discarded = "";
+    for ev in events {
+        if ev.event_type == "stream_reset" {
+            discarded += "".join(answer_parts);
+            answer_parts = [];
+        } elif ev.event_type == "chunk" {
+            answer_parts.append(str(ev.data.get("content", "")));
+        }
+    }
+    assert discarded and "partial answer".startswith(discarded) , (
+        f"the failed attempt must precede the reset, got {discarded!r}"
+    );
+    assert "".join(answer_parts) == "full answer" , (
+        f"the replacement answer must stand alone, got {''.join(answer_parts)!r}"
+    );
+    stored_answer = str(getattr(mt.messages[-1], "content", ""));
+    assert stored_answer == "full answer" , (
+        f"conversation stored the failed prefix: {stored_answer!r}"
+    );
+}
+
+
 test "the inter-chunk read timeout is set for streaming only" {
     model = Model(model_name="gpt-4o-mini");
     streaming = model.make_model_params(mk_run(stream=True));

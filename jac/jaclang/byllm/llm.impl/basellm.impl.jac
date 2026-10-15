@@ -2168,8 +2168,13 @@ impl BaseLLM._stream_final_answer(
     original_tool_choice = mt_run.call_params.pop("tool_choice", None);
     mt_run.call_params["tool_choice"] = "none";
     accumulated: str = "";
+    _seen_resets = mt_run._stream_reset_count;
     try {
         for token in self.dispatch_streaming(mt_run) {
+            if mt_run._stream_reset_count != _seen_resets {
+                _seen_resets = mt_run._stream_reset_count;
+                accumulated = "";
+            }
             accumulated += token;
             yield token;
         }
@@ -2195,6 +2200,24 @@ impl BaseLLM._stream_final_answer(
                 Message(role=MessageRole.ASSISTANT, content=accumulated)
             );
         }
+    }
+}
+
+impl BaseLLM._stream_final_answer_events(
+    mt_run: MTRuntime, fallback: str | None = None
+) -> Generator[StreamEvent, None, None] {
+    _seen_resets = mt_run._stream_reset_count;
+    for token in self._stream_final_answer(mt_run, fallback=fallback) {
+        if mt_run._stream_reset_count != _seen_resets {
+            _seen_resets = mt_run._stream_reset_count;
+            yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
+        }
+        if token {
+            yield StreamEvent(event_type="chunk", data={"content": token});
+        }
+    }
+    if mt_run._stream_reset_count != _seen_resets {
+        yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
     }
 }
 
@@ -2243,11 +2266,7 @@ impl BaseLLM._yield_recovery_result(
     }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
     if finish_found {
-        for token in self._stream_final_answer(mt_run, fallback=committed) {
-            if token {
-                yield StreamEvent(event_type="chunk", data={"content": token});
-            }
-        }
+        yield from self._stream_final_answer_events(mt_run, fallback=committed);
     } elif recovery_resp.output {
         yield StreamEvent(
             event_type="chunk", data={"content": str(recovery_resp.output)}
@@ -2329,13 +2348,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                             "reason": "aborted_with_summary"
                         }
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        if token {
-                            yield StreamEvent(
-                                event_type="chunk", data={"content": token}
-                            );
-                        }
-                    }
+                    yield from self._stream_final_answer_events(mt_run);
                     yield from _usage_step_events(mt_run, _usage_base);
                     break;
                 }
@@ -2346,11 +2359,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     event_type="steps_done",
                     data={"iterations": iter_count - 1, "reason": "max_iterations"}
                 );
-                for token in self._stream_final_answer(mt_run) {
-                    if token {
-                        yield StreamEvent(event_type="chunk", data={"content": token});
-                    }
-                }
+                yield from self._stream_final_answer_events(mt_run);
                 yield from _usage_step_events(mt_run, _usage_base);
                 break;
             }
@@ -2565,15 +2574,9 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     );
 
                     if mt_run.resp_type is None or mt_run.resp_type is str {
-                        for token in self._stream_final_answer(
+                        yield from self._stream_final_answer_events(
                             mt_run, fallback=str(final_output or "")
-                        ) {
-                            if token {
-                                yield StreamEvent(
-                                    event_type="chunk", data={"content": token}
-                                );
-                            }
-                        }
+                        );
                         yield from _usage_step_events(mt_run, _usage_base);
                     }
                     break;
