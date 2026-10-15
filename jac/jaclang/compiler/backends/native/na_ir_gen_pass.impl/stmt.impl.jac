@@ -160,9 +160,13 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             if isinstance(nd.error_msg, uni.String) {
                 _a_text = str(nd.error_msg.lit_value);
             }
-            self._emit_runtime_raise(
-                is_false, "AssertionError", f"{_a_text} at {_a_path}:{_a_line}"
-            );
+            if nd.error_msg is not None and not isinstance(nd.error_msg, uni.String) {
+                self._codegen_assert_computed(nd, is_false, f" at {_a_path}:{_a_line}");
+            } else {
+                self._emit_runtime_raise(
+                    is_false, "AssertionError", f"{_a_text} at {_a_path}:{_a_line}"
+                );
+            }
         }
     } elif isinstance(nd, uni.DeleteStmt) {
         self._codegen_delete(nd);
@@ -177,6 +181,41 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } else {
         self.emit(E5092, node_override=nd, kind="statement", name=type(nd).__name__);
     }
+}
+
+impl NaIRGenPass._codegen_assert_computed(
+    nd: uni.AssertStmt, is_false: ir.Value, where: str
+) -> None {
+    func = self.builder.function;
+    raise_bb = func.append_basic_block(name="assert.raise");
+    ok_bb = func.append_basic_block(name="assert.ok");
+    self.builder.cbranch(self._to_bool(is_false), raise_bb, ok_bb);
+    self.builder.position_at_end(raise_bb);
+    i8p = ir.IntType(8).as_pointer();
+    said: (ir.Value | None) = None;
+    if nd.error_msg is not None {
+        said = self._codegen_expr(nd.error_msg);
+    }
+    if said is not None {
+        said = self._str_norm(said);
+    }
+    suffix = self._str_norm(self._make_global_string(where, name_prefix=".assert.at"));
+    whole: (ir.Value | None) = None;
+    if said is not None and said.type == i8p and suffix.type == i8p {
+        whole = self._emit_binary_op(Tok.PLUS, said, suffix);
+        if whole is not None and whole is not said {
+            self._release_owned_args([said], op="assert_msg");
+        }
+    }
+    if whole is None {
+        whole = self._str_norm(
+            self._make_global_string(
+                "assertion failed" + where, name_prefix=".assert.at"
+            )
+        );
+    }
+    self._emit_raise_value("AssertionError", whole);
+    self.builder.position_at_end(ok_bb);
 }
 
 impl NaIRGenPass._codegen_delete(nd: uni.DeleteStmt) -> None {

@@ -2863,6 +2863,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_assert_computed(
+        nd: uni.AssertStmt, is_false: ir.Value, where: str
+    ) -> None;
+
     def _exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _unwind_top_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None
