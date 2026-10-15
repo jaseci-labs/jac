@@ -4,6 +4,9 @@ glob LOCAL_MODELS: dict[str, dict[str, any]] = {
          "gemma-4-e4b": {
              "repo": "unsloth/gemma-4-E4B-it-GGUF",
              "file": "gemma-4-E4B-it-Q4_K_M.gguf",
+             "revision": "bfc15c382204943c3a8fff0c750b94ae2364d7a3",
+             "sha256": "85a896a047553e842f25297ee5b031d64ff30147d9c4af17b1e4b394cd1fab87",
+             "size_bytes": 4977171584,
              "size_mb": 5000,
              "n_ctx": 8192,
              "description": "Google Gemma 4 E4B (instruction-tuned, Q4_K_M)"
@@ -11,6 +14,9 @@ glob LOCAL_MODELS: dict[str, dict[str, any]] = {
          "gemma-4-e2b": {
              "repo": "unsloth/gemma-4-E2B-it-GGUF",
              "file": "gemma-4-E2B-it-Q4_K_M.gguf",
+             "revision": "0314792d7f1f7e229411f620751375812bb9faf2",
+             "sha256": "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
+             "size_bytes": 3106738272,
              "size_mb": 2500,
              "n_ctx": 8192,
              "description": "Google Gemma 4 E2B (smaller, faster)"
@@ -18,6 +24,9 @@ glob LOCAL_MODELS: dict[str, dict[str, any]] = {
          "qwen3.5-4b": {
              "repo": "unsloth/Qwen3.5-4B-GGUF",
              "file": "Qwen3.5-4B-Q4_K_M.gguf",
+             "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+             "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+             "size_bytes": 2740937888,
              "size_mb": 2800,
              "n_ctx": 8192,
              "description": "Alibaba Qwen 3.5 4B (instruction-tuned, Q4_K_M)"

@@ -18,12 +18,11 @@ def _human_bytes(n: int) -> str {
 def _cmd_model(action: str = "list", alias: str = "") -> int {
     import from jaclang.byllm.local_runtime { LOCAL_MODELS, list_local_aliases }
     import from jaclang.byllm.model_cache {
-        ensure_model,
         force_pull,
-        is_downloaded,
         list_downloaded,
         remove_alias,
-        get_cache_dir
+        get_cache_dir,
+        weight_status
     }
     action = (action or "list").strip().lower();
 
@@ -33,17 +32,33 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
         console.print("");
         console.print(f"  {'ALIAS':<22} {'SIZE':>9} {'STATUS':<12} DESCRIPTION");
         console.print(f"  {'-' * 22} {'-' * 9} {'-' * 12} {'-' * 40}");
+        labels = {
+            "valid": "downloaded",
+            "invalid": "invalid",
+            "incomplete": "incomplete",
+            "missing": "not cached"
+        };
+        needs_repair: list[str] = [];
         for a in list_local_aliases() {
             spec = LOCAL_MODELS[a];
-            on_disk = a in cached;
+            state = weight_status(a, spec);
+            if state in ("invalid", "incomplete") {
+                needs_repair.append(a);
+            }
             size = (
                 _human_bytes(int(cached[a]["size_bytes"]))
-                    if on_disk
+                    if a in cached
                     else f"~{int(spec.get('size_mb', 0))} MB"
             );
-            status = "downloaded" if on_disk else "not cached";
             desc = spec.get("description", "");
-            console.print(f"  {a:<22} {size:>9} {status:<12} {desc}");
+            console.print(f"  {a:<22} {size:>9} {labels[state]:<12} {desc}");
+        }
+        for a in needs_repair {
+            console.print("");
+            console.warning(
+                f"'{a}' has invalid or incomplete weights; replace them with "
+                f"`jac model pull {a}`"
+            );
         }
         return 0;
     }
@@ -65,9 +80,15 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
             );
             return 2;
         }
-        if is_downloaded(norm, pull_spec) {
+        state = weight_status(norm, pull_spec);
+        if state == "valid" {
             console.info(f"'{norm}' is already downloaded");
             return 0;
+        }
+        if state == "invalid" {
+            console.warning(
+                f"cached weights for '{norm}' failed verification; replacing them"
+            );
         }
         try {
             path = force_pull(norm, pull_spec);
@@ -81,7 +102,13 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
 
     if action in ("rm", "remove", "delete") {
         norm = alias.strip().lower();
-        if remove_alias(norm) {
+        try {
+            removed = remove_alias(norm);
+        } except ValueError as e {
+            console.error(f"{e}", hint="run `jac model list` for choices");
+            return 2;
+        }
+        if removed {
             console.info(f"removed cached weights for '{norm}'");
             return 0;
         }
