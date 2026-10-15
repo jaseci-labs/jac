@@ -1,4 +1,5 @@
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ScalingMode }
+import from jaclang.scale.deploy.autoscale.autoscaler { triggers_can_reach_zero }
 import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
 import from jaclang.scale.runtime.cli._narrow {
     bget,
@@ -117,7 +118,9 @@ obj PlanValidator {
                 self._check_image(svc_name, deployment, out);
                 continue;
             }
-            self._check_hpa(svc_name, svc_cfg, deployment, out);
+            self._check_hpa(
+                svc_name, svc_cfg, dget(scaling, svc_name), deployment, out
+            );
             self._check_pdb(svc_name, svc_cfg, deployment, out);
             self._check_resources(svc_name, deployment, out);
             self._check_image(svc_name, deployment, out);
@@ -180,21 +183,40 @@ obj PlanValidator {
     }
 
     def _check_hpa(
-        svc_name: str, svc_cfg: any, deployment: any, out: list[Diagnostic]
+        svc_name: str,
+        svc_cfg: any,
+        scaling_entry: any,
+        deployment: any,
+        out: list[Diagnostic]
     ) {
         hpa = dget(svc_cfg, "hpa");
         if not bget(hpa, "enabled", True) {
             return;
         }
-        hpa_min = iget(hpa, "min", 1);
-        hpa_max = iget(hpa, "max", 3);
-        hpa_cpu = iget(hpa, "cpu_target", 70);
-        if hpa_min < 1 {
+        autoscaler = dget(scaling_entry, "autoscaler");
+        hpa_min = iget(autoscaler, "min", iget(hpa, "min", 1));
+        hpa_max = iget(autoscaler, "max", iget(hpa, "max", 3));
+        hpa_cpu = iget(autoscaler, "cpu_target", iget(hpa, "cpu_target", 70));
+        engine = sget(scaling_entry, "engine") or "hpa";
+        if hpa_min < 1 and not triggers_can_reach_zero(autoscaler, engine) {
+            if engine == "keda" {
+                reason = (
+                    "scaling to zero needs an event trigger, since cpu and memory "
+                    "targets cannot wake a workload with no pods; add one under "
+                    f"[[apps.{svc_name}.scale.triggers]] or set hpa.min >= 1"
+                );
+            } else {
+                reason = (
+                    "the plain Kubernetes HPA engine cannot scale below 1 "
+                    'replica; set autoscaler_engine = "keda" with a trigger to '
+                    "scale to zero, or set hpa.min >= 1"
+                );
+            }
             out.append(
                 Diagnostic(
                     severity="error",
                     service=svc_name,
-                    message=f"HPA min={hpa_min}; must be >= 1"
+                    message=f"HPA min={hpa_min}; {reason}"
                 )
             );
         }
@@ -216,7 +238,7 @@ obj PlanValidator {
                 )
             );
         }
-        hpa_mem = iget(hpa, "memory_target", 80);
+        hpa_mem = iget(autoscaler, "memory_target", iget(hpa, "memory_target", 80));
         if hpa_mem < 1 or hpa_mem > 100 {
             out.append(
                 Diagnostic(

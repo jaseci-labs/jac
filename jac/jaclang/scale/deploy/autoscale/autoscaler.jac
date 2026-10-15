@@ -8,6 +8,32 @@ import from jaclang.scale.models.resource_status {
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
+glob RESOURCE_ONLY_TRIGGER_TYPES: set[str] = {"cpu", "memory"};
+
+
+def _is_real_trigger_type(trigger_type: any) -> bool {
+    normalized = str(trigger_type or "").strip().lower();
+    return bool(normalized) and normalized not in RESOURCE_ONLY_TRIGGER_TYPES;
+}
+
+
+def triggers_can_reach_zero(
+    autoscaler_cfg: (dict[str, any] | None), engine: str
+) -> bool {
+    if not isinstance(autoscaler_cfg, dict) or str(engine or "hpa") != "keda" {
+        return False;
+    }
+    triggers = autoscaler_cfg.get("triggers", []);
+    if not isinstance(triggers, list) {
+        return False;
+    }
+    return any(
+        _is_real_trigger_type(t.get("type", ""))
+        for t in triggers
+        if isinstance(t, dict)
+    );
+}
+
 obj TriggerAuth {
     has secret_refs: dict[str, dict[str, str]] = {};
 }
