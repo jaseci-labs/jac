@@ -891,6 +891,7 @@ impl NaIRGenPass._layout_pointee_names -> dict[str, str] {
 }
 
 impl NaIRGenPass._export_native_layout -> None {
+    import os;
     import from jaclang.compiler.frontend.codeinfo {
         NativeModuleLayout,
         NativeStructLayout,
@@ -902,6 +903,7 @@ impl NaIRGenPass._export_native_layout -> None {
     }
     layout = NativeModuleLayout(str_headerless=self._nogc_headerless());
     pointee_names = self._layout_pointee_names();
+    own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
     struct_names: dict[str, str] = {};
     for (sname, stype) in self.struct_types.items() {
         struct_names.setdefault(str(stype), sname);
@@ -912,6 +914,10 @@ impl NaIRGenPass._export_native_layout -> None {
     }
 
     for (arch_name, field_indices) in self.struct_field_indices.items() {
+        arch_src = self._struct_source_mod.get(arch_name, "");
+        if arch_src and own_path and os.path.realpath(arch_src) != own_path {
+            continue;
+        }
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         field_enums = self.struct_field_enum_type.get(arch_name, {});
@@ -962,6 +968,10 @@ impl NaIRGenPass._export_native_layout -> None {
     }
 
     for (enum_name, entries) in self.enum_string_values.items() {
+        if self._enum_source_name.get(enum_name, self.module.name)
+            != self.module.name {
+            continue;
+        }
         _enum_members: list[tuple[str, any, int]] = [];
         for _member in entries {
             _member_value: any = _member[1];
@@ -988,7 +998,7 @@ impl NaIRGenPass._export_native_layout -> None {
         if fname.startswith("__") or fname == "jac_entry" or fname in method_names {
             continue;
         }
-        if str(func.linkage) in ("internal", "private") {
+        if str(func.linkage) in ("internal", "private") or func.is_declaration {
             continue;
         }
         if fname in self._clib_symbol_lib and self.clib_extern_fns.get(fname) is func {
@@ -1065,7 +1075,7 @@ impl NaIRGenPass._export_native_layout -> None {
     }
 
     for (mname, func) in self.method_funcs.items() {
-        if mname in self._native_skipped_methods {
+        if mname in self._native_skipped_methods or func.is_declaration {
             continue;
         }
         param_types = [
