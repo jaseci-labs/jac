@@ -23,12 +23,13 @@ def tar_gz_dir(top: Path) -> bytes {
     with tarfile.open(fileobj=buf, mode="w") as tf {
         for (dirpath, dirnames, filenames) in os.walk(str(top)) {
             dirnames.sort();
-            for fn in sorted(filenames) {
+            for fn in sorted(dirnames + filenames) {
                 full = Path(str(dirpath)) / str(fn);
                 tf.add(
                     str(full),
                     arcname=full.relative_to(top).as_posix(),
-                    filter=det_tar_member
+                    filter=det_tar_member,
+                    recursive=False
                 );
             }
         }

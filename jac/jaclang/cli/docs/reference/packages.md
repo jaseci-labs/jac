@@ -178,6 +178,8 @@ internal = "https://raw.githubusercontent.com/acme/jac-index/main/"
 
 A project template (a jacpack) is a package too: a project with a `[jacpack]` table builds with `jac build --as jab` into a template-role `.jab` and publishes with `jac publish`. `jac create my-app --use acme/starter` fetches the newest template from the registry (`acme/starter@^2` picks a range); `--use` also takes a local directory or `.jab`. Templates from a registry cannot run a post-create hook.
 
+Package archives preserve empty directories, so a template can include an empty output directory that is ready to use after extraction. Source staging copies the contents of symbolic links into the package.
+
 ## Apps built from packages
 
 `jac build` seals an app's dependency packages into the app image, so a deployed `.jab`, binary or jac-scale app never resolves or downloads anything at run time.
