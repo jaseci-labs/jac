@@ -167,7 +167,7 @@ impl NaIRGenPass._maybe_declare_ability(
     self.func_symtab[name] = func;
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
-        self._module_functions[(os.path.realpath(_fdm.source.file_path), name)] = func;
+        self._module_functions[(cached_realpath(_fdm.source.file_path), name)] = func;
         self._func_def_mod[name] = _fdm.name;
         if _fdm is not self.module {
             """Two imported modules may each define a function of one name;

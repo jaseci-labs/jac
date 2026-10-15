@@ -37,6 +37,7 @@ import from jaclang.compiler.backends.native.lowering {
 import from jaclang.runtime.scalars { ScalarShape }
 
 import from jaclang.compiler.frontend.codeinfo {
+    cached_realpath,
     HDR_ALLOC_ID_OFF,
     HDR_DTOR_OFF,
     HDR_MAGIC,

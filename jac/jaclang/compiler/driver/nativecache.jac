@@ -477,8 +477,9 @@ obj NativeUnitRegistry {
         check_deps: bool = True,
         products: bool = True
     ) -> (NativeUnitEntry | None) {
+        import from jaclang.compiler.frontend.codeinfo { cached_realpath }
         options = options if options is not None else self._options();
-        resolved = os.path.realpath(path);
+        resolved = cached_realpath(path);
         if not jir_cacheable_source_path(resolved) {
             return None;
         }

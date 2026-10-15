@@ -30,6 +30,22 @@ test "a settled directory is listed once and rescanned when it changes" {
         second = discover_annex_files(str(base));
         assert sorted(os.path.basename(p) for p in second)
             == ["mod.extra.impl.jac", "mod.impl.jac"] , "a changed directory is rescanned";
+        with tempfile.TemporaryDirectory() as other {
+            (Path(other) / "mod.jac").write_text("");
+            (Path(other) / "mod.other.impl.jac").write_text("");
+            prior = os.getcwd();
+            try {
+                os.chdir(directory);
+                discover_annex_files("mod.jac");
+                os.chdir(other);
+                third = discover_annex_files("mod.jac");
+            } finally {
+                os.chdir(prior);
+            }
+            assert [os.path.basename(p) for p in third] == ["mod.other.impl.jac"] , (
+                "a relative path resolves against the current directory"
+            );
+        }
     }
 }
 

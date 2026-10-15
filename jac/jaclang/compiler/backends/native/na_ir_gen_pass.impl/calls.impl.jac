@@ -185,15 +185,15 @@ impl NaIRGenPass._native_variant_decl(decl: uni.Ability) -> uni.Ability {
         or decl.name_ref is None {
         return decl;
     }
-    variant = os.path.realpath(native_variant_of(mod.loc.mod_path));
-    if variant == os.path.realpath(mod.loc.mod_path) {
+    variant = cached_realpath(native_variant_of(mod.loc.mod_path));
+    if variant == cached_realpath(mod.loc.mod_path) {
         return decl;
     }
     variant_mod = self.prog.mod.hub.get(variant);
     if variant_mod is None {
         for imported in self._foreign_modules {
             if imported.loc is not None
-                and os.path.realpath(imported.loc.mod_path) == variant {
+                and cached_realpath(imported.loc.mod_path) == variant {
                 variant_mod = imported;
                 break;
             }

@@ -72,7 +72,7 @@ import from jaclang.compiler.frontend.constant {
     OwnershipKind,
     Tokens as Tok
 }
-import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
+import from jaclang.compiler.frontend.codeinfo { cached_realpath, module_dotted_name }
 import from jaclang.runtime.scalars { shape_of }
 import from jaclang.compiler.types.ct_value {
     CT_DEFERRED,
@@ -341,9 +341,9 @@ obj CtEvaluator(CtCaller) {
         qualname = definition_qualname(owner) if owner is not None else "";
         try {
             if qualname {
-                evaluated.record_comptime_definition(os.path.realpath(path), qualname);
+                evaluated.record_comptime_definition(cached_realpath(path), qualname);
             } else {
-                self._note_ct_path(os.path.realpath(path), body=True);
+                self._note_ct_path(cached_realpath(path), body=True);
             }
         } except OSError {}
     }

@@ -511,9 +511,8 @@ impl NaIRGenPass._own_prefix -> str {
 impl NaIRGenPass._prefix_of_path(path: str) -> str {
     found = self._unit_prefixes.get(path);
     if found is None {
-        import os as _pp_os;
         import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
-        found = native_unit_prefix(_pp_os.path.realpath(path));
+        found = native_unit_prefix(cached_realpath(path));
         self._unit_prefixes[path] = found;
     }
     return found;
@@ -1218,13 +1217,13 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             if _bound_path is not None {
                 for _it in imp.items {
                     if isinstance(_it, uni.ModuleItem) and _it.alias is None {
-                        self._glob_import_sources[_it.name.value] = os.path.realpath(
+                        self._glob_import_sources[_it.name.value] = cached_realpath(
                             _bound_path
                         );
                     }
                     if isinstance(_it, uni.ModuleItem) {
                         self._native_import_items.append(
-                            (_it, os.path.realpath(_bound_path), mod_name)
+                            (_it, cached_realpath(_bound_path), mod_name)
                         );
                     }
                 }
@@ -1233,7 +1232,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     _self_key = (
-        os.path.realpath(self.module.loc.mod_path) if (self.module?.loc) else None
+        cached_realpath(self.module.loc.mod_path) if (self.module?.loc) else None
     );
 
     _canon_src: dict[str, any] = {};
@@ -1248,7 +1247,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         if src_mod_str is None or full_path is None {
             continue;
         }
-        if _self_key is not None and os.path.realpath(full_path) == _self_key {
+        if _self_key is not None and cached_realpath(full_path) == _self_key {
             continue;
         }
         abs_key = os.path.abspath(full_path);
@@ -1394,7 +1393,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
                     }
                 }
             }
-            _defined[os.path.realpath(_gmod.loc.mod_path)] = _names;
+            _defined[cached_realpath(_gmod.loc.mod_path)] = _names;
         }
     }
     self._glob_import_sources = {
@@ -1560,7 +1559,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
         for _wl_key in (
             _wl_raw,
             _wl_os.path.abspath(_wl_raw),
-            _wl_os.path.realpath(_wl_raw)
+            cached_realpath(_wl_raw)
         ) {
             _wl_slim = self.prog.hub.artifacts.get(_wl_key);
             if _wl_slim is not None and _wl_slim.native_layout is not None {
@@ -1738,7 +1737,7 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
         return;
     }
 
-    _arch_src = os.path.realpath(arch.loc.mod_path) if arch.loc.mod_path else "";
+    _arch_src = cached_realpath(arch.loc.mod_path) if arch.loc.mod_path else "";
     _seen_src = self._struct_source_mod.get(aname);
     if _seen_src is not None and _arch_src and _seen_src != _arch_src {
         import from jaclang.compiler.frontend.host { active_host }
@@ -1790,7 +1789,7 @@ impl NaIRGenPass._register_imported_globals(
         return;
     }
     import os;
-    real_source = os.path.realpath(source_path) if source_path else "";
+    real_source = cached_realpath(source_path) if source_path else "";
     aliases: dict[str, list[str]] = {};
     for (item, path, _) in self._native_import_items {
         alias = self._get_name(item.alias) if item.alias is not None else None;
@@ -1868,7 +1867,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
     _owner = nd.find_parent_of_type(uni.Module);
     _owner_name = _owner.name if _owner is not None else "";
     if _owner is not None
-        and (os.path.realpath(_owner.source.file_path), name)
+        and (cached_realpath(_owner.source.file_path), name)
             in self._module_functions {
         return;
     }
@@ -1914,7 +1913,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
             }
             if _owner is not None {
                 self._native_skipped_import_origin.setdefault(name, set()).add(
-                    os.path.realpath(_owner.source.file_path)
+                    cached_realpath(_owner.source.file_path)
                 );
             }
             return;
@@ -1936,7 +1935,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
             }
         }
         if _owner is not None {
-            self._module_functions[(os.path.realpath(_owner.source.file_path), name)] = _already;
+            self._module_functions[(cached_realpath(_owner.source.file_path), name)] = _already;
         }
         self._record_linked_decl(_already, nd);
         return;

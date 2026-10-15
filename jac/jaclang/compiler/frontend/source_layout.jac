@@ -78,7 +78,8 @@ def annex_files_of(
     suffix: str,
     listing: Callable[[str], (list[str] | None)]
 ) -> list[str] {
-    src = os.path.realpath(source_path);
+    import from jaclang.compiler.frontend.codeinfo { cached_realpath }
+    src = cached_realpath(source_path);
     name = os.path.basename(src);
     if not name.endswith(tables.jac_suffix) or name.endswith(suffix) {
         return [];

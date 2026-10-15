@@ -5154,13 +5154,13 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
     classes: dict[str, any] = {};
     _model = self.module.gen.native_osp_model;
     _tags = _model.tags if _model is not None else {};
-    _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
+    _own_path = cached_realpath(self.module.loc.mod_path) if self.module?.loc else "";
     for arch_name in self.struct_field_indices {
         if arch_name in self._helper_structs {
             continue;
         }
         _src = self._struct_source_mod.get(arch_name, "");
-        if _src and _own_path and os.path.realpath(_src) != _own_path {
+        if _src and _own_path and cached_realpath(_src) != _own_path {
             continue;
         }
         st = self.struct_types.get(arch_name);

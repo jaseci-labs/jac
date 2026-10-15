@@ -252,7 +252,21 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 glob NATIVE_ARCH_SCOPE_SEP: str = "$",
      _native_arch_scope_memo: dict[str, str] = {},
      _native_arch_scope_gen: list[int] = [-1],
-     _native_unit_identity_memo: dict[str, str] = {};
+     _native_unit_identity_memo: dict[str, str] = {},
+     _realpath_memo: dict[str, str] = {};
+
+def cached_realpath(path: str) -> str {
+    import os;
+    if not os.path.isabs(path) {
+        return os.path.realpath(path);
+    }
+    found = _realpath_memo.get(path);
+    if found is None {
+        found = os.path.realpath(path);
+        _realpath_memo[path] = found;
+    }
+    return found;
+}
 
 def native_arch_scope(mod_path: str) -> str {
     import os;
@@ -437,7 +451,7 @@ def native_module_key(path: str) -> str {
     keyed by its path within that root, so the symbols a sealed unit
     defines at build time are the ones consumers reference at run time.""";
     import os;
-    rp = os.path.realpath(path);
+    rp = cached_realpath(path);
     base = os.path.basename(rp);
     dot = base.rfind(".");
     stem = base[0:dot] if dot > 0 else base;
@@ -494,10 +508,10 @@ def jaclang_pkg_root -> str {
 def is_compiler_source_path(source_path: str) -> bool {
     import os;
     if not _PKG_REAL {
-        _PKG_REAL.append(os.path.realpath(jaclang_pkg_root()) + os.sep);
+        _PKG_REAL.append(cached_realpath(jaclang_pkg_root()) + os.sep);
     }
     try {
-        return os.path.realpath(source_path).startswith(_PKG_REAL[0]);
+        return cached_realpath(source_path).startswith(_PKG_REAL[0]);
     } except (OSError, ValueError) {
         return False;
     }
@@ -525,13 +539,12 @@ def kernel_unit_paths -> list[str] {
 }
 
 def is_kernel_unit_path(path: str) -> bool {
-    import os;
     if not path {
         return False;
     }
-    rp = os.path.realpath(path);
+    rp = cached_realpath(path);
     for rel in kernel_unit_rels() {
-        if rp == os.path.realpath(kernel_unit_path(rel)) {
+        if rp == cached_realpath(kernel_unit_path(rel)) {
             return True;
         }
     }
@@ -1005,7 +1018,7 @@ def resolve_native_module(
             return (None, None);
         }
 
-        candidate = os.path.realpath(
+        candidate = cached_realpath(
             _native_variant_path(candidate[:-len('.jac')]) or candidate
         );
         if (native_unit_compile_active() and in_native_scope_path(candidate))
