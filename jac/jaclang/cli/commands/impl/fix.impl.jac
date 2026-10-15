@@ -957,6 +957,31 @@ def _fix_dependencies(paths: list[str], dry_run: bool) -> int {
     return 0;
 }
 
+def _report_invalid_manifest(paths: list[str]) -> bool {
+    import from pathlib { Path }
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.project.modresolver { find_jac_project_root }
+    checked: set[str] = set();
+    for path in paths {
+        proj = find_jac_project_root(path);
+        if not proj or proj in checked {
+            continue;
+        }
+        checked.add(proj);
+        manifest = Path(proj) / "jac.toml";
+        if not manifest.is_file() {
+            continue;
+        }
+        try {
+            JacConfig.load(manifest);
+        } except ValueError as exc {
+            console.error(f"jac.toml is invalid: {exc}", hint=f"File: {manifest}");
+            return True;
+        }
+    }
+    return False;
+}
+
 impl fix(
     target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
 ) -> int {
@@ -964,6 +989,9 @@ impl fix(
         paths = [paths];
     }
     if target == 'access' {
+        if _report_invalid_manifest(paths) {
+            return 2;
+        }
         return _fix_access(paths, dry_run);
     }
     if target == 'dependencies' {
@@ -982,6 +1010,9 @@ impl fix(
     if not files {
         console.error("No .jac files found to migrate.");
         return 1;
+    }
+    if _report_invalid_manifest(files) {
+        return 2;
     }
     changed_files: list[str] = [];
     renamed: list[tuple[str, str]] = [];

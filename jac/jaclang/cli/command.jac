@@ -81,6 +81,7 @@ obj CommandSpec {
         group: str = "general",
         tier: str = "",
         hidden: bool = False,
+        tolerates_invalid_manifest: bool = False,
         handler: Callable | None = None,
         handler_module: str = "",
         handler_name: str = "";

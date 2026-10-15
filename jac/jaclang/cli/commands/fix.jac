@@ -52,6 +52,7 @@ comptime SPEC_FIX: CommandSpec = CommandSpec(
 
          ],
          group="analysis",
+         tolerates_invalid_manifest=True,
          handler_name=ct_name(fix)
      );
 
