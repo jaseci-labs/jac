@@ -584,7 +584,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             if not isinstance(item, ModuleItem) {
                 continue;
             }
-            verdict = classify_client_import_item(source_mod, item);
+            verdict = classify_client_import_item(source_mod, item, self.prog);
             if verdict == ClientImportVerdict.DEAD {
                 report_dead_client_import(self, nd, item);
             }

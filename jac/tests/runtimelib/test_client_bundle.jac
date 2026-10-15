@@ -50,6 +50,22 @@ test "base builder bundling requires the built-in client framework" {
     assert raised , "base _compile_bundle should raise ClientBundleError without the plugin";
 }
 
+test "a module that lowers to no client code fails with a reason, not an empty message" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    builder = ClientBundleBuilder(program=JacProgram());
+    source_path = (Path(FIXTURES) / "server_only_module.jac").resolve();
+    raised = False;
+    try {
+        builder._compile_to_js(source_path);
+    } except ClientBundleError as err {
+        raised = True;
+        msg = str(err);
+        assert "lowers to no client code" in msg , msg;
+        assert not msg.rstrip().endswith(":") , msg;
+    }
+    assert raised , "a server-only module has no client artifact to bundle";
+}
+
 test "dev vite config registers the port reporter; build config does not" {
     import tempfile;
     import from jaclang.client.vite_bundler { ViteBundler }

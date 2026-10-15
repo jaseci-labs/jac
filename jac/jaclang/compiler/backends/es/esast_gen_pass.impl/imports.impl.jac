@@ -225,7 +225,7 @@ impl EsastGenPass._partition_client_import_items(
                 continue;
             }
         }
-        verdict = classify_client_import_item(source_mod, item);
+        verdict = classify_client_import_item(source_mod, item, self.prog);
         if verdict == ClientImportVerdict.BRIDGED {
             bridged.append(item);
         } elif verdict == ClientImportVerdict.DEAD {
@@ -275,6 +275,10 @@ impl EsastGenPass._generate_sv_import_stubs(
                 }
             }
             ret_type_name = binding.ret_type;
+            if isinstance(binding.ast_node, uni.Ability)
+                and binding.ast_node.sym_name {
+                func_name = binding.ast_node.sym_name;
+            }
             _src_mod = binding.ast_node.find_parent_of_type(uni.Module)
                 if binding.ast_node is not None
                 else None;

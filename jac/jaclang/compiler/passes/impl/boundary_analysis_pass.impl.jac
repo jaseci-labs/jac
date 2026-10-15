@@ -503,7 +503,7 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
         if ability is None {
             source_mod = self._provider_module_of(nd);
             if source_mod is not None
-                and classify_client_import_item(source_mod, item)
+                and classify_client_import_item(source_mod, item, self.prog)
                     != ClientImportVerdict.CLIENT {
                 self._register_type_import(nd, item, source_mod, InteropContext.CLIENT);
             }
@@ -717,11 +717,11 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
     if provider_mod is None {
         return;
     }
-    verdict = classify_client_import_item(provider_mod, item);
+    verdict = classify_client_import_item(provider_mod, item, self.prog);
     if verdict == ClientImportVerdict.UNKNOWN and provider_mod.stub_only {
         parsed = self._parsed_provider_of(nd);
         if parsed is not None {
-            verdict = classify_client_import_item(parsed, item);
+            verdict = classify_client_import_item(parsed, item, self.prog);
         }
     }
     if verdict != ClientImportVerdict.DEAD {

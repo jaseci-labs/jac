@@ -521,21 +521,42 @@ def _declared_name(stmt: uni.ContextAwareNode) -> (str | None) {
     return None;
 }
 
-def _import_item_declaration(
-    source_mod: uni.Module, item: uni.ModuleItem
-) -> (uni.ContextAwareNode | None) {
-    if not isinstance(item.name, uni.Name) {
+def _reexport_provider(imp: uni.Import, prog: JacProgram) -> (uni.Module | None) {
+    target = bridgeable_import_target(imp);
+    if target is None or not os.path.isfile(target) {
         return None;
     }
-    wanted = item.name.sym_name;
-    for stmt in source_mod.body {
+    importer = imp.find_parent_of_type(uni.Module);
+    return prog.load_dependency_module(
+        target,
+        importer_path=importer.loc.mod_path if importer is not None else None,
+        need_tree=True
+    );
+}
+
+def _declaration_named(
+    mod: uni.Module, wanted: str, prog: JacProgram, seen: set[tuple[str, str]]
+) -> (uni.ContextAwareNode | None) {
+    key = (mod.loc.mod_path, wanted);
+    if key in seen {
+        return None;
+    }
+    seen.add(key);
+    for stmt in mod.body {
         if isinstance(stmt, uni.ContextAwareNode) and _declared_name(stmt) == wanted {
             return stmt;
         }
     }
-    sym = source_mod.lookup(wanted);
+    sym = mod.lookup(wanted);
     if sym is None or sym.decl is None {
         return None;
+    }
+    reexport = sym.decl.parent;
+    if isinstance(reexport, uni.ModuleItem) and isinstance(reexport.name, uni.Name) {
+        provider = _reexport_provider(reexport.from_parent, prog);
+        if provider is not None {
+            return _declaration_named(provider, reexport.name.sym_name, prog, seen);
+        }
     }
     cur: (uni.UniNode | None) = sym.decl;
     while cur is not None and not isinstance(cur, uni.Module) {
@@ -547,13 +568,22 @@ def _import_item_declaration(
     return None;
 }
 
+def import_item_declaration(
+    source_mod: uni.Module, item: uni.ModuleItem, prog: JacProgram
+) -> (uni.ContextAwareNode | None) {
+    if not isinstance(item.name, uni.Name) {
+        return None;
+    }
+    return _declaration_named(source_mod, item.name.sym_name, prog, set());
+}
+
 def classify_client_import_item(
-    source_mod: uni.Module, item: uni.UniNode
+    source_mod: uni.Module, item: uni.UniNode, prog: JacProgram
 ) -> ClientImportVerdict {
     if not isinstance(item, uni.ModuleItem) {
         return ClientImportVerdict.UNKNOWN;
     }
-    owner = _import_item_declaration(source_mod, item);
+    owner = import_item_declaration(source_mod, item, prog);
     if owner is None or isinstance(owner, uni.Import) {
         return ClientImportVerdict.UNKNOWN;
     }

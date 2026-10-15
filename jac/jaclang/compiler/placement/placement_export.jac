@@ -190,7 +190,7 @@ def collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
                     src = resolve_import_source_module(prog, stmt);
                     if src is not None {
                         for item in stmt.items {
-                            verdict = classify_client_import_item(src, item);
+                            verdict = classify_client_import_item(src, item, prog);
                             if verdict == ClientImportVerdict.BRIDGED {
                                 crossings += 1;
                             }

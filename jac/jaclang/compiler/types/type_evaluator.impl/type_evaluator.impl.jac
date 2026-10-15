@@ -4473,7 +4473,9 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                     if source_mod is None {
                         continue;
                     }
-                    verdict = classify_client_import_item(source_mod, item);
+                    verdict = classify_client_import_item(
+                        source_mod, item, self.program
+                    );
                     if verdict != ClientImportVerdict.BRIDGED {
                         continue;
                     }
