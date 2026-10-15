@@ -22,6 +22,7 @@ import from jaclang.scale.emailer.factory { configured as configured_emailer }
 import from jaclang.server.endpoints.auth { register_mail_endpoints }
 import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale.server.jobs_ext { JobsExtension }
+import from jaclang.scale.server.job_queue_ext { JobQueueExtension }
 import from jaclang.scale.server.sso_ext { ApiKeyExtension, SSOExtension }
 import from jaclang.scale.server.webhook_ext { WebhookExtension }
 import from jaclang.scale.server.websocket_ext { WebSocketExtension }
@@ -363,6 +364,7 @@ def scale_extensions -> list[ServerExtension] {
         WebhookExtension(),
         WebSocketExtension(),
         JobsExtension(),
+        JobQueueExtension(),
         EventsExtension(),
         AdminExtension()
     ];

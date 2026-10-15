@@ -33,7 +33,7 @@ import from jaclang.server.session { shared_pg_data_dir, project_db_name }
 import from jaclang.data.store { ConnInfo, PgStore, SCHEMA_STAMP_KEY }
 
 glob PROMOTIONS: dict[str, list[str]] = {'Session': ['id'], 'Run': ['id']},
-     PLUGIN_TABLES = ['jac_outbox', 'jac_outbox_seen', 'jac_docs'],
+     PLUGIN_TABLES = ['jac_outbox', 'jac_outbox_seen', 'jac_docs', 'jac_jobs'],
      # The two schema steps a server runs, in the order it runs them:
      # shared_store() ensures the schema, then the outbox worker derives its
      # store. Each DDL run and the stamp after each step are reported back.
@@ -174,7 +174,7 @@ test "a server boot applies the schema DDL once and a restart applies none" {
 }
 
 
-test "the base schema carries the outbox and docs tables" {
+test "the base schema carries the outbox, docs and jobs tables" {
     with TemporaryDirectory() as td {
         (rt, info) = _fresh_db(td);
         store = PgStore(conninfo=info, ensure_cb=rt.ensure);
@@ -188,7 +188,7 @@ test "the base schema carries the outbox and docs tables" {
             ];
             assert missing == [] , (
                 f"ensure_schema left {missing} uncreated: the store owns the"
-                ' outbox and docs tables, nothing may extend the schema after'
+                ' outbox, docs and jobs tables, nothing may extend the schema after'
                 ' the fact'
             );
         } finally {

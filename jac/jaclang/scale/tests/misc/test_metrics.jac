@@ -435,6 +435,35 @@ test "prometheus counts read-tier retries per unit" {
 }
 
 
+test "prometheus exports job counts and zeroes a status that emptied" {
+    collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
+    passes: list[tuple[dict[tuple[str, str], int], list[str]]] = [
+        (
+            {("agents", "queued"): 3, ("agents", "running"): 1},
+            [
+                'test_app_jobs{queue="agents",status="queued"} 3.0',
+                'test_app_jobs{queue="agents",status="running"} 1.0'
+            ]
+        ),
+        (
+            {("agents", "done"): 4},
+            [
+                'test_app_jobs{queue="agents",status="done"} 4.0',
+                'test_app_jobs{queue="agents",status="queued"} 0.0',
+                'test_app_jobs{queue="agents",status="running"} 0.0'
+            ]
+        )
+    ];
+    for (counts, lines) in passes {
+        collector.record_job_counts(counts);
+        body = collector.expose().decode("utf-8");
+        for line in lines {
+            assert line in body , f"{line!r} missing after {counts}:\n{body}";
+        }
+    }
+}
+
+
 test "noop read-tier retry is a no-op" {
     collector = NoOpMetricsCollector();
     collector.record_read_tier_retry("walker:app.place_order");
