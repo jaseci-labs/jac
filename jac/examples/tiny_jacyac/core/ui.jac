@@ -14,9 +14,6 @@ import from "@jac/runtime" {
     __getLocalStorage,
     __setLocalStorage
 }
-import from core.feed { Feed, join, publish, toggle_like, remove_post, load_feed }
-import from core.scoring { Score }
-import from core.theme { S, C }
 
 def Button(
     label: str, action: Callable, quiet: bool = False, disabled: bool = False

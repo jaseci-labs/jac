@@ -60,13 +60,14 @@ The four client entry points are `web.jac`, `mobile.jac`, `desktop.jac`, and
 
 | Authored files | Physical lines |
 | --- | ---: |
-| Shared UI and styles | 535 |
-| Feed and scoring services | 170 |
-| CLI | 116 |
-| Web, mobile, desktop entry points | 19 |
+| Shared UI and styles | 532 |
+| Feed and scoring services | 169 |
+| CLI | 115 |
+| Web, mobile, desktop entry points | 13 |
 | Tests | 66 |
-| `jac.toml` | 51 |
-| **Total** | **957** |
+| `jac.toml` | 53 |
+| `arch.jac` | 32 |
+| **Total** | **980** |
 
 Reproduce the count with `wc -l jac.toml *.jac core/*.jac`.
 Documentation, dependencies, compiler/runtime code, and generated platform files
@@ -81,6 +82,19 @@ The original native Android captures additionally used a local Jac runtime fix t
 exports `useJacState` and `jacSetToken`; both are required to render the shared
 screen and sign in. Native Android and iOS execution must be validated separately
 from the mobile browser preview on the installed runtime.
+
+## Architecture
+
+This example uses `arch.jac` to define project-module imports and the
+rules that permit them. `[arch] closed = ["*"]` in `jac.toml` applies
+these boundaries to every module, including new ones.
+
+To add a module:
+
+1. Create its `.jac` file.
+2. Add a wire in `arch.jac` for each required project-module import.
+3. Add or extend an edge rule to permit each new flow.
+4. Run `jac check .` to verify the architecture.
 
 ## Run
 
