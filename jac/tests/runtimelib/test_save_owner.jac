@@ -13,11 +13,27 @@ import os;
 import sys;
 import shutil;
 import from tests.support { JAC_ROOT }
-import from tempfile { mkdtemp }
+import from tempfile { mkdtemp, TemporaryDirectory }
+import from pathlib { Path }
 import from uuid { uuid4 }
+import from jaclang.runtime.archetype { AccessLevel, Root }
+import from jaclang.runtime.context { ExecutionContext }
+import from jaclang.runtime.runtime { JacRuntimeInterface }
 import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
+
+node Note {
+    has text: str = "";
+}
+
+obj OrgRoots {
+    has ids: set[str];
+
+    def __call__(rid: str) -> bool {
+        return rid in self.ids;
+    }
+}
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "runtimelib", "fixtures"),
      FIXTURE = os.path.join(FIXTURES, "save_owner.jac");
@@ -207,5 +223,128 @@ test "revoking a member ends access to org-owned records but not creator-owned o
     } finally {
         Jac.set_base_path(_orig);
         shutil.rmtree(_tmp, ignore_errors=True);
+    }
+}
+
+
+def _as_any(v: any) -> any {
+    return v;
+}
+
+
+def _persisted_root(mem: any) -> any {
+    anch: any = Root().__jac__;
+    anch.persistent = True;
+    setattr(anch, "root", anch.id);
+    mem.put(anch);
+    return anch;
+}
+
+
+test "a context default owner owns what the caller creates, with the checks save(owner=) makes" {
+    # (label, member's level on the org root, default owner, how the note is
+    #  created, org resolver registered, expected owner of the note)
+    rows = [
+        ("connected from the org root", "WRITE", "org", "connect_org", False, "org"),
+        (
+            "connected from the caller's root",
+            "WRITE",
+            "org",
+            "connect_own",
+            False,
+            "org"
+        ),
+        ("saved without an owner", "WRITE", "org", "save", False, "org"),
+        ("an explicit owner wins", "WRITE", "org", "save_own", False, "member"),
+        (
+            "a READ member may not create under the org",
+            "READ",
+            "org",
+            "save",
+            False,
+            "refused"
+        ),
+        (
+            "no default keeps the caller as owner",
+            "WRITE",
+            "none",
+            "save",
+            False,
+            "member"
+        ),
+        (
+            "an access rule set before the first save",
+            "WRITE",
+            "org",
+            "granted",
+            True,
+            "refused"
+        ),
+        ("an existing node keeps its owner", "WRITE", "org", "resave", False, "member"),
+
+    ];
+    old_ctx = Jac.exec_ctx;
+    for (label, level, fallback, how, registered, want) in rows {
+        with TemporaryDirectory() as td {
+            ctx = ExecutionContext(
+                base_path_dir=td, full_target_path=str(Path(td) / "org_app.jac")
+            );
+            Jac.exec_ctx = ctx;
+            try {
+                org = _persisted_root(ctx.mem);
+                member = _persisted_root(ctx.mem);
+                org.own_access().roots.anchors[str(member.id)] = AccessLevel[level];
+                Jac.set_org_root_resolver(
+                    OrgRoots(ids={str(org.id)}) if registered else None
+                );
+                ctx.set_user_root(str(member.id));
+                note = Note(text=label);
+                if how == "resave" {
+                    Jac.save(note);
+                }
+                ctx.default_owner = org.id if fallback == "org" else None;
+                refused = False;
+                try {
+                    if how == "connect_org" {
+                        org_root: Root = org.archetype;
+                        org_root ++> note;
+                    } elif how == "connect_own" {
+                        own_root: Root = member.archetype;
+                        own_root ++> note;
+                    } elif how == "save_own" {
+                        Jac.save(note, owner=member.id);
+                    } elif how == "granted" {
+                        JacRuntimeInterface.allow_root(
+                            note, uuid4(), AccessLevel.WRITE
+                        );
+                        Jac.save(note);
+                    } else {
+                        Jac.save(note);
+                    }
+                } except PermissionError {
+                    refused = True;
+                }
+                anch: any = note.__jac__;
+                if want == "refused" {
+                    assert refused , f"{label}: the save was allowed";
+                    assert not anch.persistent , f"{label}: the note was persisted";
+                } else {
+                    assert not refused , f"{label}: the save was refused";
+                    expected = org.id if want == "org" else member.id;
+                    assert anch.root == expected , (
+                        f"{label}: owned by {anch.root}, expected {want}"
+                    );
+                    for e in anch.edges {
+                        assert _as_any(e).root == expected , (
+                            f"{label}: the edge is owned by {_as_any(e).root}"
+                        );
+                    }
+                }
+            } finally {
+                Jac.set_org_root_resolver(None);
+                Jac.exec_ctx = old_ctx;
+                ctx.close();
+            }
+        }
     }
 }
