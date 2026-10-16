@@ -2746,20 +2746,61 @@ def _allocate_common(linker: ElfLinker) -> None {
 }
 
 
-def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) -> bool {
+obj MergeState {
+    has sec_by_name: dict[str, int] = {},
+        syms: dict[str, int] = {},
+        buffers: dict[int, bytearray] = {};
+
+    static def of(linker: ElfLinker) -> MergeState {
+        state = MergeState();
+        for (i, sec) in enumerate(linker.sections) {
+            if sec.name {
+                state.sec_by_name[sec.name] = i;
+            }
+        }
+        for (i, sym) in enumerate(linker.symbols) {
+            if sym.name and sym.bind >= STB_GLOBAL {
+                state.syms[sym.name] = i;
+            }
+        }
+        return state;
+    }
+
+    def flush(linker: ElfLinker) {
+        for (idx, buf) in self.buffers.items() {
+            sec = linker.sections[idx];
+            linker.sections[idx] = ElfSection(
+                name=sec.name,
+                typ=sec.typ,
+                flags=sec.flags,
+                addr=sec.addr,
+                data=bytes(buf),
+                mem_size=sec.mem_size,
+                align=sec.align,
+                link=sec.link,
+                info=sec.info,
+                entsize=sec.entsize
+            );
+        }
+        self.buffers = {};
+    }
+}
+
+def _merge_crt_object(
+    linker: ElfLinker,
+    crt_bytes: bytes,
+    merge_ns: int = 0,
+    state: (MergeState | None) = None
+) -> bool {
     crt = ElfLinker(
         obj_data=crt_bytes, sections=[], symbols=[], relocations=[], needed_libs=[]
     );
     if not crt.parse_object() {
         return False;
     }
-
-    existing_sec_by_name: dict[str, int] = {};
-    for (i, sec) in enumerate(linker.sections) {
-        if sec.name {
-            existing_sec_by_name[sec.name] = i;
-        }
-    }
+    own_state = state is None;
+    st = MergeState.of(linker) if state is None else state;
+    existing_sec_by_name = st.sec_by_name;
 
     sec_idx_map: dict[int, int] = {};
     sec_data_offset: dict[int, int] = {};
@@ -2769,16 +2810,21 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
             merged_sec = linker.sections[merged_idx];
             align = max(crt_sec.align, 1);
 
+            buf = st.buffers.get(merged_idx);
+            data_len = len(buf) if buf is not None else len(merged_sec.data);
             cur_logical = merged_sec.mem_size
-                if merged_sec.mem_size > len(merged_sec.data)
-                else len(merged_sec.data);
+                if merged_sec.mem_size > data_len
+                else data_len;
             aligned_off = _align(cur_logical, align);
             if crt_sec.typ == SHT_NOBITS {
-                new_data = merged_sec.data;
                 new_mem_size = aligned_off + crt_sec.mem_size;
             } else {
-                padding = b"\x00" * (aligned_off - len(merged_sec.data));
-                new_data = merged_sec.data + padding + crt_sec.data;
+                if buf is None {
+                    buf = bytearray(merged_sec.data);
+                    st.buffers[merged_idx] = buf;
+                }
+                buf.extend(b"\x00" * (aligned_off - len(buf)));
+                buf.extend(crt_sec.data);
                 crt_logical = crt_sec.mem_size
                     if crt_sec.mem_size > len(crt_sec.data)
                     else len(crt_sec.data);
@@ -2789,7 +2835,7 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
                 typ=merged_sec.typ,
                 flags=merged_sec.flags | crt_sec.flags,
                 addr=merged_sec.addr,
-                data=new_data,
+                data=merged_sec.data,
                 mem_size=new_mem_size,
                 align=max(merged_sec.align, crt_sec.align),
                 link=merged_sec.link,
@@ -2809,12 +2855,7 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
     }
 
     sym_idx_map: dict[int, int] = {};
-    existing_syms: dict[str, int] = {};
-    for (i, sym) in enumerate(linker.symbols) {
-        if sym.name and sym.bind >= STB_GLOBAL {
-            existing_syms[sym.name] = i;
-        }
-    }
+    existing_syms = st.syms;
     for (crt_sym_idx, crt_sym) in enumerate(crt.symbols) {
         adjusted_value = crt_sym.value;
         if crt_sym.shndx != SHN_UNDEF and crt_sym.shndx < len(crt.sections) {
@@ -2932,6 +2973,9 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
                 target_sec=rel.target_sec
             )
         );
+    }
+    if own_state {
+        st.flush(linker);
     }
     return True;
 }
@@ -3391,27 +3435,29 @@ impl ElfLinker.link(
     }
 
     merge_ns: int = 0;
+    state = MergeState.of(linker);
 
     for extra in objects[1:] {
         merge_ns += 1;
-        if not _merge_crt_object(linker, extra, merge_ns) {
+        if not _merge_crt_object(linker, extra, merge_ns, state) {
             return False;
         }
     }
 
     for crt_bytes in crt_objects {
         merge_ns += 1;
-        if not _merge_crt_object(linker, crt_bytes, merge_ns) {
+        if not _merge_crt_object(linker, crt_bytes, merge_ns, state) {
             return False;
         }
     }
 
     for member in archive_members {
         merge_ns += 1;
-        if not _merge_crt_object(linker, member, merge_ns) {
+        if not _merge_crt_object(linker, member, merge_ns, state) {
             return False;
         }
     }
+    state.flush(linker);
 
     _allocate_common(linker);
 
