@@ -24,7 +24,10 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    # A backport onto a release line is judged by the same suites as main.
+    # `push` stays main-only: release/* branches are also the heads of release
+    # PRs into main, which this trigger already covers.
+    branches: [main, 'release/**']
     types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
@@ -543,6 +546,8 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PRE_COMMIT_FROM_REF: origin/${{ github.base_ref }}
+          PRE_COMMIT_TO_REF: HEAD
         run: bash scripts/check-release-notes.sh
 
   test-compiler:
