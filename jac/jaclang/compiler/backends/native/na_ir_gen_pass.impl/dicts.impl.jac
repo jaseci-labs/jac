@@ -270,24 +270,33 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
     return ir.Constant(target_type, None);
 }
 
-impl NaIRGenPass._any_view_target(target_type: ir.Type) -> (tuple[str, str] | None) {
-    """The container-of-`any` family a pointer unbox target names, if any.
+impl NaIRGenPass._any_view_target(
+    target_type: ir.Type
+) -> (tuple[str, str, str] | None) {
+    """The container family a pointer unbox target names, if any.
 
-    `("list", "")` for `list[any]`, `("dict", K)` for a `dict[K, any]` whose
-    keys hash as spec `K`. Those are the targets whose element slots hold
+    `("list", "", "jacval")` for `list[any]`, `("dict", K, "jacval")` for a
+    `dict[K, any]` whose keys hash as spec `K`: their element slots hold
     boxed values, so a typed container arriving through `any` cannot be
-    reinterpreted as one: its slots hold raw payloads.
+    reinterpreted as one. `("dict", K, V)` for a typed `dict[K, V]` whose
+    values are a raw scalar or pointer slot: a `dict[K, any]` arriving
+    through `any` cannot be reinterpreted as one either, its slots hold
+    JacVals.
     """;
     if not self?.jacval_type or not isinstance(target_type, ir.PointerType) {
         return None;
     }
     _lt = self.list_types.get("jacval");
     if _lt is not None and target_type == _lt.as_pointer() {
-        return ("list", "");
+        return ("list", "", "jacval");
     }
     for (_dk, _dt) in self.dict_types.items() {
-        if _dk.endswith(":jacval") and target_type == _dt.as_pointer() {
-            return ("dict", _dk[:-len(":jacval")]);
+        if target_type != _dt.as_pointer() {
+            continue;
+        }
+        (_key_spec, _, _val_spec) = _dk.rpartition(":");
+        if _val_spec in ("jacval", "i64", "f64", "i1", "ptr") {
+            return ("dict", _key_spec, _val_spec);
         }
     }
     return None;
@@ -308,11 +317,19 @@ impl NaIRGenPass._unbox_any_container(
     function, released when that local is overwritten or at scope exit, so
     the result stays a borrow like every other unbox. A headerless build has
     no tag to read and refuses the site.
+
+    A typed `dict[K, V]` target is the reverse view: only a `dict[K, any]`
+    payload is copied (each value unboxed), and any other payload comes back
+    as is, so a typed dict that went through `any` keeps its identity.
     """;
-    if self._any_view_target(target_type) is None {
+    _tgt = self._any_view_target(target_type);
+    if _tgt is None {
         return None;
     }
     if self._nogc_headerless() {
+        if _tgt[2] != "jacval" {
+            return None;
+        }
         self.emit(
             E5092,
             kind="expression",
@@ -500,8 +517,11 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
     if _tgt is None {
         return None;
     }
-    (kind, key_spec) = _tgt;
-    _tgt_tag = "list_jacval" if kind == "list" else f"dict_{key_spec}_jacval";
+    (kind, key_spec, elem_spec) = _tgt;
+    _to_typed = elem_spec != "jacval";
+    _tgt_tag = f"list_{elem_spec}"
+        if kind == "list"
+        else f"dict_{key_spec}_{elem_spec}";
     _name = f"__jac_any_view_{_tgt_tag}";
     _cached = self.extern_funcs.get(_name);
     if _cached is not None {
@@ -517,7 +537,29 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
         ("ptr", i8p)
     ];
     _sources: list[tuple[str, bool, str, dict[str, any], ir.Type]] = [];
-    if kind == "list" {
+    if _to_typed {
+        _dst_h = self.dict_helpers.get(f"{key_spec}:{elem_spec}");
+        if _dst_h is None {
+            return None;
+        }
+        _key_type = _dst_h["key_type"];
+        self._emit_dict_helpers(
+            key_spec,
+            "jacval",
+            _key_type,
+            self.jacval_type,
+            self._hash_key_spec(_key_type)[1]
+        );
+        _sources.append(
+            (
+                f"dict_{key_spec}_jacval",
+                True,
+                "jacval",
+                self.dict_helpers[f"{key_spec}:jacval"],
+                self.dict_types[f"{key_spec}:jacval"].as_pointer()
+            )
+        );
+    } elif kind == "list" {
         self._emit_list_helpers("jacval", self.jacval_type);
         _dst_h = self.list_helpers["jacval"];
         for (_spec, _et) in _scalars {
@@ -618,24 +660,26 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
     _next_bb = fn.append_basic_block("next");
     bc.cbranch(_tag_is(bc, _tgt_tag, True), _as_is_bb, _next_bb);
     bc = ir.IRBuilder(_next_bb);
-    _empty_bb = fn.append_basic_block("empty");
-    _next_bb = fn.append_basic_block("next");
-    bc.cbranch(
-        bc.and_(
-            _tag_is(bc, f"{kind}_", False),
-            bc.icmp_signed(
-                "==",
-                bc.load(bc.bitcast(_raw, i64.as_pointer()), name="view.len0"),
-                ir.Constant(i64, 0)
+    if not _to_typed {
+        _empty_bb = fn.append_basic_block("empty");
+        _next_bb = fn.append_basic_block("next");
+        bc.cbranch(
+            bc.and_(
+                _tag_is(bc, f"{kind}_", False),
+                bc.icmp_signed(
+                    "==",
+                    bc.load(bc.bitcast(_raw, i64.as_pointer()), name="view.len0"),
+                    ir.Constant(i64, 0)
+                ),
+                name="view.empty"
             ),
-            name="view.empty"
-        ),
-        _empty_bb,
-        _next_bb
-    );
-    be = ir.IRBuilder(_empty_bb);
-    be.ret(be.call(_dst_h["new"], [], name="view.fresh"));
-    bc = ir.IRBuilder(_next_bb);
+            _empty_bb,
+            _next_bb
+        );
+        be = ir.IRBuilder(_empty_bb);
+        be.ret(be.call(_dst_h["new"], [], name="view.fresh"));
+        bc = ir.IRBuilder(_next_bb);
+    }
     _saved = self._builder;
     for (_text, _exact, _spec, _src_h, _src_ty) in _sources {
         _conv_bb = fn.append_basic_block(f"from.{_spec}");
@@ -660,7 +704,9 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
             _src_h["get_val" if kind == "dict" else "get"], [_src, _i], name="view.elem"
         );
         self._builder = bb;
-        _boxed = self._box_to_jacval(_elem);
+        _boxed = self._unbox_from_jacval(_elem, _dst_h["val_type"])
+            if _to_typed
+            else self._box_to_jacval(_elem);
         bb = self._builder;
         if _spec == "ptr" {
             _boxed = bb.insert_value(
@@ -683,7 +729,7 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
         ir.IRBuilder(_done_bb).ret(_out);
     }
     self._builder = _saved;
-    bc.ret(ir.Constant(target_type, None));
+    bc.ret(_as_is if _to_typed else ir.Constant(target_type, None));
     return fn;
 }
 
