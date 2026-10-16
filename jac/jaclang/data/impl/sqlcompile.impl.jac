@@ -190,28 +190,23 @@ def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str
     mt = f"{pfx}mt";
     params[mu] = root_id;
     params[mt] = root_id;
+    own_all = f"COALESCE(({alias}.props->'access'->>'all')::int, -1)";
     return (
         f"({alias}.root_id = CAST(:{mu} AS uuid)"
-        f" OR ({alias}.props->'access'->>'all')::int > -1"
-        f" OR ({alias}.props->'access'->'roots'->'anchors')"
-        f" ? CAST(:{mt} AS text)"
+        f" OR COALESCE("
+        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" (SELECT COALESCE("
+        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" GREATEST({own_all}, COALESCE((ro.props->'access'->>'all')::int, -1))"
+        f") FROM anchors ro WHERE ro.id = {alias}.root_id),"
+        f" {own_all}"
+        f") > -1"
         f" OR EXISTS ("
         f"SELECT 1 FROM anchors ge"
         f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
-        f" AND ({alias}.props->'access'->'groups'->'anchors')"
-        f" ? CAST(ge.dst AS text)"
+        f" AND ({alias}.props->'access'->'groups'->'anchors'->>CAST(ge.dst AS text))::int"
+        f" > -1"
         f")"
-        f" OR (EXISTS ("
-        f"SELECT 1 FROM anchors ro"
-        f" WHERE ro.id = {alias}.root_id"
-        f" AND COALESCE("
-        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" (ro.props->'access'->>'all')::int"
-        f") > -1"
-        f") AND COALESCE("
-        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" 0"
-        f") > -1)"
         f")"
     );
 }
