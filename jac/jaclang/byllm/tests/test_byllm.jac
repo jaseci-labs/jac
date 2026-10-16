@@ -1,4 +1,5 @@
 import contextlib;
+import copy;
 import time;
 import os;
 import sys;
@@ -20,7 +21,13 @@ import from jaclang.byllm.exceptions {
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.schema { type_display_name }
-import from jaclang.byllm.types { Tool, Message, MessageRole }
+import from jaclang.byllm.types {
+    IterationAction,
+    IterationContext,
+    Message,
+    MessageRole,
+    Tool
+}
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
 import from support {
@@ -702,38 +709,116 @@ import from jaclang.byllm.llm {
     _CACHE_CONTROL_EPHEMERAL
 }
 
+def _cache_markers(params: dict[str, any]) -> int {
+    count = len(
+        [
+            t
+            for t in params.get("tools") or []
+            if "cache_control" in t
+        ]
+    );
+    for msg in params.get("messages") or [] {
+        if not isinstance(msg, dict) {
+            continue;
+        }
+        if "cache_control" in msg {
+            count += 1;
+        }
+        content = msg.get("content");
+        if isinstance(content, list) {
+            count += len(
+                [
+                    p
+                    for p in content
+                    if isinstance(p, dict) and "cache_control" in p
+                ]
+            );
+        }
+    }
+    return count;
+}
+
 test "prompt caching marks system, last non-system message, and last tool for anthropic models" {
     assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == True;
     assert _is_prompt_caching_eligible("claude-3-opus-20240229") == True;
     assert _is_prompt_caching_eligible("gpt-4o") == False;
 
-    messages = [
-        {"role": "system", "content": "You are an agent."},
-        {"role": "user", "content": "Do something"},
-        {"role": "assistant", "content": "Calling a tool."},
-        {
-            "role": "tool",
-            "content": [
-                {"type": "text", "text": "first"},
-                {"type": "text", "text": "last"}
-            ]
-        }
-    ];
-    tools = [
-        {"type": "function", "function": {"name": "read_file"}},
-        {"type": "function", "function": {"name": "finish_tool"}}
-    ];
-    _apply_prompt_caching(messages, tools);
+    stale = dict(_CACHE_CONTROL_EPHEMERAL);
+    for (label, messages, tools, marked) in [
+        (
+            "fresh history",
+            [
+                {"role": "system", "content": "You are an agent."},
+                {"role": "user", "content": "Do something"},
+                {"role": "assistant", "content": "Calling a tool."},
+                {
+                    "role": "tool",
+                    "content": [
+                        {"type": "text", "text": "first"},
+                        {"type": "text", "text": "last"}
+                    ]
+                }
+            ],
+            [
+                {"type": "function", "function": {"name": "read_file"}},
+                {"type": "function", "function": {"name": "finish_tool"}}
+            ],
+            [1, 0, 0, 1]
+        ),
+        (
+            "history saved with stale markers",
+            [
+                {"role": "system", "content": "You are an agent."},
+                {"role": "user", "content": "first", "cache_control": stale},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "second", "cache_control": stale}
+                    ]
+                },
+                {"role": "user", "content": "latest"}
+            ],
+            [
+                {
+                    "type": "function",
+                    "function": {"name": "read_file"},
+                    "cache_control": stale
+                },
+                {"type": "function", "function": {"name": "finish_tool"}}
+            ],
+            [1, 0, 0, 1]
+        )
+    ] {
+        before = copy.deepcopy((messages, tools));
+        (sent_messages, sent_tools) = _apply_prompt_caching(messages, tools);
+        assert [_cache_markers({"messages": [m]}) for m in sent_messages]
+            == marked , label;
+        assert ["cache_control" in t for t in sent_tools] == [False, True] , label;
+        assert (messages, tools) == before , f"{label}: the caller's messages and tools changed";
+    }
 
-    assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
-    assert "cache_control" not in messages[1];
-    assert "cache_control" not in messages[2];
-    tool_content: any = messages[3].get("content");
-    assert "cache_control" not in tool_content[0];
-    assert tool_content[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    steer = {"role": "user", "content": "focus on a"};
 
-    assert "cache_control" not in tools[0];
-    assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    def lookup(key: str) -> str {
+        return key;
+    }
+
+    def hook(ctx: IterationContext) -> IterationAction {
+        ctx.messages.append(steer);
+        return IterationAction.CONTINUE;
+    }
+
+    llm = MockLLM(
+        model_name="anthropic/claude-test",
+        outputs=[tool_call("lookup", {"key": "a"}), finish("done")]
+    );
+
+    def fetch(query: str) -> str by llm(tools=[lookup], on_iteration=hook);
+
+    assert fetch("go") == "done";
+    sent = [_cache_markers(params) for params in llm.seen];
+    assert sent == [3, 3] , f"each request should carry 3 cache markers, sent {sent}";
+    assert "cache_control" not in steer , "the caller's steer message was stamped";
 }
 
 test "prompt caching disabled via config" {
