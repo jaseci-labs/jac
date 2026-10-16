@@ -634,6 +634,23 @@ glob STR_NA_GAPS: list[any] = [
              "sqlite3_na",
              ["na"]
          ),
+         (
+             "string bundled",
+             "prim_string.jac",
+             "string_py",
+             "string_cl",
+             "string_na",
+             ["na"]
+         ),
+         ("re bundled", "prim_re.jac", "re_py", "re_cl", "re_na", ["na"]),
+         (
+             "reprlib bundled",
+             "prim_reprlib.jac",
+             "reprlib_py",
+             "reprlib_cl",
+             "reprlib_na",
+             ["na"]
+         ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),
          (
              "bare from-imported stdlib names",

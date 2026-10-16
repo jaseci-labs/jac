@@ -1,3 +1,6 @@
+import from _repr { str_gt }
+
+
 def _zeros(n: int) -> list[int] {
     out: list[int] = [];
     i: int = 0;
@@ -6,24 +9,6 @@ def _zeros(n: int) -> list[int] {
         i += 1;
     }
     return out;
-}
-
-
-def _str_gt(a: str, b: str) -> bool {
-    m: int = len(a);
-    if len(b) < m {
-        m = len(b);
-    }
-    i: int = 0;
-    while i < m {
-        ca: int = ord(a[i]);
-        cb: int = ord(b[i]);
-        if ca != cb {
-            return ca > cb;
-        }
-        i += 1;
-    }
-    return len(a) > len(b);
 }
 
 
@@ -249,7 +234,7 @@ def _before(ra: float, wa: str, rb: float, wb: str) -> bool {
     if ra < rb {
         return False;
     }
-    return _str_gt(wa, wb);
+    return str_gt(wa, wb);
 }
 
 

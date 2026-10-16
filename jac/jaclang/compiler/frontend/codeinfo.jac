@@ -192,6 +192,7 @@ def _reserved_c_symbols -> frozenset[str] {
         "posix_spawn_file_actions_destroy posix_spawn_file_actions_addopen "
         "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
         "posix_spawn_file_actions_addchdir_np "
+        "regcomp regexec regerror regfree "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
         "pthread_setspecific "
