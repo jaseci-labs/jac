@@ -1,7 +1,10 @@
 walker DocIRGenPass(TreePass) {
     static has contract: PassContract = PassContract();
     has _live_comment_ids: (set[int] | None) = None,
-        _emitted_comment_ids: (set[int] | None) = None;
+        _emitted_comment_ids: (set[int] | None) = None,
+        _rescue_nd: (uni.Module | None) = None,
+        _rescue_idx: int = 0,
+        _rescue_own_ids: (set[int] | None) = None;
 
     def _comment_is_live(c: uni.CommentToken) -> bool;
     def _rescue_lost_comments(
