@@ -87,7 +87,8 @@ def _signatures(path: Path) -> dict[str, list[any]] {
     );
     out: dict[str, list[any]] = {};
     for abl in mod.get_all_sub_nodes(uni.Ability) {
-        name = abl.name_ref?.value;
+        name_ref = abl.name_ref;
+        name = name_ref.value if isinstance(name_ref, uni.Name) else None;
         if not name or not _is_public(abl) {
             continue;
         }

@@ -718,15 +718,12 @@ test "gap 58 a rejected subscript index is reported at the index" {
 
 # =========================================================================
 # Gap #59: a positive `is None` check on a type that cannot hold None
-# narrowed it to NoneType, and a path whose every predecessor narrowed to
-# Never read as "not narrowed", so the join fell back to the declared type.
-# Inside an `isinstance` block the NoneType arm leaked into the join and
-# rejected a later subscript. The impossible arm is Never, a join drops it,
-# and attribute access, a call or a comparison on Never is Never. A
-# truthiness check on a value that is always None narrows its truthy arm
-# to Never too.
+# narrowed it to NoneType, so the arm reported attribute errors against
+# NoneType and the NoneType arm leaked into the join after the `if`. That
+# arm is now Never: a join drops it, and attribute access, a call or a
+# comparison on Never reports nothing.
 # =========================================================================
-test "gap 59 an is None check on a type that cannot be None narrows to Never" {
+test "gap 59 an is None check on a type that cannot be None does not leak NoneType" {
     program = compile_and_check("checker_none_check_on_non_optional.jac");
     msgs = [str(e) for e in program.errors_had];
     assert len(msgs) == 1 , f"Gap #59: expected only the still-typed error. Got: {msgs}";

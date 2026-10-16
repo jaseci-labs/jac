@@ -5196,21 +5196,16 @@ impl TypeEvaluator._get_type_from_flow_node(
         }
     }
 
-    reached_types = [
+    incoming_types = [
         t
         for t in incoming_types
         if not isinstance(t, NeverType)
     ];
-    only_never = bool(incoming_types) and not reached_types;
-    incoming_types = reached_types;
 
     result: TypeBase | None = None;
-    if has_unnarrowed_pred {
+    if len(incoming_types) == 0 {
         result = None;
-    } elif only_never {
-        result = NeverType();
-    } elif len(incoming_types) == 0 {
-        result = None;
+    } elif has_unnarrowed_pred {
         result = None;
     } elif len(incoming_types) == 1 {
         result = incoming_types[0];
@@ -5812,8 +5807,7 @@ impl TypeEvaluator._find_predicate_for(
                     } else {
                         check_type = target.declared_type;
                     }
-                    if self._union_contains_none(check_type)
-                        or self.is_none_type(check_type) {
+                    if self._union_contains_none(check_type) {
                         none_inst = self._convert_to_instance(
                             self.prefetch.none_type_class
                         );

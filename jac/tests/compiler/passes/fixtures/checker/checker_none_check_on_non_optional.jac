@@ -1,38 +1,13 @@
-def lookup(t: (type | int), table: dict[type, str]) -> str {
-    if isinstance(t, type) {
+def lookup(t: type, table: dict[type, str]) -> str {
+    if t in table {
         if t is None {
             print(t.__name__);
+        } elif t is str {
+            print("str");
         }
         return table[t];
     }
     return "";
-}
-
-def unreachable_attr(t: str) -> int {
-    if not isinstance(t, str) {
-        return t.bogus();
-    }
-    return len(t);
-}
-
-def still_typed {
-    bad: int = "x";
-}
-
-obj Atom {}
-
-obj Slot {
-    has ref: (Atom | None) = None;
-}
-
-def names(slots: list[Slot], out: dict[str, int]) {
-    for s in slots {
-        name = s.ref?.missing;
-        if not name {
-            continue;
-        }
-        out[name] = 1;
-    }
 }
 
 obj Settings {
@@ -48,4 +23,8 @@ def reload(c: Settings) {
     c.load();
     assert c.files is not None;
     assert "a" in c.files;
+}
+
+def still_typed {
+    bad: int = "x";
 }
