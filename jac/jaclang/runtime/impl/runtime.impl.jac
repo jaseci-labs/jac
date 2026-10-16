@@ -57,6 +57,72 @@ impl JacAccessValidation._is_shared_root(to: Anchor) -> bool {
     return isinstance(shared_id, UUID) and to.id == shared_id;
 }
 
+impl JacAccessValidation._is_org_owned(to: Anchor) -> bool {
+    resolver = _org_root_resolver[0];
+    if resolver is None {
+        return False;
+    }
+    known: set[str] = _org_root_resolver[1];
+    for rid in (to.root, to.id) {
+        if rid is None {
+            continue;
+        }
+        key = str(rid);
+        if key in known {
+            return True;
+        }
+        if resolver(key) {
+            known.add(key);
+            return True;
+        }
+    }
+    return False;
+}
+
+impl JacAccessValidation._check_acl_write(to: Anchor) -> bool {
+    if not JacAccessValidation.check_write_access(to, op_hint="acl_write") {
+        return False;
+    }
+    jctx = JacRuntimeInterface.get_context();
+    if jctx.user_root == jctx.system_root
+        or not JacAccessValidation._is_org_owned(to) {
+        return True;
+    }
+    diag = JacAccessValidation._org_acl_denied(to, to.root);
+    if JacRuntime.strict_permissions {
+        raise PermissionError(diag.message());
+    }
+    logger.warning(diag.message());
+    return False;
+}
+
+impl JacAccessValidation._carries_acl(to: Anchor) -> bool {
+    access = to.access;
+    return access is not None
+        and (
+            access.all.value > AccessLevel.NO_ACCESS.value
+            or bool(access.roots.anchors)
+            or bool(access.groups.anchors)
+        );
+}
+
+impl JacAccessValidation._org_acl_denied(
+    to: Anchor, owner: (UUID | None)
+) -> PermissionDenied {
+    diag = PermissionDenied(
+        operation="org_acl_write",
+        target_id=str(to.id),
+        target_type=to.archetype.__class__.__name__,
+        target_owner=str(owner) if owner else None,
+        required=AccessLevel.WRITE,
+        actual=JacRuntimeInterface.check_access_level(to)
+    );
+    try {
+        JacRuntimeInterface.get_context().diagnostics.append(diag);
+    } except Exception {}
+    return diag;
+}
+
 impl JacAccessValidation.allow_root(
     archetype: Archetype, root_id: UUID, level: (AccessLevel | int | str | None) = None
 ) -> None {
@@ -65,7 +131,7 @@ impl JacAccessValidation.allow_root(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     access = anchor.own_access().roots;
@@ -84,7 +150,7 @@ impl JacAccessValidation.allow_group(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     access = anchor.own_access().groups;
@@ -97,7 +163,7 @@ impl JacAccessValidation.allow_group(
 
 impl JacAccessValidation.disallow_group(archetype: Archetype, group_id: UUID) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     anchor.own_access().groups.anchors.pop(str(group_id), None);
@@ -112,7 +178,7 @@ impl JacAccessValidation.disallow_root(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     access = anchor.own_access().roots;
@@ -128,7 +194,7 @@ impl JacAccessValidation.perm_grant(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     if (level != _all_grant(anchor)) {
@@ -139,7 +205,7 @@ impl JacAccessValidation.perm_grant(
 
 impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     if (_all_grant(anchor).value > AccessLevel.NO_ACCESS.value) {
@@ -1323,6 +1389,13 @@ impl JacPersistence.save(
                     'requires WRITE on that root'
                 );
             }
+            if jctx.user_root != jctx.system_root
+                and JacAccessValidation._carries_acl(anchor)
+                and JacAccessValidation._is_org_owned(target) {
+                raise PermissionError(
+                    JacAccessValidation._org_acl_denied(anchor, owner).message()
+                );
+            }
         }
         anchor.persistent = True;
         anchor.`root = owner if owner is not None else jctx.user_root.id;
@@ -2105,6 +2178,13 @@ impl JacRuntime.set_shared_root_resolver(
 ) -> None {
     _shared_root_resolver[0] = resolver;
     _shared_root_resolver[1] = None;
+}
+
+impl JacRuntime.set_org_root_resolver(
+    resolver: (Callable[([str], bool)] | None)
+) -> None {
+    _org_root_resolver[0] = resolver;
+    _org_root_resolver[1] = set();
 }
 
 impl JacRuntime.get_base_path_dir -> (str | None) {
