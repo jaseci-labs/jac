@@ -129,7 +129,9 @@ test "a sealed .jab carries no tree that .jacignore parks" {
     # Unfixed, this seal dies on evaluation/broken.jac, which is the crash the
     # in-pod boot compile hits.
     require_pod_binary();
-    raw = pack_jab(str(_app(_PARKED)), _JAC_BIN.read_bytes());
+    base = _app(_PARKED);
+    (base / "main.jac").write_text("with entry { print(\"hi\"); }\n");
+    raw = pack_jab(str(base), _JAC_BIN.read_bytes());
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
         names = tar.getnames();
     }

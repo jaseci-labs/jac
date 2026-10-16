@@ -32,7 +32,7 @@ glob _MANYLINUX_X86_64 = re.compile(r"manylinux(2014|_2_\d+)_x86_64"),
 def _app(toml: str) -> str {
     d = tempfile.mkdtemp(prefix="jac-fat-app-");
     Path(d, "jac.toml").write_text(toml);
-    Path(d, "svc.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
+    Path(d, "main.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
     return d;
 }
 

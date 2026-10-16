@@ -42,7 +42,7 @@ def _sanitized_toml(project: str) -> dict[str, any] {
 test "secrets are stripped and secret-bearing files excluded from the sealed .jab" {
     require_pod_binary();
     with tempfile.TemporaryDirectory() as project {
-        with open(os.path.join(project, "app.jac"), "w") as handle {
+        with open(os.path.join(project, "main.jac"), "w") as handle {
             handle.write("with entry { print(\"ok\"); }");
         }
         with open(os.path.join(project, ".env"), "w") as handle {
@@ -69,7 +69,7 @@ test "secrets are stripped and secret-bearing files excluded from the sealed .ja
             assert toml_member is not None;
             toml_text = toml_member.read().decode("utf-8");
         }
-        assert "app.jac" in names;
+        assert "main.jac" in names;
         assert "_precompiled/MANIFEST.json" in names;
         assert ".env" not in names;
         assert "tls.key" not in names;
