@@ -87,7 +87,11 @@ def _unreachable_store -> PgStore {
 }
 
 
-def _wait_for_runs(engine: any, job_id: str, count: int) -> bool {
+def _listen_for_runs(engine: any, job_id: str, count: int) -> threading.Event {
+    # The engine does not buffer events for a listener that arrives late, and
+    # a due job starts running the moment the engine starts, so the listener
+    # has to be attached before engine.start(). The returned event is set once
+    # `count` runs of the job have finished; wait on it after starting.
     import from apscheduler.events { EVENT_JOB_ERROR, EVENT_JOB_EXECUTED }
     seen: list[str] = [];
     done = threading.Event();
@@ -100,7 +104,7 @@ def _wait_for_runs(engine: any, job_id: str, count: int) -> bool {
         }
     }
     engine.add_listener(on_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR);
-    return done.`wait(15.0);
+    return done;
 }
 
 
@@ -331,9 +335,10 @@ test "each run carries the time it was scheduled for" {
         start_date=first,
         next_run_time=first
     );
+    caught_up = _listen_for_runs(engine, 'fire-times', 4);
     engine.start();
     try {
-        assert _wait_for_runs(engine, 'fire-times', 4) , seen;
+        assert caught_up.`wait(15.0) , seen;
         assert seen[:4]
             == [first, first + step, first + 2 * step, first + 3 * step] , seen;
     } finally {
@@ -376,10 +381,12 @@ test "a late run claims the occurrence it was scheduled for, not the current one
         engine.modify_job(job_id, next_run_time=top);
     }
     assert pod_a._claim_fire('ran-on-a', top) is True;
+    a_done = _listen_for_runs(engine, 'ran-on-a', 1);
+    nowhere_done = _listen_for_runs(engine, 'ran-nowhere', 1);
     engine.start();
     try {
-        assert _wait_for_runs(engine, 'ran-on-a', 1);
-        assert _wait_for_runs(engine, 'ran-nowhere', 1);
+        assert a_done.`wait(15.0);
+        assert nowhere_done.`wait(15.0);
     } finally {
         engine.shutdown(`wait=False);
     }
