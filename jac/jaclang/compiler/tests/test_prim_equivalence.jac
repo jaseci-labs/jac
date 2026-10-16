@@ -1102,3 +1102,13 @@ test "prim_runtime_errors" {
     _prim_runtime_errors__runtime_multi_handler(_eng, _ir);
     _prim_runtime_errors__runtime_error_with_finally(_eng, _ir);
 }
+
+test "native sort keys retain captured scalar and object parameters" {
+    run_with_both(
+        "prim_sort_capture.jac",
+        "sort_capture_py",
+        "",
+        "sort_capture_na",
+        require=["na"]
+    );
+}
