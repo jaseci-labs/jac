@@ -114,6 +114,27 @@ def run_interface(task: ModuleAnalysis) {
     task.require(CompilationProduct.INTERFACE);
 }
 
+def binds_torch_import(module: uni.Module) -> bool {
+    for mp in module.get_all_sub_nodes(uni.ModulePath) {
+        if mp.level != 0 {
+            continue;
+        }
+        p = mp.dot_path_str;
+        if (p == 'torch') or p.startswith('torch.') {
+            return True;
+        }
+    }
+    return False;
+}
+
+def graphmend_wanted(task: ModuleAnalysis) -> bool {
+    options = task.options;
+    if options.graphmend is not None and options.graphmend {
+        return binds_torch_import(task.module);
+    }
+    return False;
+}
+
 def admits_codegen(task: ModuleAnalysis) -> bool {
     options = task.options;
     return not (
@@ -138,9 +159,16 @@ def run_codegen(task: ModuleAnalysis) {
         task.blocked = True;
         return;
     }
+    graphmend = graphmend_wanted(task);
+    if graphmend and active_host().in_kernel() {
+        return;
+    }
     task.require(CompilationProduct.CODEGEN, ProductRequest(native=needs_native));
     if module.gen.has_native_ir() {
         session_of(task).assemble_native(program, module, False);
+    }
+    if graphmend {
+        task.require(CompilationProduct.GRAPHMEND);
     }
     task.require(CompilationProduct.PY_IR);
     task.require(CompilationProduct.FROZEN);

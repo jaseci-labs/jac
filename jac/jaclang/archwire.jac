@@ -125,6 +125,9 @@ graph import {
     jac0core --> dist.interpreter.JacPythonArtifact.probe_sealed { sealed }
     jac0core --> dist.precompiled.PrecompiledArtifact.probe_sealed { sealed }
     jac0core --> project.kernel_snapshot.catalog_build_blocker { sealed }
+    meta_importer --> cli.commands.execution._apply_graphmend {
+        install_graphmend_loader_hook_for_torch
+    }
 }
 
 graph import byllm {
@@ -4836,6 +4839,53 @@ graph import compiler.driver {
     jir --> compiler.driver.application._reusable_interfaces { compute_module_key }
     jir --> compiler.driver.application._unit_row { compute_module_key }
     unit_products --> compiler.driver.application._row_unit { UnitProducts }
+    compile_options --> cli.commands.execution.serve { mark_process_serving }
+    compile_options --> compiler.passes.graphmend.defer_side_effect_pass.DeferSideEffectPass.prepare {
+        defer_declines_here
+    }
+    compile_options --> dist.precompile_bytecode._precompile_unit { CompileOptions }
+    jir --> compiler.driver.compiler {
+        SEC_GM_NOOP,
+        is_module_cache_valid_gm_noop,
+        swap_graphmend_cache_variant
+    }
+    jir --> compiler.driver.compiler.JacCompiler.get_bytecode { read_source_shared }
+    jir --> compiler.passes.graphmend.auto_detect.file_imports_torch {
+        read_source_shared
+    }
+    jir --> compiler.passes.graphmend.scope_facts._closure_source_digest {
+        read_source_shared
+    }
+    jir --> compiler.passes.graphmend.scope_facts.region_context_probe {
+        GM_PROBE_VARIANT,
+        swap_graphmend_cache_variant
+    }
+    module_compile --> compiler.passes.graphmend.scope_facts.module_binds_torch {
+        binds_torch_import
+    }
+    pipeline --> compiler.passes.graphmend.auto_detect._py_imports_torch { run_utility }
+    pipeline_types --> compiler.passes.graphmend.auto_detect._py_imports_torch {
+        CompilationProduct
+    }
+    pipeline_types --> compiler.passes.graphmend.defer_side_effect_pass {
+        AnalysisFact,
+        PassContract
+    }
+    pipeline_types --> compiler.passes.graphmend.graph_break_detect_pass {
+        AnalysisFact,
+        PassContract
+    }
+    pipeline_types --> compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        AnalysisFact,
+        PassContract
+    }
+    pipeline_types --> compiler.passes.graphmend.trap_lowering_pass {
+        AnalysisFact,
+        PassContract
+    }
+    program --> compiler.passes.graphmend.auto_detect._jac_binds_torch { JacProgram }
+    program --> compiler.passes.graphmend.auto_detect._py_imports_torch { JacProgram }
+    type program --> compiler.passes.graphmend.scope_facts { JacProgram }
 }
 
 graph import compiler.frontend {
@@ -8773,10 +8823,51 @@ graph import compiler.frontend {
     unparse --> compiler.passes.endpoint_effect_pass.EndpointEffectPass._apply {
         unparse_node
     }
+    constant --> compiler.passes.graphmend.ast_edit { GraphBreakKind, GraphMendHelper }
+    constant --> compiler.passes.graphmend.defer_side_effect_pass {
+        GraphBreakKind,
+        GraphMendHelper,
+        Tokens as Tok
+    }
+    constant --> compiler.passes.graphmend.graph_break_detect_pass { GraphBreakKind }
+    constant --> compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        GraphBreakKind,
+        SymbolType,
+        Tokens as Tok
+    }
+    constant --> compiler.passes.graphmend.trap_lowering_pass {
+        GraphBreakKind,
+        GraphMendHelper
+    }
+    host --> compiler.driver.compile_options.resolved_graphmend_claim_imports_setting {
+        active_host
+    }
+    host --> compiler.driver.compile_options.resolved_graphmend_disable_setting {
+        active_host
+    }
+    host --> compiler.driver.compile_options.resolved_graphmend_setting { active_host }
+    parser --> compiler.passes.graphmend.auto_detect._jac_binds_torch {
+        parse as rd_parse
+    }
+    roles --> compiler.passes.graphmend.ast_edit { BodyRole, Kid }
+    roles --> compiler.passes.graphmend.defer_side_effect_pass { DecoratorsRole, Kid }
+    roles --> compiler.passes.graphmend.trap_lowering_pass { DecoratorsRole, Kid }
+    unitree as uni --> compiler.passes.graphmend.ast_edit;
+    type unitree --> compiler.passes.graphmend.ast_edit { Ability, UniNode }
+    unitree as uni --> compiler.passes.graphmend.auto_detect._py_imports_torch;
+    unitree as uni --> compiler.passes.graphmend.defer_side_effect_pass;
+    unitree as uni --> compiler.passes.graphmend.graph_break_detect_pass;
+    unitree as uni --> compiler.passes.graphmend.predicate_ctrl_flow_pass;
+    unitree as uni --> compiler.passes.graphmend.scope_facts;
+    unitree as uni --> compiler.passes.graphmend.torch_attr_table;
+    unitree as uni --> compiler.passes.graphmend.trap_lowering_pass;
+    unitree as uni --> compiler.passes.sym_resolve;
+    unparse --> compiler.passes.graphmend.predicate_ctrl_flow_pass { unparse_node }
 }
 
 graph import compiler.frontend.parser {
     frontend --> cli.commands.analysis._check_file_job { _replay_diags, parse_diags }
+    frontend --> cli.commands.architecture._merge_into { parse_woven }
     frontend --> cli.commands.architecture._parse_imports { parse_woven }
     frontend --> compiler.driver.wiring.parse_records { parse_woven }
     frontend --> compiler.passes.variant_agreement_pass.VariantAgreementPass._parse_sibling {
@@ -9357,6 +9448,135 @@ graph import compiler.passes {
     type_checker_pass --> compiler.driver.pipeline.analysis_passes { TypeCheckPass }
     variant_agreement_pass --> compiler.driver.pipeline.analysis_passes {
         VariantAgreementPass
+    }
+    context --> compiler.passes.graphmend.defer_side_effect_pass { TreePass }
+    context --> compiler.passes.graphmend.graph_break_detect_pass { TreePass }
+    context --> compiler.passes.graphmend.predicate_ctrl_flow_pass { TreePass }
+    context --> compiler.passes.graphmend.trap_lowering_pass { TreePass }
+    sym_resolve --> compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        symbol_ability
+    }
+    sym_resolve --> compiler.passes.graphmend.scope_facts {
+        symbol_ability,
+        symbol_archetype
+    }
+}
+
+graph import compiler.passes.graphmend {
+    defer_side_effect_pass --> compiler.driver.pipeline.graphmend_passes {
+        DeferSideEffectPass
+    }
+    graph_break_detect_pass --> compiler.driver.pipeline.graphmend_passes {
+        GraphBreakDetectPass
+    }
+    predicate_ctrl_flow_pass --> compiler.driver.pipeline.graphmend_passes {
+        PredicateCtrlFlowPass
+    }
+    trap_lowering_pass --> compiler.driver.pipeline.graphmend_passes {
+        TrapLoweringPass
+    }
+    ast_edit --> compiler.passes.graphmend.defer_side_effect_pass {
+        append_stmt,
+        facts_for,
+        gen_bool,
+        gen_name,
+        gen_string,
+        insert_after,
+        insert_before,
+        need_helper,
+        split_params
+    }
+    ast_edit --> compiler.passes.graphmend.graph_break_detect_pass { facts_for }
+    ast_edit --> compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        facts_for,
+        gen_name,
+        replace_stmt,
+        split_params,
+        split_params_keyed,
+        torch_call
+    }
+    ast_edit --> compiler.passes.graphmend.scope_facts { facts_for, split_params }
+    ast_edit --> compiler.passes.graphmend.trap_lowering_pass {
+        facts_for,
+        gen_name,
+        gen_string,
+        insert_after,
+        need_helper,
+        replace_stmt,
+        split_params,
+        torch_call
+    }
+    auto_detect --> cli.commands.execution._graphmend_may_engage { file_imports_torch }
+    scope_facts --> compiler.driver.compiler.JacCompiler.get_bytecode {
+        region_context_probe
+    }
+    scope_facts --> compiler.passes.graphmend.auto_detect._jac_binds_torch {
+        module_binds_torch
+    }
+    scope_facts --> compiler.passes.graphmend.auto_detect._py_imports_torch {
+        module_binds_torch
+    }
+    scope_facts --> compiler.passes.graphmend.graph_break_detect_pass {
+        body_is_only,
+        collect_wrap_entries,
+        compiled_region_ids,
+        import_item_of,
+        materialize_claim_chain,
+        module_has_wrap_site,
+        register_claim
+    }
+    scope_facts --> compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        attr_annotation,
+        attr_dict_kind,
+        find_class,
+        lexical_ability,
+        module_imports_plain,
+        module_reaches_autograd,
+        param_annotation,
+        param_names,
+        region_in_inference_ctx,
+        self_attr_name,
+        wrapping_classes
+    }
+    scope_facts --> compiler.passes.graphmend.trap_lowering_pass {
+        claim_chain_reaches,
+        entry_key,
+        entry_module,
+        import_item_of,
+        param_annotation
+    }
+    torch_attr_table --> compiler.passes.graphmend.defer_side_effect_pass {
+        has_torch_compile_decorator,
+        is_torch_attr_target
+    }
+    torch_attr_table --> compiler.passes.graphmend.graph_break_detect_pass {
+        cond_is_data_dependent,
+        defining_assignment,
+        is_side_effect_name,
+        symbol_is_builtin
+    }
+    torch_attr_table --> compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        cond_materializes_scalar,
+        is_torch_attr_target,
+        symbol_is_builtin
+    }
+    torch_attr_table --> compiler.passes.graphmend.scope_facts {
+        AUTOGRAD_ITEM_NAMES,
+        AUTOGRAD_MODULE_PATHS,
+        AUTOGRAD_SIGNAL_ATTRS,
+        GRAD_OFF_CTX_ATTRS,
+        OPTIM_RECEIVER_PATTERNS,
+        decorator_base,
+        defining_assignment,
+        expr_uses_attr,
+        has_torch_compile_decorator,
+        is_torch_attr_target
+    }
+    torch_attr_table --> compiler.passes.graphmend.trap_lowering_pass {
+        defining_assignment,
+        has_torch_compile_decorator,
+        is_torch_attr_target,
+        symbol_is_builtin
     }
 }
 
@@ -12471,6 +12691,9 @@ graph import project {
         project_mounts
     }
     providers --> packages.commands { venv_deps_satisfied }
+    config --> cli.commands.execution._apply_graphmend { get_config }
+    config --> cli.commands.execution._configured_graphmend { get_config }
+    textio --> compiler.driver.jir.read_source_shared { read_file_with_encoding }
 }
 
 graph import runtime {
@@ -13234,6 +13457,7 @@ graph import runtime {
     preparation_lock --> server.hmr.HotReloader._reload_server_module {
         PREPARATION_LOCK
     }
+    osp_kernel --> compiler.passes.graphmend.graph_break_detect_pass { osp_skip_rest }
 }
 
 graph import scale {

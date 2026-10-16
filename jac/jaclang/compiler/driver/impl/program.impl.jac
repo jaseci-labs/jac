@@ -21,6 +21,9 @@ impl JacProgram.init(
     self.context_key = "";
     self.contexts = {};
     self.internal = False;
+    self.graphmend_claimed: set[str] = set();
+    self.graphmend_claim_walked: set[str] = set();
+    self.graphmend_claim_parent: dict[str, str] = {};
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {

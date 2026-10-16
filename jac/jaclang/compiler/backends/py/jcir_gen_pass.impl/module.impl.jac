@@ -30,6 +30,9 @@ impl JcirGenPass.exit_module with Module exit {
         }
     }
     mod_path = here.loc.mod_path;
+    for _gm_import in here.gen.graphmend_imports {
+        self.jaclib_imports.add(_gm_import);
+    }
     is_builtin_module = (
         (mod_path.endswith('builtin.jac') or mod_path.endswith('builtin.py'))
         and ('runtime' in mod_path)

@@ -200,6 +200,27 @@ def native_object_passes(request: ProductRequest) -> PassSchedule {
     return [NativeCompilePass];
 }
 
+def graphmend_passes(request: ProductRequest) -> PassSchedule {
+    import from jaclang.compiler.passes.graphmend.graph_break_detect_pass {
+        GraphBreakDetectPass
+    }
+    import from jaclang.compiler.passes.graphmend.trap_lowering_pass {
+        TrapLoweringPass
+    }
+    import from jaclang.compiler.passes.graphmend.predicate_ctrl_flow_pass {
+        PredicateCtrlFlowPass
+    }
+    import from jaclang.compiler.passes.graphmend.defer_side_effect_pass {
+        DeferSideEffectPass
+    }
+    return [
+        GraphBreakDetectPass,
+        TrapLoweringPass,
+        PredicateCtrlFlowPass,
+        DeferSideEffectPass
+    ];
+}
+
 def format_passes(request: ProductRequest) -> PassSchedule {
     import from jaclang.compiler.tools.comment_attach_pass { CommentAttachPass }
     import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
@@ -361,7 +382,13 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
      ],
-     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.na_ir_gen_pass', ];
+     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.na_ir_gen_pass', ],
+     GRAPHMEND_LOADS: list[str] = [
+         'jaclang.compiler.passes.graphmend.graph_break_detect_pass',
+         'jaclang.compiler.passes.graphmend.trap_lowering_pass',
+         'jaclang.compiler.passes.graphmend.predicate_ctrl_flow_pass',
+         'jaclang.compiler.passes.graphmend.defer_side_effect_pass'
+     ];
 
 glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.SYMBOLS: ProductSpec(
@@ -435,6 +462,11 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              needs=[CompilationProduct.NATIVE_LOWER],
              passes=native_object_passes,
              drop=drop_native_object
+         ),
+         CompilationProduct.GRAPHMEND: ProductSpec(
+             passes=graphmend_passes,
+             loads=GRAPHMEND_LOADS,
+             on_import_error=ImportFallback.REPORT
          ),
          CompilationProduct.FORMAT: ProductSpec(passes=format_passes),
          CompilationProduct.FORMAT_LINTFIX: ProductSpec(passes=format_lintfix_passes),
