@@ -195,12 +195,15 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
         return;
     }
     logger.info(
-        "No staged admin console; the first request to /admin builds it from source."
+        "No staged admin console; the first request to /admin starts a background build from source."
     );
 }
 
 impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
-    admin_dist = Path(self.admin_dist_dir);
+    admin_dist = resolve_console(Path(self.admin_dist_dir), self.admin_console);
+    if isinstance(admin_dist, Response) {
+        return admin_dist;
+    }
 
     if not asset_path or asset_path == "/" {
         target = admin_dist / "index.html";

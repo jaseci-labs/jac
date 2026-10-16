@@ -585,6 +585,9 @@ graph import byllm.tests.fixtures.scope_dir {
 }
 
 graph import cache {
+    registry --> scale.admin.console_build.console_cache_dir { bucket }
+    registry --> scale.admin.console_build.AdminConsole._note_hit { bucket }
+    locking --> scale.admin.console_build.AdminConsole._run { FileLock }
     home --> cache.policy { CACHEDIR_TAG }
     home --> cache.registry { CACHEDIR_TAG, cache_home, ensure_cache_dir, ensure_root }
     home --> cli.commands.cache { cache_home }
@@ -13237,9 +13240,7 @@ graph import runtime {
 }
 
 graph import scale {
-    admin --> scale.admin.admin_portal.JacAPIServerAdmin.build_admin_client {
-        admin_portal
-    }
+    admin --> scale.admin.console_build.package_ui_dir { admin_portal }
     admin --> scale.tests.misc.test_k8s_ops { k8s_ops }
     admin as admin_pkg --> scale.tests.misc.test_ops_signals;
     admin --> scale.tests.server.test_admin;
@@ -13352,6 +13353,17 @@ graph import scale._optdeps {
 }
 
 graph import scale.admin {
+    console_build --> scale.admin.admin_portal { AdminConsole }
+    console_build --> scale.admin.admin_portal.JacAPIServerAdmin.serve_admin_asset {
+        resolve_console
+    }
+    console_build --> scale.admin.admin_portal.JacAPIServerAdmin.serve_admin_index {
+        resolve_console
+    }
+    console_build --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
+        resolve_console
+    }
+    console_build --> scale.tests.server.test_admin { AdminConsole, ConsoleState }
     admin_portal --> scale.runtime.gateway.microservice_gateway { JacAPIServerAdmin }
     admin_portal --> scale.server.extensions { JacAPIServerAdmin }
     admin_portal --> scale.tests.misc.test_metrics {
@@ -14725,6 +14737,7 @@ graph import scale.runtime.cli {
 }
 
 graph import scale.runtime.context {
+    util --> scale.admin.console_build.build_with_jac { jac_executable }
     auth_ctx --> scale.runtime.rpc.rpc._rpc_headers { get_current_auth }
     auth_ctx --> scale.server.extensions.ObservabilityExtension.register {
         reset_current_auth,
@@ -15358,6 +15371,7 @@ graph import scale.sdk {
 }
 
 graph import scale.server {
+    extensions --> scale.tests.server.test_admin { AdminExtension }
     extensions --> scale.runtime.provider.JacScaleRuntime.get_server_extensions {
         scale_extensions
     }
@@ -16418,6 +16432,7 @@ graph import server.identity {
 }
 
 graph import server.serving {
+    datatypes --> scale.admin.console_build { HTMLResponse, Response }
     accesslog --> scale.tests.server.test_serve {
         ACCESS_LOGGER_NAME,
         AccessJsonFormatter,

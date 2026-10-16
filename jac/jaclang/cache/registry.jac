@@ -88,7 +88,7 @@ glob RETIRED: tuple[str, ...] = (
          Bucket(
              name="apps",
              relpath="apps",
-             policy=Policy(ttl_days=30.0, markers=[".used"]),
+             policy=Policy(ttl_days=30.0),
              summary="materialized app images (.jab), content-keyed"
          ),
          Bucket(
@@ -124,6 +124,12 @@ glob RETIRED: tuple[str, ...] = (
              summary="pinned jac release binaries for deploys",
              root_env="JAC_SCALE_CACHE_DIR",
              root_prefix="scale-binaries"
+         ),
+         Bucket(
+             name="admin",
+             relpath="admin",
+             policy=Policy(ttl_days=30.0, markers=[".used"]),
+             summary="built admin consoles, one per UI source and compiler"
          ),
          Bucket(
              name="models",

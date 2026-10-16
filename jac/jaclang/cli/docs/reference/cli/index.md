@@ -1657,6 +1657,7 @@ Every bucket has a **retention policy**:
 | `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
+| `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
 | `toolchains-downloads` | verified toolchain archives | unused 14 days |
 | `toolchains-installed`, `toolchains-build` | installed toolchains and builds | unused 90 days |
 | `models` | byLLM model weights | pinned: never collected, `purge` removes it |
