@@ -54,6 +54,10 @@ obj RequestMetrics {
 
 def observe_read_tier_retry(metrics: any, unit_key: str) -> None;
 
+def route_pattern_under_prefix(pattern: str, prefix: str) -> bool;
+
+def yielding_client_prefixes(endpoints: list[any]) -> list[str];
+
 
 def target_restspec(target: any) -> any {
     return target.restspec if target?.restspec else None;
@@ -212,14 +216,17 @@ obj ModuleIntrospector {
     ) -> dict[str, any];
 
     def spa_fallback_status(url_path: str) -> int;
-    def has_client_route(url_path: str) -> bool;
+    def has_client_route(url_path: str, explicit_only: bool = False) -> bool;
     def _load_spa_routes -> (list[str] | None);
     def _spa_route_matches(pattern: str, segments: list[str]) -> bool;
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
     def restspec_routes -> list[tuple[str, str, any]];
     def declared_api_paths -> list[str];
-    def client_claimed_paths(candidates: list[str]) -> list[str];
+    def client_claimed_paths(
+        candidates: list[str], yielding_prefixes: (list[str] | None) = None
+    ) -> list[str];
+
     def walker_protocol(walker_name: str) -> APIProtocol;
     def function_protocol(func_name: str) -> APIProtocol;
 }

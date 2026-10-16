@@ -397,11 +397,45 @@ impl ViteBundler._format_define_entries(
     return ',\n'.join(entries);
 }
 
-def _proxy_entry(key: str, api_port: int) -> str {
+def _client_route_regex(pattern: str) -> str {
+    import re;
+    out = '^';
+    for seg in pattern.split('/') {
+        if not seg {
+            continue;
+        }
+        if seg == '*' {
+            out += '(?:/.*)?';
+            break;
+        }
+        out += '/' + ('[^/]+' if seg.startswith(':') else re.escape(seg));
+    }
+    return out + '/?$';
+}
+
+
+def _proxy_entry(
+    key: str, api_port: int, client_routes: (list[str] | None) = None
+) -> str {
+    import json;
+    bypass = '';
+    if client_routes {
+        sources = json.dumps([_client_route_regex(r) for r in client_routes]);
+        bypass = (
+            '\n        bypass: (req) => {'
+            '\n          if (req.method !== "GET" && req.method !== "HEAD") { return; }'
+            '\n          const accept = (req.headers && req.headers.accept) || "";'
+            '\n          if (accept.indexOf("text/html") === -1) { return; }'
+            '\n          const p = (req.url || "").split("?")[0];'
+            f'\n          if ({sources}.some((s) => new RegExp(s).test(p))) {{ return req.url; }}'
+            '\n        },'
+        );
+    }
     return (
         f'\n      "{key}": {{'
         f'\n        target: "http://localhost:{api_port}",'
         '\n        changeOrigin: true,'
+        f'{bypass}'
         '\n      },'
     );
 }
@@ -423,7 +457,8 @@ impl ViteBundler._generate_vite_config_content(
     for_desktop_dev: bool = False,
     desktop_broker_port: int = 0,
     api_paths: (list[str] | None) = None,
-    client_paths: (list[str] | None) = None
+    client_paths: (list[str] | None) = None,
+    yielding_prefixes: (list[str] | None) = None
 ) -> str {
     build_dir = self._get_client_dir();
     project_relative = Path(
@@ -569,13 +604,22 @@ impl ViteBundler._generate_vite_config_content(
             if reload_enabled
             else "";
         host_value = '"127.0.0.1"' if for_desktop_dev else 'true';
+        import from jaclang.server.server { route_pattern_under_prefix }
         claimed = {p for p in (client_paths or [])};
+        yielding = DEV_CLIENT_YIELDING_PREFIXES
+            if yielding_prefixes is None
+            else yielding_prefixes;
         builtin_proxy_str: str = "";
         for prefix in DEV_PROXY_PREFIXES {
             if prefix in claimed {
                 continue;
             }
-            builtin_proxy_str += _proxy_entry(prefix, api_port);
+            under = [
+                p
+                for p in claimed
+                if prefix in yielding and route_pattern_under_prefix(p, prefix)
+            ];
+            builtin_proxy_str += _proxy_entry(prefix, api_port, under);
         }
         declared_seen: set[str] = set();
         declared_proxy_str: str = "";
@@ -1006,7 +1050,8 @@ impl ViteBundler.create_vite_config(
     for_desktop_dev: bool = False,
     desktop_broker_port: int = 0,
     api_paths: (list[str] | None) = None,
-    client_paths: (list[str] | None) = None
+    client_paths: (list[str] | None) = None,
+    yielding_prefixes: (list[str] | None) = None
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
@@ -1025,7 +1070,8 @@ impl ViteBundler.create_vite_config(
         for_desktop_dev=for_desktop_dev,
         desktop_broker_port=desktop_broker_port,
         api_paths=api_paths,
-        client_paths=client_paths
+        client_paths=client_paths,
+        yielding_prefixes=yielding_prefixes
     );
     config_path.write_text(config_content, encoding='utf-8');
     if is_dev {

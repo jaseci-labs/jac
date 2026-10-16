@@ -497,7 +497,8 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             response_model=None,
             tags=['Admin'],
             summary='Admin Portal Redirect',
-            description='Redirect to /admin/'
+            description='Redirect to /admin/',
+            yields_to_client=True
         )
     );
 
@@ -510,7 +511,8 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             response_model=None,
             tags=['Admin'],
             summary='Admin Portal',
-            description='Admin portal UI'
+            description='Admin portal UI',
+            yields_to_client=True
         )
     );
 
@@ -535,7 +537,8 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             response_model=None,
             tags=['Admin'],
             summary='Admin static assets',
-            description='Serve admin portal static assets'
+            description='Serve admin portal static assets',
+            yields_to_client=True
         )
     );
     logger.info("Admin portal endpoints registered at /admin");

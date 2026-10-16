@@ -982,7 +982,9 @@ impl ModuleIntrospector.render_page(
     return Jac.render_page(self, function_name, args, username);
 }
 
-impl ModuleIntrospector.has_client_route(url_path: str) -> bool {
+impl ModuleIntrospector.has_client_route(
+    url_path: str, explicit_only: bool = False
+) -> bool {
     if not self._spa_routes_loaded {
         self._spa_route_patterns = self._load_spa_routes();
         self._spa_routes_loaded = True;
@@ -997,6 +999,9 @@ impl ModuleIntrospector.has_client_route(url_path: str) -> bool {
         if seg
     ];
     for pattern in patterns {
+        if explicit_only and pattern.strip('/').split('/')[0] == '*' {
+            continue;
+        }
         if self._spa_route_matches(pattern, segments) {
             return True;
         }
@@ -1058,6 +1063,61 @@ impl ModuleIntrospector._spa_route_matches(pattern: str, segments: list[str]) ->
     return len(segments) == len(psegs);
 }
 
+impl route_pattern_under_prefix(pattern: str, prefix: str) -> bool {
+    want = [
+        seg
+        for seg in prefix.split('/')
+        if seg
+    ];
+    have = [
+        seg
+        for seg in pattern.split('/')
+        if seg
+    ];
+    if not have or have[0] == '*' {
+        return False;
+    }
+    for (i, seg) in enumerate(want) {
+        if i >= len(have) {
+            return False;
+        }
+        if have[i] == '*' {
+            return True;
+        }
+        if have[i].startswith(':') {
+            continue;
+        }
+        if have[i] != seg {
+            return False;
+        }
+    }
+    return len(have) > len(want);
+}
+
+impl yielding_client_prefixes(endpoints: list[any]) -> list[str] {
+    prefixes: list[str] = [];
+    for ep in endpoints {
+        if not ep.yields_to_client {
+            continue;
+        }
+        literal: list[str] = [];
+        for seg in str(ep.path).split('/') {
+            if not seg {
+                continue;
+            }
+            if '{' in seg or seg.startswith(':') or seg == '*' {
+                break;
+            }
+            literal.append(seg);
+        }
+        prefix = '/' + '/'.join(literal);
+        if literal and prefix not in prefixes {
+            prefixes.append(prefix);
+        }
+    }
+    return prefixes;
+}
+
 impl ModuleIntrospector.is_auth_required_for_function(func_name: str) -> bool {
     rec = self._surface.get(func_name);
     return rec.requires_auth() if rec is not None else True;
@@ -1101,7 +1161,9 @@ impl ModuleIntrospector.declared_api_paths -> list[str] {
 }
 
 
-impl ModuleIntrospector.client_claimed_paths(candidates: list[str]) -> list[str] {
+impl ModuleIntrospector.client_claimed_paths(
+    candidates: list[str], yielding_prefixes: (list[str] | None) = None
+) -> list[str] {
     claimed: list[str] = [];
     for candidate in candidates {
         try {
@@ -1112,9 +1174,17 @@ impl ModuleIntrospector.client_claimed_paths(candidates: list[str]) -> list[str]
             continue;
         }
     }
+    for pattern in (self._spa_route_patterns or []) {
+        for candidate in candidates {
+            if candidate in (yielding_prefixes or [])
+                and route_pattern_under_prefix(pattern, candidate)
+                and pattern not in claimed {
+                claimed.append(pattern);
+            }
+        }
+    }
     return claimed;
 }
-
 
 impl ModuleIntrospector.walker_protocol(walker_name: str) -> APIProtocol {
     spec = self.route_spec(walker_name);
@@ -1256,6 +1326,10 @@ impl JacAPIServer.build_app -> ServingApp {
     if not settings.docs_enabled {
         app.openapi_url = None;
     }
+    def _claims_client_route(url_path: str) -> bool {
+        return self.introspector.has_client_route(url_path, explicit_only=True);
+    }
+    app.client_route_probe = _claims_client_route;
     self.app = app;
     self._endpoints = [];
     self._install_middleware();

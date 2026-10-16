@@ -135,7 +135,7 @@ obj Router {
     }
 
     def resolve(
-        method: str, path: str
+        method: str, path: str, exclude: (list[JEndPoint] | None) = None
     ) -> tuple[(JEndPoint | None), dict[(str, str)], list[str]] {
         segments = [
             p
@@ -146,7 +146,9 @@ obj Router {
         lookup = 'GET' if method.upper() == 'HEAD' else method.upper();
         for route in self.routes.get(lookup, []) {
             params = route.`match(segments, trailing);
-            if params is not None and route.endpoint is not None {
+            if params is not None
+                and route.endpoint is not None
+                and not any(route.endpoint is tried for tried in (exclude or [])) {
                 return (route.endpoint, params, []);
             }
         }

@@ -174,6 +174,19 @@ test "POST /jobs schedules a DYNAMIC target, then refuses the account past its c
         second = client.post("/jobs", json=body, headers=headers);
         assert second.status_code == 429 , second.text;
         assert second.json()["error"]["code"] == "QUOTA_EXCEEDED" , second.text;
+
+        # An app page at /jobs wins the browser's navigation, while the same
+        # GET from a script holding a token still reaches the scheduler API.
+        listing = client.get("/jobs", headers=headers);
+        assert listing.status_code == 200 , listing.text;
+        client.server.introspector._spa_route_patterns = ["/jobs"];
+        client.server.introspector._spa_routes_loaded = True;
+        navigation = client.get("/jobs", headers={** headers, "Accept": "text/html"});
+        assert navigation.status_code == 404 , (
+            f"the platform answered a navigation to an app page: {navigation.text}"
+        );
+        scripted = client.get("/jobs", headers=headers);
+        assert scripted.status_code == 200 , scripted.text;
     } finally {
         client.close();
         reset_scale_config();

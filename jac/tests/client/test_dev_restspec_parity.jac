@@ -320,6 +320,95 @@ test "the dev proxy drops built-in prefixes the app claims as client routes" {
     assert "/docs" in DEV_PROXY_PREFIXES , (
         "the built-in list is what the server filters against"
     );
+
+    # A page UNDER a proxied prefix cannot drop the prefix (the rest of it is
+    # still the platform's), so the prefix keeps its entry and gains a bypass
+    # that hands the page's own URLs back to Vite.
+    with TemporaryDirectory() as tmp {
+        entry_file = _min_project(tmp);
+        bundler = ViteBundler(Path(tmp));
+        config_path = bundler.create_vite_config(
+            entry_file,
+            is_dev=True,
+            api_port=8123,
+            client_paths=[
+                "/admin/quotes",
+                "/admin/:id",
+                "/admin/files/*",
+                "/:section/reports"
+            ]
+        );
+        text = config_path.read_text(encoding="utf-8");
+    }
+    assert '"/admin": {' in text , f"the prefix must stay proxied:\n{text}";
+    assert "bypass:" in text , f"a sub-route claim needs a bypass:\n{text}";
+    # A trailing wildcard also claims its bare parent, and a dynamic parent
+    # segment claims the prefix too.
+    for source in [
+        '^/admin/quotes/?$',
+        '^/admin/[^/]+/?$',
+        '^/admin/files(?:/.*)?/?$',
+        '^/[^/]+/reports/?$'
+    ] {
+        assert source in text , f"missing bypass pattern {source}:\n{text}";
+    }
+    assert "text/html" in text , (
+        f"the bypass must only take navigations, not fetches:\n{text}"
+    );
+    walker_entry = text.split('"/walker": {')[1].split("\n      },")[0];
+    assert "bypass" not in walker_entry , (
+        f"a prefix with no yielding platform route is never bypassed:\n{text}"
+    );
+
+    # Only a prefix whose server routes yield to pages gets a bypass; a page
+    # at /user/me must not turn the API's /user/me into page html in dev.
+    with TemporaryDirectory() as tmp {
+        entry_file = _min_project(tmp);
+        bundler = ViteBundler(Path(tmp));
+        config_path = bundler.create_vite_config(
+            entry_file,
+            is_dev=True,
+            api_port=8123,
+            client_paths=["/user/me", "/:section/me"]
+        );
+        text = config_path.read_text(encoding="utf-8");
+    }
+    user_entry = text.split('"/user": {')[1].split("\n      },")[0];
+    assert "bypass" not in user_entry , f"/user is not a yielding prefix:\n{text}";
+    admin_entry = text.split('"/admin": {')[1].split("\n      },")[0];
+    assert "^/[^/]+/me/?$" in admin_entry , (
+        f"a dynamic parent still claims the yielding /admin:\n{text}"
+    );
+
+    # The prefixes the running server derived from its flagged routes decide
+    # the bypass, not the built-in list: none flagged, no bypass.
+    with TemporaryDirectory() as tmp {
+        entry_file = _min_project(tmp);
+        bundler = ViteBundler(Path(tmp));
+        config_path = bundler.create_vite_config(
+            entry_file,
+            is_dev=True,
+            api_port=8123,
+            client_paths=["/admin/quotes"],
+            yielding_prefixes=[]
+        );
+        text = config_path.read_text(encoding="utf-8");
+    }
+    assert "bypass:" not in text , f"an unflagged prefix must not bypass:\n{text}";
+
+    # A root catch-all page claims no prefix: it must not bypass the API.
+    with TemporaryDirectory() as tmp {
+        entry_file = _min_project(tmp);
+        bundler = ViteBundler(Path(tmp));
+        config_path = bundler.create_vite_config(
+            entry_file, is_dev=True, api_port=8123, client_paths=["/*"]
+        );
+        text = config_path.read_text(encoding="utf-8");
+    }
+    assert "bypass:" not in text , f"a root catch-all must not bypass:\n{text}";
+    assert '"/walker": {\n        target' in text , (
+        f"a prefix with no claimed page keeps the plain proxy entry:\n{text}"
+    );
 }
 
 

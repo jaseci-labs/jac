@@ -1,6 +1,7 @@
 """Tests for jac serve-related functionality (unit tests and faux mode only)."""
 
 import io;
+import json;
 import os;
 import sys;
 import socket;
@@ -342,6 +343,73 @@ test "api server construction is socket-free and builds a serving app" {
         app = srv.build_app();
         assert isinstance(app, ServingApp);
         assert app.router.all_endpoints() , "built app has no endpoints";
+        # A flagged platform route steps aside for an app page that claims the
+        # url, on a browser navigation only; a root catch-all page never claims it.
+        import asyncio;
+        import from jaclang.server.serving.datatypes {
+            Headers,
+            Request,
+            Response,
+            JSONResponse,
+            URL
+        }
+        import from jaclang.server.serving.endpoint { JEndPoint, HTTPMethod }
+        def probe(request: Request) -> Response {
+            return JSONResponse(content={'who': 'platform'}, status_code=401);
+        }
+        for method in [HTTPMethod.GET, HTTPMethod.POST] {
+            app.add_endpoint(
+                JEndPoint(
+                    method=method,
+                    path='/probe',
+                    callback=probe,
+                    parameters=[],
+                    yields_to_client=True
+                )
+            );
+        }
+        app.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.GET,
+                path='/probe/{rest:path}',
+                callback=probe,
+                parameters=[],
+                yields_to_client=True
+            )
+        );
+        # (spa_routes, method, path, accept, answered by). The app's own SPA
+        # fallback is what a yielded request lands on; with no client built it
+        # is a JSON 404, which tells it apart from the probe's 401.
+        html = 'text/html,application/xhtml+xml';
+        cases = [
+            (['/probe'], 'GET', '/probe', html, 'fallback'),
+            (['/probe'], 'HEAD', '/probe', html, 'fallback'),
+            (['/probe'], 'POST', '/probe', html, 'platform'),
+            (['/probe'], 'GET', '/probe', 'application/json', 'platform'),
+            (['/probe'], 'GET', '/probe', '', 'platform'),
+            ([], 'GET', '/probe', html, 'platform'),
+            (['/other'], 'GET', '/probe', html, 'platform'),
+            (['/*'], 'GET', '/probe', html, 'platform'),
+            (['/probe/:id'], 'GET', '/probe', html, 'platform'),
+            (['/probe/:id'], 'GET', '/probe/x', html, 'fallback'),
+            (['/probe/:id'], 'GET', '/probe/x/y', html, 'platform')
+        ];
+        for (routes, method, path, accept, expected) in cases {
+            srv.introspector._spa_route_patterns = routes;
+            srv.introspector._spa_routes_loaded = True;
+            raw = [('accept', accept)] if accept else [];
+            resp = asyncio.run(
+                app.dispatch(
+                    Request(method=method, url=URL(path=path), headers=Headers(raw=raw))
+                )
+            );
+            body = json.loads(resp.body_bytes());
+            answered = 'platform' if body.get('who') == 'platform' else 'fallback';
+            assert answered == expected , (
+                f"{method} {path} accepting '{accept}' with pages {routes}: "
+                f"expected {expected}, got {resp.status_code} {body}"
+            );
+        }
     }
 }
 

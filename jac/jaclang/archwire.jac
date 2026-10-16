@@ -1451,10 +1451,15 @@ graph import client {
     vite_bundler --> client.npm_provider.regenerate_and_install { ViteBundler }
     type vite_bundler --> client.targets.client_dev_common { ViteBundler }
     vite_bundler --> client.targets.client_dev_common.dev_proxy_paths {
+        DEV_CLIENT_YIELDING_PREFIXES,
         DEV_PROXY_PREFIXES
     }
     vite_bundler --> client.targets.client_dev_common.prepare_vite_dev_compilation {
         ViteBundler
+    }
+    vite_bundler --> scale.tests.server.test_admin {
+        DEV_CLIENT_YIELDING_PREFIXES,
+        DEV_PROXY_PREFIXES
     }
     vite_bundler --> client.targets.desktop.desktop_target.DesktopTarget.build {
         API_BASE_URL_ENV_VAR
@@ -15858,7 +15863,12 @@ graph import server {
         sealed_root_for
     }
     type server --> client.serving { ModuleIntrospector }
+    server --> cli.commands.execution.serve._announce_ready { yielding_client_prefixes }
     server --> client.targets.client_dev_common.dev_proxy_paths { ModuleIntrospector }
+    server --> scale.tests.server.test_admin { yielding_client_prefixes }
+    server --> client.vite_bundler.ViteBundler._generate_vite_config_content {
+        route_pattern_under_prefix
+    }
     server --> client.targets.desktop.native.broker_extension {
         JacAPIServer,
         ServerExtension

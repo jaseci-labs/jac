@@ -134,7 +134,8 @@ obj ServingApp {
         openapi_security: dict[str, any] = {},
         openapi_cache: (dict[str, any] | None) = None,
         state: dict[str, any] = {},
-        multipart_spool_bytes: int = 1048576;
+        multipart_spool_bytes: int = 1048576,
+        client_route_probe: (Callable[[str], bool] | None) = None;
 
     def add_endpoint(ep: JEndPoint) {
         self.router.add(ep);
@@ -233,6 +234,33 @@ obj ServingApp {
                 );
             }
             return JSONResponse(content={'detail': 'Not Found'}, status_code=404);
+        }
+        if ep.yields_to_client
+            and self.client_route_probe is not None
+            and request.method.upper() in ('GET', 'HEAD')
+            and 'text/html' in (request.headers.get('accept') or '') {
+            probe: any = self.client_route_probe;
+            try {
+                claimed = bool(probe(request.url.path));
+            } except Exception {
+                claimed = False;
+            }
+            if claimed {
+                tried = [ep];
+                (next_ep, next_params, _) = self.router.resolve(
+                    request.method, request.url.path, exclude=tried
+                );
+                while next_ep is not None and next_ep.yields_to_client {
+                    tried.append(next_ep);
+                    (next_ep, next_params, _) = self.router.resolve(
+                        request.method, request.url.path, exclude=tried
+                    );
+                }
+                if next_ep is not None {
+                    ep = next_ep;
+                    path_params = next_params;
+                }
+            }
         }
         request.path_params = path_params;
         spec = get_callback_spec(ep);

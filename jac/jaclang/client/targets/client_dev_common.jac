@@ -190,7 +190,9 @@ def dev_proxy_paths(
         introspector.load();
         return (
             introspector.declared_api_paths(),
-            introspector.client_claimed_paths(DEV_PROXY_PREFIXES)
+            introspector.client_claimed_paths(
+                DEV_PROXY_PREFIXES, DEV_CLIENT_YIELDING_PREFIXES
+            )
         );
     } except Exception as e {
         console.warning(f"Could not resolve dev proxy paths: {e}");
