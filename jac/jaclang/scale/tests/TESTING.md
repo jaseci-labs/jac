@@ -175,6 +175,13 @@ that needs a cluster: it gates on `JAC_TEST_K8S` and runs on the cluster-backed
 leg, not in the `deploy` group. Per-file isolation is not decoration: several
 suites mutate process state.
 
+Each `test-scale` CI job has a 30 minute limit, including setup, so a stalled
+suite does not occupy a runner for hours. The test commands use `--verbose`
+to log each reported test result with its name and source file. If a job
+times out, inspect the last reported results and reproduce the affected
+group locally with `jac test --verbose --jobs 1 jac/jaclang/scale/tests/<group>`.
+The job limit bounds the CI run; it does not fix a test or service that hangs.
+
 **Step 2, the real command.** Run the CLI the user runs, as a subprocess, and
 read what it prints. Most scale defects are visible here and nowhere else: a
 silent fallback, a message that reports success while nothing is reachable, a

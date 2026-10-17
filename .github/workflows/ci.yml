@@ -792,6 +792,7 @@ jobs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -834,9 +835,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.group }}" = "server" ]; then
-            jac test jac/jaclang/scale/tests/server -f "not hmr"
+            jac test --verbose jac/jaclang/scale/tests/server -f "not hmr"
           else
-            jac test jac/jaclang/scale/tests/${{ matrix.group }}
+            jac test --verbose jac/jaclang/scale/tests/${{ matrix.group }}
           fi
 
   # One job: both phases share one MicroK8s cluster (hostpath-storage binds
