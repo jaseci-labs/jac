@@ -1,3 +1,4 @@
+import gc;
 import os;
 import sys;
 import time;
@@ -34,7 +35,9 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.native_iface { NativeIface }
 
 glob SLOW_STEP_SECONDS: float = 2.0,
-     DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted";
+     DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted",
+     SESSION_FULL_GC_EVERY: int = 100,
+     _HEAP_HELD: list[bool] = [False];
 
 obj NativeUnitEntry {
     has path: str,
@@ -209,7 +212,8 @@ obj NativeUnitRegistry {
             f"  Kernel phases: analysis {times.get('NATIVE_ANALYSIS', 0.0):.1f}s "
             f"({frontend}), lowering {times.get('NATIVE_LOWER', 0.0):.1f}s, "
             f"optimize {times.get('NATIVE_OPTIMIZE', 0.0):.1f}s, "
-            f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s; "
+            f"emit {times.get('NATIVE_EMIT', 0.0):.1f}s, "
+            f"gc settle {times.get('NATIVE_GC_SETTLE', 0.0):.1f}s; "
             f"units analysed/lowered/optimized/emitted "
             f"{events.get('native_unit_analysis', 0)}/"
             f"{events.get('native_unit_lower', 0)}/"
@@ -887,6 +891,54 @@ obj NativeUnitRegistry {
     }
 }
 
+obj SessionHeap {
+    has held: bool = False,
+        declined: bool = False,
+        thresholds: tuple[int, int, int] = (0, 0, 0);
+
+    def take -> bool {
+        if self.held {
+            return True;
+        }
+        if self.declined {
+            return False;
+        }
+        if _HEAP_HELD[0]
+            or not gc.isenabled()
+            or os.environ.get("JAC_GC_NO_COMPILE_BOOST")
+            or gc.get_freeze_count() > 0 {
+            self.declined = True;
+            return False;
+        }
+        _HEAP_HELD[0] = True;
+        self.held = True;
+        self.thresholds = gc.get_threshold();
+        (young, middle, full) = self.thresholds;
+        gc.set_threshold(young, middle, max(full, SESSION_FULL_GC_EVERY));
+        return True;
+    }
+
+    def settle -> float {
+        if not self.held {
+            return 0.0;
+        }
+        started = time.perf_counter();
+        gc.collect();
+        gc.freeze();
+        return time.perf_counter() - started;
+    }
+
+    def release {
+        if not self.held {
+            return;
+        }
+        self.held = False;
+        _HEAP_HELD[0] = False;
+        gc.unfreeze();
+        gc.set_threshold(*self.thresholds);
+    }
+}
+
 obj NativeBuildSession {
     has registry: NativeUnitRegistry,
         options: CompileOptions,
@@ -895,7 +947,8 @@ obj NativeBuildSession {
         source_keys: dict[str, str | None] = {},
         deferred: list[set[str]] = [],
         discovery_open: list[bool] = [],
-        unlowerable: set[str] = set();
+        unlowerable: set[str] = set(),
+        heap: SessionHeap = SessionHeap();
 
     def discovering -> bool {
         return bool(self.discovery_open) and self.discovery_open[-1];
@@ -920,11 +973,18 @@ obj NativeBuildSession {
         self.prog._natives = self.registry;
     }
 
+    def settle_heap {
+        if self.heap.held and not self.discovery_open {
+            self.registry._add_time("NATIVE_GC_SETTLE", self.heap.settle());
+        }
+    }
+
     def lower(path: str, use_str: (str | None) = None) -> (NativeUnitEntry | None) {
         resolved = os.path.realpath(path);
         if resolved in self.registry.building {
             return None;
         }
+        self.heap.take();
         self.registry.building.add(resolved);
         import from jaclang.compiler.frontend.codeinfo {
             set_native_unit_compile,
@@ -952,6 +1012,7 @@ obj NativeBuildSession {
                 self.registry._timed("NATIVE_ANALYSIS", started);
                 self.registry._event("native_unit_analysis");
                 self.registry.note_slow_step("analyzing", resolved, started);
+                self.settle_heap();
             }
             if len(self.prog.errors_had) > errors_before {
                 return None;
@@ -1013,6 +1074,7 @@ obj NativeBuildSession {
             self.lowered[resolved] = mod;
             ent = self.registry.record_module(mod, opts);
             self.registry._stash_products(resolved, mod.gen);
+            self.settle_heap();
             return ent;
         } except Exception {
             import traceback;
@@ -1196,13 +1258,17 @@ obj NativeBuildSession {
     }
 
     def close {
-        for (phase, seconds) in self.prog.analysis.phase_time.items() {
-            self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
+        try {
+            for (phase, seconds) in self.prog.analysis.phase_time.items() {
+                self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
+            }
+            self.lowered.clear();
+            self.source_keys.clear();
+            self.prog._natives = None;
+            self.prog.release_compile_closure();
+        } finally {
+            self.heap.release();
         }
-        self.lowered.clear();
-        self.source_keys.clear();
-        self.prog._natives = None;
-        self.prog.release_compile_closure();
     }
 }
 
