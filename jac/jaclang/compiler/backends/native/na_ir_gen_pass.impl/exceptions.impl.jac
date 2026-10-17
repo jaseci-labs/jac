@@ -889,6 +889,18 @@ impl NaIRGenPass._register_exc_lineage(cause: (uni.Expr | None), type_id: int) -
     }
 }
 
+impl NaIRGenPass._box_scalar_cause(exc_msg: ir.Value, kind: str) -> (ir.Value | None) {
+    fn = self._repr_leaf_fn(kind);
+    if fn is None {
+        return None;
+    }
+    return self._mark_owned(
+        self.builder.call(
+            fn, [self._coerce_type(exc_msg, ir.IntType(64))], name=f"exc.msg.{kind}"
+        )
+    );
+}
+
 impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -981,6 +993,18 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     exc_drop: (ir.Value | None) = None;
     if self._slot_lowering_active() and self._nogc_headerless() {
         exc_drop = self._raise_payload_drop(exc_payload, exc_msg, exc_type_name);
+    }
+
+    if isinstance(exc_msg.type, ir.IntType) and exc_msg.type.width == 1 {
+        exc_msg = self._box_scalar_cause(exc_msg, "bool");
+    } elif isinstance(exc_msg.type, ir.IntType) {
+        exc_msg = self._box_scalar_cause(exc_msg, "int");
+    } elif isinstance(exc_msg.type, (ir.FloatType, ir.DoubleType)) {
+        exc_msg = self._emit_float_repr(self._coerce_type(exc_msg, ir.DoubleType()));
+    }
+    if exc_msg is None {
+        self.ctx.emit(E5092, node_override=nd, kind="raise cause", name=exc_type_name);
+        return;
     }
 
     if isinstance(exc_msg.type, ir.PointerType) and exc_msg.type != i8p {
