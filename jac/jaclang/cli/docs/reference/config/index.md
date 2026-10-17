@@ -429,6 +429,8 @@ lockout_seconds = 900
 challenge_ttl_seconds = 300
 ```
 
+Access logs replace the values of `token`, `access_token`, and `api_key` query parameters with `[REDACTED]` in both text and JSON, including WebSocket upgrades. Matching is case-insensitive and recognizes percent-encoded names; other query components keep their original encoding.
+
 Every `[serve.auth]` key can be overridden by an environment variable named
 `JAC_SERVE_AUTH_<TABLE>_<KEY>`, for example `JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH`
 or `JAC_SERVE_AUTH_SECOND_FACTOR_ISSUER`. An unknown key under `[serve.auth]`
