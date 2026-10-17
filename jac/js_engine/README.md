@@ -2,29 +2,28 @@
 
 js_engine is a JavaScript / Node.js-compatible runtime, written from scratch in [Jac Native](https://docs.jaseci.org) and compiled through Jac's LLVM backend into a library the `jac` binary runs. Think of it as a from-the-ground-up answer to [Bun](https://bun.sh/), but built on the Jac toolchain.
 
-It is **not** a wrapper around V8, QuickJS, or any other existing engine. The lexer, parser, bytecode compiler, and virtual machine are all hand-written in `.jac` source files. The only outside code it calls is a handful of C libraries bound through Jac's FFI — libuv, OpenSSL, zlib, zstd, brotli, PCRE2, llhttp, nghttp2, ICU and Wasmtime.
+It is **not** a wrapper around V8, QuickJS, or any other existing engine. The lexer, parser, bytecode compiler, and virtual machine are all hand-written in `.jac` source files. The only outside code it calls is a handful of C libraries bound through Jac's FFI — libuv, OpenSSL, zlib, zstd, brotli, PCRE2, llhttp, nghttp2 and ICU.
 
 This README is meant to be the one place you go to understand what the project is, how it's built, and how the engine actually executes a script. Treat it as the repo's bible — if something here drifts from the code, fix it here.
 
 ## How it ships
 
-js_engine is an accelerator over bun: a release ships bun, and jac runs JavaScript on the engine wherever one is built and current. `jac native build js-engine` (the `zig build js-engine` step in `jac/`) builds it into `jac/zig-out/js` and installs that directory for every jac:
+js_engine is an accelerator over bun: a release ships bun, and jac runs JavaScript on the engine wherever one is built and current. `zig build js-engine` from `jac/` builds it into `jac/zig-out/js` and installs that directory for every jac:
 
 | File | What it is |
 |------|------------|
 | `libjs_engine.so` | this project, linked by the in-repo compiler (`jac build --native --lib engine/src/main.jac`, run from here so [jac.toml](jac.toml) applies); OpenSSL, zlib and zstd are linked in statically from the source-built CPython's archives |
 | `libjs_native.so` | the foreign code, compiled by Zig from the `build.zig.zon` pins ([native/build_native.zig](native/build_native.zig)): the C shims under `napi/shim` and `native/`, PCRE2, libuv, nghttp2, llhttp, brotli and ICU with its data |
-| `libwasmtime.so` | the pinned upstream Wasmtime C API |
 | `builtins.jsbc` | every builtin under `engine/src/builtins/js/`, precompiled by [engine/src/js_compiler.jac](engine/src/js_compiler.jac) |
 
-Every step is cached by the Zig build, and nothing is needed from the system beyond glibc. `jac native status js-engine` shows which engine a jac uses: a checkout's own build (accepted while it matches `js_engine/`), else the installed one, else bun.
+Every step is cached by the Zig build, and nothing is needed from the system beyond glibc. A current local engine is used when available; otherwise jac uses its installed engine or bun.
 
 The engine is never a separate program. `jac` runs it **as `node`**: the `jac` binary invoked under the name `node` (the engine's `bin/node` link, which jac keeps pointing at itself) loads `libjs_engine.so` and calls `jac_main(argc, argv)`, which runs [main.jac](engine/src/main.jac)'s entry: the bun-compatible package-manager commands first (`install`, `add`, `x`, `run`, ...), then the Node-style script runner. Vite, the `cl` test runner, `jac x` and every npm script run this way, and `process.execPath` names that `node`, so child processes come back to it too. `jac install` and the client build's dependency sync run the package manager the same way, in a child process with the engine's `bin` first on `PATH`, so install scripts that call `node` get the engine.
 
 ## Running
 
 ```bash
-jac native build js-engine
+zig build js-engine
 jac/zig-out/js/bin/node path/to/script.js
 ```
 
@@ -71,6 +70,15 @@ This walks the AST and emits bytecode into `CompiledFunction` objects. `op.jac` 
 ### The virtual machine — `vm/vm.jac`
 
 The interpreter that executes the bytecode over the `JSValue` model. By a wide margin it's the largest file in the repo, because this is where the real work lives: the object model, prototype chains, closures and their captured cells (`vm/cell.jac`, `vm/closure_type.jac`), and dispatch out to the native builtins.
+
+### WebAssembly
+
+The JavaScript `WebAssembly` API is implemented by the Jac-native decoder,
+validator and interpreter in `engine/src/wasm/`, with its JS surface in
+`engine/src/builtins/js/webassembly.js`. It supports the MVP, sign-extension,
+saturating conversions, multi-value, bulk memory and reference types; SIMD,
+threads, exceptions, tail calls, GC, memory64 and multi-memory are rejected at
+compile time. The engine does not link or load a separate Wasmtime library.
 
 ### The event loop — `vm/event_loop.jac`
 

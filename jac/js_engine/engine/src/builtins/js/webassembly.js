@@ -1,37 +1,31 @@
 /**
- * webassembly.js — WebAssembly runtime for js_engine (native Wasmtime)
+ * webassembly.js — in-engine WebAssembly host on the Jac-native interpreter.
  *
- * This shim is a thin JS surface over globalThis.__wasm, which delegates every
- * parse / validate / compile / instantiate / call to the vendored Wasmtime C
- * API (engine/src/ffi/wasmtime.jac → dispatch.jac → runtime/global.jac). The
- * previous hand-written binary-format parser + opcode interpreter is GONE —
- * WASM now runs as real (JIT-compiled) machine code.
+ * Single path: globalThis.__wasm is backed by engine/src/wasm/: compile.jac
+ * validates/decodes modules, exec.jac interprets them, and bridge.jac provides
+ * the handle registry. This file exposes the JS API and translates reference
+ * values across the boundary; externref values preserve JS identity and
+ * funcref values use cached callable wrappers.
  *
- * Handles: __wasm returns opaque small-int handles for module / instance /
- * function / memory / table / global. JS objects hold those handles and marshal
- * args across the boundary. WASM bytes cross via a native buffer (__buf.alloc).
- *
- * Scope (docs/wasm.md Phases 2 + 3):
- *   - validate / compile / new Module / Module.imports|exports
- *   - instantiate / new Instance / instance.exports (fns, Memory, Table, Global)
- *   - WebAssembly.Memory({initial,maximum}) with live .buffer + .grow(n)
- *   - WebAssembly.Table({initial,maximum,element}) get/set/grow/length
- *   - WebAssembly.Global({value,mutable}, v) read + write .value (+ i64 BigInt)
- *   - JS→WASM imported callbacks (importObject function/memory/table/global)
- *   - i64 params/results/globals ↔ BigInt
- *   - trap / error → distinct CompileError / LinkError / RuntimeError
+ * Feature bundle: MVP, sign-extension, saturating conversions, multi-value,
+ * bulk memory, and reference types. Unsupported proposals are rejected during
+ * compilation.
  */
 'use strict';
 
 (function() {
-    if (typeof globalThis.WebAssembly !== 'undefined' &&
-        globalThis.WebAssembly.__jacIsReal) {
-        return;
-    }
-
     var __wasm = globalThis.__wasm;
     var __buf = globalThis.__buf;
+    var __hasWasmBridge = typeof __wasm === 'object' && __wasm !== null &&
+                          typeof __wasm.compile === 'function';
 
+    function _requireWasmBridge() {
+        if (!__hasWasmBridge) {
+            throw new Error('WebAssembly is not available in this build');
+        }
+    }
+
+    // ── Jac-native interpreter API ───────────────────────────────────────
     function CompileError(msg) {
         var e = new Error(msg || 'WebAssembly CompileError');
         e.name = 'CompileError';
@@ -61,15 +55,16 @@
 
     // Extern kinds as reported by __wasm.exportKind / moduleImports.kind.
     var KIND_FUNC = 0, KIND_GLOBAL = 1, KIND_TABLE = 2, KIND_MEMORY = 3;
-    // Wasmtime externkind order is func=0,global=1,table=2,memory=3; the public
-    // WebAssembly.Module.imports/exports "kind" strings follow that mapping.
+    // Externkind order is func=0,global=1,table=2,memory=3 (matches
+    // wasm/compile.jac EXT_*); the public WebAssembly.Module.imports/exports
+    // "kind" strings follow that mapping.
     var EXTERN_KIND_NAMES = ['function', 'global', 'table', 'memory'];
 
-    // Flat wasmtime valkinds (must match ffi/wasmtime.jac WASMTIME_*).
+    // Flat valkinds (must match wasm/bridge.jac WASMTIME_*).
     var VAL_I32 = 0, VAL_I64 = 1, VAL_F32 = 2, VAL_F64 = 3;
     var VAL_FUNCREF = 5, VAL_EXTERNREF = 6;
 
-    // Error classes (must match ffi/wasmtime.jac WASM_ERRCLASS_*).
+    // Error classes (must match wasm/bridge.jac WASM_ERRCLASS_*).
     var ERR_NONE = 0, ERR_COMPILE = 1, ERR_LINK = 2, ERR_RUNTIME = 3;
 
     function lastWasmError() {
@@ -133,6 +128,7 @@
 
     function MemoryObject(descriptor) {
         if (!(this instanceof MemoryObject)) return new MemoryObject(descriptor);
+        _requireWasmBridge();
         if (descriptor && descriptor.__jacMemHandle !== undefined) {
             this._memH = descriptor.__jacMemHandle;
         } else {
@@ -147,10 +143,29 @@
             }
             this._memH = memH;
         }
-        this._buffer = _wrapExternalBuffer(__wasm.memPtr(this._memH), __wasm.memSize(this._memH));
+        this._buffer = null;
+        _refreshMemBuffer(this);
+    }
+    // Re-wrap the backing store when wasm code grew (or moved) the memory
+    // behind our back: memory.grow inside wasm never goes through
+    // MemoryObject.prototype.grow, so a cached wrapper would go stale and
+    // glue code (wasm-bindgen) would index past its end. The old buffer is
+    // detached, as the JS API requires on growth.
+    function _refreshMemBuffer(mem) {
+        var ptr = __wasm.memPtr(mem._memH);
+        var len = __wasm.memSize(mem._memH);
+        var old = mem._buffer;
+        if (old && mem._bufPtr === ptr && old.byteLength === len) return old;
+        var nb = globalThis.__napiBinary;
+        if (old && nb && typeof nb.detach === 'function') {
+            try { nb.detach(old); } catch (e) { /* best-effort */ }
+        }
+        mem._bufPtr = ptr;
+        mem._buffer = _wrapExternalBuffer(ptr, len);
+        return mem._buffer;
     }
     Object.defineProperty(MemoryObject.prototype, 'buffer', {
-        get: function() { return this._buffer; },
+        get: function() { return _refreshMemBuffer(this); },
         enumerable: true, configurable: true
     });
     Object.defineProperty(MemoryObject.prototype, Symbol.toStringTag, {
@@ -162,22 +177,19 @@
         if (prevPages < 0) {
             throw new RangeError('WebAssembly.Memory.grow: ' + (lastWasmError() || 'failed'));
         }
-        var nb = globalThis.__napiBinary;
-        var oldBuf = this._buffer;
-        if (oldBuf && nb && typeof nb.detach === 'function') {
-            try { nb.detach(oldBuf); } catch (e) { /* best-effort */ }
-        }
-        this._buffer = _wrapExternalBuffer(__wasm.memPtr(this._memH), __wasm.memSize(this._memH));
+        // JS API: grow always detaches, even for delta 0.
+        if (d === 0) this._bufPtr = -1;
+        _refreshMemBuffer(this);
         return prevPages;
     };
 
     // ── WebAssembly.Table ─────────────────────────────────────────────────────
     // Backed by a native table handle (funcref/externref). get() returns the
     // stored ref: a callable JS function for a non-null funcref, null for empty,
-    // or an opaque marker for a non-null externref (host externref values are not
-    // yet fully round-tripped). set() accepts null or a WASM exported function.
+    // or the original JSValue for an externref. set() validates ref kinds.
     function TableObject(descriptor, value) {
         if (!(this instanceof TableObject)) return new TableObject(descriptor, value);
+        _requireWasmBridge();
         if (descriptor && descriptor.__jacTableHandle !== undefined) {
             this._tableH = descriptor.__jacTableHandle;
             this._element = descriptor.__jacElement || 'anyfunc';
@@ -193,16 +205,12 @@
         var elemKind = (element === 'externref') ? VAL_EXTERNREF : VAL_FUNCREF;
         var initial = descriptor.initial >>> 0;
         var maximum = (descriptor.maximum === undefined) ? -1 : (descriptor.maximum >>> 0);
-        var tableH = __wasm.tableCreate(elemKind, initial, maximum);
+        var tableH = __wasm.tableCreate(elemKind, initial, maximum, value);
         if (!tableH) {
             throwWasmError('WebAssembly.Table: ', RangeError);
         }
         this._tableH = tableH;
         this._element = element;
-        // Fill with the provided init value (only null is representable now).
-        if (value !== undefined && value !== null) {
-            for (var i = 0; i < initial; i++) this.set(i, value);
-        }
     }
     Object.defineProperty(TableObject.prototype, 'length', {
         get: function() { return __wasm.tableSize(this._tableH); },
@@ -216,52 +224,47 @@
         var k = __wasm.tableGetKind(this._tableH, idx);
         if (k < 0) throw new RangeError('WebAssembly.Table.get: index out of bounds');
         if (k === 0) return null;
-        if (k === 2) {
-            // Non-null externref — host value round-trip not yet supported.
-            return {}; // opaque placeholder object (identity not preserved)
-        }
-        // Non-null funcref. js_engine does not yet reconstruct a JS callable from a
-        // stored funcref (would need a bound export wrapper); return a thunk that
-        // reports the slot is occupied but not directly callable across the FFI.
-        var tableH = this._tableH;
-        var fn = function() {
-            throw new RuntimeError('calling a WebAssembly.Table funcref element directly is not supported');
-        };
-        fn.__jacWasmFuncrefSlot = idx;
-        return fn;
+        var r = __wasm.tableGetRef(this._tableH, idx);
+        if (r <= 0) return null;
+        var isExt = this._element === 'externref' || __wasm.tableElemKind(this._tableH) === VAL_EXTERNREF;
+        if (isExt) return __wasm.externValue(r);
+        return _funcFromHandle(r, 'funcref');
     };
     TableObject.prototype.set = function(index, value) {
         var idx = index >>> 0;
-        var ok;
-        if (value === null || value === undefined) {
-            ok = __wasm.tableSetNull(this._tableH, idx);
-        } else if (typeof value === 'function' && value.__jacWasmFuncH !== undefined) {
-            ok = __wasm.tableSetFunc(this._tableH, idx, value.__jacWasmFuncH);
-        } else if (typeof value === 'function') {
+        var isExtern = this._element === 'externref' || __wasm.tableElemKind(this._tableH) === VAL_EXTERNREF;
+        if (!isExtern &&
+            !(value === null || value === undefined) &&
+            !((typeof value === 'function' && value.__jacWasmFuncH !== undefined) ||
+              (value && typeof value === 'object' && typeof value.__jacFuncRefH === 'number'))) {
             // A non-WASM JS function cannot be stored as a funcref without a host
             // func wrapper; matching Node, only null / WASM exported funcs work.
             throw new TypeError('WebAssembly.Table.set: only WASM exported functions or null are supported as funcref values');
-        } else {
-            throw new TypeError('WebAssembly.Table.set: invalid value');
         }
+        var setValue = isExtern ? value : (value === undefined ? null : value);
+        var ok = __wasm.tableSetValue(this._tableH, idx, setValue);
         if (!ok) throwWasmError('WebAssembly.Table.set: ', RangeError);
     };
     TableObject.prototype.grow = function(delta, value) {
         var d = delta >>> 0;
-        var prev = __wasm.tableGrow(this._tableH, d);
-        if (prev < 0) throwWasmError('WebAssembly.Table.grow: ', RangeError);
-        if (value !== undefined && value !== null) {
-            for (var i = prev; i < prev + d; i++) this.set(i, value);
+        var isExtern = this._element === 'externref' ||
+                       __wasm.tableElemKind(this._tableH) === VAL_EXTERNREF;
+        if (!isExtern && value !== undefined && value !== null &&
+            !((typeof value === 'function' && value.__jacWasmFuncH !== undefined) ||
+              (value && typeof value === 'object' && typeof value.__jacFuncRefH === 'number'))) {
+            throw new TypeError('WebAssembly.Table.grow: invalid funcref value');
         }
+        var prev = __wasm.tableGrow(this._tableH, d, value);
+        if (prev < 0) throwWasmError('WebAssembly.Table.grow: ', RangeError);
         return prev;
     };
-
     // ── WebAssembly.Global ─────────────────────────────────────────────────────
     // Backed by a native global handle. Supports read + write .value, the mutable
     // check, and i64 ↔ BigInt. Exported globals are wrapped with their declared
     // mutability recorded natively.
     function GlobalObject(descriptor, value) {
         if (!(this instanceof GlobalObject)) return new GlobalObject(descriptor, value);
+        _requireWasmBridge();
         if (descriptor && descriptor.__jacGlobalHandle !== undefined) {
             this._globalH = descriptor.__jacGlobalHandle;
             this._mutable = __wasm.globalIsMutable(this._globalH);
@@ -278,6 +281,10 @@
                    (value === undefined ? 0n : BigInt(Math.trunc(Number(value) || 0)));
         } else if (kind === VAL_F32 || kind === VAL_F64) {
             dval = (value === undefined) ? 0 : Number(value);
+        } else if (kind === VAL_FUNCREF) {
+            ival = (value === undefined) ? null : value;
+        } else if (kind === VAL_EXTERNREF) {
+            ival = value;
         } else {
             ival = (value === undefined) ? 0 : (Number(value) | 0);
         }
@@ -289,7 +296,7 @@
     Object.defineProperty(GlobalObject.prototype, 'value', {
         get: function() {
             if (this._globalH === undefined) return undefined;
-            return __wasm.globalGet(this._globalH);
+            return _unwrapRef(__wasm.globalGet(this._globalH));
         },
         set: function(v) {
             if (this._globalH === undefined) return;
@@ -302,6 +309,10 @@
                 ival = (typeof v === 'bigint') ? v : BigInt(Math.trunc(Number(v) || 0));
             } else if (kind === VAL_F32 || kind === VAL_F64) {
                 dval = Number(v);
+            } else if (kind === VAL_FUNCREF || kind === VAL_EXTERNREF) {
+                // Ref kinds take the raw JSValue (funcref: wrapper/marker or
+                // null; externref: anything). The native layer maps it.
+                ival = v;
             } else {
                 ival = Number(v) | 0;
             }
@@ -344,6 +355,7 @@
         if (!(this instanceof ModuleObject)) {
             return new ModuleObject(bytes);
         }
+        _requireWasmBridge();
         if (bytes && bytes.__jacModHandle !== undefined) {
             this._modH = bytes.__jacModHandle;
         } else {
@@ -384,7 +396,12 @@
     ModuleObject.customSections = function() { return []; };
 
     // ── WebAssembly.Instance ──────────────────────────────────────────────────
-    function _makeExportFn(funcH, name) {
+    // Funcref wrapper cache: handle -> callable. Identity holds for a given
+    // FuncRec because handles are deduplicated by record pointer in the bridge.
+    var _funcrefCache = Object.create(null);
+    function _funcFromHandle(funcH, name) {
+        var w = _funcrefCache[funcH];
+        if (w) return w;
         var f = function() {
             var args = [funcH];
             for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
@@ -398,11 +415,33 @@
                 var msg = lastWasmError();
                 if (cls === ERR_RUNTIME && msg) throw new RuntimeError(msg);
             }
-            return res;
+            return _unwrapRefResults(res);
         };
         f.__jacWasmFuncH = funcH;
         try { Object.defineProperty(f, 'name', { value: name, configurable: true }); } catch (e) {}
+        _funcrefCache[funcH] = f;
         return f;
+    }
+
+    // Funcref results arrive as {__jacFuncRefH:h} marker objects (the Jac side
+    // cannot mint callables); swap them for the cached wrapper. Externref
+    // results come back as the original JSValue.
+    function _unwrapRef(v) {
+        if (v && typeof v === 'object' && typeof v.__jacFuncRefH === 'number') {
+            return _funcFromHandle(v.__jacFuncRefH, 'funcref');
+        }
+        return v;
+    }
+    function _unwrapRefResults(res) {
+        if (Array.isArray(res)) {
+            for (var i = 0; i < res.length; i++) res[i] = _unwrapRef(res[i]);
+            return res;
+        }
+        return _unwrapRef(res);
+    }
+
+    function _makeExportFn(funcH, name) {
+        return _funcFromHandle(funcH, name);
     }
 
     function _buildExports(instH) {
@@ -473,10 +512,14 @@
             }
             var val = modNs[im.name];
             if (im.kind === 'function') {
-                if (typeof val !== 'function') {
+                // A funcref marker ({__jacFuncRefH}) counts as the wasm
+                // function it points at (imported back into a later instance).
+                if (typeof val !== 'function' && !(val && typeof val === 'object' && typeof val.__jacFuncRefH === 'number')) {
                     throw new LinkError('WebAssembly.instantiate(): Import #' + i + ' module="' + im.module + '" function="' + im.name + '" error: function import requires a callable');
                 }
-                if (!__wasm.importsAddFunc(i, val)) {
+                var fnArg = (val.__jacWasmFuncH !== undefined) ? val.__jacWasmFuncH :
+                            (val.__jacFuncRefH !== undefined) ? val.__jacFuncRefH : val;
+                if (!__wasm.importsAddFunc(i, fnArg)) {
                     throwWasmError('WebAssembly.instantiate: ', LinkError);
                 }
             } else if (im.kind === 'memory') {
@@ -513,6 +556,7 @@
         if (!(this instanceof InstanceObject)) {
             return new InstanceObject(module, importObject);
         }
+        _requireWasmBridge();
         var mod = module instanceof ModuleObject ? module : new ModuleObject(module);
         var instH = _instantiateModule(mod, importObject);
         this._instH = instH;
@@ -525,6 +569,8 @@
 
     // ── Top-level API ─────────────────────────────────────────────────────────
     function validate(bytes) {
+        if (typeof __wasm !== 'object' || __wasm === null ||
+            typeof __wasm.validate !== 'function') return false;
         var b;
         try { b = toBytes(bytes); } catch (e) { return false; }
         var nb = bytesToNative(b);
@@ -550,7 +596,8 @@
     }
 
     var WebAssembly = {
-        __jacIsReal: true,
+        __jacIsReal: __hasWasmBridge,
+        __jacBackend: __hasWasmBridge ? 'native' : 'unavailable',
         compile: function(bytes) {
             try { return Promise.resolve(compileSync(bytes)); }
             catch (e) { return Promise.reject(e); }
