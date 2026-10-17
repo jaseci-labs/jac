@@ -10,7 +10,7 @@ impl _encode_param(v: any) -> (bytes | None) {
         return b'true' if v else b'false';
     }
     if isinstance(v, bytes) {
-        return v;
+        return ('\\x' + v.hex()).encode('ascii');
     }
     if isinstance(v, (list, tuple, set)) {
         return _array_literal(v).encode('utf-8');
