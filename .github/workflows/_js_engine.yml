@@ -91,6 +91,8 @@ jobs:
         run: >-
           jac test jac/tests/client/test_js_engine_node.jac
           jac/tests/runtimelib/test_client_bundle.jac
+      - name: Run the WebAssembly runtime smoke test
+        run: jac/zig-out/js/bin/node jac/js_engine/engine/tests/wasm/test_externref_js_values.js
 
       - name: Restore the test262 checkout
         uses: actions/cache@v4
