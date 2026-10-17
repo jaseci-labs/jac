@@ -7,7 +7,8 @@ glob logger = logging.getLogger(__name__),
          "host",
          "transfer-encoding",
          "connection",
-         "keep-alive"
+         "keep-alive",
+         "expect"
      };
 
 obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {

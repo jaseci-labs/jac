@@ -164,37 +164,43 @@ async def _open_stream(
 }
 
 async def _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers] {
-    try {
-        status_line: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
-    } except asyncio.TimeoutError {
-        raise ClientReadTimeout(detail=f"no response head within {timeout}s");
-    }
-    text = status_line.decode('latin-1').strip();
-    parts = text.split(' ', 2);
-    if len(parts) < 2 or not parts[1].isdigit() {
-        raise ClientRequestSent(detail=f"bad status line: {text!r}");
-    }
-    status = int(parts[1]);
-    reason = parts[2] if len(parts) > 2 else '';
-    headers = Headers();
     while True {
         try {
-            raw: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
-        } except asyncio.TimeoutError {
-            raise ClientReadTimeout(
-                detail=f"response headers stalled beyond {timeout}s"
+            status_line: bytes = await asyncio.wait_for(
+                reader.readline(), timeout=timeout
             );
+        } except asyncio.TimeoutError {
+            raise ClientReadTimeout(detail=f"no response head within {timeout}s");
         }
-        if raw in (b'\r\n', b'\n', b'') {
-            break;
+        text = status_line.decode('latin-1').strip();
+        parts = text.split(' ', 2);
+        if len(parts) < 2 or not parts[1].isdigit() {
+            raise ClientRequestSent(detail=f"bad status line: {text!r}");
         }
-        line = raw.decode('latin-1').strip();
-        if ':' in line {
-            (name, _, value) = line.partition(':');
-            headers.append(name.strip(), value.strip());
+        status = int(parts[1]);
+        reason = parts[2] if len(parts) > 2 else '';
+        headers = Headers();
+        while True {
+            try {
+                raw: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
+            } except asyncio.TimeoutError {
+                raise ClientReadTimeout(
+                    detail=f"response headers stalled beyond {timeout}s"
+                );
+            }
+            if raw in (b'\r\n', b'\n', b'') {
+                break;
+            }
+            line = raw.decode('latin-1').strip();
+            if ':' in line {
+                (name, _, value) = line.partition(':');
+                headers.append(name.strip(), value.strip());
+            }
+        }
+        if status == 101 or status < 100 or status >= 200 {
+            return (status, reason, headers);
         }
     }
-    return (status, reason, headers);
 }
 
 async def arequest(
