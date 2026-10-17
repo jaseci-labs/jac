@@ -68,14 +68,20 @@ def resolve_imports(
                 str(search_root), name.split('.') if name else []
             );
             if resolved and resolved[1] in ('jac', 'py') {
-                sources.add(os.path.realpath(resolved[0]));
+                if resolved[1] == 'jac' or resolved[0].endswith('.py') {
+                    sources.add(os.path.realpath(resolved[0]));
+                }
             } elif not target.is_dir() {
                 continue;
             }
             if target.is_dir() and isinstance(names, tuple) {
                 for member in names {
                     child = active_host().resolve_local_module(str(target), [member]);
-                    if child and child[1] in ('jac', 'py') {
+                    if child
+                        and (
+                            child[1] == 'jac'
+                            or (child[1] == 'py' and child[0].endswith('.py'))
+                        ) {
                         sources.add(os.path.realpath(child[0]));
                     }
                 }
@@ -101,7 +107,11 @@ def package_sources(source: str, project_root: str) -> set[str] {
     parent = Path(source).parent;
     while parent.is_relative_to(project_root) {
         initializer = active_host().resolve_local_module(str(parent), []);
-        if initializer and initializer[1] in ('jac', 'py') {
+        if initializer
+            and (
+                initializer[1] == 'jac'
+                or (initializer[1] == 'py' and initializer[0].endswith('.py'))
+            ) {
             result.add(os.path.realpath(initializer[0]));
         }
         if parent == Path(project_root) {

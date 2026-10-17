@@ -94,6 +94,8 @@ import from models { Task }
 !!! note "Relative imports follow package rules"
     Just like Python, `.` / `..` / `...` resolve relative to the *package* a module belongs to. A `..` import only works when a real parent package sits above the current module. A file run directly with `jac run` is treated as a top-level script, so `..`-style imports *inside that entry file* fail with *"relative import beyond top-level package."* Use relative imports between modules inside nested package directories; from an entry script, reach other modules by their absolute path.
 
+Relative Python imports also recognize compatible native extension modules, such as `.so` or `.pyd` files. Python loads these binaries; preparing an application keeps them on disk and prepares the parent package's source initializers.
+
 Two server-only forms round out the set:
 
 ```jac

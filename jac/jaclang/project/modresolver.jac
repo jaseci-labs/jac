@@ -1,4 +1,4 @@
-import from importlib.machinery { ModuleSpec }
+import from importlib.machinery { EXTENSION_SUFFIXES, ModuleSpec }
 import os;
 import sys;
 import tomllib;
@@ -369,6 +369,11 @@ def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | No
     }
     if os.path.isfile((candidate + '.js')) {
         return ((candidate + '.js'), 'js');
+    }
+    for suffix in EXTENSION_SUFFIXES {
+        if os.path.isfile(candidate + suffix) {
+            return (candidate + suffix, 'py');
+        }
     }
     return None;
 }
