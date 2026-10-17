@@ -3,16 +3,6 @@
 import os;
 import uuid;
 import from unittest.mock { patch }
-import from jaclang.scale.tests.scale_test_client {
-    ADMIN_BOOTSTRAP_PASSWORD,
-    ScaleTestClient,
-    make_client,
-    extract_data,
-    fresh_totp_code,
-    wrong_totp_code
-}
-import from jaclang.server.identity.config { signing_secret }
-import from jaclang.server.serving.authcrypt { jwt_decode }
 
 glob DEFAULT_ADMIN_PASSWORD: str = ADMIN_BOOTSTRAP_PASSWORD;
 

@@ -1,17 +1,3 @@
-import from ._zlib_native {
-    ZInflateResult,
-    Z_OK,
-    Z_STREAM_END,
-    Z_MEM_ERROR,
-    z_compress2,
-    z_compress_bound,
-    z_crc32,
-    z_adler32,
-    z_inflate_all,
-    z_inflate_bound
-}
-
-
 def:pub crc32(data: bytes, value: int = 0) -> int {
     return z_crc32(value, data, len(data));
 }

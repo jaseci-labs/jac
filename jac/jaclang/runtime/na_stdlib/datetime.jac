@@ -1,16 +1,3 @@
-import from ._datetime_native {
-    dt_epoch_us,
-    dt_localtime,
-    dt_gmtime,
-    dt_tm,
-    dt_tm_gmtoff,
-    dt_tm_zone,
-    dt_strftime,
-    dt_out_buf,
-    dt_fmt_buf,
-    dt_out_str
-}
-
 glob:pub MINYEAR: int = 1,
      MAXYEAR: int = 9999;
 

@@ -10,25 +10,7 @@ import time;
 import unittest.mock;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.server { sv_client }
-import from jaclang.server.outbox {
-    LEASE_S,
-    OutboxEntry,
-    PgOutboxStore,
-    STATUS_DELIVERED,
-    STATUS_DELIVERING,
-    STATUS_PENDING,
-    SqliteOutboxStore,
-    stop_worker,
-    use_store,
-    worker_running
-}
-import from jaclang.testing.testkit { ServingTestClient as TestClient }
-import from jaclang.server.endpoints.colocated { register_colocated_endpoints }
-import from jaclang.server.server { JacAPIServer }
-import from jaclang.server.serving.server { ServingServer }
-import from jaclang.server.settings { ServeSettings }
 
 glob _PROVIDER_SRC: str = (
          "import uuid;\n"

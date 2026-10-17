@@ -9,6 +9,7 @@ impl StaticAnalysisPass._run_impl(ir_in: Module) -> Module {
     self._check_semantic_patterns(self.module);
     self._check_typing_import_refusals(self.module);
     self._check_redundant_imports(self.module);
+    report_unused_wires(self, self.module);
     self._check_client_imports(self.module);
     self._check_placement_warnings(self.module);
     return ir_in;

@@ -1,11 +1,3 @@
-import from ._file_native {
-    close_stream,
-    open_stream,
-    read_stream,
-    read_stream_all,
-    seek_stream
-}
-
 glob:pub SEEK_SET: int = 0,
      SEEK_CUR: int = 1,
      SEEK_END: int = 2,

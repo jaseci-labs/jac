@@ -23,11 +23,6 @@ import ctypes;
 import os;
 import threading;
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_py_fixture,
-    compile_native,
-    get_func
-}
 
 glob _BODY: bytes = b"hello world";
 

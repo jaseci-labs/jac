@@ -18,12 +18,6 @@ import time;
 import requests;
 import from concurrent.futures { ThreadPoolExecutor }
 import from pathlib { Path }
-import from jaclang.scale.tests.support {
-    cleanup_db_files,
-    get_free_port,
-    start_server,
-    stop_server
-}
 
 glob FIXTURES_DIR: Path = Path(__file__).parent.parent
          / "fixtures"
@@ -198,7 +192,6 @@ test "a worker killed mid-request stops counting as in progress" {
 
 
 def _serve_exported(project: Path, port: int) -> subprocess.Popen {
-    import from jaclang.scale.runtime.context.util { jac_executable }
     server = subprocess.Popen(
         [jac_executable(), "run", "main.py", "--port", str(port)],
         stdout=subprocess.PIPE,

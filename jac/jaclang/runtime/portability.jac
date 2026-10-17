@@ -1,8 +1,3 @@
-import from jaclang.compiler.frontend.codeinfo {
-    NATIVE_SUPPORTED_STDLIB,
-    is_bundled_native_module
-}
-
 glob PY_STDLIB_BY_KIND: dict[str, (set[str] | None)] = {
          "web-app": set(),
          "web-static": set(),

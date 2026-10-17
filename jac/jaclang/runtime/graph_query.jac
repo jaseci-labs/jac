@@ -1,5 +1,4 @@
 import from uuid { UUID }
-import from jaclang.runtime.archetype { Anchor, anchor_key }
 
 glob QUERY_OPS: frozenset[str] = frozenset(
          {'==', '!=', '<', '<=', '>', '>=', 'in'}

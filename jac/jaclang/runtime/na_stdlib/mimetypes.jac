@@ -1,14 +1,4 @@
 import from os.path { splitext, isfile }
-import from ._file_native { read_file_bytes }
-import from ._mimetypes_tables {
-    _default_knownfiles,
-    _default_suffix_map,
-    _default_encodings_map,
-    _default_types_ext,
-    _default_types_val,
-    _default_common_ext,
-    _default_common_val
-}
 
 
 def _split_words(line: str) -> list[str] {

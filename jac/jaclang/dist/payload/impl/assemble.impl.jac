@@ -60,6 +60,32 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
     delete_tree(work);
 }
 
+impl ship_wiring(package_root: str, site_package: str) {
+    for (dirpath, _dirs, filenames) in os.walk(package_root) {
+        if ARCH_FILE_NAME not in filenames {
+            continue;
+        }
+        source_path = os.path.join(dirpath, ARCH_FILE_NAME);
+        rel = os.path.relpath(source_path, package_root);
+        if skip_jaclang(rel.replace(os.sep, "/")) {
+            continue;
+        }
+        with open(source_path, encoding="utf-8") as f {
+            source = f.read();
+        }
+        shipped = prune_wiring_source(
+            source,
+            source_path,
+            lambda (path: str) { skip_jaclang(
+                os.path.relpath(path, package_root).replace(os.sep, "/")
+            ); }
+        );
+        target = os.path.join(site_package, rel);
+        make_dirs(os.path.dirname(target));
+        write_text(target, shipped);
+    }
+}
+
 impl resolve_python(python_dir: str) -> str {
     p1 = os.path.join(python_dir, "install", "bin", f"python{py_ver()}");
     if file_exists(p1) {
@@ -79,6 +105,7 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
             os.path.join(site, "jaclang"),
             skip_jaclang
         );
+        ship_wiring(os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang"));
         import from jaclang.compiler.driver.jir { write_compiler_identity }
         _identity = write_compiler_identity(
             os.path.join(repo_root, "jaclang"), os.path.join(site, "jaclang")

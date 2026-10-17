@@ -1,16 +1,4 @@
 import ctypes;
-import from jaclang.testing.test { parametrize }
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_with_both,
-    run_py_fixture,
-    compile_fixture_to_js,
-    run_js_function,
-    compile_native,
-    compile_native_errors,
-    get_func,
-    compare_results
-}
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 # (case, fixture, py fn, cl fn, na fn, [backends that must run])
 """Rows `prim_str`'s native lane does not produce yet.

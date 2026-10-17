@@ -1,5 +1,4 @@
 import time;
-import from jaclang.compiler.passes.context { CompileContext }
 import from c { def PyList_New(n: int) -> int;  }
 import from c { def PyList_SetItem(l: int, i: int, v: int) -> int;  }
 import from c { def Py_DecRef(o: int) -> int;  }
@@ -7,34 +6,6 @@ import from c { def PyUnicode_FromString(p: int) -> int;  }
 import from c { def __jac_region_depth -> int;  }
 import from c { def __jac_region_unwind(depth: int) -> None;  }
 
-import from jaclang.compiler.jc_materialize {
-    hint_commentdata,
-    hint_srcdiag,
-    jc_mz_obj,
-    jc_mz_run,
-    jc_mz_shape_keys
-}
-
-import from jaclang.compiler.frontend.parser.parser { parse_program }
-import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { Module, Import }
-import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
-import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.driver.pipeline { early_passes }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-import from jaclang.compiler.passes.context { Alert }
-import from jaclang.compiler.passes.annex_weave {
-    merge_annex_into,
-    prune_generated_imports
-}
-import from jaclang.compiler.frontend.kernel_analyze {
-    ANALYSIS_CRASHED,
-    AnalysisReport,
-    CompileReport,
-    run_kernel_analysis,
-    run_kernel_compile
-}
-import from jaclang.compiler.jc_ask { set_host_callback, take_host_answer }
 
 obj JcState {
     has p_errs: int = 0,
@@ -53,7 +24,7 @@ obj JcState {
 }
 
 glob _JC: JcState = JcState(),
-     _ANNEXES: list[tuple[str, str, str]] = [];
+     _ANNEXES: list[tuple[str, str]] = [];
 
 def:pub jc_probe -> int {
     return 44061;
@@ -127,23 +98,18 @@ def:pub jc_take_pass_alerts(index: int, warnings: int) -> int {
     return h;
 }
 
-def:pub jc_annex(source: str, path: str, consumer: str) -> int {
-    _ANNEXES.append((source, path, consumer));
+def:pub jc_annex(source: str, path: str) -> int {
+    _ANNEXES.append((source, path));
     return 0;
 }
 
 def _weave(r: Region, mod: Module) -> int {
-    for (source, path, _consumer) in _ANNEXES {
+    for (source, path) in _ANNEXES {
         (a_mod, a_errs, _pd, _cm, _ld, a_lex_errs) = parse_program(source, path);
         if a_errs > 0 or a_lex_errs > 0 {
             return 1;
         }
         merge_annex_into(mod, a_mod);
-    }
-    for (_source, path, consumer) in _ANNEXES {
-        if consumer {
-            prune_generated_imports(mod, path, consumer);
-        }
     }
     return 0;
 }
@@ -224,7 +190,6 @@ def _finish_unit(
 }
 
 def _alert_tag -> int {
-    import from jaclang.runtime.osp_tag { stable_osp_tag }
     return stable_osp_tag("Alert");
 }
 

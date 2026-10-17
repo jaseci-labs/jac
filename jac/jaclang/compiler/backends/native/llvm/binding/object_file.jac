@@ -1,4 +1,3 @@
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
 import from ctypes { c_bool, c_char_p, c_char, c_size_t, string_at, c_uint64, POINTER }
 class SectionIteratorRef(ffi.ObjectRef) {
     def name(self: SectionIteratorRef) -> object {

@@ -244,7 +244,7 @@ test "a module wired by the arch file compiles in the kernel" {
         (base / 'jac.toml').write_text(CONFIG);
         (base / 'archwire.jac').write_text(
             'graph import {\n    edge CoreInternal: core.* --> core.*;\n}\n\n'
-                + 'graph import core {\n    util --> core.svc { Spark }\n}\n'
+                + 'graph import core {\n    util ++> svc { Spark }\n}\n'
         );
         (base / 'core').mkdir();
         (base / 'core' / 'util.jac').write_text(
@@ -336,8 +336,8 @@ def write_application(base: Path) {
     (base / 'deep.jac').write_text('def:pub twice(x: int) -> int { return x * 2; }\n');
     (base / 'archwire.jac').write_text(
         'graph import {\n    edge SideInternal: side.* --> side.*;\n'
-            + '    util --> main { helper }\n    include deep --> main;\n}\n\n'
-            + 'graph import side {\n    tool --> side.user { Wrench }\n}\n'
+            + '    util ++> main { helper }\n    include deep ++> main;\n}\n\n'
+            + 'graph import side {\n    tool ++> user { Wrench }\n}\n'
     );
     (base / 'side').mkdir();
     (base / 'side' / 'tool.jac').write_text(

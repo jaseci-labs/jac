@@ -4,11 +4,6 @@ import json;
 import os;
 import pickle;
 import from pathlib { Path }
-import from jaclang.runtime.prepared {
-    PreparedApplication,
-    initialize_application,
-    publish
-}
 
 glob SOURCE_FORMAT: int = 1;
 

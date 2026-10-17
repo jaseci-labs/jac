@@ -1,85 +1,9 @@
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-
-import from jaclang.compiler.frontend.python.ast_walk {
-    ast_child_visitor,
-    ast_child_buffer,
-    visit_ast_children
-}
-
 # AST validation for the P4 back track (INTEGRATION_PLAN Phase 2).
 #
 # Owns language legality independent of scope resolution: placement of return,
 # break, continue, and yield; expression contexts on names, attributes, and
 # subscripts; legal store and delete targets. Codegen receives validated AST
 # only via product_compile.jac.
-
-import from jaclang.compiler.frontend.python.ast_nodes {
-    ImportFrom,
-    ast_node,
-    Is,
-    IsNot,
-    Assert,
-    expr,
-    stmt,
-    Constant,
-    Name,
-    BinOp,
-    UnaryOp,
-    Call,
-    Compare,
-    BoolOp,
-    Assign,
-    Expr,
-    Pass,
-    Return,
-    AugAssign,
-    AnnAssign,
-    NamedExpr,
-    Delete,
-    Attribute,
-    Subscript,
-    Slice,
-    Tuple,
-    List,
-    Dict,
-    Starred,
-    Load,
-    Store,
-    Del,
-    Break,
-    Continue,
-    Yield,
-    YieldFrom,
-    Global,
-    Nonlocal,
-    For,
-    While,
-    If,
-    Try,
-    TryStar,
-    With,
-    FunctionDef,
-    ClassDef,
-    AsyncFunctionDef,
-    TypeAlias,
-    AsyncFor,
-    AsyncWith,
-    Await,
-    Lambda,
-    ListComp,
-    SetComp,
-    DictComp,
-    GeneratorExp,
-    MatMult,
-    Match,
-    ParamSpec,
-    TemplateStr,
-    TypeVar,
-    TypeVarTuple,
-    arguments,
-    comprehension,
-    type_param,
-}
 
 # Feature versions constrain source grammar; AST inputs are already parsed.
 def validate_feature_version(value: any, version: int) {

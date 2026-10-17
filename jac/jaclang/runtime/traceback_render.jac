@@ -1,6 +1,4 @@
 import from traceback { TracebackException }
-import from jaclang.project.source { pretty_print_source_location }
-import from jaclang.project.textio { read_file_with_encoding }
 
 def dump_traceback(e: Exception) -> str {
     trace_dump = '';

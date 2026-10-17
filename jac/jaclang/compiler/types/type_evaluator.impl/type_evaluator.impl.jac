@@ -4440,11 +4440,11 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             classify_cross_app_import,
             is_client_native_edge_import
         }
-        import from jaclang.compiler.symbol_utils {
+        import from jaclang.compiler.driver.boundary_classify {
             ClientImportVerdict,
-            classify_client_import_item,
-            resolve_import_source_module
+            classify_client_import_item
         }
+        import from jaclang.compiler.symbol_utils { resolve_import_source_module }
         client_tops: dict[str, bool] = {};
         for imp in mod.get_all_sub_nodes(Import) {
             kind = classify_cross_app_import(imp, None);
@@ -5058,7 +5058,7 @@ impl TypeEvaluator._get_type_from_flow_node(
         if isinstance(pred, Assignment)
             and pred.value
             and not self._node_encloses(pred, flow_node) {
-            import from jaclang.compiler.symbol_utils {
+            import from jaclang.compiler.expr_keys {
                 collect_assignment_target_keys,
                 find_destructure_index_path,
             }
@@ -5370,7 +5370,7 @@ impl TypeEvaluator.create_key_for_reference(expr: Expr) -> str | None {
         }
     }
     if isinstance(expr, AtomTrailer) and not expr.is_attr {
-        import from jaclang.compiler.symbol_utils { int_subscript_suffix }
+        import from jaclang.compiler.expr_keys { int_subscript_suffix }
         base_key = self.create_key_for_reference(expr.target);
         if base_key and isinstance(expr.right, IndexSlice) {
             suffix = int_subscript_suffix(expr.right);

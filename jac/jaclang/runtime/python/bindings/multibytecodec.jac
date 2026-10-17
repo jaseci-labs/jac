@@ -1,69 +1,6 @@
 """The _multibytecodec module: MultibyteCodec and the incremental and stream
 codec types over their generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    NULL,
-    PyObject,
-    PyUnicode_InternFromString
-}
-
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned,
-    jacpy_binding_state_set
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks,
-    jacpy_binding_record
-}
-import from jaclang.runtime.python.bindings.payload {
-    clear_payload,
-    dispose_payload,
-    jacpy_binding_native_get,
-    jacpy_binding_native_present,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.multibytecodec {
-    MultibyteCodec_methods,
-    MultibyteIncrementalDecoder_methods,
-    MultibyteIncrementalEncoder_methods,
-    MultibyteStreamReader_methods,
-    MultibyteStreamWriter_methods,
-    module_methods
-}
-import from jaclang.runtime.python.modules.multibytecodec {
-    MultibyteCodec_token,
-    MultibyteIncrementalDecoder_token,
-    MultibyteIncrementalEncoder_token,
-    MultibyteStreamReader_token,
-    MultibyteStreamWriter_token,
-    STATE_CODEC_TYPE,
-    STATE_COUNT,
-    STATE_DECODER_TYPE,
-    STATE_ENCODER_TYPE,
-    STATE_READER_TYPE,
-    STATE_STR_WRITE,
-    STATE_WRITER_TYPE,
-    StatefulState,
-    codecctx_errors_get,
-    codecctx_errors_set,
-    parse_new_arguments,
-    stateful_new
-}
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.bindings.members {
-    MemberField,
-    MemberType,
-    record_clear,
-    record_set_object
-}
-
 # The "errors" property's context: which stateful type it reads.
 glob:priv ENCODER: u64 = 0,
      DECODER: u64 = 1,

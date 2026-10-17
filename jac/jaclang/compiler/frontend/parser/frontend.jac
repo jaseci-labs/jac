@@ -1,19 +1,3 @@
-import jaclang.compiler.frontend.parser.lexer as na_lexer;
-
-import from .lexer { Lexer }
-import from .parser { Parser, parse_expression as _parse_expression }
-import from .tokens { CommentData, SrcDiag }
-import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
-import from jaclang.compiler.passes.context { Alert }
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
-import from jaclang.compiler.passes.annex_weave {
-    WovenAnnex,
-    merge_annex_into,
-    prune_generated_imports
-}
-
 def _replay_diags(
     diags: list[SrcDiag], from_pass: type, prog: JacProgram, diag_src: Source
 ) {
@@ -156,7 +140,6 @@ def parse_woven(
     early_context: str = "",
     load_kernel: bool = True
 ) -> tuple[Module, bool] {
-    import from jaclang.compiler.frontend.host { active_host }
     nat = active_host().native_parse(
         source_str, file_path, prog, annexes, early_context, load_kernel
     );
@@ -170,11 +153,6 @@ def parse_woven(
     for annex in annexes {
         (a_mod, _a_err) = parse(annex.source, annex.path, prog=prog);
         merge_annex_into(module, a_mod);
-    }
-    for annex in annexes {
-        if annex.consumer {
-            prune_generated_imports(module, annex.path, annex.consumer);
-        }
     }
     return (module, had_error);
 }
@@ -204,7 +182,6 @@ def annex_paths(file_path: str) -> list[str] {
 }
 
 def annex_sources(file_path: str) -> list[WovenAnnex] {
-    import from jaclang.compiler.frontend.host { active_host }
     host = active_host();
     out: list[WovenAnnex] = [];
     for pth in annex_paths(file_path) {

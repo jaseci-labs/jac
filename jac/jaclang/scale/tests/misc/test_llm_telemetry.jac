@@ -4,7 +4,6 @@ All tests instantiate TelemetryStore directly
 """
 import time;
 import json;
-import from jaclang.scale.admin.llm_telemetry { TelemetryStore, LLMCallRecord, Trace }
 
 #  Helpers
 """Build a minimal LLM event dict for record_llm_event."""

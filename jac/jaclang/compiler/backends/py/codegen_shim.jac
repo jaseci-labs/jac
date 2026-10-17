@@ -4,34 +4,7 @@ import struct;
 import sys;
 import types;
 import from collections.abc { Callable }
-import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 
-import from jaclang.compiler.backends.py.codegen_ir {
-    CirContainer,
-    CirDiag,
-    CirModule,
-    CodegenIrFormatError,
-    CodegenIrVersionError,
-    DIAG_ERROR,
-    OP_BYTES,
-    OP_ELLIPSIS,
-    OP_END,
-    OP_FALSE,
-    OP_FLOAT,
-    OP_INT,
-    OP_INT_BIG,
-    OP_LIST,
-    OP_LOC,
-    OP_NODE,
-    OP_NONE,
-    OP_PARSE_SPLICE,
-    OP_STR,
-    OP_TRUE,
-    OP_TUPLE,
-    read_container,
-    _r_svarint,
-    _r_varint
-}
 
 def decode_ops(code: bytes, container: CirContainer) -> list[tuple[any, ...]] {
     ops: list[tuple[any, ...]] = [];

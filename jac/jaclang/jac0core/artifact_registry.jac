@@ -25,7 +25,6 @@ glob ARTIFACTS: dict[str, str] = {
      );
 
 def _marks -> set[str] {
-    import from jaclang.jac0core.handoff { handoff }
     marked = handoff().get("building");
     if isinstance(marked, list) {
         return {str(name) for name in marked};
@@ -34,7 +33,6 @@ def _marks -> set[str] {
 }
 
 def _record(marked: set[str]) {
-    import from jaclang.jac0core.handoff { update_handoff }
     update_handoff(building=sorted(marked) or None);
 }
 

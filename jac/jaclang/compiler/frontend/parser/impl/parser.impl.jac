@@ -1,9 +1,3 @@
-import from jaclang.compiler.frontend.constant {
-    Tokens as Tok,
-    SymbolAccess,
-    SymbolType
-}
-
 impl Parser.current -> LexToken {
     if self.pos < self._tokens_len {
         return self.tokens[self.pos];
@@ -146,10 +140,7 @@ impl Parser.check_name -> bool {
 }
 
 impl Parser.is_name_usable_token -> bool {
-    if self.check_any(TokenKind.KW_ROOT, TokenKind.KW_SUPER) {
-        return False;
-    }
-    return is_special_var_kind(self.current().kind) or self.is_builtin_type_token();
+    return is_name_usable_kind(self.current().kind);
 }
 
 impl Parser.is_keyword_token -> bool {
@@ -7333,7 +7324,7 @@ impl Parser.parse_import_rule -> ImportRule | None {
         sources.append(pat);
         kid.append(pat);
     }
-    self._expect_wire_arrow(kid);
+    self._expect_rule_arrow(kid);
     targets: list[ModulePattern] = [self.parse_module_pattern()];
     kid.append(targets[0]);
     while self.match_tok(TokenKind.BW_OR) {
@@ -7386,17 +7377,73 @@ impl Parser.parse_import_wire -> ImportWire | None {
         self._skip_wiring_stmt();
         return None;
     }
-    if not self._expect_wire_arrow(kid) {
+    injected = self.check(TokenKind.CARROW_R);
+    if injected {
+        kid.append(self.consume_uni(TokenKind.CARROW_R));
+    } elif not self._expect_wire_arrow(kid) {
         self._skip_wiring_stmt();
         return None;
     }
+    targets: list[WireTarget] = [];
+    grouped = self.check(TokenKind.LSQUARE);
+    if grouped {
+        kid.append(self.consume_uni(TokenKind.LSQUARE));
+        while not self.check(TokenKind.RSQUARE) and not self.at_end() {
+            target = self.parse_wire_target(is_absorb, provider);
+            if target is None {
+                self._skip_wiring_stmt(open_lists=1);
+                return None;
+            }
+            targets.append(target);
+            kid.append(target);
+            if not self.match_tok(TokenKind.COMMA) {
+                break;
+            }
+            kid.append(self.make_uni_token(self.previous()));
+        }
+        close_tok = self.current();
+        kid.append(self.consume_uni(TokenKind.RSQUARE));
+        if not targets {
+            self.emit_diag(
+                "A grouped wire lists at least one consumer", "E0088", loc=close_tok.loc
+            );
+            return None;
+        }
+    } else {
+        target = self.parse_wire_target(is_absorb, provider);
+        if target is None {
+            self._skip_wiring_stmt();
+            return None;
+        }
+        targets.append(target);
+        kid.append(target);
+        if target.is_module_form {
+            self.expect(TokenKind.SEMI);
+            kid.append(self.make_semi());
+        }
+    }
+    return ImportWire(
+        provider=provider,
+        targets=targets,
+        is_grouped=grouped,
+        is_injected=injected,
+        is_absorb=is_absorb,
+        is_typed=is_typed,
+        is_comptime=is_comptime,
+        kid=kid
+    );
+}
+
+impl Parser.parse_wire_target(
+    is_absorb: bool, provider: ModulePath
+) -> WireTarget | None {
+    kid: list[UniNode] = [];
     consumers: list[ModulePath] = [];
     while True {
         if self.check_any(TokenKind.TYP_ANY, TokenKind.STAR_MUL, TokenKind.STRING) {
             self.emit_diag(
                 "A wire's consumer is a project module named in full", "E0088"
             );
-            self._skip_wiring_stmt();
             return None;
         }
         consumer_tok = self.current();
@@ -7407,7 +7454,6 @@ impl Parser.parse_import_wire -> ImportWire | None {
                 "E0088",
                 loc=consumer_tok.loc
             );
-            self._skip_wiring_stmt();
             return None;
         }
         consumers.append(consumer);
@@ -7425,19 +7471,8 @@ impl Parser.parse_import_wire -> ImportWire | None {
             self.emit_diag("'as' applies to the module form of a wire", "E0089");
         }
         items = self.parse_wire_payload(kid, False);
-    } else {
-        self.expect(TokenKind.SEMI);
-        kid.append(self.make_semi());
     }
-    return ImportWire(
-        provider=provider,
-        consumers=consumers,
-        items=items,
-        is_absorb=is_absorb,
-        is_typed=is_typed,
-        is_comptime=is_comptime,
-        kid=kid
-    );
+    return WireTarget(consumers=consumers, items=items, kid=kid);
 }
 
 impl Parser.parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireItem] {
@@ -7508,8 +7543,14 @@ impl Parser.parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireIt
 }
 
 impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
-    if self.check_any(TokenKind.ARROW_L, TokenKind.ARROW_BI) {
-        self.emit_diag("A wire is directed: write 'provider --> consumer'", "E0086");
+    if self.check_any(
+        TokenKind.ARROW_L, TokenKind.ARROW_BI, TokenKind.CARROW_L, TokenKind.CARROW_BI
+    ) {
+        self.emit_diag(
+            "A wire is directed: write 'provider ++> consumer' to inject the import,"
+            " or 'provider --> consumer' to declare one the consumer writes",
+            "E0086"
+        );
         self.advance();
         return False;
     }
@@ -7517,27 +7558,50 @@ impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
     return True;
 }
 
+impl Parser._expect_rule_arrow(kid: list[UniNode]) -> None {
+    if self.check(TokenKind.CARROW_R) {
+        self.emit_diag(
+            "An edge rule only checks imports; write 'source --> target'", "E0086"
+        );
+        self.advance();
+        return;
+    }
+    self._expect_wire_arrow(kid);
+}
+
 impl Parser._wire_path_ahead -> bool {
     return self.check_peek_any(
-        TokenKind.ARROW_R, TokenKind.DOT, TokenKind.KW_AS, TokenKind.BW_OR
+        TokenKind.ARROW_R,
+        TokenKind.CARROW_R,
+        TokenKind.DOT,
+        TokenKind.KW_AS,
+        TokenKind.BW_OR
     );
 }
 
-impl Parser._skip_wiring_stmt -> None {
+impl Parser._skip_wiring_stmt(open_lists: int = 0) -> None {
     depth = 0;
+    lists = open_lists;
     while not self.at_end() {
-        if depth == 0 and self.check(TokenKind.RBRACE) {
+        if depth == 0 and lists == 0 and self.check(TokenKind.RBRACE) {
             return;
         }
         tok = self.advance();
-        if tok.kind == TokenKind.LBRACE {
+        if tok.kind == TokenKind.LSQUARE {
+            lists += 1;
+        } elif tok.kind == TokenKind.RSQUARE {
+            lists -= 1;
+            if lists <= 0 and depth == 0 {
+                return;
+            }
+        } elif tok.kind == TokenKind.LBRACE {
             depth += 1;
         } elif tok.kind == TokenKind.RBRACE {
             depth -= 1;
-            if depth <= 0 {
+            if depth <= 0 and lists == 0 {
                 return;
             }
-        } elif tok.kind == TokenKind.SEMI and depth == 0 {
+        } elif tok.kind == TokenKind.SEMI and depth == 0 and lists == 0 {
             return;
         }
     }

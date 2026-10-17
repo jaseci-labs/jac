@@ -15,8 +15,6 @@ compare_results uses intersection semantics: only keys present in both dicts
 are checked, so a backend that returns {} (unimplemented) is silently skipped.
 """
 
-import from jaclang.compiler.passes.execution { run_walker }
-
 import ctypes;
 import importlib;
 import json;
@@ -95,7 +93,6 @@ def run_py_fixture(fixture_stem: str, func_name: str) -> dict[str, any] {
 """The server lane's API encoder, which is what a walker response travels
 through: Serializer in api_mode applies the wire rule, json.dumps writes it."""
 def encode_py_wire(value: any) -> str {
-    import from jaclang.data.serializer { Serializer }
     return json.dumps(Serializer.serialize(value, api_mode=True), sort_keys=True);
 }
 
@@ -103,7 +100,6 @@ def encode_py_wire(value: any) -> str {
 # ES (ECMAScript / JavaScript) helpers
 # -----------------------------------------------------------------------
 def compile_fixture_to_js(fixture_name: str) -> str {
-    import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
     fixture_path = os.path.join(FIXTURES, fixture_name);
     prog = JacProgram();
     # EsastGenPass consumes core call facts (call_kind/
@@ -131,9 +127,6 @@ is what lets the emitted prelude import resolve.
 """
 def _prelude_cwd -> str {
     import tempfile;
-    import from jaclang.compiler.backends.es.jac_runtime_js {
-        stage_jac_prelude_package
-    }
     if not _PRELUDE_CWD {
         stage = tempfile.mkdtemp(prefix="jac_xbackend_");
         stage_jac_prelude_package(stage);
@@ -168,11 +161,6 @@ def run_js_function(js_code: str, func_name: str) -> dict[str, any] {
 
 def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
     import from tempfile { TemporaryDirectory }
-    import from jaclang.compiler.backends.es.jac_runtime_js {
-        stage_jac_prelude_package
-    }
-    import from jaclang.client.jac_client_compiler { JacClientCompiler }
-    import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
     prog = JacProgram();
     source = (Path(_fixture_shadow_dir()) / fixture).resolve();
     prog.compile(str(source), no_cgen=True);

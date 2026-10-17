@@ -1,23 +1,7 @@
 import inspect;
-import jaclang.runtime.osp_kernel as _kernel;
 import from contextvars { ContextVar }
 import from types { UnionType }
 import from typing { cast }
-import from jaclang.runtime.archetype {
-    NodeAnchor,
-    EdgeAnchor,
-    ObjectSpatialFunction,
-    WalkerArchetype
-}
-import from jaclang.runtime.osp_graph_sv { cls_of_tag, tag_of_cls }
-import from jaclang.runtime.osp_kernel {
-    OspSlot,
-    OspWalkerDesc,
-    OspNodeDesc,
-    OspWalkScope,
-    OspRuntime,
-    UNTYPED
-}
 
 obj _ContextStack {
     has _var: any postinit;

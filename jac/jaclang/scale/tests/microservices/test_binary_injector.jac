@@ -10,37 +10,6 @@ import threading;
 import unittest.mock;
 import from pathlib { Path }
 import from types { SimpleNamespace }
-import jaclang.scale.injector.binary as binary_mod;
-import from jaclang.scale.config.dev_config {
-    resolve_dev_channel,
-    resolve_experimental_pr,
-    Channel
-}
-import from jaclang.scale.injector.binary {
-    pack_binary_bytes,
-    cluster_node_archs,
-    node_arch,
-    download_release_binary,
-    read_local_binary,
-    stage_admin_dist
-}
-import from jaclang.runtime.graph_utils { host_arch }
-import from jaclang.scale.injector.binary_injector { BinaryInjector }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
-import from jaclang.scale.injector.pvc_injector {
-    BUNDLE_MOUNT_PATH,
-    BUNDLE_VOLUME_NAME
-}
-import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
-    build_runtime_install_commands,
-    runtime_container_env,
-    build_service_apt_prefix,
-    build_bootstrap_init_container
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.config_loader { JacScaleConfig }
 
 
 def _write_toml(body: str) -> str {

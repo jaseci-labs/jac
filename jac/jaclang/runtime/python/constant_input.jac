@@ -1,36 +1,5 @@
 """Retained CPython constants become compiler-owned native values at the boundary."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyObject,
-    PyObject_IsTrue,
-    PySequence_List,
-    jacpy_float_value,
-    jacpy_marshal,
-    jacpy_release,
-    jacpy_sequence_item,
-    jacpy_sequence_size,
-    jacpy_utf8,
-    jacpy_value_kind
-}
-import from jaclang.runtime.python.object_model.complex {
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble
-}
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyNoneType,
-    PyEllipsis,
-    PyBool,
-    PyFloat,
-    PyComplex,
-    PyStr,
-    PyBytes,
-    PyTuple,
-    PySet
-}
-import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
-import from jaclang.runtime.python.native_services { take_buffer }
-import from jaclang.runtime.python.capi { read_buffer, boundary_failure }
 def read_constant(handle: ptr[PyObject], depth: int = 0) -> PyObj {
     if depth > 1000 {
         raise RecursionError("maximum recursion depth exceeded during compilation");

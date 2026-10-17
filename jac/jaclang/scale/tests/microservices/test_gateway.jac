@@ -1,14 +1,6 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.server.serving.datatypes { Headers, Request, URL }
-import from jaclang.scale.tests.support { get_free_port }
 
 test "resolve strips prefix and preserves walker path" {
     reg = ServiceRegistry();
@@ -1388,7 +1380,6 @@ obj _FakeScaleConfig {
 
 
 def _with_cors_config(cfg: dict[str, any], fn: any) -> any {
-    import jaclang.scale.config.config_loader as config_loader;
     orig = config_loader.get_scale_config;
     fake = _FakeScaleConfig(_cors=cfg);
     def fake_factory(project_dir: object = None) -> object {
@@ -2144,7 +2135,6 @@ test "learn skips bare builtin API roots so one service cannot capture them" {
 
 
 def gw_route_table_for_poison_test -> any {
-    import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
     table = ServiceRouteTable();
     table.learn(
         "core_app",

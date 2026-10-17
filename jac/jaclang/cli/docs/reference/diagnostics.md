@@ -480,7 +480,9 @@ See [Project Wiring](wiring.md).
 | `E1141` | '{module}' is not a project module, so it cannot be a wire's provider |
 | `E1142` | '{module}' cannot be a wire's consumer: {detail} |
 | `E1143` | A wire cannot connect '{module}' to itself |
-| `E1144` | Import of '{module}' is not declared by archwire.jac for '{consumer}' |
+| `E1144` | Import of '{module}' is written in '{consumer}'; under archwire.jac it is a wire |
+| `E1146` | '{name}' is wired into '{consumer}', which never uses it |
+| `E1147` | '{name}' is declared into '{consumer}' by a '-->' wire, but '{consumer}' does not write that import where it runs |
 
 ### Unresolved Names
 
@@ -563,11 +565,11 @@ An app's walkers and `def:pub` functions form its public boundary. Other declara
 | `E2091` | '{name}' is not admitted across '{provider} --> {consumer}' by {rules} |
 | `E2092` | Edge rule '{name}' is declared more than once |
 | `E2093` | archwire.jac has syntax errors, so the wiring for '{consumer}' may be incomplete |
-| `E2094` | Import of '{module}' inside '{scope}' is not declared by archwire.jac for '{consumer}' |
+| `E2094` | Import of '{module}' inside '{scope}' is written in '{consumer}'; under archwire.jac it is a scoped wire |
 | `E2095` | Import '{module}' names a module of this package by a bare path; import it as '{qualified}' |
 | `E2096` | '{module}' is not exported by the package '{package}' |
-| `W2083` | Edge rule '{name}': {what} matches no module |
-| `W2084` | '{name}' is not a module under this archwire.jac, so {what} is inert |
+| `E2097` | '{name}' is not a module under this archwire.jac, so {what} names nothing |
+| `E2098` | Edge rule '{name}': {what} matches no module |
 
 ### JSX Slot Body Rules
 
@@ -625,8 +627,7 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3042` | `map-lambda-to-comprehension` | `.map(lambda x -> any { return <jsx>; })` can be replaced with comprehension syntax | default |
 | `W3050` | `strip-comments` | Comment can be removed | opt-in |
 | `W3051` | `strip-docstrings` | Docstring can be removed | opt-in |
-| `W3052` | `remove-duplicate-wire` | This wire is already declared by an earlier wire | default |
-| `W3053` | `remove-wired-import` | Import of '{name}' from '{module}' is already provided by archwire.jac | default |
+| `W3053` | `remove-wired-import` | Import of '{name}' from '{module}' is already provided by archwire.jac (fix only: `jac check` reports it as `E1144`) | default |
 
 > **opt-in group**: `strip-comments` and `strip-docstrings` are destructive "deslop" rules. They are **never** activated by `select = ["all"]` or `["default"]`; they fire only when named explicitly in [`[check.lint]`](config/index.md#checklint). See the config reference for details.
 

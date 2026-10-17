@@ -77,8 +77,8 @@ test "the mobile kind resolves to the mobile target" {
         get_target_registry,
         target_for_kind
     }
-    import from jaclang.project.kinds {
-        KIND_SPECS,
+    import from jaclang.project.kinds { KIND_SPECS }
+    import from jaclang.project.app_kinds {
         MOBILE_PLATFORMS,
         UI_MOBUI,
         kind_has_client,

@@ -43,7 +43,8 @@ test "every client kind maps onto a registered target" {
         get_target_registry,
         target_for_kind
     }
-    import from jaclang.project.kinds { KIND_SPECS, kind_has_client }
+    import from jaclang.project.kinds { KIND_SPECS }
+    import from jaclang.project.app_kinds { kind_has_client }
     import from pathlib { Path }
 
     registry = get_target_registry();

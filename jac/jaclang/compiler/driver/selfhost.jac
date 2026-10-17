@@ -1,6 +1,4 @@
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
 
 obj SelfHostCache {
     has _program: (JacProgram | None) = None,
@@ -31,7 +29,6 @@ obj SelfHostCache {
     }
 
     def owns(file_path: str) -> bool {
-        import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
         return is_compiler_source_path(file_path);
     }
 

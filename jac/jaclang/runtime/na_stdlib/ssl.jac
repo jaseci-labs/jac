@@ -1,18 +1,4 @@
 import from socket { socket as Socket }
-import from ._ssl_native {
-    ctx_new_verifying,
-    ctx_load_ca_file,
-    ctx_load_default_ca,
-    ctx_free,
-    ssl_new_client,
-    do_handshake,
-    verify_result,
-    verify_message,
-    last_error,
-    ssl_write_all,
-    ssl_read,
-    ssl_close
-}
 
 
 obj:pub SSLError(Exception) {}

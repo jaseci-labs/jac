@@ -1,30 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Assignment,
-    CtrlStmt,
-    DictCompr,
-    Enum,
-    ForeverStmt,
-    ImplDef,
-    InForStmt,
-    InnerCompr,
-    IterForStmt,
-    LambdaExpr,
-    ListCompr,
-    Module,
-    ModuleCode,
-    Name,
-    Symbol,
-    Test,
-    UniNode,
-    UniScopeNode,
-    WhileStmt,
-    is_identifier_slot,
-    same_lexical_scope
-}
-import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType }
-
 type LoopStmt = InForStmt | IterForStmt | WhileStmt | ForeverStmt;
 
 obj PassLink {

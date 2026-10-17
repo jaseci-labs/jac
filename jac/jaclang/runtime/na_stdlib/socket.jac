@@ -1,15 +1,3 @@
-import from ._socket_native {
-    resolve_all,
-    gai_str,
-    sock_open,
-    sock_connect,
-    sock_send,
-    sock_recv,
-    sock_close
-}
-import from ._socket_abi { IPV6_FAMILY, address_family }
-import from ._errno_native { errno_message }
-
 glob AF_UNSPEC: int = 0,
      AF_INET: int = 2,
      AF_INET6: int = IPV6_FAMILY;

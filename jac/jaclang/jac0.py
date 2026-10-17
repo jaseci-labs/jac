@@ -16,6 +16,7 @@ outside the subset; scripts/check_seed_manifest.py is the gate.
 from __future__ import annotations
 
 import enum
+import keyword
 import os
 import re
 from dataclasses import dataclass, field
@@ -1410,6 +1411,7 @@ def transform_tokens(tokens: list[Token], *, allow_cast: bool = True) -> list[To
             and tokens[i + 1].type == TT.LPAREN
             and out
             and out[-1].type == TT.NAME
+            and not keyword.iskeyword(out[-1].value)
             and _paren_group_spans_subscript(tokens, i + 1)
         ):
             bracket_depth += 1
@@ -3136,6 +3138,352 @@ def _ext_registry() -> ModuleType:
     return _ext_registry_mod
 
 
+# =============================================================================
+# Wiring: archwire.jac is where a seed module's project imports come from
+# =============================================================================
+
+ARCH_FILE_NAME = "archwire.jac"
+_WIRE_TOKEN = re.compile(
+    r'\s+|#[^\n]*|-->|\+\+>|"[^"\n]*"|`?[A-Za-z_][A-Za-z_0-9]*|[{}\[\],|;:.*]'
+)
+_WIRE_KEYWORDS = ("comptime", "include", "type")
+_SOURCE_NAMES = {"__init__": "init", "__post_init__": "postinit"}
+_wiring_cache: dict[str, tuple[tuple[float, int], list[WireFact]]] = {}
+
+
+@dataclass
+class WireFact:
+    """One consumer's import from one provider, as an archwire.jac target says.
+
+    Names are relative to the archwire.jac directory with block scopes joined;
+    ``names`` is None for the module form. ``injected`` is False for a ``-->``
+    wire, which declares an import the consumer writes itself.
+    """
+
+    provider: str
+    consumer: str
+    keywords: tuple[str, ...] = ()
+    alias: str = ""
+    names: list[str] | None = None
+    injected: bool = True
+
+
+class _WireReader:
+    """Reads the wires of an archwire.jac (rules restrict, they import nothing)."""
+
+    def __init__(self, source: str, filename: str) -> None:
+        self.toks = [
+            t
+            for t in _WIRE_TOKEN.findall(source)
+            if t.strip() and not t.startswith("#")
+        ]
+        self.pos = 0
+        self.filename = filename
+        self.facts: list[WireFact] = []
+
+    def peek(self, offset: int = 0) -> str:
+        at = self.pos + offset
+        return self.toks[at] if at < len(self.toks) else ""
+
+    def take(self, expected: str = "") -> str:
+        tok = self.peek()
+        if expected and tok != expected:
+            raise ParseError(
+                f"{self.filename}: expected {expected!r} in a wire, got {tok!r}"
+            )
+        self.pos += 1
+        return tok
+
+    def dotted(self) -> str:
+        parts = [self.take().lstrip("`")]
+        while self.peek() == ".":
+            self.take(".")
+            parts.append(self.take().lstrip("`"))
+        return ".".join(parts)
+
+    def read(self) -> list[WireFact]:
+        while self.peek():
+            self.take("graph")
+            self.take("import")
+            scope = "" if self.peek() == "{" else self.dotted()
+            self.take("{")
+            while self.peek() not in ("}", ""):
+                if self.peek() == "edge":
+                    self.skip_rule()
+                else:
+                    self.wire(scope)
+            self.take("}")
+        return self.facts
+
+    def skip_rule(self) -> None:
+        depth = 0
+        while self.peek():
+            tok = self.take()
+            if tok == "{":
+                depth += 1
+            elif tok == "}":
+                depth -= 1
+                if depth == 0:
+                    return
+            elif tok == ";" and depth == 0:
+                return
+
+    def wire(self, scope: str) -> None:
+        keywords: list[str] = []
+        while self.peek() in _WIRE_KEYWORDS and self.peek(1) not in (
+            "-->",
+            "++>",
+            ".",
+            "as",
+            "|",
+        ):
+            keywords.append(self.take())
+        provider = _join_scope(scope, self.dotted())
+        alias = ""
+        if self.peek() == "as":
+            self.take("as")
+            alias = self.take()
+        injected = self.peek() == "++>"
+        self.take("++>" if injected else "-->")
+        if self.peek() == "[":
+            self.take("[")
+            while self.peek() not in ("]", ""):
+                self.target(scope, provider, tuple(keywords), alias, injected)
+                if self.peek() == ",":
+                    self.take(",")
+            self.take("]")
+        else:
+            self.target(scope, provider, tuple(keywords), alias, injected)
+            if self.peek() == ";":
+                self.take(";")
+
+    def target(
+        self,
+        scope: str,
+        provider: str,
+        keywords: tuple[str, ...],
+        alias: str,
+        injected: bool,
+    ) -> None:
+        consumers = [_join_scope(scope, self.dotted())]
+        while self.peek() == "|":
+            self.take("|")
+            consumers.append(_join_scope(scope, self.dotted()))
+        names: list[str] | None = None
+        if self.peek() == "{":
+            self.take("{")
+            names = []
+            while self.peek() not in ("}", ""):
+                name = self.take().lstrip("`")
+                if self.peek() == "as":
+                    self.take("as")
+                    name = f"{name} as {self.take().lstrip('`')}"
+                names.append(name)
+                if self.peek() == ",":
+                    self.take(",")
+            self.take("}")
+        for consumer in consumers:
+            self.facts.append(
+                WireFact(
+                    provider,
+                    consumer,
+                    keywords,
+                    alias if names is None else "",
+                    names,
+                    injected,
+                )
+            )
+
+
+def _join_scope(scope: str, name: str) -> str:
+    return f"{scope}.{name}" if scope else name
+
+
+def arch_file_for(path: str) -> str | None:
+    """The archwire.jac that governs ``path``: the nearest one above it,
+    unless a jac.toml closes the project first."""
+    cur = os.path.dirname(os.path.realpath(path))
+    while True:
+        candidate = os.path.join(cur, ARCH_FILE_NAME)
+        if os.path.isfile(candidate):
+            return candidate
+        if os.path.isfile(os.path.join(cur, "jac.toml")):
+            return None
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
+
+
+def wire_facts(arch_path: str) -> list[WireFact]:
+    """Every wire fact of an archwire.jac, read once per process per version."""
+    stat = os.stat(arch_path)
+    stamp = (stat.st_mtime, stat.st_size)
+    held = _wiring_cache.get(arch_path)
+    if held is not None and held[0] == stamp:
+        return held[1]
+    with open(arch_path, encoding="utf-8") as f:
+        facts = _WireReader(f.read(), arch_path).read()
+    _wiring_cache[arch_path] = (stamp, facts)
+    return facts
+
+
+def _is_module(root: str, parts: list[str]) -> bool:
+    base = os.path.join(root, *parts)
+    return (
+        os.path.isfile(base + ".jac")
+        or os.path.isfile(base + ".py")
+        or os.path.isfile(os.path.join(base, "__init__.jac"))
+        or os.path.isfile(os.path.join(base, "__init__.py"))
+    )
+
+
+def _import_prefix(root: str) -> str:
+    """The import name of the archwire.jac directory: the chain of packages
+    above it, up to the outermost one with an ``__init__``."""
+    chain: list[str] = []
+    top = -1
+    cur = os.path.realpath(root)
+    while True:
+        if os.path.isfile(os.path.join(cur, "__init__.jac")) or os.path.isfile(
+            os.path.join(cur, "__init__.py")
+        ):
+            top = len(chain)
+        chain.append(os.path.basename(cur))
+        parent = os.path.dirname(cur)
+        if parent == cur or os.path.isfile(os.path.join(cur, "jac.toml")):
+            break
+        cur = parent
+    return ".".join(reversed(chain[: top + 1]))
+
+
+def wired_imports(filename: str) -> dict[tuple[str, ...], list[Import]]:
+    """The imports archwire.jac generates for a module, keyed by the scope
+    (class, function or method path) they land in; ``()`` is module level."""
+    if not os.path.isfile(filename):
+        return {}
+    arch = arch_file_for(filename)
+    if arch is None:
+        return {}
+    root = os.path.dirname(arch)
+    rel = os.path.relpath(os.path.realpath(filename), os.path.realpath(root))
+    if rel.startswith("..") or not rel.endswith(".jac"):
+        return {}
+    module_parts = rel[: -len(".jac")].split(os.sep)
+    if module_parts[-1] == "__init__":
+        module_parts = module_parts[:-1]
+    module = ".".join(module_parts)
+    prefix = _import_prefix(root)
+    out: dict[tuple[str, ...], list[Import]] = {}
+    for fact in wire_facts(arch):
+        if not fact.injected or (
+            fact.consumer != module and not fact.consumer.startswith(module + ".")
+        ):
+            continue
+        rest = fact.consumer[len(module) :].lstrip(".")
+        scope = tuple(rest.split(".")) if rest else ()
+        if any(
+            _is_module(root, module_parts + list(scope[: i + 1]))
+            for i in range(len(scope))
+        ):
+            continue
+        if "include" in fact.keywords or "comptime" in fact.keywords:
+            raise ParseError(
+                f"{filename}: jac0 cannot weave a {' '.join(fact.keywords)} wire from"
+                f" {fact.provider}; seed modules use plain and type imports"
+            )
+        target = f"{prefix}.{fact.provider}" if prefix else fact.provider
+        if fact.names is None:
+            imp = Import(
+                module=target, alias=fact.alias, is_typed="type" in fact.keywords
+            )
+        else:
+            imp = Import(
+                module=target,
+                names=list(fact.names),
+                is_from=True,
+                is_typed="type" in fact.keywords,
+            )
+        out.setdefault(scope, []).append(imp)
+    return out
+
+
+def wiring_key(filename: str) -> str:
+    """What archwire.jac contributes to a module's bytecode, for cache keys."""
+    rows = [
+        f"{'.'.join(scope)}|{imp.module}|{imp.is_from}|{imp.is_typed}|{imp.alias}|"
+        + ",".join(imp.names)
+        for (scope, imports) in wired_imports(filename).items()
+        for imp in imports
+    ]
+    return "\n".join(sorted(rows))
+
+
+def _after_docstring(body: list) -> int:
+    first = body[0] if body else None
+    if isinstance(first, ExprStmt) and first.expr[:1] in ("'", '"'):
+        return 1
+    return 0
+
+
+def _scope_bodies(
+    module: Module, codegen: CodeGen, scope: tuple[str, ...]
+) -> list[list]:
+    """Every body a scoped wire lands in, as the full compiler finds them: the
+    ``impl`` naming the deepest prefix of the scope, or the module, then the
+    nested classes and functions; a path names every match (functions nested
+    in unnamed blocks such as tests share one path)."""
+    scope = tuple(_SOURCE_NAMES.get(name, name) for name in scope)
+    impls: dict[str, list] = {}
+    for held in codegen.impl_registry.values():
+        for impl in held:
+            impls.setdefault(impl.target, []).append(impl)
+    bodies: list[list] = [module.body]
+    rest = scope
+    for depth in range(len(scope), 0, -1):
+        found = impls.get(".".join(scope[:depth]))
+        if found:
+            bodies = [impl.body for impl in found]
+            rest = scope[depth:]
+            break
+    for name in rest:
+        bodies = [
+            node.body
+            for body in bodies
+            for node in _named_children(body)
+            if node.name == name
+        ]
+    return bodies
+
+
+def _named_children(body: list) -> list:
+    """Classes and functions in a body, looking through unnamed blocks."""
+    out: list = []
+    for node in body:
+        if isinstance(node, (ClassDef, FuncDef)):
+            out.append(node)
+        else:
+            for nested in vars(node).values() if hasattr(node, "__dict__") else ():
+                if isinstance(nested, list) and nested and not isinstance(nested[0], str):
+                    out.extend(_named_children(nested))
+    return out
+
+
+def weave_wiring(module: Module, codegen: CodeGen, filename: str) -> None:
+    """Place the imports archwire.jac generates for this module where the full
+    compiler places them: module level, or the top of the scoped body."""
+    for scope, imports in wired_imports(filename).items():
+        bodies = [module.body] if not scope else _scope_bodies(module, codegen, scope)
+        if not bodies:
+            raise ParseError(
+                f"{filename}: archwire.jac wires imports into '{'.'.join(scope)}',"
+                " which this module does not declare"
+            )
+        for body in bodies:
+            at = _after_docstring(body)
+            body[at:at] = imports
+
+
 def discover_impl_files(jac_path: str) -> list[str]:
     """Discover .impl.jac files for a given .jac file."""
     reg = _ext_registry()
@@ -3198,4 +3546,5 @@ def compile_jac(
                 else:
                     module.body.append(node)
 
+    weave_wiring(module, codegen, filename)
     return codegen.generate(module)

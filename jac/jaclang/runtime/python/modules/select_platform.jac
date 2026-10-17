@@ -1,6 +1,5 @@
 """I/O multiplexing for a target with no select_platform.<os>.jac; the module rejects it."""
 
-import from jaclang.runtime.python.bindings.members { MemberField }
 import from c {
     obj pollfd {
         has fd: i32 = 0,

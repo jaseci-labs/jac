@@ -6,21 +6,6 @@ import sys;
 import zlib;
 import from contextvars { ContextVar }
 import from pathlib { Path }
-import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
-import from jaclang.compiler.frontend.codeinfo {
-    is_compiler_source_path,
-    is_package_keyed_path,
-    native_unit_identity
-}
-import from jaclang.bootstrap_manifest {
-    COMPILER_DIGEST_ROOTS,
-    COMPILER_DIGEST_ROSTER,
-    COMPILER_IDENTITY_NAME,
-    NATIVE_LOWERED_PATHS,
-    is_native_lowered,
-    is_roster_input,
-    read_input_rules
-}
 
 glob MAGIC = b"JIR\x00",
      FORMAT_VERSION: int = 30,
@@ -331,7 +316,6 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
 }
 
 def get_jir_cache_dir -> Path {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir as _root }
     return _root();
 }
 
@@ -350,8 +334,6 @@ def compute_content_sha256(file_path: str) -> str {
 }
 
 def _related_files(source_path: str) -> list[tuple[str, str]] {
-    import from jaclang.compiler.driver.bccache { discover_annex_files }
-    import from jaclang.compiler.frontend.source_layout { style_annex_of }
     src = Path(source_path).resolve();
     base_dir = src.parent;
     paths: set = set();
@@ -677,12 +659,10 @@ def py_emitter_digest -> str {
 }
 
 def require_exact_compiler_products {
-    import from jaclang.jac0core.handoff { update_handoff }
     update_handoff(exact=True);
 }
 
 def _handoff -> dict[str, object] {
-    import from jaclang.jac0core.handoff { handoff }
     return handoff();
 }
 
@@ -707,23 +687,15 @@ def dev_carry_enabled -> bool {
     }
 }
 
-def _contract_file_sha(path: str) -> str {
-    try {
-        with open(path, "rb") as f {
-            return hashlib.sha256(f.read()).hexdigest();
-        }
-    } except OSError {
-        return "missing";
-    }
-}
-
 def abi_contract_digest(pkg_root: str) -> str {
-    import from jaclang.compiler.native_scope { KERNEL_ABI_CONTRACT_REL }
     h = hashlib.sha256();
     for rel in KERNEL_ABI_CONTRACT_REL {
         h.update(rel.encode("utf-8"));
+        path = os.path.join(pkg_root, *rel.split("/"));
         h.update(
-            _contract_file_sha(os.path.join(pkg_root, *rel.split("/"))).encode("utf-8")
+            (unit_source_digest(path) if os.path.isfile(path) else "missing").encode(
+                "utf-8"
+            )
         );
     }
     return h.hexdigest();
@@ -790,7 +762,6 @@ def _config_for_module(resolved: Path) -> any {
 }
 
 def _analysis_fingerprint_for(source_path: str) -> str {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
     cfg: any = None;
     try {
         cfg = _config_for_module(Path(source_path).resolve());
@@ -875,7 +846,6 @@ def module_env_fingerprint(source_path: str) -> str {
 }
 
 def _module_projection(source_path: str) -> str {
-    import from jaclang.compiler.driver.compilation_context { active_options }
     options = active_options();
     if options is None {
         return '';
@@ -967,13 +937,6 @@ def _arch_stamp(arch: str, package_name: str) -> (str | None) {
 
 def stored_wiring_digest(source_path: str) -> str {
     import json;
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.driver.wiring {
-        arch_file_for,
-        import_prefix_for,
-        is_arch_file,
-        wiring_digest_for
-    }
     if is_arch_file(source_path) {
         return "";
     }
@@ -1234,7 +1197,6 @@ def module_ct_deps_section(mod: any) -> (bytes | None) {
 glob _DEFINITION_TEXTS: dict[str, tuple[str, dict[str, list[str]]]] = {};
 
 def _texts_of_spans(real: str, text: str, rows: list[str]) -> dict[str, list[str]] {
-    import from jaclang.compiler.driver.unit_products { DEF_DEP_SEP }
     texts: dict[str, list[str]] = {};
     for row in rows {
         parts = row.split(DEF_DEP_SEP);
@@ -1259,7 +1221,6 @@ def _source_and_digest(path: str) -> (tuple[str, str] | None) {
 }
 
 def seed_definition_texts(rows: list[str]) {
-    import from jaclang.compiler.driver.unit_products { DEF_DEP_SEP }
     files: set[str] = {row.split(DEF_DEP_SEP)[0] for row in rows};
     for real in files {
         held = _source_and_digest(real);
@@ -1274,8 +1235,6 @@ def seed_definition_texts(rows: list[str]) {
 }
 
 def _definition_texts(path: str) -> dict[str, list[str]] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.unit_products { definition_span_rows }
     real = os.path.realpath(path);
     held = _source_and_digest(real);
     if held is None {
@@ -1503,7 +1462,6 @@ def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
 }
 
 def native_deps_section(dep_digests: dict[str, str]) -> bytes {
-    import from jaclang.compiler.driver.native_iface { native_unit_ref }
     lines: list[str] = [];
     for path in sorted(dep_digests) {
         lines.append(f"{native_unit_ref(path)}\t{dep_digests[path]}");
@@ -1512,7 +1470,6 @@ def native_deps_section(dep_digests: dict[str, str]) -> bytes {
 }
 
 def parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]] {
-    import from jaclang.compiler.driver.native_iface { resolve_native_unit_ref }
     out: list[tuple[str, str]] = [];
     for line in raw.decode("utf-8").split("\n") {
         if "\t" not in line {
@@ -1598,7 +1555,6 @@ def jir_matches_source(jir_data: bytes, source_path: str) -> bool {
 }
 
 def compute_precompile_module_key(source_path: str, compiler_digest: str = "") -> str {
-    import from jaclang.compiler.driver.compilation_context { cache_scope }
     h = hashlib.sha256();
 
     with cache_scope() {
@@ -1631,7 +1587,6 @@ def cache_mode -> tuple[bool, bool] {
 }
 
 def set_cache_mode(rebuild: (bool | None) = None, no_precompile: (bool | None) = None) {
-    import from jaclang.jac0core.handoff { update_handoff }
     update_handoff(rebuild=rebuild or None, no_precompile=no_precompile or None);
 }
 
@@ -1724,8 +1679,6 @@ def _touch_generation(cache_dir: Path) {
 }
 
 def sweep_stale_generations(cache_root: Path, keep: str) -> int {
-    import from jaclang.cache.policy { sweep_dir }
-    import from jaclang.cache.registry { bucket }
     result = sweep_dir(
         cache_root, bucket("jir-modules").policy, keep={keep}, bucket="jir-modules"
     );

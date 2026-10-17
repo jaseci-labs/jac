@@ -150,7 +150,6 @@ impl JacProgram.load_dependency_module(
     use_str: (str | None) = None,
     need_tree: bool = False
 ) -> uni.Module {
-    import from jaclang.compiler.types.stubcat.reader { CatModule }
     resolved_path = os.path.realpath(source_path);
     import from jaclang.compiler.frontend.host { active_host }
     if resolved_path.endswith('.pyi') {
@@ -228,7 +227,6 @@ impl JacProgram.load_dependency_module(
 }
 
 impl JacProgram.toolchain_dependency(self: JacProgram, resolved_path: str) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if self.internal
         or not resolved_path
         or not is_compiler_source_path(resolved_path) {
@@ -281,7 +279,6 @@ impl JacProgram.stub_catalog(self: JacProgram) -> (StubCatalog | None) {
 }
 
 impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
-    import from jaclang.compiler.types.type_evaluator { TypeEvaluator }
     if not self.type_evaluator {
         self.type_evaluator = TypeEvaluator(program=self);
     }
@@ -448,23 +445,10 @@ impl JacProgram.compile(
 impl JacProgram.build(
     self: JacProgram, file_path: str, use_str: (str | None) = None
 ) -> uni.Module {
-    import from jaclang.compiler.frontend.host { active_host }
     return active_host().build_module(self, file_path, use_str);
 }
 
 impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
-    import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
-    import from jaclang.compiler.frontend.codeinfo { is_client_by_location }
-    import from jaclang.compiler.native_scope { package_host_edge }
-    import from jaclang.compiler.placement.placement_facts {
-        native_only,
-        native_unit,
-        variant_selected
-    }
-    import from jaclang.compiler.placement.placement_pins {
-        config_kind_space,
-        effective_module_pin
-    }
     opts = self.options;
     if variant_selected(file_path) is False {
         return 'server';
@@ -503,15 +487,6 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
 }
 
 impl JacProgram.prefers_native_codespace(self: JacProgram, file_path: str) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { is_kernel_unit_path }
-    import from jaclang.compiler.placement.placement_facts {
-        native_only,
-        native_placement_hard
-    }
-    import from jaclang.compiler.placement.placement_pins {
-        config_kind_space,
-        effective_module_pin
-    }
     if self.internal
         or native_only(file_path)
         or is_kernel_unit_path(file_path)
@@ -527,7 +502,6 @@ impl JacProgram.prefers_native_codespace(self: JacProgram, file_path: str) -> bo
 }
 
 impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> bool {
-    import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
     if self.prefers_native_codespace(file_path) {
         return True;
     }
@@ -556,7 +530,6 @@ impl JacProgram.parse_source(
     file_path: str,
     cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
-    import from jaclang.compiler.frontend.host { active_host }
     had_error = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
         (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
@@ -642,7 +615,6 @@ impl JacProgram.parse_source(
 }
 
 impl JacProgram.resolve_absorb_imports(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.frontend.unitree { find_python_scope_node_of }
     for imp in mod.get_all_sub_nodes(uni.Import) {
         if imp.from_loc is not None {
             for item in imp.items {
@@ -678,20 +650,12 @@ impl JacProgram.resolve_absorb_imports(self: JacProgram, mod: uni.Module) -> Non
 }
 
 impl JacProgram.stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.frontend.host { active_host }
     project = active_host().project_defaults();
     mod.access_enforced = bool(project is not None and project.check.enforce_access);
 }
 
 impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.driver.boundary_classify {
-        clib_decl_type_names,
-        import_bound_names,
-        native_only_import_target,
-        python_side_name_refs
-    }
     import os;
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     needs_native = mod.decided_codespace == 'native'
         or ModuleFacts.has_native_context_stmts(mod);
     py_refs: (set[str] | None) = None;
@@ -742,7 +706,6 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
 }
 
 impl JacProgram.stamp_app_facts(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.frontend.host { active_host }
     host = active_host();
     opts = self.options;
     mod_path = mod.loc.mod_path if mod.loc else '';
@@ -805,22 +768,6 @@ impl JacProgram.stamp_app_facts(self: JacProgram, mod: uni.Module) -> None {
 }
 
 impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.driver.boundary_classify {
-        ClientImportVerdict,
-        _default_codespace_for,
-        classify_client_import_item,
-        import_declares_native_target,
-        is_client_boundary_import,
-        is_client_native_edge_import
-    }
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.frontend.unitree { ability_of_symbol }
-    import from jaclang.compiler.frontend.codeinfo {
-        is_bundled_native_module,
-        resolve_native_module
-    }
-    import from jaclang.compiler.placement.placement_pins { config_module_pin }
-
     base_dir = '.';
     if mod.loc {
         base_dir = os.path.dirname(mod.loc.mod_path);
@@ -1139,7 +1086,6 @@ impl JacProgram.count_module_errors(self: JacProgram, mod_path: str) -> int {
 }
 
 impl JacProgram.module_scoped_errors(self: JacProgram, mod_path: str) -> bool {
-    import from jaclang.compiler.frontend.diagnostics { Category }
     norm = os.path.normpath(mod_path);
 
     prefix = (norm[:-4] if norm.endswith('.jac') else norm) + '.';
@@ -1160,7 +1106,6 @@ impl JacProgram.module_scoped_errors(self: JacProgram, mod_path: str) -> bool {
 }
 
 impl JacProgram.note_stub_tree_served(self: JacProgram, path: str) -> None {
-    import from jaclang.compiler.frontend.host { active_host }
     host = active_host();
     if self._stub_trees_served or host.stub_catalog_for(self) is not None {
         return;

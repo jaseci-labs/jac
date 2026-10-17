@@ -1,15 +1,3 @@
-import from ._zlib_native {
-    ZInflateResult,
-    Z_OK,
-    Z_STREAM_END,
-    Z_MEM_ERROR,
-    z_compress2,
-    z_compress_bound,
-    z_crc32,
-    z_inflate_all,
-    z_inflate_bound
-}
-
 glob _MASK32: int = 4294967295;
 
 

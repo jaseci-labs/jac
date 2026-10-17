@@ -407,7 +407,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0094 = _err(
          "E0094",
          Category.SYNTAX,
-         "Expected a wire ('provider --> consumer') or an edge rule here",
+         "Expected a wire ('provider ++> consumer') or an edge rule here",
          help="A `graph import` block holds wires and `edge Name:` rules only."
      ),
      E0095 = _err(
@@ -872,22 +872,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " the edge's endpoints as `any --> any` if it is meant to start from any"
          " node."
      ),
-     W2083 = _warn(
-         "W2083",
-         Category.SEMANTIC,
-         "Edge rule '{name}': {what} matches no module",
-         help="A pattern that matches nothing constrains nothing. Check the"
-         " spelling, or remove the rule if the modules it governed are gone."
-     ),
-     W2084 = _warn(
-         "W2084",
-         Category.SEMANTIC,
-         "'{name}' is not a module under this archwire.jac, so {what} is inert",
-         help="Wiring only reaches modules that exist below the archwire.jac, so a"
-         " name that matches none generates nothing and checks nothing. Fix the"
-         " spelling, or remove the wiring if the modules are gone; a distribution"
-         " that leaves them out on purpose can ignore this."
-     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -1119,12 +1103,22 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1144 = _err(
          "E1144",
          Category.IMPORT,
-         "Import of '{module}' is not declared by archwire.jac for '{consumer}'",
-         help="'{consumer}' sits under an archwire.jac, so every import it makes of a"
-         " module below that archwire.jac must be a wire. Add `{wire}` to archwire.jac,"
-         " or run `jac arch sync` to add every missing wire. An inline"
-         " suppression does not silence this; changing the boundary is a change"
-         " to archwire.jac."
+         "Import of '{module}' is written in '{consumer}'; under archwire.jac it is a wire",
+         help="'{consumer}' sits under an archwire.jac, which is the only place its"
+         " imports of the modules below it are declared: every one is generated"
+         " from a wire. {fix} An inline suppression does not silence this;"
+         " changing the boundary is a change to archwire.jac."
+     ),
+     E1146 = _err(
+         "E1146",
+         Category.IMPORT,
+         "'{name}' is wired into '{consumer}', which never uses it",
+         help="archwire.jac is the import mechanism for '{consumer}', so the wire at"
+         " line {line} is the import itself and a name the module never uses is a"
+         " false fact there. Remove '{name}' from that wire, and from the written"
+         " import if the module keeps one. A name that is part of the module's"
+         " public surface belongs in its `__all__`; names are not re-exported"
+         " otherwise, so other modules import them from where they are defined."
      ),
      E1145 = _err(
          "E1145",
@@ -1916,6 +1910,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " type's default value. Write the implementation, mark the declaration"
          " `abst` if a subclass is meant to supply it, or delete the declaration."
      ),
+     E1147 = _err(
+         "E1147",
+         Category.IMPORT,
+         "'{name}' is declared into '{consumer}' by a '-->' wire, but '{consumer}' does"
+         " not write that import where it runs",
+         help="A '-->' wire declares an import its consumer writes in place because it"
+         " must run there: inside an if, try, loop or with block, or after other"
+         " statements. archwire.jac line {line} declares one '{consumer}' does not"
+         " write that way: inject it with '++>' if the module needs it, or remove the"
+         " wire."
+     ),
      E2088 = _err(
          "E2088",
          Category.SEMANTIC,
@@ -1930,8 +1935,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2089",
          Category.SEMANTIC,
          "archwire.jac declares wiring only; this {kind} does not belong here",
-         help="archwire.jac holds `graph import { ... }` blocks and nothing else."
-         " Move this statement into a module."
+         help="archwire.jac holds `graph import { ... }` blocks and nothing else, so"
+         " every line in it is a fact that generates an import or a rule that"
+         " checks one. Move statements into a module, and drop comments and"
+         " docstrings: `jac fmt` keeps the file in one canonical layout."
      ),
      E2090 = _err(
          "E2090",
@@ -1969,13 +1976,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2094 = _err(
          "E2094",
          Category.SEMANTIC,
-         "Import of '{module}' inside '{scope}' is not declared by archwire.jac for"
-         " '{consumer}'",
+         "Import of '{module}' inside '{scope}' is written in '{consumer}'; under"
+         " archwire.jac it is a scoped wire",
          help="A module under an archwire.jac takes its imports of the modules below"
-         " it from wires. A wire whose consumer"
-         " continues past the module into a class, function or method"
-         " (`pkg.mod.Class.method`) lands its import in that body, so the import"
-         " stays lazy. {fix} An inline suppression does not silence this."
+         " it from wires. A wire whose consumer continues past the module into a"
+         " class, function or method (`pkg.mod.Class.method`) lands its import in"
+         " that body, so the import stays lazy. {fix} An inline suppression does"
+         " not silence this."
      ),
      E2095 = _err(
          "E2095",
@@ -1993,6 +2000,22 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A package lists the modules other code may import under [project]"
          " exports in its jac.toml ({exports}). Import one of those modules, or"
          " ask the package to export this one."
+     ),
+     E2097 = _err(
+         "E2097",
+         Category.SEMANTIC,
+         "'{name}' is not a module under this archwire.jac, so {what} names nothing",
+         help="archwire.jac is the import mechanism for the modules below it, so"
+         " wiring that matches no module is a false fact. Fix the spelling, or"
+         " remove the wiring if the module is gone. A subtree that ships"
+         " separately keeps its wiring in its own archwire.jac."
+     ),
+     E2098 = _err(
+         "E2098",
+         Category.SEMANTIC,
+         "Edge rule '{name}': {what} matches no module",
+         help="A pattern that matches nothing constrains nothing. Fix the spelling,"
+         " or remove the pattern (or the rule) if the modules it governed are gone."
      ),
      W3001 = _warn(
          "W3001",
@@ -2150,13 +2173,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
          "all docstrings; it never fires under select = [\"all\"] or [\"default\"]."
      ),
-     W3052 = _warn(
-         "W3052",
-         Category.LINT,
-         "This wire is already declared by an earlier wire [remove-duplicate-wire]",
-         help="Two wires give '{consumer}' the same binding from '{provider}'."
-         " `jac fmt --lintfix` removes the later one."
-     ),
      W3053 = _warn(
          "W3053",
          Category.LINT,
@@ -2197,7 +2213,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "property-to-native": "W3043",
          "strip-comments": "W3050",
          "strip-docstrings": "W3051",
-         "remove-duplicate-wire": "W3052",
          "remove-wired-import": "W3053"
      },
      E5001 = _err(

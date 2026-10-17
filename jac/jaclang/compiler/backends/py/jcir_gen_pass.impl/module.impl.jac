@@ -13,7 +13,6 @@ impl JcirGenPass.exit_sub_tag with SubTag exit {
 }
 
 impl JcirGenPass.exit_module with Module exit {
-    import from jaclang.runtime.osp_tag { stable_osp_tag }
     _tag_names: dict[int, str] = {};
     for _stmt in (here.body or []) {
         if isinstance(_stmt, Archetype)
@@ -451,11 +450,6 @@ impl JcirGenPass.exit_py_inline_code with PyInlineCode exit {
 }
 
 impl JcirGenPass.exit_import with Import exit {
-    import from jaclang.compiler.driver.boundary_classify {
-        CrossAppKind,
-        classify_cross_app_import,
-        import_binds_client_native
-    }
     if (
         import_binds_client_native(here, self.module.gen.interop_manifest)
         or here.native_only_drop

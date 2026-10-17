@@ -1,5 +1,4 @@
 import os;
-import type from jaclang.compiler.frontend.srcloc { Span }
 
 def pascal_to_snake(pascal_string: str) -> str {
     snake_string = '';

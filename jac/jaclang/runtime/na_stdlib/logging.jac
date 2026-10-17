@@ -1,12 +1,5 @@
 import sys;
 import time;
-import from ._logging_native {
-    log_strftime,
-    log_fopen,
-    log_fputs,
-    log_fflush,
-    log_fclose
-}
 
 glob:pub CRITICAL: int = 50,
      FATAL: int = 50,

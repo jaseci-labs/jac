@@ -16,19 +16,6 @@ import tempfile;
 import time;
 import from contextlib { redirect_stderr, redirect_stdout }
 import from pathlib { Path }
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    _CLIENT_BUILD_ATTEMPTS,
-    _CLIENT_BUILD_RETRY_PAUSE_S,
-    _is_transient_client_build_failure,
-    _membership_diagnosis,
-    ManifestBuilder
-}
-import from jaclang.scale.injector.bundle { bundle_source_files, source_filter_for }
-import from jaclang.scale.runtime.context.util { jac_executable }
 
 glob _PARKED: str = "# parked for the deploy\ndocsite/\nevaluation/\n",
      _SECRET: str = "sk-live-8104";

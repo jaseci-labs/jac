@@ -1,18 +1,4 @@
 import os;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant {
-    CodeContext,
-    Tokens as Tok,
-    SymbolAccess
-}
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.placement_pins {
-    BareImportVerdict,
-    classify_bare_import
-}
-import from jaclang.compiler.frontend.host { active_host }
-import type from jaclang.compiler.frontend.codeinfo { InteropManifest }
-import from jaclang.project.workspace_model { AppSpec }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
     module.set_code_context(context);
@@ -144,7 +130,6 @@ def classify_import(imp: uni.Import) -> BareImportVerdict {
 }
 
 def module_own_native_anchor(module: (uni.Module | None)) -> bool {
-    import from jaclang.compiler.frontend.constant { OwnershipKind }
     if module is None {
         return False;
     }
@@ -163,7 +148,6 @@ def module_own_native_anchor(module: (uni.Module | None)) -> bool {
 
 
 def plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
-    import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     if (
         nd.is_service_import
         or nd.is_typed
@@ -210,7 +194,6 @@ def plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None)
 def import_declares_native_target(
     nd: uni.Import, prog: (JacProgram | None) = None
 ) -> bool {
-    import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     if nd.from_loc is None {
         return False;
     }
@@ -226,7 +209,6 @@ def import_declares_native_target(
 }
 
 def native_only_import_target(nd: uni.Import, prog: JacProgram) -> (str | None) {
-    import from jaclang.compiler.placement.placement_pins { effective_module_pin }
     resolved = plain_native_import_target(nd, prog);
     if resolved is None {
         return None;
@@ -265,7 +247,6 @@ def _python_side_emits(stmt: uni.UniNode, native_module: bool) -> bool {
 }
 
 def python_side_name_refs(mod: uni.Module) -> set[str] {
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     native_module = mod.decided_codespace == 'native';
     emitted: list[uni.UniNode] = [];
     for (body, _strip) in ModuleFacts.iter_woven_segments(mod) {
@@ -577,7 +558,6 @@ def classify_client_import_item(
 def import_binds_client_native(
     nd: uni.Import, manifest: (InteropManifest | None)
 ) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { InteropContext }
     if nd.from_loc is None or not nd.items {
         return False;
     }
@@ -611,7 +591,6 @@ def import_binds_client_native(
 }
 
 def _default_codespace_for(target_program: JacProgram) -> str {
-    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
     opts = target_program.options;
     if opts is not None and opts.default_codespace {
         return opts.default_codespace;

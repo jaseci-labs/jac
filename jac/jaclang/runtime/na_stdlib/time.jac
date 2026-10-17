@@ -7,7 +7,6 @@ import from ._time_native {
     CLK_THREAD_CPUTIME,
     time_sleep_ns
 }
-import from ._time_common { time_clock_ns, time_clock_seconds, time_clock_set_ns }
 
 glob CLOCK_REALTIME: int = CLK_REALTIME,
      CLOCK_MONOTONIC: int = CLK_MONOTONIC,

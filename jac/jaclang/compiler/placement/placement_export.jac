@@ -1,17 +1,6 @@
 import os;
 import json;
 import from collections.abc { Callable }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { CodeContext }
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.placement {
-    PLACEMENT_SCHEMA,
-    ElementSummary,
-    PlacementSummary,
-    element_display_name,
-    get_module_summary,
-    placement_evidence_for
-}
 
 def escapes_record(escapes: list[tuple[int, str]]) -> list[any] {
     rows: list[any] = [];
@@ -180,10 +169,12 @@ def collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
                 continue;
             }
             try {
-                import from jaclang.compiler.symbol_utils {
+                import from jaclang.compiler.driver.boundary_classify {
                     ClientImportVerdict,
                     classify_client_import_item,
-                    is_client_boundary_import,
+                    is_client_boundary_import
+                }
+                import from jaclang.compiler.symbol_utils {
                     resolve_import_source_module
                 }
                 if is_client_boundary_import(stmt) {

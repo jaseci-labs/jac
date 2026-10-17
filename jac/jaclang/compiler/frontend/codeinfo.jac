@@ -1,30 +1,6 @@
-import type from jaclang.runtime.native_library { SharedNativeEngine }
 import hashlib;
-import from jaclang.runtime.surface { SurfaceEntry }
 import from collections.abc { Sequence }
 import from contextvars { ContextVar }
-import from jaclang.compiler.frontend.constant {
-    NATIVE_ERASED_ANNOTATIONS,
-    NATIVE_ERASED_TYPE_MARKERS,
-    TYPE_PARAM_CONSTRUCTORS
-}
-import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
-import from jaclang.compiler.kernel_target {
-    active_kernel_target,
-    is_target_package_path,
-    kernel_target_active,
-    kernel_target_generation,
-    target_pkg_root
-}
-import type from jaclang.compiler.backends.es.estree { IndexInfo, SliceInfo }
-import type from jaclang.compiler.backends.es.estree { Node as EsNode }
-import type from jaclang.compiler.tools.doc_ir { Doc }
-import type from jaclang.compiler.frontend.unitree { CommentToken, Module, UniNode }
-import type from jaclang.compiler.passes.layout_pass { LayoutRegistry }
-import type from jaclang.compiler.passes.osp_analysis { OspModel }
-import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
-import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-import type from jaclang.compiler.driver.native_iface { NativeIface }
 
 obj ClientManifest {
     has exports: list[str] = [],
@@ -487,7 +463,6 @@ glob KERNEL_UNIT_REL: tuple[str, ...] = (
 glob _PKG_REAL: list[str] = [];
 
 def jaclang_pkg_root -> str {
-    import from jaclang.compiler.frontend.host { package_root }
     return package_root();
 }
 
@@ -1246,7 +1221,6 @@ obj CodeGenTarget {
 
 def endpoint_descriptor(module: Module, kind: str, name: str) -> dict[str, str] {
     import os;
-    import from jaclang.compiler.frontend.host { active_host }
     path = module.loc.mod_path;
     host = active_host();
     workspace = host.workspace(path);

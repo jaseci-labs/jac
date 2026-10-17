@@ -7,26 +7,6 @@ SHA-384 and SHA-512 share the 64-bit state and SHA512Type's. digest() runs the
 wide variant and keeps the object's digest size, as the C module does.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_NoMemory,
-    PyObject,
-    Py_TYPE,
-    jacpy_release
-}
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.hashlib {
-    HashLock,
-    UINT32_MAX,
-    data_argument,
-    hash_digest,
-    hash_initial_data,
-    hash_object_new,
-    hash_state_of,
-    hash_update
-}
 import from c {
     def _Py_LibHacl_Hacl_Hash_SHA2_malloc_224 -> ptr;  def _Py_LibHacl_Hacl_Hash_SHA2_malloc_256 -> ptr;  def _Py_LibHacl_Hacl_Hash_SHA2_malloc_384 -> ptr;  def _Py_LibHacl_Hacl_Hash_SHA2_malloc_512 -> ptr;  def _Py_LibHacl_Hacl_Hash_SHA2_copy_256(
         state: ptr

@@ -5,33 +5,6 @@ argument binding, and module exception identities remain at the object ABI.
 See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_SystemError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyLong_AsUnsignedLongMask,
-    PyLong_FromLongLong,
-    PyObject,
-    PySequence_Size,
-    PyUnicode_ReadChar,
-    jacpy_buffer_byte,
-    jacpy_buffer_size,
-    jacpy_is_bytes,
-    jacpy_is_unicode,
-    jacpy_release,
-    jacpy_set_exception
-}
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    read_buffer,
-    write_buffer,
-    module_failure,
-    object_error
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-
 def _binascii_error(message: str) {
     raise module_failure(message=message);
 }

@@ -1,14 +1,7 @@
 import from types { SimpleNamespace }
 import unittest.mock;
 import from jaclang.scale.deploy.target.kubernetes { cluster_provider as cp_module }
-import from jaclang.scale.deploy.target.kubernetes.cluster_provider {
-    AWSProvider,
-    LocalProvider
-}
 import from jaclang.scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    get_cluster_provider
-}
 
 test "AWSProvider and LocalProvider honour their per-provider contracts" {
     aws = AWSProvider();

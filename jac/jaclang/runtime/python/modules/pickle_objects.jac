@@ -5,52 +5,6 @@ traversal, identity validation and map selection execute in native Jac.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyDict_Copy,
-    PyDict_Keys,
-    PyErr_ExceptionMatches,
-    PyErr_GetRaisedException,
-    PyErr_SetRaisedException,
-    PyExc_AttributeError,
-    PyExc_Exception,
-    PyExc_ImportError,
-    PyExc_RuntimeError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyImport_Import,
-    PyImport_ImportModuleAttrString,
-    PyList_GetItemRef,
-    PyObject,
-    PyObject_GetAttr,
-    PyObject_Str,
-    PySys_Audit,
-    PyTuple_Size,
-    Py_NewRef,
-    Py_None,
-    jacpy_dict_get,
-    jacpy_error_pending,
-    jacpy_is_tuple,
-    jacpy_is_unicode,
-    jacpy_list_size,
-    jacpy_optional_attr,
-    jacpy_release,
-    jacpy_tuple_item
-}
-import from jaclang.runtime.python.capi {
-    repr_value,
-    required,
-    checked,
-    boundary_failure,
-    object_tuple,
-    text_object,
-    text_value
-}
-import from jaclang.runtime.python.modules.pickle_stream {
-    stream_error,
-    builtin_stream_error
-}
-
 def attribute_path(
     value: ptr[PyObject], name: ptr[PyObject], dotted: bool
 ) -> ptr[PyObject] {

@@ -5,13 +5,6 @@ reads and writes go through PyMember_GetOne()/PyMember_SetOne() on that
 address, so range checks, truncation warnings and messages are CPython's own.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyMember_GetOne,
-    PyMember_SetOne,
-    PyMemberDef,
-    PyObject
-}
-
 # Py_T_* field types (Include/descrobject.h) and the Py_READONLY flag.
 enum MemberType {
     SHORT = 0,

@@ -1,8 +1,3 @@
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-
-
 walker AppContextPass(CompilerPass) {
     static has contract: PassContract = PassContract();
 

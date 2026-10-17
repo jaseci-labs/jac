@@ -1,18 +1,3 @@
-import from ._hex { to_hex }
-import from ._typename { typename }
-import from ._hashlib_native {
-    evp_md_for,
-    digest_size_for,
-    block_size_for,
-    ctx_require,
-    hmac_ctx_new,
-    hmac_ctx_update,
-    hmac_ctx_digest,
-    hmac_ctx_clone,
-    hmac_ctx_free
-}
-
-
 obj:pub HMAC {
     has _ctx: int,
         digest_size: int,

@@ -11,21 +11,6 @@ import os;
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { MagicMock, patch }
 import from uuid { uuid4 }
-import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
-import from jaclang.scale.server.extensions { AdminExtension, MailExtension }
-import from jaclang.server.identity.config { configure_identity }
-import from jaclang.server.identity.mail { verification_problems }
-import from jaclang.server.identity.policy { check_password, minted_password }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.server { EndpointHost, ServerExtension }
-import from jaclang.server.serving.app { transport_to_response }
-import from jaclang.server.serving.endpoint { JEndPoint }
-import from jaclang.server.settings {
-    AuthSettings,
-    EmailSettings,
-    LockoutSettings,
-    PasswordSettings
-}
 
 """A mail transport that records what it was asked to send."""
 obj RecordingEmailer {

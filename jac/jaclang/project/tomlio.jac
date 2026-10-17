@@ -1,5 +1,4 @@
 import tomllib;
-import from jaclang.project.textio { read_file_with_encoding }
 
 class MalformedJacTomlError(tomllib.TOMLDecodeError) {
     has file_path: str,

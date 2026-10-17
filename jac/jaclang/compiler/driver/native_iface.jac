@@ -1,18 +1,6 @@
 import hashlib;
 import json;
 import os;
-import from jaclang.compiler.frontend.codeinfo {
-    NATIVE_ABI_VERSION,
-    NativeFieldInfo,
-    NativeEnumLayout,
-    NativeFuncLayout,
-    NativeModuleLayout,
-    NativeStructLayout,
-    NativeTupleLayout,
-    native_unit_identity,
-    native_unit_root
-}
-import from jaclang.compiler.kernel_target { target_pkg_root }
 
 def native_unit_ref(path: str) -> str {
     """How one unit names another in what it writes to disk: by package

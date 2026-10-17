@@ -3,11 +3,6 @@ import os;
 import sys;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.jac0core.ext_registry {
-    MODULE_SUFFIXES,
-    is_jac_namespace_package,
-    language_of
-}
 
 glob _project_root_cache: dict[str, str | None] = {},
      _import_base_stack: list[str] = [],
@@ -1094,7 +1089,6 @@ def in_native_library(path: str) -> bool {
 }
 
 def _stub_catalog_active -> bool {
-    import from jaclang.jac0core.stubcat_hook { active }
     return active() is not None;
 }
 

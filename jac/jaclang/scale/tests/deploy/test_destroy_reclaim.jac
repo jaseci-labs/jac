@@ -7,12 +7,8 @@ Only the branches that need a cluster to misbehave live here.
 import unittest.mock;
 import from types { SimpleNamespace }
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
 import from jaclang.scale.deploy.target.kubernetes { target as target_mod }
 import from jaclang.scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
-import from jaclang.scale.injector.pvc_injector { bundle_pvc_name }
 
 glob APP: str = "test01",
      NS: str = "jb-test-ns",

@@ -1,8 +1,4 @@
 import os;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.host { active_host }
 
 obj SessionContext {
     has caller: JacProgram,
@@ -67,10 +63,6 @@ obj SessionHooks {
 def select_context(
     file_path: str, program: JacProgram, options: CompileOptions
 ) -> SessionContext {
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
     target = program;
     if not program.internal {
         options = bind_options(file_path, program, options);
@@ -140,17 +132,6 @@ def compile_in_session(
     use_str: (str | None),
     options: CompileOptions
 ) -> uni.Module {
-    import from jaclang.compiler.driver.compilation_context {
-        compilation_scope,
-        owner_scope_options
-    }
-    import from jaclang.compiler.driver.pass_driver { compile_progress }
-    import from jaclang.compiler.frontend.codeinfo {
-        get_effective_default_codespace_override,
-        reset_native_unit_compile,
-        set_effective_default_codespace,
-        set_native_unit_compile
-    }
     ctx = select_context(file_path, program, options);
     target = ctx.target;
     with compilation_scope(owner_scope_options(target, ctx.options)) {
@@ -226,7 +207,6 @@ def compile_once(
 }
 
 def drop_native_bindings(mod: uni.Module, resolved: str) {
-    import from jaclang.compiler.frontend.codeinfo { InteropContext, InteropManifest }
     key = os.path.realpath(resolved);
     manifest = mod.gen.interop_manifest;
     if not isinstance(manifest, InteropManifest) or not manifest.bindings {

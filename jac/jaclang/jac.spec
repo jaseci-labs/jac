@@ -553,12 +553,10 @@ import_wire ::=
     "comptime"? ("include" | "type")? (
         "any"
         | "*"
-        | wire_module_path (
-              "."
-              | "|"
-              | ("any" | "*" | STRING | wire_module_path ("." | "|")?)
-                (wire_payload | ";")
-          )
+        | wire_module_path
+          ("." | "|" | "++>" ("[" (wire_target ","?)* "]" | wire_target ";"))
     )
+
+wire_target ::= ("any" | "*" | STRING | wire_module_path ("." | "|")?) wire_payload?
 
 wire_payload ::= "{" (("*" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)* "}"

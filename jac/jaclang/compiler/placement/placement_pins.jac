@@ -1,9 +1,5 @@
-import from jaclang.compiler.driver.compilation_context { context_app }
 import fnmatch;
 import os;
-import from jaclang.compiler.frontend.host { active_host }
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.project.app_kinds { kind_codespace }
 
 glob PIN_SPACES: tuple[str, ...] = ('server', 'client', 'native');
 

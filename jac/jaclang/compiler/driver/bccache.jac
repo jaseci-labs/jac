@@ -2,11 +2,6 @@ import os;
 import stat;
 import time;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.source_layout {
-    LayoutTables,
-    annex_files_of,
-    base_file_of
-}
 
 glob _DIR_LISTINGS: dict[str, tuple[int, list[str]]] = {},
      LISTING_SETTLE_NS: int = 2_000_000_000,

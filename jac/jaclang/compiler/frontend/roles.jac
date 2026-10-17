@@ -1,88 +1,3 @@
-import type from jaclang.compiler.frontend.unitree {
-    Ability,
-    ArchHas,
-    Archetype,
-    AssertStmt,
-    AssignCompr,
-    Assignment,
-    AstAccessNode,
-    AstDocNode,
-    AstElseBodyNode,
-    AstTypedVarNode,
-    AtomTrailer,
-    AwaitingClause,
-    CastExpr,
-    CfgExpr,
-    CompareExpr,
-    ConcurrentExpr,
-    ConnectOp,
-    CtrlStmt,
-    DictCompr,
-    DictVal,
-    DisconnectOp,
-    EdgeOpRef,
-    EdgeRefTrailer,
-    ElseIf,
-    ElseStmt,
-    Enum,
-    EventSignature,
-    Except,
-    Expr,
-    ExprAsItem,
-    FString,
-    FilterCompr,
-    FinallyStmt,
-    FormattedValue,
-    FuncSignature,
-    GlobalVars,
-    HasVar,
-    IfElseExpr,
-    ImplDef,
-    GraphImport,
-    Import,
-    ImportRule,
-    ImportWire,
-    IndexSlice,
-    InnerCompr,
-    IterForStmt,
-    JsxAttribute,
-    JsxChild,
-    JsxElement,
-    JsxElementName,
-    KVPair,
-    KWPair,
-    ListCompr,
-    MatchArch,
-    MatchCase,
-    MatchKVPair,
-    MatchOr,
-    MatchPattern,
-    Module,
-    ModuleItem,
-    ModulePath,
-    ModulePattern,
-    MultiString,
-    Name,
-    NameAtom,
-    ParamVar,
-    ProgramModule,
-    PyInlineCode,
-    RaiseStmt,
-    Slice,
-    String,
-    SubTag,
-    SwitchCase,
-    Test,
-    Token,
-    TryStmt,
-    TypeParam,
-    TypedCtxBlock,
-    UnaryExpr,
-    UniNode,
-    VisitStmt,
-    WireItem
-}
-
 edge Role: UniNode --> UniNode {}
 
 edge Kid: UniNode --> UniNode {}
@@ -145,7 +60,7 @@ edge ConnAssignRole(Role): ConnectOp --> AssignCompr {}
 
 edge ConnTypeRole(Role): ConnectOp --> Expr {}
 
-edge ConsumersRole(Role): ImportWire --> ModulePath {}
+edge ConsumersRole(Role): WireTarget --> ModulePath {}
 
 edge CountByRole(Role): IterForStmt --> Assignment {}
 
@@ -201,7 +116,7 @@ edge HintRole(Role): Import --> SubTag[Token] {}
 
 edge InsertLocRole(Role): VisitStmt --> Expr {}
 
-edge ItemsRole(Role): Import | ImportRule | ImportWire --> ModuleItem
+edge ItemsRole(Role): Import | ImportRule | WireTarget --> ModuleItem
     | ModulePath
     | WireItem {}
 
@@ -281,7 +196,7 @@ edge StringsRole(Role): MultiString --> FString | String {}
 
 edge TargetRole(Role): UniNode --> Expr {}
 
-edge TargetsRole(Role): ImportRule --> ModulePattern {}
+edge TargetsRole(Role): ImportRule | ImportWire --> ModulePattern | WireTarget {}
 
 edge TgtEndpointRole(Role): Archetype --> Expr {}
 

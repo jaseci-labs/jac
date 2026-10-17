@@ -1,6 +1,5 @@
 import os;
 import from collections.abc { Callable }
-import from jaclang.compiler.frontend.host { PathFacts }
 
 obj LayoutTables {
     has jac_suffix: str = ".jac",

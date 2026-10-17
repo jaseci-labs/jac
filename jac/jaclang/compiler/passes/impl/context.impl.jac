@@ -21,7 +21,6 @@ impl Alert.__repr__ -> str {
 }
 
 impl Alert.as_log(*, colors: bool = False) -> str {
-    import from jaclang.project.source { render_diagnostic_header }
     return render_diagnostic_header(
         self.msg,
         self.code.code if self.code else '',
@@ -32,7 +31,6 @@ impl Alert.as_log(*, colors: bool = False) -> str {
 }
 
 impl Alert.pretty_print(*, colors: bool = False) -> str {
-    import from jaclang.project.source { render_diagnostic }
     return render_diagnostic(
         self.msg,
         self.code.code if self.code else '',

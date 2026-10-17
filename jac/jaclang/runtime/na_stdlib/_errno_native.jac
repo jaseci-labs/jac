@@ -1,5 +1,4 @@
 import from c { def strerror(errnum: i32) -> str;  }
-import from ._errno_platform { errno_address }
 
 glob EPERM: int = 1,
      ENOENT: int = 2,

@@ -5,21 +5,6 @@ The codes come from errno_constants.<os>.jac, generated from the target's
 <errno.h> by scripts/jacpython/gen_constants.jac.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyDict_New,
-    PyDict_SetItem,
-    PyDict_SetItemString,
-    PyExc_ImportError,
-    PyLong_FromLong,
-    PyModule_GetDict,
-    PyObject,
-    PyUnicode_FromString,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHooks }
-import from jaclang.runtime.python.modules.errno_constants { PLATFORM, CONSTANTS }
-
 def:priv add_errcode(
     module_dict: ptr[PyObject], error_dict: ptr[PyObject], name: str, code: i64
 ) -> bool {

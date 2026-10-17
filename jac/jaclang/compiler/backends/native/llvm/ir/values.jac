@@ -2,9 +2,6 @@
 Classes that are LLVM values: Value, Constant...
 Instructions are in the instructions module.
 """
-import jaclang.compiler.backends.native.llvm.ir.types as types;
-import jaclang.compiler.backends.native.llvm.ir._utils as _utils;
-import type from jaclang.compiler.backends.native.llvm.ir.module { Module }
 
 glob _CMP_MAP: dict[str, str] = {
          '>': 'gt',

@@ -1,13 +1,9 @@
 import copy;
-import from jaclang.project.workspace_model { AppSpec }
 import hashlib;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from collections.abc { Iterator }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.codeinfo { is_package_keyed_path }
-import type from jaclang.compiler.driver.program { JacProgram }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
@@ -25,7 +21,6 @@ def cache_scope(options: CompileOptions | None = None) -> Iterator[None] {
 
 @contextmanager
 def compilation_scope(options: CompileOptions | None = None) -> Iterator[None] {
-    import from jaclang.compiler.frontend.host { active_host }
     with cache_scope(options), active_host().session() {
         yield ;
     }
@@ -87,7 +82,6 @@ def package_owned(path: str, program: JacProgram, options: CompileOptions) -> bo
 def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
-    import from jaclang.compiler.frontend.host { active_host }
     if package_owned(path, program, options) {
         return owned_module_options(path, options);
     }
@@ -152,7 +146,6 @@ def context_identity(options: CompileOptions) -> str {
 }
 
 def context_program(program: JacProgram, options: CompileOptions) -> JacProgram {
-    import from jaclang.compiler.driver.program { JacProgram }
     context_root = program.context_root
         if program.context_root is not None
         else program;
@@ -187,7 +180,6 @@ def program_for(path: str, program: JacProgram) -> JacProgram {
 }
 
 def context_app(path: str) -> AppSpec | None {
-    import from jaclang.compiler.frontend.host { active_host }
     workspace = active_host().workspace(path);
     if workspace is None {
         return None;

@@ -1,12 +1,3 @@
-import from ._zlib_native {
-    ZInflateResult,
-    Z_STREAM_END,
-    Z_MEM_ERROR,
-    z_crc32,
-    z_inflate_all,
-    z_inflate_bound
-}
-
 glob:pub ZIP_STORED: int = 0,
      ZIP_DEFLATED: int = 8;
 

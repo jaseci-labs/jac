@@ -1,23 +1,4 @@
 import os;
-import from jaclang.compiler.driver.pipeline_types {
-    CompilationProduct,
-    ProductRequest
-}
-import from jaclang.compiler.driver.pipeline { product_passes, unavailable }
-import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.session_compile { SessionHooks }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.driver.module_analysis {
-    ModuleAnalysis,
-    PlanStep,
-    analyze_module,
-    run_plan
-}
 
 def session_of(task: ModuleAnalysis) -> SessionHooks {
     session = task.session;
@@ -28,7 +9,6 @@ def session_of(task: ModuleAnalysis) -> SessionHooks {
 }
 
 def admits_native_checks(task: ModuleAnalysis) -> bool {
-    import from jaclang.compiler.placement.placement_facts { variant_selected }
     options = task.options;
     return variant_selected(task.path) is not False
         and options.no_cgen
@@ -190,9 +170,6 @@ def scrub_native_artifacts_on_error(program: JacProgram, mod: uni.Module) -> boo
 }
 
 def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
-    import from jaclang.compiler.driver.pass_driver { deliver_alerts }
-    import from jaclang.compiler.frontend.diagnostics { E5092 }
-    import from jaclang.compiler.passes.context { Alert }
     if mod?.gen is None or mod.gen.has_native_ir() {
         return;
     }

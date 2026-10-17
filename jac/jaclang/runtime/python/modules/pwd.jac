@@ -5,40 +5,6 @@ Lookups use the reentrant C library calls with the GIL released and a buffer
 that doubles on ERANGE, as the C module does.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_fs_text,
-    jacpy_release,
-    NULL,
-    PyBytes_AsString,
-    PyErr_ExceptionMatches,
-    PyErr_NoMemory,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_KeyError,
-    PyExc_OverflowError,
-    PyExc_ValueError,
-    PyList_Append,
-    PyList_New,
-    PyLong_FromLong,
-    PyMem_RawFree,
-    PyMem_RawRealloc,
-    PyObject,
-    PySequence_Contains,
-    PyThreadState,
-    PyUnicode_EncodeFSDefault,
-    PyUnicode_FromString
-}
-import from jaclang.runtime.python.modules.posix_core {
-    _PyLong_FromUid,
-    _Py_Uid_Converter
-}
-import from jaclang.runtime.python.object_model.structseq {
-    PyStructSequence_New,
-    PyStructSequence_SetItem
-}
-import from jaclang.runtime.python.capi { object_error, repr_value }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.modules.user_records { passwd, SC_GETPW_R_SIZE_MAX }
 import from c {
     def getpwuid_r(
         uid: u32, record: &mut passwd, buffer: ptr, size: u64, result: &mut ptr[passwd]

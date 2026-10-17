@@ -74,6 +74,7 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
+def ship_wiring(package_root: str, site_package: str);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
 def strip_kernel_best_effort(site: str);
 def write_dist_info(repo_root: str, site: str);

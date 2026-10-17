@@ -1,7 +1,5 @@
 import copy;
 import from pathlib { Path }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.frontend.unitree { Module }
 
 def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
     if Path(path).suffix == '.py' {

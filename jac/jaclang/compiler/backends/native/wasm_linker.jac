@@ -1,12 +1,3 @@
-import from jaclang.compiler.backends.native.linker_common {
-    encode_sleb128,
-    encode_uleb128,
-    encode_uleb128_padded5,
-    read_leb_name,
-    read_sleb128,
-    read_uleb128
-}
-
 glob _PLACEHOLDER: set = {
          "__linear_memory",
          "__indirect_function_table",

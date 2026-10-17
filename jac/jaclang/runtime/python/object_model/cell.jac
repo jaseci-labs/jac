@@ -6,45 +6,6 @@ by the evaluator and the C API use them unchanged. The cell layout is
 Include/cpython/cellobject.h's `PyCellObject`. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyArg_UnpackTuple,
-    PyErr_BadInternalCall,
-    PyErr_SetString,
-    PyExc_ValueError,
-    PyObject,
-    PyObject_GC_Del,
-    PyObject_GenericGetAttr,
-    PyObject_RichCompare,
-    PyUnicode_FromFormat,
-    Py_NewRef,
-    Py_NotImplemented,
-    Py_XNewRef,
-    _PyArg_NoKeywords,
-    _PyObject_GC_New,
-    jacpy_release
-}
-import from jaclang.runtime.python.layouts {
-    PyCellObject,
-    PyCellObject_SIZE,
-    PyGetSetDef,
-    PyTypeObject,
-    PyVarObject,
-    Py_TPFLAGS_DEFAULT,
-    Py_TPFLAGS_HAVE_GC,
-    _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
-    _object
-}
-import from jaclang.runtime.python.object_model.header {
-    object_gc_track,
-    object_gc_untrack,
-    object_is_type,
-    object_type,
-    PyType_Type,
-    rich_compare_values
-}
-import from jaclang.runtime.python.bindings.module { visit_reference }
-
 import from c {
     glob:priv cell_getsetlist: list[PyGetSetDef] = [
              PyGetSetDef(

@@ -1,9 +1,3 @@
-import from jaclang.scale.deploy.target.kubernetes.ops_rbac {
-    build_ops_rbac,
-    ops_role_name
-}
-
-
 def _all_verbs(role: dict[str, any]) -> list[str] {
     out: list[str] = [];
     for rule in role["rules"] {

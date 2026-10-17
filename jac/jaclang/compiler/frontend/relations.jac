@@ -1,32 +1,3 @@
-import type from jaclang.compiler.frontend.unitree {
-    Ability,
-    AstTypedVarNode,
-    ConditionalNode,
-    ContextAwareNode,
-    Expr,
-    FuncCall,
-    Import,
-    Module,
-    NameAtom,
-    Symbol,
-    UniCFGNode,
-    UniScopeNode
-}
-import type from jaclang.compiler.types.types {
-    ClassDetailsPrivate,
-    ClassDetailsShared,
-    ClassType,
-    EnumMemberInfo,
-    EnumMemberType,
-    FunctionType,
-    ModuleType,
-    OverloadedType,
-    Parameter,
-    TypeBase,
-    TypeVarType,
-    UnionType
-}
-
 edge SymOf: NameAtom --> Symbol {}
 
 edge Defines: Symbol --> NameAtom {}

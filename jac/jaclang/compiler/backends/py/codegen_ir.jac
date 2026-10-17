@@ -1,5 +1,4 @@
 import struct;
-import from jaclang.compiler.backends.py.jcir_facts { jcir_python_version }
 
 glob CIR_MAGIC: bytes = b"JCIR",
      CIR_FORMAT_VERSION: int = 1,

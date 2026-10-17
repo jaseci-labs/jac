@@ -1,22 +1,4 @@
 import from io { BytesIO }
-import from .._zstd_native {
-    zstd_version_number,
-    zstd_is_error,
-    zstd_error_name,
-    zstd_compress_bound,
-    zstd_cctx_new,
-    zstd_cctx_free,
-    zstd_cctx_set,
-    zstd_compress2,
-    zstd_dctx_new,
-    zstd_dctx_free,
-    zstd_dctx_set,
-    zstd_decompress_stream,
-    zstd_frame_content_size,
-    zstd_frame_dict_id,
-    ZSTD_C_COMPRESSION_LEVEL,
-    ZSTD_D_WINDOW_LOG_MAX
-}
 
 glob:pub COMPRESSION_LEVEL_DEFAULT: int = 3;
 

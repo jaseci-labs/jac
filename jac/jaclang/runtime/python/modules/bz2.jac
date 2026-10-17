@@ -5,52 +5,6 @@ libbzip2 keeps a pointer to its bz_stream, so each stream is pinned. The
 library runs with the GIL released; only the allocator callbacks run there.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyBytes_AsString,
-    PyErr_NoMemory,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_EOFError,
-    PyExc_MemoryError,
-    PyExc_OSError,
-    PyExc_RuntimeError,
-    PyExc_SystemError,
-    PyExc_ValueError,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyMem_RawFree,
-    PyMem_RawMalloc,
-    PyMem_Realloc,
-    PyObject,
-    PyThreadState,
-    PyThread_acquire_lock,
-    PyThread_allocate_lock,
-    PyThread_free_lock,
-    PyThread_release_lock,
-    jacpy_buffer_new,
-    jacpy_memory_copy,
-    jacpy_memory_move,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.type {
-    jacpy_binding_allocate,
-    jacpy_binding_record
-}
-import from jaclang.runtime.python.bindings.members {
-    record_set_byte,
-    record_set_object
-}
-import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_set,
-    jacpy_binding_native_present
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.output_buffer { BlocksOutputBuffer, Cursor }
 import from bz2 {
     obj bz_stream {
         has next_in: ptr[u8] = ptr[u8](),

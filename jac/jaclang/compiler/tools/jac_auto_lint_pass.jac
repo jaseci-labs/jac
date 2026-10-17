@@ -127,17 +127,12 @@ walker JacAutoLintPass(TreePass) {
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def _strip_wired_imports(nd: uni.Module) -> None;
-    def _resolved_import_keys(
-        stmt: uni.Import, spec: WiringSpec
-    ) -> set[tuple[str, str, str, str]];
-
     def _wired_items(
         stmt: uni.Import,
         spec: WiringSpec,
         provided: dict[tuple[str, str, str, str], WireRec]
     ) -> set[int];
 
-    def _strip_duplicate_wires(nd: uni.Module) -> None;
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;

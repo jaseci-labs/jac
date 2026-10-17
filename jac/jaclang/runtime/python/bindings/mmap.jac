@@ -1,48 +1,5 @@
 """The mmap module: the mmap type with its buffer, sequence and mapping protocols."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyExc_ImportError,
-    PyExc_OSError,
-    PyModule_AddIntConstant,
-    PyModule_AddObjectRef,
-    PyObject
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    MethodDefinition,
-    add_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.mmap { mmap_methods }
-import from jaclang.runtime.python.modules.mmap {
-    mmap_ass_item,
-    mmap_ass_subscript,
-    mmap_closed_get,
-    mmap_getbuffer,
-    mmap_item,
-    mmap_length,
-    mmap_new,
-    mmap_release,
-    mmap_releasebuffer,
-    mmap_repr,
-    mmap_subscript,
-    mmap_token,
-    page_size
-}
-import from jaclang.runtime.python.modules.mmap_constants { PLATFORM, CONSTANTS }
-
 glob:priv INTERNAL: list[str] = [
          "_SC_PAGESIZE",
          "MS_SYNC",

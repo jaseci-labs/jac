@@ -1,7 +1,5 @@
 import from os.path { split, join, isdir }
 import from fnmatch { fnmatchcase }
-import from ._directory_native { try_directory_names }
-import from ._glob_native { glob_lexists }
 
 def:pub has_magic(s: str) -> bool {
     n: int = len(s);

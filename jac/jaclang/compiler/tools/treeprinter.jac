@@ -1,9 +1,6 @@
-import from jaclang.compiler.frontend.roles { Kid }
 import ast as ast3;
 import builtins;
 import html;
-import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.frontend.unitree { UniNode, UniScopeNode }
 
 glob id_bag: dict[int, any] = {},
      id_state: dict[str, int] = {"used": 0},
@@ -209,7 +206,6 @@ def print_ast_tree(
     output_file: (str | None) = None,
     max_depth: (int | None) = None
 ) -> str {
-    import from jaclang.compiler.frontend.unitree { AstSymbolNode, Token }
     print_py_raise: bool = False;
     def __node_repr_in_tree(nd: UniNode) -> str {
         access = f"Access: {nd.access.tag.value} ,"

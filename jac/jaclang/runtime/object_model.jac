@@ -224,7 +224,6 @@ def make_object(cls: type) -> type {
 }
 
 def _pydantic_schema(cls: type, source: object, handler: any) -> object {
-    import from jaclang.runtime.object_pydantic { object_schema }
     return object_schema(cls, source, handler);
 }
 

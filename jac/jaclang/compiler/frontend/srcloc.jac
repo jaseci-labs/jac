@@ -1,5 +1,3 @@
-import type from jaclang.compiler.frontend.unitree { Source, Token }
-
 obj Span {
     has mod_path: str = '',
         first_line: int = 0,

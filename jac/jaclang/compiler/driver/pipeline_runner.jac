@@ -1,23 +1,6 @@
 import os;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
 
 def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
-    import from jaclang.compiler.backends.native.wasm_build {
-        _project_gc_settings,
-        _assert_ir_rc_free,
-        app_declared_imports
-    }
-    import from jaclang.compiler.driver.compile_options {
-        CompileOptions,
-        push_native_target,
-        pop_native_target
-    }
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
     (gc_mode, enf_mods, enf_grand) = _project_gc_settings();
     prev = push_native_target("wasm32-unknown-unknown");
     try {
@@ -74,7 +57,6 @@ def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
 }
 
 def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> bytes {
-    import from jaclang.compiler.backends.native.wasm_build { emit_wasm_from_ir }
     (llvm_ir, app_imports) = wasm_ir(program, file_path);
     return emit_wasm_from_ir(llvm_ir, exports, app_imports=app_imports);
 }
@@ -88,11 +70,6 @@ def native_application(
     debug: bool = False,
     no_ir_cache: bool = False
 ) -> tuple[uni.Module, CompileOptions] {
-    import from jaclang.compiler.driver.compile_options {
-        CompileOptions,
-        push_native_target,
-        pop_native_target
-    }
     previous = push_native_target(target) if target else None;
     try {
         options = CompileOptions(
@@ -135,15 +112,6 @@ def compile_application(
 ) -> uni.Module {
     import copy;
     import from pathlib { Path }
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
-    import from jaclang.compiler.frontend.unitree { Import, ModulePath }
-    import from jaclang.compiler.backends.py.artifact_imports { package_sources }
-    import from jaclang.jac0core.ext_registry { is_annex }
-    import from jaclang.runtime.prepared { holds_application_code }
-    import from jaclang.project.app_kinds { kind_has_client }
     entry_path = os.path.realpath(entry_path);
     project_root = os.path.realpath(
         options.project_root or os.path.dirname(entry_path)

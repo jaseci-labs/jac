@@ -1,11 +1,4 @@
 import os;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant {
-    CodeContext,
-    SymbolAccess,
-    Tokens as Tok
-}
-import type from jaclang.compiler.driver.program { JacProgram }
 
 glob PLACEMENT_SCHEMA: int = 3,
      PLACEMENT_SV_SIGNAL_NODES: list[tuple[str, type[uni.UniNode]]] = [
@@ -136,7 +129,6 @@ def project_kind_name(module: (uni.Module | None)) -> str {
 }
 
 def project_has_server(module: (uni.Module | None)) -> bool {
-    import from jaclang.project.app_kinds { kind_codespace }
     return kind_codespace(project_kind_name(module)) != 'client';
 }
 
@@ -431,7 +423,6 @@ def _names_a_member(nm: uni.Name) -> bool {
 }
 
 def _references_browser_seed_global(elem: uni.UniNode) -> str {
-    import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
     for nm in elem.get_all_sub_nodes(uni.Name) {
         if nm.value not in BROWSER_SEED_GLOBALS {
             continue;
@@ -451,7 +442,6 @@ def _references_browser_seed_global(elem: uni.UniNode) -> str {
 }
 
 def module_anchor_reasons(module: uni.Module) -> list[str] {
-    import from jaclang.compiler.placement.placement_pins { config_module_pin }
     reasons: list[str] = [];
     mod_path = module.loc.mod_path or '';
     if config_module_pin(mod_path) == 'server' {
@@ -502,7 +492,6 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
 }
 
 def _erased_only_import(imp: uni.Import) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { native_erased_import_names }
     if imp.from_loc is None or imp.is_absorb {
         return False;
     }
@@ -522,11 +511,6 @@ def native_blocker_scan(
     allow_pub: bool = False,
     hold_exempt: bool = False
 ) -> NativeBlockerScan {
-    import from jaclang.compiler.frontend.codeinfo {
-        NATIVE_SUPPORTED_STDLIB,
-        is_bundled_native_module,
-        resolve_native_module
-    }
     scan = NativeBlockerScan();
     deps = scan.deps;
     _held_path = (module.loc.mod_path if module.loc is not None else '') or '';

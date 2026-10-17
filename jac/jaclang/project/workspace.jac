@@ -5,17 +5,7 @@ import os;
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from jaclang.project.modresolver { find_jac_project_root }
 
-import from jaclang.project.app_kinds {
-    kind_codespace,
-    kind_has_server,
-    kind_entry,
-    kind_ui,
-    UI_MOBUI
-}
-
-import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 
 obj WorkspaceResolution {
     has paths: dict[str, str] = {},

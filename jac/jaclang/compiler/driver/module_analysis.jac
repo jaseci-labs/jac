@@ -1,16 +1,5 @@
 import os;
 import time;
-import from jaclang.compiler.driver.pipeline_types {
-    AnalysisFact,
-    CompilationProduct,
-    ProductRequest
-}
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.session_compile { SessionHooks }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.frontend.host { active_host }
 
 obj ModuleAnalysis {
     has program: JacProgram,
@@ -57,7 +46,6 @@ obj ModuleAnalysis {
     def require(
         product: CompilationProduct, request: (ProductRequest | None) = None
     ) -> bool {
-        import from jaclang.compiler.driver.pipeline { require }
         return require(
             self.program,
             self.module,
@@ -68,7 +56,6 @@ obj ModuleAnalysis {
     }
 
     def ready(product: CompilationProduct) -> bool {
-        import from jaclang.compiler.driver.pipeline { product_ready }
         return product_ready(self.program, self.module, product);
     }
 
@@ -118,7 +105,6 @@ def run_placement(task: ModuleAnalysis) {
 }
 
 def run_analysis(task: ModuleAnalysis) {
-    import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
     program = task.program;
     module = task.module;
     task.native = module is not None

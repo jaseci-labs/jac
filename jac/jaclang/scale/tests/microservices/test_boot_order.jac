@@ -7,12 +7,6 @@ fleet with no client keeps the plain parallel boot.
 """
 
 import subprocess;
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceEntry,
-    ServiceRegistry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 
 
 def _registry(client_owner: str = "") -> ServiceRegistry {

@@ -1,21 +1,5 @@
 """Native declarations for Python heap types and their C ABI callbacks."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    Py_buffer,
-    Py_TYPE,
-    PyErr_NoMemory,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyMem_RawCalloc,
-    PyObject,
-    PyType_GetSlot
-}
-import from jaclang.runtime.python.layouts { PyGetSetDef }
-import from jaclang.runtime.python.capi { c_string_copy }
-import from jaclang.runtime.python.bindings.module { MethodDefinition, install_methods }
-import from jaclang.runtime.python.bindings.members { MemberField }
-
 enum TypeFlags {
     DEFAULT = 0,
     IMMUTABLE = 256,
@@ -333,7 +317,6 @@ def descriptor_get(
     return result;
 }
 
-import from jaclang.runtime.python.cpython_api { PyErr_NoMemory, PyMem_RawCalloc }
 import from jaclang.runtime.python.layouts {
     PY_STRUCT_SEQUENCE_DESC_SIZE,
     PY_STRUCT_SEQUENCE_FIELD_SIZE,
@@ -344,7 +327,6 @@ import from jaclang.runtime.python.object_model.structseq {
     PyStructSequence_NewType,
     PyStructSequence_UnnamedField
 }
-import from jaclang.runtime.python.capi { c_string_copy }
 
 # A C string kept for the process, NULL for "" when `empty_is_null`.
 def:priv kept_text(text: str, empty_is_null: bool) -> ptr[u8] {

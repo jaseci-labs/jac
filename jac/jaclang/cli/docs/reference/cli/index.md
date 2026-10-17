@@ -651,17 +651,18 @@ jac precommit --install
 
 ### jac arch
 
-Seal a directory with an `archwire.jac` and keep it in sync with the modules below it. Having the file closes the directory: every import between its modules comes from a wire `provider --> consumer { names }`, generated into the consumer at compile time, and optional `edge Name: pattern --> pattern` rules restrict what may flow where. See [Project Wiring](../wiring.md).
+Seal a directory with an `archwire.jac`, or catch an existing one up with the modules below it. Having the file closes the directory: every import between its modules comes from a wire `provider ++> consumer { names }`, generated into the consumer at compile time, and optional `edge Name: pattern --> pattern` rules restrict what may flow where. Day to day you edit `archwire.jac` itself; this command is for adoption and one-time cleanups. See [Project Wiring](../wiring.md).
 
 ```bash
-jac arch [-h] [action] [scope] [-s] [-f] [--format {mermaid,json}] [-o OUTPUT]
+jac arch [-h] [action] [scope] [-s] [--prune] [-f] [--format {mermaid,json}] [-o OUTPUT]
 ```
 
 | Argument / Option | Description | Default |
 |--------|-------------|---------|
-| `action` | `init` (write `archwire.jac` from the current imports, sealing the directory), `sync` (add the wires its modules are missing) or `graph` (render the wiring) | `graph` |
+| `action` | `init` (write `archwire.jac` from the current imports, sealing the directory), `sync` (add the wires its modules are missing, and with `--prune` drop the ones they never use) or `graph` (render the wiring) | `graph` |
 | `scope` | The directory an `archwire.jac` governs; without it, `sync` visits every `archwire.jac` in the project | project root |
-| `-s, --strip` | With `init` or `sync`: remove the imports `archwire.jac` now provides from its modules (the same fix `jac fmt --lintfix` applies) | `False` |
+| `-s, --strip` | With `init` or `sync`: remove the written imports `archwire.jac` now injects from its modules (the same fix `jac fmt --lintfix` applies) | `False` |
+| `--prune` | With `sync`: also remove the wired names their consumers never use | `False` |
 | `-f, --force` | With `init`: overwrite an existing `archwire.jac` | `False` |
 | `--format` | With `graph`: `mermaid` or `json` | `mermaid` |
 | `-o, --output` | With `graph`: write to this file instead of stdout | stdout |
@@ -677,6 +678,9 @@ jac arch init core --strip
 
 # Add the wires the modules are missing, in every archwire.jac
 jac arch sync
+
+# Also remove the wired names no consumer uses
+jac arch sync --prune
 
 # Print the wiring as a mermaid diagram, or dump wires and rules as JSON
 jac arch graph

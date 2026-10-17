@@ -1,13 +1,6 @@
 import json;
-import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
-import from jaclang.compiler.frontend.const_fold { fold_const }
 
 impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
-    import from jaclang.compiler.c_interop {
-        c_type_spec,
-        is_foreign_struct_archetype,
-        is_opaque_c_archetype
-    }
     lib: dict[str, any] = {};
     if imp.from_loc is not None and imp.from_loc.path {
         names: list[str] = [];
@@ -245,16 +238,6 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
 }
 
 impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
-    import from jaclang.compiler.c_interop {
-        c_lent_arg_elem,
-        c_lent_param,
-        c_param_type,
-        c_type_spec,
-        c_variadic_param,
-        is_builtin_pin_call,
-        is_ptr_type,
-        named_function_of
-    }
     outs = self.outs(nd);
     call = outs[0] if outs else None;
     callee_type = nd.target.type if nd.target is not None else None;
@@ -497,7 +480,6 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
 }
 
 impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
-    import from jaclang.compiler.c_interop { foreign_read_copies }
     if not foreign_read_copies(nd) {
         return;
     }
@@ -512,11 +494,6 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
 }
 
 impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
-    import from jaclang.compiler.c_interop {
-        clib_global_of_name,
-        is_builtin_addressof_call
-    }
-
     if clib_global_of_name(nd) is None
         or (
             nd.find_parent_of_type(Import) is not None
@@ -528,7 +505,6 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
 }
 
 impl JcirGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
-    import from jaclang.compiler.c_interop { c_type_spec }
     params: list[Expr | KWPair] = list(nd.params or []);
     call = self.outs(nd)[0] if self.outs(nd) else None;
     if not isinstance(call, CgNode)

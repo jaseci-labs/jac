@@ -1,5 +1,4 @@
 import from ctypes { c_uint }
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
 """
     Initialize the LLVM core (deprecated).
 

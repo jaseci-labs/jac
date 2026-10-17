@@ -1,8 +1,5 @@
 import from datetime { datetime, timedelta, tzinfo }
-import from .datetime { _MAXORDINAL, _ord2ymd }
 import from os.path { normpath }
-import from ._file_native { read_file_bytes }
-import from ._directory_native { try_directory_names }
 
 glob _DEFAULT_TZPATH: list[str] = [
          "/usr/share/zoneinfo",

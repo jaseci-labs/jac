@@ -1,21 +1,3 @@
-import from ._math_native {
-    m_asinh,
-    m_atan2,
-    m_copysign,
-    m_cos,
-    m_cosh,
-    m_exp,
-    m_fabs,
-    m_hypot,
-    m_log,
-    m_log1p,
-    m_sin,
-    m_sinh,
-    m_sqrt,
-    m_tan,
-    m_tanh
-}
-
 import from math { isfinite as _isf, isinf as _isi, isnan as _isn }
 
 def _scale_up(value: float) -> float {

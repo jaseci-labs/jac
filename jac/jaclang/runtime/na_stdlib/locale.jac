@@ -8,7 +8,6 @@ import from ._locale_native {
     loc_strcoll,
     loc_strxfrm
 }
-import from ._locale_tables { _load_alias, _load_encalias }
 import os;
 
 glob:pub CHAR_MAX: int = 127;

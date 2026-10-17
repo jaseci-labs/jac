@@ -1,12 +1,7 @@
 import logging;
 import os;
 import tempfile;
-import from jaclang.scale.observability.metrics { NoOpMetricsCollector }
-import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.observability { prometheus_metrics }
-import from jaclang.scale.observability.prometheus_metrics {
-    PrometheusMetricsCollector
-}
 import from unittest.mock { patch, MagicMock }
 
 test "noop is disabled" {
@@ -322,10 +317,6 @@ glob BAND_TRAFFIC: list[tuple[float, int]] = [
 
 
 def _distribution_for(cfg: dict[str, any]) -> list[dict[str, str | int]] {
-    import from jaclang.scale.admin.admin_portal {
-        _parse_prometheus_text,
-        _calculate_metrics_summary
-    }
     collector = PrometheusMetricsCollector(config=cfg);
     for (latency, n) in BAND_TRAFFIC {
         for _ in range(n) {

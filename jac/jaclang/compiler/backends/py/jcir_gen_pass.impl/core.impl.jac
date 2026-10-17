@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl JcirGenPass._get_builtin_names -> set[str] {
     return self._builtin_names;
 }
@@ -258,7 +257,6 @@ impl JcirGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNo
 impl JcirGenPass.int_const_of(
     value: CtInt, jac_node: (UniNode | None) = None
 ) -> CgNode {
-    import from jaclang.compiler.types.ct_value { int_host, int_wide_bytes }
     wide = int_wide_bytes(value);
     if wide is None {
         return self.const_of(int_host(value), jac_node);

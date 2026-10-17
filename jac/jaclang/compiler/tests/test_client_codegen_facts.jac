@@ -26,12 +26,6 @@ cannot go silent again.
 import os;
 import shutil;
 import tempfile;
-import from jaclang.client.client_bundle { _client_target_module, _ensure_js_generated }
-import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
 
 
 glob _HELPER_SRC: str = (

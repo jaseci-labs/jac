@@ -1,48 +1,6 @@
 """The _sha3 module: the four SHA-3 types over sha3_224's generated methods and
 the two SHAKE types over shake_128's."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyModule_AddIntConstant,
-    PyModule_AddStringConstant,
-    PyObject,
-    Py_TYPE
-}
-import from jaclang.runtime.python.bindings.module {
-    MethodDefinition,
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.sha3 {
-    py_sha3_new_new,
-    sha3_224_methods,
-    shake_128_methods
-}
-import from jaclang.runtime.python.modules.hashlib { HASHLIB_GIL_MINSIZE }
-import from jaclang.runtime.python.modules.sha3 {
-    SHA3_token,
-    SHA3_TYPES,
-    get_block_size,
-    get_capacity_bits,
-    get_digest_size,
-    get_name,
-    get_rate_bits,
-    get_shake_digest_size,
-    get_shake_suffix,
-    get_suffix
-}
-
 def:priv sha3_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, SHA3_token.definition_of(Py_TYPE(instance)));
 }

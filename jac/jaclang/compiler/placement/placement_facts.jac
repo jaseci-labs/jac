@@ -1,8 +1,4 @@
 import os;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.host { active_host }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
@@ -48,8 +44,6 @@ def contexts_of(module: uni.Module) -> list[str] {
 
 
 def settle_server(module: uni.Module) -> bool {
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
     moved = False;
     for elem in module.body {
         if isinstance(elem, uni.ContextAwareNode)
@@ -115,7 +109,6 @@ def emits_server_code(mod: (uni.Module | None)) -> bool {
 
 
 def declared_path_spaces(source_path: str, prog: JacProgram) -> set[str] {
-    import from jaclang.compiler.placement.placement_solver { _materialize_module }
     return module_spaces(_materialize_module(source_path, prog));
 }
 
@@ -123,8 +116,6 @@ def declared_path_spaces(source_path: str, prog: JacProgram) -> set[str] {
 def discover_spaces(
     paths: list[str], prog: (JacProgram | None) = None
 ) -> dict[str, set[str]] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.boundary_classify { hub_module_for_path }
     target = prog if prog is not None else JacProgram();
     out: dict[str, set[str]] = {};
     for p in paths {
@@ -149,7 +140,6 @@ def discover_spaces(
 
 
 def pinned_module_space(source_path: str) -> str {
-    import from jaclang.compiler.placement.placement_pins { config_module_pin }
     return config_module_pin(source_path);
 }
 
@@ -172,15 +162,10 @@ def client_only_paths(paths: list[str]) -> set[str] {
 
 
 def _toolchain_rel(source_path: str) -> (str | None) {
-    import from jaclang.compiler.kernel_target { target_package_rel }
     return target_package_rel(source_path);
 }
 
 def variant_selected(source_path: str) -> (bool | None) {
-    import from jaclang.compiler.frontend.codeinfo {
-        is_native_variant_path,
-        is_selected_native_variant
-    }
     if not is_native_variant_path(source_path) {
         return None;
     }
@@ -274,10 +259,6 @@ def native_units_of(package_dir: str, sources: list[str]) -> list[str] {
 def session_declares_native(
     options: CompileOptions, source: str, element: str, program: JacProgram
 ) -> bool {
-    import from jaclang.compiler.placement.placement_pins {
-        effective_pin_for,
-        config_kind_space
-    }
     return options.force_codespace == "native"
         or options.default_codespace == "native"
         or options.native_required_for(source)

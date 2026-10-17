@@ -1,11 +1,3 @@
-import jaclang.runtime.osp_graph as _graph;
-import from jaclang.runtime.archetype {
-    Anchor,
-    EdgeAnchor,
-    NodeAnchor,
-    anchor_key,
-    same_anchor
-}
 import from weakref { ReferenceType }
 import from typing { cast }
 

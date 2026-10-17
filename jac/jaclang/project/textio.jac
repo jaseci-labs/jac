@@ -1,6 +1,4 @@
 import os;
-import type from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.project.source { JACIGNORE_FILENAME, normalize_exclude_patterns }
 
 glob _JAC_TEXT_ENCODINGS: list[str] = [
          'utf-8-sig',
@@ -42,7 +40,6 @@ def read_jacignore_patterns(project_root: str) -> list[str] {
 def span_for_file(
     mod_path: str, line: int, col: int, end_col: int = 0, source: str = ''
 ) -> Span {
-    import from jaclang.compiler.frontend.srcloc { Span as SrcSpan }
     bare = SrcSpan(
         mod_path=mod_path,
         first_line=line,

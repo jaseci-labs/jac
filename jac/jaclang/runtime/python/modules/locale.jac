@@ -7,63 +7,6 @@ the gettext message catalogs (modules/locale_platform.<os>.jac). The module
 state holds locale.Error.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_char_max,
-    jacpy_clear_errno,
-    jacpy_errno,
-    jacpy_release,
-    lconv,
-    NULL,
-    _Py_GetLocaleconvNumeric,
-    _Py_GetLocaleEncodingObject,
-    Py_NewRef,
-    PyBytes_AsString,
-    PyDict_New,
-    PyDict_SetItemString,
-    PyErr_NoMemory,
-    PyErr_SetFromErrno,
-    PyErr_SetString,
-    PyExc_OSError,
-    PyExc_RuntimeError,
-    PyExc_RuntimeWarning,
-    PyExc_ValueError,
-    PyList_New,
-    PyList_SetItem,
-    PyLong_FromLong,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyMem_Realloc,
-    _PyMem_Strdup,
-    PyObject,
-    PyUnicode_AsWideCharString,
-    PyUnicode_DecodeLocale,
-    PyUnicode_FromKindAndData,
-    PyUnicode_FromString,
-    PyUnicode_FSConverter
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.modules.errno_constants { ERANGE }
-import from jaclang.runtime.python.modules.locale_constants {
-    ALT_DIGITS,
-    CONSTANTS,
-    ERA,
-    LC_CTYPE,
-    LC_MESSAGES,
-    LC_MONETARY,
-    LC_NUMERIC,
-    LC_TIME
-}
-import from jaclang.runtime.python.modules.locale_platform {
-    GLIBC,
-    bind_textdomain_codeset,
-    bindtextdomain,
-    dcgettext,
-    dgettext,
-    gettext,
-    textdomain
-}
 import from c {
     def setlocale(category: i32, locale: ptr[u8]) -> ptr[u8];  def localeconv -> ptr[
         lconv

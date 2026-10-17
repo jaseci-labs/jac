@@ -1,15 +1,5 @@
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.autoscale.http_activation_config {
-    build_http_activation_spec,
-    apply_http_activation_for_target,
-    destroy_http_activation_for_target
-}
-import from jaclang.scale.tests.deploy.http_activation_test_support {
-    default_http_activation_config as _cfg,
-    mocked_keda_autoscaler as _mocked_keda
-}
 
 
 # --- Section A: enabled gating -----------------------------------------------

@@ -1,16 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    AtomUnit,
-    BinaryExpr,
-    Bool,
-    Float,
-    Int,
-    MultiString,
-    String,
-    Token,
-    UnaryExpr,
-    UniNode
-}
-
 def fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
     if expr is None {
         return (False, None);

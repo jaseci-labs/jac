@@ -1,8 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir.values as values;
-import jaclang.compiler.backends.native.llvm.ir.types as types;
-import jaclang.compiler.backends.native.llvm.ir._utils as _utils;
-import from jaclang.compiler.backends.native.llvm.ir.context { Context, global_context }
-
 """The cache key of one metadata operand: equal operands share a key.
 
 Constants compare by their text and metadata strings by their string; every

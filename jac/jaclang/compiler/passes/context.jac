@@ -1,16 +1,3 @@
-import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
-import from jaclang.compiler.frontend.diagnostics {
-    DiagnosticInfo,
-    E9001,
-    LINT_ALIASES,
-    Severity
-}
-import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.frontend.unitree { Module, Source, TreeWalker, UniNode }
-import from jaclang.compiler.driver.compile_options { CancelToken }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import type from jaclang.compiler.driver.program { JacProgram }
-
 obj Alert {
     has msg: str,
         loc: Span,
@@ -27,7 +14,7 @@ obj Alert {
     def pretty_print(*, colors: bool = False) -> str;
 }
 
-glob INLINE_LOCKED_CODES: set[str] = {"E1144", "E2090", "E2091", "E2094"};
+glob INLINE_LOCKED_CODES: set[str] = {"E1144", "E1146", "E2090", "E2091", "E2094"};
 
 obj DiagnosticPolicy {
     has suppress_codes: list[str] = [],

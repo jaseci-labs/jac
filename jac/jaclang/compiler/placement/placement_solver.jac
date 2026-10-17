@@ -1,22 +1,5 @@
-import from jaclang.compiler.passes.context { CompilerPass }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, PassContract }
 import os;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
 
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.placement_work { PlacementWork }
-import from jaclang.compiler.placement.placement {
-    PLACEMENT_HOLD_EXEMPT_ROOTS,
-    PlacementSummary,
-    get_module_summary,
-    record_placement_evidence,
-    scan_native_blockers,
-    summarize_module,
-    summary_store
-}
-import from jaclang.runtime.portability { supports }
 
 obj NativeDepScan {
     has fresh: list[tuple[str, float, int]],
@@ -51,9 +34,6 @@ def refresh_placement_module(module: uni.Module, prog: JacProgram) {
 def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
     host = active_host();
     files = [path]
         + host.annex_files(path, '.impl.jac')
@@ -114,8 +94,6 @@ def _native_dep_scan(
 def _native_deps_ok(
     root_path: str, root_deps: list[str], hold_exempt: bool = False
 ) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
     edges: dict[str, list[str]] = {root_path: list(root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
@@ -163,8 +141,6 @@ def native_default_path_ok(path: str) -> bool {
 def native_placement_candidate(
     module: uni.Module, prog: JacProgram
 ) -> tuple[bool, str] {
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
     mod_path = module.loc.mod_path if module.loc is not None else '';
     if not mod_path {
         return (False, "no module path");
@@ -196,7 +172,6 @@ def native_placement_candidate(
 }
 
 def dependency_summary(prog: JacProgram, path: str) -> (PlacementSummary | None) {
-    import from jaclang.compiler.driver.boundary_classify { hub_module_for_path }
     key = os.path.abspath(path);
     store = summary_store(prog);
     if key in store {
@@ -222,9 +197,6 @@ def dependency_summary(prog: JacProgram, path: str) -> (PlacementSummary | None)
 def native_closure_blocker(
     prog: JacProgram, root_path: str, deps: list[str]
 ) -> tuple[str, bool] {
-    import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
-    import from jaclang.compiler.native_scope { in_native_scope_path }
-    import from jaclang.compiler.placement.placement_facts { pinned_module_space }
     seen: set[str] = {os.path.abspath(root_path)};
     queue: list[str] = [os.path.abspath(dep) for dep in deps];
     while queue {
@@ -257,7 +229,6 @@ def native_closure_blocker(
 }
 
 def _endpoint_veto_applies(module: uni.Module) -> bool {
-    import from jaclang.compiler.placement.placement { project_has_server }
     return project_has_server(module);
 }
 
@@ -300,7 +271,6 @@ def _py_import_client_portable(elem: uni.Import, app_kind: str = '') -> bool {
 def _pullable_by_client_reference(
     elem: uni.UniNode, module: uni.Module, body_refs: dict[int, set[int]]
 ) -> bool {
-    import from jaclang.compiler.driver.boundary_classify { is_server_anchored_module }
     if isinstance(elem, uni.Archetype) and elem.arch_kind is not None {
         import from jaclang.compiler.placement.placement { module_has_root_access }
         if module_has_root_access(elem) {
@@ -368,7 +338,6 @@ def _ref_top_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
 }
 
 def _is_sv_import(elem: uni.UniNode) -> bool {
-    import from jaclang.compiler.driver.boundary_classify { import_crosses_apps }
     return isinstance(elem, uni.Import)
         and (elem.is_service_import or import_crosses_apps(elem));
 }
@@ -383,7 +352,6 @@ def _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None) {
 }
 
 def _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None) {
-    import from jaclang.compiler.driver.boundary_classify { hub_module_for_path }
     found = hub_module_for_path(path, prog);
     if found is not None {
         return found;
@@ -480,7 +448,6 @@ def _closure_pullable(
 }
 
 def _module_externally_pinned(mod_path: str) -> bool {
-    import from jaclang.compiler.placement.placement_pins { config_module_pin }
     return config_module_pin(mod_path) != '';
 }
 
@@ -489,7 +456,6 @@ def _python_backend_forced(prog: JacProgram) -> bool {
 }
 
 def _seed_from_summary(module: uni.Module, prog: JacProgram) -> int {
-    import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
     mod_path = module.loc.mod_path or '';
     ps = get_module_summary(module, prog);
     seeded = 0;
@@ -564,7 +530,6 @@ def solve_module_placement(
     dual: bool = False,
     pull_dependents: bool = True
 ) -> int {
-    import from jaclang.compiler.driver.boundary_classify { _stamp_context_element }
     mod_path = module.loc.mod_path or '';
     index_by_id: dict[int, int] = {};
     for (bidx, bstmt) in enumerate(module.body) {
@@ -778,7 +743,6 @@ def solve_module_placement(
 def _emit_solver_warning(
     prog: JacProgram, diag: DiagnosticInfo, nd: uni.UniNode, name: str
 ) {
-    import from jaclang.compiler.passes.context { Alert }
     for w in prog.warnings_had {
         if (
             w.code is diag
@@ -803,7 +767,6 @@ def _emit_solver_warning(
 }
 
 def _warn_state_forks(target: uni.Module, prog: JacProgram) {
-    import from jaclang.compiler.frontend.diagnostics { W6006 }
     ps = get_module_summary(target, prog);
     written: set[int] = set();
     for es in ps.elements {
@@ -828,7 +791,6 @@ def _warn_state_forks(target: uni.Module, prog: JacProgram) {
 }
 
 def _held_pull_ids(target: uni.Module, target_path: str) -> set[int] {
-    import from jaclang.compiler.frontend.host { active_host }
     held: set[int] = set();
     for part in active_host().client_pulls(target_path).split(",") {
         if not part {
@@ -932,7 +894,9 @@ def _pull_boundary_import(
         targets.append(hub_target);
     }
     try {
-        import from jaclang.compiler.symbol_utils { symbol_linked_source_module }
+        import from jaclang.compiler.driver.boundary_classify {
+            symbol_linked_source_module
+        }
         linked = symbol_linked_source_module(imp);
         if (
             linked is not None

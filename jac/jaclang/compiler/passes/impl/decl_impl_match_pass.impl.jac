@@ -369,8 +369,6 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(root_node: UniNode) -> None {
 impl DeclImplMatchPass._populate_self_member_symbols(
     impl_def: ImplDef, archetype: Archetype
 ) -> None {
-    import from jaclang.compiler.frontend.diagnostics { W2080 }
-
     for trailer_node in impl_def.get_all_sub_nodes(AtomTrailer) {
         if not (trailer_node.parent and isinstance(trailer_node.parent, Assignment)) {
             continue;
@@ -415,8 +413,6 @@ impl DeclImplMatchPass._populate_self_member_symbols(
 }
 
 impl DeclImplMatchPass._populate_inline_init_symbols(archetype: Archetype) -> None {
-    import from jaclang.compiler.frontend.diagnostics { W2080 }
-
     if archetype.arch_type.name == 'KW_CLASS' {
         return;
     }

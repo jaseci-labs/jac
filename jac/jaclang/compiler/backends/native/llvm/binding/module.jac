@@ -7,14 +7,7 @@ import from ctypes {
     c_size_t,
     string_at
 }
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
-import from jaclang.compiler.backends.native.llvm.binding.linker { link_modules }
-import from jaclang.compiler.backends.native.llvm.binding.common {
-    _decode_string,
-    _encode_string
-}
-import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
-import from jaclang.compiler.backends.native.llvm.binding.context { get_global_context }
+
 """
     Create Module from a LLVM IR string
     """

@@ -1,10 +1,6 @@
 import sys;
 import os;
 import ctypes;
-import from jaclang.compiler.backends.native.llvm.binding.common { _is_shutting_down }
-
-import from jaclang.compiler.backends.native.llvm.shim_path { shim_path }
-import from jaclang.artifacts.model { ArtifactUnavailable }
 
 
 class _MissingShimFunc {

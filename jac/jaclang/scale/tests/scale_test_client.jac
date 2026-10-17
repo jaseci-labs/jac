@@ -5,10 +5,6 @@ import tempfile;
 import contextlib;
 import from pathlib { Path }
 
-import from jaclang.scale.tests.fixture_policy {
-    ADMIN_BOOTSTRAP_PASSWORD,
-    apply_fixture_policy
-}
 
 with entry {
     apply_fixture_policy();
@@ -108,8 +104,6 @@ obj ScaleTestClient {
     }
 
     def _initialize {
-        import from jaclang.scale.server.inprocess { prepare_inprocess_runtime }
-
         self._runtime = prepare_inprocess_runtime(
             self._jac_file,
             self._base_path,

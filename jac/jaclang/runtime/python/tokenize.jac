@@ -1,49 +1,7 @@
 """Python's streaming token iterator backed by the shared Jac scanner."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyLong_FromLongLong,
-    PyObject,
-    PyTuple_New,
-    jacpy_readline,
-    jacpy_release,
-    jacpy_tuple_set_owned
-}
 import type from typing { Never }
-import from jaclang.compiler.frontend.python.compiler_diagnostics {
-    report_token_warnings
-}
-import from jaclang.compiler.frontend.python.tokenizer {
-    tok_state,
-    token_source,
-    tokenizer_next
-}
-import from jaclang.compiler.frontend.python.token_model {
-    ENDMARKER,
-    NEWLINE,
-    INDENT,
-    DEDENT,
-    NUMBER,
-    STRING,
-    OP,
-    FSTRING_MIDDLE,
-    TSTRING_MIDDLE,
-    NL,
-    tok_diag
-}
 
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    checked,
-    required,
-    text_object
-}
-import from jaclang.runtime.python.native_services {
-    take_buffer,
-    parse_integer,
-    parse_float
-}
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 obj native_token {
     has kind: int,
         spelling: str,

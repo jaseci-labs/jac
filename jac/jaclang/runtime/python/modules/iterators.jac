@@ -6,47 +6,6 @@ replacement contents have been published. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_Clear,
-    PyExc_ValueError,
-    PyIter_Next,
-    PyList_Append,
-    PyList_GetItemRef,
-    PyLong_AsLongLong,
-    PyNumber_Add,
-    PyObject,
-    PyObject_Call,
-    PyObject_CallOneArg,
-    PyObject_GetIter,
-    PyObject_IsTrue,
-    PySequence_Tuple,
-    PyTuple_New,
-    PyTuple_Size,
-    Py_NewRef,
-    Py_None,
-    jacpy_call_two,
-    jacpy_error_pending,
-    jacpy_is_long,
-    jacpy_list_exchange,
-    jacpy_list_new,
-    jacpy_list_size,
-    jacpy_release,
-    jacpy_tuple_exchange,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned,
-    jacpy_tuple_unique
-}
-import from jaclang.runtime.python.capi {
-    required,
-    checked,
-    boundary_failure,
-    object_error,
-    text_object,
-    repr_value,
-    type_name
-}
-
 # These values identify iterator policies in the native bindings.
 enum pipeline_kind {
     ACCUMULATE = 0,

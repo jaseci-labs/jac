@@ -14,68 +14,6 @@ native state. The free-threaded build's critical sections and
 stop-the-world pauses have no counterpart: every JacPython build has a GIL.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyCoro_Type,
-    PyErr_Format,
-    PyErr_GivenExceptionMatches,
-    PyErr_SetObject,
-    PyErr_SetString,
-    PyException_GetTraceback,
-    PyException_SetCause,
-    PyException_SetContext,
-    PyException_SetTraceback,
-    PyExc_BaseException,
-    PyExc_RuntimeError,
-    PyExc_StopIteration,
-    PyExc_TypeError,
-    PyList_Append,
-    PyList_GetItem,
-    PyList_New,
-    PyList_SetItem,
-    PyList_Size,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject,
-    PyObject_CallMethodObjArgs,
-    PyObject_CallNoArgs,
-    PyObject_CallOneArg,
-    PyObject_GetAttr,
-    PyObject_GetOptionalAttr,
-    PyObject_IsTrue,
-    PyObject_VectorcallMethod,
-    PySet_Add,
-    PySet_Contains,
-    PySet_Discard,
-    PySet_New,
-    PySet_Size,
-    PyTuple_GetItem,
-    PyTuple_New,
-    PyType_IsSubtype,
-    PyUnicode_FromString,
-    PyUnicode_InternFromString,
-    Py_NewRef,
-    Py_None,
-    Py_TYPE,
-    _Py_IsInterpreterFinalizing,
-    PyInterpreterState_Get,
-    jacpy_asyncio_running_loop,
-    jacpy_asyncio_running_task,
-    jacpy_asyncio_tasks_head,
-    jacpy_is_type,
-    jacpy_release,
-    jacpy_tuple_set_owned
-}
-import from jaclang.runtime.python.layouts { _object }
-import from jaclang.runtime.python.object_model.bool { py_false, py_true }
-import from jaclang.runtime.python.bindings.module {
-    jacpy_binding_module_native_get,
-    jacpy_binding_module_native_present,
-    jacpy_binding_state_get
-}
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_owner }
-
 import from c {
     # FutureObj: FutureObj_HEAD(fut).
     obj FutureObj {

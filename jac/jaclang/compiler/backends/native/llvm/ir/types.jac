@@ -1,7 +1,4 @@
 import struct;
-import from jaclang.compiler.driver.compile_options { env_typed_pointers_enabled }
-import type from jaclang.compiler.backends.native.llvm.ir.values { Value, Constant }
-import type from jaclang.compiler.backends.native.llvm.ir.context { Context }
 
 glob ir_layer_typed_pointers_enabled: bool = env_typed_pointers_enabled(),
      _TYPES_MODULE: str = "jaclang.compiler.backends.native.llvm.ir.types";
@@ -48,7 +45,6 @@ def _type_list(items: any) -> list[Type] {
 
 """The `<type> <reference>` list an aggregate constant prints."""
 def _format_members(value: any) -> str {
-    import from jaclang.compiler.backends.native.llvm.ir.values { Value }
     parts: list[str] = [];
     if isinstance(value, (`list, `tuple)) {
         for x in value {
@@ -66,7 +62,6 @@ def _format_members(value: any) -> str {
 
 """Constants for the members of an aggregate, wrapping raw member values."""
 def _wrap_members(elements: list[Type], values: any) -> list[Value] {
-    import from jaclang.compiler.backends.native.llvm.ir.values { Value, Constant }
     out: list[Value] = [];
     index = 0;
     if isinstance(values, (`list, `tuple)) {
@@ -148,7 +143,6 @@ class Type {
     }
 
     def __call__(self: Type, value: any) -> Constant {
-        import from jaclang.compiler.backends.native.llvm.ir.values { Constant }
         return Constant(self, value);
     }
 
@@ -579,7 +573,6 @@ class VectorType(Type) {
     }
 
     def wrap_constant_value(self: VectorType, value: any) -> any {
-        import from jaclang.compiler.backends.native.llvm.ir.values { Constant }
         if isinstance(value, bytearray) {
             return [Constant(self.element, value)] * self.count;
         }
@@ -745,7 +738,6 @@ class BaseStructType(Aggregate) {
     }
 
     def gep(self: BaseStructType, i: Value) -> Type {
-        import from jaclang.compiler.backends.native.llvm.ir.values { Constant }
         if not isinstance(i.type, IntType) {
             raise TypeError(i.type);
         }

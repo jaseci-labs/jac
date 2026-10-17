@@ -2,16 +2,6 @@ import os;
 import from os.path { abspath, normpath }
 import from io { BytesIO }
 import from compression.zstd { ZstdFile }
-import from ._tarfile_native {
-    tar_read_file,
-    tar_create,
-    tar_write,
-    tar_close,
-    tar_chmod,
-    tar_symlink,
-    tar_link,
-    tar_utime
-}
 
 glob:pub BLOCKSIZE: int = 512,
      RECORDSIZE: int = 10240;
