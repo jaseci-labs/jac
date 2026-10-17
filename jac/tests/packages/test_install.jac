@@ -1,6 +1,7 @@
 import os;
 import shutil;
 import subprocess;
+import from tempfile { TemporaryDirectory }
 import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.packages.index { forget_registries }
@@ -84,6 +85,119 @@ def _world -> World {
 
 def _versions(lock: Lockfile) -> dict[str, str] {
     return {p.name: p.version for p in lock.packages};
+}
+
+def _publish_version(
+    registry: FixtureRegistry,
+    base: Path,
+    name: str,
+    version: str,
+    deps: dict[str, str] | None = None
+) {
+    package = base / f'{name.replace("/", "_")}-{version}';
+    write_tree(
+        package,
+        {
+            "jac.toml": package_toml(name, version, ["api"], deps),
+            "api.jac": f'def version -> str {{ return "{version}"; }}\n'
+        }
+    );
+    registry.publish(package);
+}
+
+def _resolver_world(
+    base: Path,
+    releases: dict[str, dict[str, dict[str, str]]],
+    app_dependencies: dict[str, str]
+) -> World {
+    registry = FixtureRegistry.create(base / "registry");
+    env = isolated_env(base, registry.base_dir);
+    app = base / "app";
+    for (name, versions) in releases.items() {
+        for (version, deps) in versions.items() {
+            _publish_version(registry, base, name, version, deps);
+        }
+    }
+    dependencies = "";
+    for (name, requirement) in app_dependencies.items() {
+        dependencies += f'"{name}" = "{requirement}"\n';
+    }
+    write_tree(
+        app,
+        {
+            "jac.toml": (
+                "[project]\nname = \"app\"\nversion = \"0.1.0\"\n\n"
+                + "[dependencies]\n"
+                + dependencies
+            ),
+            "main.jac": "with entry { print(\"ok\"); }\n"
+        }
+    );
+    return World(tmp=base, registry=registry, app=app, env=env);
+}
+
+def _install_world(w: World) -> Lockfile {
+    with patch.dict(os.environ, w.env) {
+        cfg = _config(w.app);
+        result = sync(cfg);
+        write_lock(cfg, result.lock);
+        lock = Lockfile.read(w.app / "jac.lock");
+        assert lock is not None;
+        return lock;
+    }
+}
+
+def _assert_mounted_version(w: World, package: str, version: str) {
+    mount = w.app / ".jac" / "packages" / "local" / package / "api.jac";
+    assert mount.exists() , f"missing mounted {package} package";
+    assert f'return "{version}"' in mount.read_text() , (
+        f"mounted {package} source does not match {version}"
+    );
+}
+
+test "a rejected candidate cannot enable prereleases" {
+    with TemporaryDirectory() as raw {
+        base_dir = Path(raw);
+        lib_releases = {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.5.0-beta.1": {}};
+        rejected = _resolver_world(
+            base_dir / "rejected",
+            {
+                "local/lib": lib_releases,
+                "local/bridge": {
+                    "1.0.0": {},
+                    "2.0.0": {"local/lib": ">=1.5.0-beta.1", "local/missing": "^1"}
+                }
+            },
+            {"local/bridge": "*", "local/lib": "^1"}
+        );
+        removed = _resolver_world(
+            base_dir / "removed",
+            {"local/lib": lib_releases, "local/bridge": {"1.0.0": {}}},
+            {"local/bridge": "*", "local/lib": "^1"}
+        );
+        rejected_lock = _install_world(rejected);
+        removed_lock = _install_world(removed);
+        expected = {"local/bridge": "1.0.0", "local/lib": "1.2.0"};
+        assert _versions(rejected_lock) == expected;
+        assert _versions(removed_lock) == expected;
+        _assert_mounted_version(rejected, "lib", "1.2.0");
+        _assert_mounted_version(removed, "lib", "1.2.0");
+    }
+}
+
+test "an explicit root prerelease requirement is preserved" {
+    with TemporaryDirectory() as raw {
+        base_dir = Path(raw);
+        lib_releases = {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.5.0-beta.1": {}};
+        explicit = _resolver_world(
+            base_dir / "explicit",
+            {"local/lib": lib_releases, "local/bridge": {"1.0.0": {}}},
+            {"local/bridge": "*", "local/lib": ">=1.5.0-beta.1"}
+        );
+        explicit_lock = _install_world(explicit);
+        assert _versions(explicit_lock)["local/lib"] == "1.5.0-beta.1";
+        _assert_mounted_version(explicit, "lib", "1.5.0-beta.1");
+    }
 }
 
 test "a registry package resolves, locks, mounts and imports" {

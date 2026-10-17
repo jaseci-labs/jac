@@ -64,17 +64,10 @@ obj GraphSource(PackageSource) {
         unlock_all: bool = False,
         jac_version: Version = Version.parse("0.0.0"),
         locals: dict[str, LocalPackage] = {},
-        origin_registry: dict[str, str] = {},
-        prerelease: set[str] = set();
+        origin_registry: dict[str, str] = {};
 
     def registry_for(name: str) -> Registry {
         return registry_named(self.origin_registry.get(name, ""), self.registries);
-    }
-
-    def note_requirement(name: str, req: Requirement) {
-        if req.names_prerelease {
-            self.prerelease.add(name);
-        }
     }
 
     def add_local(dep: PackageDep, base: Path) -> LocalPackage {
@@ -184,7 +177,6 @@ obj GraphSource(PackageSource) {
             } except SemverError as e {
                 raise ResolveError(f"{name} {version} -> {dep_name}: {e}");
             }
-            self.note_requirement(dep_name, req);
             out[dep_name] = req;
         }
         return out;
@@ -224,7 +216,7 @@ obj GraphSource(PackageSource) {
     }
 
     override def allows_prerelease(name: str) -> bool {
-        return name in self.prerelease;
+        return False;
     }
 
     def locked_entry(name: str, version: Version) -> LockedPackage {
@@ -303,7 +295,6 @@ def resolve_graph(
         } except SemverError as e {
             raise ResolveError(f"jac.toml: {dep.name}: {e}");
         }
-        source.note_requirement(dep.name, req);
         root_deps[dep.name] = req;
     }
     root_name = config.project.name
