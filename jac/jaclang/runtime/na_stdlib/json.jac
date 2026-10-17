@@ -307,20 +307,12 @@ def _dump_str(s: str, ensure_ascii: bool) -> str {
         } elif ensure_ascii and ch == 127 {
             parts.append("\\u007f");
         } elif ensure_ascii and ch > 127 {
-            width: int = 2 if ch < 224 else (3 if ch < 240 else 4);
-            code: int = ch % (64 if width == 2 else (32 if width == 3 else 16));
-            k: int = 1;
-            while k < width and i + k < n {
-                code = code * 64 + ord(s[i + k]) % 64;
-                k += 1;
-            }
-            i += width - 1;
-            if code > 65535 {
-                v: int = code - 65536;
+            if ch > 65535 {
+                v: int = ch - 65536;
                 parts.append("\\u" + _hex4_str(55296 + v // 1024));
                 parts.append("\\u" + _hex4_str(56320 + v % 1024));
             } else {
-                parts.append("\\u" + _hex4_str(code));
+                parts.append("\\u" + _hex4_str(ch));
             }
         } else {
             parts.append(s[i]);

@@ -2934,6 +2934,7 @@ graph import compiler.backends.native {
         link_wasm_module
     }
     wasm_artifact --> client.compiler.ViteCompiler._compile_wasm_module { wasm_assets }
+    wasm_artifact --> dist.source.build.build_native_product { wasm_assets }
     wasm_artifact --> compiler.backends.native.native_link {
         wasm_ld_args,
         write_allowed_imports
@@ -3083,6 +3084,7 @@ graph import compiler.backends.native.llvm {
     binding as llvm --> compiler.backends.native.link_glue.bind_shared_callbacks;
     binding as llvm --> compiler.backends.native.link_glue.init_object_codegen;
     binding as llvm --> compiler.backends.native.link_plan;
+    binding as llvm --> compiler.backends.native.na_ir_gen_pass;
     binding as llvm --> compiler.backends.native.kernel_stage0.unit_issue_details;
     type binding --> compiler.backends.native.link_plan {
         ExecutionEngine,
@@ -4889,6 +4891,8 @@ graph import compiler.frontend {
         HDR_TOTAL,
         JACSTR_DESC_FIELDS,
         RC_SENTINEL,
+        STR_ASCII_TAG_BIT,
+        STR_LEN_PAYLOAD_MASK,
         STR_LEN_TAG_BIT,
         STR_LEN_TAG_SHIFT,
         str_len_tag
