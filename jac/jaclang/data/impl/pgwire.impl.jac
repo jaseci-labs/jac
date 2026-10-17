@@ -68,10 +68,17 @@ impl _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ..
     n = len(sql);
     in_squote = False;
     in_dquote = False;
+    escape_squote = False;
+    continuation = False;
     while i < n {
         ch = sql[i];
         if in_squote {
             out.append(ch);
+            if escape_squote and ch == '\\' and i + 1 < n {
+                out.append(sql[i + 1]);
+                i += 2;
+                continue;
+            }
             if ch == "'" {
                 if i + 1 < n and sql[i + 1] == "'" {
                     out.append("'");
@@ -91,11 +98,89 @@ impl _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ..
             i += 1;
             continue;
         }
+        if sql.startswith('--', i) {
+            j = i + 2;
+            while j < n and sql[j] not in ('\n', '\r') {
+                j += 1;
+            }
+            out.append(sql[i:j]);
+            i = j;
+            continue;
+        }
+        if sql.startswith('/*', i) {
+            j = i + 2;
+            depth = 1;
+            while j < n and depth {
+                if sql.startswith('/*', j) {
+                    depth += 1;
+                    j += 2;
+                } elif sql.startswith('*/', j) {
+                    depth -= 1;
+                    j += 2;
+                } else {
+                    if sql[j] in ('\n', '\r') {
+                        continuation = True;
+                    }
+                    j += 1;
+                }
+            }
+            out.append(sql[i:j]);
+            i = j;
+            continue;
+        }
         if ch == "'" {
             in_squote = True;
+            escape_squote = (escape_squote and continuation)
+                or (
+                    i > 0
+                    and sql[i - 1] in ('E', 'e')
+                    and (
+                        i < 2
+                        or not (
+                            sql[i - 2].isalnum()
+                            or sql[i - 2] in ('_', '$')
+                            or ord(sql[i - 2]) >= 128
+                        )
+                    )
+                );
+            continuation = False;
             out.append(ch);
             i += 1;
             continue;
+        }
+        if ch.isspace() {
+            if ch in ('\n', '\r') {
+                continuation = True;
+            }
+        } else {
+            escape_squote = False;
+            continuation = False;
+        }
+        if ch == '$'
+            and (
+                i == 0
+                or not (
+                    sql[i - 1].isalnum()
+                    or sql[i - 1] in ('_', '$')
+                    or ord(sql[i - 1]) >= 128
+                )
+            ) {
+            j = i + 1;
+            if j < n and (sql[j].isalpha() or sql[j] == '_' or ord(sql[j]) >= 128) {
+                j += 1;
+                while j < n
+                    and (sql[j].isalnum() or sql[j] == '_' or ord(sql[j]) >= 128) {
+                    j += 1;
+                }
+            }
+            if j < n and sql[j] == '$' {
+                delimiter = sql[i:j + 1];
+                end = sql.find(delimiter, j + 1);
+                end = n if end < 0 else end + len(delimiter);
+                out.append(sql[i:end]);
+                i = end;
+                continue;
+            }
         }
         if ch == '"' {
             in_dquote = True;

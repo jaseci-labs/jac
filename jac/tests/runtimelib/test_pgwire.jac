@@ -69,6 +69,69 @@ test "placeholders inside quotes and unknown names are untouched" {
 }
 
 
+test "named params preserve dollar quoted literals" {
+    for literal in [
+        '$$:x$$',
+        '$tag$:x$tag$',
+        '$_tag1$:x$_tag1$',
+        '$é$:x$é$',
+        "$tag$it's $$:x$$ and $other$:unused$other$$tag$",
+        '$Tag$:x $tag$ :unused$Tag$'
+    ] {
+        (sql, args) = _named_to_positional(
+            f'SELECT {literal}, :x::int, :x', {'x': 7, 'unused': 9}
+        );
+        assert sql == f'SELECT {literal}, $1::int, $1';
+        assert args == [7];
+    }
+    (sql, args) = _named_to_positional('SELECT identifier$tag$, :x', {'x': 7});
+    assert sql == 'SELECT identifier$tag$, $1';
+    assert args == [7];
+}
+
+
+test "named params preserve SQL comments" {
+    for comment in [
+        "-- user's :unused note\n",
+        '-- :unused\r\n',
+        '-- :unused\r',
+        "/* user's :unused note */",
+        '/* outer /* :unused */ still :unused */'
+    ] {
+        (sql, args) = _named_to_positional(
+            f'{comment}SELECT :x::int', {'x': 7, 'unused': 9}
+        );
+        assert sql == f'{comment}SELECT $1::int';
+        assert args == [7];
+    }
+    for comment in ['-- :unused', '/* :unused */'] {
+        (sql, args) = _named_to_positional(
+            f'SELECT :x::int {comment}', {'x': 7, 'unused': 9}
+        );
+        assert sql == f'SELECT $1::int {comment}';
+        assert args == [7];
+    }
+}
+
+
+test "named params preserve escape string literals" {
+    for literal in [
+        r"E'it\'s :x'",
+        r"e'it\'s :x'",
+        r"E'back\\slash :x'",
+        "E':x''quoted'",
+        "E'first'\n'it\\'s :x'"
+    ] {
+        (sql, args) = _named_to_positional(f'SELECT {literal}, :x::int', {'x': 7});
+        assert sql == f'SELECT {literal}, $1::int';
+        assert args == [7];
+    }
+    (sql, args) = _named_to_positional(r"SELECT 'back\', :x::int", {'x': 7});
+    assert sql == r"SELECT 'back\', $1::int";
+    assert args == [7];
+}
+
+
 test "array literal escapes quotes and backslashes" {
     lit = _array_literal(['plain', 'has"quote', 'back\\slash']);
     assert lit == '{"plain","has\\"quote","back\\\\slash"}';
@@ -159,6 +222,36 @@ def _live_conn(td: str, app_name: str = 'jac_pgwire_test') -> any {
         password=(info.password or None),
         startup_params={'application_name': app_name}
     );
+}
+
+
+test "named params preserve SQL literals and bind counts against Postgres" {
+    cases = [
+        ("SELECT ':x', :x::int", {'x': 7}, [(':x', 7)]),
+        ('SELECT $$:x$$, :x::int', {'x': 7}, [(':x', 7)]),
+        ('SELECT $tag$:x$tag$, :x::int', {'x': 7}, [(':x', 7)]),
+        ('SELECT :x::int -- :unused\n', {'x': 7, 'unused': 9}, [(7, )]),
+        ('SELECT :x::int /* :unused */', {'x': 7, 'unused': 9}, [(7, )]),
+        ("-- user's note\nSELECT :x::int", {'x': 7}, [(7, )]),
+        ("/* user's note */ SELECT :x::int", {'x': 7}, [(7, )]),
+        (
+            '/* outer /* :unused */ still :unused */ SELECT :x::int',
+            {'x': 7, 'unused': 9},
+            [(7, )]
+        ),
+        (r"SELECT E'it\'s :x', :x::int", {'x': 7}, [("it's :x", 7)])
+    ];
+    with TemporaryDirectory() as td {
+        conn = _live_conn(td);
+        try {
+            for (sql, params, expected) in cases {
+                assert conn.run(sql, **params) == expected;
+            }
+            assert conn.run('SELECT 42::int') == [(42, )];
+        } finally {
+            conn.close();
+        }
+    }
 }
 
 
