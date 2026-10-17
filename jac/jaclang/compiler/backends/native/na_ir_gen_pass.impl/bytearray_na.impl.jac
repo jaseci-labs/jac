@@ -16,6 +16,28 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     memmove_fn = self._get_or_declare_extern("memmove", i8p, [i8p, i8p, i64]);
     memset_fn = self._get_or_declare_extern("memset", i8p, [i8p, i32, i64]);
 
+    grow_fn = self._emit_slow_path_helper("__bytearray_grow", ir.VoidType(), [ba_ptr]);
+    grow_fn.args[0].name = "buf";
+    gb = ir.IRBuilder(grow_fn.append_basic_block("entry"));
+    g_cap_p = gb.gep(
+        grow_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.p"
+    );
+    g_cap = gb.load(g_cap_p, name="cap");
+    g_len = gb.load(
+        gb.gep(
+            grow_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.p"
+        ),
+        name="len"
+    );
+    g_data_p = gb.gep(
+        grow_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.p"
+    );
+    g_zero = gb.icmp_signed("==", g_cap, ir.Constant(i64, 0), name="cap.zero");
+    g_floored = gb.select(g_zero, ir.Constant(i64, 4), g_cap, name="cap.floor");
+    gb.store(g_floored, g_cap_p);
+    self._emit_grow_array(gb, g_data_p, i8, g_len, g_cap_p, g_floored);
+    gb.ret_void();
+
     res_fnty = ir.FunctionType(ir.VoidType(), [ba_ptr, i64]);
     res_fn = ir.Function(self.llvm_module, res_fnty, name="__bytearray_reserve");
     res_fn.linkage = "private";
@@ -28,21 +50,14 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     b = ir.IRBuilder(entry_bb);
     buf_a = res_fn.args[0];
     need_a = res_fn.args[1];
-    len_p = b.gep(buf_a, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.p");
     cap_p = b.gep(buf_a, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.p");
-    data_p = b.gep(buf_a, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.p");
     b.branch(chk_bb);
     b = ir.IRBuilder(chk_bb);
     cap_v = b.load(cap_p, name="cap");
     fits = b.icmp_signed(">=", cap_v, need_a, name="fits");
     b.cbranch(fits, done_bb, grow_bb);
     b = ir.IRBuilder(grow_bb);
-    len_v = b.load(len_p, name="len");
-
-    is_zero = b.icmp_signed("==", cap_v, ir.Constant(i64, 0), name="cap.zero");
-    floored = b.select(is_zero, ir.Constant(i64, 4), cap_v, name="cap.floor");
-    b.store(floored, cap_p);
-    self._emit_grow_array(b, data_p, i8, len_v, cap_p, floored);
+    b.call(grow_fn, [buf_a]);
     b.branch(chk_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
