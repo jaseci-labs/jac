@@ -15,6 +15,52 @@ def _defines(text: str) -> int {
     );
 }
 
+test "the exported callback record keeps every field the loader needs" {
+    import from jaclang.runtime.interop_bridge { NativeCallback }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / "jac.toml").write_text('[placement.pins]\nhelper = "server"\n');
+        (base / "helper.jac").write_text(
+            "def:pub answer(x: int) -> None {\n    return;\n}\n"
+        );
+        (base / "main.jac").write_text(
+            "import from helper { answer }\n"
+                + "def:pub run -> int {\n"
+                + "    answer(7);\n"
+                + "    return 0;\n"
+                + "}\n"
+        );
+        program = JacProgram();
+        module = program.compile(
+            str(base / "main.jac"),
+            options=CompileOptions(
+                aot_mode=True, default_codespace="native", skip_native_engine=True
+            )
+        );
+        assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+        def stub_emit(ir: str) -> str {
+            return "/* captured */";
+        }
+        with patch.object(c_emit, "emit_c", stub_emit) {
+            record = write_native_product(
+                module, base, Path("libn"), shared=True, program=program
+            );
+        }
+        assert record["callbacks"] , (
+            "the pinned server callback must be exported, got: "
+            + repr(record["callbacks"])
+        );
+        saved = record["callbacks"][0];
+        assert saved["param_types"] == ["int"] , (
+            f"the loader needs param_types to build the trampoline, got {saved}"
+        );
+        assert saved["ret_type"] == "None" , repr(saved);
+        # the exact construction _load_application performs on load
+        rebuilt = NativeCallback(**saved);
+        assert rebuilt.param_types == ["int"] and rebuilt.name == "answer";
+    }
+}
+
 test "a native source export hands the C backend the reachable program only" {
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,

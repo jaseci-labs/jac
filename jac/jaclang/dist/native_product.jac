@@ -57,6 +57,7 @@ def write_native_product(
         'callbacks': [
             {
                 'name': binding.name,
+                'source_module': binding.source_module or '',
                 'ret_type': binding.ret_type,
                 'param_types': list(binding.param_types)
             } for binding in bindings
