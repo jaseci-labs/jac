@@ -475,9 +475,11 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
 }
 
 impl Serializer.repair(
-    data: dict[str, object], cls: type
+    data: dict[str, object], cls: type, mode: (str | None) = None
 ) -> tuple[dict[str, object], list[str]] {
-    mode = repair_mode();
+    if mode is None {
+        mode = repair_mode();
+    }
     if mode == 'off' {
         return (data, []);
     }
@@ -510,6 +512,9 @@ impl Serializer.repair(
 }
 
 impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] {
+    if type(val) is target_type {
+        return (val, True);
+    }
     if target_type is None or isinstance(target_type, str) {
         return (val, False);
     }
@@ -1127,7 +1132,7 @@ impl Serializer._deserialize_archetype(
     }
     cls = cast(type[object], resolved);
     mode = repair_mode();
-    (data, repair_steps) = Serializer.repair(data, cls);
+    (data, repair_steps) = Serializer.repair(data, cls, mode);
     try {
         arch: object = cls.__new__(cls);
         field_types = get_field_types(cls);
@@ -1241,7 +1246,7 @@ impl Serializer._deserialize_archetype(
             }
         }
 
-        for fd in fields(cls) {
+        for fd in _class_fields(cls) {
             if fd.name in assigned {
                 continue;
             }
@@ -1367,8 +1372,12 @@ impl frozen_value(value: any) -> bool {
 
 
 impl frozen_fields(anchor: Anchor) -> bool {
-    if anchor.__dict__.get('_field_written') {
+    state = anchor.__dict__;
+    if state.get('_field_written') {
         return False;
+    }
+    if state.get('_frozen') {
+        return True;
     }
     arch = anchor.archetype;
     if not type(arch).__dict__.get('__jac_tracked__', False) {
@@ -1383,7 +1392,22 @@ impl frozen_fields(anchor: Anchor) -> bool {
             return False;
         }
     }
+    state['_frozen'] = True;
     return True;
+}
+
+
+impl _class_fields(cls: type) -> tuple[any, ...] {
+    hit = _CLASS_FIELDS.get(id(cls));
+    if hit is not None and hit[0] is cls {
+        return hit[1];
+    }
+    found = tuple(fields(cls));
+    if len(_CLASS_FIELDS) >= _TYPE_SHAPES_LIMIT {
+        _CLASS_FIELDS.clear();
+    }
+    _CLASS_FIELDS[id(cls)] = (cls, found);
+    return found;
 }
 
 

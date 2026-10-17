@@ -750,12 +750,16 @@ def light_edge_views(
 
 def _note_write(an: any) {
     an.__dict__['_field_written'] = an.__dict__.get('_field_written', 0) + 1;
+    an.__dict__.pop('_frozen', None);
 }
 
 def _dirty_setattr(self: any, name: str, value: any) -> None {
     an = self.__dict__.get('__jac__');
     if an is None or not an.persistent {
         object.__setattr__(self, name, value);
+        if an is not None {
+            an.__dict__.pop('_frozen', None);
+        }
         return;
     }
     import from jaclang.runtime.runtime { JacRuntime }
@@ -781,6 +785,9 @@ def _dirty_delattr(self: any, name: str) -> None {
     an = self.__dict__.get('__jac__');
     if an is None or not an.persistent {
         object.__delattr__(self, name);
+        if an is not None {
+            an.__dict__.pop('_frozen', None);
+        }
         return;
     }
     import from jaclang.runtime.runtime { JacRuntime }
