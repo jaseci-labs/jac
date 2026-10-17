@@ -50,6 +50,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
+      js_engine: ${{ steps.filter.outputs.js_engine }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -86,6 +87,22 @@ jobs:
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
               - '.github/workflows/_installer.yml'
+            # Whatever the engine is or is lowered by: its sources, the whole
+            # compiler (frontend and passes decide layout and dispatch, not
+            # only the native backend), the native stdlib and toolchain, and
+            # the lane's own gate.
+            js_engine:
+              - 'jac/js_engine/**'
+              - 'jac/jaclang/compiler/**'
+              - 'jac/jaclang/runtime/na_stdlib/**'
+              - 'jac/native/**'
+              - 'jac/build.zig'
+              - 'jac/build.zig.zon'
+              - '.github/workflows/_js_engine.yml'
+              - '.github/actions/js-engine-install/**'
+              - '.github/js-engine-site-perf.json'
+              - 'scripts/js_engine_site_perf.jac'
+              - 'scripts/js_engine_site_perf.test.jac'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
             # path that can move them changes (or on push/dispatch). The darwin
             # lane no longer reads this filter -- it is nightly + `macos`-label
@@ -1687,11 +1704,13 @@ jobs:
     uses: ./.github/workflows/_macos-native.yml
 
   # The js_engine accelerator's lane: build it, install it, and hold the
-  # official binary to using it (node suite, a client build, test262). On
-  # request only -- the `native:js-engine` label or a manual run; nightly.yml
-  # runs it too.
+  # official binary to using it (node suite, a client build, test262) and to
+  # its site build speed against node. On a pull request that changes the
+  # engine or anything that compiles it (the `js_engine` filter), one carrying
+  # the `native:js-engine` label, or a manual run; nightly.yml runs it too.
   js-engine:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native:js-engine')) }}
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
     uses: ./.github/workflows/_js_engine.yml
   # The JacPython accelerator's lane: its own kit and its upstream CPython
   # gates. On request only -- the `native:jacpython` label or a manual run;

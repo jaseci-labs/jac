@@ -1,0 +1,43 @@
+name: Install the lane's js_engine
+description: >
+  Install the engine the js_engine lane's build job handed off (the
+  js-engine-build artifact: jac/zig-out/js with its inputs record) for every
+  jac, then seal the checkout and hold the official binary to using it. The
+  record matches this checkout, so `jac native build js-engine` finds the build
+  current and only installs it; zig is not set up here, so a build that is not
+  current fails instead of rebuilding. Runs after checkout and setup-jac.
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: js-engine-build
+        path: ${{ runner.temp }}/js-engine-build
+
+    # The install runs through this checkout's compiler (the root jac.toml's
+    # reroute), on the bundle the binary was built from, as the build job's did.
+    - name: Install the built engine
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        mkdir -p jac/zig-out
+        tar -xf "$RUNNER_TEMP/js-engine-build/js-engine.tar" -C jac/zig-out
+        BUNDLE="$(ls -d jac/.precompiled-build/*/ | head -1)"
+        [ -n "$BUNDLE" ] || { echo "::error::setup-jac left no precompile bundle"; exit 1; }
+        rm -rf jac/jaclang/_precompiled
+        cp -r "$BUNDLE" jac/jaclang/_precompiled
+        rm -f jac/jaclang/_precompiled/MANIFEST.json
+        jac native build js-engine
+
+    # From here on the official binary runs sealed, as a user's would, and
+    # must pick up the engine just installed.
+    - uses: ./.github/actions/seal-checkout
+
+    - name: The official binary uses the installed engine
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        set -euxo pipefail
+        jac native status js-engine
+        jac native status --require js-engine

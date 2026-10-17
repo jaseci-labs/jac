@@ -1,14 +1,20 @@
 name: js_engine
 
 # The js_engine accelerator's own lane. Releases and the CI kit ship bun, its
-# floor; the engine is built only on request: `jac native build js-engine`
-# locally, this lane in CI. It builds the engine from this checkout, installs
-# it the way that command does for every jac, then holds the official (sealed)
-# binary to using it: `jac native status` must resolve it, the node suite and
-# a client build run on it, and test262 must pass everything its baseline does.
+# floor; the engine is built only here in CI (`jac native build js-engine`
+# locally). `build` builds the engine from this checkout and hands it off; two
+# jobs then install it the way that command does for every jac and hold the
+# official (sealed) binary to using it, side by side on their own runners:
 #
-# Called by ci.yml (a pull request carrying the `native:js-engine` label, or a
-# manual run) and nightly.yml.
+#   test       the node suite and a client build run on it, and test262 must
+#              pass everything its baseline does.
+#   site-perf  the jaclang.org site build is timed on the engine and on node,
+#              and the engine's ratio to node is held to
+#              .github/js-engine-site-perf.json. A runner of its own keeps
+#              test262 out of the timings.
+#
+# Called by ci.yml (a pull request that changes the engine or the compiler,
+# one carrying the `native:js-engine` label, or a manual run) and nightly.yml.
 
 on:
   workflow_call:
@@ -17,10 +23,10 @@ permissions:
   contents: read
 
 jobs:
-  js-engine:
-    name: js-engine
+  build:
+    name: js-engine build
     runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 180
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v5
 
@@ -63,7 +69,7 @@ jobs:
           cp -r "$BUNDLE" jac/jaclang/_precompiled
           rm -f jac/jaclang/_precompiled/MANIFEST.json
 
-      - name: Build and install the engine
+      - name: Build the engine
         run: jac native build js-engine
 
       - name: Save the built engine
@@ -73,16 +79,31 @@ jobs:
           path: jac/zig-out/js
           key: js-engine-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ hashFiles('jac/js_engine/**', 'jac/build.zig', 'jac/build.zig.zon') }}
 
-      # From here on the official binary runs sealed, as a user's would, and
-      # must pick up the engine the build installed.
-      - uses: ./.github/actions/seal-checkout
+      # A tarball keeps the executables' modes, which an artifact's zip drops.
+      - name: Pack the engine for the test and perf jobs
+        run: tar -cf "$RUNNER_TEMP/js-engine.tar" -C jac/zig-out js
 
-      - name: The official binary uses the installed engine
-        working-directory: ${{ runner.temp }}
-        run: |
-          set -euxo pipefail
-          jac native status js-engine
-          jac native status --require js-engine
+      - name: Hand the engine to the test and perf jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-engine-build
+          path: ${{ runner.temp }}/js-engine.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  test:
+    name: js-engine tests
+    needs: build
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install the engine and seal the checkout
+        uses: ./.github/actions/js-engine-install
 
       - name: Run the node suite and a client build on the engine
         env:
@@ -121,4 +142,66 @@ jobs:
           name: test262-run-log
           path: jac/js_engine/engine/tests/test262/.run_logs
           retention-days: 7
+          if-no-files-found: ignore
+
+  # The engine's speed on the jaclang.org site build, as a ratio to node's with
+  # its optimizing tiers off (scripts/js_engine_site_perf.jac). The site is
+  # scaffolded the way the README quickstart does it and its client bundle
+  # built once, which writes the vite config the timed runs reuse. Only a ratio
+  # inside the band in .github/js-engine-site-perf.json passes: a slower engine
+  # fails, and so does a faster one, whose failure gives the new baseline to
+  # commit by hand with the change (the job summary carries the whole block,
+  # the js-engine-site-perf artifact its baseline.json). Node is pinned: a
+  # different node moves the ratio, so the gate asks for a new baseline
+  # instead of comparing.
+  site-perf:
+    name: js-engine site perf
+    needs: build
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install the engine and seal the checkout
+        uses: ./.github/actions/js-engine-install
+
+      - name: Set up Node.js for the comparison
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.6'
+
+      - name: Check the perf script
+        run: jac test scripts/js_engine_site_perf.jac
+
+      - name: Scaffold the site and build its client bundle
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          jac create site --awesome
+          test -d site/.jac/client/node_modules/vite \
+            || { echo "::error::jac create did not pull the site's npm deps"; exit 1; }
+          cd site
+          jac build --as client web
+          test -f .jac/client/configs/vite.config.js \
+            || { echo "::error::the client build wrote no vite config"; exit 1; }
+
+      - name: Time the site build on node and on the engine
+        run: >-
+          jac run scripts/js_engine_site_perf.jac -- measure
+          --client "$RUNNER_TEMP/site/.jac/client"
+
+      - name: Hold the engine / node ratio to its baseline
+        id: gate
+        run: jac run scripts/js_engine_site_perf.jac -- gate
+
+      - name: Upload the site perf results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-engine-site-perf
+          path: ${{ runner.temp }}/js-engine-site-perf
+          retention-days: 30
           if-no-files-found: ignore

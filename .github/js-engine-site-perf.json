@@ -1,0 +1,20 @@
+{
+  "runs": 5,
+  "fail_ratio": 1.05,
+  "update_ratio": 0.95,
+  "baseline": {
+    "runs": 5,
+    "ratio": 8.7687,
+    "jit_ratio": 26.8501,
+    "engine_seconds": 281.658,
+    "node_nojit_seconds": 32.121,
+    "node_seconds": 10.49,
+    "engine_rss_mib": 8285.1,
+    "node_nojit_rss_mib": 2202.3,
+    "node_rss_mib": 2412.1,
+    "node": "v20.19.6",
+    "commit": "3f946bd1fda1c7a75ebb71316ea3b3f6d69fd25d",
+    "run_url": "https://github.com/jaseci-labs/jac/actions/runs/38574627609",
+    "runner": "blacksmith-8vcpu-ubuntu-2404-nft6rrigiu2ah44d"
+  }
+}
