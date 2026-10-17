@@ -4,6 +4,12 @@ CPython bytearray supplies the retained buffer allocation; resizing, element
 conversion, slicing and sequence behavior are native Jac. Exported views pin
 logical size until the final buffer release. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
+
+NOTE: this is the jacpython-VM transcription of CPython's array. The
+na (native LLVM) port lives at ../na_stdlib/array.jac; the two runtimes
+have disjoint primitive floors and cannot import each other, so the
+element-encode/decode and range-check kernels are transcribed twice
+by design -- keep algorithmic fixes in BOTH files.
 """
 
 import from jaclang.runtime.python.cpython_api {
@@ -133,7 +139,7 @@ def:pub jacpy_array_init(state: array_state, code: i64) -> i64 {
     if kind < 0 and letter not in "uw" {
         object_error(
             PyExc_ValueError,
-            "bad typecode (must be b, B, u, h, H, i, I, l, L, q, Q, f, d or w)"
+            "bad typecode (must be b, B, u, w, h, H, i, I, l, L, q, Q, f or d)"
         );
         return -1;
     }
@@ -225,7 +231,19 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
             if state.itemsize < 8 {
                 limit = i64(1) << i64(state.itemsize * 8 - 1);
                 if actual < -limit or actual >= limit {
-                    object_error(PyExc_OverflowError, "signed integer is out of range");
+                    if letter == "b" {
+                        name = "signed char";
+                    } elif letter == "h" {
+                        name = "signed short integer";
+                    } else {
+                        name = "signed integer";
+                    }
+                    object_error(
+                        PyExc_OverflowError,
+                        name + " is less than minimum"
+                            if actual < -limit
+                            else name + " is greater than maximum"
+                    );
                     raise boundary_failure();
                 }
             }
@@ -234,7 +252,14 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
         bits = PyLong_AsUnsignedLongLong(number);
         pending();
         if state.itemsize < 8 and bits >= (u64(1) << i64(state.itemsize * 8)) {
-            object_error(PyExc_OverflowError, "unsigned integer is out of range");
+            if letter == "B" {
+                uname = "unsigned byte integer";
+            } elif letter == "H" {
+                uname = "unsigned short";
+            } else {
+                uname = "unsigned int";
+            }
+            object_error(PyExc_OverflowError, uname + " is greater than maximum");
             raise boundary_failure();
         }
         return bits;
@@ -608,6 +633,10 @@ def:pub jacpy_array_delete(
 def:pub jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject] {
     value: ptr[PyObject] = NULL;
     try {
+        if state.length == 0 {
+            object_error(PyExc_IndexError, "pop from empty array");
+            return NULL;
+        }
         if index < 0 {
             index += state.length;
         }

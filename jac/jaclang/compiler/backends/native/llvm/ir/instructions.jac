@@ -641,9 +641,9 @@ class LoadInstr(Instruction) {
         } else {
             align = '';
         }
-        volatile = "volatile " if self.volatile else "";
+        vol = 'volatile ' if self.volatile else '';
         buf.append(
-            f"load {volatile}{self.type}, {val.type} {val.get_reference()}{align}"
+            f"load {vol}{self.type}, {val.type} {val.get_reference()}{align}"
             f"{self._stringify_metadata(leading_comma=True)}\n"
         );
     }
