@@ -3301,7 +3301,7 @@ function _detachArrayBuffer(buffer) {
   }
   if (buffer._detached) return;
   if (buffer._ptr) {
-    // Externally-owned backing stores (Wasmtime linear memory, napi external
+    // Externally-owned backing stores (WebAssembly linear memory and napi external
     // buffers) must not be freed by the engine — only unbind the pointer.
     if (!buffer._external) {
       buf.free(buffer._ptr);
@@ -3350,10 +3350,10 @@ globalThis.__napiBinary = {
       ab._ptr = ptr;
       ab._byteLength = len;
       ab._maxByteLength = len;
-      // External backing store is owned by the caller (napi addon / Wasmtime
-      // linear memory) — the engine must NEVER buf.free() it. Marking it lets
-      // _detachArrayBuffer skip the free (freeing a Wasmtime ptr corrupts the
-      // heap / crashes; freeing a napi ptr double-frees addon memory).
+      // External backing stores belong to the caller (N-API addon or WebAssembly
+      // linear memory); the engine must NEVER buf.free() them. Marking this lets
+      // _detachArrayBuffer skip the free (otherwise caller-owned memory can be
+      // double-freed or corrupted).
       ab._external = true;
       _syncNativeBuffer(ab, false);
       return ab;

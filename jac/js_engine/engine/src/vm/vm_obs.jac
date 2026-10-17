@@ -8,6 +8,7 @@ or duck-typing through `object`.
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
+    js_null,
     MATH_NAN,
     jsv_is_object_cell,
     jsv_is_any_object,
@@ -38,6 +39,7 @@ import from engine.src.runtime.jsobject {
     js_object_has,
     js_object_delete
 }
+import from engine.src.runtime.gc_pin { gc_pin_value }
 
 # Single-slot tables — same Callable-in-dict pattern as _DISPATCH_TABLE.
 glob _OBS_GET_TABLE: dict[int, Callable[[JSValue, int, JSValue], JSValue]] = {},
@@ -112,34 +114,56 @@ def:pub js_call_bridge_ready -> bool {
     return obs_is_active() and _OBS_IMPL_READY and (0 in _OBS_CALL_TABLE);
 }
 
-# ── WASM host-import callback registry (Phase 3) ──────────────────────────────
-# The JS import callbacks for the current instantiate live here (keyed by import
-# index). Kept in vm_obs (not vm.na.jac) so the dispatch layer can register them
-# without a dispatch→vm import cycle; vm.na.jac reads them from here in the
-# host-call trampoline bridge.
+# ── WASM host-import callback registry ────────────────────────────────────────
+# Callbacks use unique host tokens so instances retain their imports across
+# later instantiations. Kept in vm_obs to avoid a dispatch→vm import cycle.
 glob _WASM_IMPORT_CBS: dict[int, JSValue] = {};
 
-"""Register a JS callback for a host-import index (dispatch layer, at instantiate)."""
-def:pub vm_wasm_register_import_cb(import_index: int, fn: JSValue) {
-    _WASM_IMPORT_CBS[import_index] = fn;
+"""Register a JS callback for a host-call token."""
+def:pub vm_wasm_register_import_cb(token: int, fn: JSValue) {
+    # The module-global registry is not scanned by the GC; each instance keeps
+    # only its host token, so pin the callback for the token's lifetime.
+    gc_pin_value(fn);
+    _WASM_IMPORT_CBS[token] = fn;
 }
 
-"""Clear all registered import callbacks (fresh instantiate)."""
-def:pub vm_wasm_clear_import_cbs {
-    _WASM_IMPORT_CBS = {};
-}
-
-"""Look up the JS callback for a host-import index (js_undefined if none)."""
-def:pub vm_wasm_get_import_cb(import_index: int) -> JSValue {
-    if import_index in _WASM_IMPORT_CBS {
-        return _WASM_IMPORT_CBS[import_index];
+"""Look up the callback for a host-call token (js_undefined if none)."""
+def:pub vm_wasm_get_import_cb(token: int) -> JSValue {
+    if token in _WASM_IMPORT_CBS {
+        return _WASM_IMPORT_CBS[token];
     }
     return js_undefined();
 }
 
-"""True if a callback is registered for the import index."""
-def:pub vm_wasm_has_import_cb(import_index: int) -> bool {
-    return import_index in _WASM_IMPORT_CBS;
+"""True if a callback is registered for the host-call token."""
+def:pub vm_wasm_has_import_cb(token: int) -> bool {
+    return token in _WASM_IMPORT_CBS;
+}
+
+# ── WASM externref value table ────────────────────────────────────────────────
+# Externref slots carry a small int id into this table (0 = null). Ids are
+# process-global (shared by all instances/stores), so a value that crosses
+# wasm -> JS -> wasm keeps its identity. Entries are GC-pinned: handle tables
+# are permanent by design (wasm values may be stored in tables/globals and
+# retrieved arbitrarily later), matching the function/table handles in wasm/bridge.
+glob _WASM_EXTERN_VALS: list[JSValue] = [js_undefined()];
+glob _WASM_EXTERN_IDS: dict[int, int] = {};
+
+"""Register a JSValue as an externref id (deduped by raw JSValue bits)."""
+def:pub vm_wasm_extern_id(v: JSValue) -> int {
+    if v == 0 { return 0; }
+    if v in _WASM_EXTERN_IDS { return _WASM_EXTERN_IDS[v]; }
+    gc_pin_value(v);
+    id: int = len(_WASM_EXTERN_VALS);
+    _WASM_EXTERN_VALS.append(v);
+    _WASM_EXTERN_IDS[v] = id;
+    return id;
+}
+
+"""JSValue for an externref id (js_null() for 0/out of range)."""
+def:pub vm_wasm_extern_value(id: int) -> JSValue {
+    if id <= 0 or id >= len(_WASM_EXTERN_VALS) { return js_null(); }
+    return _WASM_EXTERN_VALS[id];
 }
 
 # ToPrimitive hint constants shared with the VM-side impl.

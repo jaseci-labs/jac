@@ -878,6 +878,10 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_WASM_IMPORTS_ADD_TABLE,
     NATIVE_KIND_WASM_INSTANTIATE_IMPORTS,
     NATIVE_KIND_WASM_BIND_FUNC_KINDS,
+    NATIVE_KIND_WASM_TABLE_GET_REF,
+    NATIVE_KIND_WASM_TABLE_SET_VALUE,
+    NATIVE_KIND_WASM_EXTERN_VALUE,
+    NATIVE_KIND_WASM_TABLE_ELEM_KIND,
     NATIVE_KIND_TEMPORAL_DURATION,
     NATIVE_KIND_TEMPORAL_DURATION_FROM,
     NATIVE_KIND_TEMPORAL_DURATION_COMPARE,
@@ -1039,7 +1043,7 @@ import from engine.src.builtins.child_process_bridge {
     cp_unref,
     cp_ref
 }
-import from engine.src.ffi.wasmtime {
+import from engine.src.wasm.bridge {
     wasm_module_valid,
     wasm_module_compile,
     wasm_module_free,
@@ -1075,6 +1079,8 @@ import from engine.src.ffi.wasmtime {
     wasm_global_kind,
     wasm_global_get_int,
     wasm_global_get_dbl,
+    wasm_global_get_ref,
+    wasm_global_set_ref,
     wasm_last_error_class,
     wasm_global_create,
     wasm_global_set_val,
@@ -1085,15 +1091,22 @@ import from engine.src.ffi.wasmtime {
     wasm_table_set_null,
     wasm_table_set_func,
     wasm_table_grow,
+    wasm_table_elem_kind,
+    wasm_table_get_ref,
+    wasm_table_set_ref,
     wasm_export_table,
     wasm_imports_begin_for_module,
     wasm_imports_add_func,
+    wasm_imports_add_wasm_func,
     wasm_imports_add_memory,
     wasm_imports_add_global,
     wasm_imports_add_table,
     wasm_instantiate_with_imports,
     wasm_i64_to_decimal,
     wasm_i64_from_decimal,
+    wasm_f64_to_i32,
+    wasm_f64_to_i64,
+    wasm_new_host_token,
     WASMTIME_I32,
     WASMTIME_I64,
     WASMTIME_F32,
@@ -1103,7 +1116,8 @@ import from engine.src.ffi.wasmtime {
 }
 import from engine.src.vm.vm_obs {
     vm_wasm_register_import_cb,
-    vm_wasm_clear_import_cbs
+    vm_wasm_extern_id,
+    vm_wasm_extern_value
 }
 import from engine.src.builtins.regexp {
     js_regexp_create,
@@ -1282,7 +1296,7 @@ import from engine.src.runtime.proxy {
     js_proxy_is_callable,
     js_proxy_target
 }
-import from engine.src.runtime.fn_meta { fn_meta_is_closure }
+import from engine.src.runtime.fn_meta { fn_meta_is_closure, fn_meta_get_fn_props }
 import from engine.src.builtins.array {
     js_Array,
     js_Array_isArray,
@@ -8432,6 +8446,45 @@ def:priv _dn_ptr_arg(args: list[JSValue], idx: int) -> int {
     return 0;
 }
 
+"""Unsigned 32-bit value of a JSValue number (int32 or double)."""
+def _dn_u32bits(v: JSValue) -> int {
+    if jsv_is_int32(v) { return jsv_to_int32(v) & 4294967295; }
+    if jsv_is_double(v) { return wasm_f64_to_i32(jsv_to_double(v)) & 4294967295; }
+    return 0;
+}
+
+"""Func handle carried by a JS value: an export wrapper (__jacWasmFuncH) or a
+funcref marker (__jacFuncRefH). -1 when `v` is not a wasm function."""
+def _dn_wasm_funcref_h(v: JSValue) -> int {
+    if fn_meta_is_closure(v) {
+        # Export wrappers are JS closures; __jacWasmFuncH sits on fn_props.
+        fp: JSValue = fn_meta_get_fn_props(v);
+        h: JSValue = js_object_get(fp, str_intern("__jacWasmFuncH"));
+        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        h = js_object_get(fp, str_intern("__jacFuncRefH"));
+        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        return -1;
+    }
+    if jsv_is_object_cell(v) {
+        h2: JSValue = js_object_get(v, str_intern("__jacWasmFuncH"));
+        if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+        h2 = js_object_get(v, str_intern("__jacFuncRefH"));
+        if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+    }
+    return -1;
+}
+
+"""Convert a JS arg to an externref/funcref slot int for func_invoke.
+Returns [ival, ok]: ok=0 means the caller should throw a TypeError."""
+def _dn_wasm_ref_arg(kind: int, v: JSValue) -> list[int] {
+    if jsv_is_null(v) { return [0, 1]; }
+    if kind == WASMTIME_EXTERNREF { return [vm_wasm_extern_id(v), 1]; }
+    if jsv_is_undefined(v) { return [0, 1]; }
+    h: int = _dn_wasm_funcref_h(v);
+    if h >= 0 { return [h, 1]; }
+    return [0, 0];
+}
+
 def _dn_native_kind_zlib_crc32(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
@@ -8442,7 +8495,7 @@ def _dn_native_kind_zlib_crc32(
     return jsv_from_int32(zlib_crc32(seed, ptr, length));
 }
 
-# ── WebAssembly / Wasmtime bridge (docs/wasm.md Phase 2) ──────────────────────
+# ── WebAssembly / Jac-native interpreter bridge ───────────────────────────────
 
 def _dn_native_kind_wasm_validate(
     realm: Realm, this_val: JSValue, args: list[JSValue]
@@ -8520,6 +8573,7 @@ def _dn_native_kind_wasm_func_invoke(
 
     arg_ints: list[int] = [];
     arg_dbls: list[float] = [];
+    arg_raw: list[int] = [];
     i: int = 0;
     while i < nparams {
         kind: int = wasm_func_param_kind(func_h, i);
@@ -8530,11 +8584,28 @@ def _dn_native_kind_wasm_func_invoke(
         }
         iv: int = 0;
         dv: float = 0.0;
+        raw: int = 0;
         if kind == WASMTIME_F32 or kind == WASMTIME_F64 {
-            if jsv_is_double(av) {
-                dv = jsv_to_double(av);
-            } elif jsv_is_int32(av) {
-                dv = float(jsv_to_int32(av));
+            # NaN-box args ({nb:32,lo} / {nb:64,lo,hi}) carry the raw bit
+            # pattern so NaN payloads/signs survive — a JSValue double
+            # canonicalises them.
+            if jsv_is_object_cell(av) {
+                nb: JSValue = js_object_get(av, str_intern("nb"));
+                if jsv_is_int32(nb) and jsv_to_int32(nb) == 32 {
+                    iv = _dn_u32bits(js_object_get(av, str_intern("lo")));
+                    raw = 1;
+                } elif jsv_is_int32(nb) and jsv_to_int32(nb) == 64 {
+                    lo64: int = _dn_u32bits(js_object_get(av, str_intern("lo")));
+                    hiu: int = _dn_u32bits(js_object_get(av, str_intern("hi")));
+                    his: int = hiu;
+                    if his >= 2147483648 { his = his - 4294967296; }
+                    iv = wrapping_add(wrapping_mul(his, 4294967296), lo64);
+                    raw = 1;
+                }
+            }
+            if raw == 0 {
+                if jsv_is_double(av) { dv = jsv_to_double(av); }
+                elif jsv_is_int32(av) { dv = float(jsv_to_int32(av)); }
             }
         } elif kind == WASMTIME_I64 {
             # i64 params take BigInt (spec); accept Number as a convenience.
@@ -8543,22 +8614,27 @@ def _dn_native_kind_wasm_func_invoke(
             } elif jsv_is_int32(av) {
                 iv = jsv_to_int32(av);
             } elif jsv_is_double(av) {
-                iv = int(jsv_to_double(av));
+                iv = wasm_f64_to_i64(jsv_to_double(av));
             }
+        } elif kind == WASMTIME_FUNCREF or kind == WASMTIME_EXTERNREF {
+            ra: list[int] = _dn_wasm_ref_arg(kind, av);
+            if ra[1] == 0 {
+                vm_throw_native(make_type_error("funcref arguments must be null or a WASM exported function"));
+                return js_undefined();
+            }
+            iv = ra[0];
         } else {
-            # i32 — accept int32 or double-encoded numbers
-            if jsv_is_int32(av) {
-                iv = jsv_to_int32(av);
-            } elif jsv_is_double(av) {
-                iv = int(jsv_to_double(av));
-            }
+            # i32 — JS ToInt32 of int32 or double-encoded numbers
+            if jsv_is_int32(av) { iv = jsv_to_int32(av); }
+            elif jsv_is_double(av) { iv = wasm_f64_to_i32(jsv_to_double(av)); }
         }
         arg_ints.append(iv);
         arg_dbls.append(dv);
+        arg_raw.append(raw);
         i = i + 1;
     }
 
-    ok: bool = wasm_func_invoke(func_h, arg_ints, arg_dbls);
+    ok: bool = wasm_func_invoke(func_h, arg_ints, arg_dbls, arg_raw);
     if not ok {
         return js_undefined();
     }
@@ -8588,6 +8664,18 @@ def:priv _dn_wasm_result_value(i: int) -> JSValue {
     if kind == WASMTIME_I64 {
         # i64 → BigInt (Phase 3), matching Node/V8 (WASM i64 results are BigInt).
         return js_bigint_from_decimal_str(wasm_i64_to_decimal(wasm_call_result_int(i)));
+    }
+    if kind == WASMTIME_FUNCREF {
+        h: int = wasm_call_result_int(i);
+        if h == 0 { return js_null(); }
+        # Marker object; webassembly.js swaps it for the cached callable
+        # wrapper (or mints one) at the API boundary.
+        mk: JSValue = js_object_create_null();
+        js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
+        return mk;
+    }
+    if kind == WASMTIME_EXTERNREF {
+        return vm_wasm_extern_value(wasm_call_result_int(i));
     }
     # F32 / F64 → double
     return jsv_from_double(wasm_call_result_dbl(i));
@@ -8756,6 +8844,16 @@ def _dn_native_kind_wasm_global_get(
     if kind == WASMTIME_I32 {
         return jsv_from_int32(wasm_global_get_int(g_h));
     }
+    if kind == WASMTIME_FUNCREF {
+        h: int = wasm_global_get_ref(g_h);
+        if h == 0 { return js_null(); }
+        mk: JSValue = js_object_create_null();
+        js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
+        return mk;
+    }
+    if kind == WASMTIME_EXTERNREF {
+        return vm_wasm_extern_value(wasm_global_get_ref(g_h));
+    }
     # i64 → BigInt (Phase 3), matching Node/V8.
     return js_bigint_from_decimal_str(wasm_i64_to_decimal(wasm_global_get_int(g_h)));
 }
@@ -8792,6 +8890,13 @@ def _dn_native_kind_wasm_global_create(
         } elif len(args) >= 4 and jsv_is_int32(args[3]) {
             dval = float(jsv_to_int32(args[3]));
         }
+    } elif kind == WASMTIME_FUNCREF {
+        if len(args) >= 3 and not (jsv_is_null(args[2]) or jsv_is_undefined(args[2])) {
+            ival = _dn_wasm_funcref_h(args[2]);
+            if ival < 0 { ival = 0; }
+        }
+    } elif kind == WASMTIME_EXTERNREF {
+        if len(args) >= 3 { ival = vm_wasm_extern_id(args[2]); }
     } else {
         ival = _dn_ptr_arg(args, 2);
     }
@@ -8804,6 +8909,25 @@ def _dn_native_kind_wasm_global_set(
     # __wasm.globalSet(gh, ival, dval) -> bool  (kind inferred from the global)
     g_h: int = _dn_ptr_arg(args, 0);
     kind: int = wasm_global_kind(g_h);
+    if kind == WASMTIME_FUNCREF or kind == WASMTIME_EXTERNREF {
+        # __wasm.globalSet(gh, v, dval): v is the JSValue (funcref wrapper or
+        # marker; any value for externref).
+        v: JSValue = js_undefined();
+        if len(args) >= 2 { v = args[1]; }
+        if kind == WASMTIME_EXTERNREF {
+            if jsv_is_null(v) { return js_boolean(wasm_global_set_ref(g_h, 0)); }
+            return js_boolean(wasm_global_set_ref(g_h, vm_wasm_extern_id(v)));
+        }
+        if jsv_is_null(v) or jsv_is_undefined(v) {
+            return js_boolean(wasm_global_set_ref(g_h, 0));
+        }
+        fh: int = _dn_wasm_funcref_h(v);
+        if fh < 0 {
+            vm_throw_native(make_type_error("WebAssembly.Global: funcref value must be a WASM exported function or null"));
+            return js_undefined();
+        }
+        return js_boolean(wasm_global_set_ref(g_h, fh));
+    }
     ival: int = 0;
     dval: float = 0.0;
     if kind == WASMTIME_I64 {
@@ -8841,14 +8965,26 @@ def _dn_native_kind_wasm_global_kind(
 def _dn_native_kind_wasm_table_create(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
-    # __wasm.tableCreate(elemKind, initial, maximum) -> tableHandle
+    # __wasm.tableCreate(elemKind, initial, maximum, initValue) -> handle
     elem_kind: int = _dn_ptr_arg(args, 0);
     initial: int = _dn_ptr_arg(args, 1);
     maximum: int = 0 - 1;
     if len(args) >= 3 and not jsv_is_undefined(args[2]) {
         maximum = _dn_ptr_arg(args, 2);
     }
-    return js_int(wasm_table_create(elem_kind, initial, maximum));
+    init_ref: int = 0;
+    if elem_kind == WASMTIME_EXTERNREF {
+        init_val: JSValue = js_undefined();
+        if len(args) >= 4 { init_val = args[3]; }
+        if not jsv_is_null(init_val) { init_ref = vm_wasm_extern_id(init_val); }
+    } elif len(args) >= 4 and not (jsv_is_null(args[3]) or jsv_is_undefined(args[3])) {
+        init_ref = _dn_wasm_funcref_h(args[3]);
+        if init_ref < 0 {
+            vm_throw_native(make_type_error("WebAssembly.Table initial value must be a WASM exported function or null"));
+            return js_undefined();
+        }
+    }
+    return js_int(wasm_table_create(elem_kind, initial, maximum, init_ref));
 }
 
 def _dn_native_kind_wasm_table_size(
@@ -8888,7 +9024,64 @@ def _dn_native_kind_wasm_table_grow(
 ) -> JSValue {
     t_h: int = _dn_ptr_arg(args, 0);
     delta: int = _dn_ptr_arg(args, 1);
-    return js_int(wasm_table_grow(t_h, delta));
+    elem_kind: int = wasm_table_elem_kind(t_h);
+    init_ref: int = 0;
+    init_val: JSValue = js_undefined();
+    if len(args) >= 3 { init_val = args[2]; }
+    if elem_kind == WASMTIME_EXTERNREF {
+        if not jsv_is_null(init_val) { init_ref = vm_wasm_extern_id(init_val); }
+    } elif not (jsv_is_null(init_val) or jsv_is_undefined(init_val)) {
+        init_ref = _dn_wasm_funcref_h(init_val);
+        if init_ref < 0 {
+            vm_throw_native(make_type_error("WebAssembly.Table.grow: invalid funcref value"));
+            return js_int(-1);
+        }
+    }
+    return js_int(wasm_table_grow(t_h, delta, init_ref));
+}
+
+def _dn_native_kind_wasm_table_get_ref(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    # __wasm.tableGetRef(th, idx) -> -1 oob | 0 null | funchandle / externId
+    t_h: int = _dn_ptr_arg(args, 0);
+    idx: int = _dn_ptr_arg(args, 1);
+    return js_int(wasm_table_get_ref(t_h, idx));
+}
+
+def _dn_native_kind_wasm_table_set_value(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    # __wasm.tableSetValue(th, idx, v): v is a JSValue; refs are mapped to handles.
+    t_h: int = _dn_ptr_arg(args, 0);
+    idx: int = _dn_ptr_arg(args, 1);
+    v: JSValue = js_undefined();
+    if len(args) >= 3 { v = args[2]; }
+    if wasm_table_elem_kind(t_h) == WASMTIME_FUNCREF {
+        if jsv_is_null(v) or jsv_is_undefined(v) {
+            return js_boolean(wasm_table_set_ref(t_h, idx, 0));
+        }
+        fh: int = _dn_wasm_funcref_h(v);
+        if fh < 0 {
+            vm_throw_native(make_type_error("WebAssembly.Table.set: only WASM exported functions or null are supported as funcref values"));
+            return js_undefined();
+        }
+        return js_boolean(wasm_table_set_ref(t_h, idx, fh));
+    }
+    if jsv_is_null(v) { return js_boolean(wasm_table_set_ref(t_h, idx, 0)); }
+    return js_boolean(wasm_table_set_ref(t_h, idx, vm_wasm_extern_id(v)));
+}
+
+def _dn_native_kind_wasm_extern_value(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    return vm_wasm_extern_value(_dn_ptr_arg(args, 0));
+}
+
+def _dn_native_kind_wasm_table_elem_kind(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    return js_int(wasm_table_elem_kind(_dn_ptr_arg(args, 0)));
 }
 
 def _dn_native_kind_wasm_export_table(
@@ -8905,24 +9098,24 @@ def _dn_native_kind_wasm_export_table(
 def _dn_native_kind_wasm_imports_begin(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
-    # __wasm.importsBegin(modH) -> nimports (>=0) | -1. Also clears import cbs.
+    # Callbacks are keyed by per-function tokens; earlier instances keep theirs.
     mod_h: int = _dn_ptr_arg(args, 0);
-    vm_wasm_clear_import_cbs();
     return js_int(wasm_imports_begin_for_module(mod_h));
 }
 
 def _dn_native_kind_wasm_imports_add_func(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
-    # __wasm.importsAddFunc(idx, jsFn) -> bool. Registers the JS callback for the
-    # trampoline (keyed by idx) and wires the host func into the imports array.
+    # A Number is an exported wasm function handle; all other values are JS callbacks.
     idx: int = _dn_ptr_arg(args, 0);
     fn: JSValue = js_undefined();
-    if len(args) >= 2 {
-        fn = args[1];
+    if len(args) >= 2 { fn = args[1]; }
+    if jsv_is_int32(fn) {
+        return js_boolean(wasm_imports_add_wasm_func(idx, jsv_to_int32(fn)));
     }
-    vm_wasm_register_import_cb(idx, fn);
-    return js_boolean(wasm_imports_add_func(idx, idx));
+    token: int = wasm_new_host_token();
+    vm_wasm_register_import_cb(token, fn);
+    return js_boolean(wasm_imports_add_func(idx, token));
 }
 
 def _dn_native_kind_wasm_imports_add_memory(
@@ -11517,7 +11710,7 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_CP_GET_PID] = _dn_native_kind_cp_get_pid;
     _DISPATCH_TABLE[NATIVE_KIND_CP_POLL_EVENTS] = _dn_native_kind_cp_poll_events;
     _DISPATCH_TABLE[NATIVE_KIND_CP_REGISTER_DRAIN] = _dn_native_kind_cp_register_drain;
-    # WebAssembly / Wasmtime bridge (docs/wasm.md Phase 2)
+    # WebAssembly / Jac-native interpreter bridge
     _DISPATCH_TABLE[NATIVE_KIND_WASM_VALIDATE] = _dn_native_kind_wasm_validate;
     _DISPATCH_TABLE[NATIVE_KIND_WASM_COMPILE] = _dn_native_kind_wasm_compile;
     _DISPATCH_TABLE[NATIVE_KIND_WASM_INSTANTIATE] = _dn_native_kind_wasm_instantiate;
@@ -11559,6 +11752,10 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_WASM_IMPORTS_ADD_TABLE] = _dn_native_kind_wasm_imports_add_table;
     _DISPATCH_TABLE[NATIVE_KIND_WASM_INSTANTIATE_IMPORTS] = _dn_native_kind_wasm_instantiate_imports;
     _DISPATCH_TABLE[NATIVE_KIND_WASM_BIND_FUNC_KINDS] = _dn_native_kind_wasm_bind_func_kinds;
+    _DISPATCH_TABLE[NATIVE_KIND_WASM_TABLE_GET_REF] = _dn_native_kind_wasm_table_get_ref;
+    _DISPATCH_TABLE[NATIVE_KIND_WASM_TABLE_SET_VALUE] = _dn_native_kind_wasm_table_set_value;
+    _DISPATCH_TABLE[NATIVE_KIND_WASM_EXTERN_VALUE] = _dn_native_kind_wasm_extern_value;
+    _DISPATCH_TABLE[NATIVE_KIND_WASM_TABLE_ELEM_KIND] = _dn_native_kind_wasm_table_elem_kind;
     _DISPATCH_TABLE[NATIVE_KIND_STR_ITER] = _dn_native_kind_str_iter;  # string @@iterator: RequireObjectCoercible + ToString(this)
     # Temporal API
     _DISPATCH_TABLE[NATIVE_KIND_TEMPORAL_DURATION] = _dn_temporal_duration;

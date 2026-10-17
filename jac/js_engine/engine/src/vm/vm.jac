@@ -486,7 +486,9 @@ import from engine.src.vm.vm_obs {
     js_object_delete_observable,
     js_to_string_observable,
     vm_wasm_get_import_cb,
-    vm_wasm_has_import_cb
+    vm_wasm_has_import_cb,
+    vm_wasm_extern_id,
+    vm_wasm_extern_value
 }
 import from engine.src.runtime.jsobject {
     js_object_register_napi_obs_scope,
@@ -572,6 +574,7 @@ import from engine.src.builtins.native_registry {
     native_delete_own
 }
 import from engine.src.builtins.dispatch { call_native }
+import from engine.src.runtime.fn_meta { fn_meta_is_closure, fn_meta_get_fn_props }
 import from engine.src.builtins.object {
     js_Object_getOwnPropertyDescriptor,
     js_Object_defineProperty,
@@ -1217,7 +1220,7 @@ import from napi.src.napi_env {
 }
 import from napi.src.napi_func { _napi_invoke_callback_from_vm }
 import from engine.src.ffi.libc { fflush, abort, getenv, write }
-import from engine.src.ffi.wasmtime {
+import from engine.src.wasm.bridge {
     wasm_register_host_call,
     wasm_host_arg_count,
     wasm_host_arg_kind,
@@ -1230,10 +1233,14 @@ import from engine.src.ffi.wasmtime {
     wasm_i64_to_decimal,
     wasm_i64_from_decimal,
     wasm_set_host_throw,
+    wasm_f64_to_i32,
+    wasm_f64_to_i64,
     WASMTIME_I32,
     WASMTIME_I64,
     WASMTIME_F32,
-    WASMTIME_F64
+    WASMTIME_F64,
+    WASMTIME_FUNCREF,
+    WASMTIME_EXTERNREF
 }
 
 # N-API (native `.node` addon) support is INCOMPLETE and disabled by default.
@@ -47487,14 +47494,15 @@ def _vm_invoke_napi_cb(
 }
 
 # ── WASM host imports (JS→WASM callbacks) — VM re-entry bridge ────────────────
-# Registered into ffi/wasmtime.jac's trampoline via wasm_register_host_call. The
-# trampoline (a raw C callback fired by Wasmtime) marshals WASM args into the
-# wasm_host_arg_* globals, then calls _wasm_host_call(import_index, nargs), which
-# re-enters the VM to run the JS import fn and pushes results back. The JS import
-# callbacks are registered per import index by the dispatch layer (into vm_obs).
+# Registered into wasm/bridge.jac via wasm_register_host_call. A call from wasm
+# to an imported JS function marshals its args into the wasm_host_arg_* globals
+# and calls _wasm_host_call(token, nargs), which re-enters the VM to run the JS
+# function and pushes its results back. The dispatch layer registers each JS
+# import under a per-function token (into vm_obs).
 
 """Convert one WASM arg (by its recorded kind) into a JSValue: i32→Number,
-i64→BigInt, f32/f64→Number."""
+i64→BigInt, f32/f64→Number, externref→the JSValue it carries, funcref→a
+{__jacFuncRefH:h} marker (not callable; JS can pass it back into wasm)."""
 def _wasm_arg_to_jsval(i: int) -> JSValue {
     k: int = wasm_host_arg_kind(i);
     if k == WASMTIME_I64 {
@@ -47503,14 +47511,57 @@ def _wasm_arg_to_jsval(i: int) -> JSValue {
     if k == WASMTIME_I32 {
         return js_number(float(wasm_host_arg_int(i)));
     }
+    if k == WASMTIME_FUNCREF {
+        h: int = wasm_host_arg_int(i);
+        if h == 0 { return js_null(); }
+        mk: JSValue = js_object_create_null();
+        js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
+        return mk;
+    }
+    if k == WASMTIME_EXTERNREF {
+        return vm_wasm_extern_value(wasm_host_arg_int(i));
+    }
     # f32 / f64
     return js_number(wasm_host_arg_dbl(i));
 }
 
+"""Func handle carried by a JS value: an export wrapper (__jacWasmFuncH) or a
+funcref marker (__jacFuncRefH). -1 when `v` is not a wasm function."""
+def _wasm_jsval_funcref_h(v: JSValue) -> int {
+    if fn_meta_is_closure(v) {
+        # Export wrappers are JS closures; __jacWasmFuncH sits on fn_props.
+        fp: JSValue = fn_meta_get_fn_props(v);
+        h: JSValue = js_object_get(fp, str_intern("__jacWasmFuncH"));
+        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        h = js_object_get(fp, str_intern("__jacFuncRefH"));
+        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        return -1;
+    }
+    if not jsv_is_object_cell(v) { return -1; }
+    h2: JSValue = js_object_get(v, str_intern("__jacWasmFuncH"));
+    if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+    h2 = js_object_get(v, str_intern("__jacFuncRefH"));
+    if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+    return -1;
+}
 """Marshal one JS return value into a WASM result of the given kind, pushing it
 via wasm_host_push_result. i64 results accept BigInt or Number; i32/f* accept
-Number/BigInt coercions."""
-def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
+Number/BigInt coercions; externref carries any JSValue back to its id;
+funcref takes an export wrapper/marker's handle. Returns False for a funcref
+result that is not a wasm function."""
+def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> bool {
+    if want_kind == WASMTIME_EXTERNREF {
+        if jsv_is_null(v) { wasm_host_push_result(want_kind, 0, 0.0); }
+        else { wasm_host_push_result(want_kind, vm_wasm_extern_id(v), 0.0); }
+        return True;
+    }
+    if want_kind == WASMTIME_FUNCREF {
+        if jsv_is_null(v) or jsv_is_undefined(v) { wasm_host_push_result(want_kind, 0, 0.0); return True; }
+        fh: int = _wasm_jsval_funcref_h(v);
+        if fh < 0 { return False; }
+        wasm_host_push_result(want_kind, fh, 0.0);
+        return True;
+    }
     if want_kind == WASMTIME_I64 {
         if jsv_is_bigint_cell(v) {
             dec: str = str_from_id(jsv_to_table_id(v));
@@ -47518,23 +47569,24 @@ def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
         } elif jsv_is_int32(v) {
             wasm_host_push_result(want_kind, jsv_to_int32(v), 0.0);
         } elif jsv_is_double(v) {
-            wasm_host_push_result(want_kind, int(jsv_to_double(v)), 0.0);
+            wasm_host_push_result(want_kind, wasm_f64_to_i64(jsv_to_double(v)), 0.0);
         } else {
             wasm_host_push_result(want_kind, 0, 0.0);
         }
-        return;
+        return True;
     }
     if want_kind == WASMTIME_I32 {
         iv: int = 0;
         if jsv_is_int32(v) {
             iv = jsv_to_int32(v);
         } elif jsv_is_double(v) {
-            iv = int(jsv_to_double(v));
+            iv = wasm_f64_to_i32(jsv_to_double(v));
         } elif jsv_is_bigint_cell(v) {
-            iv = wasm_i64_from_decimal(str_from_id(jsv_to_table_id(v)));
+            big: int = wasm_i64_from_decimal(str_from_id(jsv_to_table_id(v)));
+            iv = ((big & 0xFFFF_FFFF) ^ 0x8000_0000) - 0x8000_0000;
         }
         wasm_host_push_result(want_kind, iv, 0.0);
-        return;
+        return True;
     }
     # f32 / f64
     dv: float = 0.0;
@@ -47546,6 +47598,7 @@ def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
         dv = float(wasm_i64_from_decimal(str_from_id(jsv_to_table_id(v))));
     }
     wasm_host_push_result(want_kind, 0, dv);
+    return True;
 }
 
 """Host-import bridge: run the JS import fn `import_index` with the marshalled
@@ -47585,7 +47638,10 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
         return 0;
     }
     if nres == 1 {
-        _wasm_push_jsval_result(wasm_host_result_kind(import_index, 0), ret);
+        if not _wasm_push_jsval_result(wasm_host_result_kind(import_index, 0), ret) {
+            wasm_set_host_throw("funcref results must be null or a WASM exported function");
+            return 1;
+        }
         return 0;
     }
     # Multi-value: JS fn should return an array of results.
@@ -47595,7 +47651,10 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
         if jsv_is_object_cell(ret) {
             elem = js_object_get(ret, str_intern_index(k));
         }
-        _wasm_push_jsval_result(wasm_host_result_kind(import_index, k), elem);
+        if not _wasm_push_jsval_result(wasm_host_result_kind(import_index, k), elem) {
+            wasm_set_host_throw("funcref results must be null or a WASM exported function");
+            return 1;
+        }
         k = k + 1;
     }
     return 0;
@@ -47615,7 +47674,7 @@ def _wasm_exc_message(vm: VM, exc: JSValue) -> str {
     return "wasm host import threw";
 }
 
-"""Register the WASM host-call bridge into ffi/wasmtime.jac (idempotent)."""
+"""Register the WASM host-call bridge into wasm/bridge.jac (idempotent)."""
 def:pub vm_wasm_init_host_bridge -> None {
     if _WASM_HOST_BRIDGE_READY {
         return;

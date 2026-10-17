@@ -808,6 +808,10 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_WASM_IMPORTS_ADD_TABLE,
     NATIVE_KIND_WASM_INSTANTIATE_IMPORTS,
     NATIVE_KIND_WASM_BIND_FUNC_KINDS,
+    NATIVE_KIND_WASM_TABLE_GET_REF,
+    NATIVE_KIND_WASM_TABLE_SET_VALUE,
+    NATIVE_KIND_WASM_EXTERN_VALUE,
+    NATIVE_KIND_WASM_TABLE_ELEM_KIND,
     NATIVE_KIND_DNS_LOOKUP,
     NATIVE_KIND_DNS_REVERSE,
     NATIVE_KIND_DNS_LOOKUP_SERVICE,
@@ -5061,10 +5065,9 @@ def:pub init_global(ctx: GlobalContext) {
     );
     js_object_set(gv, str_intern("__cp"), cp_obj);
 
-    # ── __wasm (WebAssembly / Wasmtime bridge — docs/wasm.md Phase 2) ─────────
-    # Backs engine/src/builtins/js/webassembly.js. Module/instance/func/memory
-    # are opaque small-int handles; wasm bytes cross via (ptr,len) from __buf.
-    # Imports/tables/globals + trap→RuntimeError are Phase 3.
+    # ── __wasm (WebAssembly interpreter bridge) ────────────────────────────────
+    # Backed by engine/src/wasm/; opaque handles cross into the JS API wrapper.
+    # Reference values use stable handle/id tables shared by modules and instances.
     wasm_obj: JSValue = js_object_create_null();
     js_object_set(
         wasm_obj,
@@ -5200,7 +5203,7 @@ def:pub init_global(ctx: GlobalContext) {
     js_object_set(
         wasm_obj,
         str_intern("tableCreate"),
-        js_native_create("tableCreate", 3, NATIVE_KIND_WASM_TABLE_CREATE)
+        js_native_create("tableCreate", 4, NATIVE_KIND_WASM_TABLE_CREATE)
     );
     js_object_set(
         wasm_obj,
@@ -5225,7 +5228,27 @@ def:pub init_global(ctx: GlobalContext) {
     js_object_set(
         wasm_obj,
         str_intern("tableGrow"),
-        js_native_create("tableGrow", 2, NATIVE_KIND_WASM_TABLE_GROW)
+        js_native_create("tableGrow", 3, NATIVE_KIND_WASM_TABLE_GROW)
+    );
+    js_object_set(
+        wasm_obj,
+        str_intern("tableGetRef"),
+        js_native_create("tableGetRef", 2, NATIVE_KIND_WASM_TABLE_GET_REF)
+    );
+    js_object_set(
+        wasm_obj,
+        str_intern("tableSetValue"),
+        js_native_create("tableSetValue", 3, NATIVE_KIND_WASM_TABLE_SET_VALUE)
+    );
+    js_object_set(
+        wasm_obj,
+        str_intern("externValue"),
+        js_native_create("externValue", 1, NATIVE_KIND_WASM_EXTERN_VALUE)
+    );
+    js_object_set(
+        wasm_obj,
+        str_intern("tableElemKind"),
+        js_native_create("tableElemKind", 1, NATIVE_KIND_WASM_TABLE_ELEM_KIND)
     );
     js_object_set(
         wasm_obj,

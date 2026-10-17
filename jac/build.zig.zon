@@ -43,11 +43,6 @@
             .hash = "N-V-__8AAO6_vQZzKHX6fOJDJ1y_L9w3G-ZiovP476NdrZZN",
             .lazy = true,
         },
-        .wasmtime_x86_64_linux = .{
-            .url = "https://github.com/bytecodealliance/wasmtime/releases/download/v48.0.2/wasmtime-v48.0.2-x86_64-linux-c-api.tar.xz",
-            .hash = "N-V-__8AACKuZwZAUqtfncpykr6w6VKWURakWwOksH-uJnq7",
-            .lazy = true,
-        },
         .mimalloc = .{
             .url = "https://github.com/microsoft/mimalloc/archive/refs/tags/v3.5.3.tar.gz",
             .hash = "N-V-__8AAJ2kWgAyMSn9Yf-t-pUPi1ZkFkG6UUOmXod6BvPG",
