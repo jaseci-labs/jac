@@ -240,6 +240,10 @@ impl NaIRGenPass._lower_module -> None {
         }
         return;
     }
+    if self._defer_missing_deps() {
+        self._deps_deferred = True;
+        return;
+    }
 
     self._emit_rc_helpers();
 
@@ -250,13 +254,6 @@ impl NaIRGenPass._lower_module -> None {
     self._forward_declare_archetype_names(self.module);
 
     self._register_imported_struct_types();
-    if active_host().native_dep_discovery_open(self.prog) {
-        self._discover_kernel_deps();
-    }
-    if active_host().native_deps_deferred(self.prog) {
-        self._deps_deferred = True;
-        return;
-    }
     self._declare_pending_clib_globals();
     self._declare_pending_clib_abilities();
     self._declare_clib_definitions();
@@ -614,17 +611,51 @@ impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
     return active_host().native_dep_iface(self.prog, path, opts);
 }
 
-impl NaIRGenPass._discover_kernel_deps -> None {
+impl NaIRGenPass._defer_missing_deps -> bool {
+    if not active_host().native_dep_discovery_open(self.prog) {
+        return False;
+    }
+    imported_mods = self._native_imports();
+    for (_, imported_mod) in imported_mods {
+        self._dep_iface(imported_mod);
+    }
+    self._discover_kernel_deps(imported_mods);
+    return active_host().native_deps_deferred(self.prog);
+}
+
+impl NaIRGenPass._discover_kernel_deps(
+    imported_mods: list[tuple[str, uni.Module]]
+) -> None {
     """The kernel units a lowering consults on demand, the formatting kernel
     from an f-string and the OSP kernels from an archetype, are asked for
     while dependencies are still being discovered, so a missing one is
     lowered before this unit instead of inside it.""";
     rels: list[str] = [FMT_KERNEL_REL];
-    if self.imported_osp_archs
-        or any(
-            arch.arch_kind is not None and arch.arch_kind in ("node", "edge", "walker")
-            for arch in self.module.get_all_sub_nodes(uni.Archetype)
-        ) {
+    uses_osp = any(
+        arch.arch_kind is not None and arch.arch_kind in ("node", "edge", "walker")
+        for arch in self.module.get_all_sub_nodes(uni.Archetype)
+    );
+    for (_, imported_mod) in imported_mods {
+        if uses_osp {
+            break;
+        }
+        for stmt in ModuleFacts.iter_context_stmts(imported_mod) {
+            if (
+                isinstance(stmt, uni.ContextAwareNode)
+                and stmt.code_context == CodeContext.CLIENT
+                and not stmt.codespace_dual
+            ) {
+                continue;
+            }
+            if isinstance(stmt, uni.Archetype)
+                and stmt.name is not None
+                and stmt.arch_kind is not None {
+                uses_osp = True;
+                break;
+            }
+        }
+    }
+    if uses_osp {
         rels.extend([OSP_KERNEL_REL, OSP_GRAPH_REL]);
     }
     this_path = os.path.realpath(self.module.loc.mod_path or "");
@@ -1162,9 +1193,12 @@ impl NaIRGenPass._ret_tuple_hints(
     return hints if _any else None;
 }
 
-impl NaIRGenPass._register_imported_struct_types -> None {
+impl NaIRGenPass._native_imports -> list[tuple[str, uni.Module]] {
     import os;
 
+    if self._native_imports_walked {
+        return self._native_import_walk;
+    }
     processed_modules: set[str] = set();
     imported_mods: list[tuple[str, uni.Module]] = [];
     manifest = self.module.gen.interop_manifest;
@@ -1401,7 +1435,15 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
-    imported_mods = self._permuted_walk_order(imported_mods);
+    self._native_import_walk = self._permuted_walk_order(imported_mods);
+    self._native_imports_walked = True;
+    return self._native_import_walk;
+}
+
+impl NaIRGenPass._register_imported_struct_types -> None {
+    import os;
+
+    imported_mods = self._native_imports();
 
     """Keep a name's binding only where the named module defines that global
     itself; a name it re-exports resolves by walk order as before.""";

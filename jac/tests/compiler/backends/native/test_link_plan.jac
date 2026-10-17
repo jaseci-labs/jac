@@ -1362,3 +1362,57 @@ test "the OSP kernels lower before the unit that consults them" {
         f"a kernel lowered inside a consumer's pass: {live_at_lower}"
     );
 }
+
+"""Over a cold build of `entry`: how many times each unit's lowering built
+the runtime helpers, and how many LLVM functions each lowering attempt that
+stopped to have its dependencies lowered first had built by then."""
+def _work_per_attempt(entry_path: str) -> tuple[dict[str, int], list[tuple[str, int]]] {
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    prog = JacProgram();
+    opts = _opts();
+    opts.no_ir_cache = True;
+    prog.options = opts;
+    helper_runs: dict[str, int] = {};
+    stopped: list[tuple[str, int]] = [];
+    emit_helpers: any = NaIRGenPass._emit_rc_helpers;
+    run_impl: any = NaIRGenPass._run_impl;
+    def counting_helpers(gen: NaIRGenPass) {
+        name = os.path.basename(gen.module.loc.mod_path);
+        helper_runs[name] = helper_runs.get(name, 0) + 1;
+        emit_helpers(gen);
+    }
+    def watching_run(gen: NaIRGenPass, ir_in: any) -> any {
+        out = run_impl(gen, ir_in);
+        if gen._deps_deferred {
+            stopped.append(
+                (
+                    os.path.basename(gen.module.loc.mod_path),
+                    len(gen.llvm_module.functions)
+                )
+            );
+        }
+        return out;
+    }
+    setattr(NaIRGenPass, "_emit_rc_helpers", counting_helpers);
+    setattr(NaIRGenPass, "_run_impl", watching_run);
+    try {
+        build_link_plan(prog, [entry_path], opts);
+    } finally {
+        setattr(NaIRGenPass, "_emit_rc_helpers", emit_helpers);
+        setattr(NaIRGenPass, "_run_impl", run_impl);
+    }
+    return (helper_runs, stopped);
+}
+
+test "a lowering that stops for its dependencies builds no IR, so each unit builds its runtime helpers once" {
+    root_dir = _diamond_copy();
+    (helper_runs, stopped) = _work_per_attempt(os.path.join(root_dir, "top.jac"));
+    assert set(UNITS) <= set(helper_runs) , helper_runs;
+    assert stopped , "no lowering stopped to have its dependencies lowered first";
+    assert all(count == 0 for (_, count) in stopped) , (
+        f"a stopped lowering built LLVM functions: {stopped}"
+    );
+    assert all(runs == 1 for runs in helper_runs.values()) , (
+        f"a unit built its runtime helpers more than once: {helper_runs}"
+    );
+}
