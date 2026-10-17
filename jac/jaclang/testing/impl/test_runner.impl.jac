@@ -711,8 +711,20 @@ impl run_file(
                 )
             ];
         }
+        import from jaclang.compiler.driver.bccache { discover_annex_files }
+        own_keys: set[str] = set();
+        own_keys.add(os.path.realpath(strip_suffix(source)));
+        for annex in (
+            discover_annex_files(source, ".test.jac")
+            + discover_annex_files(source, ".impl.jac")
+        ) {
+            own_keys.add(os.path.realpath(strip_suffix(annex)));
+        }
         pending: list[any] = [];
-        for (_key, registered) in list(JacTestCheck.test_suite_path.items()) {
+        for (key, registered) in list(JacTestCheck.test_suite_path.items()) {
+            if os.path.realpath(key) not in own_keys {
+                continue;
+            }
             for info in list(registered) {
                 pending.append(info);
             }

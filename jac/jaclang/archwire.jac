@@ -3362,6 +3362,7 @@ graph import compiler.driver {
     bccache --> lsp.server.engine { discover_annex_files, discover_base_file }
     bccache --> server.hmr { discover_base_file }
     bccache --> testing.test_runner._suite_source { discover_base_file }
+    bccache --> testing.test_runner.run_file { discover_annex_files }
     boundary_classify --> compiler.backends.es.esast_gen_pass.EsastGenPass._is_client_native_import {
         import_binds_client_native
     }
@@ -11540,7 +11541,7 @@ graph import jac0core {
     ext_registry --> testing.test_runner._iter_candidate_files { is_impl, is_jac }
     ext_registry --> testing.test_runner._suite_source { is_test }
     ext_registry --> testing.test_runner.discover { is_jac }
-    ext_registry --> testing.test_runner.run_file { base_stem }
+    ext_registry --> testing.test_runner.run_file { base_stem, strip_suffix }
     sealed --> compiler.driver.application._prepare_sealed {
         image_for_bundle_dir,
         register_image
