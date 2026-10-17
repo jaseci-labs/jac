@@ -14681,7 +14681,9 @@ graph import scale.runtime {
         GATEWAY_BARE_API_PATHS,
         GATEWAY_BUILTIN_PREFIXES,
         GATEWAY_DISCOVERY_SEGMENTS,
-        GATEWAY_REPLICATED_SEGMENTS
+        GATEWAY_PAGE_SEGMENTS,
+        GATEWAY_REPLICATED_SEGMENTS,
+        is_gateway_owned_segment
     }
     routing --> scale.runtime.gateway.route_table.ServiceRouteTable.learn {
         is_learnable_prefix
