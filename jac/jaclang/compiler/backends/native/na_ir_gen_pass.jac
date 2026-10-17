@@ -1627,6 +1627,7 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
     def _predeclare_nested_siblings(nd: uni.Ability) -> None;
+    def _test_call_reaches_demoted(call: uni.FuncCall, seen: set[str]) -> bool;
     def _codegen_test(nd: uni.Test) -> None;
     def _demote_native_test(nd: uni.Test, func: ir.Function, local_mark: int) -> None;
     def _apply_static_decorators -> None;

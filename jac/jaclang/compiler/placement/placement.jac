@@ -516,6 +516,85 @@ def _erased_only_import(imp: uni.Import) -> bool {
     return native_erased_import_names(imp.from_loc.dot_path_str, names);
 }
 
+def _is_test_origin(nd: uni.UniNode) -> bool {
+    """True when a node is test code -- written in a `*.test.jac` annex or
+    inside an inline `test` block.
+
+    Test code must not constrain placement: a test that crosses a native seam
+    otherwise either forces the module under test off native, or -- when the
+    module does seal -- calls into a demoted function's abort() stub. Tests
+    stay in the server codespace either way, so their nodes are excluded from
+    the blocker scan.
+    """;
+    _p = (nd.loc.mod_path if nd.loc is not None else '') or '';
+    return (
+        (bool(_p) and _p.replace(os.sep, "/").endswith('.test.jac'))
+        or isinstance(nd, uni.Test)
+        or nd.find_parent_of_type(uni.Test) is not None
+    );
+}
+
+
+def native_blocker_in(nd: uni.UniNode) -> str {
+    """The native blocker this subtree carries, or '' when it carries none.
+
+    The single source of blocker evidence: `scan_native_blockers` calls this
+    once per body statement (skipping test-origin ones) so the module scan and
+    the per-element check can never drift apart. Test code is excluded from
+    the module-level scan so the module under test can still seal native; the
+    element that was excluded has to be kept off the native lane itself, and
+    this is what tells the native backend so.
+    """;
+    for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
+        if isinstance(nd, typ) or nd.get_all_sub_nodes(typ) {
+            return f"contains {nd_name}";
+        }
+    }
+    for (nd_name, typ) in PLACEMENT_NATIVE_REJECT_NODES {
+        if isinstance(nd, typ) or nd.get_all_sub_nodes(typ) {
+            return f"native-unsupported {nd_name}";
+        }
+    }
+    _svrs = nd.get_all_sub_nodes(uni.SpecialVarRef);
+    if isinstance(nd, uni.SpecialVarRef) {
+        _svrs.append(nd);
+    }
+    for svr in _svrs {
+        if svr.orig.name == Tok.KW_ROOT {
+            return "root access (persistent graph)";
+        }
+    }
+    _abilities = nd.get_all_sub_nodes(uni.Ability);
+    if isinstance(nd, uni.Ability) {
+        _abilities.append(nd);
+    }
+    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
+    for ab in _abilities {
+        if ability_delegates_to_model(ab) {
+            return "by llm ability (needs the byLLM runtime)";
+        }
+        if ab.is_async {
+            return "async ability";
+        }
+        if isinstance(ab.signature, uni.EventSignature) {
+            if ab.find_parent_of_type(uni.Archetype) is None {
+                return "event ability outside an archetype";
+            }
+            _ti = ab.signature.arch_tag_info;
+            _ti_names = [_ti]
+                if isinstance(_ti, uni.Name)
+                else (_ti.get_all_sub_nodes(uni.Name) if _ti is not None else []);
+            for _tn in _ti_names {
+                if _tn.value in ("Root", "root") {
+                    return "root access (persistent graph)";
+                }
+            }
+        }
+    }
+    return '';
+}
+
+
 def native_blocker_scan(
     module: uni.Module,
     base_dir: str,
@@ -538,50 +617,17 @@ def native_blocker_scan(
             }
         }
     }
-    for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
-        for found in module.get_all_sub_nodes(typ) {
-            scan.sites.append((found, f"contains {nd_name}"));
-        }
-    }
 
-    for (nd_name, typ) in PLACEMENT_NATIVE_REJECT_NODES {
-        for found in module.get_all_sub_nodes(typ) {
-            scan.sites.append((found, f"native-unsupported {nd_name}"));
-        }
-    }
-    for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {
-        if svr.orig.name == Tok.KW_ROOT and not scan.module {
-            scan.module = "root access (persistent graph)";
-        }
-    }
-    import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
-    for ab in module.get_all_sub_nodes(uni.Ability) {
-        if ability_delegates_to_model(ab) {
-            scan.sites.append((ab, "by llm ability (needs the byLLM runtime)"));
-            continue;
-        }
-        if ab.is_async {
-            scan.sites.append((ab, "async ability"));
-            continue;
-        }
-        if isinstance(ab.signature, uni.EventSignature) {
-            if ab.find_parent_of_type(uni.Archetype) is None {
-                scan.sites.append((ab, "event ability outside an archetype"));
-                continue;
-            }
-            _ti = ab.signature.arch_tag_info;
-            _ti_names = [_ti]
-                if isinstance(_ti, uni.Name)
-                else (_ti.get_all_sub_nodes(uni.Name) if _ti is not None else []);
-            for _tn in _ti_names {
-                if _tn.value in ("Root", "root") and not scan.module {
-                    scan.module = "root access (persistent graph)";
-                }
-            }
-        }
-    }
     scan_mod_path = module.loc.mod_path or '';
     for stmt in module.body {
+        if _is_test_origin(stmt) {
+            continue;
+        }
+        _stmt_blocker = native_blocker_in(stmt);
+        if _stmt_blocker {
+            scan.sites.append((stmt, _stmt_blocker));
+            continue;
+        }
         if isinstance(stmt, uni.ContextAwareNode) and scan_mod_path {
             import from jaclang.compiler.placement.placement_pins { config_pin_for }
             pin = config_pin_for(scan_mod_path, element_display_name(stmt));
@@ -597,6 +643,9 @@ def native_blocker_scan(
         }
     }
     for imp in module.get_all_sub_nodes(uni.Import) {
+        if _is_test_origin(imp) {
+            continue;
+        }
         if imp.has_clib_decls {
             continue;
         }

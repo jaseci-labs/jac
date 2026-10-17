@@ -134,6 +134,62 @@ impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
     return [CgSplice(src='\n'.join(src_lines), offset=0)];
 }
 
+impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
+    """Bind a natively-placed module's members into the server image.
+
+    `Import.native_only_drop` says the native lane owns the target, so the
+    server tier must not import it as Python. The drop was right about
+    ownership and wrong about binding: every imported name vanished, and
+    server code constructing one of the target's archetypes raised NameError.
+    Each name now loads through `pyb_mirror_member`, which imports the
+    target's server-tier image once and hands back the member. Names already
+    served by this module's own ctypes interop stubs are left to those stubs.
+    """;
+    target = nd.native_only_target;
+    if not target or not nd.items {
+        return False;
+    }
+    manifest = self.module.gen.interop_manifest;
+    stubbed: set[str] = set();
+    if manifest {
+        for b in manifest.native_exports {
+            stubbed.add(b.name);
+        }
+    }
+    parts: list[str] = [];
+    names: list[str] = [];
+    for item in nd.items {
+        if not isinstance(item, ModuleItem) {
+            continue;
+        }
+        item_name = item.name.value;
+        local_name = item.alias.sym_name if item.alias else item_name;
+        if item_name in stubbed or local_name in stubbed {
+            continue;
+        }
+        parts.append(
+            local_name
+                + ' = __jac_pyb_mirror_member('
+                + repr(target)
+                + ', '
+                + repr(item_name)
+                + ')'
+        );
+        names.append(local_name);
+    }
+    if not names {
+        return False;
+    }
+    parts.insert(
+        0,
+        'from jaclang.runtime.interop_bridge import pyb_mirror_member '
+            + 'as __jac_pyb_mirror_member'
+    );
+    names.insert(0, '__jac_pyb_mirror_member');
+    self.set_out(nd, [CgSplice(src='\n'.join(parts), offset=0, bound_names=names)]);
+    return True;
+}
+
 impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
     manifest = self.module.gen.interop_manifest;
     if (not manifest) {

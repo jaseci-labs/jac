@@ -55,9 +55,7 @@ def _native_dep_scan(
     import from jaclang.compiler.frontend.host { active_host }
     import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
     host = active_host();
-    files = [path]
-        + host.annex_files(path, '.impl.jac')
-        + host.annex_files(path, '.test.jac');
+    files = [path] + host.annex_files(path, '.impl.jac');
     arch = host.wiring_file(path);
     stamped = files + ([arch] if arch is not None else []);
     fresh: list[tuple[str, float, int]] = [];

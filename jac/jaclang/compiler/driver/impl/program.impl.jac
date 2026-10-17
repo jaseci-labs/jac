@@ -720,6 +720,9 @@ impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> 
             }
         }
         imp.native_only_drop = drop;
+        if drop and target is not None {
+            imp.native_only_target = target;
+        }
     }
 
     settled = False;

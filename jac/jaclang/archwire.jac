@@ -3001,7 +3001,8 @@ graph import compiler.backends.native {
     }
     na_constants --> compiler.backends.native.na_ir_gen_pass {
         RC_CYCLE_PACE,
-        RC_UNTRACED_BIT
+        RC_UNTRACED_BIT,
+        JACVAL_STRUCT_TAG
     }
     link_glue --> compiler.backends.native.link_plan { RC_THREADED_SYMBOL }
     na_compile_pass --> compiler.driver.nativecache.NativeBuildSession._optimize_in_parallel {
@@ -3461,6 +3462,9 @@ graph import compiler.driver {
         ability_delegates_to_model,
         classify_import,
         is_service_app_entry
+    }
+    boundary_classify --> compiler.placement.placement.native_blocker_in {
+        ability_delegates_to_model
     }
     boundary_classify --> compiler.placement.placement_facts.discover_spaces {
         hub_module_for_path
@@ -5087,6 +5091,7 @@ graph import compiler.frontend {
         set_native_target_override
     }
     type codeinfo --> compiler.driver.compiler { CodeGenTarget, NativeModuleLayout }
+    type codeinfo --> runtime.interop_bridge { InteropManifest }
     codeinfo --> compiler.driver.compiler.JacCompiler._cached_client_artifact {
         ClientArtifact
     }
@@ -9353,6 +9358,9 @@ graph import compiler.passes {
 }
 
 graph import compiler.placement {
+    placement --> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._codegen_test {
+        native_blocker_in
+    }
     placement --> cli.commands.fix._verify_claims { element_display_name }
     placement --> compiler.driver.compiler.JacCompiler._restore_sections {
         summary_store
@@ -12729,6 +12737,7 @@ graph import runtime {
         register_py_callbacks
     }
     interop_bridge --> runtime.prepared.execute_module { NativeLibrary }
+    interop_bridge --> cli.commands.execution._exec_file { ensure_py_funcs_loaded }
     interop_bridge --> runtime.source_app._load_application {
         NativeCallback,
         NativeLibrary
@@ -12991,6 +13000,8 @@ graph import runtime {
     runtime --> project.config.JacConfig.app_for_target { JacRuntime }
     runtime --> project.plugin_config { JacRuntime }
     runtime --> runtime.archetype.EdgeAnchor.detach { JacRuntime }
+
+    runtime --> runtime.interop_bridge.ensure_py_funcs_loaded { JacModule }
     runtime --> runtime.archetype.NodeAnchor.all_edges { JacRuntimeInterface }
     runtime --> runtime.archetype.Root.__getattr__ { JacRuntime }
     runtime --> runtime.archetype._dirty_setattr { JacRuntime }
