@@ -92,7 +92,7 @@ impl BoundaryAnalysisPass._extract_type_name(expr: (UniNode | None)) -> str {
 }
 
 impl BoundaryAnalysisPass._in_native_module -> bool {
-    if (self.module.gen.native_codespace) {
+    if (self.module and self.module.gen.native_codespace) {
         return True;
     }
     if not (self.module and self.module.loc) {
@@ -183,7 +183,6 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
 impl BoundaryAnalysisPass._caller_context(
     nd: Import, import_context: InteropContext
 ) -> InteropContext {
-    """Interop context of the caller site: client wins, then native.""";
     if (nd.in_client_context()) {
         return InteropContext.CLIENT;
     }
@@ -223,7 +222,21 @@ impl BoundaryAnalysisPass.enter_import with Import entry {
                 } elif (facts and facts.client_native_edge) {
                     self._register_na_client_import(here);
                 } else {
-                    self._register_client_bridged_import(here);
+                    _pin_caller = self._caller_context(here, import_context);
+                    _sv_pinned = False;
+                    if _pin_caller == InteropContext.NATIVE {
+                        import from jaclang.compiler.symbol_utils {
+                            import_target_pinned_server
+                        }
+                        _sv_pinned = import_target_pinned_server(here);
+                    }
+                    if _sv_pinned {
+                        self._register_sv_import(
+                            here, from_loc.base_module_name, _pin_caller
+                        );
+                    } else {
+                        self._register_client_bridged_import(here);
+                    }
                 }
             }
             if (native_path and here.items) {

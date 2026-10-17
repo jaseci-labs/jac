@@ -156,7 +156,11 @@ def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     out_dir.mkdir(parents=True, exist_ok=True);
     console.print(f"  Compiling native binary for {triple}", style="muted");
 
-    rc = native_build(filename=str(entry_file), output=str(out_dir / stem));
+    rc = native_build_sealed_pair(
+        filename=str(entry_file),
+        exe_output=str(out_dir / stem),
+        lib_output=str(out_dir / native_lib_name(stem))
+    );
     if rc != 0 {
         console.error("Native compilation failed; seal aborted.");
         return False;

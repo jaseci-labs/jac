@@ -880,6 +880,34 @@ def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any]
             caps.append("platform-locked");
             meta["triples"] = triples;
         }
+        _sidecars = sorted(native_dir.glob("*/*.interop.json"));
+        _libs = [
+            f
+            for f in native_dir.glob("*/*")
+            if f.is_file() and f.name.endswith(native_lib_suffix())
+        ];
+        if _sidecars {
+            _rec_ok = True;
+            try {
+                _rec = json.loads(_sidecars[0].read_text(encoding="utf-8"));
+            } except Exception as _e {
+                console.warning(
+                    f"unreadable interop record ({_sidecars[0]}): {_e}; "
+                    "treating the app as non-interop (JIT lane)"
+                );
+                _rec = {};
+                _rec_ok = False;
+            }
+            native_meta: dict[str, any] = {
+                "interop": bool(_rec.get("interop", _rec_ok))
+            };
+            if _rec.get("unresolved") {
+                native_meta["unresolved"] = list(_rec.get("unresolved"));
+            }
+            meta["native"] = native_meta;
+        } elif _libs {
+            meta["native"] = {"interop": False};
+        }
     }
     return meta;
 }

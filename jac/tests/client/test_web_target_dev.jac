@@ -246,8 +246,10 @@ test "dev HTML and runtime aliases resolve in the selected workspace app" {
                         );
                         bundler._ensure_dev_index_html(build_dir);
                         page = (build_dir / "index.html").read_text();
+                        # The single import call site lives inside the
+                        # loadEntry retry helper
                         imports = re.findall(r'import\("(/[^\"]*_entry.js)"\)', page);
-                        assert imports == [f"/{app_name}/compiled/_entry.js"] * 2;
+                        assert imports == [f"/{app_name}/compiled/_entry.js"];
                         assert all(
                             (build_dir / url.lstrip("/")).is_file() for url in imports
                         );
@@ -298,7 +300,7 @@ test "single app dev keeps the unscoped compiled entry and aliases" {
             config_path = bundler.create_vite_config(project / "main.jac", is_dev=True);
             bundler._ensure_dev_index_html(build_dir);
             page = (build_dir / "index.html").read_text();
-            assert page.count('import("/compiled/_entry.js")') == 2;
+            assert page.count('import("/compiled/_entry.js")') == 1;
             assert 'path.resolve(buildDir, "compiled/client_runtime.js")'
                 in config_path.read_text();
         } finally {
