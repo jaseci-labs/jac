@@ -574,8 +574,12 @@ fn addJsEngine(
     // foreign libraries are optimized for speed whatever the binary's mode.
     const native = js_native.addJsNative(b, target, .ReleaseFast) orelse return null;
 
-    const engine = jsEngineNative(b, tool, fetch_target, jacllvm, &.{"--lib"}, "main.jac", "libjs_engine.so");
-    const compiler = jsEngineNative(b, tool, fetch_target, jacllvm, &.{}, "js_compiler.jac", "js_compiler");
+    const engine_build = jsEngineNative(b, tool, fetch_target, jacllvm, &.{"--lib"}, "main.jac", "libjs_engine.so");
+    const compiler_build = jsEngineNative(b, tool, fetch_target, jacllvm, &.{}, "js_compiler.jac", "js_compiler");
+    // These Jac commands share a cold-start compiler cache; keep them sequential.
+    compiler_build.run.step.dependOn(&engine_build.run.step);
+    const engine = engine_build.output;
+    const compiler = compiler_build.output;
     // The compiler links the engine's libraries through $ORIGIN, so it runs
     // from a directory beside them.
     const tool_dir = b.addWriteFiles();
@@ -607,6 +611,10 @@ fn addJsEngine(
 }
 
 const BUILTINS_JS = "js_engine/engine/src/builtins/js";
+const JsEngineBuild = struct {
+    output: std.Build.LazyPath,
+    run: *std.Build.Step.Run,
+};
 
 /// `jac build --native` of a js_engine/ root, run from js_engine/ so its own
 /// jac.toml (memory profile, native placement, opt level) applies.
@@ -618,7 +626,7 @@ fn jsEngineNative(
     flags: []const []const u8,
     root_file: []const u8,
     out_name: []const u8,
-) std.Build.LazyPath {
+) JsEngineBuild {
     const run = tool.run("jac", &.{ "build", "--native" });
     run.addArgs(flags);
     run.addFileArg(b.path(b.fmt("js_engine/engine/src/{s}", .{root_file})));
@@ -631,7 +639,7 @@ fn jsEngineNative(
     addTreeInputs(b, run, "js_engine/engine/src");
     addTreeInputs(b, run, "js_engine/napi/src");
     run.addFileInput(b.path("js_engine/jac.toml"));
-    return out;
+    return .{ .output = out, .run = run };
 }
 
 /// Register every bundled source file under `sub_path` as a content-hashed input
