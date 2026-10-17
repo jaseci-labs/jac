@@ -46,10 +46,11 @@ for the full config reference.
 The committed `jac.toml` is zero-config; the e2e script appends its test-only
 opt-ins (logs/ingress/CORS) at run time, so
 [`../../../scripts/k8s_microservice_real_e2e.sh`](../../../scripts/k8s_microservice_real_e2e.sh)
-will additionally deploy Prometheus + Grafana + Loki + Alloy + node-exporter
-
-+ kube-state-metrics, wait for them to be Ready, and run a LogQL probe
-to confirm Alloy is shipping pod logs to Loki.
+will additionally deploy Loki + Alloy + Grafana, wait for them to be Ready,
+and run a LogQL probe to confirm Alloy is shipping pod logs to Loki.
+Prometheus, kube-state-metrics and node-exporter deploy only when
+`[scale.monitoring] enabled = true`; the M-14.a phase waits on Prometheus when
+that switch is on and asserts it is absent when it is off.
 
 ### EC2 sizing
 
@@ -105,9 +106,10 @@ Expected runtime on `t3.xlarge`: 8-15 min for a cold run
 
 After the existing /health + routing checks pass:
 
-1. **Rollouts**: `<app>-loki`, `<app>-prometheus`, `<app>-grafana`
-   Deployments + `<app>-alloy` DaemonSet all reach Ready within
-   5 / 3 min respectively.
+1. **Rollouts**: `<app>-loki` and `<app>-grafana` Deployments +
+   `<app>-alloy` DaemonSet all reach Ready. `<app>-prometheus` must reach
+   Ready when `[scale.monitoring] enabled` is true and must not exist when
+   it is false. Both switches are read through the scale config loader.
 2. **Loki readiness**: port-forward `<app>-loki-service:3100`, retry
    `GET /ready` until 200 (within 30s).
 3. **LogQL probe**: after 15 s for Alloy to discover + ship initial
