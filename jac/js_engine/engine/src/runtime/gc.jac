@@ -61,7 +61,10 @@ import from engine.src.runtime.gc_barrier {
     gc_gen_on,
     gc_rem_objs,
     gc_rem_vals,
-    gc_barrier_reset
+    gc_rem_gens,
+    gc_barrier_reset,
+    gc_young_reset,
+    FLAG_GEN_REMEMBERED
 }
 import from engine.src.runtime.gc_mark { gc_mark, gc_is_marked, gc_clear_marks }
 import from engine.src.runtime.jsobject {
@@ -197,6 +200,8 @@ glob _GC_WORK: list[JSValue] = [];
 # whether it is a verification pass (JAC_GC_VERIFY) — references to dead
 # cells are recorded in _GC_VERIFY_BAD instead of being skipped.
 glob _GC_GEN_CYCLE: bool = False,
+     _GC_MINOR_CYCLE: bool = False,
+     _GC_YOUNG_SWEEP_NS: int = 0,
      _GC_VERIFY: int = -1,
      _GC_VERIFYING: bool = False,
      _GC_VERIFY_BAD: list[JSValue] = [];
@@ -734,8 +739,12 @@ def:pub gc_mark_roots(realm: Realm, extras: list[JSValue]) {
     # (plain `function*` states leave async_promise = undefined and stay
     # collectible via their generator object as before). Root it and trace the
     # snapshot so the frame survives until it is resumed.
+    # A minor collection roots only the states allocated or suspended since
+    # the last collection (_gc_minor_roots): an old state written by no
+    # suspend holds only what the last collection already marked. This scan
+    # of every slot is the major's.
     gnr: int = 0;
-    while gnr < len(realm.generators) {
+    while not _GC_MINOR_CYCLE and gnr < len(realm.generators) {
         ags: JSGeneratorState = realm.generators[gnr];
         if ags.cell_flags != CELL_FLAG_DEAD
             and not ags.done
@@ -1275,20 +1284,19 @@ def _gc_weak_clear(realm: Realm) {
 # gc_collect — full mark-and-sweep cycle
 # ─────────────────────────────────────────────────────────────────────────────
 
-"""A minor collection's roots beyond gc_mark_roots: every live generator
-state (a handful at a time; mutated on each suspend without a barrier), the
-children of the remembered old objects (already marked, so the trace would
-stop at them) and of the old mapped `arguments` objects (their parameter
-bindings live in the activation's locals list, written without a barrier),
-and the values logged by the non-object barriers."""
+"""A minor collection's roots beyond gc_mark_roots: the generator states
+allocated since the last collection and the old ones suspended since (the
+write barrier in js_set_generator_state remembers them; an old state no
+suspend touched holds only cells the last collection marked), the children
+of the remembered old objects (already marked, so the trace would stop at
+them) and of the old mapped `arguments` objects (their parameter bindings
+live in the activation's locals list, written without a barrier), and the values logged by the non-object barriers."""
 def _gc_minor_roots(realm: Realm) -> None {
-    mr_g: int = 0;
-    while mr_g < len(realm.generators) {
-        if realm.generators[mr_g].cell_flags != CELL_FLAG_DEAD
-            and not realm.generators[mr_g].done {
-            _gc_root_gen_state(realm, mr_g);
-        }
-        mr_g = mr_g + 1;
+    for mr_yg in realm.gc_young_gens {
+        _gc_root_gen_state(realm, mr_yg);
+    }
+    for mr_rg in gc_rem_gens() {
+        _gc_root_gen_state(realm, mr_rg);
     }
     mr_mp: int = realm.objmark_ptr;
     mr_eb: int = gc_mark_byte(realm);
@@ -1359,11 +1367,19 @@ def _gc_barrier_end(realm: Realm) -> None {
                 & ~FLAG_REMEMBERED;
         }
     }
+    for be_g in gc_rem_gens() {
+        if be_g >= 0 and be_g < len(realm.generators)
+            and realm.generators[be_g].cell_flags != CELL_FLAG_DEAD {
+            realm.generators[be_g].cell_flags = realm.generators[be_g].cell_flags
+                & ~FLAG_GEN_REMEMBERED;
+        }
+    }
     gc_barrier_reset();
     realm.gc_young_alloc = [];
     realm.gc_young_closures = [];
     realm.gc_young_maps = [];
     realm.gc_young_sets = [];
+    realm.gc_young_gens = [];
 }
 
 """JAC_GC_VERIFY=1: after every minor collection run a full one that records
@@ -1785,6 +1801,8 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     }
     realm.gc_in_progress = True;
     gc_t0: int = uv_hrtime();
+    gc_young_reset();
+    _GC_YOUNG_SWEEP_NS = 0;
     # Generational (docs/GENERATIONAL_GC.md): a minor collection keeps the
     # epoch, so the cells marked by the last collection still read as marked
     # (old) and the trace stops at them; a major one un-marks everything
@@ -1799,6 +1817,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     realm.gc_scan_weakmaps = [];
     realm.gc_scan_weaksets = [];
 
+    _GC_MINOR_CYCLE = gc_minor;
     gc_mark_roots(realm, extras);
     if gc_minor {
         _gc_minor_roots(realm);
@@ -1821,6 +1840,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 }
             }
             gc_minor = False;
+            _GC_MINOR_CYCLE = False;
             gc_clear_marks(realm, -1);
             realm.gc_scan_weakmaps = [];
             realm.gc_scan_weaksets = [];
@@ -1858,6 +1878,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     gc_t_swo: int = uv_hrtime();
     if gc_minor {
         freed = freed + _gc_sweep_young_tables(realm);
+        _GC_YOUNG_SWEEP_NS = uv_hrtime() - gc_t_mark;
     } else {
         freed = freed + gc_sweep_closures(realm);
         freed = freed + gc_sweep_maps(realm);
@@ -1975,6 +1996,13 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
         }
     }
     return freed;
+}
+
+"""Nanoseconds the last minor collection spent sweeping young cells (objects,
+closures, Maps, Sets) -- the part that scales with the young generation; 0
+after a major."""
+def:pub gc_last_young_sweep_ns -> int {
+    return _GC_YOUNG_SWEEP_NS;
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

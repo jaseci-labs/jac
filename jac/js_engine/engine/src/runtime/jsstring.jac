@@ -582,7 +582,7 @@ def _heap_slot_alloc(s: str, rl: int, rr: int, rlen: int, asc: int) -> int {
     # string slices (str_substr) with almost no object allocation — under 500K
     # objects while heap strings grew to 11GB in 10s, OOMing WITH --gc because
     # collections simply never triggered.
-    gc_note_alloc(_STR_REALM);
+    gc_note_alloc(_STR_REALM, 48 + len(s) if rl < 0 else 48);
     if rl < 0 {
         _hs_note_bytes(len(s));
     }  # leaf bytes (ropes are metered on flatten)

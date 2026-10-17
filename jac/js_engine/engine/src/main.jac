@@ -21,7 +21,7 @@ import from engine.src.runtime.realm {
     gc_floor_pct_set,
     gc_nursery_set
 }
-import from engine.src.runtime.gc_barrier { gc_gen_set }
+import from engine.src.runtime.gc_barrier { gc_gen_set, gc_young_range_set }
 import from engine.src.vm.vm { vm_ic_enable, vm_dump_pair_stats }
 import from engine.src.builtins.process {
     process_do_exit,
@@ -905,6 +905,15 @@ with entry {
     gc_nur_env: str = getenv("JAC_GC_NURSERY");
     if gc_nur_env != None {
         gc_nursery_set(int(gc_nur_env));
+    }
+    # The young budget in bytes adapts between these (MB; default 8 and 1024).
+    gc_ymin_env: str = getenv("JAC_GC_YOUNG_MIN_MB");
+    gc_ymax_env: str = getenv("JAC_GC_YOUNG_MAX_MB");
+    if gc_ymin_env != None or gc_ymax_env != None {
+        gc_young_range_set(
+            int(gc_ymin_env) * 1048576 if gc_ymin_env != None else 0,
+            int(gc_ymax_env) * 1048576 if gc_ymax_env != None else 0
+        );
     }
     gc_str_env: str = getenv("JAC_GC_STR_MB");
     if gc_str_env != None {

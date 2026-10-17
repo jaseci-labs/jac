@@ -71,6 +71,7 @@ import from engine.src.runtime.jsobject {
     js_object_get_own_property_descriptor,
     js_object_table_get,
     js_object_elems_kind_id,
+    js_object_cell_flags_id,
     js_object_brand,
     js_object_dense_elem,
     KEY_LENGTH,
@@ -91,6 +92,7 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.runtime.shape { shape_lookup, SHAPE_ATTR_ACCESSOR }
 import from engine.src.runtime.wk_keys { WK_LENGTH }
+import from engine.src.runtime.jscell { FLAG_IS_ARGUMENTS }
 import from engine.src.runtime.obs_context { obs_is_active }
 import from engine.src.vm.vm_obs {
     js_object_get_observable,
@@ -429,9 +431,13 @@ def:pub js_is_array(v: JSValue) -> bool {
     if ia_id <= 0 {
         return False;
     }
-    # Scalar field reads — no JSObject reference taken.
-    return js_object_elems_kind_id(ia_id) != ELEMS_NONE
-        or (js_object_brand(v) & BRAND_ARRAY) != 0;
+    # Scalar field reads — no JSObject reference taken. A strict `arguments`
+    # object keeps its indices as dense elements too (_build_arguments), so
+    # elements alone do not make an array.
+    if js_object_elems_kind_id(ia_id) != ELEMS_NONE {
+        return (js_object_cell_flags_id(ia_id) & FLAG_IS_ARGUMENTS) == 0;
+    }
+    return (js_object_brand(v) & BRAND_ARRAY) != 0;
 }
 
 """

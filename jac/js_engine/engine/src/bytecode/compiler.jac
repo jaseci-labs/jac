@@ -2106,6 +2106,26 @@ obj Compiler {
         # exactly once, with its code final (cell prefixes prepended, snc
         # elision done above), so this is the single chokepoint.
         optimize_fn(fn);
+        # Can a super() run inside this function -- in its own code or in an
+        # arrow it creates (those share its this binding)? When it cannot,
+        # reading `this` has no effect and no order, and the register
+        # translator keeps it symbolic (CompiledFunction.this_lazy).
+        fn.this_lazy = 1;
+        tl_i: int = 0;
+        while tl_i < len(fn.code) {
+            tl_op: Opcode = fn.code[tl_i].opcode;
+            if tl_op == Opcode.SUPER_CALL {
+                fn.this_lazy = 0;
+            } elif tl_op == Opcode.MAKE_ARROW {
+                tl_k: int = fn.code[tl_i].arg;
+                if tl_k < 0
+                    or tl_k >= len(self.all_fns)
+                    or self.all_fns[tl_k].this_lazy != 1 {
+                    fn.this_lazy = 0;
+                }
+            }
+            tl_i = tl_i + 1;
+        }
         # Register ISA (docs/VM_REARCH_PLAN.md V2): derived from this final
         # code lazily, the first time the function runs (VM._reg_ready).
         return fn;
