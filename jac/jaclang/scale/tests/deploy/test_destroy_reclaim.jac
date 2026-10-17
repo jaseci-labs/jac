@@ -48,14 +48,29 @@ def _run_destroy(
         NetworkingV1Api=lambda { unittest.mock.MagicMock(); },
         RbacAuthorizationV1Api=lambda { unittest.mock.MagicMock(); }
     );
+    stubs: dict[str, any] = {
+        "client": fake_client,
+        "namespace_is_owned": unittest.mock.MagicMock(return_value=owned),
+        "KEDAAutoscaler": unittest.mock.MagicMock(),
+        "MonitoringDeployer": monitoring_deployer
+    };
+    if on_delete_namespace is not None {
+        stubs["delete_namespace"] = on_delete_namespace;
+    }
+    # The cluster config is loaded once, before destroy reads anything. A load
+    # inside destroy repoints the process-wide client at whatever cluster the
+    # ambient kubeconfig names, so destroy would act on two clusters. The
+    # patch is on the kubernetes.config module because the code under test
+    # calls config.load_kube_config through it; a name imported straight from
+    # kubernetes.config would not be seen here.
+    def _second_load(*args: any, **kwargs: any) {
+        raise AssertionError("destroy reloaded the cluster config");
+    }
     with unittest.mock.patch.multiple(
-        target_mod,
-        client=fake_client,
-        namespace_is_owned=unittest.mock.MagicMock(return_value=owned),
-        delete_namespace=on_delete_namespace,
-        KEDAAutoscaler=unittest.mock.MagicMock(),
-        MonitoringDeployer=monitoring_deployer
-    ) {
+        "kubernetes.config",
+        load_kube_config=_second_load,
+        load_incluster_config=_second_load
+    ), unittest.mock.patch.multiple(target_mod, **stubs) {
         with unittest.mock.patch.object(
             target_mod.KubernetesTarget,
             "_load_cluster_config",
@@ -75,6 +90,14 @@ def _run_destroy(
             }
         }
     }
+}
+
+
+def _recording(deleted: list[str]) -> any {
+    def record(core_v1: any, namespace: str) {
+        deleted.append(namespace);
+    }
+    return record;
 }
 
 
@@ -165,7 +188,7 @@ test "a failed monitoring teardown keeps the namespace" {
     _run_destroy(
         unittest.mock.MagicMock(),
         core_v1,
-        deleted_namespaces.append,
+        _recording(deleted_namespaces),
         monitoring=monitoring
     );
 
@@ -189,7 +212,7 @@ test "a namespace this app created but no longer holds alone is kept" {
         items=[_pvc(bundle_pvc_name(CO_TENANT), "bundle-store")]
     );
 
-    _run_destroy(apps_v1, core_v1, deleted_namespaces.append);
+    _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
 
     assert not deleted_namespaces , (
         f"the namespace was deleted whole while '{CO_TENANT}' was still "
@@ -203,7 +226,6 @@ test "a namespace this app created but no longer holds alone is kept" {
 
 
 test "a namespace this app created and holds alone is still reclaimed" {
-    deleted_namespaces: list[str] = [];
     apps_v1 = unittest.mock.MagicMock();
     apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
         items=[SimpleNamespace(metadata=SimpleNamespace(name=f"{APP}-postgres"))]
@@ -218,11 +240,16 @@ test "a namespace this app created and holds alone is still reclaimed" {
         ]
     );
 
-    _run_destroy(apps_v1, core_v1, deleted_namespaces.append);
+    # The real delete: it must go through the client destroy loaded for the
+    # configured cluster, not one of its own.
+    _run_destroy(apps_v1, core_v1, None);
 
-    assert deleted_namespaces == [NS] , (
+    deletes = [
+        str(c.kwargs.get("name", "")) for c in core_v1.delete_namespace.call_args_list
+    ];
+    assert deletes == [NS] , (
         "this app's own resources read as a co-tenant's, so the namespace it "
-        "created leaks with everything in it (#7968)"
+        f"created leaks with everything in it (#7968); deleted {deletes}"
     );
 }
 
@@ -345,7 +372,7 @@ test "a refused monitoring teardown fails its own component destroy" {
 }
 
 
-def _refuse_namespace_delete(name: str) {
+def _refuse_namespace_delete(core_v1: any, name: str) {
     raise ApiException(status=403);
 }
 
@@ -366,5 +393,27 @@ test "a namespace this app may not delete still gives up its database" {
     assert apps_v1.delete_namespaced_stateful_set.called , (
         "the namespace delete was refused and destroy gave up there, so the "
         "database and its volume stay with no way to reclaim them by re-running"
+    );
+}
+
+
+test "only the target's cluster loader reads a kubeconfig under deploy" {
+    import from pathlib { Path }
+    deploy = Path(__file__).resolve().parent.parent.parent / "deploy";
+    offenders: list[str] = [];
+    for path in sorted(deploy.rglob("*.jac")) {
+        if path.name == "kubernetes_target.jac" {
+            continue;
+        }
+        text = path.read_text();
+        for name in ("load_kube_config", "load_incluster_config") {
+            if name in text {
+                offenders.append(f"{path.relative_to(deploy)}: {name}");
+            }
+        }
+    }
+    assert not offenders , (
+        "a kubeconfig load outside _load_cluster_config repoints the process-wide "
+        f"client at whatever the ambient context names: {offenders}"
     );
 }

@@ -13299,9 +13299,7 @@ graph import scale._optdeps {
     kubernetes --> scale.deploy.target.kubernetes.target { ApiException, client }
     kubernetes --> scale.deploy.target.kubernetes.utils.kubernetes_utils {
         ApiException,
-        ConfigException,
-        client,
-        config
+        client
     }
     kubernetes --> scale.injector.pvc_injector.PvcInjector.seed { ApiException, client }
     kubernetes --> scale.tests.deploy.observer_transition_recorder {
