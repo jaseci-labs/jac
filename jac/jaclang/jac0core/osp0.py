@@ -17,6 +17,7 @@ connect time) become EdgeAnchors in `edges`.
 
 from __future__ import annotations
 
+import weakref
 from typing import Any, Callable
 
 from jaclang.runtime.archetype import (
@@ -37,6 +38,7 @@ from jaclang.runtime.archetype import (
     light_in,
     light_out,
     new_connect_edge,
+    own_edges,
 )
 
 __all__ = [
@@ -109,8 +111,8 @@ def connect0(
                 continue
             e, built_with = new_connect_edge(ct, conn_assign)
             e.__jac__ = EdgeAnchor(archetype=e, source=src, target=tgt, is_undirected=False)
-            src.edges.append(e.__jac__)
-            tgt.edges.append(e.__jac__)
+            own_edges(src).append(e.__jac__)
+            own_edges(tgt).append(e.__jac__)
             if is_light_edge_type(cls):
                 src.mixed = True
                 tgt.mixed = True
@@ -265,6 +267,9 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
                 lst = d.get(edge) if d else None
                 if not lst:
                     return []
+                if isinstance(lst, weakref.ref):
+                    one = lst()
+                    return [one] if one is not None else []
                 out: list = []
                 for ref in lst:
                     arch = ref()

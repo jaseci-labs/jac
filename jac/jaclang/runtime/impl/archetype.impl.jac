@@ -340,7 +340,7 @@ impl GenericEdge.__repr__ -> str {
 
 @cached_property
 impl Root.__jac__ -> NodeAnchor {
-    anchor = NodeAnchor(archetype=self, edges=[]);
+    anchor = NodeAnchor(archetype=self, edges=NO_EDGES);
     anchor.persistent = True;
     anchor.ensure_id();
     return anchor;

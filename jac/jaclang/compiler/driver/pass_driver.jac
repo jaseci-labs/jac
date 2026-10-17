@@ -105,7 +105,7 @@ def run_pass[W: CompilerPass](
         }
         if completed.errors_had or completed.warnings_had {
             sources: dict[str, Source] = {ir_in.source.file_path: ir_in.source};
-            for nd in ir_in._in_mod_nodes {
+            for nd in ir_in._in_mod_nodes or [] {
                 sources[nd.loc.mod_path] = nd.loc.orig_src;
             }
             completed.errors_had = [

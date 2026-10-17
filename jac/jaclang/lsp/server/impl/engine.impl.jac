@@ -977,7 +977,7 @@ impl JacLangServer.get_node_at_position(
         return None;
     }
     if (ast := self.get_ast_of_file(file_path)) {
-        for ast_node in ast._in_mod_nodes {
+        for ast_node in ast._in_mod_nodes or [] {
             if not isinstance(ast_node, uni.Token) {
                 continue;
             }

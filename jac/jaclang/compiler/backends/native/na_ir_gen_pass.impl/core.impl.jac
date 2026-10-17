@@ -616,10 +616,31 @@ impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
 
 impl NaIRGenPass._discover_kernel_deps -> None {
     """The kernel units a lowering consults on demand, the formatting kernel
-    from an f-string and the OSP kernels from an archetype, are asked for
-    while dependencies are still being discovered, so a missing one is
-    lowered before this unit instead of inside it.""";
-    rels: list[str] = [FMT_KERNEL_REL];
+    from an f-string format spec, `int(...)` or a bytes method and the OSP
+    kernels from an archetype, are asked for while dependencies are still
+    being discovered, so a missing one is lowered before this unit instead
+    of inside it. Only the kernels this unit can reach are asked for.""";
+    rels: list[str] = [];
+    wants_fmt = any(
+        fv.format_spec is not None
+        for fv in self.module.get_all_sub_nodes(uni.FormattedValue)
+    );
+    fmt_methods = {"hex", "fromhex", "join", "lower", "upper", "split"};
+    for call in self.module.get_all_sub_nodes(uni.FuncCall) {
+        if wants_fmt {
+            break;
+        }
+        target = call.target;
+        if isinstance(target, uni.Name) {
+            wants_fmt = target.sym_name == "int";
+        } elif isinstance(target, uni.AtomTrailer)
+            and isinstance(target.right, uni.Name) {
+            wants_fmt = target.right.sym_name in fmt_methods;
+        }
+    }
+    if wants_fmt {
+        rels.append(FMT_KERNEL_REL);
+    }
     if self.imported_osp_archs
         or any(
             arch.arch_kind is not None and arch.arch_kind in ("node", "edge", "walker")

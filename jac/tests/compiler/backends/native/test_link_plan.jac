@@ -1362,3 +1362,20 @@ test "the OSP kernels lower before the unit that consults them" {
         f"a kernel lowered inside a consumer's pass: {live_at_lower}"
     );
 }
+
+test "the formatting kernel lowers before a unit that parses an int or calls a bytes method" {
+    root_dir = tempfile.mkdtemp(prefix="jac-kernel-deps-");
+    Path(root_dir, "lib.jac").write_text(
+        "def parse(text: str) -> int {\n    return int(text);\n}\n\n"
+        "def hexed(data: bytes) -> str {\n    return data.hex();\n}\n"
+    );
+    Path(root_dir, "top.jac").write_text(
+        "import from lib { parse, hexed }\n\n"
+        "def run(text: str) -> str {\n    return hexed(b\"ab\") + str(parse(text));\n}\n"
+    );
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    assert {"lib.jac", "top.jac", "fmt_kernel.jac"} <= lowered , lowered;
+    assert max(live_at_lower) == 0 , (
+        f"a kernel lowered inside a consumer's pass: {live_at_lower}"
+    );
+}

@@ -25,6 +25,7 @@ glob _NO_TRIGGER = object(),
      _subclass_hook_lock = Lock();
 
 glob _light_edge_types: dict[type, bool] = {},
+     NO_EDGES: list[EdgeAnchor] = [],
      _edge_ctor_args: dict[type, tuple[str, ...]] = {},
      _edge_subtypes: dict[type, tuple[type, ...]] = {},
      _tracked_classes: dict[type, type] = {};
@@ -135,9 +136,7 @@ obj NodeAnchor(Anchor) {
         out_light: (dict[type, list[any]] | None) = ObjectField(
             `init=False, `default=None
         ),
-        in_light: (dict[type, list[any]] | None) = ObjectField(
-            `init=False, `default=None
-        ),
+        in_light: (dict[type, any] | None) = ObjectField(`init=False, `default=None),
         mixed: bool = ObjectField(`init=False, `default=False);
 
     def __getstate__ -> dict[(str, object)];
@@ -217,7 +216,7 @@ class NodeArchetype(Archetype) {
 
     @cached_property
     def __jac__(self: NodeArchetype) -> NodeAnchor {
-        return NodeAnchor(archetype=self, edges=[]);
+        return NodeAnchor(archetype=self, edges=NO_EDGES);
     }
 }
 
@@ -395,7 +394,17 @@ def edge_subtypes(cls: type) -> tuple[type, ...] {
     return result;
 }
 
-def _deref(lst: list[any]) -> list[any] {
+def _as_refs(held: any) -> any {
+    """An incoming light entry with one source holds the weak reference
+    itself rather than a one-element list: a tree node's parent.""";
+    return [held] if isinstance(held, weakref.ref) else held;
+}
+
+def _deref(lst: any) -> list[any] {
+    if isinstance(lst, weakref.ref) {
+        one = lst();
+        return [one] if one is not None else [];
+    }
     out: list[any] = [];
     for r in lst {
         a = r();
@@ -467,10 +476,12 @@ class _InLinks(list) {
     }
 }
 
-def _connect_back(inn: dict[type, list[any]], cls: type, src: NodeArchetype) {
+def _connect_back(inn: dict[type, any], cls: type, src: NodeArchetype) {
     lst = inn.get(cls);
     if lst is None {
-        inn[cls] = [weakref.ref(src)];
+        inn[cls] = weakref.ref(src);
+    } elif isinstance(lst, weakref.ref) {
+        inn[cls] = [lst, weakref.ref(src)];
     } elif isinstance(lst, _InLinks) {
         lst.add(src);
     } elif len(lst) + 1 < _INDEX_AT {
@@ -482,15 +493,20 @@ def _connect_back(inn: dict[type, list[any]], cls: type, src: NodeArchetype) {
     }
 }
 
-def _drop_back(
-    d: (dict[type, list[any]] | None), cls: type, src: NodeArchetype
-) -> bool {
+def _drop_back(d: (dict[type, any] | None), cls: type, src: NodeArchetype) -> bool {
     if d is None {
         return False;
     }
     lst = d.get(cls);
     if lst is None {
         return False;
+    }
+    if isinstance(lst, weakref.ref) {
+        if lst() is not src {
+            return False;
+        }
+        d.pop(cls, None);
+        return True;
     }
     if isinstance(lst, _InLinks) {
         if not lst.drop(src) {
@@ -511,6 +527,15 @@ def _drop_back(
         }
     }
     return False;
+}
+
+def own_edges(anchor: NodeAnchor) -> list[EdgeAnchor] {
+    """An anchor starts on the shared empty edge list and takes a list of its
+    own when its first heavy edge connects; most nodes never get one.""";
+    if anchor.edges is NO_EDGES {
+        anchor.edges = [];
+    }
+    return anchor.edges;
 }
 
 def light_connect(src: NodeAnchor, cls: type, tgt: NodeAnchor) {
@@ -605,27 +630,27 @@ def _collect_light(d: dict[type, list[any]], cls: (type | None)) -> list[any] {
     if cls is None {
         out: list[any] = [];
         for lst in d.values() {
-            out.extend(lst);
+            out.extend(_as_refs(lst));
         }
         return out;
     }
     subs = edge_subtypes(cls);
     if len(subs) == 1 {
         lst = d.get(cls);
-        return lst if lst is not None else [];
+        return _as_refs(lst) if lst is not None else [];
     }
     found: list[any] = [];
     if len(subs) <= len(d) {
         for sub in subs {
             lst = d.get(sub);
             if lst {
-                found.extend(lst);
+                found.extend(_as_refs(lst));
             }
         }
     } else {
         for (k, lst) in d.items() {
             if lst and issubclass(k, cls) {
-                found.extend(lst);
+                found.extend(_as_refs(lst));
             }
         }
     }

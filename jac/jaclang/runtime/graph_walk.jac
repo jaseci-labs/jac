@@ -161,7 +161,7 @@ def _walk_light(
         if ecls is not None and not issubclass(k, ecls) {
             continue;
         }
-        for item in lst {
+        for item in (lst if outgoing else _as_refs(lst)) {
             arch = item if outgoing else item();
             if arch is None {
                 continue;

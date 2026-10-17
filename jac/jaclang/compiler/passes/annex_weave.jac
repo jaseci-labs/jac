@@ -20,9 +20,14 @@ def merge_annex_into(nd: Module, annex_mod: Module) -> None {
         return;
     }
     nd.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
-    for sub in annex_mod._in_mod_nodes {
+    held = nd._in_mod_nodes;
+    if held is None {
+        held = [];
+        nd._in_mod_nodes = held;
+    }
+    for sub in annex_mod._in_mod_nodes or [] {
         if sub is not annex_mod {
-            nd._in_mod_nodes.append(sub);
+            held.append(sub);
         }
     }
 }

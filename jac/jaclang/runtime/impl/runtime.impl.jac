@@ -1269,8 +1269,8 @@ impl JacGraph.heavy_edge(
     eanch = `edge.__jac__=EdgeAnchor(
         archetype=`edge, source=source, target=target, is_undirected=is_undirected
     );
-    source.edges.append(eanch);
-    target.edges.append(eanch);
+    own_edges(source).append(eanch);
+    own_edges(target).append(eanch);
     if is_light_edge_type(`type(`edge)) {
         source.mixed = True;
         target.mixed = True;

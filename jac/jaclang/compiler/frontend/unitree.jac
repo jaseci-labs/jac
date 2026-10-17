@@ -157,14 +157,14 @@ import from jaclang.compiler.frontend.relations {
 walker TreeWalker {}
 
 node UniNode {
-    has _ctx_parent: (UniNode | None) postinit,
-        _struct_frozen: bool postinit,
-        _in_mod_nodes: list[UniNode] postinit,
-        _gen: (CodeGenTarget | None) postinit,
+    has _ctx_parent: (UniNode | None) = None,
+        _struct_frozen: bool = False,
+        _in_mod_nodes: (list[UniNode] | None) = None,
+        _gen: (CodeGenTarget | None) = None,
         loc: CodeLocInfo postinit,
-        _role_shapes: (dict[type, str] | None) postinit,
-        __sub_node_tab: (dict[(type, list[UniNode])] | None) postinit,
-        ct_pruned: bool postinit;
+        _role_shapes: (dict[type, str] | None) = None,
+        __sub_node_tab: (dict[(type, list[UniNode])] | None) = None,
+        ct_pruned: bool = False;
 
     def postinit -> None;
     can walk_kids with TreeWalker entry;
@@ -510,14 +510,14 @@ node Expr(UniNode) {
         setter(narrowed_type: (TypeBase | None));
     }
 
-    has _type_sym_tab: (UniScopeNode | None) postinit,
-        _type_cache: (TypeBase | None) postinit,
-        _type_cache_ok: bool postinit,
-        ct_value: CtValue | None postinit,
-        coerce_to: (str | None) postinit,
-        fw: (str | None) postinit,
-        fw_safe: bool postinit,
-        attached_tokens: (list[Token] | None) postinit;
+    has _type_sym_tab: (UniScopeNode | None) = None,
+        _type_cache: (TypeBase | None) = None,
+        _type_cache_ok: bool = False,
+        ct_value: CtValue | None = None,
+        coerce_to: (str | None) = None,
+        fw: (str | None) = None,
+        fw_safe: bool = False,
+        attached_tokens: (list[Token] | None) = None;
 
     def init(*, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
