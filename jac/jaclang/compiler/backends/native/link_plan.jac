@@ -10,6 +10,7 @@ glob PLAN_DIGEST_FORMAT: int = 3;
 enum ArtifactKind {
     EXECUTABLE = "executable",
     SHARED = "shared",
+    ENTRY_LIB = "entry-lib",
     WASM = "wasm",
     JIT = "jit"
 }
@@ -278,13 +279,19 @@ obj LinkPlan {
         return GlueSpec(
             units=units,
             root_index=root_index,
-            shared=(kind == ArtifactKind.SHARED),
+            shared=(kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB),
+            entry_lib=kind == ArtifactKind.ENTRY_LIB,
             platform=platform if kind != ArtifactKind.JIT else "jit",
             static_musl=static_musl,
             triple=self.triple,
             clib_paths=self.clib_paths(),
             needs_atexit_shim=(
-                is_elf and (kind == ArtifactKind.SHARED or not static_musl)
+                is_elf
+                and (
+                    kind == ArtifactKind.SHARED
+                    or kind == ArtifactKind.ENTRY_LIB
+                    or not static_musl
+                )
             ),
             needs_region_hook=not hook_supplied
         );
@@ -672,11 +679,16 @@ def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine {
     return tm;
 }
 
-def callback_glue_ir(plan: LinkPlan) -> str {
-    if not plan.callback_bindings {
-        return "";
-    }
+def resolved_callback_bindings(
+    plan: LinkPlan
+) -> tuple[list[InteropBinding], dict[str, str]] {
+    """Resolve plan.callback_bindings against the units' bitcode.
 
+    Returns the bindings that need a host-provided bind slot (those with an IR
+    declaration in some unit) plus each one's declaration IR text. A binding
+    neither defined nor declared anywhere -- an imported-but-never-called
+    server fn has no call site -- gets no slot and is skipped with a warning.
+    """;
     wanted = {binding.name for binding in plan.callback_bindings};
     declarations: dict[str, str] = {};
     defined: set[str] = set();
@@ -702,11 +714,30 @@ def callback_glue_ir(plan: LinkPlan) -> str {
         for b in plan.callback_bindings
         if b.name not in defined
     ];
-    missing = {b.name for b in bindings} - set(declarations);
-    if missing {
-        raise LinkPlanError(
-            "Missing callback declarations: " + ", ".join(sorted(missing))
+    unreferenced = {b.name for b in bindings} - set(declarations);
+    if unreferenced {
+        sys.stderr.write(
+            f"[link plan] no IR references for na->sv callback(s) {', '.join(
+                sorted(unreferenced)
+            )}; skipping their bind slots\n"
         );
+        bindings = [
+            b
+            for b in bindings
+            if b.name in declarations
+        ];
+    }
+    return (bindings, declarations);
+}
+
+def callback_glue_ir(plan: LinkPlan) -> str {
+    if not plan.callback_bindings {
+        return "";
+    }
+
+    (bindings, declarations) = resolved_callback_bindings(plan);
+    if not bindings {
+        return "";
     }
     (text, _) = bind_shared_callbacks(
         "\n".join(declarations[b.name] for b in bindings), bindings
@@ -864,7 +895,7 @@ def optimize_whole_program(
     assert isinstance(pb, llvm.PassBuilder);
     mpm = pb.getModulePassManager();
     assert isinstance(mpm, llvm.ModulePassManager);
-    if kind == ArtifactKind.SHARED {
+    if kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB {
         exports = plan.pub_exports()
             + [
                 SHARED_INIT_SYMBOL,
@@ -876,6 +907,9 @@ def optimize_whole_program(
                 "jac_heap_size",
                 "jac_list_heap_size"
             ];
+        if kind == ArtifactKind.ENTRY_LIB {
+            exports.extend(["jac_entry", "__jac_argc", "__jac_argv"]);
+        }
         exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
         internalize_native_implementation(merged, exports);
     }
@@ -1062,7 +1096,7 @@ def link_artifact(
     log: any = None,
     app_imports: (set | None) = None
 ) -> LinkResult {
-    if kind == ArtifactKind.SHARED {
+    if kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB {
         for unit in plan.units {
             if set(unit.iface.python_imports)
                 - {b.name for b in plan.callback_bindings} {
@@ -1079,7 +1113,7 @@ def link_artifact(
     platform = _platform_of(plan.triple);
     is_macos = platform == "macho";
     is_windows = platform == "pe";
-    shared = kind == ArtifactKind.SHARED;
+    shared = kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB;
 
     clib_paths = plan.clib_paths();
     clib_symbol_lib = plan.clib_symbol_lib();
