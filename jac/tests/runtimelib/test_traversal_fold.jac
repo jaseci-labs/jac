@@ -15,6 +15,7 @@ materialised into Python.
 
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from uuid { UUID }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.runtime.context { ExecutionContext }
 
@@ -27,6 +28,12 @@ node FItem {
 }
 
 edge FHas: FBoard --> FItem {}
+
+node FNoise {}
+
+edge FNote: FBoard --> FItem {
+    has note: str = "";
+}
 
 node FSub {
     has rank: int = 0;
@@ -435,6 +442,215 @@ test "batching stays off where a hop's answer is not fixed, and ends with the tr
         } finally {
             JacRuntime.exec_ctx = old;
             ctx2.close();
+        }
+    }
+}
+
+
+def _edge_types(ctx: ExecutionContext, where: str) -> list[tuple[str, str]] {
+    store = ctx.mem.store;
+    assert store is not None , "these tests need the Postgres store";
+    rows = store.rows(
+        "SELECT src_type, dst_type FROM anchors WHERE kind = 'EdgeAnchor' AND " + where,
+        {}
+    );
+    return [(str(r[0]), str(r[1])) for r in rows];
+}
+
+
+test "typed hops in every direction reach their nodes through recorded endpoint types" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            b = FBoard(name="dirs");
+            root ++> b;
+            b ++> FItem(rank=0);
+            FItem(rank=10) ++> b;
+            b <++> FItem(rank=20);
+            FItem(rank=21) <++> b;
+            for _ in range(5) {
+                b ++> FNoise();
+                FNoise() ++> b;
+                b <++> FNoise();
+                FNoise() <++> b;
+            }
+            ctx.mem.commit();
+            untyped = [
+                t
+                for t in _edge_types(ctx, "TRUE")
+                if "" in t
+            ];
+            assert untyped == [] , f"edges written without endpoint types: {untyped}";
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        ctx2 = _ctx(td);
+        JacRuntime.exec_ctx = ctx2;
+        try {
+            b2 = [root-->[?:FBoard]][0];
+            out = sorted([_as_any(x).rank for x in [b2-->[?:FItem]]]);
+            inc = sorted([_as_any(x).rank for x in [b2<--[?:FItem]]]);
+            both = sorted([_as_any(x).rank for x in [b2<-->[?:FItem]]]);
+            assert out == [0, 20, 21] , out;
+            assert inc == [10, 20, 21] , inc;
+            assert both == [0, 10, 20, 21] , both;
+            assert len([b2<-->[?:FNoise]]) == 20;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx2.close();
+        }
+    }
+}
+
+
+test "an edge write takes its endpoint type from the stored node, not a stale copy" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            b = FBoard(name="stale");
+            root ++> b;
+            b +>:FNote(note="a"):+> FItem(rank=1);
+            ctx.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        ctx2 = _ctx(td);
+        JacRuntime.exec_ctx = ctx2;
+        try {
+            b2 = [root-->[?:FBoard]][0];
+            items = [b2->:FNote:->[?:FItem]];
+            notes = [edge b2->:FNote:->];
+            assert len(items) == 1 and len(notes) == 1;
+            iid = str(_as_any(items[0]).__jac__.id);
+            other = _ctx(td);
+            try {
+                ostore = other.mem.store;
+                assert ostore is not None;
+                ostore.rows(
+                    "UPDATE anchors SET arch_type = 'renamed.FItem' "
+                        + "WHERE id = CAST(:i AS uuid)",
+                    {"i": iid}
+                );
+                ostore.retype_edges([UUID(iid)]);
+            } finally {
+                other.close();
+            }
+            _as_any(notes[0]).note = "b";
+            ctx2.mem.commit();
+            assert _edge_types(ctx2, "props::text LIKE '%FNote%'")[0][1]
+                == "renamed.FItem" , _edge_types(ctx2, "props::text LIKE '%FNote%'");
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx2.close();
+        }
+    }
+}
+
+
+test "an edge rewritten without loading its endpoints keeps their types" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            b = FBoard(name="noted");
+            root ++> b;
+            b +>:FNote(note="a"):+> FItem(rank=1);
+            ctx.mem.commit();
+            typed = _edge_types(ctx, "props::text LIKE '%FNote%'");
+            assert len(typed) == 1 and "" not in typed[0] , typed;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        ctx2 = _ctx(td);
+        JacRuntime.exec_ctx = ctx2;
+        try {
+            b2 = [root-->[?:FBoard]][0];
+            for e in [edge b2->:FNote:->] {
+                assert not _as_any(e).__jac__.target.is_populated() , (
+                    "the edge's target must stay a stub for this test"
+                );
+                _as_any(e).note = "b";
+            }
+            ctx2.mem.commit();
+            assert _edge_types(ctx2, "props::text LIKE '%FNote%'") == typed;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx2.close();
+        }
+        ctx3 = _ctx(td);
+        JacRuntime.exec_ctx = ctx3;
+        try {
+            b3 = [root-->[?:FBoard]][0];
+            notes = [_as_any(e).note for e in [edge b3->:FNote:->]];
+            assert notes == ["b"] , notes;
+            assert [_as_any(x).rank for x in [b3->:FNote:->[?:FItem]]] == [1];
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx3.close();
+        }
+    }
+}
+
+
+test "a node whose stored type changed is still reached by typed hops" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            b = FBoard(name="moved");
+            root ++> b;
+            item = FItem(rank=7);
+            b ++> item;
+            ctx.mem.commit();
+            store = ctx.mem.store;
+            assert store is not None;
+            iid = str(_as_any(item).__jac__.id);
+            store.rows(
+                "UPDATE anchors SET arch_type = 'moved.FItem' "
+                    + "WHERE id = CAST(:i AS uuid)",
+                {"i": iid}
+            );
+            store.rows(
+                "UPDATE anchors SET dst_type = 'moved.FItem' "
+                    + "WHERE dst = CAST(:i AS uuid)",
+                {"i": iid}
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        ctx2 = _ctx(td);
+        JacRuntime.exec_ctx = ctx2;
+        try {
+            b2 = [root-->[?:FBoard]][0];
+            for x in [b2-->] {
+                _as_any(x).rank = 8;
+            }
+            ctx2.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx2.close();
+        }
+        ctx3 = _ctx(td);
+        JacRuntime.exec_ctx = ctx3;
+        try {
+            b3 = [root-->[?:FBoard]][0];
+            ranks = [_as_any(x).rank for x in [b3-->[?:FItem]]];
+            assert ranks == [8] , (
+                f"a node rewritten under its current type was missed by a typed hop: {ranks}"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx3.close();
         }
     }
 }

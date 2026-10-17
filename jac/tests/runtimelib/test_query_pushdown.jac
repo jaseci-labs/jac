@@ -21,7 +21,7 @@ import from uuid { UUID, uuid4 }
 import from jaclang.runtime.graph_query { GraphQuery, QHop, QPred }
 import from jaclang.server.session { runtime_for_base }
 import from jaclang.data.sqlcompile { CompiledQuery, compile_query }
-import from jaclang.data.store { AnchorRow, PgStore, TxnIsolation }
+import from jaclang.data.store { AnchorRow, PgStore, SCHEMA_STAMP_KEY, TxnIsolation }
 
 node PMsg {
     has body: str = "",
@@ -473,6 +473,104 @@ test "under read committed every typed hop sees a subtype another store just reg
             );
         } finally {
             other.close();
+            store.close();
+        }
+    }
+}
+
+
+test "a database from before endpoint types gains them at its next schema boot" {
+    with TemporaryDirectory() as td {
+        store = _store(td);
+        try {
+            hub = _seed_hub(store);
+            store.rows(
+                "ALTER TABLE anchors DROP COLUMN src_type, DROP COLUMN dst_type", {}
+            );
+            store.rows(
+                "CREATE INDEX idx_anchors_src ON anchors (src, arch_type) "
+                    + "WHERE src IS NOT NULL",
+                {}
+            );
+            store.kv_put(SCHEMA_STAMP_KEY, "0:before-endpoint-types");
+        } finally {
+            store.close();
+        }
+        store = _store(td);
+        try {
+            untyped = store.rows(
+                "SELECT count(*) FROM anchors WHERE kind = 'EdgeAnchor' "
+                    + "AND (src_type = '' OR dst_type = '')",
+                {}
+            );
+            assert int(untyped[0][0]) == 0 , (
+                f"{untyped[0][0]} edges kept no endpoint types after the schema boot"
+            );
+            indexes = sorted(
+                str(r[0])
+                for r in store.rows(
+                    "SELECT indexname FROM pg_indexes WHERE tablename = 'anchors' "
+                        + "AND indexname LIKE 'idx_anchors_src%'",
+                    {}
+                )
+            );
+            assert indexes == ["idx_anchors_src_typed"] , indexes;
+            (ids, _, plan) = _hop(store, hub, 2, PRare);
+            assert len(ids) == 7 , ids;
+            assert "dst_type" in plan , plan;
+        } finally {
+            store.close();
+        }
+    }
+}
+
+
+def _typed_edge_row(src: AnchorRow, dst: AnchorRow) -> AnchorRow {
+    row = _edge_row(src.id, dst.id);
+    row.src_type = src.arch_type;
+    row.dst_type = dst.arch_type;
+    return row;
+}
+
+
+test "a typed hop reads only the edges into its node type" {
+    with TemporaryDirectory() as td {
+        store = _store(td);
+        try {
+            hub = _node_row("PHub", ["PHub"]);
+            rows: list[AnchorRow] = [hub];
+            for (arch, anc, count, outgoing) in [
+                ("PRare", ["PRare"], 4, True),
+                ("PRare", ["PRare"], 2, False),
+                ("PFiller", ["PFiller"], 2000, True),
+                ("PFiller", ["PFiller"], 2000, False)
+            ] {
+                for _ in range(count) {
+                    nd = _node_row(arch, anc);
+                    rows.append(nd);
+                    rows.append(
+                        _typed_edge_row(hub, nd)
+                            if outgoing
+                            else _typed_edge_row(nd, hub)
+                    );
+                }
+            }
+            store.upsert(rows);
+            _seed_filler(store, 3000);
+            for (d, want) in [(2, 4), (1, 2), (3, 6)] {
+                (ids, examined, plan) = _hop(store, hub.id, d, PRare);
+                assert len(ids) == want and len(set(ids)) == want , (
+                    f"dir={d}: expected {want} PRare nodes, got {ids}"
+                );
+                # Before 17 the planner may keep a second-column `= ANY` as a filter.
+                if store.server_version() >= 17 {
+                    assert examined < 200 , (
+                        f"dir={d}: the hop examined {examined} rows to reach {want} "
+                        f"PRare nodes among 4000 PFiller edges: {plan}"
+                    );
+                }
+            }
+        } finally {
             store.close();
         }
     }

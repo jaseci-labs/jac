@@ -37,20 +37,14 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
         src            uuid,
         dst            uuid,
         undirected     boolean NOT NULL DEFAULT false,
+        src_type       text NOT NULL DEFAULT '',
+        dst_type       text NOT NULL DEFAULT '',
         props          jsonb NOT NULL DEFAULT '{}'::jsonb,
         format_version integer NOT NULL DEFAULT 1,
         version        bigint NOT NULL DEFAULT 0,
         updated_at     timestamptz NOT NULL DEFAULT now(),
         seq            bigserial
     )
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_anchors_src
-        ON anchors (src, arch_type) WHERE src IS NOT NULL
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_anchors_dst
-        ON anchors (dst, arch_type) WHERE dst IS NOT NULL
     """,
          """
     CREATE INDEX IF NOT EXISTS idx_anchors_kind_type
@@ -97,7 +91,19 @@ glob OUTBOX_SCHEMA_SQL: list[str] = [
         ON jac_docs (collection, (doc->>'user_id'))
     """
      ]
-         + OUTBOX_SCHEMA_SQL;
+         + OUTBOX_SCHEMA_SQL,
+     _TYPED_EDGE_SQL: list[str] = [
+         """
+    CREATE INDEX IF NOT EXISTS idx_anchors_src_typed
+        ON anchors (src, dst_type, arch_type) WHERE src IS NOT NULL
+    """,
+         """
+    CREATE INDEX IF NOT EXISTS idx_anchors_dst_typed
+        ON anchors (dst, src_type, arch_type) WHERE dst IS NOT NULL
+    """,
+         'DROP INDEX IF EXISTS idx_anchors_src',
+         'DROP INDEX IF EXISTS idx_anchors_dst'
+     ];
 
 
 impl ConnInfo.dsn -> str {
@@ -300,6 +306,8 @@ def _app_identity -> str {
 
 
 glob _SCHEMA_LOCK_TAG = 'jac:ensure_schema',
+     _BACKFILL_CHUNK = 5000,
+     _BACKFILL_YIELD_STATES = ('55P03', '40P01'),
      _SCHEMA_LOCK_WAIT_SECONDS = 30.0,
      _SCHEMA_LOCK_POLL_SECONDS = 0.05,
      _SCHEMA_LOCK_POLL_MAX_SECONDS = 0.5,
@@ -724,10 +732,64 @@ impl PgStore._apply_schema_ddl -> None {
                 {}
             );
         }
+        if self._promoted_column_type('dst_type') is None {
+            self._run(
+                "ALTER TABLE anchors "
+                "ADD COLUMN IF NOT EXISTS src_type text NOT NULL DEFAULT '', "
+                "ADD COLUMN IF NOT EXISTS dst_type text NOT NULL DEFAULT ''",
+                {}
+            );
+        }
+        for stmt in _TYPED_EDGE_SQL {
+            self._run(stmt, {});
+        }
         self._apply_promotions();
         self._property_graph_ddl();
+        self._backfill_endpoint_types();
     } finally {
         self._run('SET lock_timeout = DEFAULT', {});
+    }
+}
+
+
+impl PgStore._backfill_endpoint_types -> None {
+    after = str(UUID(int=0));
+    while True {
+        try {
+            got = self._run(
+                """
+                WITH b AS (
+                    SELECT id FROM anchors WHERE id > CAST(:a AS uuid)
+                    ORDER BY id LIMIT CAST(:n AS bigint)
+                ), typed AS (
+                    UPDATE anchors e SET
+                        src_type = COALESCE(
+                            (SELECT s.arch_type FROM anchors s WHERE s.id = e.src), ''),
+                        dst_type = COALESCE(
+                            (SELECT d.arch_type FROM anchors d WHERE d.id = e.dst), '')
+                    FROM b
+                    WHERE e.id = b.id AND e.kind = 'EdgeAnchor'
+                      AND (e.src_type = '' OR e.dst_type = '')
+                )
+                SELECT id FROM b ORDER BY id DESC LIMIT 1
+                """,
+                {'a': after, 'n': _BACKFILL_CHUNK}
+            );
+        } except PgWireError as e {
+            if _sqlstate(e) not in _BACKFILL_YIELD_STATES {
+                raise;
+            }
+            logger.info(f"endpoint-type backfill skipped a locked chunk after {after}");
+            got = self._run(
+                'SELECT id FROM anchors WHERE id > CAST(:a AS uuid) '
+                'ORDER BY id OFFSET CAST(:n AS bigint) - 1 LIMIT 1',
+                {'a': after, 'n': _BACKFILL_CHUNK}
+            );
+        }
+        if not got {
+            return;
+        }
+        after = str(got[0][0]);
     }
 }
 
@@ -1002,7 +1064,12 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
                 f"(CAST(:id{i} AS uuid), :kind{i}, :arch_type{i}, "
                 f":arch_module{i}, :fp{i}, CAST(:root_id{i} AS uuid), "
                 f"CAST(:src{i} AS uuid), CAST(:dst{i} AS uuid), "
-                f":undirected{i}, CAST(:props{i} AS jsonb), :fv{i}, :ver{i}, now())"
+                f":undirected{i}, "
+                f"COALESCE((SELECT n.arch_type FROM anchors n "
+                f"WHERE n.id = CAST(:src{i} AS uuid)), :src_type{i}), "
+                f"COALESCE((SELECT n.arch_type FROM anchors n "
+                f"WHERE n.id = CAST(:dst{i} AS uuid)), :dst_type{i}), "
+                f"CAST(:props{i} AS jsonb), :fv{i}, :ver{i}, now())"
             );
             params[f"id{i}"] = str(row.id);
             params[f"kind{i}"] = row.kind;
@@ -1013,6 +1080,8 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             params[f"src{i}"] = str(row.src) if row.src else None;
             params[f"dst{i}"] = str(row.dst) if row.dst else None;
             params[f"undirected{i}"] = row.undirected;
+            params[f"src_type{i}"] = row.src_type;
+            params[f"dst_type{i}"] = row.dst_type;
             params[f"props{i}"] = json.dumps(row.props, `default=_jsonable);
             params[f"fv{i}"] = SCHEMA_VERSION;
             params[f"ver{i}"] = int(row.version);
@@ -1021,7 +1090,8 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             """
             INSERT INTO anchors
                 (id, kind, arch_type, arch_module, fingerprint, root_id,
-                 src, dst, undirected, props, format_version, version, updated_at)
+                 src, dst, undirected, src_type, dst_type, props, format_version,
+                 version, updated_at)
             VALUES
             """
                 + ',\n'.join(values)
@@ -1035,6 +1105,8 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
                 src = EXCLUDED.src,
                 dst = EXCLUDED.dst,
                 undirected = EXCLUDED.undirected,
+                src_type = EXCLUDED.src_type,
+                dst_type = EXCLUDED.dst_type,
                 props = EXCLUDED.props,
                 format_version = EXCLUDED.format_version,
                 version = EXCLUDED.version + 1,
@@ -1100,6 +1172,30 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
         }
         self._txn_subtypes = {};
     }
+}
+
+
+impl PgStore.retype_edges(ids: list[UUID]) -> None {
+    if not ids {
+        return;
+    }
+    params = {'ids': [str(i) for i in ids]};
+    self._run(
+        """
+        UPDATE anchors e SET dst_type = n.arch_type FROM anchors n
+        WHERE n.id = ANY(CAST(:ids AS uuid[])) AND e.dst = n.id
+          AND e.kind = 'EdgeAnchor' AND e.dst_type <> n.arch_type
+        """,
+        params
+    );
+    self._run(
+        """
+        UPDATE anchors e SET src_type = n.arch_type FROM anchors n
+        WHERE n.id = ANY(CAST(:ids AS uuid[])) AND e.src = n.id
+          AND e.kind = 'EdgeAnchor' AND e.src_type <> n.arch_type
+        """,
+        params
+    );
 }
 
 

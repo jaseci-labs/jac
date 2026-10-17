@@ -129,7 +129,8 @@ def runtime_for_base(base_path: str, target_path: (str | None) = None) -> Runtim
 
 obj RowState {
     has hash: int,
-        version: int;
+        version: int,
+        arch_type: str = '';
 }
 
 

@@ -1020,8 +1020,17 @@ impl Session._flush_locked(full: bool) -> None {
     wrote = bool(unflushed or self._deleted);
     if unflushed {
         rows = [self._serialize(u.anchor, u.stored) for u in unflushed];
+        retyped = [
+            row.id
+            for row in rows
+            if row.kind == 'NodeAnchor'
+                and row.arch_type
+                and (was := self._rows.current(row.id)) is not None
+                and was.arch_type not in ('', row.arch_type)
+        ];
         try {
             store.upsert(rows);
+            store.retype_edges(retyped);
         } except WriteConflict as wc {
             self._last_conflict = {wc.anchor_id};
             raise;
@@ -1033,7 +1042,10 @@ impl Session._flush_locked(full: bool) -> None {
             raise WriteConflict(anchor_id=rows[0].id) from e;
         }
         for (row, u) in zip(rows, unflushed) {
-            self._rows.upserted(row.id, RowState(hash=u.hash, version=row.version));
+            self._rows.upserted(
+                row.id,
+                RowState(hash=u.hash, version=row.version, arch_type=row.arch_type)
+            );
             u.anchor.hash = u.hash;
             _settle_written(u.anchor, u.written);
         }
@@ -1126,10 +1138,20 @@ impl Session._serialize(
     src: (UUID | None) = None;
     dst: (UUID | None) = None;
     undirected = False;
+    src_type = '';
+    dst_type = '';
     if isinstance(anchor, EdgeAnchor) {
         src = anchor.source.ensure_id() if anchor.source is not None else None;
         dst = anchor.target.ensure_id() if anchor.target is not None else None;
         undirected = anchor.is_undirected;
+        src_arch = anchor.source.__dict__.get('archetype')
+            if anchor.source is not None
+            else None;
+        dst_arch = anchor.target.__dict__.get('archetype')
+            if anchor.target is not None
+            else None;
+        src_type = storage_type(type(src_arch)) if src_arch is not None else '';
+        dst_type = storage_type(type(dst_arch)) if dst_arch is not None else '';
     }
     row_id = anchor.ensure_id();
     return AnchorRow(
@@ -1144,6 +1166,8 @@ impl Session._serialize(
         src=src,
         dst=dst,
         undirected=undirected,
+        src_type=src_type,
+        dst_type=dst_type,
         ancestry=_ancestry_of(arch)
     );
 }
@@ -1189,7 +1213,9 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
         anchor.version = row.version;
     }
     self.__mem__[row.id] = anchor;
-    self._rows.loaded(row.id, RowState(hash=anchor.hash, version=row.version));
+    self._rows.loaded(
+        row.id, RowState(hash=anchor.hash, version=row.version, arch_type=row.arch_type)
+    );
     if self._store is not None
         and self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
         self._snapshot_reads.add(row.id);
