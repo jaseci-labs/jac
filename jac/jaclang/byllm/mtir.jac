@@ -29,7 +29,8 @@ obj MTRuntime {
         _usage_history: list[dict[str, any]] = [],
         _call_kind: str = "react_iteration",
         _invocation_id: str = "",
-        _parent_invocation_id: str | None = None;
+        _parent_invocation_id: str | None = None,
+        _deadline: CallDeadline | None = None;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def add_message(message: MessageType) -> None;

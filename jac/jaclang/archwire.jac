@@ -394,7 +394,7 @@ graph import byllm {
     lib --> byllm.tests.test_compaction_conversation { MockLLM }
     lib --> byllm.tests.test_conversation_system_prompt { MockLLM }
     lib --> byllm.tests.test_systemone { Decision, MockLLM, MockSystemOne, Model }
-    lib --> byllm.tests.test_timeout { Model, ModelPool }
+    lib --> byllm.tests.test_timeout { MockLLM, Model, ModelPool }
     llm --> byllm.lib { MockSystemOne, SystemOneModel }
     llm --> byllm.tests.support { MockSystemOne }
     llm as _byllm_llm_mod --> byllm.tests.test_compaction_budget;
@@ -436,6 +436,9 @@ graph import byllm {
     schema --> byllm.tests.test_byllm { type_display_name }
     schema --> byllm.types { type_display_name }
     types --> byllm.lib { Document }
+    deadline --> byllm.llm | byllm.mtir { CallDeadline }
+    deadline --> byllm.tests.test_compaction { CallDeadline }
+    exceptions --> byllm.deadline { LLMTimeout }
 }
 
 graph import byllm._optdeps {
@@ -489,6 +492,7 @@ graph import byllm.tests {
         fail,
         finish,
         fixture_path,
+        mk_run,
         scripted
     }
     support --> byllm.tests.test_conversation { call, finish, say }

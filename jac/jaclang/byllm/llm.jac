@@ -78,6 +78,10 @@ obj BaseLLM {
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _resolve_stream_retries(mt_run: MTRuntime) -> int;
     def _resolve_timeout(mt_run: MTRuntime) -> float | None;
+    def _call_deadline(mt_run: MTRuntime) -> CallDeadline;
+    def _arm_attempt(mt_run: MTRuntime, params: dict[str, any], stream: bool) -> None;
+    def _may_retry(mt_run: MTRuntime, e: Exception, attempt: int) -> bool;
+    async def _await_within_deadline(mt_run: MTRuntime, pending: Awaitable) -> any;
     def _should_retry_stream(
         mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
     ) -> bool;
