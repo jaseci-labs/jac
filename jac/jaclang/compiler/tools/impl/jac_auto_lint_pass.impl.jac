@@ -2661,7 +2661,166 @@ impl JacAutoLintPass.exit_module with uni.Module exit {
     self._strip_wired_imports(here);
     self._strip_duplicate_wires(here);
     self._strip_redundant_semis(here);
+    self._move_bodies_to_impl(here);
     self._strip_noise(here);
+}
+
+impl JacAutoLintPass._is_annex_module(path: str) -> bool {
+    name = os.path.basename(path);
+    if name.endswith(".impl.jac") or name.endswith(".test.jac") {
+        return True;
+    }
+    folder = os.path.basename(os.path.dirname(path));
+    return folder in ("impl", "test")
+        or folder.endswith(".impl")
+        or folder.endswith(".test");
+}
+
+impl JacAutoLintPass._move_bodies_to_impl(nd: uni.Module) -> None {
+    if not self.lint_enabled or self.ctx._is_suppressed(W3054) {
+        return;
+    }
+    path = nd.loc.mod_path;
+    if self._is_file_excluded(path) or self._is_annex_module(path) {
+        return;
+    }
+    code = nd.source.code;
+    moved: list[str] = [];
+    spans: list[tuple[int, int]] = [];
+    for (owner, ab) in self._impl_candidates(nd) {
+        braces = self._body_braces(ab);
+        if braces is None {
+            continue;
+        }
+        (lbrace, rbrace) = braces;
+        name = self._written_name(ab.name_ref);
+        if not self.ctx.emit(W3054, node_override=ab, name=name) or self.report_only {
+            continue;
+        }
+        moved.append(self._impl_text(ab, owner, lbrace, rbrace, code));
+        spans.append((lbrace.pos_start, rbrace.pos_end));
+        self._strip_body(ab, lbrace, rbrace);
+    }
+    kept_body: list[uni.UniNode] = [];
+    for stmt in nd.body {
+        if not isinstance(stmt, uni.ImplDef)
+            or stmt.loc.first_tok._is_synthetic
+            or stmt.loc.last_tok._is_synthetic {
+            kept_body.append(stmt);
+            continue;
+        }
+        name = ".".join([t.sym_name for t in stmt.target]);
+        if not self.ctx.emit(W3054, node_override=stmt, name=name)
+            or self.report_only {
+            kept_body.append(stmt);
+            continue;
+        }
+        moved.append(code[stmt.loc.pos_start:stmt.loc.pos_end]);
+        spans.append((stmt.loc.pos_start, stmt.loc.pos_end));
+    }
+    if not moved {
+        return;
+    }
+    if len(kept_body) != len(nd.body) {
+        nd._role_set(BodyRole, kept_body);
+        new_kid: list[uni.UniNode] = [nd.doc] if nd.doc else [];
+        new_kid.extend(kept_body);
+        nd.set_kids(nodes=new_kid or [uni.EmptyToken()]);
+    }
+    nd.source.comments = [
+        c
+        for c in nd.source.comments
+        if not any(start <= c.pos_start and c.pos_end <= end for (start, end) in spans)
+    ];
+    nd._invalidate_sub_node_tab();
+    nd.gen.jac_impl = "\n\n".join(moved) + "\n";
+}
+
+impl JacAutoLintPass._impl_candidates(nd: uni.Module) -> list[tuple[str, uni.Ability]] {
+    found: list[tuple[str, uni.Ability]] = [];
+    def scan(owner: str, body: Sequence[uni.UniNode]) {
+        names: dict[str, int] = {};
+        for stmt in body {
+            if isinstance(stmt, uni.Ability) and stmt.name_ref {
+                names[stmt.name_ref.value] = names.get(stmt.name_ref.value, 0) + 1;
+            }
+        }
+        for stmt in body {
+            if isinstance(stmt, uni.Ability)
+                and stmt.name_ref
+                and names[stmt.name_ref.value] == 1
+                and self._requires_impl(stmt) {
+                found.append((owner, stmt));
+            } elif not owner
+                and isinstance(stmt, (uni.Archetype, uni.Enum))
+                and isinstance(stmt.body, list) {
+                scan(stmt.name.value + ".", stmt.body);
+            }
+        }
+    }
+    scan("", nd.body);
+    return found;
+}
+
+impl JacAutoLintPass._requires_impl(ab: uni.Ability) -> bool {
+    if ab.is_abstract
+        or ab.is_comptime
+        or ab.accessor_kind
+        or ab.type_params
+        or not isinstance(ab.body, list) {
+        return False;
+    }
+    return not ab.get_all_sub_nodes(uni.JsxElement);
+}
+
+impl JacAutoLintPass._body_braces(
+    ab: uni.Ability
+) -> (tuple[uni.Token, uni.Token] | None) {
+    lbrace: (uni.Token | None) = None;
+    rbrace: (uni.Token | None) = None;
+    for k in [ab->:Kid:->] {
+        if isinstance(k, uni.Token) and k.name == Tok.LBRACE and lbrace is None {
+            lbrace = k;
+        } elif isinstance(k, uni.Token) and k.name == Tok.RBRACE {
+            rbrace = k;
+        }
+    }
+    if lbrace is None
+        or rbrace is None
+        or lbrace._is_synthetic
+        or rbrace._is_synthetic
+        or ab.name_ref is None
+        or ab.name_ref.pos_end > lbrace.pos_start {
+        return None;
+    }
+    return (lbrace, rbrace);
+}
+
+impl JacAutoLintPass._impl_text(
+    ab: uni.Ability, owner: str, lbrace: uni.Token, rbrace: uni.Token, code: str
+) -> str {
+    header = code[ab.name_ref.pos_end:lbrace.pos_start].strip();
+    sep = "" if header.startswith("(") else " ";
+    header = f"{header} " if header else "";
+    body = code[lbrace.pos_end:rbrace.pos_start];
+    return f"impl {owner}{self._written_name(ab.name_ref)}{sep}{header}{{{body}}}";
+}
+
+impl JacAutoLintPass._written_name(name_ref: uni.Name) -> str {
+    return name_ref.orig.value
+        if isinstance(name_ref, uni.SpecialVarRef)
+        else name_ref.value;
+}
+
+impl JacAutoLintPass._strip_body(
+    ab: uni.Ability, lbrace: uni.Token, rbrace: uni.Token
+) -> None {
+    kids = [ab->:Kid:->];
+    start = kids.index(lbrace);
+    end = kids.index(rbrace);
+    ab._role_set(BodyRole, None);
+    ab.set_kids(kids[:start] + [ab.gen_token(Tok.SEMI)] + kids[end + 1:]);
+    ab._invalidate_sub_node_tab();
 }
 
 impl JacAutoLintPass._strip_noise(nd: uni.Module) -> None {

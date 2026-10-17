@@ -339,6 +339,9 @@ def _strip_modules(paths: list[str]) -> int {
                     f.write(formatted);
                 }
                 changed += 1;
+                if prog.mod.main.gen.jac_impl {
+                    write_impl_moves(target, prog.mod.main.gen.jac_impl);
+                }
             }
         }
     }

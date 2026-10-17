@@ -610,10 +610,11 @@ untyped-external = "warn"   # "error" escalates undeclared npm/PyPI imports to E
 
 #### [check.lint]
 
-Configure which auto-lint rules are active during `jac check --lint` and `jac check --lint --fix`. Rules use a select/ignore model with two group keywords:
+Configure which auto-lint rules are active during `jac check --lint` and `jac check --lint --fix`. Rules use a select/ignore model with three group keywords:
 
 - `"default"` - code-transforming rules only (safe, auto-fixable)
-- `"all"` - every rule, including unfixable rules like `no-print`
+- `"all"` - every rule, including unfixable rules like `no-print`, but not the opt-in rules
+- `"noslop"` - every rule, including the opt-in rules (`strip-comments`, `strip-docstrings`, `require-impl`)
 
 ```toml
 [check.lint]
@@ -660,6 +661,7 @@ select = ["combine-has", "remove-empty-parens"]
 | `remove-redundant-semi` | `W3013` | Remove standalone no-op semicolons from any body (`{;}` → `{}`, `x = 1;;` → `x = 1;`); `remove-import-semi` is an accepted alias for this rule | default |
 | `strip-comments` | `W3050` | Remove **all** comments | opt-in |
 | `strip-docstrings` | `W3051` | Remove **all** docstrings | opt-in |
+| `require-impl` | `W3054` | Move every function, method and ability body (and every `impl` block in the base file) into the module's impl annex | opt-in |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
 
@@ -673,6 +675,25 @@ select = ["default", "strip-comments", "strip-docstrings"]
 ```
 
 The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
+
+**`require-impl`:**
+
+`require-impl` keeps declarations and implementations in separate files. A function, method or ability declared with a body is reported, and `jac fmt --lintfix` moves the body into the module's impl annex, leaving the declaration (`def area -> float;`). The annex is the sibling `<module>.impl.jac` when it exists, otherwise the first annex found in the module's `<module>.impl/` or shared `impl/` folder, otherwise a new sibling `<module>.impl.jac`. An `impl` block written in the base file moves too. The rule leaves these in place:
+
+- lambdas, nested functions (they move with their enclosing body), and `with entry` blocks
+- abstract and body-less declarations, including `by llm` functions
+- functions whose body contains JSX (client component render bodies)
+- property accessors, `comptime` and generic functions, and same-named overloads
+- methods of nested archetypes, and anything inside a codespace block
+- impl annexes (`.impl.jac`, `.test.jac`, and files in `impl/` or `.impl/` folders)
+
+Like the deslop rules it is never activated by `"all"` or `"default"`. Select it by name or through the `"noslop"` group:
+
+```toml
+[check.lint]
+select = ["noslop"]            # "all" plus strip-comments, strip-docstrings and require-impl
+ignore = ["require-impl"]      # any opt-in rule can still be ignored
+```
 
 **Excluding files from lint:**
 

@@ -166,12 +166,14 @@ exclude = [
 ]
 
 [check.lint]
-# "all" enables every autolint rule; the two strip-* entries are the opt-in
-# "deslop" rules (W3050/W3051) that remove all comments and docstrings. They
-# only activate when named explicitly here, so `jac format --lintfix`,
-# `jac precommit`, and CI's `jac format --check --lintfix` will strip comments
-# and docstrings from every non-excluded .jac file.
-select = ["all", "strip-comments", "strip-docstrings"]
+# "noslop" is "all" plus the opt-in rules that never fire under "all": the
+# deslop rules (W3050 strip-comments, W3051 strip-docstrings) and W3054
+# require-impl, which moves function, method and ability bodies into impl
+# annexes. `jac format --lintfix`, `jac precommit`, and CI's
+# `jac format --check --lintfix` apply them to every non-excluded file.
+# require-impl stays ignored here until the tree is swept with --lintfix.
+select = ["noslop"]
+ignore = ["require-impl"]
 exclude = [
     "docs/*",
     "*/examples/*",

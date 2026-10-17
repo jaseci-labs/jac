@@ -76,9 +76,11 @@ impl DiagnosticPolicy.is_suppressed(
 
         non_default_codes: set[str] = {"E3012"};
 
-        explicit_only_codes: set[str] = {"W3050", "W3051"};
+        explicit_only_codes: set[str] = {"W3050", "W3051", "W3054"};
         enabled = False;
-        if diag.code in explicit_only_codes {
+        if "noslop" in self.lint_select {
+            enabled = True;
+        } elif diag.code in explicit_only_codes {
             enabled = code_in_select;
         } elif "all" in self.lint_select {
             enabled = True;

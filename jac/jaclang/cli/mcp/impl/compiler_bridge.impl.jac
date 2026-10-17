@@ -323,6 +323,9 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
             if fixed_code is None {
                 fixed_code = unparse_module(prog.mod.main);
             }
+            if fixed_code is not None and prog.mod.main.gen.jac_impl {
+                fixed_code = fixed_code.rstrip() + "\n\n" + prog.mod.main.gen.jac_impl;
+            }
             changed = fixed_code is not None and fixed_code != code;
         }
 

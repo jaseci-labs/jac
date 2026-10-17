@@ -141,6 +141,17 @@ walker JacAutoLintPass(TreePass) {
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;
+    def _is_annex_module(path: str) -> bool;
+    def _move_bodies_to_impl(nd: uni.Module) -> None;
+    def _impl_candidates(nd: uni.Module) -> list[tuple[str, uni.Ability]];
+    def _requires_impl(ab: uni.Ability) -> bool;
+    def _body_braces(ab: uni.Ability) -> (tuple[uni.Token, uni.Token] | None);
+    def _impl_text(
+        ab: uni.Ability, owner: str, lbrace: uni.Token, rbrace: uni.Token, code: str
+    ) -> str;
+
+    def _strip_body(ab: uni.Ability, lbrace: uni.Token, rbrace: uni.Token) -> None;
+    def _written_name(name_ref: uni.Name) -> str;
     def _strip_docstrings(start: uni.UniNode) -> None;
     def _collect_doc_nodes(start: uni.UniNode) -> list[tuple[uni.UniNode, uni.String]];
     def _check_stale_has_read(ability_node: uni.Ability) -> None;

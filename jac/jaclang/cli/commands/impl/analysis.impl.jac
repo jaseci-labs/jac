@@ -736,6 +736,9 @@ impl lint(
                         f.write(formatted_code);
                     }
                 }
+                if prog.mod.main.gen.jac_impl {
+                    write_impl_moves(str(path_obj), prog.mod.main.gen.jac_impl);
+                }
             }
 
             import from jaclang.compiler.driver.bccache { discover_annex_files }
@@ -845,6 +848,7 @@ def _format_single_file_worker(
         'errors_strs': [],
         'formatted_code': None,
         'impl_results': [],
+        'impl_moves': [],
         'cache_status': 'off'
     };
     if not path_obj.exists() {
@@ -971,6 +975,9 @@ def _format_single_file_worker(
             }
             changed = formatted_code != original_code;
             result['changed'] = changed;
+            if lintfix and prog.mod.main.gen.jac_impl {
+                result['impl_moves'] = [(file_path, prog.mod.main.gen.jac_impl)];
+            }
 
             if changed and not check {
                 result['formatted_code'] = formatted_code;
@@ -1051,6 +1058,7 @@ def _format_single_file_worker(
             and not result['syntax_errors']
             and result['errors'] == 0
             and annex_ok
+            and not result['impl_moves']
         ) {
             try {
                 import from jaclang.cli.format_cache { frame_unit }
@@ -1194,6 +1202,7 @@ impl format(
             'errors_strs': [],
             'formatted_code': None,
             'impl_results': [],
+            'impl_moves': [],
             'cache_status': 'off'
         };
     }
@@ -1252,6 +1261,7 @@ impl format(
     changed_files = 0;
     total_errors = 0;
 
+    impl_moves: list[tuple[str, str]] = [];
     for res in results {
         for w in res['warnings_strs'] {
             console.warning(w);
@@ -1277,6 +1287,7 @@ impl format(
                     outputs.append((res['path'], res['formatted_code']));
                 }
                 outputs.extend(res['impl_results']);
+                impl_moves.extend(res.get('impl_moves') or []);
                 write_errors: list[str] = [];
                 for (out_path, code) in outputs {
                     try {
@@ -1300,6 +1311,26 @@ impl format(
                     changed_files += 1;
                 }
             }
+        }
+    }
+
+    for (source_path, impl_text) in impl_moves {
+        try {
+            if to_screen {
+                (_annex, annex_code) = merge_impl_moves(source_path, impl_text);
+                console.print(annex_code, markup=False, highlight=False);
+            } else {
+                write_impl_moves(source_path, impl_text);
+            }
+        } except Exception as e {
+            failed_files += 1;
+            failed_results.append(
+                {
+                    'path': source_path,
+                    'errors': [f"Error moving bodies to the impl annex: {e}"],
+                    'warnings': []
+                }
+            );
         }
     }
 

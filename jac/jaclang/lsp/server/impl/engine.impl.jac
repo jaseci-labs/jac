@@ -843,6 +843,9 @@ impl JacLangServer.format_document(
         formatted_text = prog.mod.main.gen.jac
             if not prog.errors_had
             else document.source;
+        if auto_lint and not prog.errors_had and prog.mod.main.gen.jac_impl {
+            write_impl_moves(document.path, prog.mod.main.gen.jac_impl);
+        }
     } except Exception as e {
         self.log_error(
             f"Error during {'lintfix ' if auto_lint else ''}formatting: {e}"

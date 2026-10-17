@@ -627,8 +627,9 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3051` | `strip-docstrings` | Docstring can be removed | opt-in |
 | `W3052` | `remove-duplicate-wire` | This wire is already declared by an earlier wire | default |
 | `W3053` | `remove-wired-import` | Import of '{name}' from '{module}' is already provided by archwire.jac | default |
+| `W3054` | `require-impl` | Body of '{name}' belongs in an impl annex | opt-in |
 
-> **opt-in group**: `strip-comments` and `strip-docstrings` are destructive "deslop" rules. They are **never** activated by `select = ["all"]` or `["default"]`; they fire only when named explicitly in [`[check.lint]`](config/index.md#checklint). See the config reference for details.
+> **opt-in group**: `strip-comments` and `strip-docstrings` are destructive "deslop" rules, and `require-impl` moves bodies into impl annexes. They are **never** activated by `select = ["all"]` or `["default"]`; they fire only when named explicitly in [`[check.lint]`](config/index.md#checklint) or through `select = ["noslop"]`. See the config reference for details.
 
 ---
 

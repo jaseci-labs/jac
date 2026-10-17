@@ -1548,6 +1548,80 @@ test "deslop rules are disabled under default select" {
     assert "Module docstring to deslop" in formatted;
 }
 
+def require_impl_format(select: list[str], ignore: list[str] = []) -> JacProgram {
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=select, ignore=ignore));
+    set_config(config);
+    try {
+        return JacProgram.jac_file_formatter(
+            auto_lint_fixture_path("require_impl.jac"), auto_lint=True
+        );
+    } finally {
+        set_config(None);
+    }
+}
+
+test "W3054 require-impl moves bodies into impl text under noslop" {
+    prog = require_impl_format(["noslop"]);
+    formatted = prog.mod.main.gen.jac;
+    moved = prog.mod.main.gen.jac_impl;
+    assert "def scale(v: int, factor: int = 2) -> int;" in formatted;
+    assert "async def fetch(key: str) -> str;" in formatted;
+    assert "def norm -> float;" in formatted;
+    assert "def postinit;" in formatted;
+    assert "can on_point with Point entry;" in formatted;
+    assert "impl scale(v: int, factor: int = 2) -> int {" in moved;
+    assert "impl fetch(key: str) -> str {" in moved;
+    assert "impl Point.norm -> float {" in moved;
+    assert "def square(v: int) -> int {" in moved;
+    assert "impl Point.postinit {" in moved;
+    assert "impl Visitor.on_point with Point entry {" in moved;
+    assert "impl declared(x: int) -> int {" in moved;
+    assert "impl declared" not in formatted;
+    assert "# moved with the body" not in formatted;
+    assert "return <span>{label}</span>;" in formatted;
+    assert formatted.count("def overloaded") == 2;
+    assert "impl overloaded" not in moved;
+    assert "scale(Point(x=3, y=4).x);" in formatted;
+}
+
+test "W3054 require-impl is opt-in and never fires under select all" {
+    prog = require_impl_format(["all"]);
+    assert not prog.mod.main.gen.jac_impl;
+    assert "return v * factor;" in prog.mod.main.gen.jac;
+    assert not any("require-impl" in str(w) for w in prog.warnings_had);
+}
+
+test "noslop honors an ignored require-impl" {
+    prog = require_impl_format(["noslop"], ["require-impl"]);
+    formatted = prog.mod.main.gen.jac;
+    assert not prog.mod.main.gen.jac_impl;
+    assert "return v * factor;" in formatted;
+    assert "# moved with the body" not in formatted;
+}
+
+test "write_impl_moves appends to the existing sibling annex" {
+    import from jaclang.compiler.tools.impl_annex { write_impl_moves }
+    tmp = tempfile.mkdtemp();
+    try {
+        base = os.path.join(tmp, "svc.jac");
+        annex = os.path.join(tmp, "svc.impl.jac");
+        with open(base, "w") as f {
+            f.write("def old -> int;\ndef fresh -> int;\n");
+        }
+        with open(annex, "w") as f {
+            f.write("impl old -> int {\n    return 1;\n}\n");
+        }
+        assert write_impl_moves(base, "impl fresh -> int {\n    return 2;\n}\n") == annex;
+        with open(annex) as f {
+            text = f.read();
+        }
+        assert text.index("impl old") < text.index("impl fresh");
+    } finally {
+        shutil.rmtree(tmp);
+    }
+}
+
 test "property-to-native folds '@x.getter' into the accessor block" {
     input_path = auto_lint_fixture_path("property_getter_decorator.jac");
     # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
