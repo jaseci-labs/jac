@@ -26,7 +26,7 @@ def has_packages(config: JacConfig) -> bool {
 }
 
 def lock_is_current(config: JacConfig, lock: Lockfile | None) -> bool {
-    return lock is not None and lock.inputs == manifest_inputs(config);
+    return lock is not None and lock.inputs == manifest_inputs(config, lock.packages);
 }
 
 def project_dir(config: JacConfig) -> Path {

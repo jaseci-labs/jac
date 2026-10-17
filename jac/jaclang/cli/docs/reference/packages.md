@@ -92,6 +92,14 @@ A bare name without a slash is not a Jac package: `jac install numpy` fails with
 
 `jac.lock` also records the Python distributions pip chose (`[pypi].resolved`). A later `jac install` with the same inputs replays those exact pins; `jac update` re-resolves them.
 
+For local path packages, freshness includes each linked package's name, version,
+Jac version requirement, and Jac, PyPI and npm dependency declarations, including
+transitive path packages. Changing these values makes `jac install --frozen`
+fail until `jac install` refreshes the graph. Compatible locked versions remain
+preferred during that refresh. Source edits, comments and descriptive metadata
+do not invalidate the lock. Existing locks created without path manifest inputs
+need one normal install to record them.
+
 ### Importing
 
 A package named `org/name` is imported as `org.name`:

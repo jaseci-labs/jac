@@ -90,7 +90,7 @@ def install_project(
         describe_sync(result);
         lock = result.lock;
     }
-    lock.inputs = manifest_inputs(config);
+    lock.inputs = manifest_inputs(config, lock.packages);
     try {
         plan = resolve_plan(
             config, include_dev=include_dev, extras=extras or [], scale=scale
@@ -288,7 +288,7 @@ def add_packages(
     }
     config.save();
     if lock is not None {
-        lock.inputs = manifest_inputs(config);
+        lock.inputs = manifest_inputs(config, lock.packages);
         write_lock(config, lock);
     }
     section = "dev-dependencies" if dev else "dependencies";
@@ -336,7 +336,7 @@ def remove_packages(config: JacConfig, texts: list[str], dev: bool = False) -> i
         return 1;
     }
     lock = result.lock;
-    lock.inputs = manifest_inputs(config);
+    lock.inputs = manifest_inputs(config, lock.packages);
     write_lock(config, lock);
     for spec in specs {
         console.success(f"Removed {spec.name}");

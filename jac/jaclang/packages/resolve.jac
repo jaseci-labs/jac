@@ -44,16 +44,40 @@ def manifest_npm(config: JacConfig) -> dict[str, str] {
     };
 }
 
-def manifest_inputs(config: JacConfig) -> str {
-    return digest_of(
-        {
-            "deps": {n: d.to_toml() for (n, d) in sorted(config.dependencies.items())},
-            "dev": {
-                n: d.to_toml() for (n, d) in sorted(config.dev_dependencies.items())
-            },
-            "registries": registry_urls(config.registries)
+def manifest_inputs(
+    config: JacConfig, packages: list[LockedPackage] | None = None
+) -> str {
+    inputs: dict[str, any] = {
+        "deps": {n: d.to_toml() for (n, d) in sorted(config.dependencies.items())},
+        "dev": {n: d.to_toml() for (n, d) in sorted(config.dev_dependencies.items())},
+        "registries": registry_urls(config.registries)
+    };
+    paths: dict[str, any] = {};
+
+    for pkg in packages or [] {
+        if pkg.source_kind() != "path" {
+            continue;
         }
-    );
+        manifest = Path(config.project_root or ".") / pkg.source_ref() / "jac.toml";
+        try {
+            local = JacConfig.load(manifest);
+        } except (OSError, ValueError) {
+            paths[pkg.name] = None;
+            continue;
+        }
+        paths[pkg.name] = {
+            "name": local.project.name,
+            "version": local.project.version,
+            "jac_version": local.project.jac_version,
+            "deps": {n: d.to_toml() for (n, d) in local.dependencies.items()},
+            "pypi": manifest_pypi(local),
+            "npm": manifest_npm(local)
+        };
+    }
+    if paths {
+        inputs["paths"] = paths;
+    }
+    return digest_of(inputs);
 }
 
 obj GraphSource(PackageSource) {
@@ -325,7 +349,9 @@ def resolve_graph(
     ];
     _mark_dev(packages, list(config.dependencies.keys()));
     lock = Lockfile(
-        jac=jaclang_version(), inputs=manifest_inputs(config), packages=packages
+        jac=jaclang_version(),
+        inputs=manifest_inputs(config, packages),
+        packages=packages
     );
     if previous is not None {
         lock.pypi_resolved = previous.pypi_resolved;

@@ -3,6 +3,7 @@ import shutil;
 import subprocess;
 import from pathlib { Path }
 import from unittest.mock { patch }
+import from jaclang.packages.commands { add_packages, install_project, remove_packages }
 import from jaclang.packages.index { forget_registries }
 import from jaclang.packages.install { InstallError, sync, write_lock }
 import from jaclang.packages.lock { Lockfile }
@@ -188,6 +189,161 @@ test "a path dependency mounts the directory in place" {
         assert util.source == "path+../util" and util.sha256 == "";
         mount = w.app / ".jac" / "packages" / "acme" / "util";
         assert os.path.realpath(mount) == str(w.tmp / "util");
+    }
+}
+
+test "path manifest edits refresh direct and transitive dependencies while keeping pins" {
+    for changed in ("util", "leaf") {
+        w = _world();
+        with patch.dict(os.environ, w.env) {
+            for name in ("util", "leaf", "added") {
+                write_tree(
+                    w.tmp / name,
+                    {"jac.toml": package_toml(f"acme/{name}", "1.0.0", [])}
+                );
+            }
+            util_manifest = package_toml("acme/util", "1.0.0", [])
+                + "\n[dependencies]\n\"acme/leaf\" = { path = \"../leaf\" }\n";
+            (w.tmp / "util" / "jac.toml").write_text(util_manifest);
+            with open(w.app / "jac.toml", "a") as f {
+                f.write("\"acme/util\" = { path = \"../util\" }\n");
+            }
+            cfg = _config(w.app);
+            initial = sync(cfg);
+            write_lock(cfg, initial.lock);
+            original_lock = (w.app / "jac.lock").read_text();
+            manifest = w.tmp / changed / "jac.toml";
+            original = manifest.read_text();
+            # Source and descriptive metadata do not alter the dependency graph.
+            (w.tmp / changed / "code.jac").write_text(
+                "def value -> int { return 2; }\n"
+            );
+            manifest.write_text(
+                original.replace(
+                    "[project]\n", "[project]\ndescription = \"Edited locally\"\n"
+                )
+                    + "\n# edited locally\n"
+            );
+            assert not sync(_config(w.app), frozen=True).resolved;
+            write_tree(
+                w.tmp / "core12",
+                {
+                    "jac.toml": package_toml("acme/core", "1.2.0", ["text"]),
+                    "text.jac": CORE_V11
+                }
+            );
+            w.registry.publish(w.tmp / "core12");
+            addition = "\"acme/added\" = { path = \"../added\" }\n";
+            if changed == "leaf" {
+                addition = "\n[dependencies]\n" + addition;
+            }
+            manifest.write_text(original + addition);
+            for adding in (True, False) {
+                if not adding {
+                    manifest.write_text(original);
+                }
+                try {
+                    sync(_config(w.app), frozen=True);
+                    assert False , "a changed path manifest must fail a frozen install";
+                } except InstallError as e {
+                    assert "out of date" in str(e);
+                }
+                assert (w.app / "jac.lock").read_text() == original_lock;
+                refreshed = sync(_config(w.app));
+                assert refreshed.resolved;
+                assert ("acme/added" in refreshed.lock.by_name()) == adding;
+                assert (w.app / ".jac/packages/acme/added").exists() == adding;
+                assert refreshed.lock.by_name()["acme/core"].version == "1.1.0";
+                write_lock(cfg, refreshed.lock);
+                original_lock = (w.app / "jac.lock").read_text();
+                assert not sync(_config(w.app), frozen=True).resolved;
+            }
+        }
+    }
+}
+
+test "path package version and foreign requirements refresh the lock" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        local = w.tmp / "util";
+        write_tree(local, {"jac.toml": package_toml("acme/util", "1.0.0", [])});
+        with open(w.app / "jac.toml", "a") as f {
+            f.write("\"acme/util\" = { path = \"../util\" }\n");
+        }
+        cfg = _config(w.app);
+        write_lock(cfg, sync(cfg).lock);
+        manifest = package_toml("acme/util", "1.1.0", []);
+        for addition in (
+            "",
+            "\n[dependencies.pypi]\nrequests = \"==2.32.0\"\n",
+            "\n[dependencies.npm]\nthree = \"^0.170\"\n"
+        ) {
+            manifest += addition;
+            (local / "jac.toml").write_text(manifest);
+            try {
+                sync(_config(w.app), frozen=True);
+                assert False , "changed path metadata must fail a frozen install";
+            } except InstallError as e {
+                assert "out of date" in str(e);
+            }
+            refreshed = sync(_config(w.app));
+            assert refreshed.resolved;
+            write_lock(cfg, refreshed.lock);
+        }
+        pkg = sync(_config(w.app), frozen=True).lock.by_name()["acme/util"];
+        assert pkg.version == "1.1.0";
+        assert pkg.pypi == {"requests": "==2.32.0"};
+        assert pkg.npm == {"three": "^0.170"};
+    }
+}
+
+test "a removed path manifest is stale and a removed declaration can repair the lock" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        original = (w.app / "jac.toml").read_text();
+        write_tree(
+            w.tmp / "util", {"jac.toml": package_toml("acme/util", "1.0.0", [])}
+        );
+        (w.app / "jac.toml").write_text(
+            original + "\"acme/util\" = { path = \"../util\" }\n"
+        );
+        cfg = _config(w.app);
+        write_lock(cfg, sync(cfg).lock);
+        (w.tmp / "util" / "jac.toml").unlink();
+        try {
+            sync(_config(w.app), frozen=True);
+            assert False , "a missing path manifest must fail a frozen install";
+        } except InstallError as e {
+            assert "out of date" in str(e);
+        }
+        (w.tmp / "util" / "jac.toml").write_text("[project\n");
+        try {
+            sync(_config(w.app), frozen=True);
+            assert False , "an unreadable path manifest must fail a frozen install";
+        } except InstallError as e {
+            assert "out of date" in str(e);
+        }
+        (w.app / "jac.toml").write_text(original);
+        repaired = sync(_config(w.app));
+        assert repaired.resolved;
+        assert "acme/util" not in repaired.lock.by_name();
+    }
+}
+
+test "install add and remove commands retain path manifest inputs" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        write_tree(
+            w.tmp / "util", {"jac.toml": package_toml("acme/util", "1.0.0", [])}
+        );
+        assert add_packages(_config(w.app), [], path="../util") == 0;
+        assert not sync(_config(w.app), frozen=True).resolved;
+        assert install_project(_config(w.app), frozen=True) == 0;
+        assert not sync(_config(w.app), frozen=True).resolved;
+        assert remove_packages(_config(w.app), ["acme/web"]) == 0;
+        kept = sync(_config(w.app), frozen=True);
+        assert not kept.resolved;
+        assert list(kept.lock.by_name()) == ["acme/util"];
     }
 }
 
