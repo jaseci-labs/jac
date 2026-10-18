@@ -71,7 +71,7 @@ try {
         13, 115, 101, 116, 45, 101, 120, 116, 101, 114, 110, 114, 101, 102, 0, 1,
         1, 116, 1, 0,
         10, 17, 2, 6, 0, 65, 0, 37, 0, 11,
-        8, 0, 32, 0, 65, 0, 38, 0, 11
+        8, 0, 65, 0, 32, 0, 38, 0, 11
     ]);
     var tableInstance = new WebAssembly.Instance(new WebAssembly.Module(tableModuleBytes));
     var wasmToken = {};
