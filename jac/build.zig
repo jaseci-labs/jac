@@ -576,6 +576,12 @@ fn addJsEngine(
 
     const engine_build = jsEngineNative(b, tool, fetch_target, jacllvm, &.{"--lib"}, "main.jac", "libjs_engine.so");
     const compiler_build = jsEngineNative(b, tool, fetch_target, jacllvm, &.{}, "js_compiler.jac", "js_compiler");
+    // Zig discards stdout from output-producing Run steps by default. Stream
+    // Jac's native build diagnostics in CI; the engine cache covers its outputs.
+    if (b.graph.environ_map.get("CI") != null) {
+        engine_build.run.stdio = .inherit;
+        compiler_build.run.stdio = .inherit;
+    }
     // These Jac commands share a cold-start compiler cache; keep them sequential.
     compiler_build.run.step.dependOn(&engine_build.run.step);
     const engine = engine_build.output;
