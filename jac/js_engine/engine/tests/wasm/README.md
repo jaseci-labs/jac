@@ -23,3 +23,17 @@ for f in /tmp/wasm-spec-cmds/*.cmds; do
   timeout 120 /tmp/wasm-spec "$f"
 done
 ```
+
+## Spec-corpus CI lane
+
+The `js-engine` lane's `wasm-spec` job regenerates the corpus on every run —
+the same pinned testsuite snapshot the reference fixtures were built from —
+so no binary fixture is vendored here:
+
+1. clone the WebAssembly spec testsuite at the pinned commit,
+2. `wast2json` (wabt 1.0.36) every top-level suite,
+3. flatten with `spec_cmds.py`,
+4. build `spec_driver.jac` natively and run the 88 suites sharded 4 ways.
+
+`gen_fixtures.py` drives steps 1-2 and pins the exclusions; the per-suite
+logs upload as artifacts on every run.
