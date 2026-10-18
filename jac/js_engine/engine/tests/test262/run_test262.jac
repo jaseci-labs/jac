@@ -166,7 +166,9 @@ Returns:
                        whole subtree, e.g. an entire generated-test directory)
     path_skip_type  — {path: skip_type} for individually listed tests
 """
-def build_skip_lookup(manifest: dict[str, any]) -> tuple[set[str], set[str], set[str], list[tuple[str, str]], dict[str, str]] {
+def build_skip_lookup(
+    manifest: dict[str, any]
+) -> tuple[set[str], set[str], set[str], list[tuple[str, str]], dict[str, str]] {
     skipped_flags: set[str] = set();
     skipped_features: set[str] = set();
     skipped_paths: set[str] = set();
@@ -1358,7 +1360,11 @@ def _check_baseline(
     perf_mem_floor_mb: float = 5.0
 ) -> int {
     known = _load_known_failures(known_path);
-    known_in_scope = {rel for rel in known if rel in ran_paths};
+    known_in_scope = {
+        rel
+        for rel in known
+        if rel in ran_paths
+    };
     func_regressions = sorted(
         rel
         for (rel, r) in current.items()
@@ -1387,9 +1393,7 @@ def _check_baseline(
 
     if func_regressions {
         print(
-            f"\nREGRESSIONS ({len(
-                func_regressions
-            )} tests fail that are not in {known_path}):"
+            f"\nREGRESSIONS ({len(func_regressions)} tests fail that are not in {known_path}):"
         );
         for p in func_regressions {
             r = current[p];
