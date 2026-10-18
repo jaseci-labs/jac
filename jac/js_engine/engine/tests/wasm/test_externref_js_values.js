@@ -114,6 +114,19 @@ try {
     check('second instance callback round-trips externref', second.exports.call(secondToken) === secondToken);
     var retainedToken = {};
     check('first instance callback remains registered', first.exports.call(retainedToken) === retainedToken);
+
+    // Memory: fractional sizes coerce, growth detaches the old buffer, and
+    // contents survive into the new one (js-engine memory-buffer semantics).
+    var memory = new WebAssembly.Memory({ initial: 1.9, maximum: 3.9 });
+    var oldBuffer = memory.buffer;
+    var oldView = new Uint8Array(oldBuffer);
+    oldView[0] = 37;
+    check('initial memory page count coerces down', oldBuffer.byteLength === 65536);
+    check('grow coerces a fractional page delta', memory.grow(1.9) === 1);
+    check('growth detaches the old buffer', oldBuffer.byteLength === 0);
+    check('growth detaches old views', oldView.byteLength === 0);
+    check('grown buffer has the new length', memory.buffer.byteLength === 131072);
+    check('memory contents survive growth', new Uint8Array(memory.buffer)[0] === 37);
 } catch (e) {
     failures++;
     console.error('FAIL [externref_js_values] unexpected ' + (e && e.stack ? e.stack : e));
