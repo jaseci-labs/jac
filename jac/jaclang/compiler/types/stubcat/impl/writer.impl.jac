@@ -1406,13 +1406,14 @@ impl CatalogWriter.emit(key: str, ambient: dict[str, set[str]]) -> bytes {
     sharedtab = lay(self.shared_recs);
 
     strblob = bytearray();
-    strtab_parts: list[bytes] = [];
+    strtab_buf = bytearray();
     for s in self.str_list {
         encoded = s.encode("utf-8");
-        strtab_parts.append(struct.pack("<II", len(strblob), len(encoded)));
+        put_u32(strtab_buf, len(strblob));
+        put_u32(strtab_buf, len(encoded));
         strblob.extend(encoded);
     }
-    strtab = b"".join(strtab_parts);
+    strtab = bytes(strtab_buf);
 
     h = Header();
     h.n_strings = len(self.str_list);
