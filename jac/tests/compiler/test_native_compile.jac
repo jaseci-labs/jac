@@ -21,6 +21,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
     CompileReport,
     run_kernel_compile
 }
+import from jaclang.compiler.frontend.kernel_host { HostAsker }
 import from jaclang.project.kernel_snapshot {
     COMPILE_ENTRY,
     call_with_asker,
@@ -358,6 +359,46 @@ test "an import of a third-party package whose module is only a stub compiles in
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         assert outcome.unit(entry_file) is not None;
+    }
+}
+
+"""Answers the kernel's questions and nothing else, as the native kernel's
+host does: only the `ask` callback crosses the boundary."""
+obj AskOnly(HostAsker) {
+    has session: any;
+
+    override def ask(method: str, key: str) -> str {
+        return self.session.ask(method, key);
+    }
+}
+
+"""The next prepare reuses an unchanged module from the interface its unit
+carries, so every Jac unit a kernel compile returns carries one, whatever the
+host can do besides answering questions."""
+test "every module a kernel compile returns carries its interface" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_application(base);
+        entry_file = str(base / 'main.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), entry_file, compile_options()
+        );
+        outcome = run_kernel_compile(
+            session.text(), entry_file, None, AskOnly(session=session)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert outcome.unit(entry_file) is not None;
+        jac_units = [
+            unit
+            for unit in outcome.units
+            if unit.path.endswith('.jac')
+        ];
+        missing = [
+            unit.path
+            for unit in jac_units
+            if not unit.iface or not unit.iface_shape
+        ];
+        assert not missing , missing;
     }
 }
 
