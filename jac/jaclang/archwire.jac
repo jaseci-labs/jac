@@ -9331,6 +9331,7 @@ graph import compiler {
             Name,
             ParamVar,
             Symbol,
+            UniNode,
             UniScopeNode
         },
         types.type_evaluator {
@@ -14097,7 +14098,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._load_ts_declarations { parse_dts },
     ]
     type type_evaluator ++> [
-        ct_eval | fixed_width | operations | type_utils { TypeEvaluator },
+        ct_eval | fixed_width | operations | stubcat.writer | type_utils {
+            TypeEvaluator
+        },
         enum_utils { PrefetchedTypes, TypeEvaluator },
     ]
     type_utils ++> [
@@ -14382,6 +14385,8 @@ graph import compiler.types.stubcat {
         locate._open_region { open_catalog_region },
         modiface { StubCatalog },
         writer.CatalogWriter.encode_symbol { CatProvider },
+        writer.CatalogWriter.scope_dotted_path { CatScope },
+        writer.metaclass_of_scope { CatScope },
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
