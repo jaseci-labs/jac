@@ -1,7 +1,6 @@
 import os;
 import hashlib;
 import json;
-import struct;
 
 obj ScopeMembers {
     has names: dict[str, Symbol] = {},
