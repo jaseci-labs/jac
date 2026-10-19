@@ -408,6 +408,50 @@ test "every module a kernel compile returns carries its interface" {
     }
 }
 
+"""A page outside the application entry's import closure is compiled after the
+application from the interfaces that compile produced, so the modules both
+import are not analysed again."""
+test "a page compiled after the application reuses the modules both import" {
+    import jaclang.project.kernel_compile as kernel_compile;
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'shared.jac').write_text(
+            'def:pub shared_value(x: int) -> int { return x + 1; }\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from shared { shared_value }\n\n'
+                + 'def:pub go(n: int) -> int { return shared_value(n); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from shared { shared_value }\n\n'
+                + 'def:pub view(n: int) -> int { return shared_value(n) * 2; }\n'
+        );
+        program = JacProgram();
+        with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
+            try {
+                application = kernel_compile.kernel_compile_application(
+                    active_host(), program, str(base / 'main.jac'), compile_options()
+                );
+                assert application is not None
+                    and application.analysis.status == ANALYSIS_OK , application;
+                page = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert page is not None and page.analysis.status == ANALYSIS_OK , page;
+                analysed = sorted(
+                    os.path.basename(mod.path) for mod in page.analysis.modules
+                );
+                assert analysed == ['page.jac'] , analysed;
+                assert page.unit(str(base / 'page.jac')) is not None;
+            } finally {
+                kernel_compile.forget_application_units();
+            }
+        }
+    }
+}
+
 def write_application(base: Path) {
     (base / 'jac.toml').write_text(CONFIG);
     (base / 'util.jac').write_text(
