@@ -25,19 +25,14 @@ internal numbers below; 0xfc-prefixed ops are 0xe0 + subopcode.
 
 import from engine.src.runtime.mem { io_alloc, io_free }
 
-# ── Value types ──────────────────────────────────────────────────────────────
+# ── Value types (wasm binary type bytes) ─────────────────────────────────────
+# i32=0x7f  i64=0x7e  f32=0x7d  f64=0x7c  funcref=0x70  externref=0x6f
 glob:pub T_I32: int = 127,
      T_I64: int = 126,
      T_F32: int = 125,
      T_F64: int = 124,
      T_FUNCREF: int = 112,
-     T_EXTERNREF: int = 111;  # 0x7f
-
-# 0x7e
-# 0x7d
-# 0x7c
-# 0x70
-# 0x6f
+     T_EXTERNREF: int = 111;
 glob T_UNKNOWN: int = 0;  # polymorphic stack bottom
 
 # ── Internal opcodes (keep in sync with exec.jac dispatch) ─────────────────
@@ -212,15 +207,10 @@ def _invalid(msg: str) {
 }
 
 # ── Reader ───────────────────────────────────────────────────────────────────
+# _RB buffer, _RP position (offset), _RE end offset of the current (sub)range
 glob _RB: int = 0,
      _RP: int = 0,
-     _RE: int = 0;  # buffer
-
-# position (offset)
-# end offset of the current (sub)range
-def _eof -> bool {
-    return _RP >= _RE;
-}
+     _RE: int = 0;
 
 def _u8 -> int {
     if _RP >= _RE {

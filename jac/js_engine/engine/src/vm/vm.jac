@@ -492,7 +492,7 @@ import from engine.src.vm.vm_obs {
     vm_wasm_get_import_cb,
     vm_wasm_has_import_cb,
     vm_wasm_extern_id,
-    vm_wasm_extern_value
+    vm_wasm_extern_value, vm_wasm_funcref_marker, vm_wasm_funcref_h
 }
 import from engine.src.runtime.jsobject {
     js_object_register_napi_obs_scope,
@@ -578,7 +578,6 @@ import from engine.src.builtins.native_registry {
     native_delete_own
 }
 import from engine.src.builtins.dispatch { call_native }
-import from engine.src.runtime.fn_meta { fn_meta_is_closure, fn_meta_get_fn_props }
 import from engine.src.builtins.object {
     js_Object_getOwnPropertyDescriptor,
     js_Object_defineProperty,
@@ -48497,45 +48496,13 @@ def _wasm_arg_to_jsval(vm: VM, i: int) -> JSValue {
             vm.had_exception = False;
             vm.pending_exc = js_undefined();
         }
-        mk: JSValue = js_object_create_null();
-        js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
-        return mk;
+        return vm_wasm_funcref_marker(h);
     }
     if k == WASMTIME_EXTERNREF {
         return vm_wasm_extern_value(wasm_host_arg_int(i));
     }
     # f32 / f64
     return js_number(wasm_host_arg_dbl(i));
-}
-
-"""Func handle carried by a JS value: an export wrapper (__jacWasmFuncH) or a
-funcref marker (__jacFuncRefH). -1 when `v` is not a wasm function."""
-def _wasm_jsval_funcref_h(v: JSValue) -> int {
-    if fn_meta_is_closure(v) {
-        # Export wrappers are JS closures; __jacWasmFuncH sits on fn_props.
-        fp: JSValue = fn_meta_get_fn_props(v);
-        h: JSValue = js_object_get(fp, str_intern("__jacWasmFuncH"));
-        if jsv_is_int32(h) {
-            return jsv_to_int32(h);
-        }
-        h = js_object_get(fp, str_intern("__jacFuncRefH"));
-        if jsv_is_int32(h) {
-            return jsv_to_int32(h);
-        }
-        return -1;
-    }
-    if not jsv_is_object_cell(v) {
-        return -1;
-    }
-    h2: JSValue = js_object_get(v, str_intern("__jacWasmFuncH"));
-    if jsv_is_int32(h2) {
-        return jsv_to_int32(h2);
-    }
-    h2 = js_object_get(v, str_intern("__jacFuncRefH"));
-    if jsv_is_int32(h2) {
-        return jsv_to_int32(h2);
-    }
-    return -1;
 }
 
 """Marshal one JS return value into a WASM result of the given kind, pushing it
@@ -48557,7 +48524,7 @@ def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> bool {
             wasm_host_push_result(want_kind, 0, 0.0);
             return True;
         }
-        fh: int = _wasm_jsval_funcref_h(v);
+        fh: int = vm_wasm_funcref_h(v);
         if fh < 0 {
             return False;
         }

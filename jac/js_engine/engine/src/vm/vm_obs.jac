@@ -23,7 +23,7 @@ import from engine.src.runtime.jsvalue {
     jsv_to_bool,
     jsv_is_undefined,
     jsv_is_null,
-    jsv_is_symbol
+    jsv_is_symbol, js_int
 }
 import from engine.src.runtime.jsstring { str_from_id, str_intern }
 import from engine.src.runtime.dtoa { number_to_string_radix10 }
@@ -37,9 +37,10 @@ import from engine.src.runtime.jsobject {
     js_object_get,
     js_object_set,
     js_object_has,
-    js_object_delete
+    js_object_delete, js_object_create_null
 }
 import from engine.src.runtime.gc_pin { gc_pin_value }
+import from engine.src.runtime.fn_meta { fn_meta_is_closure, fn_meta_get_fn_props }
 
 # Single-slot tables — same Callable-in-dict pattern as _DISPATCH_TABLE.
 glob _OBS_GET_TABLE: dict[int, Callable[[JSValue, int, JSValue], JSValue]] = {},
@@ -327,4 +328,46 @@ def:pub js_to_property_key_observable(v: JSValue) -> int {
         }
     }
     return str_intern(_obs_fallback_str(v));
+}
+
+"""Func handle carried by a JS value: an export wrapper (__jacWasmFuncH) or a
+funcref marker (__jacFuncRefH). -1 when `v` is not a wasm function."""
+def:pub vm_wasm_funcref_h(v: JSValue) -> int {
+    if fn_meta_is_closure(v) {
+        # Export wrappers are JS closures; __jacWasmFuncH sits on fn_props.
+        fp: JSValue = fn_meta_get_fn_props(v);
+        h: JSValue = js_object_get(fp, str_intern("__jacWasmFuncH"));
+        if jsv_is_int32(h) {
+            return jsv_to_int32(h);
+        }
+        h = js_object_get(fp, str_intern("__jacFuncRefH"));
+        if jsv_is_int32(h) {
+            return jsv_to_int32(h);
+        }
+        return -1;
+    }
+    if not jsv_is_object_cell(v) {
+        return -1;
+    }
+    h2: JSValue = js_object_get(v, str_intern("__jacWasmFuncH"));
+    if jsv_is_int32(h2) {
+        return jsv_to_int32(h2);
+    }
+    h2 = js_object_get(v, str_intern("__jacFuncRefH"));
+    if jsv_is_int32(h2) {
+        return jsv_to_int32(h2);
+    }
+    return -1;
+}
+
+"""JS-visible funcref for a wasm function handle: null when `h` is 0, else
+the {__jacFuncRefH} marker that webassembly.js swaps for a cached callable
+wrapper at the API boundary (identity holds per handle there)."""
+def:pub vm_wasm_funcref_marker(h: int) -> JSValue {
+    if h == 0 {
+        return js_null();
+    }
+    mk: JSValue = js_object_create_null();
+    js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
+    return mk;
 }
