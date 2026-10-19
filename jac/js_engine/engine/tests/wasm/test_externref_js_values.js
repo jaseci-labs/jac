@@ -115,6 +115,38 @@ try {
     var retainedToken = {};
     check('first instance callback remains registered', first.exports.call(retainedToken) === retainedToken);
 
+    // Externref results must come back untouched even when they look like
+    // the bridge's internal funcref markers or hold frozen arrays.
+    var markerShaped = Object.create(null);
+    markerShaped.__jacFuncRefH = 7;
+    check('marker-shaped externref result is not unwrapped',
+          first.exports.call(markerShaped) === markerShaped);
+    var frozenArr = Object.freeze(['a', 'b']);
+    check('externref array result is neither mutated nor rebuilt',
+          first.exports.call(frozenArr) === frozenArr);
+
+    // A funcref argument reaches the JS import as the cached callable, so
+    // the callback can call it and compare it with exported wrappers.
+    var fnArgModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 10, 2, 96, 1, 112, 1, 127, 96, 0, 1, 127,
+        2, 10, 1, 3, 101, 110, 118, 2, 99, 98, 0, 0,
+        3, 3, 2, 1, 1,
+        7, 5, 1, 1, 102, 0, 2,
+        9, 5, 1, 3, 0, 1, 1,
+        10, 13, 2, 4, 0, 65, 42, 11, 6, 0, 210, 1, 16, 0, 11
+    ]);
+    var fnArgModule = new WebAssembly.Module(fnArgModuleBytes);
+    var gotFn = null;
+    var fnArgInstance = new WebAssembly.Instance(fnArgModule, { env: { cb: function (fn) {
+        gotFn = fn;
+        return typeof fn === 'function' ? fn() : -1;
+    } } });
+    check('funcref argument is callable through the import',
+          fnArgInstance.exports.f() === 42);
+    check('funcref argument stays callable after the call',
+          typeof gotFn === 'function' && gotFn() === 42);
+
     // Memory: fractional sizes coerce, growth detaches the old buffer, and
     // contents survive into the new one (js-engine memory-buffer semantics).
     var memory = new WebAssembly.Memory({ initial: 1.9, maximum: 3.9 });

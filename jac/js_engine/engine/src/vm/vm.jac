@@ -1304,9 +1304,11 @@ glob:pub VM_IC_ENABLED: bool = False;
 def:pub vm_ic_enable {
     VM_IC_ENABLED = True;
 }
+
 def:pub vm_ic_disable {
     VM_IC_ENABLED = False;
 }
+
 """Whether the property ICs are on (read back by feature_gates_report)."""
 def:pub vm_ic_enabled -> bool {
     return VM_IC_ENABLED;
@@ -4503,6 +4505,7 @@ obj VM {
     def _push(v: JSValue) {
         self.stack.append(v);
     }
+
     def _pop -> JSValue {
         n: int = len(self.stack);
         if n == 0 {
@@ -8622,7 +8625,8 @@ obj VM {
                         }
                     }
                     # Own accessor with [[Get]] undefined (setter-only) → undefined.
-                    if jsv_is_object_cell(fga_fp) and js_object_has_own_accessor(fga_fp, key) {
+                    if jsv_is_object_cell(fga_fp)
+                        and js_object_has_own_accessor(fga_fp, key) {
                         return js_undefined();
                     }
                 }
@@ -9678,7 +9682,10 @@ obj VM {
                 # Function.prototype in the chain.
                 fn_cproto_h: JSValue = self.realm.closures[fn_idx_h].object_proto;
                 if is_fn_val(fn_cproto_h)
-                    or (jsv_is_object_cell(fn_cproto_h) and jsv_to_table_id(fn_cproto_h) > 0) {
+                    or (
+                        jsv_is_object_cell(fn_cproto_h)
+                        and jsv_to_table_id(fn_cproto_h) > 0
+                    ) {
                     return self.obs_has(fn_cproto_h, key);
                 }
             }
@@ -11976,7 +11983,9 @@ obj VM {
         # Extension loader routing (Vite §4.2 — custom require.extensions override)
         if not bi_packed
             and (
-                mod_format == "cjs-json" or mod_format == "napi" or mod_format == "cjs-js"
+                mod_format == "cjs-json"
+                or mod_format == "napi"
+                or mod_format == "cjs-js"
             ) {
             ext_loader: JSValue = _lookup_ext_loader(resolved);
             if _is_custom_ext_loader(ext_loader, mod_format) {
@@ -33167,7 +33176,8 @@ obj VM {
             # "collect when the heap has grown by ~itself" policy), scaled by
             # _GC_GROWTH_PCT (JAC_GC_GROWTH).
             # The growth tapers for very large heaps (gc_growth_pct_for).
-            _gc_nlive: int = len(self.realm.objects) - len(self.realm.free_object_slots);
+            _gc_nlive: int = len(self.realm.objects)
+                - len(self.realm.free_object_slots);
             _gc_live: int = (_gc_nlive * gc_growth_pct_for(_gc_nlive)) // 100;
             if _gc_live > _GC_MIN_THRESHOLD {
                 self.realm.gc_threshold = _gc_live;
@@ -40469,7 +40479,8 @@ def _vm_object_integrity(
             fi_p: int = get_fn_idx(target_i);
             prevented = fi_p >= 0
                 and fi_p < len(vm.realm.closures)
-                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p])) == 0;
+                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p]))
+                    == 0;
         } elif is_native_val(target_i) {
             prevented = js_object_prevent_extensions(native_props_ensure(target_i))
                 == 0;
@@ -45465,14 +45476,11 @@ def _vm_array_push(vm: VM, this_val: JSValue, items: list[JSValue]) -> JSValue {
                     and (vp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (vp_pk & 1) != 0 {
                     vp_lv: JSValue = vp_raw.sget(vp_pk // 16);
-                    if jsv_is_int32(vp_lv)
-                        and jsv_to_int32(vp_lv) == vp_raw.elen() {
+                    if jsv_is_int32(vp_lv) and jsv_to_int32(vp_lv) == vp_raw.elen() {
                         for vp_itm in items {
                             vp_raw.epush(vp_itm);
                         }
-                        vp_raw.sset(vp_pk // 16, js_array_len_value(
-                            vp_raw.elen()
-                        ));
+                        vp_raw.sset(vp_pk // 16, js_array_len_value(vp_raw.elen()));
                         return js_array_len_value(vp_raw.elen());
                     }
                 }
@@ -48460,7 +48468,7 @@ def _vm_invoke_napi_cb(
 """Convert one WASM arg (by its recorded kind) into a JSValue: i32→Number,
 i64→BigInt, f32/f64→Number, externref→the JSValue it carries, funcref→a
 {__jacFuncRefH:h} marker (not callable; JS can pass it back into wasm)."""
-def _wasm_arg_to_jsval(i: int) -> JSValue {
+def _wasm_arg_to_jsval(vm: VM, i: int) -> JSValue {
     k: int = wasm_host_arg_kind(i);
     if k == WASMTIME_I64 {
         return js_bigint_from_decimal_str(wasm_i64_to_decimal(wasm_host_arg_int(i)));
@@ -48470,7 +48478,25 @@ def _wasm_arg_to_jsval(i: int) -> JSValue {
     }
     if k == WASMTIME_FUNCREF {
         h: int = wasm_host_arg_int(i);
-        if h == 0 { return js_null(); }
+        if h == 0 {
+            return js_null();
+        }
+        # Hand the import the cached callable the API surface uses, not a
+        # bare marker: callbacks like `fn => fn()` need a callable, and
+        # identity against the matching export wrapper must hold. Falls
+        # back to the marker when the JS layer has not registered a
+        # resolver (engine builds without the WebAssembly builtin).
+        if "__jacWasmFuncrefResolve" in vm.globals {
+            resolver: JSValue = vm.globals["__jacWasmFuncrefResolve"];
+            out: JSValue = _vm_invoke_callback(
+                vm, resolver, js_undefined(), [js_int(h)]
+            );
+            if not vm.had_exception {
+                return out;
+            }
+            vm.had_exception = False;
+            vm.pending_exc = js_undefined();
+        }
         mk: JSValue = js_object_create_null();
         js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
         return mk;
@@ -48489,18 +48515,29 @@ def _wasm_jsval_funcref_h(v: JSValue) -> int {
         # Export wrappers are JS closures; __jacWasmFuncH sits on fn_props.
         fp: JSValue = fn_meta_get_fn_props(v);
         h: JSValue = js_object_get(fp, str_intern("__jacWasmFuncH"));
-        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        if jsv_is_int32(h) {
+            return jsv_to_int32(h);
+        }
         h = js_object_get(fp, str_intern("__jacFuncRefH"));
-        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        if jsv_is_int32(h) {
+            return jsv_to_int32(h);
+        }
         return -1;
     }
-    if not jsv_is_object_cell(v) { return -1; }
+    if not jsv_is_object_cell(v) {
+        return -1;
+    }
     h2: JSValue = js_object_get(v, str_intern("__jacWasmFuncH"));
-    if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+    if jsv_is_int32(h2) {
+        return jsv_to_int32(h2);
+    }
     h2 = js_object_get(v, str_intern("__jacFuncRefH"));
-    if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+    if jsv_is_int32(h2) {
+        return jsv_to_int32(h2);
+    }
     return -1;
 }
+
 """Marshal one JS return value into a WASM result of the given kind, pushing it
 via wasm_host_push_result. i64 results accept BigInt or Number; i32/f* accept
 Number/BigInt coercions; externref carries any JSValue back to its id;
@@ -48508,14 +48545,22 @@ funcref takes an export wrapper/marker's handle. Returns False for a funcref
 result that is not a wasm function."""
 def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> bool {
     if want_kind == WASMTIME_EXTERNREF {
-        if jsv_is_null(v) { wasm_host_push_result(want_kind, 0, 0.0); }
-        else { wasm_host_push_result(want_kind, vm_wasm_extern_id(v), 0.0); }
+        if jsv_is_null(v) {
+            wasm_host_push_result(want_kind, 0, 0.0);
+        } else {
+            wasm_host_push_result(want_kind, vm_wasm_extern_id(v), 0.0);
+        }
         return True;
     }
     if want_kind == WASMTIME_FUNCREF {
-        if jsv_is_null(v) or jsv_is_undefined(v) { wasm_host_push_result(want_kind, 0, 0.0); return True; }
+        if jsv_is_null(v) or jsv_is_undefined(v) {
+            wasm_host_push_result(want_kind, 0, 0.0);
+            return True;
+        }
         fh: int = _wasm_jsval_funcref_h(v);
-        if fh < 0 { return False; }
+        if fh < 0 {
+            return False;
+        }
         wasm_host_push_result(want_kind, fh, 0.0);
         return True;
     }
@@ -48574,7 +48619,7 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
     js_args: list[JSValue] = [];
     i: int = 0;
     while i < nargs {
-        js_args.append(_wasm_arg_to_jsval(i));
+        js_args.append(_wasm_arg_to_jsval(vm, i));
         i = i + 1;
     }
 
@@ -48596,7 +48641,9 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
     }
     if nres == 1 {
         if not _wasm_push_jsval_result(wasm_host_result_kind(import_index, 0), ret) {
-            wasm_set_host_throw("funcref results must be null or a WASM exported function");
+            wasm_set_host_throw(
+                "funcref results must be null or a WASM exported function"
+            );
             return 1;
         }
         return 0;
@@ -48609,7 +48656,9 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
             elem = js_object_get(ret, str_intern_index(k));
         }
         if not _wasm_push_jsval_result(wasm_host_result_kind(import_index, k), elem) {
-            wasm_set_host_throw("funcref results must be null or a WASM exported function");
+            wasm_set_host_throw(
+                "funcref results must be null or a WASM exported function"
+            );
             return 1;
         }
         k = k + 1;
@@ -51607,7 +51656,9 @@ def:pub vm_dump_pair_stats -> None {
                 + ")"
         );
         rs_gkeys: list[str] = _reg_stats_sorted_names(_REG_BRIDGE_GPKEYS, 40);
-        print("register loop: bridged GET_PROP / SET_PROP by property name @ receiver kind");
+        print(
+            "register loop: bridged GET_PROP / SET_PROP by property name @ receiver kind"
+        );
         rs_i = 0;
         while rs_i < len(rs_gkeys) and rs_i < 40 {
             print(

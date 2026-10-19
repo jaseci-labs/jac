@@ -424,25 +424,39 @@
     }
 
     // Funcref results arrive as {__jacFuncRefH:h} marker objects (the Jac side
-    // cannot mint callables); swap them for the cached wrapper. Externref
-    // results come back as the original JSValue.
+    // cannot mint callables); swap them for the cached wrapper. The bridge
+    // attaches the declared per-position kinds to its results wrapper, so
+    // only real funcref positions are unwrapped — a user externref value is
+    // returned untouched even when it is an array or a marker-shaped object.
+    // Kind numbering is the bridge's JS-visible one (WASMTIME_FUNCREF = 5).
+    var WASMTIME_FUNCREF = 5;
+    function _unwrapRefResults(res) {
+        if (Array.isArray(res) && res.__jacWasmResultKinds) {
+            var kinds = res.__jacWasmResultKinds;
+            for (var i = 0; i < kinds.length; i++) {
+                if (kinds[i] === WASMTIME_FUNCREF) res[i] = _unwrapRef(res[i]);
+            }
+            return res.length === 1 ? res[0] : res;
+        }
+        return res;
+    }
     function _unwrapRef(v) {
         if (v && typeof v === 'object' && typeof v.__jacFuncRefH === 'number') {
             return _funcFromHandle(v.__jacFuncRefH, 'funcref');
         }
         return v;
     }
-    function _unwrapRefResults(res) {
-        if (Array.isArray(res)) {
-            for (var i = 0; i < res.length; i++) res[i] = _unwrapRef(res[i]);
-            return res;
-        }
-        return _unwrapRef(res);
-    }
 
     function _makeExportFn(funcH, name) {
         return _funcFromHandle(funcH, name);
     }
+
+    // The VM hands JS imports funcref arguments through this resolver so a
+    // callback receives the same cached callable the API surface uses
+    // (callable, and identity-equal to the matching export wrapper).
+    globalThis.__jacWasmFuncrefResolve = function (h) {
+        return _funcFromHandle(h, 'funcref');
+    };
 
     function _buildExports(instH) {
         var exportsObj = Object.create(null);

@@ -1373,6 +1373,7 @@ import from engine.src.runtime.jsobject {
     js_object_create_null,
     js_object_set,
     js_object_get,
+    js_object_define_nonenum,
     js_object_has_own,
     js_object_has,
     js_object_define_property,
@@ -4277,7 +4278,9 @@ def _dn_native_kind_obj_define_property(
         # A JS closure is JS_CELL_KIND_NATIVE with table-id < FN_BUILTIN_BASE.
         if jsv_is_cell(dp_target) and jsv_cell_kind(dp_target) == JS_CELL_KIND_NATIVE {
             dp_idx: int = jsv_to_table_id(dp_target);
-            if dp_idx >= 0 and dp_idx < FN_BUILTIN_BASE and dp_idx < len(realm.closures) {
+            if dp_idx >= 0
+                and dp_idx < FN_BUILTIN_BASE
+                and dp_idx < len(realm.closures) {
                 dp_cl: JSClosure = realm.closures[dp_idx];
                 dp_key_id: int = 0;
                 if jsv_is_string_cell(args[1]) {
@@ -4396,7 +4399,9 @@ def _dn_native_kind_obj_define_properties(
     # definitions to the closure's fn_props bag (common.mustCall depends on this).
     if jsv_is_cell(dps_target) and jsv_cell_kind(dps_target) == JS_CELL_KIND_NATIVE {
         dps_idx: int = jsv_to_table_id(dps_target);
-        if dps_idx >= 0 and dps_idx < FN_BUILTIN_BASE and dps_idx < len(realm.closures) {
+        if dps_idx >= 0
+            and dps_idx < FN_BUILTIN_BASE
+            and dps_idx < len(realm.closures) {
             dps_cl: JSClosure = realm.closures[dps_idx];
             dps_target = cl_props(dps_cl);
         } elif is_native_val(dps_target) {
@@ -8482,8 +8487,12 @@ def:priv _dn_ptr_arg(args: list[JSValue], idx: int) -> int {
 
 """Unsigned 32-bit value of a JSValue number (int32 or double)."""
 def _dn_u32bits(v: JSValue) -> int {
-    if jsv_is_int32(v) { return jsv_to_int32(v) & 4294967295; }
-    if jsv_is_double(v) { return wasm_f64_to_i32(jsv_to_double(v)) & 4294967295; }
+    if jsv_is_int32(v) {
+        return jsv_to_int32(v) & 4294967295;
+    }
+    if jsv_is_double(v) {
+        return wasm_f64_to_i32(jsv_to_double(v)) & 4294967295;
+    }
     return 0;
 }
 
@@ -8494,16 +8503,24 @@ def _dn_wasm_funcref_h(v: JSValue) -> int {
         # Export wrappers are JS closures; __jacWasmFuncH sits on fn_props.
         fp: JSValue = fn_meta_get_fn_props(v);
         h: JSValue = js_object_get(fp, str_intern("__jacWasmFuncH"));
-        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        if jsv_is_int32(h) {
+            return jsv_to_int32(h);
+        }
         h = js_object_get(fp, str_intern("__jacFuncRefH"));
-        if jsv_is_int32(h) { return jsv_to_int32(h); }
+        if jsv_is_int32(h) {
+            return jsv_to_int32(h);
+        }
         return -1;
     }
     if jsv_is_object_cell(v) {
         h2: JSValue = js_object_get(v, str_intern("__jacWasmFuncH"));
-        if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+        if jsv_is_int32(h2) {
+            return jsv_to_int32(h2);
+        }
         h2 = js_object_get(v, str_intern("__jacFuncRefH"));
-        if jsv_is_int32(h2) { return jsv_to_int32(h2); }
+        if jsv_is_int32(h2) {
+            return jsv_to_int32(h2);
+        }
     }
     return -1;
 }
@@ -8511,11 +8528,19 @@ def _dn_wasm_funcref_h(v: JSValue) -> int {
 """Convert a JS arg to an externref/funcref slot int for func_invoke.
 Returns [ival, ok]: ok=0 means the caller should throw a TypeError."""
 def _dn_wasm_ref_arg(kind: int, v: JSValue) -> list[int] {
-    if jsv_is_null(v) { return [0, 1]; }
-    if kind == WASMTIME_EXTERNREF { return [vm_wasm_extern_id(v), 1]; }
-    if jsv_is_undefined(v) { return [0, 1]; }
+    if jsv_is_null(v) {
+        return [0, 1];
+    }
+    if kind == WASMTIME_EXTERNREF {
+        return [vm_wasm_extern_id(v), 1];
+    }
+    if jsv_is_undefined(v) {
+        return [0, 1];
+    }
     h: int = _dn_wasm_funcref_h(v);
-    if h >= 0 { return [h, 1]; }
+    if h >= 0 {
+        return [h, 1];
+    }
     return [0, 0];
 }
 
@@ -8632,14 +8657,19 @@ def _dn_native_kind_wasm_func_invoke(
                     lo64: int = _dn_u32bits(js_object_get(av, str_intern("lo")));
                     hiu: int = _dn_u32bits(js_object_get(av, str_intern("hi")));
                     his: int = hiu;
-                    if his >= 2147483648 { his = his - 4294967296; }
+                    if his >= 2147483648 {
+                        his = his - 4294967296;
+                    }
                     iv = wrapping_add(wrapping_mul(his, 4294967296), lo64);
                     raw = 1;
                 }
             }
             if raw == 0 {
-                if jsv_is_double(av) { dv = jsv_to_double(av); }
-                elif jsv_is_int32(av) { dv = float(jsv_to_int32(av)); }
+                if jsv_is_double(av) {
+                    dv = jsv_to_double(av);
+                } elif jsv_is_int32(av) {
+                    dv = float(jsv_to_int32(av));
+                }
             }
         } elif kind == WASMTIME_I64 {
             # i64 params take BigInt (spec); accept Number as a convenience.
@@ -8653,14 +8683,21 @@ def _dn_native_kind_wasm_func_invoke(
         } elif kind == WASMTIME_FUNCREF or kind == WASMTIME_EXTERNREF {
             ra: list[int] = _dn_wasm_ref_arg(kind, av);
             if ra[1] == 0 {
-                vm_throw_native(make_type_error("funcref arguments must be null or a WASM exported function"));
+                vm_throw_native(
+                    make_type_error(
+                        "funcref arguments must be null or a WASM exported function"
+                    )
+                );
                 return js_undefined();
             }
             iv = ra[0];
         } else {
             # i32 — JS ToInt32 of int32 or double-encoded numbers
-            if jsv_is_int32(av) { iv = jsv_to_int32(av); }
-            elif jsv_is_double(av) { iv = wasm_f64_to_i32(jsv_to_double(av)); }
+            if jsv_is_int32(av) {
+                iv = jsv_to_int32(av);
+            } elif jsv_is_double(av) {
+                iv = wasm_f64_to_i32(jsv_to_double(av));
+            }
         }
         arg_ints.append(iv);
         arg_dbls.append(dv);
@@ -8677,16 +8714,23 @@ def _dn_native_kind_wasm_func_invoke(
     if nres == 0 {
         return js_undefined();
     }
-    if nres == 1 {
-        return _dn_wasm_result_value(0);
-    }
     results: list[JSValue] = [];
+    kinds: list[JSValue] = [];
     j: int = 0;
     while j < nres {
         results.append(_dn_wasm_result_value(j));
+        kinds.append(js_int(wasm_call_result_kind(j)));
         j = j + 1;
     }
-    return js_array_create(results);
+    arr: JSValue = js_array_create(results);
+    # The declared kinds ride along (non-enumerable) so the JS API layer
+    # swaps funcref markers by position and never inspects user data: an
+    # externref result is returned untouched even when it is an array or an
+    # object shaped like a marker.
+    js_object_define_nonenum(
+        arr, str_intern("__jacWasmResultKinds"), js_array_create(kinds)
+    );
+    return arr;
 }
 
 def:priv _dn_wasm_result_value(i: int) -> JSValue {
@@ -8701,7 +8745,9 @@ def:priv _dn_wasm_result_value(i: int) -> JSValue {
     }
     if kind == WASMTIME_FUNCREF {
         h: int = wasm_call_result_int(i);
-        if h == 0 { return js_null(); }
+        if h == 0 {
+            return js_null();
+        }
         # Marker object; webassembly.js swaps it for the cached callable
         # wrapper (or mints one) at the API boundary.
         mk: JSValue = js_object_create_null();
@@ -8880,7 +8926,9 @@ def _dn_native_kind_wasm_global_get(
     }
     if kind == WASMTIME_FUNCREF {
         h: int = wasm_global_get_ref(g_h);
-        if h == 0 { return js_null(); }
+        if h == 0 {
+            return js_null();
+        }
         mk: JSValue = js_object_create_null();
         js_object_set(mk, str_intern("__jacFuncRefH"), js_int(h));
         return mk;
@@ -8927,10 +8975,14 @@ def _dn_native_kind_wasm_global_create(
     } elif kind == WASMTIME_FUNCREF {
         if len(args) >= 3 and not (jsv_is_null(args[2]) or jsv_is_undefined(args[2])) {
             ival = _dn_wasm_funcref_h(args[2]);
-            if ival < 0 { ival = 0; }
+            if ival < 0 {
+                ival = 0;
+            }
         }
     } elif kind == WASMTIME_EXTERNREF {
-        if len(args) >= 3 { ival = vm_wasm_extern_id(args[2]); }
+        if len(args) >= 3 {
+            ival = vm_wasm_extern_id(args[2]);
+        }
     } else {
         ival = _dn_ptr_arg(args, 2);
     }
@@ -8947,9 +8999,13 @@ def _dn_native_kind_wasm_global_set(
         # __wasm.globalSet(gh, v, dval): v is the JSValue (funcref wrapper or
         # marker; any value for externref).
         v: JSValue = js_undefined();
-        if len(args) >= 2 { v = args[1]; }
+        if len(args) >= 2 {
+            v = args[1];
+        }
         if kind == WASMTIME_EXTERNREF {
-            if jsv_is_null(v) { return js_boolean(wasm_global_set_ref(g_h, 0)); }
+            if jsv_is_null(v) {
+                return js_boolean(wasm_global_set_ref(g_h, 0));
+            }
             return js_boolean(wasm_global_set_ref(g_h, vm_wasm_extern_id(v)));
         }
         if jsv_is_null(v) or jsv_is_undefined(v) {
@@ -8957,7 +9013,11 @@ def _dn_native_kind_wasm_global_set(
         }
         fh: int = _dn_wasm_funcref_h(v);
         if fh < 0 {
-            vm_throw_native(make_type_error("WebAssembly.Global: funcref value must be a WASM exported function or null"));
+            vm_throw_native(
+                make_type_error(
+                    "WebAssembly.Global: funcref value must be a WASM exported function or null"
+                )
+            );
             return js_undefined();
         }
         return js_boolean(wasm_global_set_ref(g_h, fh));
@@ -9009,12 +9069,20 @@ def _dn_native_kind_wasm_table_create(
     init_ref: int = 0;
     if elem_kind == WASMTIME_EXTERNREF {
         init_val: JSValue = js_undefined();
-        if len(args) >= 4 { init_val = args[3]; }
-        if not jsv_is_null(init_val) { init_ref = vm_wasm_extern_id(init_val); }
+        if len(args) >= 4 {
+            init_val = args[3];
+        }
+        if not jsv_is_null(init_val) {
+            init_ref = vm_wasm_extern_id(init_val);
+        }
     } elif len(args) >= 4 and not (jsv_is_null(args[3]) or jsv_is_undefined(args[3])) {
         init_ref = _dn_wasm_funcref_h(args[3]);
         if init_ref < 0 {
-            vm_throw_native(make_type_error("WebAssembly.Table initial value must be a WASM exported function or null"));
+            vm_throw_native(
+                make_type_error(
+                    "WebAssembly.Table initial value must be a WASM exported function or null"
+                )
+            );
             return js_undefined();
         }
     }
@@ -9061,13 +9129,19 @@ def _dn_native_kind_wasm_table_grow(
     elem_kind: int = wasm_table_elem_kind(t_h);
     init_ref: int = 0;
     init_val: JSValue = js_undefined();
-    if len(args) >= 3 { init_val = args[2]; }
+    if len(args) >= 3 {
+        init_val = args[2];
+    }
     if elem_kind == WASMTIME_EXTERNREF {
-        if not jsv_is_null(init_val) { init_ref = vm_wasm_extern_id(init_val); }
+        if not jsv_is_null(init_val) {
+            init_ref = vm_wasm_extern_id(init_val);
+        }
     } elif not (jsv_is_null(init_val) or jsv_is_undefined(init_val)) {
         init_ref = _dn_wasm_funcref_h(init_val);
         if init_ref < 0 {
-            vm_throw_native(make_type_error("WebAssembly.Table.grow: invalid funcref value"));
+            vm_throw_native(
+                make_type_error("WebAssembly.Table.grow: invalid funcref value")
+            );
             return js_int(-1);
         }
     }
@@ -9090,19 +9164,27 @@ def _dn_native_kind_wasm_table_set_value(
     t_h: int = _dn_ptr_arg(args, 0);
     idx: int = _dn_ptr_arg(args, 1);
     v: JSValue = js_undefined();
-    if len(args) >= 3 { v = args[2]; }
+    if len(args) >= 3 {
+        v = args[2];
+    }
     if wasm_table_elem_kind(t_h) == WASMTIME_FUNCREF {
         if jsv_is_null(v) or jsv_is_undefined(v) {
             return js_boolean(wasm_table_set_ref(t_h, idx, 0));
         }
         fh: int = _dn_wasm_funcref_h(v);
         if fh < 0 {
-            vm_throw_native(make_type_error("WebAssembly.Table.set: only WASM exported functions or null are supported as funcref values"));
+            vm_throw_native(
+                make_type_error(
+                    "WebAssembly.Table.set: only WASM exported functions or null are supported as funcref values"
+                )
+            );
             return js_undefined();
         }
         return js_boolean(wasm_table_set_ref(t_h, idx, fh));
     }
-    if jsv_is_null(v) { return js_boolean(wasm_table_set_ref(t_h, idx, 0)); }
+    if jsv_is_null(v) {
+        return js_boolean(wasm_table_set_ref(t_h, idx, 0));
+    }
     return js_boolean(wasm_table_set_ref(t_h, idx, vm_wasm_extern_id(v)));
 }
 
@@ -9143,7 +9225,9 @@ def _dn_native_kind_wasm_imports_add_func(
     # A Number is an exported wasm function handle; all other values are JS callbacks.
     idx: int = _dn_ptr_arg(args, 0);
     fn: JSValue = js_undefined();
-    if len(args) >= 2 { fn = args[1]; }
+    if len(args) >= 2 {
+        fn = args[1];
+    }
     if jsv_is_int32(fn) {
         return js_boolean(wasm_imports_add_wasm_func(idx, jsv_to_int32(fn)));
     }
