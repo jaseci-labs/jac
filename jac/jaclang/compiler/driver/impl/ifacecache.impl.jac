@@ -807,6 +807,10 @@ impl IfaceRegistry._ensure_flow_graph(mod: any) -> None {
     self._event("iface_cfg");
 }
 
+impl EncodedPathMapper.map(path: str) -> str {
+    return self.paths.encode(path, self.package_dir);
+}
+
 impl IfaceRegistry._encode_iface(
     codec: IfaceCodec, mod: any, paths: JirPaths
 ) -> (bytes | None) {
@@ -816,11 +820,11 @@ impl IfaceRegistry._encode_iface(
         package_dir = os.path.realpath(
             self.prog.options.project_root or paths.base_dir
         );
-        def encode_path(path: str) -> str {
-            return paths.encode(path, package_dir);
-        }
         return codec.build_module_iface(
-            mod, self.prog.get_type_evaluator(), self._pkg_dir(), encode_path
+            mod,
+            self.prog.get_type_evaluator(),
+            self._pkg_dir(),
+            EncodedPathMapper(paths=paths, package_dir=package_dir)
         );
     } except IncoherentInterface {
         self._event("iface_incoherent");

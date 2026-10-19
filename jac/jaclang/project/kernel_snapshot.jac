@@ -86,7 +86,6 @@ obj KernelSnapshot(HostAsker) {
         other_compiler: str = "";
 
     def inputs -> KernelInputs;
-
     def text -> str;
     def ask(method: str, key: str) -> str;
     def answer(learner: KernelHost, method: str, fields: list[str]) -> str;

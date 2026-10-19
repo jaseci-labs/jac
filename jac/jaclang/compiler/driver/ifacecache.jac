@@ -54,6 +54,13 @@ obj IfaceEntry {
         replayed_token: int = -1;
 }
 
+obj EncodedPathMapper {
+    has paths: JirPaths,
+        package_dir: str;
+
+    def map(path: str) -> str;
+}
+
 obj EncodedInterface {
     has module_key: str,
         section: bytes,

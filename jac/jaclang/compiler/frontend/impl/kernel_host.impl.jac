@@ -1,6 +1,4 @@
-impl record_interface(
-    program: JacProgram, module: Module, products: UnitProducts
-) {
+impl record_interface(program: JacProgram, module: Module, products: UnitProducts) {
     import base64;
 
     evaluator = program.get_type_evaluator();
