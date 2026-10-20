@@ -238,6 +238,7 @@ impl CatalogWriter.postinit {
     self.external_modules = set();
     self._ident_visiting = set();
     self._type_ident_memo = {};
+    self._type_tokens = {};
 }
 
 impl CatalogWriter._real_path(path: str) -> str {
@@ -683,8 +684,13 @@ impl CatalogWriter._type_ident(t: TypeBase) -> str {
     } finally {
         self._ident_visiting.discard(tid);
     }
-    self._type_ident_memo[tid] = (t, key);
-    return key;
+    token = self._type_tokens.get(key);
+    if token is None {
+        token = ident_key(["t", str(len(self._type_tokens))]);
+        self._type_tokens[key] = token;
+    }
+    self._type_ident_memo[tid] = (t, token);
+    return token;
 }
 
 impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
