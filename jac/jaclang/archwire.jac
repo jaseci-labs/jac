@@ -14384,7 +14384,9 @@ graph import compiler.types.stubcat {
         locate._open_file { open_catalog_file },
         locate._open_region { open_catalog_region },
         modiface { StubCatalog },
+        writer.CatalogWriter.encode_scope { CatScope },
         writer.CatalogWriter.encode_symbol { CatProvider },
+        writer.CatalogWriter.force_symbol { CatScope },
         writer.CatalogWriter.scope_dotted_path { CatScope },
         writer.metaclass_of_scope { CatScope },
     ]
