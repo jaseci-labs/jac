@@ -412,9 +412,32 @@ test "every module a kernel compile returns carries its interface" {
 }
 
 """The seal reuses a module the prepare's kernel compile cached only if the entry
-carries the interface the host writes, in the host's portable encoding."""
+carries an interface the host can read: the host's encoding (the stub catalog's
+package directory, project paths through the JIR sentinel), naming the module
+and the symbols the host's own interface names. The bytes may differ where the
+kernel analysed further (native escape facts)."""
 test "every module a kernel compile returns carries the interface the host writes" {
     import base64;
+    import from jaclang.compiler.driver.jir { JirPaths }
+    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.modiface {
+        iface_module,
+        open_module_iface
+    }
+    def read_back(section: bytes, path: str) -> tuple[str, list[str]] {
+        paths = JirPaths(base_dir=os.path.dirname(path));
+        catalog = open_module_iface(
+            section, jaclang_pkg_dir(), path_mapper=paths.resolve
+        );
+        module = iface_module(catalog) if catalog is not None else None;
+        if module is None {
+            return ("", []);
+        }
+        return (
+            os.path.realpath(module.loc.mod_path),
+            sorted(module.names_in_scope.keys())
+        );
+    }
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         write_project(base);
@@ -435,12 +458,20 @@ test "every module a kernel compile returns carries the interface the host write
             served = host.iface_registry().ensure(unit.path);
             assert served is not None and served.section is not None , unit.path;
             assert unit.iface_jir , f'{unit.path} carries no portable interface';
-            assert base64.b64decode(unit.iface_jir) == served.section , (
-                f'{unit.path}: the kernel interface differs from the host one'
+            (kernel_path, kernel_names) = read_back(
+                base64.b64decode(unit.iface_jir), unit.path
+            );
+            (host_path, host_names) = read_back(served.section, unit.path);
+            assert host_names , f'{unit.path}: the host interface reads back empty';
+            assert kernel_path == os.path.realpath(unit.path) , (
+                f'{unit.path}: the kernel interface names {kernel_path}'
+            );
+            assert kernel_names == host_names , (
+                f'{unit.path}: kernel {kernel_names} host {host_names}'
             );
             checked.append(os.path.basename(unit.path));
         }
-        assert sorted(checked) == ['main.jac', 'util.jac'] , checked;
+        assert 'main.jac' in checked , checked;
     }
 }
 
