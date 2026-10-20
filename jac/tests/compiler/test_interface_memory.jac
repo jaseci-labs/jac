@@ -58,3 +58,21 @@ test "interface path identities expire with the writer" {
         assert next_writer.rel_of(str(alias / 'unit.jac')) == 'second/unit.jac';
     }
 }
+
+test "a nested type's identity stays bounded when each level repeats its child" {
+    program = JacProgram();
+    nested = 'int';
+    for _ in range(12) {
+        nested = f'dict[{nested}, {nested}]';
+    }
+    source = f'def deep(x: {nested}) -> int {{ return 0; }}\n';
+    options = CompileOptions(symtab_ir_only=True);
+    mod = program.compile('nested.jac', use_str=source, options=options);
+    evaluator = program.get_type_evaluator();
+    writer = CatalogWriter(evaluator=evaluator, pkg_dir=os.getcwd(), boundary=mod);
+    writer._type_ident(evaluator.get_type_of_symbol(mod.names_in_scope['deep']));
+    longest = max(len(key) for key in writer._type_tokens);
+    assert longest < 512 , (
+        f'a 12-level type with repeated children keyed {longest} characters'
+    );
+}
