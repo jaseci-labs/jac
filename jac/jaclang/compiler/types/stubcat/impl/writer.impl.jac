@@ -1537,6 +1537,22 @@ impl PathMapper.map(path: str) -> str {
     return path;
 }
 
+impl encode_package_path(
+    path: str, base_dir: str, package_dir: str, sentinel: str
+) -> str {
+    if not base_dir or not package_dir or not os.path.isabs(path) {
+        return path;
+    }
+    if path == package_dir or path.startswith(package_dir + os.sep) {
+        return sentinel + "/" + os.path.relpath(path, base_dir).replace(os.sep, "/");
+    }
+    return path;
+}
+
+impl PackagePathMapper.map(path: str) -> str {
+    return encode_package_path(path, self.base_dir, self.package_dir, self.sentinel);
+}
+
 impl incoherent_message(mod_path: str, orphans: list[str], failures: list[str]) -> str {
     message = f"interface of {mod_path} references {len(orphans)} class scope(s) "
         + "with no live module: "

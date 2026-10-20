@@ -871,6 +871,7 @@ graph import {
             get_module_cache_path,
             is_module_cache_valid
         },
+        project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -10497,9 +10498,14 @@ graph import compiler {
         CatalogResolver
     }
     types.stubcat.writer ++> [
-        driver.ifacecache.IfaceRegistry._encode_iface { IncoherentInterface },
+        driver.ifacecache.IfaceRegistry._encode_iface {
+            IncoherentInterface,
+            PackagePathMapper
+        },
+        driver.jir.JirPaths.encode { encode_package_path },
         frontend.kernel_host.record_interface {
             IncoherentInterface,
+            PackagePathMapper,
             build_module_iface,
             module_iface_shape
         },
@@ -11724,6 +11730,14 @@ graph import compiler.driver {
             get_module_cache_path,
             is_module_cache_valid
         },
+        compiler.unit_sections {
+            DepRow,
+            JirPaths,
+            SEC_DEPS,
+            SEC_IFACE,
+            SEC_PATH_ROOT,
+            deps_section
+        },
         ifacecache {
             DepRow,
             JirPaths,
@@ -11749,6 +11763,7 @@ graph import compiler.driver {
             write_module_cache
         },
         ifacecache.IfaceRegistry._deps_match { read_dep_rows },
+        ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
