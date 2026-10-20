@@ -758,11 +758,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
         }
         if isinstance(t, OverloadedType) {
             return ident_key(
-                [
-                    "overload",
-                    flags,
-                    self._types_ident([fn for fn in t.overloads])
-                ]
+                ["overload", flags, self._types_ident([fn for fn in t.overloads])]
             );
         }
         if isinstance(t, UnionType) {
