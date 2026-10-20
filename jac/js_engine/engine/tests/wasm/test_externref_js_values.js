@@ -53,17 +53,17 @@ try {
     var nullGlobalModuleBytes = new Uint8Array([
         0, 97, 115, 109, 1, 0, 0, 0,
         1, 5, 1, 96, 0, 1, 127,
-        3, 2, 1, 0,
         2, 8, 1, 1, 116, 1, 103, 3, 111, 1,
+        3, 2, 1, 0,
         7, 7, 1, 3, 105, 115, 110, 0, 0,
-        10, 8, 1, 6, 0, 53, 0, 209, 11
+        10, 7, 1, 5, 0, 53, 0, 209, 11
     ]);
     var nullGlobalModule = new WebAssembly.Module(nullGlobalModuleBytes);
     var nullGlobalInstance = new WebAssembly.Instance(nullGlobalModule, { t: { g: nullGlobal } });
     check('constructed-null externref global is null to Wasm',
           nullGlobalInstance.exports.isn() === 1);
     var nullFuncGlobalModuleBytes = new Uint8Array(nullGlobalModuleBytes);
-    nullFuncGlobalModuleBytes[27] = 112;
+    nullFuncGlobalModuleBytes[23] = 112;
     var nullFuncGlobal = new WebAssembly.Global({ value: 'funcref', mutable: true }, null);
     var nullFuncInstance = new WebAssembly.Instance(
         new WebAssembly.Module(nullFuncGlobalModuleBytes), { t: { g: nullFuncGlobal } });
