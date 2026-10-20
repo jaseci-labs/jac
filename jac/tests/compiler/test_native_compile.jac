@@ -164,6 +164,12 @@ test "the native jc_compile emits the host's products" {
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
         assert_same_products(emitted, expected);
+        missing = [
+            unit.path
+            for unit in outcome.units
+            if unit.path.endswith('.jac') and (not unit.iface or not unit.iface_shape)
+        ];
+        assert not missing , f"the native kernel returned units without an interface: {missing}";
     }
 }
 
