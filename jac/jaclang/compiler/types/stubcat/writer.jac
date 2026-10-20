@@ -53,6 +53,7 @@ obj CatalogWriter {
         type_ids: dict[str, int] postinit,
         _ident_visiting: set[int] postinit,
         _type_ident_memo: dict[int, tuple[TypeBase, str]] postinit,
+        _type_tokens: dict[str, str] postinit,
         _canonical_paths: dict[str, str] postinit,
         types: list[TypeBase] postinit,
         pending_types: list[int] postinit,
