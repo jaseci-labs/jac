@@ -445,6 +445,18 @@ test "a page compiled after the application reuses the modules both import" {
                 );
                 assert analysed == ['page.jac'] , analysed;
                 assert page.unit(str(base / 'page.jac')) is not None;
+                kernel_compile.host_prepared();
+                after = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert after is not None
+                    and after.analysis.status == ANALYSIS_OK , after;
+                analysed_after = sorted(
+                    os.path.basename(mod.path) for mod in after.analysis.modules
+                );
+                assert 'shared.jac' in analysed_after , (
+                    f"a page compiled after the prepare ended reused its interfaces: {analysed_after}"
+                );
             } finally {
                 kernel_compile.forget_application_units();
             }

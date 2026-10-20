@@ -223,4 +223,5 @@ impl host_preparing(entry_path: str) {
 
 impl host_prepared {
     _HOST_PREPARING.clear();
+    _APPLICATION_SEEDS.clear();
 }
