@@ -1117,7 +1117,9 @@ import from engine.src.wasm.bridge {
 import from engine.src.vm.vm_obs {
     vm_wasm_register_import_cb,
     vm_wasm_extern_id,
-    vm_wasm_extern_value, vm_wasm_funcref_marker, vm_wasm_funcref_h
+    vm_wasm_extern_value,
+    vm_wasm_funcref_marker,
+    vm_wasm_funcref_h
 }
 import from engine.src.builtins.regexp {
     js_regexp_create,
@@ -8946,14 +8948,17 @@ def _dn_native_kind_wasm_global_create(
             dval = float(jsv_to_int32(args[3]));
         }
     } elif kind == WASMTIME_FUNCREF {
-        if len(args) >= 3 and not (jsv_is_null(args[2]) or jsv_is_undefined(args[2])) {
-            ival = vm_wasm_funcref_h(args[2]);
+        if len(args) >= 3 {
+            ival = _dn_wasm_funcref_arg(
+                args[2],
+                "WebAssembly.Global: funcref value must be a WASM exported function or null"
+            );
             if ival < 0 {
-                ival = 0;
+                return js_undefined();
             }
         }
     } elif kind == WASMTIME_EXTERNREF {
-        if len(args) >= 3 {
+        if len(args) >= 3 and not jsv_is_null(args[2]) {
             ival = vm_wasm_extern_id(args[2]);
         }
     } else {
@@ -9104,8 +9109,7 @@ def _dn_native_kind_wasm_table_grow(
         }
     } else {
         init_ref = _dn_wasm_funcref_arg(
-            init_val,
-            "WebAssembly.Table.grow: invalid funcref value"
+            init_val, "WebAssembly.Table.grow: invalid funcref value"
         );
         if init_ref < 0 {
             return js_int(-1);

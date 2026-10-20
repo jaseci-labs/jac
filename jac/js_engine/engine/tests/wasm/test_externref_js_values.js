@@ -45,6 +45,38 @@ try {
     global.value = null;
     check('externref global preserves null', global.value === null);
 
+    // Constructor nulls use the same slot-0 encoding as the setter, so a
+    // global built with null reads as a null ref inside Wasm; and a funcref
+    // global rejects a non-function initial value instead of coercing to null.
+    var nullGlobal = new WebAssembly.Global({ value: 'externref', mutable: true }, null);
+    check('externref global constructed with null reads null', nullGlobal.value === null);
+    var nullGlobalModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 5, 1, 96, 0, 1, 127,
+        3, 2, 1, 0,
+        2, 8, 1, 1, 116, 1, 103, 3, 111, 1,
+        7, 7, 1, 3, 105, 115, 110, 0, 0,
+        10, 8, 1, 6, 0, 53, 0, 209, 11
+    ]);
+    var nullGlobalModule = new WebAssembly.Module(nullGlobalModuleBytes);
+    var nullGlobalInstance = new WebAssembly.Instance(nullGlobalModule, { t: { g: nullGlobal } });
+    check('constructed-null externref global is null to Wasm',
+          nullGlobalInstance.exports.isn() === 1);
+    var nullFuncGlobalModuleBytes = new Uint8Array(nullGlobalModuleBytes);
+    nullFuncGlobalModuleBytes[27] = 112;
+    var nullFuncGlobal = new WebAssembly.Global({ value: 'funcref', mutable: true }, null);
+    var nullFuncInstance = new WebAssembly.Instance(
+        new WebAssembly.Module(nullFuncGlobalModuleBytes), { t: { g: nullFuncGlobal } });
+    check('constructed-null funcref global is null to Wasm',
+          nullFuncInstance.exports.isn() === 1);
+    var threwTypeError = false;
+    try {
+        new WebAssembly.Global({ value: 'funcref', mutable: true }, {});
+    } catch (e) {
+        threwTypeError = e instanceof TypeError;
+    }
+    check('funcref global constructor rejects a non-function with TypeError', threwTypeError);
+
     var table = new WebAssembly.Table({ element: 'externref', initial: 1 });
     check('externref table defaults to undefined', table.get(0) === undefined);
     table.set(0, undefined);
