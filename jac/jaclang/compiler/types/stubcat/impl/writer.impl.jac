@@ -717,7 +717,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
         }
         if isinstance(t, FunctionType) {
             params: list[str] = [];
-            for p in (t.parameters or []) {
+            for p in t.parameters {
                 params.append(
                     ident_key(
                         [
@@ -751,7 +751,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
                     self._type_ident(t.type_guard)
                         if t.type_guard is not None
                         else none_key,
-                    self._types_ident([tv for tv in (t.type_params or [])]),
+                    self._types_ident([tv for tv in t.type_params]),
                     ident_key(params)
                 ]
             );
@@ -761,7 +761,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
                 [
                     "overload",
                     flags,
-                    self._types_ident([fn for fn in (t.overloads or [])])
+                    self._types_ident([fn for fn in t.overloads])
                 ]
             );
         }
@@ -830,7 +830,10 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
 
 impl CatalogWriter._types_ident(ts: (list[TypeBase] | None)) -> str {
     out: list[str] = [];
-    for x in (ts or []) {
+    if ts is None {
+        return ident_key(out);
+    }
+    for x in ts {
         out.append(self._type_ident(x) if x is not None else ident_key(["none"]));
     }
     return ident_key(out);
@@ -859,7 +862,10 @@ impl CatalogWriter.ref_type(t: (TypeBase | None)) -> int {
 
 impl CatalogWriter.ref_types(ts: (list[TypeBase] | None)) -> list[int] {
     out: list[int] = [];
-    for t in (ts or []) {
+    if ts is None {
+        return out;
+    }
+    for t in ts {
         out.append(self.ref_type(t));
     }
     return out;
@@ -1176,7 +1182,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_ref(out, self.ref_type(t.return_type));
         put_ref(out, self.ref_type(t.type_guard));
         tps: list[TypeBase] = [];
-        for tv in (t.type_params or []) {
+        for tv in t.type_params {
             tps.append(tv);
         }
         put_refs(out, self.ref_types(tps));
@@ -1208,7 +1214,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_uvar(out, TY_OVERLOAD);
         put_uvar(out, flags);
         fns: list[TypeBase] = [];
-        for fn in (t.overloads or []) {
+        for fn in t.overloads {
             fns.append(fn);
         }
         put_refs(out, self.ref_types(fns));
@@ -1352,12 +1358,12 @@ impl CatalogWriter.encode_shared(idx: int) -> bytes {
     }
     put_ref(out, scope_ref);
     mro: list[TypeBase] = [];
-    for cls in (sh.mro or []) {
+    for cls in sh.mro {
         mro.append(cls);
     }
     put_refs(out, self.ref_types(mro));
     tps: list[TypeBase] = [];
-    for tv in (sh.type_params or []) {
+    for tv in sh.type_params {
         tps.append(tv);
     }
     put_refs(out, self.ref_types(tps));
