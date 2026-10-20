@@ -295,7 +295,6 @@ node Parameter {
     has default_value: (Expr | None) { getter; setter(default_value: (Expr | None)); }
 
     def category_code -> int;
-
     def init(
         *,
         name: str,
