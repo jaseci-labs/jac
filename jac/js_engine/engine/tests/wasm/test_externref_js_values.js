@@ -56,7 +56,7 @@ try {
         2, 8, 1, 1, 116, 1, 103, 3, 111, 1,
         3, 2, 1, 0,
         7, 7, 1, 3, 105, 115, 110, 0, 0,
-        10, 7, 1, 5, 0, 53, 0, 209, 11
+        10, 7, 1, 5, 0, 35, 0, 209, 11
     ]);
     var nullGlobalModule = new WebAssembly.Module(nullGlobalModuleBytes);
     var nullGlobalInstance = new WebAssembly.Instance(nullGlobalModule, { t: { g: nullGlobal } });
