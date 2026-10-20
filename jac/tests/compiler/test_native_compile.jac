@@ -411,6 +411,39 @@ test "every module a kernel compile returns carries its interface" {
     }
 }
 
+"""The seal reuses a module the prepare's kernel compile cached only if the entry
+carries the interface the host writes, in the host's portable encoding."""
+test "every module a kernel compile returns carries the interface the host writes" {
+    import base64;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        entry_file = str(base / 'main.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), entry_file, compile_options()
+        );
+        outcome = run_kernel_compile(
+            session.text(), entry_file, None, AskOnly(session=session)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        host = JacProgram();
+        checked: list[str] = [];
+        for unit in outcome.units {
+            if not unit.path.endswith('.jac') {
+                continue;
+            }
+            served = host.iface_registry().ensure(unit.path);
+            assert served is not None and served.section is not None , unit.path;
+            assert unit.iface_jir , f'{unit.path} carries no portable interface';
+            assert base64.b64decode(unit.iface_jir) == served.section , (
+                f'{unit.path}: the kernel interface differs from the host one'
+            );
+            checked.append(os.path.basename(unit.path));
+        }
+        assert sorted(checked) == ['main.jac', 'util.jac'] , checked;
+    }
+}
+
 def write_application(base: Path) {
     (base / 'jac.toml').write_text(CONFIG);
     (base / 'util.jac').write_text(
