@@ -722,7 +722,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
                     ident_key(
                         [
                             p.name or "",
-                            str(int(p.category) if p.category is not None else 0),
+                            str(p.category_code()),
                             str(int(p.param_kind)),
                             self._type_ident(p.param_type)
                                 if p.param_type is not None
@@ -1190,7 +1190,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_uvar(out, len(params));
         for p in params {
             put_uvar(out, self.sid(p.name or ""));
-            put_uvar(out, int(p.category) if p.category is not None else 0);
+            put_uvar(out, p.category_code());
             put_uvar(out, int(p.param_kind));
             put_ref(out, self.ref_type(p.param_type));
             bits = 0;
