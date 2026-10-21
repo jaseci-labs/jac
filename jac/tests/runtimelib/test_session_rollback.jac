@@ -1377,6 +1377,30 @@ test "a scan that ran a node's own getters is never sealed" {
             JacRuntime.exec_ctx = old;
             later.close();
         }
+        final = _ctx(td);
+        JacRuntime.exec_ctx = final;
+        try {
+            _ = final.user_root;
+            bag_arch = _as_any(final.mem.batch_get([bag_id])[bag_id].archetype);
+            peek_arch = _as_any(final.mem.batch_get([peek_id])[peek_id].archetype);
+            bag_arch.items.append(5);
+            peek_arch.n = 2;
+            PEEK_TARGETS.append(bag_arch);
+            final.mem.commit();
+            PEEK_TARGETS.clear();
+            final.mem.commit();
+            in_memory = bag_arch.items.count(99);
+            stored = _stored(final, bag_id, "items") or "";
+            assert in_memory > 0 and stored.count("99") == in_memory , (
+                "a getter appended to a list already captured for writing; once the "
+                f"getters stop, the append must still be saved: {in_memory} in memory, "
+                f"the row holds {stored}"
+            );
+        } finally {
+            PEEK_TARGETS.clear();
+            JacRuntime.exec_ctx = old;
+            final.close();
+        }
     }
 }
 
