@@ -15,6 +15,7 @@ FuncRec   0 code  1 nparams  2 nlocals  3 max_slots  4 nresults  5 inst
 InstRec   0 funcs[]  1 mem  2 globals[] (cell ptrs)  3 tables[]  4 elems[]
           5 datas[]  6 type_ids[]
 MemRec    0 base  1 size (bytes)  2 max pages  3 pages
+          4 retained base (only after a grow whose JS-view detach failed)
 TableRec  0 elems  1 size  2 max  3 elem type
 SegRec    0 ptr  1 len (0 once dropped)
 """
@@ -105,6 +106,7 @@ def:pub canon_type(ft: FuncType) -> int {
 def:pub type_params(id: int) -> list[int] {
     return _TYPE_PARAMS[id];
 }
+
 def:pub type_results(id: int) -> list[int] {
     return _TYPE_RESULTS[id];
 }
@@ -119,6 +121,7 @@ def _words(n: int) -> int {
 def _ld(p: int, i: int) -> int {
     return __mem_load_i64(p + i * 8);
 }
+
 def _st(p: int, i: int, v: int) {
     __mem_store_i64(p + i * 8, v);
 }
@@ -142,12 +145,15 @@ def:pub new_host_func(type_id: int, host_index: int) -> int {
 def:pub func_type_id(f: int) -> int {
     return _ld(f, 6);
 }
+
 def:pub func_host_index(f: int) -> int {
     return _ld(f, 7);
 }
+
 def:pub func_nparams(f: int) -> int {
     return _ld(f, 1);
 }
+
 def:pub func_nresults(f: int) -> int {
     return _ld(f, 4);
 }
@@ -164,9 +170,10 @@ def:pub new_memory(min_pages: int, max_pages: int) -> int {
     _st(m, 1, size);
     _st(m, 2, max_pages);
     _st(m, 3, min_pages);
-    # Slot 4 keeps the previous backing store alive after a grow: JS views
-    # into it stay valid until the bridge detaches them on the next
-    # `memory.buffer` read, so releasing it here would leave them dangling.
+    # Slot 4 is the fallback retention for a grow whose JS-view detachment
+    # could not be confirmed: the replaced base stays alive until a later
+    # successful grow releases it (see mem_grow), so JS views into it never
+    # dangle. Zero when the last grow detached every JS view — or none.
     _st(m, 4, 0);
     return m;
 }
@@ -174,17 +181,26 @@ def:pub new_memory(min_pages: int, max_pages: int) -> int {
 def:pub mem_base(m: int) -> int {
     return _ld(m, 0);
 }
+
 def:pub mem_size(m: int) -> int {
     return _ld(m, 1);
 }
+
 def:pub mem_pages(m: int) -> int {
     return _ld(m, 3);
 }
+
 def:pub mem_max(m: int) -> int {
     return _ld(m, 2);
 }
 
-"""Grow by `delta` pages; returns the old page count or -1."""
+"""Grow by `delta` pages; returns the old page count or -1.
+
+A failed grow leaves the current backing store (and its JS views) alone.
+A successful grow publishes the new base first, then lets the growth
+observer (set_grow_notify) detach JS views into the old base BEFORE it is
+freed; the one-slot retention (slot 4) only holds a base whose detachment
+could not be confirmed, until a later successful grow releases it."""
 def:pub mem_grow(m: int, delta: int) -> int {
     old: int = _ld(m, 3);
     if delta == 0 {
@@ -205,14 +221,31 @@ def:pub mem_grow(m: int, delta: int) -> int {
     }
     ob: int = _ld(m, 0);
     memcpy(nb, ob, _ld(m, 1));
-    prev: int = _ld(m, 4);
-    if prev != 0 {
-        free(prev);
-    }
-    _st(m, 4, ob);
+    # Publish the new backing store before notifying: the observer re-enters
+    # the embedder, which may query this memory through the bridge.
     _st(m, 0, nb);
     _st(m, 1, nsize);
     _st(m, 3, newp);
+    released: bool = True;
+    if len(_GROW_NOTIFY) > 0 {
+        released = _GROW_NOTIFY[0](m, ob) == 0;
+    }
+    prev: int = _ld(m, 4);
+    if released {
+        # A confirmed detach covers every JS view of `ob` and of `prev` (a
+        # base parked by an earlier failed detach); both are safe to free.
+        if prev != 0 {
+            free(prev);
+        }
+        free(ob);
+        _st(m, 4, 0);
+    } else {
+        # Detachment could not be confirmed (observer failed): keep `ob`
+        # alive until a later successful grow releases it. `prev` was parked
+        # the same way, so freeing it here could strand live JS views — it
+        # leaks instead, which is the safe direction.
+        _st(m, 4, ob);
+    }
     return old;
 }
 
@@ -236,15 +269,19 @@ def:pub new_table(elem: int, min_size: int, max_size: int) -> int {
 def:pub table_size(t: int) -> int {
     return _ld(t, 1);
 }
+
 def:pub table_max(t: int) -> int {
     return _ld(t, 2);
 }
+
 def:pub table_elem_type(t: int) -> int {
     return _ld(t, 3);
 }
+
 def:pub table_get(t: int, i: int) -> int {
     return _ld(_ld(t, 0), i);
 }
+
 def:pub table_set(t: int, i: int, v: int) {
     _st(_ld(t, 0), i, v);
 }
@@ -294,12 +331,15 @@ def:pub new_global(vtype: int, mutable: bool, value: int) -> int {
 def:pub global_type(c: int) -> int {
     return _GLOBAL_TYPE[c];
 }
+
 def:pub global_mutable(c: int) -> bool {
     return _GLOBAL_MUT[c];
 }
+
 def:pub global_get(c: int) -> int {
     return _ld(c, 0);
 }
+
 def:pub global_set(c: int, v: int) {
     _st(c, 0, v);
 }
@@ -670,6 +710,7 @@ def:pub invoke(f: int, args: list[int]) -> int {
 def:pub invoke_result(i: int) -> int {
     return _RESULTS[i];
 }
+
 def:pub invoke_result_count -> int {
     return len(_RESULTS);
 }
@@ -1789,4 +1830,25 @@ def _exec_fc(sub: int, pc: int, fp: int, inst: int, mem: int) -> int {
         k = k + 1;
     }
     return 0;
+}
+
+# ── Memory growth notification ──────────────────────────────────────────────
+# The embedder's growth observer: called with (MemRec, previous base ptr)
+# right after a successful grow publishes the new backing store and before
+# the old one is freed, so JS ArrayBuffers wrapping the old base can be
+# detached first — both for Memory.prototype.grow and the wasm memory.grow
+# opcode funnel through mem_grow.
+glob _GROW_NOTIFY: list[Callable[[int, int], int]] = [];
+
+"""Register the memory-growth observer (single slot, like the host handler).
+
+The observer returns 0 once every JS view into the old base is detached
+(or none exist); any other value keeps the old base alive (slot 4) until a
+later successful grow releases it."""
+def:pub set_grow_notify(cb: Callable[[int, int], int]) {
+    if len(_GROW_NOTIFY) == 0 {
+        _GROW_NOTIFY.append(cb);
+    } else {
+        _GROW_NOTIFY[0] = cb;
+    }
 }

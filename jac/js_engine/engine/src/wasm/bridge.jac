@@ -34,6 +34,7 @@ import from engine.src.wasm.compile {
     f32_bits_to_f64
 }
 import from engine.src.wasm.exec {
+    set_grow_notify,
     WInstance,
     instantiate,
     invoke,
@@ -146,6 +147,7 @@ def _set_err(msg: str, cls: int) {
 def:pub wasm_last_error -> str {
     return _ERR;
 }
+
 def:pub wasm_last_error_class -> int {
     return _ERRCLASS;
 }
@@ -354,9 +356,11 @@ def:pub wasm_module_scan_imports(h: int) -> int {
 def:pub wasm_module_import_module(i: int) -> str {
     return _SCAN_IMP[i].module;
 }
+
 def:pub wasm_module_import_name(i: int) -> str {
     return _SCAN_IMP[i].name;
 }
+
 def:pub wasm_module_import_kind(i: int) -> int {
     return _extern_of(_SCAN_IMP[i].kind);
 }
@@ -372,6 +376,7 @@ def:pub wasm_module_scan_exports(h: int) -> int {
 def:pub wasm_module_export_name(i: int) -> str {
     return _SCAN_EXP[i].name;
 }
+
 def:pub wasm_module_export_kind(i: int) -> int {
     return _extern_of(_SCAN_EXP[i].kind);
 }
@@ -527,6 +532,7 @@ def:pub wasm_inst_export_count(ih: int) -> int {
 def:pub wasm_inst_export_name(ih: int, i: int) -> str {
     return _INSTS[ih].export_names[i];
 }
+
 def:pub wasm_inst_export_kind(ih: int, i: int) -> int {
     return _extern_of(_INSTS[ih].export_kinds[i]);
 }
@@ -604,12 +610,15 @@ glob _RES_KIND: list[int] = [],
 def:pub wasm_call_result_count -> int {
     return len(_RES_KIND);
 }
+
 def:pub wasm_call_result_kind(i: int) -> int {
     return _RES_KIND[i];
 }
+
 def:pub wasm_call_result_int(i: int) -> int {
     return _RES_INT[i];
 }
+
 def:pub wasm_call_result_dbl(i: int) -> float {
     return _RES_DBL[i];
 }
@@ -709,17 +718,24 @@ def _ensure_host {
         set_host_handler(_host_dispatch);
         _HOST_READY = True;
     }
+    if not _GROW_HOOKED {
+        set_grow_notify(_grow_notify);
+        _GROW_HOOKED = True;
+    }
 }
 
 def:pub wasm_host_arg_count -> int {
     return len(_HOST_ARG_KINDS);
 }
+
 def:pub wasm_host_arg_kind(i: int) -> int {
     return _HOST_ARG_KINDS[i];
 }
+
 def:pub wasm_host_arg_int(i: int) -> int {
     return _HOST_ARG_INTS[i];
 }
+
 def:pub wasm_host_arg_dbl(i: int) -> float {
     return _HOST_ARG_DBLS[i];
 }
@@ -815,6 +831,9 @@ def _host_dispatch(token: int, slots: int, frec: int) -> int {
 # ── Memories ─────────────────────────────────────────────────────────────────
 
 def:pub wasm_memory_create(store_h: int, min_pages: int, max_pages: int) -> int {
+    # A standalone memory can grow before any instantiate runs, so the
+    # exec-level growth observer must be registered here too.
+    _ensure_host();
     if min_pages > 65536
         or (max_pages >= 0 and (max_pages > 65536 or max_pages < min_pages)) {
         _set_err("invalid memory limits", WASM_ERRCLASS_RUNTIME);
@@ -1126,4 +1145,35 @@ def:pub wasm_global_set_ref(gh: int, ival: int) -> bool {
     }
     global_set(g, v);
     return True;
+}
+
+# ── Memory growth notification ───────────────────────────────────────────────
+# exec.jac calls _grow_notify (MemRec, old base) after every successful
+# memory.grow — from Memory.prototype.grow or the wasm opcode — before the
+# replaced backing store is freed.
+glob _GROW_CB: list[Callable[[int, int], int]] = [],
+     _GROW_HOOKED: bool = False;
+
+"""Register the embedder's growth observer: (mem handle, old base ptr) -> 0
+once every JS view into the old base is detached, non-zero to retain the
+base (freed by the engine on a later successful grow)."""
+def:pub wasm_register_grow_notify(cb: Callable[[int, int], int]) {
+    if len(_GROW_CB) == 0 {
+        _GROW_CB.append(cb);
+    } else {
+        _GROW_CB[0] = cb;
+    }
+}
+
+"""exec.jac growth observer: forward to the embedder for memories that are
+visible to JS (others have no JS wrappers to detach)."""
+def _grow_notify(m: int, old_base: int) -> int {
+    if not (m in _MEM_H) {
+        return 0;
+    }
+    if len(_GROW_CB) == 0 {
+        return 0;
+    }
+    cb: Callable[[int, int], int] = _GROW_CB[0];
+    return cb(_MEM_H[m], old_base);
 }

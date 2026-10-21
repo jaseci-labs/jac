@@ -145,6 +145,7 @@
         }
         this._buffer = null;
         _refreshMemBuffer(this);
+        _memRegister(this);
     }
     // Re-wrap the backing store when wasm code grew (or moved) the memory
     // behind our back: memory.grow inside wasm never goes through
@@ -164,6 +165,39 @@
         mem._buffer = _wrapExternalBuffer(ptr, len);
         return mem._buffer;
     }
+    // MemoryObject registry by memory handle. The engine calls
+    // __jacWasmMemGrow whenever a backing store moves — from
+    // Memory.prototype.grow or the wasm memory.grow opcode — so every
+    // wrapper of the replaced base is detached BEFORE the engine frees it
+    // (a lazily-refreshed cache would leave views reading freed memory
+    // across repeated wasm-side grows). Handles are never reused
+    // (memFree is intentionally a no-op), so the registry is append-only.
+    var _memObjs = [];
+    function _memRegister(m) {
+        var h = m._memH | 0;
+        while (_memObjs.length <= h) _memObjs.push(undefined);
+        var lst = _memObjs[h];
+        if (!lst) { lst = []; _memObjs[h] = lst; }
+        if (lst.indexOf(m) === -1) lst.push(m);
+    }
+    globalThis.__jacWasmMemGrow = function (memH, oldPtr) {
+        var lst = _memObjs[memH | 0];
+        if (!lst) return;
+        var live = __wasm.memPtr(memH);
+        var nb = globalThis.__napiBinary;
+        for (var i = 0; i < lst.length; i++) {
+            var m = lst[i];
+            var old = m._buffer;
+            // Detach every wrapper that no longer matches the live base:
+            // the one wrapping oldPtr plus any older base the engine kept
+            // alive after a failed detach.
+            if (!old || m._bufPtr === live) continue;
+            m._bufPtr = -1;
+            if (nb && typeof nb.detach === 'function') {
+                try { nb.detach(old); } catch (e) { /* best-effort */ }
+            }
+        }
+    };
     Object.defineProperty(MemoryObject.prototype, 'buffer', {
         get: function() { return _refreshMemBuffer(this); },
         enumerable: true, configurable: true

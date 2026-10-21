@@ -191,6 +191,147 @@ try {
     check('growth detaches old views', oldView.byteLength === 0);
     check('grown buffer has the new length', memory.buffer.byteLength === 131072);
     check('memory contents survive growth', new Uint8Array(memory.buffer)[0] === 37);
+
+    // Wasm-side growth reaches the JS MemoryObject layer: every successful
+    // grow — the memory.grow opcode or Memory.prototype.grow — detaches the
+    // old ArrayBuffer and its views BEFORE the engine frees the old backing
+    // store, so views never read freed memory across repeated grows.
+    var growModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 6, 1, 96, 1, 127, 1, 127,
+        3, 2, 1, 0,
+        5, 4, 1, 1, 1, 10,
+        7, 14, 2, 4, 103, 114, 111, 119, 0, 0, 3, 109, 101, 109, 2, 0,
+        10, 8, 1, 6, 0, 32, 0, 64, 0, 11
+    ]);
+    var growInstance = new WebAssembly.Instance(new WebAssembly.Module(growModuleBytes));
+    var growMem = growInstance.exports.mem;
+    var buf0 = growMem.buffer;
+    var view0 = new Uint8Array(buf0);
+    view0[0] = 99;
+    check('wasm grow returns the previous page count',
+          growInstance.exports.grow(1) === 1);
+    check('one wasm-side grow detaches the old buffer', buf0.byteLength === 0);
+    check('one wasm-side grow detaches old views', view0.byteLength === 0);
+    check('detached views read undefined', view0[0] === undefined);
+    check('grown buffer has the new length', growMem.buffer.byteLength === 131072);
+    check('contents survive a wasm-side grow', new Uint8Array(growMem.buffer)[0] === 99);
+
+    var buf1 = growMem.buffer;
+    var view1 = new Uint8Array(buf1);
+    view1[1] = 55;
+    // Two wasm-side grows with no `memory.buffer` read in between: the views
+    // taken before the first grow must already be detached, not left
+    // wrapping backing stores that a later grow frees.
+    check('second wasm grow returns the previous page count',
+          growInstance.exports.grow(1) === 2);
+    check('third wasm grow still succeeds', growInstance.exports.grow(1) === 3);
+    check('repeated wasm-side grows detach the intermediate buffer',
+          buf1.byteLength === 0);
+    check('repeated wasm-side grows detach intermediate views',
+          view1.byteLength === 0);
+    check('buffer after repeated grows is fresh', growMem.buffer.byteLength === 262144);
+    check('contents survive repeated grows', new Uint8Array(growMem.buffer)[1] === 55);
+
+    // The same memory through two MemoryObjects (a JS-created Memory both
+    // imported into a module and re-exported from it): a grow through either
+    // detaches both wrappers.
+    var sharedModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 6, 1, 96, 1, 127, 1, 127,
+        2, 9, 1, 1, 101, 1, 109, 2, 1, 1, 4,
+        3, 2, 1, 0,
+        7, 9, 2, 1, 103, 0, 0, 1, 109, 2, 0,
+        10, 8, 1, 6, 0, 32, 0, 64, 0, 11
+    ]);
+    var sharedMem = new WebAssembly.Memory({ initial: 1, maximum: 4 });
+    var sharedInstance = new WebAssembly.Instance(
+        new WebAssembly.Module(sharedModuleBytes), { e: { m: sharedMem } });
+    var sharedBuf = sharedMem.buffer;
+    new Uint8Array(sharedBuf)[0] = 21;
+    check('imported memory grows from wasm', sharedInstance.exports.g(1) === 1);
+    check('the JS MemoryObject of an imported memory detaches',
+          sharedBuf.byteLength === 0);
+    check('the imported memory re-wraps after growth',
+          sharedMem.buffer.byteLength === 131072);
+    var reexported = sharedInstance.exports.m;
+    var reexportedBuf = reexported.buffer;
+    check('re-exported memory shares contents', new Uint8Array(reexportedBuf)[0] === 21);
+    check('grow through one object detaches the other wrapper',
+          (sharedMem.grow(1) === 2 && reexportedBuf.byteLength === 0));
+    check('the re-exported wrapper re-wraps after growth',
+          reexported.buffer.byteLength === 196608);
+
+    // A wasm call that grows and then reaches an imported JS callback: the
+    // callback must observe the pre-grow views detached and memory.buffer at
+    // the new size, during the same wasm call.
+    var cbModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 4, 1, 96, 0, 0,
+        2, 10, 1, 3, 101, 110, 118, 2, 99, 98, 0, 0,
+        3, 2, 1, 0,
+        5, 4, 1, 1, 1, 10,
+        7, 13, 2, 3, 114, 117, 110, 0, 1, 3, 109, 101, 109, 2, 0,
+        10, 18, 1, 16, 0, 65, 1, 64, 0, 26, 16, 0, 65, 1, 64, 0, 26, 16, 0, 11
+    ]);
+    var cbObservations = [];
+    var cbMem = null;
+    var preCbView = null;
+    var cbInstance = new WebAssembly.Instance(new WebAssembly.Module(cbModuleBytes), {
+        env: { cb: function () {
+            cbObservations.push({
+                preDetached: preCbView.byteLength === 0,
+                preRead: preCbView[2],
+                liveLen: cbMem.buffer.byteLength,
+                liveRead: new Uint8Array(cbMem.buffer)[2]
+            });
+        } }
+    });
+    cbMem = cbInstance.exports.mem;
+    preCbView = new Uint8Array(cbMem.buffer);
+    preCbView[2] = 77;
+    cbInstance.exports.run();
+    check('callback fires after each growth', cbObservations.length === 2);
+    check('first callback sees the pre-grow view detached',
+          cbObservations[0].preDetached === true);
+    check('first callback reads the grown buffer',
+          cbObservations[0].liveLen === 131072 && cbObservations[0].liveRead === 77);
+    check('second callback sees the view detached after the second growth',
+          cbObservations[1].preDetached === true);
+    check('second callback reads the second growth',
+          cbObservations[1].liveLen === 196608 && cbObservations[1].liveRead === 77);
+    check('detached pre-grow views read undefined in callbacks',
+          cbObservations[1].preRead === undefined);
+
+    // Failed growth leaves the current buffer and its views attached.
+    var failModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 6, 1, 96, 1, 127, 1, 127,
+        3, 2, 1, 0,
+        5, 4, 1, 1, 1, 2,
+        7, 14, 2, 4, 103, 114, 111, 119, 0, 0, 3, 109, 101, 109, 2, 0,
+        10, 8, 1, 6, 0, 32, 0, 64, 0, 11
+    ]);
+    var failInstance = new WebAssembly.Instance(new WebAssembly.Module(failModuleBytes));
+    var failMem = failInstance.exports.mem;
+    var failBuf = failMem.buffer;
+    var failView = new Uint8Array(failBuf);
+    failView[0] = 11;
+    check('wasm grow beyond the maximum returns -1',
+          failInstance.exports.grow(1000) === -1);
+    check('failed wasm grow leaves the buffer attached', failBuf.byteLength === 65536);
+    check('failed wasm grow keeps views readable', failView[0] === 11);
+    check('failed wasm grow keeps buffer identity', failMem.buffer === failBuf);
+    check('grow still works after a failed grow', failInstance.exports.grow(1) === 1);
+    check('the grow after the failure detaches', failBuf.byteLength === 0);
+    var threwRange = false;
+    try { failMem.grow(5); } catch (e) { threwRange = e instanceof RangeError; }
+    check('js grow beyond the maximum throws RangeError', threwRange);
+    var failBuf2 = failMem.buffer;
+    check('failed js grow leaves the buffer attached', failBuf2.byteLength === 131072);
+    check('failed js grow keeps buffer identity', failMem.buffer === failBuf2);
+    check('wasm grow by zero pages keeps the buffer object',
+          (failInstance.exports.grow(0) === 2 && failMem.buffer === failBuf2));
 } catch (e) {
     failures++;
     console.error('FAIL [externref_js_values] unexpected ' + (e && e.stack ? e.stack : e));

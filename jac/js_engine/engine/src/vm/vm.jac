@@ -492,7 +492,9 @@ import from engine.src.vm.vm_obs {
     vm_wasm_get_import_cb,
     vm_wasm_has_import_cb,
     vm_wasm_extern_id,
-    vm_wasm_extern_value, vm_wasm_funcref_marker, vm_wasm_funcref_h
+    vm_wasm_extern_value,
+    vm_wasm_funcref_marker,
+    vm_wasm_funcref_h
 }
 import from engine.src.runtime.jsobject {
     js_object_register_napi_obs_scope,
@@ -1229,6 +1231,7 @@ import from napi.src.napi_func { _napi_invoke_callback_from_vm }
 import from engine.src.ffi.libc { fflush, abort, getenv, write }
 import from engine.src.wasm.bridge {
     wasm_register_host_call,
+    wasm_register_grow_notify,
     wasm_host_arg_count,
     wasm_host_arg_kind,
     wasm_host_arg_int,
@@ -48647,12 +48650,46 @@ def _wasm_exc_message(vm: VM, exc: JSValue) -> str {
     return "wasm host import threw";
 }
 
+"""Growth observer for wasm/bridge.jac: a memory.grow moved the backing
+store of `mem_h` from `old_ptr`; detach the JS ArrayBuffers wrapping it
+before the engine frees it. webassembly.js installs
+globalThis.__jacWasmMemGrow, which refreshes every MemoryObject of `mem_h`
+(buffers that no longer match the live base — the replaced one and any
+base parked by an earlier failed detach — are detached). Returns 0 when the
+old base is safe to free; non-zero makes the engine retain it until a
+later successful grow."""
+def _wasm_grow_notify(mem_h: int, old_ptr: int) -> int {
+    if len(_NATIVE_OBS_VM_STACK) == 0 {
+        # No VM is running (e.g. the native spec driver): no JS MemoryObject
+        # exists, so nothing wraps the replaced base.
+        return 0;
+    }
+    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    if not ("__jacWasmMemGrow" in vm.globals) {
+        # Engine build without the WebAssembly JS builtin.
+        return 0;
+    }
+    hook: JSValue = vm.globals["__jacWasmMemGrow"];
+    _vm_invoke_callback(
+        vm, hook, js_undefined(), [js_int(mem_h), js_number(float(old_ptr))]
+    );
+    if vm.had_exception {
+        vm.had_exception = False;
+        vm.pending_exc = js_undefined();
+        # Detachment state unknown: keep the engine's fallback retention
+        # instead of risking views into freed memory.
+        return 1;
+    }
+    return 0;
+}
+
 """Register the WASM host-call bridge into wasm/bridge.jac (idempotent)."""
 def:pub vm_wasm_init_host_bridge -> None {
     if _WASM_HOST_BRIDGE_READY {
         return;
     }
     wasm_register_host_call(_wasm_host_call);
+    wasm_register_grow_notify(_wasm_grow_notify);
     _WASM_HOST_BRIDGE_READY = True;
 }
 

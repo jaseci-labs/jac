@@ -3,7 +3,11 @@
 `test_externref_js_values.js` runs through the built JavaScript engine and
 checks i32/i64 execution plus WebAssembly reference behavior: externref identity
 and undefined/null, funcref wrappers, table round-trips, and retained host
-callbacks across multiple instances.
+callbacks across multiple instances. Its memory section covers growth
+buffer semantics on every grow path: wasm-side `memory.grow` opcodes (one,
+repeated, and shared/re-exported memories), growth followed by an imported
+JS callback in the same wasm call, and failed growth leaving the current
+buffer attached.
 
 From the `jac/` repository directory:
 
