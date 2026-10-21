@@ -1568,7 +1568,7 @@ graph import {
             | server.server
             | server.session.Session._expired
             | studio.session { Serializer },
-        server.session { frozen_fields },
+        server.session { baseline_holds, field_baseline, frozen_fields, runs_getters },
         server.session.Session._load_edges { Serializer },
         server.session.Session._materialize { Serializer },
         server.session.Session._serialize { Serializer },

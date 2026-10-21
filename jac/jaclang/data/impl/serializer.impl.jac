@@ -1036,9 +1036,14 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
             }
         }
 
-        anchor.hash = FROZEN_BASELINE
-            if frozen_fields(anchor)
-            else Serializer.stored_hash(anchor);
+        if frozen_fields(anchor) {
+            anchor.hash = FROZEN_BASELINE;
+        } elif (baseline := field_baseline(anchor)) is not None {
+            anchor.__dict__['_field_baseline'] = baseline;
+            anchor.hash = FIELD_BASELINE;
+        } else {
+            anchor.hash = Serializer.stored_hash(anchor);
+        }
         return anchor;
     } except TypeResolutionError {
         raise;
@@ -1372,6 +1377,222 @@ impl frozen_fields(anchor: Anchor) -> bool {
     }
     state['_frozen'] = True;
     return True;
+}
+
+
+impl runs_getters(arch: object) -> bool {
+    cls = type(arch);
+    found = _GETTER_CLASSES.get(cls);
+    if found is None {
+        found = any(
+            isinstance(member, property)
+            for klass in cls.__mro__
+            if klass is not object and not klass.__module__.startswith('jaclang.')
+            for member in vars(klass).values()
+        );
+        _GETTER_CLASSES[cls] = found;
+    }
+    return found;
+}
+
+
+impl _instance_only(cls: type) -> bool {
+    cached = _INSTANCE_ONLY.get(cls);
+    if cached is not None {
+        return cached;
+    }
+    found = True;
+    try {
+        declared = {f.name for f in _class_fields(cls)};
+        for name in dir(cls) {
+            if name.startswith('_') or name in declared {
+                continue;
+            }
+            if not callable(getattr(cls, name, None)) {
+                found = False;
+                break;
+            }
+        }
+    } except Exception {
+        found = False;
+    }
+    _INSTANCE_ONLY[cls] = found;
+    return found;
+}
+
+
+impl _plain_copy(value: object) -> tuple[bool, object] {
+    kind = type(value);
+    if kind in _PLAIN_LEAVES {
+        return (True, value);
+    }
+    if kind is list {
+        items = cast(list, value);
+        if set(map(type, items)) <= _PLAIN_LEAVES {
+            return (True, items.copy());
+        }
+        out: list[object] = [];
+        for item in items {
+            (ok, copied) = _plain_copy(item);
+            if not ok {
+                return (False, None);
+            }
+            out.append(copied);
+        }
+        return (True, out);
+    }
+    if kind is dict {
+        entries = cast(dict, value);
+        if not set(map(type, entries)) <= {str} {
+            return (False, None);
+        }
+        if set(map(type, entries.values())) <= _PLAIN_LEAVES {
+            return (True, entries.copy());
+        }
+        out_d: dict[str, object] = {};
+        for (key, item) in entries.items() {
+            (ok, copied) = _plain_copy(item);
+            if not ok {
+                return (False, None);
+            }
+            out_d[key] = copied;
+        }
+        return (True, out_d);
+    }
+    return (False, None);
+}
+
+
+impl _same_tree(live: object, snap: object) -> bool {
+    if live is snap {
+        return True;
+    }
+    kind = type(live);
+    if kind is not type(snap) {
+        return False;
+    }
+    if kind is list {
+        (a, b) = (cast(list, live), cast(list, snap));
+        if len(a) != len(b) {
+            return False;
+        }
+        if set(map(type, a)) <= _PLAIN_LEAVES {
+            return list(map(type, a)) == list(map(type, b)) and a == b;
+        }
+        return all(_same_tree(x, y) for (x, y) in zip(a, b));
+    }
+    if kind is dict {
+        (da, db) = (cast(dict, live), cast(dict, snap));
+        if da.keys() != db.keys() {
+            return False;
+        }
+        return all(_same_tree(v, db[k]) for (k, v) in da.items());
+    }
+    return kind in _PLAIN_LEAVES and live == snap;
+}
+
+
+impl _baseline_entry(arch: object, name: str, value: object) -> tuple[int, object] {
+    if frozen_value(value) {
+        return (_BASE_FROZEN, value);
+    }
+    (plain, copied) = _plain_copy(value);
+    if plain {
+        return (_BASE_PLAIN, copied);
+    }
+    stored = Serializer._serialize_value(
+        value, True, False, False, None, Serializer._declared_of(arch, name)
+    );
+    (detached, snapshot) = _plain_copy(stored);
+    if not detached {
+        raise TypeError(f"field {name} does not serialize to plain data");
+    }
+    return (_BASE_STORED, snapshot);
+}
+
+
+impl field_baseline(anchor: Anchor) -> (dict[str, tuple[int, object]] | None) {
+    if not anchor.is_populated() {
+        return None;
+    }
+    arch = anchor.archetype;
+    cls = type(arch);
+    if not cls.__dict__.get('__jac_tracked__', False)
+        or runs_getters(arch)
+        or not _instance_only(cls) {
+        return None;
+    }
+    fields = arch?.__dict__;
+    if not isinstance(fields, dict) {
+        return None;
+    }
+    baseline: dict[str, tuple[int, object]] = {};
+    try {
+        for (name, value) in fields.items() {
+            if name.startswith('_') or callable(value) {
+                continue;
+            }
+            baseline[name] = _baseline_entry(arch, name, value);
+        }
+    } except Exception {
+        return None;
+    }
+    return baseline;
+}
+
+
+impl baseline_holds(anchor: Anchor) -> bool {
+    state = anchor.__dict__;
+    if state.get('_field_written') {
+        return False;
+    }
+    baseline = state.get('_field_baseline');
+    if not isinstance(baseline, dict) or not anchor.is_populated() {
+        return False;
+    }
+    arch = anchor.archetype;
+    fields = arch?.__dict__;
+    if not isinstance(fields, dict) {
+        return False;
+    }
+    seen = 0;
+    for (name, value) in fields.items() {
+        if name.startswith('_') or callable(value) {
+            continue;
+        }
+        slot = baseline.get(name);
+        if slot is None {
+            return False;
+        }
+        seen += 1;
+        (kind, snap) = slot;
+        if kind == _BASE_FROZEN {
+            if value is snap {
+                continue;
+            }
+            if type(value) is not type(snap)
+                or isinstance(value, (tuple, frozenset))
+                or value != snap {
+                return False;
+            }
+        } elif kind == _BASE_PLAIN {
+            if not _same_tree(value, snap) {
+                return False;
+            }
+        } else {
+            try {
+                current = Serializer._serialize_value(
+                    value, True, False, False, None, Serializer._declared_of(arch, name)
+                );
+            } except Exception {
+                return False;
+            }
+            if not _same_tree(current, snap) {
+                return False;
+            }
+        }
+    }
+    return seen == len(baseline);
 }
 
 
