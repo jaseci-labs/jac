@@ -1016,7 +1016,9 @@ impl Session._flush_locked(full: bool) -> None {
             );
             u.anchor.hash = u.hash;
             _settle_written(u.anchor, u.written);
-            u.anchor.__dict__['_field_baseline'] = field_baseline(u.anchor);
+            u.anchor.__dict__['_field_baseline'] = field_baseline(u.anchor)
+                if self._scan_safe
+                else None;
         }
     }
     if self._deleted {
