@@ -49,6 +49,18 @@ node RBag {
     has items: list[int] = [];
 }
 
+obj RLabel {
+    has name: str = "";
+}
+
+node RBin {
+    has items: list[int] = [],
+        tags: dict[str, int] = {},
+        nest: dict[str, list[int]] = {},
+        flex: list[any] = [],
+        label: (RLabel | None) = None;
+}
+
 enum RShelf { FULL = [1] }
 
 glob PEEK_TARGETS: list[any] = [];
@@ -741,7 +753,7 @@ test "a loaded anchor is hashed once (#9410)" {
 }
 
 
-test "loading anchors hashes only those whose fields can change in place" {
+test "loading anchors hashes none of them, even those whose fields can change in place" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
@@ -780,11 +792,11 @@ test "loading anchors hashes only those whose fields can change in place" {
                 json.dumps = real_dumps;
             }
             assert len(loaded) == len(ids) + 1;
-            assert len(dumps_calls) == 1 , (
-                f"loading five anchors hashed {len(dumps_calls)} stored forms; only "
-                "the one holding a list can change without a field write"
+            assert dumps_calls == [] , (
+                f"loading five anchors hashed {len(dumps_calls)} stored forms; the "
+                "one holding a list keeps a field baseline instead of a hash"
             );
-            assert all(loaded[i].hash != 0 for i in ids) , (
+            assert all(loaded[i].hash != 0 for i in ids + [bag_id]) , (
                 "a loaded anchor must not look newly created to access checks"
             );
             _as_any(loaded[bag_id].archetype).items.append(2);
@@ -833,7 +845,7 @@ test "frozen_value accepts exactly the immutable value kinds" {
 }
 
 
-test "a commit re-hashes only loaded anchors whose fields can change in place" {
+test "a commit hashes no loaded anchor, and still finds every in-place change" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
@@ -841,6 +853,7 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
         ids: list[UUID] = [];
         bag_id = UUID(int=0);
         shelf_id = UUID(int=0);
+        bin_id = UUID(int=0);
         try {
             ids = [_loose(seed, n).ensure_id() for n in range(4)];
             shelved: NodeAnchor = _as_any(RShelved()).__jac__;
@@ -851,6 +864,18 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
             bag.persistent = True;
             seed.mem.put(bag);
             bag_id = bag.ensure_id();
+            filled: NodeAnchor = _as_any(
+                RBin(
+                    items=[1, 2, 3],
+                    tags={"a": 1},
+                    nest={"a": [1]},
+                    flex=[1],
+                    label=RLabel(name="a")
+                )
+            ).__jac__;
+            filled.persistent = True;
+            seed.mem.put(filled);
+            bin_id = filled.ensure_id();
             seed.mem.commit();
         } finally {
             JacRuntime.exec_ctx = old;
@@ -870,20 +895,20 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
         try {
             _ = ctx.user_root;
             ctx.mem.commit();
-            loaded = ctx.mem.batch_get(ids + [bag_id]);
-            assert len(loaded) == len(ids) + 1;
+            loaded: dict[UUID, any] = {};
             json.dumps = counting_dumps;
             try {
+                loaded = ctx.mem.batch_get(ids + [bag_id, bin_id]);
                 for _ in range(3) {
                     ctx.mem.commit();
                 }
             } finally {
                 json.dumps = real_dumps;
             }
-            assert len(dumps_calls) == 3 , (
-                f"three commits hashed {len(dumps_calls)} stored forms; only the "
-                "anchor holding a list can change without a field write, so only "
-                "it needs re-hashing (once per commit)"
+            assert len(loaded) == len(ids) + 2;
+            assert dumps_calls == [] , (
+                f"loading and three commits hashed {len(dumps_calls)} stored forms; "
+                "nothing changed, so each field only needs comparing to its baseline"
             );
             _as_any(loaded[bag_id].archetype).items.append(2);
             ctx.mem.commit();
@@ -906,6 +931,60 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
             assert _stored(ctx, shelf_id, "shelf") == "[1, 2]" , (
                 "an enum whose value is a list can change in place; it must be scanned"
             );
+            held = _as_any(loaded[bin_id].archetype);
+            changes: list[tuple[str, any, str, str]] = [
+                (
+                    "a list item set",
+                    lambda { held.items[0] = 5; },
+                    "items",
+                    "[5, 2, 3]"
+                ),
+                (
+                    "a slice assignment",
+                    lambda { held.items[1:] = [7]; },
+                    "items",
+                    "[5, 7]"
+                ),
+                (
+                    "an in-place sort",
+                    lambda { held.items.sort(reverse=True); },
+                    "items",
+                    "[7, 5]"
+                ),
+                (
+                    "a dict item set",
+                    lambda { held.tags["b"] = 2; },
+                    "tags",
+                    '{"a": 1, "b": 2}'
+                ),
+                ("a dict pop", lambda { held.tags.pop("a"); }, "tags", '{"b": 2}'),
+                (
+                    "a list inside a dict",
+                    lambda { held.nest["a"].append(2); },
+                    "nest",
+                    '{"a": [1, 2]}'
+                ),
+                (
+                    "an int turned bool",
+                    lambda { held.flex[0] = True; },
+                    "flex",
+                    "[true]"
+                ),
+                ("a bool turned int", lambda { held.flex[0] = 1; }, "flex", "[1]"),
+                (
+                    "an int turned float",
+                    lambda { held.flex[0] = 1.0; },
+                    "flex",
+                    "[1.0]"
+                ),
+                ("an object's field", lambda { held.label.name = "b"; }, "label", '"b"')
+            ];
+            for (label, change, field, expected) in changes {
+                change();
+                ctx.mem.commit();
+                stored = _stored(ctx, bin_id, field) or "";
+                assert expected in stored , f"{label} was not written: {field} is {stored}";
+            }
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();

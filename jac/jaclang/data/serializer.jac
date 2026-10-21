@@ -16,6 +16,7 @@ import from uuid { UUID }
 
 glob logger = logging.getLogger(__name__),
      FROZEN_BASELINE: int = 1,
+     FIELD_BASELINE: int = 2,
      FINGERPRINT_LENGTH: int = 16,
      _MAX_WARNED_CLASS_KEYS: int = 1024,
      _MAX_IMPORT_FAILURES: int = 1024,
@@ -42,7 +43,13 @@ glob logger = logging.getLogger(__name__),
      ),
      _TYPE_SHAPES: dict[int, tuple[any, any, tuple[any, ...]]] = {},
      _TYPE_SHAPES_LIMIT: int = 4096,
-     _CLASS_FIELDS: dict[int, tuple[any, tuple[any, ...]]] = {};
+     _CLASS_FIELDS: dict[int, tuple[any, tuple[any, ...]]] = {},
+     _PLAIN_LEAVES: frozenset = frozenset({NoneType, bool, int, float, str}),
+     _GETTER_CLASSES: dict[type, bool] = {},
+     _INSTANCE_ONLY: dict[type, bool] = {},
+     _BASE_FROZEN: int = 0,
+     _BASE_PLAIN: int = 1,
+     _BASE_STORED: int = 2;
 
 obj ImportFailure {
     has attempts: int = 0,
@@ -144,3 +151,10 @@ def frozen_value(value: any) -> bool;
 def _type_shape(target_type: object) -> tuple[object, tuple[object, ...]];
 def _class_fields(cls: type) -> tuple[any, ...];
 def frozen_fields(anchor: Anchor) -> bool;
+def runs_getters(arch: object) -> bool;
+def _instance_only(cls: type) -> bool;
+def _plain_copy(value: object) -> tuple[bool, object];
+def _same_tree(live: object, snap: object) -> bool;
+def _baseline_entry(arch: object, name: str, value: object) -> tuple[int, object];
+def field_baseline(anchor: Anchor) -> (dict[str, tuple[int, object]] | None);
+def baseline_holds(anchor: Anchor) -> bool;
