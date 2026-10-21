@@ -346,6 +346,7 @@ test "a typed hop gives the access check's answer for every grant and override" 
         ("team entry at NO_ACCESS", -1, None, -1, None, -1, 0),
         ("org root grant, team entry at NO_ACCESS", -1, 0, -1, None, -1, 1),
         ("doc blocks the member, team grant lifts it", -1, None, -1, -1, 0, 1),
+        ("org root blocks the member, doc grants the member", -1, -1, -1, 0, None, 1),
 
     ];
     for (label, org_all, org_member, doc_all, doc_member, doc_team, want) in rows {
