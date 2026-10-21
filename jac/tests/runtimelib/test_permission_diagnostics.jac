@@ -373,9 +373,11 @@ test "strict mode raises PermissionError on cross-user grant" {
 
 
 obj OrgRoots {
-    has ids: set[str];
+    has ids: set[str],
+        asked: list[str] = [];
 
     def __call__(rid: str) -> bool {
+        self.asked.append(rid);
         return rid in self.ids;
     }
 }
@@ -624,19 +626,29 @@ test "strict mode raises PermissionError when a member changes access on org dat
             member = _persisted(Root(), None);
             doc = _persisted(OrgDoc(title="plan"), org.id);
             org.own_access().roots.anchors[str(member.id)] = AccessLevel.WRITE;
+            own = _persisted(OrgDoc(title="notes"), member.id);
             org_key = str(org.id);
-            Jac.set_org_root_resolver(OrgRoots(ids={org_key}));
+            orgs = OrgRoots(ids={org_key});
+            Jac.set_org_root_resolver(orgs);
             Jac.strict_permissions = True;
             ctx.set_user_root(str(member.id));
-            raised = False;
-            try {
+            for _ in range(2) {
+                raised = False;
+                try {
+                    JacRuntimeInterface.allow_root(
+                        doc.archetype, uuid4(), AccessLevel.WRITE
+                    );
+                } except PermissionError {
+                    raised = True;
+                }
+                assert raised , "strict mode must raise on a member's access change";
                 JacRuntimeInterface.allow_root(
-                    doc.archetype, uuid4(), AccessLevel.WRITE
+                    own.archetype, uuid4(), AccessLevel.READ
                 );
-            } except PermissionError {
-                raised = True;
             }
-            assert raised , "strict mode must raise on a member's access change";
+            assert orgs.asked == [org_key, str(member.id)] , (
+                f"each root must be resolved once, got {orgs.asked}"
+            );
         } finally {
             Jac.strict_permissions = orig_strict;
             Jac.set_org_root_resolver(None);

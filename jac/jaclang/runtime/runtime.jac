@@ -31,7 +31,7 @@ glob logger = getLogger(__name__),
      _default_base_path_dir: list[str | None] = [os.getcwd()],
      _default_full_target_path: list[str | None] = [None],
      _shared_root_resolver: list[any] = [None, None],
-     _org_root_resolver: list[any] = [None, set()];
+     _org_root_resolver: list[any] = [None, {}];
 
 glob _scale_provider_cache: list[type | None] = [],
      _scale_provider_error: list[Exception | None] = [None];

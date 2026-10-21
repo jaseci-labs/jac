@@ -59,24 +59,16 @@ impl JacAccessValidation._is_shared_root(to: Anchor) -> bool {
 
 impl JacAccessValidation._is_org_owned(to: Anchor) -> bool {
     resolver = _org_root_resolver[0];
-    if resolver is None {
+    rid = to.id if isinstance(to.archetype, Root) else to.root;
+    if resolver is None or rid is None {
         return False;
     }
-    known: set[str] = _org_root_resolver[1];
-    for rid in (to.root, to.id) {
-        if rid is None {
-            continue;
-        }
-        key = str(rid);
-        if key in known {
-            return True;
-        }
-        if resolver(key) {
-            known.add(key);
-            return True;
-        }
+    known: dict[str, bool] = _org_root_resolver[1];
+    key = str(rid);
+    if key not in known {
+        known[key] = bool(resolver(key));
     }
-    return False;
+    return known[key];
 }
 
 impl JacAccessValidation._check_acl_write(to: Anchor) -> bool {
@@ -2157,7 +2149,7 @@ impl JacRuntime.set_org_root_resolver(
     resolver: (Callable[([str], bool)] | None)
 ) -> None {
     _org_root_resolver[0] = resolver;
-    _org_root_resolver[1] = set();
+    _org_root_resolver[1] = {};
 }
 
 impl JacRuntime.get_base_path_dir -> (str | None) {
