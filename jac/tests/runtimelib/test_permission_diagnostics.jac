@@ -626,7 +626,7 @@ test "strict mode raises PermissionError when a member changes access on org dat
             member = _persisted(Root(), None);
             doc = _persisted(OrgDoc(title="plan"), org.id);
             org.own_access().roots.anchors[str(member.id)] = AccessLevel.WRITE;
-            own = _persisted(OrgDoc(title="notes"), member.id);
+            notes = _persisted(OrgDoc(title="notes"), member.id);
             org_key = str(org.id);
             orgs = OrgRoots(ids={org_key});
             Jac.set_org_root_resolver(orgs);
@@ -643,7 +643,7 @@ test "strict mode raises PermissionError when a member changes access on org dat
                 }
                 assert raised , "strict mode must raise on a member's access change";
                 JacRuntimeInterface.allow_root(
-                    own.archetype, uuid4(), AccessLevel.READ
+                    notes.archetype, uuid4(), AccessLevel.READ
                 );
             }
             assert orgs.asked == [org_key, str(member.id)] , (
