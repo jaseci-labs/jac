@@ -9,6 +9,9 @@ impl ExecutionContext.postinit -> None {
         self.mem = self._parent.mem.new_session(self.full_target_path or '')
             if self._own_session
             else self._parent.mem;
+        if not self._own_session and self.default_owner is None {
+            self.default_owner = self._parent.default_owner;
+        }
         return;
     }
 

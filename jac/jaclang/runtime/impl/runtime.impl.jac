@@ -1313,6 +1313,9 @@ impl JacGraph.heavy_edge(
     eanch = `edge.__jac__=EdgeAnchor(
         archetype=`edge, source=source, target=target, is_undirected=is_undirected
     );
+    plan = JacPersistence._save_plan(eanch, None)
+        if (source.persistent or target.persistent)
+        else None;
     source.edges.append(eanch);
     target.edges.append(eanch);
     if is_light_edge_type(`type(`edge)) {
@@ -1332,8 +1335,8 @@ impl JacGraph.heavy_edge(
             }
         }
     }
-    if (source.persistent or target.persistent) {
-        JacRuntimeInterface.save(eanch);
+    if plan is not None {
+        JacPersistence._apply_save(plan);
     }
     return `edge;
 }
@@ -1342,65 +1345,92 @@ impl JacPersistence.save(
     `obj: (Archetype | Anchor), owner: (UUID | None) = None
 ) -> None {
     anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
+    JacPersistence._apply_save(JacPersistence._save_plan(anchor, owner));
+}
+
+impl JacPersistence._save_plan(
+    anchor: Anchor, owner: (UUID | None)
+) -> list[tuple[(Anchor, (UUID | None))]] {
     jctx = JacRuntimeInterface.get_context();
-    anchor.ensure_id();
-    if (owner is not None and anchor.persistent and anchor.`root != owner) {
-        current_owner = anchor.`root;
-        raise ValueError(
-            f"anchor {anchor.id} is already owned by root {current_owner} and "
-            'cannot be re-owned'
-        );
-    }
-    if (not anchor.persistent and not anchor.root) {
-        if owner is None {
-            owner = jctx.default_owner;
+    plan: list[tuple[(Anchor, (UUID | None))]] = [];
+    seen: set[int] = set();
+    pending: list[tuple[(Anchor, (UUID | None))]] = [(anchor, owner)];
+    while pending {
+        (cur, want) = pending.pop();
+        if id(cur) in seen {
+            continue;
         }
-        if (owner is not None and owner != jctx.user_root.id) {
-            target = jctx.mem.get(owner);
-            if not isinstance(target, NodeAnchor) or not target.is_populated() {
-                raise ValueError(f"owner root {owner} does not exist");
-            }
-            if not isinstance(target.archetype, Root) {
-                raise ValueError(f"owner {owner} is not a root");
-            }
-            if JacRuntimeInterface.check_access_level(target).value
-                < AccessLevel.WRITE.value {
-                raise PermissionError(
-                    f"caller root may not create content owned by root {owner}: "
-                    'requires WRITE on that root'
-                );
-            }
-            if jctx.user_root != jctx.system_root
-                and JacAccessValidation._carries_acl(anchor)
-                and JacAccessValidation._is_org_owned(target) {
-                raise PermissionError(
-                    JacAccessValidation._org_acl_denied(anchor, owner).message()
-                );
-            }
+        seen.add(id(cur));
+        cur.ensure_id();
+        if (want is not None and cur.persistent and cur.`root != want) {
+            current_owner = cur.`root;
+            raise ValueError(
+                f"anchor {cur.id} is already owned by root {current_owner} and "
+                'cannot be re-owned'
+            );
         }
-        anchor.persistent = True;
-        anchor.`root = owner if owner is not None else jctx.user_root.id;
-    }
-    jctx.mem.put(anchor);
-    match anchor {
-        case NodeAnchor():
-            for ed in anchor.all_edges() {
-                if (ed.is_populated() and not ed.persistent) {
-                    JacRuntimeInterface.save(ed);
+        new_owner: (UUID | None) = None;
+        if (not cur.persistent and not cur.root) {
+            if want is None {
+                want = jctx.default_owner;
+            }
+            if (want is not None and want != jctx.user_root.id) {
+                target = jctx.mem.get(want);
+                if not isinstance(target, NodeAnchor) or not target.is_populated() {
+                    raise ValueError(f"owner root {want} does not exist");
+                }
+                if not isinstance(target.archetype, Root) {
+                    raise ValueError(f"owner {want} is not a root");
+                }
+                if JacRuntimeInterface.check_access_level(target).value
+                    < AccessLevel.WRITE.value {
+                    raise PermissionError(
+                        f"caller root may not create content owned by root {want}: "
+                        'requires WRITE on that root'
+                    );
+                }
+                if jctx.user_root != jctx.system_root
+                    and JacAccessValidation._carries_acl(cur)
+                    and JacAccessValidation._is_org_owned(target) {
+                    raise PermissionError(
+                        JacAccessValidation._org_acl_denied(cur, want).message()
+                    );
                 }
             }
+            new_owner = want if want is not None else jctx.user_root.id;
+        }
+        plan.append((cur, new_owner));
+        match cur {
+            case NodeAnchor():
+                for ed in cur.all_edges() {
+                    if (ed.is_populated() and not ed.persistent) {
+                        pending.append((ed, None));
+                    }
+                }
 
-        case EdgeAnchor():
-            if ((src := anchor.source) and src.is_populated() and not src.persistent) {
-                JacRuntimeInterface.save(src);
-            }
-            if ((trg := anchor.target) and trg.is_populated() and not trg.persistent) {
-                JacRuntimeInterface.save(trg);
-            }
+            case EdgeAnchor():
+                for end in (cur.source, cur.target) {
+                    if (end and end.is_populated() and not end.persistent) {
+                        pending.append((end, None));
+                    }
+                }
 
-        case _:
-            ;
+            case _:
+                ;
 
+        }
+    }
+    return plan;
+}
+
+impl JacPersistence._apply_save(plan: list[tuple[(Anchor, (UUID | None))]]) -> None {
+    jctx = JacRuntimeInterface.get_context();
+    for (anchor, new_owner) in plan {
+        if new_owner is not None {
+            anchor.persistent = True;
+            anchor.`root = new_owner;
+        }
+        jctx.mem.put(anchor);
     }
 }
 

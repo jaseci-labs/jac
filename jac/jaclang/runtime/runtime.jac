@@ -97,6 +97,11 @@ class JacPersistence {
     static async def aget_object(id: str) -> (Archetype | None);
     static def object_ref(`obj: Archetype) -> str;
     static def save(`obj: (Archetype | Anchor), owner: (UUID | None) = None) -> None;
+    static def _save_plan(
+        anchor: Anchor, owner: (UUID | None)
+    ) -> list[tuple[(Anchor, (UUID | None))]];
+
+    static def _apply_save(plan: list[tuple[(Anchor, (UUID | None))]]) -> None;
     static def owner_of(`obj: (Archetype | Anchor)) -> (UUID | None);
     static def destroy(objs: any, strict: bool = False) -> None;
     static def _destroy_anchors(objs: any, strict: bool) -> list[Anchor];

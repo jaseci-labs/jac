@@ -281,6 +281,15 @@ test "a context default owner owns what the caller creates, with the checks save
             "refused"
         ),
         ("an existing node keeps its owner", "WRITE", "org", "resave", False, "member"),
+        (
+            "an access rule set before connecting it",
+            "WRITE",
+            "org",
+            "granted_connect",
+            True,
+            "refused"
+        ),
+        ("saved from a child context", "WRITE", "org", "child", False, "org"),
 
     ];
     old_ctx = Jac.exec_ctx;
@@ -318,6 +327,15 @@ test "a context default owner owns what the caller creates, with the checks save
                             note, uuid4(), AccessLevel.WRITE
                         );
                         Jac.save(note);
+                    } elif how == "granted_connect" {
+                        JacRuntimeInterface.allow_root(
+                            note, uuid4(), AccessLevel.WRITE
+                        );
+                        caller_root: Root = member.archetype;
+                        caller_root ++> note;
+                    } elif how == "child" {
+                        Jac.exec_ctx = ExecutionContext(_parent=ctx);
+                        Jac.save(note);
                     } else {
                         Jac.save(note);
                     }
@@ -328,6 +346,9 @@ test "a context default owner owns what the caller creates, with the checks save
                 if want == "refused" {
                     assert refused , f"{label}: the save was allowed";
                     assert not anch.persistent , f"{label}: the note was persisted";
+                    assert not anch.edges , f"{label}: the note was connected";
+                    ctx.mem.commit();
+                    assert not member.edges , f"{label}: the caller's root kept an edge";
                 } else {
                     assert not refused , f"{label}: the save was refused";
                     expected = org.id if want == "org" else member.id;
