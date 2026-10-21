@@ -48670,7 +48670,7 @@ def _wasm_grow_notify(mem_h: int, old_ptr: int) -> int {
         return 0;
     }
     hook: JSValue = vm.globals["__jacWasmMemGrow"];
-    _vm_invoke_callback(
+    result: JSValue = _vm_invoke_callback(
         vm, hook, js_undefined(), [js_int(mem_h), js_number(float(old_ptr))]
     );
     if vm.had_exception {
@@ -48678,6 +48678,11 @@ def _wasm_grow_notify(mem_h: int, old_ptr: int) -> int {
         vm.pending_exc = js_undefined();
         # Detachment state unknown: keep the engine's fallback retention
         # instead of risking views into freed memory.
+        return 1;
+    }
+    # The JS hook reports 0 only when every stale wrapper detached; any
+    # missing/invalid result is a failure and must retain the old allocation.
+    if not jsv_is_int32(result) or jsv_to_int32(result) != 0 {
         return 1;
     }
     return 0;

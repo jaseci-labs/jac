@@ -303,6 +303,43 @@ try {
     check('detached pre-grow views read undefined in callbacks',
           cbObservations[1].preRead === undefined);
 
+    // The detach hook can synchronously re-enter Wasm. Reserve the active
+    // interpreter frame so the nested export cannot overwrite its locals.
+    var reentryModuleBytes = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 10, 2, 96, 0, 1, 127, 96, 1, 127, 1, 127,
+        3, 3, 2, 1, 0,
+        5, 4, 1, 1, 1, 3,
+        7, 24, 3, 5, 111, 117, 116, 101, 114, 0, 0,
+        6, 110, 101, 115, 116, 101, 100, 0, 1, 3, 109, 101, 109, 2, 0,
+        10, 29, 2,
+        16, 1, 1, 127, 65, 205, 0, 33, 1, 32, 0, 64, 0, 26, 32, 1, 11,
+        10, 1, 2, 127, 65, 42, 33, 1, 32, 1, 11
+    ]);
+    var reentryInstance = new WebAssembly.Instance(
+        new WebAssembly.Module(reentryModuleBytes));
+    var reentryBuffer = reentryInstance.exports.mem.buffer;
+    var originalDetach = globalThis.__napiBinary.detach;
+    var didReenter = false;
+    var nestedResult = -1;
+    globalThis.__napiBinary.detach = function (buffer) {
+        if (!didReenter) {
+            didReenter = true;
+            nestedResult = reentryInstance.exports.nested();
+        }
+        return originalDetach(buffer);
+    };
+    var outerResult;
+    try {
+        outerResult = reentryInstance.exports.outer(1);
+    } finally {
+        globalThis.__napiBinary.detach = originalDetach;
+    }
+    check('growth detach callback can re-enter a Wasm export', nestedResult === 42);
+    check('re-entrant export preserves the active Wasm frame', outerResult === 77);
+    check('re-entrant growth detaches the old memory buffer',
+          reentryBuffer.byteLength === 0);
+
     // Failed growth leaves the current buffer and its views attached.
     var failModuleBytes = new Uint8Array([
         0, 97, 115, 109, 1, 0, 0, 0,
@@ -317,6 +354,30 @@ try {
     var failBuf = failMem.buffer;
     var failView = new Uint8Array(failBuf);
     failView[0] = 11;
+
+    // If native detach reports failure, keep the old allocation alive and
+    // retry detaching that wrapper on the next successful growth.
+    var detachFailBytes = new Uint8Array(failModuleBytes);
+    detachFailBytes[25] = 3;
+    var detachFailInstance = new WebAssembly.Instance(
+        new WebAssembly.Module(detachFailBytes));
+    var detachFailMem = detachFailInstance.exports.mem;
+    var detachFailBuf = detachFailMem.buffer;
+    var detachFailView = new Uint8Array(detachFailBuf);
+    detachFailView[0] = 99;
+    globalThis.__napiBinary.detach = function () { return 0; };
+    var detachFailPages;
+    try {
+        detachFailPages = detachFailInstance.exports.grow(1);
+    } finally {
+        globalThis.__napiBinary.detach = originalDetach;
+    }
+    check('failed detachment leaves the old view attached and readable',
+          detachFailPages === 1 && detachFailView.byteLength === 65536 &&
+          detachFailView[0] === 99);
+    check('next successful growth retries and detaches the old view',
+          detachFailInstance.exports.grow(1) === 2 && detachFailView.byteLength === 0);
+
     check('wasm grow beyond the maximum returns -1',
           failInstance.exports.grow(1000) === -1);
     check('failed wasm grow leaves the buffer attached', failBuf.byteLength === 65536);

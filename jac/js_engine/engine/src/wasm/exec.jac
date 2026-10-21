@@ -1592,7 +1592,21 @@ def _run(entry_f: int, entry_fp: int) -> int {
         } elif op == 19 {  # MEM_GROW
             gd: int = fp + __mem_load_i64(pc + 8);
             pc = pc + 16;
+            # A successful grow calls JavaScript to detach stale ArrayBuffers. That callback
+            # can invoke another Wasm export, so reserve the active interpreter frame
+            # and return-frame stack before crossing the VM boundary.
+            saved_vs_top: int = _VS_TOP;
+            saved_fs_top: int = _FS_TOP;
+            frame_top: int = fp + __mem_load_i64(f + 24) * 8;
+            if frame_top > _VS_TOP {
+                _VS_TOP = frame_top;
+            }
+            if depth > _FS_TOP {
+                _FS_TOP = depth;
+            }
             old: int = mem_grow(mem, __mem_load_i64(gd) & M32);
+            _VS_TOP = saved_vs_top;
+            _FS_TOP = saved_fs_top;
             __mem_store_i64(gd, old);
             mb = __mem_load_i64(mem);
             ms = __mem_load_i64(mem + 8);

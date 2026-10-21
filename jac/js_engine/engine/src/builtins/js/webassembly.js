@@ -182,9 +182,10 @@
     }
     globalThis.__jacWasmMemGrow = function (memH, oldPtr) {
         var lst = _memObjs[memH | 0];
-        if (!lst) return;
+        if (!lst) return 0;
         var live = __wasm.memPtr(memH);
         var nb = globalThis.__napiBinary;
+        var detached = true;
         for (var i = 0; i < lst.length; i++) {
             var m = lst[i];
             var old = m._buffer;
@@ -193,10 +194,16 @@
             // alive after a failed detach.
             if (!old || m._bufPtr === live) continue;
             m._bufPtr = -1;
-            if (nb && typeof nb.detach === 'function') {
-                try { nb.detach(old); } catch (e) { /* best-effort */ }
+            if (!nb || typeof nb.detach !== 'function') {
+                detached = false;
+                continue;
             }
+            try {
+                if (nb.detach(old) !== 1) detached = false;
+            } catch (e) { detached = false; }
         }
+        // Keep the replaced allocation alive if any wrapper could not detach.
+        return detached ? 0 : 1;
     };
     Object.defineProperty(MemoryObject.prototype, 'buffer', {
         get: function() { return _refreshMemBuffer(this); },
