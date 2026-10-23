@@ -238,3 +238,51 @@ test "a neighbors page skips an edge whose target row is gone instead of raising
         }
     }
 }
+
+
+test "printgraph keeps node_limit in every format" {
+    import json;
+    import from jaclang.runtime.builtin { printgraph }
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            for i in range(5) {
+                root ++> Doc(label=f"d{i}");
+            }
+            # (format, how many nodes the output draws): a BFS must not queue
+            # past the limit, whatever it prints.
+            rows = [
+                ("json", lambda (out: str) -> int { len(json.loads(out)["nodes"]); }),
+                (
+                    "dot",
+                    lambda (out: str) -> int { len(
+                        [
+                            l
+                            for l in out.splitlines()
+                            if "[label=" in l and "->" not in l
+                        ]
+                    ); }
+                ),
+                (
+                    "mermaid",
+                    lambda (out: str) -> int { len(
+                        [
+                            l
+                            for l in out.splitlines()
+                            if '["' in l
+                        ]
+                    ); }
+                )
+            ];
+            for (fmt, drawn) in rows {
+                out = printgraph(nd=root, node_limit=2, format=fmt);
+                assert drawn(out) == 2 , (fmt, out);
+            }
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}

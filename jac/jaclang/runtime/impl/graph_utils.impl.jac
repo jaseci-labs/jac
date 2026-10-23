@@ -59,7 +59,14 @@ impl traverse_graph(
                         (depth < 0)
                         or ((min(node_depths[nd], node_depths[other_nd]) + 1) <= depth)
                     )
-                    and (node_limit > len(visited_nodes))
+                    and (
+                        other_nd in visited_nodes
+                        or `any(other_nd is queued for (queued, _) in queue)
+                        or node_limit
+                            > len(
+                                set(visited_nodes) | {queued for (queued, _) in queue}
+                            )
+                    )
                     and (edge_limit > len(connections))
                 )
             ) {
@@ -186,6 +193,9 @@ impl _graph_cursor(text: (str | None)) -> (tuple[int, (UUID | None)] | None) {
         return None;
     }
     (seq, _, eid) = text.partition('.');
+    if not (seq.isascii() and seq.isdigit()) or int(seq) >= 2 ** 63 {
+        raise ValueError('a cursor starts with an edge sequence number');
+    }
     return (int(seq), UUID(eid) if eid else None);
 }
 

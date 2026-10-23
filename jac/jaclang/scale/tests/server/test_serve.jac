@@ -900,7 +900,9 @@ test "walker calls" {
             (f"/graph/neighbors?id={rid}&type=NoSuchType", True, 400),
             (f"/graph/neighbors?id={rid}&cursor=bogus", True, 400),
             (f"/graph/neighbors?id={rid}&cursor=5.", True, 400),
-            (f"/graph/neighbors?id={rid}&cursor=5", True, 400)
+            (f"/graph/neighbors?id={rid}&cursor=5", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=99999999999999999999.{rid}", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=-1.{rid}", True, 400)
         ] {
             got = client.get(path, headers=hdr if bearer else {});
             assert got.status_code == status , (path, bearer, got.status_code);
