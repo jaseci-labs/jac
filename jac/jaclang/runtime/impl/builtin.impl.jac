@@ -1,34 +1,3 @@
-impl _jac_graph_json(file: (str | None) = None) -> str {
-    jac = _get_jac();
-    visited_nodes: set = set();
-    connections: set = set();
-    edge_ids: set = set();
-    nodes: list[dict[str, any]] = [];
-    edges: list[dict[str, any]] = [];
-    `root = jac.`root();
-    collect_node_connections(`root, visited_nodes, connections, edge_ids);
-    nodes.append({'id': id(`root), 'label': 'root'});
-    for node_arch in visited_nodes {
-        if (node_arch != `root) {
-            nodes.append({'id': id(node_arch), 'label': repr(node_arch)});
-        }
-    }
-    for (_, source_node, target_node, edge_arch) in connections {
-        edge_data = {'from': str(id(source_node)), 'to': str(id(target_node))};
-        if (repr(edge_arch) != 'GenericEdge()') {
-            edge_data['label'] = repr(edge_arch);
-        }
-        edges.append(edge_data);
-    }
-    output = json.dumps({'version': '1.0', 'nodes': nodes, 'edges': edges});
-    if file {
-        with open(file, 'w') as f {
-            f.write(output);
-        }
-    }
-    return output;
-}
-
 impl printgraph(
     nd: (NodeArchetype | None) = None,
     depth: int = -1,
@@ -42,9 +11,6 @@ impl printgraph(
 ) -> str {
     jac = _get_jac();
     fmt = format.lower();
-    if (fmt == 'json') {
-        return _jac_graph_json(file);
-    }
     return jac.printgraph(
         edge_type=edge_type,
         nd=(nd or jac.`root()),

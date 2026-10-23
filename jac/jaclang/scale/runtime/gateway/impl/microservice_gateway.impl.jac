@@ -253,90 +253,12 @@ impl MicroserviceGateway.handle_health_ready -> Response {
     return JSONResponse(status_code=200, content={"status": "ready"});
 }
 
-impl MicroserviceGateway.aggregate_graph_data(request: Request) -> Response | None {
-    import json;
-
-    fwd_headers = self.build_forward_headers(request);
-    query: str = str(request.url.query);
-
-    merged_nodes: dict[str, dict[str, any]] = {};
-    edge_keys: set = set();
-    merged_edges: list[dict[str, any]] = [];
-    fragments: int = 0;
-
-    for (svc_name, svc_entry) in self.eligible_services() {
-        target_url = f"{self.service_base_url(svc_entry)}/graph/data";
-        if query {
-            target_url = f"{target_url}?{query}";
-        }
-        per_svc_headers = dict(fwd_headers);
-        if svc_entry.host_override {
-            per_svc_headers["Host"] = svc_entry.host_override;
-        }
-        result = await raw_forward(
-            "GET",
-            target_url,
-            per_svc_headers,
-            b"",
-            timeout=int(http_forward_timeout(svc_name))
-        );
-        if result is None {
-            continue;
-        }
-        (status, _headers, body) = result;
-        if status != 200 {
-            continue;
-        }
-        try {
-            frag = json.loads(body);
-        } except ValueError {
-            continue;
-        }
-        if not isinstance(frag, dict) {
-            continue;
-        }
-        fragments += 1;
-        for n in (frag.get("nodes") or []) {
-            nid = str(n.get("id"));
-            if nid not in merged_nodes {
-                merged_nodes[nid] = n;
-            }
-        }
-        for e in (frag.get("edges") or []) {
-            key = (str(e.get("from")), str(e.get("to")), str(e.get("label", "")));
-            if key not in edge_keys {
-                edge_keys.add(key);
-                merged_edges.append(e);
-            }
-        }
-    }
-
-    if fragments == 0 {
-        return None;
-    }
-    return JSONResponse(
-        status_code=200,
-        content={
-            "version": "1.0",
-            "nodes": list(merged_nodes.values()),
-            "edges": merged_edges
-        }
-    );
-}
-
 impl MicroserviceGateway.handle_builtin_passthrough(
     request: Request, path: str
 ) -> Response | None {
     is_builtin = path.startswith(_BUILTIN_PREFIXES) or path in _BUILTIN_EXACT;
     if not is_builtin {
         return None;
-    }
-
-    if request.method == "GET" and path == "/graph/data" {
-        agg = await self.aggregate_graph_data(request);
-        if agg is not None {
-            return agg;
-        }
     }
 
     stripped: str = path.strip("/");
