@@ -76,6 +76,7 @@ impl request_context_middleware(
             return _service_unavailable('unable to reach the database');
         }
         ctx = scope.context;
+        leased = False;
         exchange_token = open_exchange(request, public_origin);
         user_id = request.state?.user_root_id;
         bind_error: any = None;
@@ -114,10 +115,17 @@ impl request_context_middleware(
                 );
                 return resp;
             }
-            return await next_fn(request);
+            response = await next_fn(request);
+            if response.stream is not None {
+                response.stream = scope.lease(response.stream);
+                leased = True;
+            }
+            return response;
         } finally {
             try {
-                await scope.aclose();
+                if not leased {
+                    await scope.aclose();
+                }
             } finally {
                 close_exchange(exchange_token);
             }

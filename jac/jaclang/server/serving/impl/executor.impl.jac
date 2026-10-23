@@ -30,3 +30,17 @@ impl iterate_sync(source: any) -> AsyncIterator[any] {
         yield item;
     }
 }
+
+impl close_stream(source: any) {
+    try {
+        if hasattr(source, 'aclose') {
+            await source.aclose();
+        } elif inspect.isgenerator(source) {
+            await run_sync(source.close);
+        }
+    } except Exception as e {
+        logger.warning(
+            f"stream could not be closed: {type(e).__name__}: {e}", exc_info=True
+        );
+    }
+}

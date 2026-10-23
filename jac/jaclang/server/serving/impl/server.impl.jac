@@ -685,6 +685,7 @@ impl ServingServer._write_response(
     if not bodiless and response.stream is None {
         body = response.body_bytes();
     }
+    owned = response.stream;
     if not bodiless {
         body = self._compression.apply(request, response, body);
     }
@@ -740,6 +741,13 @@ impl ServingServer._write_response(
         return (keep_alive and conn_override != 'close', sent);
     } except (ConnectionError, OSError) {
         return (False, sent);
+    } finally {
+        if stream is not None {
+            await close_stream(stream);
+        }
+        if owned is not None and owned is not stream {
+            await close_stream(owned);
+        }
     }
 }
 
