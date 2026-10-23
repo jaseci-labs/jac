@@ -330,6 +330,7 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
     fwd_headers = self.build_forward_headers(request);
     rows: list[dict[str, any]] = [];
     services: list[str] = [];
+    missing: list[dict[str, any]] = [];
     refused: Response | None = None;
 
     for (svc_name, svc_entry) in self.eligible_services() {
@@ -345,6 +346,7 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
             timeout=int(http_forward_timeout(svc_name))
         );
         if result is None {
+            missing.append({"service": svc_name, "status": None});
             continue;
         }
         (status, _headers, body) = result;
@@ -360,9 +362,11 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
                     content=frag if isinstance(frag, dict) else {"ok": False}
                 );
             }
+            missing.append({"service": svc_name, "status": status});
             continue;
         }
         if status != 200 or not isinstance(frag, dict) {
+            missing.append({"service": svc_name, "status": status});
             continue;
         }
         data = frag.get("data") or {};
@@ -380,7 +384,10 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
     }
     return JSONResponse(
         status_code=200,
-        content={"ok": True, "data": {"services": services, "schedules": rows}}
+        content={
+            "ok": True,
+            "data": {"services": services, "missing": missing, "schedules": rows}
+        }
     );
 }
 
