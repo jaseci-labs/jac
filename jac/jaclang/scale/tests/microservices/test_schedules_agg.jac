@@ -77,27 +77,35 @@ def _listing(namespace: str, name: str, kind: str) -> dict[str, any] {
 test "the gateway merges every service's schedules and names each row's service" {
     (srv_a, port_a) = _serve(200, _listing("orders", "nightly", "function"));
     (srv_b, port_b) = _serve(200, _listing("billing", "dunning", "walker"));
+    (srv_c, port_c) = _serve(500, {"ok": False});
+    (srv_d, port_d) = _serve(200, {});
+    srv_d.shutdown();
+    srv_d.server_close();
     reg = ServiceRegistry();
     reg.register(_entry("orders", port_a));
     reg.register(_entry("billing", port_b));
+    reg.register(_entry("ledger", port_c));
+    reg.register(_entry("search", port_d));
     _ASKED.clear();
     try {
         resp = _ask(reg);
     } finally {
         srv_a.shutdown();
         srv_b.shutdown();
+        srv_c.shutdown();
     }
     assert resp is not None , "the gateway answered nothing";
     assert resp.status_code == 200 , resp.status_code;
     data = json.loads(resp.body)["data"];
     assert sorted(data["services"]) == ["billing", "orders"] , data;
+    missing = {m["service"]: m["status"] for m in data["missing"]};
+    assert missing == {"ledger": 500, "search": None} , data;
     rows = {r["name"]: r for r in data["schedules"]};
     assert (rows["nightly"]["service"], rows["nightly"]["namespace"])
         == ("orders", "orders") , rows;
     assert (rows["dunning"]["service"], rows["dunning"]["namespace"])
         == ("billing", "billing") , rows;
-    assert [asked[1] for asked in _ASKED]
-        == ["/admin/schedules", "/admin/schedules"] , _ASKED;
+    assert [asked[1] for asked in _ASKED] == ["/admin/schedules"] * 3 , _ASKED;
 }
 
 
