@@ -11,7 +11,9 @@ had no root as far as the websocket walker could see (#9863).
 
 Pinned here: a websocket walker and a websocket function each run on a session
 that is not the process-global one, on the database the HTTP path uses, and see
-data committed after the process-global session began reading; a stream whose
+data committed after the process-global session began reading; an HTTP SSE
+body owns its request scope, so its writes commit when it is delivered and roll
+back when the client goes away or the producer raises; a stream whose
 delivery is cut off is closed before its scope ends, and one that cannot be
 closed has its request's work aborted, so in neither case does the scope
 commit unfinished work; and the executor refuses to run a call that no
@@ -21,6 +23,7 @@ transport has given a request scope.
 import asyncio;
 import os;
 import threading;
+import from json { dumps }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from uuid { UUID }
@@ -34,7 +37,12 @@ import from jaclang.scale.server.inprocess {
 import from jaclang.scale.server.websocket_ext { WebSocketExtension }
 import from jaclang.scale.websocket.websocket { _ws_stream_result }
 import from jaclang.server.request_scope { RequestScope }
-import from jaclang.server.serving.datatypes { WebSocketDisconnect }
+import from jaclang.server.serving.datatypes {
+    Headers,
+    Request,
+    URL,
+    WebSocketDisconnect
+}
 import from jaclang.server.session { Session }
 import from jaclang.testing.testkit { ServingTestClient }
 
@@ -79,6 +87,24 @@ glob _APP: str = (
          '        yield len([root -->[?:Note]]);\n'
          '    }\n'
          '    report chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note(text: str = "") -> any {\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        yield "more";\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
+         'def:protect sse_note_then_raise(text: str = "") -> any {\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        raise ValueError("stream failed");\n'
+         '    }\n'
+         '    return chunks();\n'
          '}\n'
          '\n'
          'walker:protect notes {\n'
@@ -285,6 +311,78 @@ test "a websocket stream runs inside its request scope and commits when it ends"
             assert _http_notes(runtime, token) == ["streamed"] , (
                 "the stream's write was not committed when the stream ended"
             );
+        } finally {
+            runtime.close();
+            _restore_env("JAC_SCALE_RUNTIME", prior);
+        }
+    }
+}
+
+
+"""POST to a streamed function the way the server does: dispatch through the
+middleware chain, read `events` chunks of the body (all of them when None),
+then close the body as the response writer does when the client goes away."""
+async def _sse_call(
+    runtime: PreparedInProcessRuntime,
+    token: str,
+    fn: str,
+    text: str,
+    events: (int | None)
+) -> str {
+    headers = Headers();
+    headers.set("Authorization", f"Bearer {token}");
+    headers.set("Content-Type", "application/json");
+    request = Request(
+        method="POST",
+        url=URL(path=f"/function/{fn}", query=""),
+        headers=headers,
+        body=dumps({"text": text}).encode("utf-8"),
+        client_host="testclient"
+    );
+    response = await _client(runtime).app.dispatch(request);
+    assert response.stream is not None , f"{fn} did not stream: {response.body}";
+    chunks: list[str] = [];
+    async for chunk in response.stream {
+        chunks.append(chunk if isinstance(chunk, str) else chunk.decode("utf-8"));
+        if events is not None and len(chunks) >= events {
+            break;
+        }
+    }
+    await response.stream.aclose();
+    return "".join(chunks);
+}
+
+
+test "an HTTP SSE stream commits its writes when delivered and rolls them back otherwise" {
+    # (row, function, events read before the client goes away, committed, last frame)
+    rows: list[tuple[str, str, (int | None), bool, str]] = [
+        ("delivered to its end", "sse_note", None, True, "event: end"),
+        ("client gone after the first event", "sse_note", 1, False, 'data: "written"'),
+        (
+            "producer raises mid-stream",
+            "sse_note_then_raise",
+            None,
+            False,
+            "event: error"
+        ),
+
+    ];
+    prior = os.environ.get("JAC_SCALE_RUNTIME");
+    with TemporaryDirectory() as project {
+        runtime = _serve(project);
+        try {
+            token = _register_and_login(runtime, "sse_user");
+            for (label, fn, events, committed, last) in rows {
+                body = asyncio.run(_sse_call(runtime, token, fn, label, events));
+                frames = body.strip().split("\n\n");
+                assert frames and frames[-1].startswith(last) , (
+                    f"{label}: unexpected body {body!r}"
+                );
+                assert (label in _http_notes(runtime, token)) == committed , (
+                    f"{label}: the stream's write was "
+                    f"{'lost' if committed else 'committed'}"
+                );
+            }
         } finally {
             runtime.close();
             _restore_env("JAC_SCALE_RUNTIME", prior);
