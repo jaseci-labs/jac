@@ -500,7 +500,10 @@
         let physicsEnabled = true;
         let capped = false;
         let selectedId = null;
+        let rootId = null;
+        let generation = 0;
         const pages = new Map();
+        const edgeOwners = new Map();
         const typeColors = new Map();
         // ?public=1 pins the visualizer to the public (super root) graph,
         // ignoring any stored session token - useful for embeds.
@@ -518,6 +521,12 @@
             .addEventListener("keydown", function (e) {
                 if (e.key === "Enter") doLogin();
             });
+        document.getElementById("dir-select").addEventListener("change", function () {
+            if (selectedId && pages.has(selectedId)) {
+                collapse(selectedId);
+                expand(selectedId);
+            }
+        });
 
         function updateHeaderButtons() {
             document.getElementById("auth-btn").style.display =
@@ -668,9 +677,12 @@
             return true;
         }
 
-        function addEdge(e) {
+        function addEdge(e, owner) {
             const id = e.id || e.from + ">" + e.to;
-            if (edges.get(id) || !nodes.get(e.from) || !nodes.get(e.to)) return;
+            if (!nodes.get(e.from) || !nodes.get(e.to)) return;
+            if (!edgeOwners.has(id)) edgeOwners.set(id, new Set());
+            edgeOwners.get(id).add(owner);
+            if (edges.get(id)) return;
             edges.add({
                 id,
                 from: e.from,
@@ -695,6 +707,7 @@
             nodes = new vis.DataSet([]);
             edges = new vis.DataSet([]);
             pages.clear();
+            edgeOwners.clear();
             typeColors.clear();
             capped = false;
             const options = {
@@ -746,12 +759,15 @@
         }
 
         async function loadRoot() {
+            const gen = ++generation;
             document.getElementById("node-panel").style.display = "none";
             showMessage("Loading graph...");
             try {
                 const root = await getJson("/graph/node", { id: "root" });
+                if (gen !== generation) return;
                 buildNetwork();
                 addNode({ id: root.id, type: root.type, root: root.root });
+                rootId = root.id;
                 selectedId = root.id;
                 renderPanel(root);
                 await expand(root.id);
@@ -761,55 +777,86 @@
         }
 
         async function expand(id) {
-            const state = pages.get(id) || { dir: currentDir(), cursor: null, done: false };
-            if (state.done) return;
+            const gen = generation;
+            const state = pages.get(id) || { dir: currentDir(), cursor: null, done: false, busy: false };
+            if (state.done || state.busy) return;
+            const room = MAX_NODES - nodes.length;
+            if (room <= 0) {
+                capped = true;
+                updateStats();
+                return;
+            }
             pages.set(id, state);
+            state.busy = true;
             try {
                 const page = await getJson("/graph/neighbors", {
                     id,
                     dir: state.dir,
-                    limit: PAGE_SIZE,
+                    limit: Math.min(PAGE_SIZE, room),
                     cursor: state.cursor,
                 });
+                if (gen !== generation || pages.get(id) !== state) return;
                 page.nodes.forEach(addNode);
-                page.edges.forEach(addEdge);
+                page.edges.forEach((e) => addEdge(e, id));
                 state.cursor = page.next_cursor;
                 state.done = !page.next_cursor;
             } catch (err) {
+                if (gen !== generation) return;
                 state.done = true;
                 setStatus("Could not expand: " + err.message);
+            } finally {
+                state.busy = false;
             }
             updateStats();
             if (selectedId === id) refreshPanelButtons();
         }
 
         function collapse(id) {
-            const keep = new Set([id]);
-            nodes.forEach((n) => {
-                if (n.isRoot || (pages.has(n.id) && n.id !== id)) keep.add(n.id);
+            const dropped = [];
+            edgeOwners.forEach((owners, edgeId) => {
+                owners.delete(id);
+                if (!owners.size) dropped.push(edgeId);
             });
-            const doomed = [];
-            network.getConnectedNodes(id).forEach((other) => {
-                if (keep.has(other)) return;
-                const links = network.getConnectedNodes(other).filter((x) => x !== id);
-                if (!links.length) doomed.push(other);
-            });
-            doomed.forEach((other) => {
-                edges.remove(network.getConnectedEdges(other));
-                nodes.remove(other);
-                pages.delete(other);
-            });
+            dropped.forEach((edgeId) => edgeOwners.delete(edgeId));
+            edges.remove(dropped);
             pages.delete(id);
+            const reached = new Set(rootId ? [rootId] : []);
+            const queue = rootId ? [rootId] : [];
+            while (queue.length) {
+                const at = queue.shift();
+                network.getConnectedNodes(at).forEach((next) => {
+                    if (!reached.has(next)) {
+                        reached.add(next);
+                        queue.push(next);
+                    }
+                });
+            }
+            const gone = nodes.getIds().filter((n) => !reached.has(n));
+            gone.forEach((n) => {
+                const linked = network.getConnectedEdges(n);
+                linked.forEach((edgeId) => edgeOwners.delete(edgeId));
+                edges.remove(linked);
+                pages.delete(n);
+            });
+            nodes.remove(gone);
+            if (gone.includes(selectedId)) {
+                selectedId = null;
+                document.getElementById("node-panel").style.display = "none";
+            }
             capped = false;
             updateStats();
             refreshPanelButtons();
         }
 
         async function selectNode(id) {
+            const gen = generation;
             selectedId = id;
             try {
-                renderPanel(await getJson("/graph/node", { id }));
+                const detail = await getJson("/graph/node", { id });
+                if (gen !== generation || selectedId !== id) return;
+                renderPanel(detail);
             } catch (err) {
+                if (gen !== generation || selectedId !== id) return;
                 setStatus("Could not load node: " + err.message);
             }
         }

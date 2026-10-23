@@ -32227,6 +32227,9 @@ graph import scale.runtime {
         },
         gateway.microservice_gateway.MicroserviceGateway.handle_metrics
             | middleware.rate_limit.build_rate_limit_middleware { error_response },
+        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
+            not_found
+        },
         gateway.microservice_gateway.MicroserviceGateway.probe_services { not_found },
     ]
     context.errors --> [
@@ -32284,6 +32287,9 @@ graph import scale.runtime {
             DEFAULT_GATEWAY_PORT
         },
         gateway.microservice_gateway.MicroserviceGateway.forward_to {
+            http_forward_timeout
+        },
+        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
             http_forward_timeout
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
@@ -32373,10 +32379,11 @@ graph import scale.runtime {
     ]
     transport.http_forward ++> [
         gateway.microservice_gateway.MicroserviceGateway.forward_to { stream_forward },
+        gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages
+            | gateway.openapi_agg.fetch_service_spec { raw_forward },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             stream_forward
         },
-        gateway.openapi_agg.fetch_service_spec { raw_forward },
     ]
     transport.transport ++> [
         gateway.embedded_gateway { ServiceTransport },

@@ -43,6 +43,7 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
         request: Request, path: str
     ) -> Response | None;
 
+    async def merge_graph_pages(request: Request) -> Response;
     def eligible_services -> list[tuple[str, ServiceEntry]];
     def root_member -> ServiceEntry | None;
     def shell_answers(request: Request, path: str) -> bool;

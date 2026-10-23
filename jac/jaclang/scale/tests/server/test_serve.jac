@@ -885,6 +885,7 @@ test "walker calls" {
         assert len(seen) == 3 , "the cursor must walk the neighborhood exactly once";
         assert len(first["edges"]) == 2
             and all(e["from"] == rid for e in first["edges"]);
+        assert first["edges"][-1]["cursor"] == first["next_cursor"] , first;
         typed = client.get(f"/graph/neighbors?id={rid}&type=Task", headers=hdr).json();
         assert [n["type"] for n in typed["nodes"]] == ["Task", "Task", "Task"] , typed;
         task_id = first["nodes"][0]["id"];
@@ -897,7 +898,9 @@ test "walker calls" {
             ("/graph/node?id=not-a-node", True, 404),
             (f"/graph/neighbors?id={rid}&dir=sideways", True, 400),
             (f"/graph/neighbors?id={rid}&type=NoSuchType", True, 400),
-            (f"/graph/neighbors?id={rid}&cursor=bogus", True, 400)
+            (f"/graph/neighbors?id={rid}&cursor=bogus", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=5.", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=5", True, 400)
         ] {
             got = client.get(path, headers=hdr if bearer else {});
             assert got.status_code == status , (path, bearer, got.status_code);

@@ -96,12 +96,26 @@ impl _graph_label(arch: Archetype) -> str {
 }
 
 impl _graph_fields(arch: Archetype) -> dict[str, str] {
+    import reprlib;
+    brief = reprlib.Repr(
+        maxlevel=1,
+        maxstring=78,
+        maxother=78,
+        maxlong=40,
+        maxlist=4,
+        maxtuple=4,
+        maxdict=4,
+        maxset=4,
+        maxfrozenset=4,
+        maxdeque=4,
+        maxarray=4
+    );
     out: dict[str, str] = {};
     for (name, value) in getattr(arch, '__dict__', {}).items() {
         if name.startswith('_') {
             continue;
         }
-        text = repr(value);
+        text = brief.repr(value);
         out[name] = text if len(text) <= 80 else text[:77] + '...';
         if len(out) >= 12 {
             break;
@@ -160,6 +174,13 @@ impl _graph_edge(
     };
 }
 
+impl _graph_cursor_text(key: (tuple[int, (UUID | None)] | None)) -> (str | None) {
+    if key is None {
+        return None;
+    }
+    return f"{key[0]}.{key[1].hex if key[1] is not None else ''}";
+}
+
 impl _graph_cursor(text: (str | None)) -> (tuple[int, (UUID | None)] | None) {
     if not text {
         return None;
@@ -192,7 +213,7 @@ impl graph_neighbors_view(
     nodes: list[dict[str, any]] = [];
     edges: list[dict[str, any]] = [];
     seen: set = set();
-    for (a, e) in page {
+    for (a, e, key) in page {
         nid = a.ensure_id().hex;
         if nid not in seen {
             seen.add(nid);
@@ -205,12 +226,11 @@ impl graph_neighbors_view(
                 }
             );
         }
-        edges.append(_graph_edge(e, origin, a, hop_dir));
+        row = _graph_edge(e, origin, a, hop_dir);
+        row['cursor'] = _graph_cursor_text(key);
+        edges.append(row);
     }
-    next_cursor: (str | None) = None;
-    if nxt is not None {
-        next_cursor = f"{nxt[0]}.{nxt[1].hex if nxt[1] is not None else ''}";
-    }
+    next_cursor = _graph_cursor_text(nxt);
     return {
         'id': origin.ensure_id().hex,
         'dir': direction,

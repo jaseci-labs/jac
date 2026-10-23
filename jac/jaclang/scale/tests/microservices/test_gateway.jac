@@ -295,24 +295,19 @@ test "browser navigation to a client route gets the SPA index (history fallback)
     );
 }
 
-"""Serve /graph/node and /graph/neighbors for the node ids in `owned` and 404
-any other id, gzipping the body whenever the request accepts it, the way a real
+"""Serve the JSON payload `answers` holds for each `path?query` and 404 anything
+else, gzipping the body whenever the request accepts it, the way a real
 service's compression middleware does; returns (server, port)."""
-def _serve_owned(owned: list[str]) -> tuple[any, ...] {
+def _serve_owned(answers: dict[str, any]) -> tuple[any, ...] {
     import gzip;
     import http.server;
     import json;
     import threading;
-    import from urllib.parse { parse_qs, urlparse }
 
     def _do_get(handler_self: any) {
-        url = urlparse(handler_self.path);
-        nid = (parse_qs(url.query).get("id") or [""])[0];
-        status = 200 if nid in owned else 404;
-        payload = {"id": nid, "path": url.path}
-            if status == 200
-            else {"error": "Node not found"};
-        body = json.dumps(payload).encode();
+        payload = answers.get(handler_self.path);
+        status = 200 if payload is not None else 404;
+        body = json.dumps(payload or {"error": "Node not found"}).encode();
         zipped = "gzip" in handler_self.headers.get("Accept-Encoding", "");
         if zipped {
             body = gzip.compress(body);
@@ -352,9 +347,42 @@ def _json_body(resp: any) -> any {
 }
 
 
-test "graph reads reach the service that owns the node, compressed or not" {
-    (srv_a, port_a) = _serve_owned(["r", "a"]);
-    (srv_b, port_b) = _serve_owned(["b"]);
+"""One service's page of `r`'s neighbors: an edge per (seq, node) pair."""
+def _neighbors(rows: list[tuple[int, str]], more: bool) -> dict[str, any] {
+    edges = [
+        {"id": f"e{seq}", "from": "r", "to": nid, "cursor": f"{seq}.e{seq}"}
+        for (seq, nid) in rows
+    ];
+    return {
+        "id": "r",
+        "dir": "out",
+        "nodes": [{"id": nid, "type": "Doc"} for (_, nid) in rows],
+        "edges": edges,
+        "next_cursor": edges[-1]["cursor"] if more and edges else None
+    };
+}
+
+
+test "graph reads reach every service that can read the node, compressed or not" {
+    # Both services share root r but each loads only its own neighbors, so a
+    # page is the edge-ordered merge of both services' pages for the same
+    # cursor; a node only one service can read is answered by that one.
+    (srv_a, port_a) = _serve_owned(
+        {
+            "/graph/node?id=a": {"id": "a"},
+            "/graph/neighbors?id=r&limit=2": _neighbors([(1, "a"), (3, "c")], True),
+            "/graph/neighbors?id=r&limit=5": _neighbors([(1, "a"), (3, "c")], False),
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(3, "c")], False)
+        }
+    );
+    (srv_b, port_b) = _serve_owned(
+        {
+            "/graph/node?id=b": {"id": "b"},
+            "/graph/neighbors?id=r&limit=2": _neighbors([(2, "b"), (4, "d")], False),
+            "/graph/neighbors?id=r&limit=5": _neighbors([(2, "b"), (4, "d")], False),
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(4, "d")], False)
+        }
+    );
     reg = ServiceRegistry();
     for (name, port) in [("analytics", port_a), ("guestbook", port_b)] {
         reg.register(
@@ -383,24 +411,30 @@ test "graph reads reach the service that owns the node, compressed or not" {
 
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
-    # (path, Accept-Encoding, status, id the owner answers with): jids are
-    # global, so the first service that can read the node answers it whole, a
-    # browser's gzip passes through intact, and a stopped service is skipped.
+    # (path, Accept-Encoding, status, node ids, next cursor): the browser's gzip
+    # never breaks the merge, a stopped service is skipped.
     rows = [
-        ("/graph/node?id=a", "identity", 200, "a"),
-        ("/graph/node?id=b", "identity", 200, "b"),
-        ("/graph/node?id=b", "gzip, deflate, br", 200, "b"),
-        ("/graph/neighbors?id=b&limit=5", "gzip, deflate, br", 200, "b"),
-        ("/graph/node?id=nobody", "gzip, deflate, br", 404, None)
+        ("/graph/node?id=a", "identity", 200, None, None),
+        ("/graph/node?id=b", "gzip, deflate, br", 200, None, None),
+        ("/graph/neighbors?id=r&limit=2", "gzip, deflate, br", 200, ["a", "b"], "2.e2"),
+        ("/graph/neighbors?id=r&limit=2&cursor=2.e2", "gzip", 200, ["c", "d"], None),
+        ("/graph/neighbors?id=r&limit=5", "identity", 200, ["a", "b", "c", "d"], None),
+        ("/graph/node?id=nobody", "gzip, deflate, br", 404, None, None),
+        ("/graph/neighbors?id=nobody", "gzip, deflate, br", 404, None, None)
     ];
     try {
-        for (path, encoding, status, owner) in rows {
+        for (path, encoding, status, ids, cursor) in rows {
             resp = client.get(path, headers={"Accept-Encoding": encoding});
             assert resp.status_code == status , (path, encoding, resp.status_code);
-            if owner is not None {
-                body = _json_body(resp);
-                assert body["id"] == owner , (path, encoding, body);
-                assert body["path"] == path.split("?")[0] , (path, body);
+            if status != 200 {
+                continue;
+            }
+            body = _json_body(resp);
+            if ids is None {
+                assert body["id"] == path.split("=")[1] , (path, body);
+            } else {
+                assert [n["id"] for n in body["nodes"]] == ids , (path, body);
+                assert body["next_cursor"] == cursor , (path, body);
             }
         }
     } finally {

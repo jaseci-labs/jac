@@ -65,6 +65,7 @@ def _link(mem: any, src: any, dst: any) {
         archetype=GenericEdge(), source=src, target=dst, is_undirected=False
     );
     e.persistent = True;
+    setattr(e, "root", src.root or src.id);
     src.edges.append(e);
     dst.edges.append(e);
     mem.put(e);

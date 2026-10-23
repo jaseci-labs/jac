@@ -28,6 +28,8 @@ def _graph_edge(
 
 def _graph_cursor(text: (str | None)) -> (tuple[int, (UUID | None)] | None);
 
+def _graph_cursor_text(key: (tuple[int, (UUID | None)] | None)) -> (str | None);
+
 def traverse_graph(
     nd: NodeArchetype,
     cur_depth: int,

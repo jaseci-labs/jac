@@ -253,12 +253,124 @@ impl MicroserviceGateway.handle_health_ready -> Response {
     return JSONResponse(status_code=200, content={"status": "ready"});
 }
 
+impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
+    import asyncio;
+    import json;
+
+    fwd_headers = {
+        k: v
+        for (k, v) in self.build_forward_headers(request).items()
+        if k.lower() != "accept-encoding"
+    };
+    fwd_headers["Accept-Encoding"] = "identity";
+    query: str = str(request.url.query);
+    try {
+        limit = max(1, min(int(request.query_params.get("limit") or 50), 200));
+    } except ValueError {
+        limit = 50;
+    }
+
+    async def ask(svc_name: str, svc_entry: ServiceEntry) -> any {
+        headers = dict(fwd_headers);
+        if svc_entry.host_override {
+            headers["Host"] = svc_entry.host_override;
+        }
+        target = f"{self.service_base_url(svc_entry)}/graph/neighbors";
+        if query {
+            target = f"{target}?{query}";
+        }
+        return await raw_forward(
+            "GET", target, headers, b"", timeout=int(http_forward_timeout(svc_name))
+        );
+    }
+    answers: any = await asyncio.gather(
+        *[ask(name, svc) for (name, svc) in self.eligible_services()]
+    );
+    pages: list[dict[str, any]] = [];
+    refused: list[tuple[int, bytes]] = [];
+    for result in answers {
+        if result is None {
+            continue;
+        }
+        (status, _headers, body) = result;
+        if status == 200 {
+            try {
+                page = json.loads(body);
+            } except ValueError {
+                continue;
+            }
+            if isinstance(page, dict) {
+                pages.append(page);
+            }
+        } elif status not in (404, 405) {
+            refused.append((status, body));
+        }
+    }
+    if not pages {
+        if refused {
+            return Response(
+                content=refused[0][1],
+                status_code=refused[0][0],
+                media_type="application/json"
+            );
+        }
+        return not_found("/graph/neighbors", message="Not found on any service");
+    }
+
+    def order(row: dict[str, any]) -> tuple[int, str] {
+        (seq, _, eid) = str(row.get("cursor") or "").partition(".");
+        return (int(seq) if seq.isdigit() else 2 ** 62, eid);
+    }
+    rows: dict[str, dict[str, any]] = {};
+    nodes: dict[str, dict[str, any]] = {};
+    for page in pages {
+        for n in page.get("nodes") or [] {
+            nodes.setdefault(str(n.get("id")), n);
+        }
+        for e in page.get("edges") or [] {
+            key = str(
+                e.get("id") or f"{e.get('from')}>{e.get('to')}>{e.get('cursor')}"
+            );
+            rows.setdefault(key, e);
+        }
+    }
+    ranked = sorted(rows.values(), key=order);
+    taken = ranked[:limit];
+    more = len(ranked) > limit or `any(page.get("next_cursor") for page in pages);
+    shown: list[dict[str, any]] = [];
+    listed: set = set();
+    for e in taken {
+        for end in (e.get("to"), e.get("from")) {
+            nid = str(end);
+            if nid in nodes and nid not in listed {
+                listed.add(nid);
+                shown.append(nodes[nid]);
+            }
+        }
+    }
+    return JSONResponse(
+        status_code=200,
+        content={
+            "id": pages[0].get("id"),
+            "dir": pages[0].get("dir"),
+            "nodes": shown,
+            "edges": taken,
+            "next_cursor": taken[-1].get("cursor") if more and taken else None
+        }
+    );
+}
+
+
 impl MicroserviceGateway.handle_builtin_passthrough(
     request: Request, path: str
 ) -> Response | None {
     is_builtin = path.startswith(_BUILTIN_PREFIXES) or path in _BUILTIN_EXACT;
     if not is_builtin {
         return None;
+    }
+
+    if request.method == "GET" and path == "/graph/neighbors" {
+        return await self.merge_graph_pages(request);
     }
 
     stripped: str = path.strip("/");
