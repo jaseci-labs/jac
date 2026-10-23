@@ -654,3 +654,144 @@ test "a node whose stored type changed is still reached by typed hops" {
         }
     }
 }
+
+
+def _gated_root(ctx: ExecutionContext) -> str {
+    import from jaclang.runtime.archetype { Root }
+    anch: any = Root().__jac__;
+    anch.persistent = True;
+    setattr(anch, "root", anch.id);
+    ctx.mem.put(anch);
+    ctx.mem.commit();
+    return str(anch.id);
+}
+
+
+def _gated_probe(b: any, probe: str) -> int {
+    if probe == "typed count" {
+        return len([b->:FHas:->[?:FItem]]);
+    }
+    if probe == "typed page" {
+        return len([b->:FHas:->[?:FItem]][:5]);
+    }
+    if probe == "untyped count" {
+        return len([b-->]);
+    }
+    return len([b-->][:5]);
+}
+
+
+test "a gated caller's counts and pages stay bounded, typed or untyped" {
+    # (probe, expected result at size n, fetch ceiling): a count reads no rows,
+    # a page reads at most its own rows, at both sizes.
+    rows = [
+        ("typed count", -1, 0),
+        ("typed page", 5, 5),
+        ("untyped count", -1, 0),
+        ("untyped page", 5, 5)
+    ];
+    for n in [40, 400] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            uid = "";
+            try {
+                uid = _gated_root(ctx);
+                ctx.set_user_root(uid);
+                _seed(n);
+                ctx.mem.commit();
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+            for (probe, want, ceiling) in rows {
+                ctx2 = _ctx(td);
+                JacRuntime.exec_ctx = ctx2;
+                try {
+                    ctx2.set_user_root(uid);
+                    b2 = [root-->[?:FBoard]][0];
+                    ctx2.mem.reset_fetch_count();
+                    got = _gated_probe(b2, probe);
+                    fetched = ctx2.mem.get_fetch_count();
+                    expect = n if want < 0 else want;
+                    assert got == expect , (n, probe, got);
+                    assert fetched <= ceiling , (
+                        f"gated {probe} at n={n} materialised {fetched} anchors; "
+                        f"the bound is {ceiling}"
+                    );
+                } finally {
+                    JacRuntime.exec_ctx = old;
+                    ctx2.close();
+                }
+            }
+        }
+    }
+}
+
+
+test "a keyset cursor walks a neighbourhood once, in edge order" {
+    import from jaclang.data.query_planner { resolve_query_page }
+    import from jaclang.runtime.graph_query { GraphQuery, QHop }
+    import from jaclang.server.session { Session }
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        uid = "";
+        bid = "";
+        try {
+            uid = _gated_root(ctx);
+            ctx.set_user_root(uid);
+            bid = str(_as_any(_seed(23)).__jac__.id);
+            ctx.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        # (gated, page size): the cursor visits every neighbour exactly once in
+        # insertion order, and a page never reads more than its own rows.
+        for (gated, size) in [(False, 5), (True, 5), (True, 23), (True, 50)] {
+            ctx2 = _ctx(td);
+            JacRuntime.exec_ctx = ctx2;
+            try {
+                if gated {
+                    ctx2.set_user_root(uid);
+                }
+                b2 = _as_any(ctx2.mem.get(UUID(bid))).archetype;
+                sess = ctx2.mem;
+                assert isinstance(sess, Session);
+                ranks: list[int] = [];
+                after: any = None;
+                pages = 0;
+                while True {
+                    sess.reset_fetch_count();
+                    (page, after) = resolve_query_page(
+                        sess,
+                        GraphQuery(
+                            b2, hops=[QHop(dir=2, nd=FItem)], limit=size, after=after
+                        )
+                    );
+                    assert sess.get_fetch_count() <= 2 * size , (
+                        gated,
+                        size,
+                        sess.get_fetch_count()
+                    );
+                    for (a, e) in page {
+                        assert e is not None and _as_any(e).archetype is not None;
+                        ranks.append(_as_any(a).archetype.rank);
+                    }
+                    pages += 1;
+                    if after is None {
+                        break;
+                    }
+                }
+                assert ranks == list(range(23)) , (gated, size, ranks);
+                assert pages == (23 + size - 1) // size , (gated, size, pages);
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx2.close();
+            }
+        }
+    }
+}

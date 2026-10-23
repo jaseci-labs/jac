@@ -18,5 +18,8 @@ def compile_query(
     store: Store,
     promotions: (dict[str, any] | None) = None,
     count_only: bool = False,
-    acl_root: (str | None) = None
+    acl_root: (str | None) = None,
+    acl_residual: (dict[int, list[str]] | None) = None,
+    residual_only: bool = False,
+    group_by: (str | None) = None
 ) -> CompiledQuery;

@@ -52,6 +52,19 @@ def _pred_cond(
 def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str;
 
 
+def _last_mode(last: bool, count_only: bool, residual_only: bool) -> str;
+
+
+def _gated_cond(
+    alias: str,
+    root_id: str,
+    residual: list[str],
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str;
+
+
 def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]];
 
 
@@ -69,7 +82,10 @@ impl compile_query(
     store: Store,
     promotions: (dict[str, any] | None) = None,
     count_only: bool = False,
-    acl_root: (str | None) = None
+    acl_root: (str | None) = None,
+    acl_residual: (dict[int, list[str]] | None) = None,
+    residual_only: bool = False,
+    group_by: (str | None) = None
 ) -> CompiledQuery {
     out = CompiledQuery();
     params: dict[str, any] = {};
@@ -128,7 +144,26 @@ impl compile_query(
             }
         }
         if acl_root is not None {
-            nconds.append(_acl_cond(nd_alias, acl_root, params, f"h{n}a"));
+            nconds.append(
+                _gated_cond(
+                    nd_alias,
+                    acl_root,
+                    (acl_residual or {}).get(i) or [],
+                    params,
+                    f"h{n}a",
+                    _last_mode(i == upto - 1, count_only, residual_only)
+                )
+            );
+        }
+        if i == upto - 1 and q.after is not None {
+            if upto != 1 {
+                raise ValueError('a keyset cursor applies to a single-hop query');
+            }
+            params['ks'] = int(q.after[0]);
+            params['ki'] = str(q.after[1]);
+            nconds.append(
+                f"({e}.seq, {e}.id) > (CAST(:ks AS bigint), CAST(:ki AS uuid))"
+            );
         }
         want = hop.only_ids();
         if want is not None {
@@ -153,6 +188,18 @@ impl compile_query(
         out.params = params;
         return out;
     }
+    if group_by is not None {
+        keyed = f"e{n}" if group_by == 'edge' else f"n{n}";
+        out.sql = (
+            f"SELECT {keyed}.arch_type, count(DISTINCT {keyed}.id) "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+            + f" GROUP BY {keyed}.arch_type"
+        );
+        out.params = params;
+        return out;
+    }
     if count_only {
         counted = f"e{n}.id" if q.edges_only else f"n{n}.id";
         out.sql = (
@@ -164,7 +211,9 @@ impl compile_query(
         out.params = params;
         return out;
     }
+    seq_col = f"e{n}.seq";
     if q.order {
+        seq_col = 'NULL';
         order = [];
         for spec in q.order {
             alias = f"e{n}" if spec.on_edge else f"n{n}";
@@ -181,7 +230,7 @@ impl compile_query(
         tail += f" OFFSET {int(q.offset)}";
     }
     out.sql = (
-        f"SELECT n{n}.id, e{n}.id, f0.id "
+        f"SELECT n{n}.id, e{n}.id, f0.id, n{n}.arch_type, {seq_col}, e{n}.arch_type "
         f"FROM unnest(CAST(:origin AS uuid[])) WITH ORDINALITY AS f0(id, ord) "
         f"LEFT JOIN anchors s1 ON s1.id = f0.id "
         + ' '.join(joins)
@@ -404,6 +453,42 @@ impl _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> st
         f")"
         f")"
     );
+}
+
+
+impl _last_mode(last: bool, count_only: bool, residual_only: bool) -> str {
+    if not last {
+        return 'either';
+    }
+    if residual_only {
+        return 'residual';
+    }
+    return 'pushed' if count_only else 'either';
+}
+
+
+impl _gated_cond(
+    alias: str,
+    root_id: str,
+    residual: list[str],
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str {
+    if not residual {
+        return 'FALSE'
+            if mode == 'residual'
+            else _acl_cond(alias, root_id, params, pfx);
+    }
+    typed = _type_cond(alias, residual, params, f"{pfx}r");
+    if mode == 'residual' {
+        return typed;
+    }
+    acl = _acl_cond(alias, root_id, params, pfx);
+    if mode == 'pushed' {
+        return f"({acl} AND NOT {typed})";
+    }
+    return f"({acl} OR {typed})";
 }
 
 

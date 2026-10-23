@@ -8,6 +8,8 @@ glob logger = logging.getLogger(__name__),
          'resolve_query_prefix',
          'resolve_query_count',
          'resolve_query_exists',
+         'resolve_query_page',
+         'resolve_query_type_counts',
          'LazyRefs'
      ];
 
@@ -30,6 +32,16 @@ def resolve_query_count(mem: Session, q: GraphQuery) -> int;
 
 
 def resolve_query_exists(mem: Session, q: GraphQuery) -> bool;
+
+
+def resolve_query_page(
+    mem: Session, q: GraphQuery
+) -> tuple[list[tuple[Anchor, (Anchor | None)]], (tuple[int, (UUID | None)] | None)];
+
+
+def resolve_query_type_counts(
+    mem: Session, q: GraphQuery, per: str = 'node'
+) -> dict[str, int];
 
 
 class LazyRefs(list) {

@@ -17,9 +17,10 @@ per-root grant does not scale to a large audience, so a grant may also name a
 instead of one dict entry per member on every object.
 
 An archetype that overrides `__jac_access__` runs arbitrary Jac, which has no
-SQL form, so those must decline any pushdown and keep the object-space filter.
-The decline is the point: correctness never depends on whether a query could be
-compiled.
+SQL form. Its rows (and roots, whose access has rules of their own) pass the
+query as candidates and are decided in object space, and a bounded read keeps
+reading until the bound is filled. Correctness never depends on whether a query
+could be compiled.
 
 """
 
@@ -45,6 +46,14 @@ node CustomDoc {
 
     def __jac_access__ -> AccessLevel {
         return AccessLevel.READ;
+    }
+}
+
+node CustomHidden {
+    has label: str = "";
+
+    def __jac_access__ -> AccessLevel {
+        return AccessLevel.NO_ACCESS;
     }
 }
 
@@ -393,7 +402,7 @@ test "a typed hop gives the access check's answer for every grant and override" 
 }
 
 
-test "a custom __jac_access__ declines the pushdown and still filters" {
+test "a custom __jac_access__ decides visibility on every read path" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         ctx = _ctx(td);
@@ -401,26 +410,61 @@ test "a custom __jac_access__ declines the pushdown and still filters" {
         try {
             owner = _mk_root(ctx.mem);
             other = _mk_root(ctx.mem);
-            c = CustomDoc(label="custom").__jac__;
-            c.persistent = True;
-            setattr(c, "root", owner.id);
-            ctx.mem.put(c);
-            e = EdgeAnchor(
-                archetype=GenericEdge(), source=other, target=c, is_undirected=False
-            );
-            e.persistent = True;
-            other.edges.append(e);
-            c.edges.append(e);
-            ctx.mem.put(e);
+            # In edge order: two nodes granted to all whose hook denies, four
+            # plain grants and one hook grant. A page has to look past the first
+            # two to fill itself.
+            made = [
+                CustomHidden(label="h0"),
+                CustomHidden(label="h1"),
+                Doc(label="d0"),
+                Doc(label="d1"),
+                Doc(label="d2"),
+                Doc(label="d3"),
+                CustomDoc(label="custom")
+            ];
+            for arch in made {
+                c = arch.__jac__;
+                c.persistent = True;
+                setattr(c, "root", owner.id);
+                if not isinstance(arch, CustomDoc) {
+                    c.own_access().all = AccessLevel.READ;
+                }
+                ctx.mem.put(c);
+                e = EdgeAnchor(
+                    archetype=GenericEdge(), source=other, target=c, is_undirected=False
+                );
+                e.persistent = True;
+                other.edges.append(e);
+                c.edges.append(e);
+                ctx.mem.put(e);
+            }
             ctx.mem.commit();
 
             ctx.set_user_root(str(other.id));
-            seen = [
-                _as_any(x).label for x in [_as_any(other.archetype)-->[?:CustomDoc]]
+            hub = _as_any(other.archetype);
+            visible = ["d0", "d1", "d2", "d3", "custom"];
+            rows = [
+                ("untyped list", [_as_any(x).label for x in [hub-->]], visible),
+                ("untyped count", len([hub-->]), 5),
+                ("untyped page", [_as_any(x).label for x in [hub-->][:5]], visible),
+                (
+                    "untyped offset page",
+                    [_as_any(x).label for x in [hub-->][3:5]],
+                    ["d3", "custom"]
+                ),
+                ("untyped exists", bool([hub-->]), True),
+                (
+                    "hook grant typed",
+                    [_as_any(x).label for x in [hub-->[?:CustomDoc]]],
+                    ["custom"]
+                ),
+                ("hook grant count", len([hub-->[?:CustomDoc]]), 1),
+                ("hook deny typed count", len([hub-->[?:CustomHidden]]), 0),
+                ("hook deny typed page", len([hub-->[?:CustomHidden]][:1]), 0)
             ];
-            assert seen == ["custom"] , (
-                f"__jac_access__ grants READ, so it must still be visible: {seen}"
-            );
+            for (name, got, want) in rows {
+                assert got == want , f"{name}: got {got}, want {want}";
+            }
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();
