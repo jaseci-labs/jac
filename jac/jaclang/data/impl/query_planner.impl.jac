@@ -44,6 +44,9 @@ def _split_tail(cq: CompiledQuery, upto: int) -> list[QPred];
 def _with_bound(q: GraphQuery, limit: (int | None), offset: int) -> GraphQuery;
 
 
+def _with_edges(q: GraphQuery) -> GraphQuery;
+
+
 impl _sql_pairs(
     mem: Session, origin_ids: list[UUID], q: GraphQuery, upto: int
 ) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred]] {
@@ -731,6 +734,13 @@ impl _split_tail(cq: CompiledQuery, upto: int) -> list[QPred] {
 }
 
 
+impl _with_edges(q: GraphQuery) -> GraphQuery {
+    eff = _with_bound(q, None, 0);
+    eff.edges_only = True;
+    return eff;
+}
+
+
 impl _with_bound(q: GraphQuery, limit: (int | None), offset: int) -> GraphQuery {
     eff = GraphQuery(
         q.origin,
@@ -942,7 +952,7 @@ impl resolve_query_page(
     (limit, offset) = _effective_bound(q) or (None, 0);
     pairs = [
         (a, e)
-        for (a, e) in walk(origins, q, 1, gated)
+        for (a, e) in walk(origins, _with_edges(q), 1, gated)
         if not gated or e is None or acl_read_ok(e)
     ];
     start = (int(q.after[0]) if q.after is not None else 0) + offset;
@@ -971,7 +981,7 @@ impl resolve_query_type_counts(
         or not all(o.persistent for o in origins)
         or (gated and not _acl_fully_pushed(mem, q)) {
         counted: set = set();
-        for (a, e) in walk(origins, q, upto, gated) {
+        for (a, e) in walk(origins, _with_edges(q), upto, gated) {
             if gated and e is not None and not acl_read_ok(e) {
                 continue;
             }
