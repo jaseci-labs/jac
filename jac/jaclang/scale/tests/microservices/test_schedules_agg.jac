@@ -98,8 +98,8 @@ test "the gateway merges every service's schedules and names each row's service"
     assert resp.status_code == 200 , resp.status_code;
     data = json.loads(resp.body)["data"];
     assert sorted(data["services"]) == ["billing", "orders"] , data;
-    missing = {m["service"]: m["status"] for m in data["missing"]};
-    assert missing == {"ledger": 500, "search": None} , data;
+    unanswered = {m["service"]: m["status"] for m in data["unanswered"]};
+    assert unanswered == {"ledger": 500, "search": None} , data;
     rows = {r["name"]: r for r in data["schedules"]};
     assert (rows["nightly"]["service"], rows["nightly"]["namespace"])
         == ("orders", "orders") , rows;
@@ -124,7 +124,7 @@ test "a service that refuses the listing is relayed, not hidden behind a 404" {
 }
 
 
-test "a service with no listing is skipped, and nothing merged is no answer" {
+test "a fleet where no service answers the listing gets a JSON 502, not the admin SPA" {
     (srv, port) = _serve(404, {"ok": False});
     reg = ServiceRegistry();
     reg.register(_entry("orders", port));
@@ -133,5 +133,9 @@ test "a service with no listing is skipped, and nothing merged is no answer" {
     } finally {
         srv.shutdown();
     }
-    assert resp is None , "nothing to merge must fall through to the admin app";
+    assert resp is not None , "nothing merged must not fall through to the admin SPA";
+    assert resp.status_code == 502 , resp.status_code;
+    body = json.loads(resp.body);
+    assert body["ok"] is False , body;
+    assert body["data"]["unanswered"] == [{"service": "orders", "status": 404}] , body;
 }

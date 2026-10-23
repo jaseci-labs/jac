@@ -330,7 +330,7 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
     fwd_headers = self.build_forward_headers(request);
     rows: list[dict[str, any]] = [];
     services: list[str] = [];
-    missing: list[dict[str, any]] = [];
+    unanswered: list[dict[str, any]] = [];
     refused: Response | None = None;
 
     for (svc_name, svc_entry) in self.eligible_services() {
@@ -346,7 +346,7 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
             timeout=int(http_forward_timeout(svc_name))
         );
         if result is None {
-            missing.append({"service": svc_name, "status": None});
+            unanswered.append({"service": svc_name, "status": None});
             continue;
         }
         (status, _headers, body) = result;
@@ -362,11 +362,11 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
                     content=frag if isinstance(frag, dict) else {"ok": False}
                 );
             }
-            missing.append({"service": svc_name, "status": status});
+            unanswered.append({"service": svc_name, "status": status});
             continue;
         }
         if status != 200 or not isinstance(frag, dict) {
-            missing.append({"service": svc_name, "status": status});
+            unanswered.append({"service": svc_name, "status": status});
             continue;
         }
         data = frag.get("data") or {};
@@ -380,13 +380,23 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
     }
 
     if not services {
-        return refused;
+        if refused is not None {
+            return refused;
+        }
+        return JSONResponse(
+            status_code=502,
+            content={
+                "ok": False,
+                "error": {"message": "no service answered /admin/schedules"},
+                "data": {"unanswered": unanswered}
+            }
+        );
     }
     return JSONResponse(
         status_code=200,
         content={
             "ok": True,
-            "data": {"services": services, "missing": missing, "schedules": rows}
+            "data": {"services": services, "unanswered": unanswered, "schedules": rows}
         }
     );
 }
