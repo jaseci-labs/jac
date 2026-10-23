@@ -1167,78 +1167,105 @@ test "Gateway returns 404 for GET / when no index.html exists" {
     shutil.rmtree(tmp);
 }
 
-test "serve admin asset returns index.html for root" {
-    tmp = tempfile.mkdtemp();
-    admin_dir = Path(tmp) / "admin";
-    admin_dir.mkdir();
-    (admin_dir / "index.html").write_text("<html>Admin Portal</html>");
-    (admin_dir / ".staged").touch();
+test "admin surface answers files, the console and misses (#9877)" {
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
 
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
-
-    resp = gw.serve_admin_asset("");
-    assert resp is not None;
-    assert b"Admin Portal" in resp.body;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve admin asset returns static file" {
     tmp = tempfile.mkdtemp();
     admin_dir = Path(tmp) / "admin";
     assets = admin_dir / "assets";
     assets.mkdir(parents=True);
-    (admin_dir / "index.html").write_text("<html>Admin</html>");
-    (admin_dir / ".staged").touch();
-    (assets / "admin.js").write_text("var admin = true;");
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
-
-    resp = gw.serve_admin_asset("assets/admin.js");
-    assert resp is not None;
-    assert resp.status_code == 200;
-    assert b"var admin = true;" in resp.body;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve admin asset spa fallback for unknown route" {
-    tmp = tempfile.mkdtemp();
-    admin_dir = Path(tmp) / "admin";
-    admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin SPA</html>");
     (admin_dir / ".staged").touch();
+    (assets / "admin.js").write_text("var admin = true;");
+    html = {"Accept": "text/html"};
+    api = {"Accept": "application/json"};
 
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
+    # Each row: path, request headers, whether only the router serves it (the
+    # read-only fallback has no admin API), then status, content type and the
+    # body marker (the Location, for a redirect).
+    rows = [
+        ("/admin/", {}, False, 200, "text/html", "Admin SPA"),
+        ("/admin/assets/admin.js", {}, False, 200, "javascript", "var admin"),
+        ("/admin/assets/missing.js", {}, False, 404, "application/json", "NOT_FOUND"),
+        ("/admin/does-not-exist", api, False, 404, "application/json", "NOT_FOUND"),
+        ("/admin/does-not-exist", {}, False, 404, "application/json", "NOT_FOUND"),
+        ("/admin/no/such/page", html, False, 404, "text/html", "Admin SPA"),
+        ("/admin/users/", api, True, 307, "", "/admin/users"),
 
-    resp = gw.serve_admin_asset("users/list");
-    assert resp is not None;
-    assert b"Admin SPA" in resp.body;
-
-    import shutil;
-    shutil.rmtree(tmp);
+    ];
+    try {
+        for installed in [True, False] {
+            gw = MicroserviceGateway(
+                registry=ServiceRegistry(), admin_dist_dir=str(admin_dir), base_path=tmp
+            );
+            gw.setup();
+            if not installed {
+                gw.server = None;
+            }
+            client = TestClient(gw.app, follow_redirects=False);
+            for (path, headers, router_only, status, ctype, marker) in rows {
+                if router_only and not installed {
+                    continue;
+                }
+                label = f"{'router' if installed else 'read-only'} GET {path} {headers}";
+                resp = client.get(path, headers=headers);
+                assert resp.status_code == status , f"{label} -> {resp.status_code}";
+                assert ctype in resp.headers.get("content-type", "") , (
+                    f"{label} -> {resp.headers.get('content-type')}"
+                );
+                if status == 307 {
+                    assert resp.headers.get("location") == marker , label;
+                } else {
+                    assert marker in resp.text , f"{label} -> {resp.text[:80]!r}";
+                }
+            }
+            assert gw.serve_admin_asset("../../etc/passwd").status_code == 404;
+        }
+    } finally {
+        import shutil;
+        shutil.rmtree(tmp);
+    }
 }
 
-test "serve admin asset blocks path traversal" {
+test "the gateway and the server register the same admin routes (#9877)" {
+    import from jaclang.scale.server.extensions { AdminExtension }
+    import from jaclang.server.serving.app { ServingApp }
+
+    obj AdminHost {
+        has app: any = None,
+            user_manager: any = None,
+            metrics: any = None;
+
+        def add_endpoint(ep: any) {
+            self.app.add_endpoint(ep);
+        }
+    }
+
+    def admin_routes(app: any) -> set[str] {
+        return {
+            f"{ep.method} {ep.path}"
+            for ep in app.router.all_endpoints()
+            if ep.path.startswith("/admin")
+        };
+    }
+
     tmp = tempfile.mkdtemp();
-    admin_dir = Path(tmp) / "admin";
-    admin_dir.mkdir();
-    (admin_dir / "index.html").write_text("<html>Admin</html>");
-    (admin_dir / ".staged").touch();
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
-
-    resp = gw.serve_admin_asset("../../etc/passwd");
-    assert resp is None;
-
-    import shutil;
-    shutil.rmtree(tmp);
+    try {
+        gw = MicroserviceGateway(registry=ServiceRegistry(), base_path=tmp);
+        gw.setup();
+        host = AdminHost(app=ServingApp(), user_manager=gw.user_manager);
+        AdminExtension().register(host);
+        server_routes = admin_routes(host.app);
+        gateway_routes = admin_routes(gw.app);
+        assert server_routes , "the server registered no admin routes";
+        assert server_routes == gateway_routes , (
+            f"server only: {sorted(server_routes - gateway_routes)}, "
+            f"gateway only: {sorted(gateway_routes - server_routes)}"
+        );
+    } finally {
+        import shutil;
+        shutil.rmtree(tmp);
+    }
 }
 
 test "admin redirect via testclient" {

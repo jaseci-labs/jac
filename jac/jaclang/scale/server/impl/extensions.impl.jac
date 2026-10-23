@@ -257,15 +257,7 @@ impl AdminExtension.register(server: JacAPIServer) -> None {
     self.server = server;
     self.user_manager = server.user_manager;
     self._metrics = server.metrics;
-    self.register_admin_endpoints();
-    self.register_llm_telemetry_endpoints();
-    self.register_workloads_endpoints();
-    self.register_logs_endpoints();
-    self.register_traces_endpoints();
-    self.register_ops_endpoints();
-    self.register_deploy_health_endpoints();
-    self.register_network_endpoints();
-    self.register_podenv_endpoints();
+    self.register_admin_surface();
 }
 
 impl scale_extensions -> list[ServerExtension] {

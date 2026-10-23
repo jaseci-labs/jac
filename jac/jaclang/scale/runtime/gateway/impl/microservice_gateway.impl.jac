@@ -148,48 +148,8 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
     );
 }
 
-impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
-    admin_dist = resolve_console(Path(self.admin_dist_dir), self.admin_console);
-    if isinstance(admin_dist, Response) {
-        return admin_dist;
-    }
-
-    if not asset_path or asset_path == "/" {
-        target = admin_dist / "index.html";
-    } else {
-        target = admin_dist / asset_path;
-    }
-
-    try {
-        resolved = target.resolve();
-        dist_resolved = admin_dist.resolve();
-        if not resolved.is_relative_to(dist_resolved) {
-            return None;
-        }
-    } except OSError {
-        return None;
-    }
-
-    if not target.is_file() {
-        index = admin_dist / "index.html";
-        if index.is_file() {
-            return HTMLResponse(content=index.read_text(encoding="utf-8"));
-        }
-        return None;
-    }
-
-    (content_type, _) = mimetypes.guess_type(str(target));
-    if content_type is None {
-        content_type = "application/octet-stream";
-    }
-
-    if content_type.startswith("text/")
-        or content_type in ("application/javascript", "application/json") {
-        return Response(
-            content=target.read_text(encoding="utf-8"), media_type=content_type
-        );
-    }
-    return Response(content=target.read_bytes(), media_type=content_type);
+impl MicroserviceGateway.get_admin_dist_dir -> Path {
+    return Path(self.admin_dist_dir);
 }
 
 glob _BUILTIN_PREFIXES: tuple[str, ...] = GATEWAY_BUILTIN_PREFIXES,
@@ -544,14 +504,13 @@ impl MicroserviceGateway.probe_services(
     return not_found(path, message="Not found on any service");
 }
 
-impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
+impl MicroserviceGateway.handle_admin(request: Request, path: str) -> Response | None {
     if path == "/admin" {
         import from jaclang.server.serving.datatypes { RedirectResponse }
         return RedirectResponse(url="/admin/", status_code=302);
     }
     if path.startswith("/admin/") {
-        asset_path: str = path[7:];
-        return self.serve_admin_asset(asset_path);
+        return self.serve_admin_asset(path[7:], request);
     }
     return None;
 }
@@ -824,7 +783,7 @@ impl MicroserviceGateway.setup -> ServingApp {
                 if gw.server is not None {
                     admin_resp = await next_fn(request);
                 } else {
-                    admin_resp = gw.handle_admin(path);
+                    admin_resp = gw.handle_admin(request, path);
                 }
                 if admin_resp is None {
                     import from jaclang.scale.runtime.context.errors { not_found }
@@ -1017,23 +976,17 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.user_manager = self.identity();
     self.app.add_middleware(jwt_middleware(self.user_manager));
 
-    self.register_admin_endpoints();
-    self.register_logs_endpoints();
-    self.register_llm_telemetry_endpoints();
-    self.register_workloads_endpoints();
-
-    self.register_traces_endpoints();
-    self.register_ops_endpoints();
-    self.register_deploy_health_endpoints();
-    self.register_network_endpoints();
-    self.register_podenv_endpoints();
-
+    self.register_admin_surface();
     register_auth_endpoints(self);
 
-    logger.info(
-        "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
+    admin_routes = len(
+        [
+            ep
+            for ep in self.app.router.all_endpoints()
+            if ep.path.startswith("/admin")
+        ]
     );
+    logger.info(f"Admin JSON API installed on gateway ({admin_routes} /admin routes)");
     logger.info(
         "Gateway-owned identity installed "
         "(/user/register, /user/login, /user/me served by the gateway)"

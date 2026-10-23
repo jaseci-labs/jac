@@ -78,6 +78,6 @@ obj JacAPIServerAdmin {
     def admin_get_metrics(Authorization: str | None = None) -> TransportResponse;
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;
-    def serve_admin_asset(path: str) -> Response;
+    def serve_admin_asset(path: str, request: (Request | None) = None) -> Response;
     def get_admin_dist_dir -> Path;
 }

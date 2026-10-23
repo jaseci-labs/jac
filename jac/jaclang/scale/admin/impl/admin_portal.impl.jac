@@ -510,7 +510,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
     );
 
     def serve_admin_catchall_handler(request: Request, path: str) -> Response {
-        return self.serve_admin_asset(path);
+        return self.serve_admin_asset(path, request);
     }
     server.add_endpoint(
         JEndPoint(
@@ -1571,29 +1571,37 @@ impl JacAPIServerAdmin.serve_admin_index -> Response {
     return FileResponse(path=str(dist_dir / "index.html"), media_type="text/html");
 }
 
-impl JacAPIServerAdmin.serve_admin_asset(path: str) -> Response {
+impl JacAPIServerAdmin.serve_admin_asset(
+    path: str, request: (Request | None) = None
+) -> Response {
+    accept = request.headers.get("accept", "") if request is not None else "";
+    wants_html = "text/html" in accept;
+    if path and not wants_html and "application/json" in accept {
+        return not_found(f"/admin/{path}");
+    }
     dist_dir = resolve_console(self.get_admin_dist_dir(), self.admin_console);
     if isinstance(dist_dir, Response) {
         return dist_dir;
     }
-
-    has_extension = '.' in path.split('/')[-1] if path else False;
-    if has_extension {
-        try {
-            asset_path = (dist_dir / path).resolve();
-            if not asset_path.is_relative_to(dist_dir.resolve()) {
-                return Response(content="Forbidden", status_code=403);
-            }
-        } except Exception {
-            return Response(content="Invalid path", status_code=400);
-        }
-        if asset_path.is_file() {
-            guess_result = mimetypes.guess_type(str(asset_path));
-            content_type = guess_result[0]
-                if guess_result[0]
-                else "application/octet-stream";
-            return FileResponse(path=str(asset_path), media_type=content_type);
-        }
+    index = str(dist_dir / "index.html");
+    if not path {
+        return FileResponse(path=index, media_type="text/html");
     }
-    return FileResponse(path=str(dist_dir / "index.html"), media_type="text/html");
+    try {
+        asset_path = (dist_dir / path).resolve();
+        inside = asset_path.is_relative_to(dist_dir.resolve());
+    } except (OSError, ValueError) {
+        inside = False;
+    }
+    if inside and asset_path.is_file() {
+        guess_result = mimetypes.guess_type(str(asset_path));
+        content_type = guess_result[0]
+            if guess_result[0]
+            else "application/octet-stream";
+        return FileResponse(path=str(asset_path), media_type=content_type);
+    }
+    if wants_html {
+        return FileResponse(path=index, status_code=404, media_type="text/html");
+    }
+    return not_found(f"/admin/{path}");
 }

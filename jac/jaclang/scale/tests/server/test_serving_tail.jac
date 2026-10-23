@@ -28,8 +28,34 @@ def _make_app -> ServingApp {
             await ws.send_text(msg.get("text", ""));
         }
     }
+    def readme -> dict[str, any] {
+        return {"page": "readme"};
+    }
+
+    def any_file(rest: str) -> dict[str, any] {
+        return {"file": rest};
+    }
+
     app = ServingApp();
     app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/hello", callback=hello));
+    app.add_endpoint(
+        JEndPoint(method=HTTPMethod.GET, path="/files/readme", callback=readme)
+    );
+    app.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path="/files/{rest:path}",
+            callback=any_file,
+            parameters=[
+                APIParameter(
+                    name="rest",
+                    data_type="string",
+                    required=True,
+                    kind=ParameterType.PATH
+                )
+            ]
+        )
+    );
     app.add_ws_endpoint(WSEndPoint(path="/ws/echo", handler=ws_echo));
     return app;
 }
@@ -92,23 +118,32 @@ async def _ws_handshake(port: int, path: str, origin: str = "") -> tuple[any, ..
 
 
 test "trailing-slash miss 307-redirects to the canonical path (#8000 f3)" {
+    # Each row: the request path, then the status and Location (or a body
+    # marker) it answers. A catch-all must not swallow the redirect to a
+    # declared route at the slash alternate (#9877).
+    rows = [
+        ("/hello/?a=1", 307, "/hello?a=1", b""),
+        ("/hello", 200, None, b"true"),
+        ("/files/readme/", 307, "/files/readme", b""),
+        ("/files/readme", 200, None, b"readme"),
+        ("/files/other/", 200, None, b"other"),
+
+    ];
     (stop, server) = _spawn();
     try {
-        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=10);
-        conn.request("GET", "/hello/?a=1");
-        resp = conn.getresponse();
-        location = resp.getheader("Location");
-        resp.read();
-        conn.close();
-        assert resp.status == 307 , f"expected 307, got {resp.status}";
-        assert location == "/hello?a=1" , f"got Location={location!r}";
-
-        conn2 = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=10);
-        conn2.request("GET", "/hello");
-        resp2 = conn2.getresponse();
-        body = resp2.read();
-        conn2.close();
-        assert resp2.status == 200 and b"true" in body.lower();
+        for (path, status, location, marker) in rows {
+            conn = http.client.HTTPConnection(
+                "127.0.0.1", server.bound_port, timeout=10
+            );
+            conn.request("GET", path);
+            resp = conn.getresponse();
+            got_location = resp.getheader("Location");
+            body = resp.read();
+            conn.close();
+            assert resp.status == status , f"{path}: expected {status}, got {resp.status}";
+            assert got_location == location , f"{path}: got Location={got_location!r}";
+            assert marker.lower() in body.lower() , f"{path}: body {body!r}";
+        }
     } finally {
         stop();
     }

@@ -93,6 +93,9 @@ impl route_sort_key(route: CompiledRoute) -> tuple[int, int, int, int, str] {
 impl Router.add(endpoint: JEndPoint) {
     route = compile_route(endpoint.path);
     route.endpoint = endpoint;
+    if route.catchall is not None {
+        self.catchalls.add(id(endpoint));
+    }
     method = str(endpoint.method.value)
         if isinstance(endpoint.method, HTTPMethod)
         else str(endpoint.method);
@@ -110,6 +113,11 @@ impl Router.add_ws(endpoint: WSEndPoint) {
 impl Router.clear {
     self.routes = {};
     self.ws_routes = [];
+    self.catchalls = set();
+}
+
+impl Router.is_catchall(endpoint: JEndPoint) -> bool {
+    return id(endpoint) in self.catchalls;
 }
 
 impl Router.resolve(
@@ -141,6 +149,24 @@ impl Router.resolve(
         }
     }
     return (None, {}, allowed);
+}
+
+impl Router.resolve_declared(method: str, path: str) -> (JEndPoint | None) {
+    segments = [
+        p
+        for p in path.strip('/').split('/')
+        if p != ''
+    ];
+    trailing = len(path) > 1 and path.endswith('/');
+    lookup = 'GET' if method.upper() == 'HEAD' else method.upper();
+    for route in self.routes.get(lookup, []) {
+        if route.catchall is None
+            and route.endpoint is not None
+            and route.`match(segments, trailing) is not None {
+            return route.endpoint;
+        }
+    }
+    return None;
 }
 
 impl Router.resolve_ws(path: str) -> tuple[(WSEndPoint | None), dict[(str, str)]] {

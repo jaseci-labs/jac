@@ -561,6 +561,15 @@ test "admin console pages answer without waiting on a console build" {
         );
     }
 
+    # A page the console does not have answers 404 once the console is there.
+    def page_status(path: str, console_status: int) -> int {
+        return 404
+            if path == "/admin/quotes" and console_status == 200
+            else console_status;
+    }
+
+    html = {"Accept": "text/html"};
+
     # Each row: whether the project carries a console under .jac/admin (staged
     # by a deploy, or left unmarked by an older build), how the build behaves,
     # and what /admin/ serves once the build has settled.
@@ -658,16 +667,33 @@ test "admin console pages answer without waiting on a console build" {
                 ext.admin_console = console;
 
                 # Several requests while the console is missing: the page, a
-                # client route and an asset, as a browser sends them at once.
-                for path in ["/admin/", "/admin/quotes", "/admin/app.js"] {
-                    response = client.get(path);
-                    assert response.status_code == row["first"] , (
+                # navigation to a page the console does not have and an asset,
+                # as a browser sends them at once. Once the console is there,
+                # the unknown page gets it with a 404 (#9877).
+                for (path, headers) in [
+                    ("/admin/", {}),
+                    ("/admin/quotes", html),
+                    ("/admin/app.js", {})
+                ] {
+                    response = client.get(path, headers=headers);
+                    expected = page_status(path, int(row["first"]));
+                    assert response.status_code == expected , (
                         f"{name}: {path} -> {response.status_code}"
                     );
-                    if row["first"] == 503 {
+                    if expected == 503 {
                         assert_retries(name, path, response);
                     }
                 }
+                # An API request for a route that does not exist is a JSON 404,
+                # never the console or its build page.
+                api_miss = client.get(
+                    "/admin/quotes", headers={"Accept": "application/json"}
+                );
+                assert api_miss.status_code == 404 , (
+                    f"{name}: API miss -> {api_miss.status_code}"
+                );
+                assert "application/json"
+                    in api_miss.headers.get("content-type", "") , name;
 
                 if row["build"] == "gated" {
                     # Another process sharing the cache finds the build under
@@ -711,11 +737,12 @@ test "admin console pages answer without waiting on a console build" {
                     assert other_calls == [] , f"{name}: the failed build was retried";
                 }
 
-                settled = client.get("/admin/quotes");
-                assert settled.status_code == row["settled"] , (
+                settled = client.get("/admin/quotes", headers=html);
+                assert settled.status_code
+                    == page_status("/admin/quotes", int(row["settled"])) , (
                     f"{name}: settled /admin/quotes -> {settled.status_code}"
                 );
-                if row["settled"] == 503 {
+                if settled.status_code == 503 {
                     assert_retries(name, "settled /admin/quotes", settled);
                 }
                 if row["body"] {

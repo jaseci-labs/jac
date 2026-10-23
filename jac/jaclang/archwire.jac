@@ -3928,7 +3928,8 @@ graph import {
             ServingApp
         },
     ]
-    server.serving.app --> scale.tests.microservices.test_drain { ServingApp }
+    server.serving.app --> scale.tests.microservices.test_drain
+        | scale.tests.microservices.test_gateway { ServingApp }
     server.serving.authcrypt ++> [
         scale.deploy.target.kubernetes.manifest_builder
             | scale.deploy.target.kubernetes.utils.kubernetes_utils.resolve_minted_secret
@@ -4135,7 +4136,13 @@ graph import {
         scale.tests.server.test_auth_policy_startup | scale.tests.server.test_sso {
             JEndPoint
         },
-        scale.tests.server.test_serving_tail { HTTPMethod, JEndPoint, WSEndPoint },
+        scale.tests.server.test_serving_tail {
+            APIParameter,
+            HTTPMethod,
+            JEndPoint,
+            ParameterType,
+            WSEndPoint
+        },
         scale.tests.server.test_stream_ws._spawn_ws_upstream { WSEndPoint },
         scale.tests.server.test_stream_ws._spawn_ws_upstream_with_protocol {
             WSEndPoint
@@ -30576,13 +30583,11 @@ graph import scale {
     admin --> tests.server.test_admin;
     admin as admin_pkg ++> tests.misc.test_ops_signals;
     admin.admin_portal ++> [
-        runtime.gateway.microservice_gateway
-            | server.extensions
-            | tests.server.test_auth_policy_startup { JacAPIServerAdmin },
         tests.misc.test_metrics._distribution_for {
             _calculate_metrics_summary,
             _parse_prometheus_text
         },
+        tests.server.test_auth_policy_startup { JacAPIServerAdmin },
     ]
     admin.admin_portal --> tests.misc.test_metrics {
         _calculate_metrics_summary,
@@ -30590,81 +30595,52 @@ graph import scale {
         _parse_prometheus_text,
         _percentile_from_buckets
     }
-    admin.console_build ++> runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
-        resolve_console
-    }
     admin.console_build --> tests.server.test_admin { AdminConsole, ConsoleState }
-    admin.deploy_health ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerDeployHealth
-        },
-        tests.deploy.test_ops_deploy {
-            JacAPIServerDeployHealth,
-            summarize_deployment,
-            summarize_pod
-        },
-    ]
-    admin.llm_telemetry ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerLLMTelemetry
-        },
-        tests.misc.test_llm_telemetry { TelemetryStore },
-    ]
-    admin.logs ++> runtime.gateway.microservice_gateway
-        | server.extensions
-        | tests.server.test_admin_logs { JacAPIServerLogs }
+    admin.deploy_health ++> tests.deploy.test_ops_deploy {
+        JacAPIServerDeployHealth,
+        summarize_deployment,
+        summarize_pod
+    }
+    admin.llm_telemetry ++> tests.misc.test_llm_telemetry { TelemetryStore }
+    admin.logs ++> tests.server.test_admin_logs { JacAPIServerLogs }
     admin.logs --> tests.server.test_admin_logs {
         _build_logql,
         _flatten_loki_response,
         _service_to_pod_regex_for_mode,
         _services_for_mode
     }
-    admin.network ++> [
-        runtime.gateway.microservice_gateway | server.extensions {
-            JacAPIServerNetwork
-        },
-        tests.deploy.test_ops_network {
-            JacAPIServerNetwork,
-            pvc_claimants,
-            summarize_ingress,
-            summarize_pvc,
-            summarize_service
-        },
-    ]
-    admin.ops ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerOps },
-        tests.deploy.test_ops_health {
-            JacAPIServerOps,
-            _traces_chain,
-            short_circuit_chain
-        },
-    ]
-    admin.podenv ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerPodEnv },
-        tests.misc.test_ops_podenv {
-            JacAPIServerPodEnv,
-            pod_env_entries,
-            redact_entry
-        },
-    ]
+    admin.network ++> tests.deploy.test_ops_network {
+        JacAPIServerNetwork,
+        pvc_claimants,
+        summarize_ingress,
+        summarize_pvc,
+        summarize_service
+    }
+    admin.ops ++> tests.deploy.test_ops_health {
+        JacAPIServerOps,
+        _traces_chain,
+        short_circuit_chain
+    }
+    admin.podenv ++> tests.misc.test_ops_podenv {
+        JacAPIServerPodEnv,
+        pod_env_entries,
+        redact_entry
+    }
     admin.service_urls ++> tests.misc.test_service_urls { service_base_url }
-    admin.traces ++> [
-        runtime.gateway.microservice_gateway | server.extensions { JacAPIServerTraces },
-        tests.server.test_traces_admin {
-            _build_traceql,
-            _flatten_tempo_trace,
-            _normalize_trace_id,
-            _otlp_attrs,
-            _otlp_value
-        },
-    ]
+    admin.surface ++> runtime.gateway.microservice_gateway | server.extensions {
+        JacAPIServerAdminSurface
+    }
+    admin.traces ++> tests.server.test_traces_admin {
+        _build_traceql,
+        _flatten_tempo_trace,
+        _normalize_trace_id,
+        _otlp_attrs,
+        _otlp_value
+    }
     admin.workload_helpers ++> tests.server.test_admin_workloads {
         match_owner,
         owner_name_from_pod,
         phase_to_status
-    }
-    admin.workloads ++> runtime.gateway.microservice_gateway | server.extensions {
-        JacAPIServerWorkloads
     }
     config.app_config ++> [
         deploy.target.deployment_target
@@ -31404,6 +31380,9 @@ graph import scale {
             set_current_auth
         },
     ]
+    runtime.context.errors ++> admin.admin_portal.JacAPIServerAdmin.serve_admin_asset {
+        not_found
+    }
     runtime.context.log_emit ++> [
         server.extensions.ObservabilityExtension.register {
             install_structured_logging
@@ -31770,7 +31749,7 @@ graph import scale {
         tests.server.test_auth_policy_startup { AdminExtension, MailExtension },
     ]
     server.extensions --> [
-        tests.server.test_admin { AdminExtension },
+        tests.microservices.test_gateway | tests.server.test_admin { AdminExtension },
         tests.server.test_scheduler_multipod {
             validate_events_url as _validate_events_url
         },
@@ -31895,7 +31874,9 @@ graph import scale._optdeps {
 }
 
 graph import scale.admin {
+    admin_portal ++> surface { JacAPIServerAdmin }
     console_build ++> admin_portal { AdminConsole, resolve_console }
+    deploy_health ++> surface { JacAPIServerDeployHealth }
     k8s_ops ++> [
         deploy_health {
             api_error_detail,
@@ -31921,10 +31902,21 @@ graph import scale.admin {
             unavailable_detail
         },
     ]
-    logs ++> ops { _app_namespace, _loki_base_url }
+    llm_telemetry ++> surface { JacAPIServerLLMTelemetry }
+    logs ++> [
+        ops { _app_namespace, _loki_base_url },
+        surface { JacAPIServerLogs },
+    ]
+    network ++> surface { JacAPIServerNetwork }
+    ops ++> surface { JacAPIServerOps }
+    podenv ++> surface { JacAPIServerPodEnv }
     service_urls ++> logs | ops | traces { service_base_url }
-    traces ++> ops { _tempo_base_url }
+    traces ++> [
+        ops { _tempo_base_url },
+        surface { JacAPIServerTraces },
+    ]
     workload_helpers ++> workloads { match_owner, owner_name_from_pod, phase_to_status }
+    workloads ++> surface { JacAPIServerWorkloads }
 }
 
 graph import scale.config {
