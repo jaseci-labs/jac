@@ -1,4 +1,5 @@
 import asyncio;
+import inspect;
 import logging;
 import from concurrent.futures { ThreadPoolExecutor }
 
@@ -19,3 +20,6 @@ async def run_sync(fn: Callable[..., any], *args: any) -> any;
 
 
 async def iterate_sync(source: any) -> AsyncIterator[any];
+
+
+async def close_stream(source: any);
