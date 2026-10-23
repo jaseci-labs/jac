@@ -679,68 +679,72 @@ impl ServingServer._standard_headers(
 impl ServingServer._write_response(
     writer: asyncio.StreamWriter, request: Request, response: Response, keep_alive: bool
 ) -> tuple[bool, int] {
-    is_head = request.method == 'HEAD';
-    bodiless = response.status_code in (204, 304) or 100 <= response.status_code < 200;
-    body: (bytes | None) = None;
-    if not bodiless and response.stream is None {
-        body = response.body_bytes();
-    }
     owned = response.stream;
-    if not bodiless {
-        body = self._compression.apply(request, response, body);
-    }
-    stream = response.stream;
-    legacy = request.http_version == 'HTTP/1.0';
-    chunked = stream is not None and not is_head and not bodiless and not legacy;
-    if stream is not None and legacy {
-        keep_alive = False;
-    }
-    reason = _REASONS.get(response.status_code, 'OK');
-    head_lines = [f"HTTP/1.1 {response.status_code} {reason}"];
-    head_lines.extend(self._standard_headers(request, response));
-    if response.headers.get('Content-Type') is None and not bodiless {
-        head_lines.append(f"Content-Type: {response.content_type_header()}");
-    }
-    if chunked {
-        head_lines.append('Transfer-Encoding: chunked');
-    } elif bodiless {
-        if response.headers.get('Content-Length') is None {
-            head_lines.append('Content-Length: 0');
-        }
-    } elif stream is None {
-        response.headers.remove('Content-Length');
-        head_lines.append(f"Content-Length: {len(body or b'')}");
-    }
-    conn_override = (response.headers.get('Connection') or '').lower();
-    if not conn_override {
-        head_lines.append(
-            'Connection: keep-alive' if keep_alive else 'Connection: close'
-        );
-    }
-    for (name, value) in response.headers.items() {
-        head_lines.append(f"{name}: {value}");
-    }
-    blob = ('\r\n'.join(head_lines) + '\r\n\r\n').encode('latin-1');
-    sent = 0;
+    stream: any = owned;
     try {
-        writer.write(blob);
-        if chunked {
-            sent = await self._write_stream(writer, stream, chunked=True);
-            writer.write(b'0\r\n\r\n');
-        } elif bodiless or is_head {
-            if stream is not None {
-                await self._discard_stream(stream);
-            }
-        } elif stream is not None {
-            sent = await self._write_stream(writer, stream, chunked=False);
-        } else {
-            writer.write(body or b'');
-            sent = len(body or b'');
+        is_head = request.method == 'HEAD';
+        bodiless = response.status_code in (204, 304)
+            or 100 <= response.status_code < 200;
+        body: (bytes | None) = None;
+        if not bodiless and response.stream is None {
+            body = response.body_bytes();
         }
-        await writer.drain();
-        return (keep_alive and conn_override != 'close', sent);
-    } except (ConnectionError, OSError) {
-        return (False, sent);
+        if not bodiless {
+            body = self._compression.apply(request, response, body);
+        }
+        stream = response.stream;
+        legacy = request.http_version == 'HTTP/1.0';
+        chunked = stream is not None and not is_head and not bodiless and not legacy;
+        if stream is not None and legacy {
+            keep_alive = False;
+        }
+        reason = _REASONS.get(response.status_code, 'OK');
+        head_lines = [f"HTTP/1.1 {response.status_code} {reason}"];
+        head_lines.extend(self._standard_headers(request, response));
+        if response.headers.get('Content-Type') is None and not bodiless {
+            head_lines.append(f"Content-Type: {response.content_type_header()}");
+        }
+        if chunked {
+            head_lines.append('Transfer-Encoding: chunked');
+        } elif bodiless {
+            if response.headers.get('Content-Length') is None {
+                head_lines.append('Content-Length: 0');
+            }
+        } elif stream is None {
+            response.headers.remove('Content-Length');
+            head_lines.append(f"Content-Length: {len(body or b'')}");
+        }
+        conn_override = (response.headers.get('Connection') or '').lower();
+        if not conn_override {
+            head_lines.append(
+                'Connection: keep-alive' if keep_alive else 'Connection: close'
+            );
+        }
+        for (name, value) in response.headers.items() {
+            head_lines.append(f"{name}: {value}");
+        }
+        blob = ('\r\n'.join(head_lines) + '\r\n\r\n').encode('latin-1');
+        sent = 0;
+        try {
+            writer.write(blob);
+            if chunked {
+                sent = await self._write_stream(writer, stream, chunked=True);
+                writer.write(b'0\r\n\r\n');
+            } elif bodiless or is_head {
+                if stream is not None {
+                    await self._discard_stream(stream);
+                }
+            } elif stream is not None {
+                sent = await self._write_stream(writer, stream, chunked=False);
+            } else {
+                writer.write(body or b'');
+                sent = len(body or b'');
+            }
+            await writer.drain();
+            return (keep_alive and conn_override != 'close', sent);
+        } except (ConnectionError, OSError) {
+            return (False, sent);
+        }
     } finally {
         if stream is not None {
             await close_stream(stream);

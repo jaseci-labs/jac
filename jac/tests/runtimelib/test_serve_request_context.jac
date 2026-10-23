@@ -107,6 +107,16 @@ glob _APP: str = (
          '    return chunks();\n'
          '}\n'
          '\n'
+         'def:protect sse_note_after_pause(text: str = "") -> any {\n'
+         '    import time;\n'
+         '    def chunks -> Generator[str, None, None] {\n'
+         '        yield "started";\n'
+         '        time.sleep(0.5);\n'
+         '        root ++> Note(text=text);\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
          'walker:protect notes {\n'
          '    can go with Root entry {\n'
          '        report sorted([n.text for n in [here -->[?:Note]]]);\n'
@@ -321,14 +331,19 @@ test "a websocket stream runs inside its request scope and commits when it ends"
 
 """POST to a streamed function the way the server does: dispatch through the
 middleware chain, read `events` chunks of the body (all of them when None),
-then close the body as the response writer does when the client goes away."""
+then close the body as the response writer does when the client goes away.
+With `cancel`, the next pull is cancelled while the producer is running, as a
+connection task is when the server drains. Returns the body and the notes
+committed at the moment the body was closed, before this loop's worker
+threads are joined."""
 async def _sse_call(
     runtime: PreparedInProcessRuntime,
     token: str,
     fn: str,
     text: str,
-    events: (int | None)
-) -> str {
+    events: (int | None),
+    cancel: bool = False
+) -> tuple[str, list[str]] {
     headers = Headers();
     headers.set("Authorization", f"Bearer {token}");
     headers.set("Content-Type", "application/json");
@@ -348,22 +363,47 @@ async def _sse_call(
             break;
         }
     }
+    if cancel {
+        try {
+            await asyncio.wait_for(response.stream.__anext__(), 0.1);
+        } except asyncio.TimeoutError {}
+    }
     await response.stream.aclose();
-    return "".join(chunks);
+    return ("".join(chunks), _http_notes(runtime, token));
 }
 
 
 test "an HTTP SSE stream commits its writes when delivered and rolls them back otherwise" {
-    # (row, function, events read before the client goes away, committed, last frame)
-    rows: list[tuple[str, str, (int | None), bool, str]] = [
-        ("delivered to its end", "sse_note", None, True, "event: end"),
-        ("client gone after the first event", "sse_note", 1, False, 'data: "written"'),
+    # (row, function, events read before the client goes away, cancel the
+    # next pull mid-production, committed, last frame)
+    rows: list[tuple[str, str, (int | None), bool, bool, str]] = [
+        ("delivered to its end", "sse_note", None, False, True, "event: end"),
+        (
+            "client gone after the first event",
+            "sse_note",
+            1,
+            False,
+            False,
+            'data: "written"'
+        ),
         (
             "producer raises mid-stream",
             "sse_note_then_raise",
             None,
             False,
+            False,
             "event: error"
+        ),
+        # The producer is still running when delivery is cancelled. It is
+        # waited for, so it finishes (and commits) before the body is
+        # closed, not later into a scope that is already closed.
+        (
+            "cancelled while the producer runs to its end",
+            "sse_note_after_pause",
+            1,
+            True,
+            True,
+            'data: "started"'
         ),
 
     ];
@@ -372,13 +412,15 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
         runtime = _serve(project);
         try {
             token = _register_and_login(runtime, "sse_user");
-            for (label, fn, events, committed, last) in rows {
-                body = asyncio.run(_sse_call(runtime, token, fn, label, events));
+            for (label, fn, events, cancel, committed, last) in rows {
+                (body, notes) = asyncio.run(
+                    _sse_call(runtime, token, fn, label, events, cancel)
+                );
                 frames = body.strip().split("\n\n");
                 assert frames and frames[-1].startswith(last) , (
                     f"{label}: unexpected body {body!r}"
                 );
-                assert (label in _http_notes(runtime, token)) == committed , (
+                assert (label in notes) == committed , (
                     f"{label}: the stream's write was "
                     f"{'lost' if committed else 'committed'}"
                 );
