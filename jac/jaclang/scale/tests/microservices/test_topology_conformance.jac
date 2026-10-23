@@ -131,6 +131,19 @@ glob _ROWS: list[tuple[str, Callable[[str], dict[str, any]]]] = [
 
      ];
 
+"""What a conformant row must also answer in each topology, so a regression
+both topologies share cannot pass as agreement. The stream's write count is
+held to equality only: both topologies lose it on main, and #10313 fixes it
+in both."""
+glob _EXPECTED: dict[str, dict[str, any]] = {
+         "bridged generator function": {"status": 200, "result": {"items": [0, 1, 2]}},
+         "write inside an SSE stream": {
+             "status": 200,
+             "events": ['data: "wrote"', "event: end", "data: {}"]
+         },
+
+     };
+
 """Rows that diverge today, pinned at what each topology answers on main.
 When a row's outcomes stop matching these, the divergence moved: if the
 topologies now agree, delete the row from here so it is held to equality."""
@@ -212,10 +225,22 @@ test "every conformance row means the same thing colocated and as a fleet" {
                         "topologies agree, move the row out of _KNOWN_DIVERGENT"
                     );
                 }
-            } elif seen["colocated"] != seen["fleet"] {
+                continue;
+            }
+            if seen["colocated"] != seen["fleet"] {
                 failures.append(
                     f"{name}: colocated {seen['colocated']} != fleet {seen['fleet']}"
                 );
+            }
+            for (key, value) in _EXPECTED.get(name, {}).items() {
+                for (topology, outcome) in seen.items() {
+                    if outcome.get(key) != value {
+                        failures.append(
+                            f"{name}: {topology} answered {key}={outcome.get(key)!r}, "
+                            f"expected {value!r}"
+                        );
+                    }
+                }
             }
         }
         assert not failures , "\n".join(failures);
