@@ -65,6 +65,18 @@ def _gated_cond(
 ) -> str;
 
 
+def _gated_pair(
+    node_alias: str,
+    edge_alias: str,
+    root_id: str,
+    node_residual: list[str],
+    edge_residual: list[str],
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str;
+
+
 def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]];
 
 
@@ -85,8 +97,19 @@ impl compile_query(
     acl_root: (str | None) = None,
     acl_residual: (dict[int, list[str]] | None) = None,
     residual_only: bool = False,
-    group_by: (str | None) = None
+    group_by: (str | None) = None,
+    edge_residual: (list[str] | None) = None
 ) -> CompiledQuery {
+    if q.after is not None {
+        if upto != 1 or len(q.hops) != 1 or len(q.origin) != 1 or q.order {
+            raise ValueError(
+                'a keyset cursor applies to one hop from one node in edge order'
+            );
+        }
+        if not isinstance(q.after[1], UUID) {
+            raise ValueError('a keyset cursor names the edge it resumes after');
+        }
+    }
     out = CompiledQuery();
     params: dict[str, any] = {};
     types: dict[str, list[str]] = {};
@@ -143,7 +166,22 @@ impl compile_query(
                 nconds.append(cond);
             }
         }
-        if acl_root is not None {
+        if acl_root is not None and i == upto - 1 and edge_residual is not None {
+            nconds.append(
+                _gated_pair(
+                    nd_alias,
+                    e,
+                    acl_root,
+                    (acl_residual or {}).get(i) or [],
+                    edge_residual,
+                    params,
+                    f"h{n}",
+                    'residual'
+                        if residual_only
+                        else ('pushed' if count_only else 'either')
+                )
+            );
+        } elif acl_root is not None {
             nconds.append(
                 _gated_cond(
                     nd_alias,
@@ -156,9 +194,6 @@ impl compile_query(
             );
         }
         if i == upto - 1 and q.after is not None {
-            if upto != 1 {
-                raise ValueError('a keyset cursor applies to a single-hop query');
-            }
             params['ks'] = int(q.after[0]);
             params['ki'] = str(q.after[1]);
             nconds.append(
@@ -185,6 +220,16 @@ impl compile_query(
             else (
                 'SELECT f0.id, NULL FROM ' 'unnest(CAST(:origin AS uuid[])) AS f0(id)'
             );
+        out.params = params;
+        return out;
+    }
+    if group_by == 'node_ids' {
+        out.sql = (
+            f"SELECT DISTINCT n{n}.id "
+            f"FROM unnest(CAST(:origin AS uuid[])) AS f0(id) "
+            f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+            + ' '.join(joins)
+        );
         out.params = params;
         return out;
     }
@@ -489,6 +534,38 @@ impl _gated_cond(
         return f"({acl} AND NOT {typed})";
     }
     return f"({acl} OR {typed})";
+}
+
+
+impl _gated_pair(
+    node_alias: str,
+    edge_alias: str,
+    root_id: str,
+    node_residual: list[str],
+    edge_residual: list[str],
+    params: dict[str, any],
+    pfx: str,
+    mode: str
+) -> str {
+    side = 'either' if mode == 'residual' else mode;
+    node_cond = _gated_cond(
+        node_alias, root_id, node_residual, params, pfx + 'a', side
+    );
+    edge_cond = _gated_cond(
+        edge_alias, root_id, edge_residual, params, pfx + 'b', side
+    );
+    if mode != 'residual' {
+        return f"({node_cond} AND {edge_cond})";
+    }
+    typed: list[str] = [];
+    if node_residual {
+        typed.append(_type_cond(node_alias, node_residual, params, pfx + 'x'));
+    }
+    if edge_residual {
+        typed.append(_type_cond(edge_alias, edge_residual, params, pfx + 'y'));
+    }
+    either = ' OR '.join(typed) or 'FALSE';
+    return f"({node_cond} AND {edge_cond} AND ({either}))";
 }
 
 

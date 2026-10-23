@@ -21,5 +21,6 @@ def compile_query(
     acl_root: (str | None) = None,
     acl_residual: (dict[int, list[str]] | None) = None,
     residual_only: bool = False,
-    group_by: (str | None) = None
+    group_by: (str | None) = None,
+    edge_residual: (list[str] | None) = None
 ) -> CompiledQuery;

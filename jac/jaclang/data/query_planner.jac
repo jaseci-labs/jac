@@ -36,7 +36,10 @@ def resolve_query_exists(mem: Session, q: GraphQuery) -> bool;
 
 def resolve_query_page(
     mem: Session, q: GraphQuery
-) -> tuple[list[tuple[Anchor, (Anchor | None)]], (tuple[int, (UUID | None)] | None)];
+) -> tuple[
+    list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]],
+    (tuple[int, (UUID | None)] | None)
+];
 
 
 def resolve_query_type_counts(

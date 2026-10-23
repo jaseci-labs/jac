@@ -49,6 +49,12 @@ node CustomDoc {
     }
 }
 
+edge CustomLink: any --> any {
+    def __jac_access__ -> AccessLevel {
+        return AccessLevel.READ;
+    }
+}
+
 node CustomHidden {
     has label: str = "";
 
@@ -403,6 +409,11 @@ test "a typed hop gives the access check's answer for every grant and override" 
 
 
 test "a custom __jac_access__ decides visibility on every read path" {
+    import from jaclang.data.query_planner {
+        resolve_query_page,
+        resolve_query_type_counts
+    }
+    import from jaclang.runtime.graph_query { GraphQuery, QHop }
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         ctx = _ctx(td);
@@ -411,8 +422,10 @@ test "a custom __jac_access__ decides visibility on every read path" {
             owner = _mk_root(ctx.mem);
             other = _mk_root(ctx.mem);
             # In edge order: two nodes granted to all whose hook denies, four
-            # plain grants and one hook grant. A page has to look past the first
-            # two to fill itself.
+            # plain grants, one hook grant, a granted node behind an edge the
+            # reader may not read, and one more hook denial. A page has to look
+            # past the first two to fill itself, and knows nothing readable
+            # follows its last row.
             made = [
                 CustomHidden(label="h0"),
                 CustomHidden(label="h1"),
@@ -420,7 +433,9 @@ test "a custom __jac_access__ decides visibility on every read path" {
                 Doc(label="d1"),
                 Doc(label="d2"),
                 Doc(label="d3"),
-                CustomDoc(label="custom")
+                CustomDoc(label="custom"),
+                Doc(label="private-edge"),
+                CustomHidden(label="h2")
             ];
             for arch in made {
                 c = arch.__jac__;
@@ -434,8 +449,45 @@ test "a custom __jac_access__ decides visibility on every read path" {
                     archetype=GenericEdge(), source=other, target=c, is_undirected=False
                 );
                 e.persistent = True;
+                private = _as_any(arch).label == "private-edge";
+                setattr(e, "root", owner.id if private else other.id);
                 other.edges.append(e);
                 c.edges.append(e);
+                ctx.mem.put(e);
+            }
+            # The hook-granted node reaches d1 twice, once through an edge
+            # whose own hook grants it: still one node.
+            for kind in [GenericEdge, CustomLink] {
+                link = EdgeAnchor(
+                    archetype=kind(),
+                    source=made[6].__jac__,
+                    target=made[3].__jac__,
+                    is_undirected=False
+                );
+                link.persistent = True;
+                setattr(link, "root", owner.id);
+                made[6].__jac__.edges.append(link);
+                made[3].__jac__.edges.append(link);
+                ctx.mem.put(link);
+            }
+            # Behind a hook-denied node and behind a readable one: only the
+            # second is reachable in two hops.
+            for (label, via) in [("behind-hidden", made[0]), ("behind-d0", made[2])] {
+                b = Doc(label=label).__jac__;
+                b.persistent = True;
+                setattr(b, "root", owner.id);
+                b.own_access().all = AccessLevel.READ;
+                ctx.mem.put(b);
+                e = EdgeAnchor(
+                    archetype=GenericEdge(),
+                    source=via.__jac__,
+                    target=b,
+                    is_undirected=False
+                );
+                e.persistent = True;
+                setattr(e, "root", owner.id);
+                via.__jac__.edges.append(e);
+                b.edges.append(e);
                 ctx.mem.put(e);
             }
             ctx.mem.commit();
@@ -443,9 +495,41 @@ test "a custom __jac_access__ decides visibility on every read path" {
             ctx.set_user_root(str(other.id));
             hub = _as_any(other.archetype);
             visible = ["d0", "d1", "d2", "d3", "custom"];
+            mem: any = ctx.mem;
+            (page, cursor) = resolve_query_page(
+                mem, GraphQuery(hub, hops=[QHop(dir=2)], limit=5)
+            );
+            counts = resolve_query_type_counts(
+                mem, GraphQuery(hub, hops=[QHop(dir=2)])
+            );
+            twice = resolve_query_type_counts(
+                mem, GraphQuery(made[6], hops=[QHop(dir=2)])
+            );
+            (whole, _) = resolve_query_page(
+                mem, GraphQuery(hub, hops=[QHop(dir=2)], limit=20)
+            );
             rows = [
-                ("untyped list", [_as_any(x).label for x in [hub-->]], visible),
-                ("untyped count", len([hub-->]), 5),
+                (
+                    "untyped list",
+                    [_as_any(x).label for x in [hub-->]],
+                    visible + ["private-edge"]
+                ),
+                ("untyped count", len([hub-->]), 6),
+                (
+                    "two hops",
+                    [_as_any(x).label for x in [hub-->-->]],
+                    ["behind-d0", "d1"]
+                ),
+                ("two hop count", len([hub-->-->]), 2),
+                ("page", [_as_any(a).archetype.label for (a, _, _) in page], visible),
+                ("page ends", cursor, None),
+                (
+                    "whole page",
+                    [_as_any(a).archetype.label for (a, _, _) in whole],
+                    visible
+                ),
+                ("type counts", sum(counts.values()), 5),
+                ("one node by two edges", sum(twice.values()), 1),
                 ("untyped page", [_as_any(x).label for x in [hub-->][:5]], visible),
                 (
                     "untyped offset page",
