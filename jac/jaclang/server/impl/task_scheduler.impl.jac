@@ -650,12 +650,12 @@ impl Scheduler._execute(task: ScheduledTask) -> str {
             }
         }
     } except Exception as e {
-        return f"{type(e).__name__}: {e}";
+        return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__;
     } finally {
         ctx.call_state.reset(token);
     }
-    if isinstance(result, dict) and result.get('error') {
-        return str(result['error']);
+    if isinstance(result, dict) and 'error' in result {
+        return str(result['error'] or result.get('error_code') or 'failed');
     }
     return "";
 }

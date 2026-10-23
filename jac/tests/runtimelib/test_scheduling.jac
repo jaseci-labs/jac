@@ -1021,6 +1021,12 @@ test "each tick reports one outcome naming its task, tick and worker" {
     def unregistered -> dict[str, str] {
         return {"error": "'gone_fn' is no longer registered"};
     }
+    def silent_envelope -> dict[str, str] {
+        return {"error": "", "error_code": "execution_error"};
+    }
+    def bare_raise {
+        raise AssertionError();
+    }
     tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
     claim(f"sched:orders:taken_fn", tick_of(tick));
     later = (datetime.datetime.now() + datetime.timedelta(hours=1)).isoformat();
@@ -1059,6 +1065,24 @@ test "each tick reports one outcome naming its task, tick and worker" {
                 "",
                 "RuntimeError: boom",
                 "ERROR scheduled raising_fn failed in"
+            ),
+            (
+                "silent_fn",
+                silent_envelope,
+                claim,
+                "failed",
+                "",
+                "execution_error",
+                "ERROR scheduled silent_fn failed in"
+            ),
+            (
+                "bare_fn",
+                bare_raise,
+                claim,
+                "failed",
+                "",
+                "AssertionError",
+                "ERROR scheduled bare_fn failed in"
             ),
             (
                 "taken_fn",

@@ -26,6 +26,7 @@ glob FIXTURES_DIR: Path = Path(__file__).parent.parent
      REQUESTS_TOTAL: str = "metrics_workers_http_requests_total",
      IN_PROGRESS: str = "metrics_workers_http_requests_in_progress",
      APP_PINGS: str = "app_pings_total",
+     APP_BEATS: str = "app_beats_total",
      SCHEDULED_RUNS: str = "metrics_workers_scheduled_runs_total",
      BEAT_OK: str = 'metrics_workers_scheduled_runs_total{status="ok",task="beat"}',
      PING_SERIES: str = 'metrics_workers_http_requests_total{method="POST",path="/walker/Ping",status_code="200"}';
@@ -142,15 +143,20 @@ test "a two-worker scrape merges every worker into one series per metric" {
         (sent, pids) = _load_until_shared(base);
         assert len(pids) > 1 , f"one worker answered all {sent} pings: {pids}";
         def _all_counted(text: str) -> bool {
+            beats = _samples(text, APP_BEATS);
             return _samples(text, REQUESTS_TOTAL).get(PING_SERIES) == float(sent)
-                and _samples(text, SCHEDULED_RUNS).get(BEAT_OK, 0.0) >= 2.0;
+                and len(beats) > 1
+                and _samples(text, SCHEDULED_RUNS).get(BEAT_OK) == sum(beats.values());
         }
         body = _scrape_until(base, _all_counted, 15.0);
         assert _samples(body, REQUESTS_TOTAL).get(PING_SERIES) == float(sent) , body;
         assert _samples(body, APP_PINGS).get(APP_PINGS) == float(sent) , body;
         assert list(_samples(body, IN_PROGRESS).keys()) == [IN_PROGRESS] , body;
         assert len(_samples(body, "jac_info")) == 1 , body;
-        assert _samples(body, SCHEDULED_RUNS).get(BEAT_OK, 0.0) >= 2.0 , body;
+        beats = _samples(body, APP_BEATS);
+        assert len(beats) > 1 , f"one worker ran every beat: {beats}";
+        assert _samples(body, SCHEDULED_RUNS).get(BEAT_OK)
+            == sum(beats.values()) , body;
     } finally {
         _stop_fleet(server);
         cleanup_db_files(FIXTURES_DIR);
