@@ -361,13 +361,13 @@ test "a colocated service's static schedules are registered under its app" {
             names = {task.name for task in server.scheduler._tasks};
             assert "colo.svc_tick" in names , f"not registered: {sorted(names)}";
             assert "IntervalWalker" in names;
-            task = [
-                t
-                for t in server.scheduler._tasks
-                if t.name == "colo.svc_tick"
-            ][0];
-            server.scheduler._execute(task);
+            tasks = {t.name: t for t in server.scheduler._tasks};
+            assert server.scheduler._execute(tasks["colo.svc_tick"]) == "";
             assert svc.TICKS == [1] , "the colocated schedule must run its own target";
+            assert server.scheduler._execute(tasks["colo.svc_boom"])
+                == "execution_error" , (
+                "a failing colocated run must report its error, not ok"
+            );
         } finally {
             sv_client.unregister_local("colo");
             client.close();
