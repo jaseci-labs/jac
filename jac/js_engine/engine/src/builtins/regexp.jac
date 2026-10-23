@@ -2080,14 +2080,13 @@ Offsets map back to the subject's own bytes.
 glob _DM_ASCII: bool = False;
 # The string cell the public entry point is matching (_dm_subject_ascii), and a
 # cache of the last subject checked: whether it needs the rewritten copy and, if
-# so, the copy plus its offset breakpoints. Keyed by cell id, length, GC epoch (a
-# swept heap-string id is only reused after a collection) and whether pairs are
-# joined, so a /g loop rewrites its subject once.
+# so, the copy plus its offset breakpoints. Keyed by immutable cell id, GC epoch
+# (an id is only reused after collection), and whether pairs are joined, so a /g
+# loop rewrites its subject once.
 glob _DM_SUBJ_ID: int = -1,
      _DM_NUL: str = "",
      _DM_ED: str = "",
      _DM_CV_ID: int = -2,
-     _DM_CV_LEN: int = -1,
      _DM_CV_EPOCH: int = -1,
      _DM_CV_PAIRS: bool = False,
      _DM_CV_ON: bool = False,
@@ -2123,14 +2122,14 @@ lone half stays as it is. Every rewrite shrinks the copy, so _DM_CV_END[k] (the
 copy's offset just past rewrite k) and _DM_CV_CUM[k] (original minus copy offset
 from there on) map offsets both ways. Cached per subject (see _DM_SUBJ_ID)."""
 def _dm_converted(s: str, pairs: bool) -> bool {
-    n: int = str_nbytes(s);
     if _DM_SUBJ_ID >= 0
         and _DM_SUBJ_ID == _DM_CV_ID
-        and n == _DM_CV_LEN
         and pairs == _DM_CV_PAIRS
         and _DM_CV_EPOCH == _RE_REALM.gc_epoch {
         return _DM_CV_ON;
     }
+    raw: bytes = s.encode();
+    n: int = len(raw);
     if len(_DM_NUL) == 0 {
         _DM_NUL = nul_sentinel();
         _DM_ED = byte_chr(237);
@@ -2140,7 +2139,6 @@ def _dm_converted(s: str, pairs: bool) -> bool {
         _DM_CV_BUF = 0;
     }
     _DM_CV_ID = _DM_SUBJ_ID;
-    _DM_CV_LEN = n;
     _DM_CV_PAIRS = pairs;
     _DM_CV_EPOCH = _RE_REALM.gc_epoch;
     _DM_CV_ON = str_bfind(s, _DM_NUL) >= 0 or (pairs and str_bfind(s, _DM_ED) >= 0);
