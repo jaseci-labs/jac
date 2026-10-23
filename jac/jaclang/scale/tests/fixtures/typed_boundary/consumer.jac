@@ -22,6 +22,7 @@ import from scoring {
     ScoreWalker
 }
 import from scoring { ScoreWalker as AliasedWalker, walker_value }
+import from scoring { score_stream, StreamWalker, score_boom }
 
 async def:pub check_score -> dict[str, any] {
     payload = await fetch_score();
@@ -118,4 +119,59 @@ async def:pub check_walker -> bool {
     assert isinstance(walked.reports[0], Meta);
     assert walked.reports[0].owner == "jaseci-labs";
     return True;
+}
+
+node Mark {}
+
+"""Drain what a bridged streaming call returned, sync or async, into a list."""
+async def _drain(stream: any) -> list[any] {
+    if hasattr(stream, "__aiter__") {
+        return [item async for item in stream];
+    }
+    return list(stream);
+}
+
+async def:pub probe_typed -> dict[str, any] {
+    payload = await fetch_score();
+    return {
+        "is_payload": isinstance(payload, ScoredPayload),
+        "owner": payload.meta.owner
+    };
+}
+
+async def:pub probe_stream -> dict[str, any] {
+    stream = await score_stream();
+    return {"items": await _drain(stream)};
+}
+
+async def:pub probe_walker_stream -> dict[str, any] {
+    walked = await StreamWalker();
+    reports: list[any] = [];
+    for report_value in walked.reports {
+        if isinstance(report_value, (list, dict, int, str, float, bool))
+            or report_value is None {
+            reports.append(report_value);
+        } else {
+            reports.append(type(report_value).__name__);
+        }
+    }
+    return {"reports": reports};
+}
+
+async def:pub probe_raise -> dict[str, any] {
+    try {
+        await score_boom();
+    } except Exception as e {
+        return {"type": type(e).__name__, "message": str(e), "status": e?.status};
+    }
+    return {"type": None};
+}
+
+def:pub stream_write -> Generator[str, None, None] {
+    root ++> Mark();
+    yield "wrote";
+}
+
+def:pub count_marks -> int {
+    return len([root-->[?:Mark]]);
 }
