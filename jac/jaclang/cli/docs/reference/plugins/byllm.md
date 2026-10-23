@@ -418,7 +418,7 @@ glob llm = ModelPool(
 
 Any `by llm()` call in the file uses the pool automatically.
 
-Every switch is reported. A `logging=True` stream or a `stream_handler` gets a `model_fallback` event naming the model that failed (`from`), the model tried next (`to`) and the error type (`error`). The usage entry of the call that was then answered lists the same switches under `fallbacks`, so a call that does not stream can read them from [`register_llm_call_hook`](#recording-every-call).
+Every switch is reported. A `logging=True` stream or a `stream_handler` gets a `model_fallback` event naming the model that failed (`from`), the model tried next (`to`) and the error type (`error`). If every model fails, these events still arrive before the error is raised. The usage entry of the call that was then answered lists the same switches under `fallbacks`, so a call that does not stream can read them from [`register_llm_call_hook`](#recording-every-call).
 
 #### Staying on the model that answered
 

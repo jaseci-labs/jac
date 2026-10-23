@@ -436,6 +436,80 @@ test "a call that does not stream reports the switch on its usage entry" {
 }
 
 
+test "a stream that fails still reports the switches it made" {
+    import litellm;
+    import unittest.mock;
+    want = {"from": SILENT_MODEL, "to": ANSWERING_MODEL, "error": "Timeout"};
+    big = {"prompt_tokens": 950, "completion_tokens": 5, "total_tokens": 955};
+    # (label, deployments down, replies, tools, through a stream_handler, switches)
+    # The last row's turn switches on both of its model calls, then compaction's
+    # summary, the only call that does not stream, finds every member down.
+    for (label, down, replies, tools, handled, expected) in [
+        ("every member down, logging stream", {PRIMARY, SECOND}, [], [], False, 1),
+        ("every member down, stream_handler", {PRIMARY, SECOND}, [], [], True, 1),
+        (
+            "every member down for the compaction summary",
+            {PRIMARY},
+            [
+                (call("lookup", {"q": "a" * 400}), big),
+                (call("lookup", {"q": "b" * 400}), big)
+            ],
+            [lookup],
+            False,
+            3
+        )
+    ] {
+        tried: list[str] = [];
+        events: list[StreamEvent] = [];
+        pool = _pool_with_outage(MockLLM(outputs=replies), tried, down);
+
+        def _all_down(model: str, **kwargs: object) -> object {
+            raise litellm.Timeout(
+                message="no bytes", model=model, llm_provider="together_ai"
+            );
+        }
+        router(pool).completion = _all_down;
+
+        def answer(q: str) -> str by pool(
+            tools=tools,
+            stream=True,
+            logging=True,
+            ctx_window=1000,
+            keep_recent_iterations=1
+        );
+
+        def count(q: str) -> int by pool(stream=True, stream_handler=events.append);
+
+        raised: any = None;
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._streaming_config, {"num_retries": 0}
+        ) {
+            try {
+                if handled {
+                    count("x");
+                } else {
+                    turn: any = answer("x");
+                    for ev in turn {
+                        events.append(ev);
+                    }
+                }
+            } except Exception as e {
+                raised = e;
+            }
+        }
+        assert type(raised).__name__ == "Timeout" , f"{label}: got {raised!r}";
+        switches = [
+            e.data
+            for e in events
+            if e.event_type == "model_fallback"
+        ];
+        assert switches == [want] * expected , (
+            f"{label}: got {switches} in {[e.event_type for e in events]}"
+        );
+    }
+}
+
+
 """Answer every litellm call that a pool's Router makes from `answers`, failing those
 for the models in `down`, sync and async alike. What litellm received is `answers.seen`."""
 def _provider(answers: MockLLM, down: set[str]) -> any {

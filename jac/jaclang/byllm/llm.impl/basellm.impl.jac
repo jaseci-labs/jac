@@ -101,7 +101,7 @@ def _compaction_events(
 
 
 def _fallback_events(
-    records: list[dict[str, any]]
+    mt_run: MTRuntime, failed: bool = False
 ) -> Generator[StreamEvent, None, None];
 
 
@@ -716,6 +716,7 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
         and mt_run.resp_type is not None
         and mt_run.resp_type is not str {
         accumulated = "";
+        failed = True;
         try {
             for ev in _answer_events(
                 mt_run, self.dispatch_streaming(mt_run, retractable=True), 0
@@ -731,15 +732,15 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
                     logger.debug(f"stream_handler raised: {e}");
                 }
             }
+            failed = False;
         } finally {
             mt_run.write_back_conversation();
-        }
-
-        for ev in _fallback_events(mt_run._usage_history) {
-            try {
-                on_event(ev);
-            } except Exception as e {
-                logger.debug(f"stream_handler raised: {e}");
+            for ev in _fallback_events(mt_run, failed) {
+                try {
+                    on_event(ev);
+                } except Exception as e {
+                    logger.debug(f"stream_handler raised: {e}");
+                }
             }
         }
         if mt_run._usage_history {
@@ -1868,6 +1869,9 @@ impl BaseLLM._invoke_streaming(
 ) -> Generator[StreamEvent, None, None] {
     try {
         yield from self._stream_steps(mt_run);
+    } except Exception {
+        yield from _fallback_events(mt_run, failed=True);
+        raise;
     } finally {
         mt_run.write_back_conversation();
     }
@@ -1878,7 +1882,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
         yield from _answer_events(
             mt_run, self.dispatch_streaming(mt_run, retractable=True), 0
         );
-        yield from _fallback_events(mt_run._usage_history);
+        yield from _fallback_events(mt_run);
     } else {
         max_iters = (
             mt_run.call_params.get("max_react_iterations")
@@ -2617,7 +2621,7 @@ impl _usage_step_events(
     mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
     if len(mt_run._usage_history) > usage_base {
-        yield from _fallback_events(mt_run._usage_history[usage_base:]);
+        yield from _fallback_events(mt_run);
         yield StreamEvent(
             event_type="usage_step",
             data=_aggregate_usage(mt_run._usage_history[usage_base:])
@@ -2627,12 +2631,18 @@ impl _usage_step_events(
 
 
 impl _fallback_events(
-    records: list[dict[str, any]]
+    mt_run: MTRuntime, failed: bool = False
 ) -> Generator[StreamEvent, None, None] {
-    for record in records {
-        for fallback in record.get("fallbacks", []) {
-            yield StreamEvent(event_type="model_fallback", data=dict(fallback));
-        }
+    switches: list[dict[str, any]] = [];
+    for record in mt_run._usage_history {
+        switches.extend(record.get("fallbacks", []));
+    }
+    if failed {
+        switches.extend(mt_run._fallbacks);
+    }
+    for fallback in switches[mt_run._fallbacks_reported:] {
+        mt_run._fallbacks_reported += 1;
+        yield StreamEvent(event_type="model_fallback", data=dict(fallback));
     }
 }
 
@@ -2855,6 +2865,7 @@ impl _default_compact(
     } finally {
         if parent_mt_run is not None {
             parent_mt_run._usage_history.extend(comp_mt_run._usage_history);
+            parent_mt_run._fallbacks.extend(comp_mt_run._fallbacks);
         }
     }
     summary_msg = {
