@@ -137,11 +137,14 @@ impl ScopedStream._finish(delivered: bool) {
     self._done = True;
     try {
         if not delivered {
-            self.scope.abort();
-            if self._source is not None {
-                await close_stream(self._source);
+            try {
+                if self._source is not None {
+                    await close_stream(self._source);
+                }
+                await close_stream(self.body);
+            } finally {
+                self.scope.abort();
             }
-            await close_stream(self.body);
         }
     } finally {
         await self.scope.aclose();

@@ -4,7 +4,8 @@ import logging;
 import from concurrent.futures { ThreadPoolExecutor }
 
 glob logger: logging.Logger = logging.getLogger(__name__),
-     _STREAM_STOP: any = object();
+     _STREAM_STOP: any = object(),
+     _CLOSE_POLL_SECONDS: float = 0.01;
 
 
 obj SyncExecutor {
