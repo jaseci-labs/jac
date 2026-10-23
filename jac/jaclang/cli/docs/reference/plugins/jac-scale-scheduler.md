@@ -365,7 +365,7 @@ Admins can list the static tasks a service runs with `GET /admin/schedules`. Eac
 curl -s http://localhost:8000/admin/schedules -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-Behind the fleet gateway, the same request answers for the whole fleet: the gateway asks every service it serves and returns `{"ok": true, "data": {"services": [...], "missing": [...], "schedules": [...]}}`, where each entry also carries the `service` that runs it and that service's `namespace`. `missing` names every service that did not answer with its listing, with the HTTP `status` it gave (`null` when it could not be reached), so a partial listing reads as partial rather than as services with no tasks. A service answers for itself, with its own `namespace` at the top level.
+Behind the fleet gateway, the same request answers for the whole fleet: the gateway asks every service it serves and returns `{"ok": true, "data": {"services": [...], "unanswered": [...], "schedules": [...]}}`, where each entry also carries the `service` that runs it and that service's `namespace`. `unanswered` names every service that did not answer with its listing, with the HTTP `status` it gave (`null` when it could not be reached), so a partial listing reads as partial rather than as services with no tasks. When no service answers, the gateway returns a JSON `502` carrying the same `unanswered` list. A service answers for itself, with its own `namespace` at the top level.
 
 ## Configuration Reference
 
