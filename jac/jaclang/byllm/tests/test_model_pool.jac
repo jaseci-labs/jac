@@ -1,11 +1,22 @@
-"""ModelPool routing: aliasing, the fallback chain, and the async bridge.
+"""ModelPool routing: aliasing, the fallback chain, stickiness and its reports, member
+settings, and the async bridge.
 
 A pool dispatches through a litellm Router, never through its members. Fake
-`router.completion` and leave the pool itself real.
+`router.completion` and leave the pool itself real; where a member's settings are the
+subject, fake `litellm.completion` instead, so the Router's own merge runs.
 """
 
-import from jaclang.byllm.lib { Model, ModelPool }
-import from support { text_chunk }
+import contextlib;
+import jaclang.byllm.llm as _byllm_llm_mod;
+import from jaclang.byllm.lib {
+    MockLLM,
+    Model,
+    ModelPool,
+    StreamEvent,
+    register_llm_call_hook,
+    unregister_llm_call_hook
+}
+import from support { call, chunk_text, mk_run, say, stream_events, text_chunk }
 
 
 """The pool's litellm Router, as an untyped handle. ModelPool never exposes it
@@ -122,16 +133,13 @@ test "a pool with every deployment exhausted raises rather than swallowing" {
 test "router init aliases deployments by strategy" {
     fb = _pool("fallback", ["gpt-3.5-turbo", "gpt-4"]);
     fb_models: any = router(fb).model_list;
-    fb_chain: any = router(fb).fallbacks;
 
     assert fb.model_name == "pool-primary" , f"got {fb.model_name!r}";
     assert len(fb_models) == 2 , f"got {len(fb_models)} deployments";
     assert fb_models[0]["model_name"] == "pool-primary";
     assert fb_models[1]["model_name"] == "pool-fallback-1";
-    assert "pool-primary" in fb_chain[0] , f"got {fb_chain}";
-    assert "pool-fallback-1" in fb_chain[0].get("pool-primary", []) , (
-        f"the fallback chain must name the next deployment: {fb_chain}"
-    );
+    # The pool walks the members itself, so the Router has no chain to recurse into.
+    assert not router(fb).fallbacks , f"got {router(fb).fallbacks}";
 
     lb = _pool("simple-shuffle", ["gpt-3.5-turbo", "gpt-4", "gpt-4o"]);
     lb_models: any = router(lb).model_list;
@@ -238,4 +246,311 @@ test "a pool that fails mid-stream raises rather than splicing in a fallback" {
         f"the fallback must not be spliced onto partial output, got {chunks}"
     );
     assert tried == ["pool-primary"] , f"the fallback must not be tried at all, got {tried}";
+}
+
+
+"""The tool the agent turns below call."""
+def lookup(q: str) -> str {
+    return f"found {q}";
+}
+
+
+glob PRIMARY = "pool-primary",
+     SECOND = "pool-fallback-1",
+     SILENT_MODEL = "together_ai/glm-5.3-flash",
+     ANSWERING_MODEL = "gpt-4o-mini";
+
+
+"""A fallback pool whose deployments in `down` time out, the way a silent provider
+does; the others answer from `answers`, on the Router's streaming and non-streaming
+paths alike. `tried` records the deployment of every attempt."""
+def _pool_with_outage(
+    answers: MockLLM, tried: list[str], down: set[str], sticky: bool = False
+) -> ModelPool {
+    import litellm;
+    pool = ModelPool(
+        models=[
+            Model(model_name=SILENT_MODEL, api_key="sk-test"),
+            Model(model_name=ANSWERING_MODEL, api_key="sk-test")
+        ],
+        strategy="fallback",
+        sticky=sticky
+    );
+    def _deployment(model: str, **kwargs: object) -> object {
+        tried.append(model);
+        if model in down {
+            raise litellm.Timeout(
+                message="no bytes in 90 s", model=model, llm_provider="together_ai"
+            );
+        }
+        if kwargs.get("stream") {
+            return answers.model_call_with_stream(kwargs);
+        }
+        return answers.model_call_no_stream(kwargs);
+    }
+    router(pool).completion = _deployment;
+    router(pool)._completion = _deployment;
+    return pool;
+}
+
+
+test "a sticky pool stays on the member that answered for the rest of its by call" {
+    # The turn makes two model calls: the tool call, then the answer. A plain pool
+    # waits on the silent primary before both; a sticky one only before the first.
+    for (stream, sticky, want) in [
+        (False, False, [PRIMARY, SECOND, PRIMARY, SECOND]),
+        (False, True, [PRIMARY, SECOND, SECOND]),
+        (True, False, [PRIMARY, SECOND, PRIMARY, SECOND]),
+        (True, True, [PRIMARY, SECOND, SECOND])
+    ] {
+        tried: list[str] = [];
+        answers = MockLLM(outputs=[call("lookup", {"q": "x"}), say("done")]);
+        pool = _pool_with_outage(answers, tried, {PRIMARY}, sticky=sticky);
+
+        def turn(q: str) -> str by pool(tools=[lookup], stream=stream, logging=stream);
+
+        result = turn("x");
+        answer = chunk_text(stream_events(result)) if stream else result;
+        label = f"stream={stream}, sticky={sticky}";
+        assert answer == "done" , f"{label}: got {answer!r}";
+        assert tried == want , f"{label}: tried {tried}";
+    }
+}
+
+
+test "the next by call on a sticky pool starts at the primary again" {
+    tried: list[str] = [];
+    pool = _pool_with_outage(
+        MockLLM(outputs=["one", "two"]), tried, {PRIMARY}, sticky=True
+    );
+
+    def ask(q: str) -> str by pool();
+
+    assert [ask("a"), ask("b")] == ["one", "two"];
+    assert tried == [PRIMARY, SECOND, PRIMARY, SECOND] , f"tried {tried}";
+}
+
+
+test "a sticky pool wraps round to the next member when the one it stays on fails" {
+    # Each member goes down right after it answers, so every call fails over: from
+    # the primary to the second member, from there back round to the primary.
+    tried: list[str] = [];
+    down = {PRIMARY};
+    answers = MockLLM(
+        outputs=[call("lookup", {"q": "1"}), call("lookup", {"q": "2"}), say("done")]
+    );
+    pool = _pool_with_outage(answers, tried, down, sticky=True);
+    serve = router(pool).completion;
+
+    def flaky(model: str, **kwargs: object) -> object {
+        reply = serve(model, **kwargs);
+        down.clear();
+        down.add(model);
+        return reply;
+    }
+    router(pool).completion = flaky;
+
+    def turn(q: str) -> str by pool(tools=[lookup]);
+
+    assert turn("x") == "done";
+    assert tried == [PRIMARY, SECOND, SECOND, PRIMARY, PRIMARY, SECOND] , (
+        f"tried {tried}"
+    );
+}
+
+
+test "every switch is reported as a model_fallback event and on the answering call's usage" {
+    want = {"from": SILENT_MODEL, "to": ANSWERING_MODEL, "error": "Timeout"};
+    for (label, tools, handled) in [
+        ("logging stream with tools", [lookup], False),
+        ("logging stream, no tools", [], False),
+        ("stream_handler, structured answer", [], True)
+    ] {
+        tried: list[str] = [];
+        events: list[StreamEvent] = [];
+        if handled {
+            pool = _pool_with_outage(MockLLM(outputs=[42]), tried, {PRIMARY});
+
+            def count(q: str) -> int by pool(
+                stream=True, stream_handler=events.append
+            );
+
+            assert count("x") == 42 , f"{label}: the answer still arrives";
+        } else {
+            answers = MockLLM(
+                outputs=[call("lookup", {"q": "x"}), say("42")]
+                    if tools
+                    else [say("42")]
+            );
+            pool = _pool_with_outage(answers, tried, {PRIMARY});
+            def answer(q: str) -> str by pool(tools=tools, stream=True, logging=True);
+            events = stream_events(answer("x"));
+            assert chunk_text(events) == "42" , f"{label}: got {chunk_text(events)!r}";
+        }
+        switches = [
+            e.data
+            for e in events
+            if e.event_type == "model_fallback"
+        ];
+        assert switches and all(s == want for s in switches) , (
+            f"{label}: got {switches} in {[e.event_type for e in events]}"
+        );
+        if not handled {
+            per_call = events[-1].data["per_call"];
+            assert [
+                r.get("fallbacks")
+                for r in per_call
+                if r.get("fallbacks")
+            ]
+                == [[want]] * len(switches) , f"{label}: usage {per_call}";
+        }
+    }
+
+    tried: list[str] = [];
+    healthy = _pool_with_outage(MockLLM(outputs=["fine"]), tried, set());
+
+    def calm(q: str) -> str by healthy(stream=True, logging=True);
+
+    events = stream_events(calm("x"));
+    assert chunk_text(events) == "fine" and tried == [PRIMARY];
+    assert "model_fallback" not in [e.event_type for e in events];
+    assert "fallbacks" not in events[-1].data["per_call"][0];
+}
+
+
+test "a call that does not stream reports the switch on its usage entry" {
+    records: list[dict[str, any]] = [];
+    tried: list[str] = [];
+    pool = _pool_with_outage(MockLLM(outputs=["fine"]), tried, {PRIMARY});
+
+    def ask(q: str) -> str by pool();
+
+    register_llm_call_hook(records.append);
+    try {
+        assert ask("x") == "fine";
+    } finally {
+        unregister_llm_call_hook(records.append);
+    }
+    want = [{"from": SILENT_MODEL, "to": ANSWERING_MODEL, "error": "Timeout"}];
+    assert [r["usage"].get("fallbacks") for r in records] == [want] , f"got {records}";
+}
+
+
+"""Answer every litellm call that a pool's Router makes from `answers`, failing those
+for the models in `down`, sync and async alike. What litellm received is `answers.seen`."""
+def _provider(answers: MockLLM, down: set[str]) -> any {
+    import litellm;
+    import unittest.mock;
+    def _completion(**kwargs: object) -> object {
+        if kwargs.get("model") in down {
+            raise litellm.Timeout(
+                message="no bytes",
+                model=str(kwargs.get("model")),
+                llm_provider="openai"
+            );
+        }
+        return answers.model_call_no_stream(kwargs);
+    }
+    async def _acompletion(**kwargs: object) -> object {
+        return _completion(**kwargs);
+    }
+    stack = contextlib.ExitStack();
+    stack.enter_context(unittest.mock.patch.object(litellm, "completion", _completion));
+    stack.enter_context(
+        unittest.mock.patch.object(litellm, "acompletion", _acompletion)
+    );
+    return stack;
+}
+
+
+"""What the provider was sent, reduced to the two settings under test."""
+def _settings(request: dict[str, any]) -> tuple[any, any] {
+    return (request.get("temperature"), request.get("max_tokens"));
+}
+
+
+test "each member's own settings reach its request, on every strategy" {
+    member_settings = {"temperature": 0.0, "max_tokens": 17};
+    for strategy in ["fallback", "simple-shuffle", "cost-based-routing"] {
+        answers = MockLLM(outputs=["ok"]);
+        pool = ModelPool(
+            models=[
+                Model(
+                    model_name="gpt-4o-mini",
+                    api_key="sk-test",
+                    call_params=member_settings
+                )
+            ],
+            strategy=strategy
+        );
+        with _provider(answers, set()) {
+            pool.invoke(mk_run());
+        }
+        sent = answers.seen[-1];
+        assert _settings(sent) == (0.0, 17) , f"{strategy}: sent {sent}";
+    }
+
+    answers = MockLLM(outputs=["ok"]);
+    pair = ModelPool(
+        models=[
+            Model(
+                model_name="gpt-4o",
+                api_key="sk-test",
+                call_params={"temperature": 0.1, "max_tokens": 11}
+            ),
+            Model(
+                model_name="gpt-4o-mini",
+                api_key="sk-test",
+                call_params={"temperature": 0.9, "max_tokens": 33}
+            )
+        ],
+        strategy="fallback"
+    );
+    with _provider(answers, {"gpt-4o"}) {
+        pair.invoke(mk_run());
+    }
+    assert _settings(answers.seen[-1]) == (0.9, 33) , (
+        f"the member that answered sends its own settings, sent {answers.seen[-1]}"
+    );
+}
+
+
+test "a setting comes from the call site, then the member, then jac.toml" {
+    import unittest.mock;
+    for (label, call_site, member, project, want) in [
+        ("member only", {}, {"temperature": 0.0}, {}, (0.0, None)),
+        (
+            "call site beats member",
+            {"temperature": 0.5},
+            {"temperature": 0.0},
+            {},
+            (0.5, None)
+        ),
+        (
+            "member beats jac.toml",
+            {},
+            {"max_tokens": 17},
+            {"max_tokens": 99},
+            (None, 17)
+        ),
+        ("jac.toml fills in", {}, {"temperature": 0.0}, {"max_tokens": 99}, (0.0, 99)),
+        ("nothing set", {}, {}, {}, (None, None))
+    ] {
+        answers = MockLLM(outputs=["ok"]);
+        with unittest.mock.patch.dict(_byllm_llm_mod._call_params_config, project) {
+            pool = ModelPool(
+                models=[
+                    Model(
+                        model_name="gpt-4o-mini", api_key="sk-test", call_params=member
+                    )
+                ],
+                strategy="fallback"
+            );
+            with _provider(answers, set()) {
+                pool(**call_site).invoke(mk_run());
+            }
+        }
+        sent = answers.seen[-1];
+        assert _settings(sent) == want , f"{label}: sent {sent}";
+    }
 }
