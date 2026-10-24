@@ -15,16 +15,26 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         return _folded;
     }
     if isinstance(nd, uni.Int) {
-        tok_name = nd?.name;
-        if tok_name == Tok.HEX {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 16));
-        } elif tok_name == Tok.OCT {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 8));
-        } elif tok_name == Tok.BIN {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 2));
-        } else {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 0));
+        _bits = uni.int_literal_i64(nd.value);
+        _shape = self._scalar_shape_named(nd.coerce_to);
+        if _bits is None
+            and _shape is not None
+            and not _shape.is_float
+            and not _shape.signed
+            and _shape.width >= 64 {
+            _bits = uni.int_literal_u64_bits(nd.value);
         }
+        if _bits is None {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="integer literal",
+                name=nd.value,
+                help_text="A native int is 64 bits and this literal does not fit one. Annotate it as u64 if it is an unsigned 64-bit value; any wider integer runs in the server codespace, where ints are unbounded."
+            );
+            return None;
+        }
+        _lit = ir.Constant(ir.IntType(64), _bits);
         return self._lower_coercion(nd, _lit) if nd.coerce_to is not None else _lit;
     }
     if isinstance(nd, uni.Float) {
@@ -2030,6 +2040,16 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     lent = c_lent_arg_elem(nd);
     if lent is not None {
         return self._c_lent_address(nd, lent);
+    }
+    if isinstance(nd.op, uni.Token)
+        and nd.op.name == Tok.MINUS
+        and isinstance(nd.operand, uni.Int)
+        and uni.int_literal_i64(nd.operand.value) is None
+        and uni.int_literal_u64_bits(nd.operand.value) == -9223372036854775807 - 1 {
+        _i64_min = ir.Constant(ir.IntType(64), -9223372036854775807 - 1);
+        return self._lower_coercion(nd, _i64_min)
+            if nd.coerce_to is not None
+            else _i64_min;
     }
     operand = self._codegen_expr(nd.operand);
     if operand is None {

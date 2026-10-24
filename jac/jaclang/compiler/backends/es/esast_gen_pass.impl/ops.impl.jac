@@ -652,17 +652,21 @@ impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
     if dst_shape is None {
         return;
     }
+    big: (es.Literal | None) = None;
+    if isinstance(cur, es.Literal) {
+        if isinstance(cur.value, int) and not isinstance(cur.value, bool) {
+            big = es.Literal(value=cur.value, raw=f"{cur.value}n");
+        } elif cur.value is None and isinstance(nd, uni.Int) {
+            big = es.Literal(value=None, raw=f"{nd.value}n");
+        }
+    }
     if (
         dst_shape.sized
         and not dst_shape.is_float
         and dst_shape.width == 64
-        and isinstance(cur, es.Literal)
-        and isinstance(cur.value, int)
-        and not isinstance(cur.value, bool)
+        and big is not None
     ) {
-        nd.gen.es_ast = self.sync_loc(
-            es.Literal(value=cur.value, raw=f"{cur.value}n"), jac_node=nd
-        );
+        nd.gen.es_ast = self.sync_loc(big, jac_node=nd);
         return;
     }
     parent = nd.parent;
