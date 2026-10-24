@@ -657,18 +657,18 @@ impl NaIRGenPass._codegen_index(
             self.builder.icmp_unsigned("<", index_val, anchor[0], name="list.get.inb"),
             fast_bb,
             slow_bb
-        ).set_weights([2000, 1]);
+        ).set_weights(
+            [2000, 1]
+        );
         self.builder.position_at_end(fast_bb);
         fast_val = self.builder.load(
-            self.builder.gep(anchor[1], [index_val], name="list.get.at"), name="list.get.v"
+            self.builder.gep(anchor[1], [index_val], name="list.get.at"),
+            name="list.get.v"
         );
         self.builder.branch(join_bb);
         self.builder.position_at_end(slow_bb);
     }
 
-    # (behind an anchored fast path the old path stays out of line, so LLVM
-    # cannot merge the two loads into one through a pointer phi; both helpers
-    # only read, so the calls clobber nothing)
     _slow_attrs = ["noinline"] if anchor is not None else None;
     len_val = self.builder.call(
         helpers["len"], [target_val], name="list.len.chk", attrs=_slow_attrs
@@ -767,7 +767,9 @@ impl NaIRGenPass._codegen_index_set(
             self.builder.icmp_unsigned("<", index_val, anchor[0], name="list.set.inb"),
             fast_bb,
             slow_bb
-        ).set_weights([2000, 1]);
+        ).set_weights(
+            [2000, 1]
+        );
         self.builder.position_at_end(fast_bb);
         self.builder.store(
             self._coerce_type(value, elem_type),
@@ -1073,7 +1075,9 @@ impl NaIRGenPass._tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None) 
         return None;
     }
     idx = list(gep.indices);
-    if len(idx) != 2 or not isinstance(idx[0], ir.Constant) or not isinstance(idx[1], ir.Constant) {
+    if len(idx) != 2
+        or not isinstance(idx[0], ir.Constant)
+        or not isinstance(idx[1], ir.Constant) {
         return None;
     }
     if idx[0].constant != 0 or idx[1].constant not in (0, 1, 2) {
@@ -1127,7 +1131,9 @@ impl NaIRGenPass._apply_list_tbaa -> None {
                 }
                 field = self._tbaa_list_field(ptr, list_tys);
                 if field is not None {
-                    inst.set_metadata("tbaa", self._tbaa_tag(tbaa_root, cache, header[field]));
+                    inst.set_metadata(
+                        "tbaa", self._tbaa_tag(tbaa_root, cache, header[field])
+                    );
                     if is_load and field == 2 {
                         data_loads.add(id(inst));
                     }
@@ -1144,7 +1150,9 @@ impl NaIRGenPass._apply_list_tbaa -> None {
             }
             vt = inst.type if isinstance(inst, ir.LoadInstr) else inst.operands[0].type;
             kind = "ptr" if isinstance(vt, ir.PointerType) else str(vt);
-            inst.set_metadata("tbaa", self._tbaa_tag(tbaa_root, cache, f"jac.list.elem.{kind}"));
+            inst.set_metadata(
+                "tbaa", self._tbaa_tag(tbaa_root, cache, f"jac.list.elem.{kind}")
+            );
         }
     }
 }
@@ -1157,30 +1165,43 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
     generator step) can; element stores cannot. Calls to a few builtins that
     touch no list are allowed.
     """;
-    allowed = ("range", "len", "abs", "min", "max", "int", "float", "bool", "ord", "chr");
+    allowed = (
+        "range",
+        "len",
+        "abs",
+        "min",
+        "max",
+        "int",
+        "float",
+        "bool",
+        "ord",
+        "chr"
+    );
     for stmt in body {
         nodes: list[uni.UniNode] = list(stmt.flatten());
         for nd in nodes {
             kind = type(nd).__name__;
-            if kind in (
-                "DeleteStmt",
-                "YieldExpr",
-                "AwaitExpr",
-                "LambdaExpr",
-                "WithStmt",
-                "SpawnExpr",
-                "ConnectOp",
-                "DisconnectOp",
-                "VisitStmt",
-                "ReportStmt",
-                "GlobalStmt",
-                "NonLocalStmt",
-                "Ability"
-            ) {
+            if kind
+                in (
+                    "DeleteStmt",
+                    "YieldExpr",
+                    "AwaitExpr",
+                    "LambdaExpr",
+                    "WithStmt",
+                    "SpawnExpr",
+                    "ConnectOp",
+                    "DisconnectOp",
+                    "VisitStmt",
+                    "ReportStmt",
+                    "GlobalStmt",
+                    "NonLocalStmt",
+                    "Ability"
+                ) {
                 return False;
             }
             if isinstance(nd, uni.FuncCall) {
-                if not isinstance(nd.target, uni.Name) or nd.target.value not in allowed {
+                if not isinstance(nd.target, uni.Name)
+                    or nd.target.value not in allowed {
                     return False;
                 }
             }
@@ -1207,7 +1228,8 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
     raises as before. A local that holds no list yet reads as an empty one.
     """;
     import os;
-    if os.environ.get("JAC_NO_LIST_ANCHORS") or not self._body_keeps_list_headers(body) {
+    if os.environ.get("JAC_NO_LIST_ANCHORS")
+        or not self._body_keeps_list_headers(body) {
         return;
     }
     list_tys: set[int] = set();
@@ -1229,13 +1251,12 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
                 and nd.op.name == Tok.WALRUS_EQ {
                 bound = [nd.left];
             } elif type(nd).__name__ in ("MatchAs", "MatchStar") {
-                _match_name: any = getattr(nd, "name", None);
+                _match_name: any = nd?.name;
                 if _match_name is not None {
                     bound = [_match_name];
                 }
             }
-            # (a name the body binds, directly or by unpacking: `(a, b) = (b, a)`
-            # rebinds `a` as surely as `a = b` does)
+
             while bound {
                 tgt: any = bound.pop();
                 if isinstance(tgt, uni.Name) {
@@ -1277,7 +1298,9 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
         empty = self.llvm_module.globals.get("__jac_empty_list_header");
         if empty is None {
             arr = ir.ArrayType(ir.IntType(64), 4);
-            empty = ir.GlobalVariable(self.llvm_module, arr, name="__jac_empty_list_header");
+            empty = ir.GlobalVariable(
+                self.llvm_module, arr, name="__jac_empty_list_header"
+            );
             empty.linkage = "weak";
             empty.initializer = ir.Constant(arr, None);
         }
@@ -1315,9 +1338,10 @@ impl NaIRGenPass._list_anchor_of(
     if found is None {
         return None;
     }
-    # (a comprehension or generator body may be a function of its own)
+
     anchor_inst: any = found[0];
-    if anchor_inst.parent is None or anchor_inst.parent.parent is not self.builder.function {
+    if anchor_inst.parent is None
+        or anchor_inst.parent.parent is not self.builder.function {
         return None;
     }
     data_ty: any = found[1].type;
