@@ -539,7 +539,7 @@
     "tests/language/fixtures/lambda_per_instance_default.jac": {
       "class": "same"
     },
-    "tests/language/fixtures/loop_else_break.jac": {
+    "tests/language/fixtures/loop_else_control.jac": {
       "class": "same"
     },
     "tests/language/fixtures/match_class_pattern.jac": {

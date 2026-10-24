@@ -202,6 +202,7 @@ walker EsastGenPass(TreePass) {
         _view_branch_base: dict[(int, int)] = {},
         _view_slot_loops: set[int] = set(),
         _loop_label_stack: list[str] = [],
+        _loop_labels: dict[int, str] = {},
         _loop_label_savepoints: list[list[str]] = [],
         _used_loop_labels: set[str] = set(),
         _loop_label_seq: int = 0,

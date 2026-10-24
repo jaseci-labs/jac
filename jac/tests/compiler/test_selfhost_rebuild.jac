@@ -42,9 +42,18 @@ glob SYMTAB_PER_MODULE: float = 1.75,
          "import atexit, gc, json, resource, sys\n"
          "from unittest.mock import patch\n"
          "collect = patch('gc.collect', wraps=gc.collect).start()\n"
+         "def own_peak():\n"
+         "    try:\n"
+         "        with open('/proc/self/status') as status:\n"
+         "            for line in status:\n"
+         "                if line.startswith('VmHWM:'):\n"
+         "                    return int(line.split()[1])\n"
+         "    except (OSError, ValueError, IndexError):\n"
+         "        pass\n"
+         "    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
          "def report():\n"
-         "    usage = [resource.getrusage(w).ru_maxrss\n"
-         "             for w in (resource.RUSAGE_SELF, resource.RUSAGE_CHILDREN)]\n"
+         "    usage = [own_peak(),\n"
+         "             resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss]\n"
          "    print('PEAK_RSS=' + str(max(usage)), flush=True)\n"
          "    print('PEAK_SPLIT=' + json.dumps(usage), flush=True)\n"
          "    from jaclang.runtime.runtime import JacRuntime\n"
@@ -64,7 +73,10 @@ glob SYMTAB_PER_MODULE: float = 1.75,
 
 The driver reports its own peak and its children's, so the figure covers the
 rebuild alone. `RUSAGE_CHILDREN` read here would also count every earlier
-child of a pooled test worker."""
+child of a pooled test worker. On Linux the driver's own peak is `VmHWM`, not
+`RUSAGE_SELF`: `execve` folds the spawning worker's high-water mark into the
+new program's `ru_maxrss`, so a driver spawned by a worker that an earlier
+test grew to 6.8 GB reported 6.8 GB whatever the rebuild used."""
 def _peak_mb(stdout: str) -> int {
     peak = 0;
     for line in stdout.splitlines() {
