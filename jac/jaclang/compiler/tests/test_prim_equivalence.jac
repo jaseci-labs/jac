@@ -374,6 +374,15 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "bundled functools",
+             "prim_functools.jac",
+             "functools_py",
+             "functools_cl",
+             "functools_na",
+             ["na"],
+             ["cmp_sort", "wraps_name"]
+         ),
+         (
              "bundled statistics",
              "prim_statistics.jac",
              "statistics_py",
@@ -939,6 +948,23 @@ test "native call fills omitted defaults from the bundled stdlib signature" {
     );
     assert hex_val == 64 , (
         f"token_hex() with the default nbytes=32: na={hex_val} chars, CPython=64"
+    );
+}
+
+test "native reduce tells an explicit None initializer from an omitted one" {
+    (eng, _) = compile_native("bundled_functools_reduce_init.jac");
+    none_init = get_func(eng, "reduce_none_initial", ctypes.c_int64)();
+    no_init = get_func(eng, "reduce_no_initial", ctypes.c_int64)();
+    int_init = get_func(eng, "reduce_int_initial", ctypes.c_int64)();
+    empty_none = get_func(eng, "reduce_empty_none_initial", ctypes.c_int64)();
+    assert none_init == 102 , (
+        f"reduce(f, [1, 2], None) starts the fold at None: na={none_init}, "
+        f"CPython=102 (starting at the first item gives 3)"
+    );
+    assert no_init == 3 , f"reduce(f, [1, 2]): na={no_init}, CPython=3";
+    assert int_init == 13 , f"reduce(f, [1, 2], 10): na={int_init}, CPython=13";
+    assert empty_none == 1 , (
+        "reduce(f, [], None) answers None instead of raising, as on CPython"
     );
 }
 
