@@ -3684,7 +3684,9 @@ graph import {
     }
     server.net ++> [
         cli.commands.execution._find_free_port { find_available_port },
-        cli.errmap.humanize_error { PortInUseError },
+        cli.errmap.humanize_error | scale.tests.server.test_host_serving {
+            PortInUseError
+        },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start {
             PORT_RETRY_LIMIT
         },
@@ -3718,6 +3720,8 @@ graph import {
         enqueue,
         use_store
     }
+    server.outbox as outbox_module ++> scale.tests.server.test_host_serving
+        | scale.tests.server.test_sv_outbox_endpoints;
     server.request_scope ++> scale.server.websocket_ext { RequestScope }
     server.sealed_serve ++> [
         cli.commands.execution._jab_native_bin
@@ -3806,6 +3810,7 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
+            | scale.tests.server.test_host_serving
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
@@ -4058,6 +4063,7 @@ graph import {
             | scale.tests.microservices.test_gateway_webapp
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
+            | scale.tests.server.test_host_serving
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_stream_ws._spawn_upstream
             | scale.tests.server.test_sv_outbox_endpoints
@@ -4069,6 +4075,7 @@ graph import {
     ]
     server.serving.server --> scale.tests.microservices.test_drain
         | scale.tests.microservices.test_microservice { ServingServer }
+    server.serving.server as serving_module ++> scale.tests.server.test_host_serving;
     server.serving.sse ++> [
         scale.runtime.rpc.rpc._iter_sse_text { consume_sse_events },
         scale.tests.microservices.test_sse_framing { sse_frame_stream },

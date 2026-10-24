@@ -30,57 +30,80 @@ impl ServingServer._serve(
     self._loop = asyncio.get_running_loop();
     self._stop_event = asyncio.Event();
     self._executor = SyncExecutor(threads=self.settings.workers.threads);
-    self._executor.install(self._loop);
     listener = self.sock;
-    if listener is None {
-        listener = bind_listener(
-            self.host,
-            int(self.port or 0),
-            backlog=self.settings.limits.backlog,
-            port_retries=port_retries
-        );
-    }
-    ssl_ctx = self.settings.tls.build_context();
-    self._server = await asyncio.start_server(
-        self._handle_connection,
-        sock=listener,
-        ssl=ssl_ctx,
-        limit=max(4096, self.settings.limits.max_header_bytes),
-        backlog=self.settings.limits.backlog
-    );
-    try {
-        self.bound_port = int(listener.getsockname()[1]);
-    } except Exception {
-        self.bound_port = int(self.port or 0);
-    }
-    self.port = self.bound_port;
-    if self.install_signals {
-        self._install_signal_handlers();
-    }
     pulse: any = None;
-    if self.heartbeat is not None {
-        pulse = self._loop.create_task(self._heartbeat_loop());
-    }
-    if on_ready is not None {
-        on_ready(self.bound_port);
-    }
+    failed = False;
     try {
-        await self._stop_event.`wait();
-    } finally {
-        self.drain.start(self.drain.reason or 'shutdown');
-        self._server.close();
-        await self._drain();
-        try {
-            await asyncio.wait_for(
-                self._server.wait_closed(), timeout=self.settings.timeouts.close
+        self._executor.install(self._loop);
+        if listener is None {
+            listener = bind_listener(
+                self.host,
+                int(self.port or 0),
+                backlog=self.settings.limits.backlog,
+                port_retries=port_retries
             );
-        } except asyncio.TimeoutError {}
-        await self.app.shutdown();
-        if pulse is not None {
-            pulse.cancel();
         }
-        if self._executor is not None {
-            self._executor.shutdown(`wait=False);
+        ssl_ctx = self.settings.tls.build_context();
+        self._server = await asyncio.start_server(
+            self._handle_connection,
+            sock=listener,
+            ssl=ssl_ctx,
+            limit=max(4096, self.settings.limits.max_header_bytes),
+            backlog=self.settings.limits.backlog
+        );
+        try {
+            self.bound_port = int(listener.getsockname()[1]);
+        } except Exception {
+            self.bound_port = int(self.port or 0);
+        }
+        self.port = self.bound_port;
+        if self.install_signals {
+            self._install_signal_handlers();
+        }
+        if self.heartbeat is not None {
+            pulse = self._loop.create_task(self._heartbeat_loop());
+        }
+        if on_ready is not None {
+            on_ready(self.bound_port);
+        }
+        await self._stop_event.`wait();
+    } except BaseException {
+        failed = True;
+        raise;
+    } finally {
+        try {
+            try {
+                self.drain.start(self.drain.reason or 'shutdown');
+                if self._server is not None {
+                    self._server.close();
+                    await self._drain();
+                    try {
+                        await asyncio.wait_for(
+                            self._server.wait_closed(),
+                            timeout=self.settings.timeouts.close
+                        );
+                    } except asyncio.TimeoutError {}
+                } elif listener is not None and self.sock is None {
+                    listener.close();
+                }
+            } finally {
+                try {
+                    await self.app.shutdown();
+                } finally {
+                    try {
+                        if pulse is not None {
+                            pulse.cancel();
+                        }
+                    } finally {
+                        self._executor.shutdown(`wait=False);
+                    }
+                }
+            }
+        } except BaseException {
+            if not failed {
+                raise;
+            }
+            _logger.exception('server cleanup failed after startup or serving error');
         }
     }
 }
@@ -151,7 +174,13 @@ impl ServingServer.request_stop(exit_code: int = EXIT_OK) {
     if self._loop is None or self._stop_event is None {
         return;
     }
-    self._loop.call_soon_threadsafe(self._stop_event.set);
+    try {
+        self._loop.call_soon_threadsafe(self._stop_event.set);
+    } except RuntimeError {
+        if not self._loop.is_closed() {
+            raise;
+        }
+    }
 }
 
 impl ServingServer.run(
@@ -170,23 +199,48 @@ impl ServingServer.serve_background(
     port_retries: int = PORT_RETRY_LIMIT
 ) -> Callable[[], None] {
     ready = threading.Event();
+    abandoned = threading.Event();
+    errors: list[BaseException] = [];
     self.install_signals = False;
 
     def _notify(port: int) {
-        ready.set();
+        if abandoned.is_set() {
+            self.request_stop();
+            return;
+        }
         if on_ready is not None {
             on_ready(port);
         }
+        if abandoned.is_set() {
+            self.request_stop();
+            return;
+        }
+        ready.set();
     }
 
     notify_fn: any = _notify;
 
     def _target {
-        self.run(on_ready=notify_fn, port_retries=port_retries);
+        try {
+            self.run(on_ready=notify_fn, port_retries=port_retries);
+        } except BaseException as e {
+            if ready.is_set() or abandoned.is_set() {
+                raise;
+            }
+            errors.append(e);
+            ready.set();
+        }
     }
     thread = threading.Thread(target=_target, daemon=True);
     thread.start();
-    ready.`wait(timeout=30);
+    if not ready.`wait(timeout=30) {
+        abandoned.set();
+        self.request_stop();
+        raise TimeoutError('the server did not become ready within 30 seconds');
+    }
+    if errors {
+        raise errors[0];
+    }
 
     def _stop {
         self.request_stop();

@@ -663,6 +663,35 @@ test "hmr" {
 
 ---
 
+## Background Server Startup
+
+Embedding hosts and network-based test harnesses can start a `JacAPIServer`
+with `serve_background()`. It returns a stop callable after the transport is
+listening and the optional `on_ready` callback has completed. Call that
+callable when the host finishes using the server.
+
+Startup failures are raised in the calling thread with their original
+exception type. With `port_retries=0` (the `JacAPIServer` default), an occupied
+port raises `PortInUseError`, which is an `OSError`. TLS, boot, and readiness
+callback errors also propagate; a failed start does not return a stop handle.
+
+API server starts share the process-wide bridge worker through distinct owner
+claims. Startup cleanup and the returned stop callable release only that start's
+claim, so another running server keeps its worker. Repeated releases are harmless;
+releasing the final claim requests worker shutdown. Forked children start with
+fresh worker ownership. The outbox helpers retain their legacy behavior:
+`start_worker()` is idempotent, and `stop_worker()` without an owner explicitly
+stops the process-wide worker.
+
+If startup has not completed within 30 seconds, the call raises `TimeoutError`
+and requests shutdown. A delayed worker that observes abandonment at
+readiness requests shutdown again. Shutdown is cooperative: bind operations,
+callbacks, and shutdown hooks already in progress cannot be forcibly interrupted.
+A callback already admitted may finish after the deadline. Failures after
+successful readiness remain server-thread errors rather than startup exceptions.
+
+---
+
 ## Parameterized Tests
 
 The `parametrize()` helper registers one test per parameter. It creates individual test cases from a list of inputs, so each case runs and reports independently.

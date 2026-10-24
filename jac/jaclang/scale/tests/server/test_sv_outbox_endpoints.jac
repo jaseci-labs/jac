@@ -294,6 +294,75 @@ test "scale server: a worker arms the outbox worker for a bridging consumer" {
 }
 
 
+test "scale server: background servers release only their own outbox worker claim" {
+    tmp = setup_env();
+    stop_worker();
+    store = SqliteOutboxStore(path=os.path.join(tmp, "outbox.sqlite"));
+    use_store(store);
+    saved_consumers = dict(sv_client._consumer_providers);
+    saved_app = sv_client.consumer_app();
+    sv_client.clear_consumer_providers();
+    stop_owner: any = None;
+    stop_peer: any = None;
+    try {
+        (_owner_client, owner) = _provider(tmp, "worker_owner");
+        (_peer_client, peer) = _provider(tmp, "worker_peer");
+        for srv in (owner, peer) {
+            srv.settings = ServeSettings.load(
+                tmp, {"host": "127.0.0.1", "port": 0, "workers": "1"}
+            );
+        }
+        sv_client._declare_consumer_provider("worker_owner", "worker_peer");
+        stop_owner = owner.serve_background(no_client=True);
+        worker = outbox_module._state.worker;
+        assert worker is not None and worker.is_alive();
+
+        failure = ValueError("peer transport startup failed");
+        caught: any = None;
+        with unittest.mock.patch.object(
+            ServingServer, "serve_background", side_effect=failure
+        ) {
+            try {
+                peer.serve_background(no_client=True);
+            } except ValueError as e {
+                caught = e;
+            }
+        }
+        assert caught is failure;
+        assert outbox_module._state.worker is worker and worker.is_alive() , (
+            "a failed second start stopped the first server's worker"
+        );
+
+        stop_peer = peer.serve_background(no_client=True);
+        assert outbox_module._state.worker is worker and worker.is_alive();
+        stop_owner();
+        assert outbox_module._state.worker is worker and worker.is_alive();
+        stop_owner();
+        assert outbox_module._state.worker is worker and worker.is_alive() , (
+            "repeating a stop released another server's worker claim"
+        );
+        stop_owner = None;
+        stop_peer();
+        stop_peer = None;
+        assert not worker.is_alive() and not worker_running();
+    } finally {
+        if stop_peer is not None {
+            stop_peer();
+        }
+        if stop_owner is not None {
+            stop_owner();
+        }
+        stop_worker();
+        sv_client.clear_consumer_providers();
+        sv_client._consumer_providers.update(saved_consumers);
+        sv_client.set_consumer_app(saved_app);
+        use_store(None);
+        store.close();
+        done(tmp);
+    }
+}
+
+
 test "PgOutboxStore: lease, expired-lease re-listing and prune on the embedded store" {
     import from jaclang.server.session { Session }
     tmp = setup_env();

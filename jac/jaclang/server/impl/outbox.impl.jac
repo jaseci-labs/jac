@@ -549,10 +549,20 @@ impl _worker_loop(interval_s: float, stop: threading.Event) -> None {
 }
 
 
-impl start_worker(interval_s: float = 1.0) -> None {
+impl _reset_worker_after_fork {
+    _state.worker = None;
+    _state.stop_event = None;
+    _state.worker_owners = set();
+    _state.lock = threading.RLock();
+}
+
+
+impl start_worker(interval_s: float = 1.0, owner: (object | None) = None) -> None {
     with _state.lock {
+        owners = _state.worker_owners | {owner};
         current = _state.worker;
         if current is not None and current.is_alive() {
+            _state.worker_owners = owners;
             return;
         }
         _store_for_worker();
@@ -560,31 +570,45 @@ impl start_worker(interval_s: float = 1.0) -> None {
         thread = threading.Thread(
             target=_worker_loop, args=(interval_s, stop), daemon=True, name="jac-outbox"
         );
+        thread.start();
         _state.stop_event = stop;
         _state.worker = thread;
-        thread.start();
+        _state.worker_owners = owners;
     }
 }
 
 
-impl start_worker_if_bridging(interval_s: float = 1.0) -> bool {
+impl start_worker_if_bridging(
+    interval_s: float = 1.0, owner: (object | None) = None
+) -> bool {
     if not sv_client.has_consumers() {
         return False;
     }
-    start_worker(interval_s);
+    start_worker(interval_s, owner=owner);
     return True;
 }
 
 
-impl stop_worker(timeout_s: float = 5.0) -> None {
+impl stop_worker(timeout_s: float = 5.0, owner: (object | None) = None) -> None {
     with _state.lock {
+        if owner is None {
+            _state.worker_owners.clear();
+        } else {
+            if owner not in _state.worker_owners {
+                return;
+            }
+            _state.worker_owners.remove(owner);
+            if _state.worker_owners {
+                return;
+            }
+        }
         thread = _state.worker;
         stop = _state.stop_event;
         _state.worker = None;
         _state.stop_event = None;
-    }
-    if stop is not None {
-        stop.set();
+        if stop is not None {
+            stop.set();
+        }
     }
     if thread is not None and thread.is_alive() {
         thread.join(timeout=timeout_s);
