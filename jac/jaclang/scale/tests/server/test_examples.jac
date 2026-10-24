@@ -3,12 +3,30 @@
 import contextlib;
 import gc;
 import io;
+import os;
+import signal;
 import socket;
 import subprocess;
 import time;
 import requests;
 import from pathlib { Path }
 
+
+"""SIGKILL a started server's whole process group, workers included.
+
+Worker children inherit the harness's stdout and stderr pipes, so killing
+only the master orphans the workers: they keep running and hold the pipes
+open, and any later communicate() blocks on an EOF that never comes. The
+server is launched in its own session, so the group kill reaches every
+worker. Falls back to the single-process kill when the group is gone.
+"""
+def _kill_process_group(server: subprocess.Popen) -> None {
+    try {
+        os.killpg(server.pid, signal.SIGKILL);
+    } except OSError {
+        server.kill();
+    }
+}
 
 glob JacScaleFixtures: Path = Path(__file__).parent.parent / "fixtures";
 
@@ -69,12 +87,16 @@ obj JacScaleTestRunner {
             str(self.example_file)
         ];
 
+        # Own session so _kill_process_group can take the worker children
+        # down with the master (they inherit these pipes; orphans holding
+        # them make a later communicate() wait on EOF forever).
         self.server_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=example_dir
+            cwd=example_dir,
+            start_new_session=True
         );
 
         max_attempts = timeout * 5;
@@ -82,7 +104,8 @@ obj JacScaleTestRunner {
 
         for _ in range(max_attempts) {
             if self.server_process.poll() is not None {
-                (stdout, stderr) = self.server_process.communicate();
+                _kill_process_group(self.server_process);
+                (stdout, stderr) = self.server_process.communicate(timeout=30);
                 raise RuntimeError(
                     f"Server process terminated unexpectedly.\n"
                     f"STDOUT: {stdout}\nSTDERR: {stderr}"
@@ -102,6 +125,7 @@ obj JacScaleTestRunner {
         }
 
         if not server_ready {
+            _kill_process_group(self.server_process);
             (stdout, stderr) = self.server_process.communicate(timeout=5);
             raise RuntimeError(
                 f"Server failed to become ready.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
@@ -116,8 +140,8 @@ obj JacScaleTestRunner {
             try {
                 self.server_process.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
-                self.server_process.kill();
-                self.server_process.`wait();
+                _kill_process_group(self.server_process);
+                self.server_process.`wait(timeout=5);
             }
             if self.server_process.stdout {
                 self.server_process.stdout.close();
