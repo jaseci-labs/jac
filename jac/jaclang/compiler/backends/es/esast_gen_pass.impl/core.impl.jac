@@ -676,7 +676,6 @@ impl EsastGenPass.prepare with entry {
         self.module.client_viols_reported = True;
     }
     self.client_manifest = ClientManifest();
-    self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
         self.module.gen.interop_manifest.endpoint_effects

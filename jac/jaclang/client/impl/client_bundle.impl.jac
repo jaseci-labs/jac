@@ -14,6 +14,16 @@ impl _ensure_js_generated(mod: Module, program: any) -> None {
     );
 }
 
+impl _errors_reaching(program: any, source: str) -> list[any] {
+    source = os.path.realpath(source);
+    owned = {id(err) for err in program.diags.owned_errors(source)};
+    return [
+        err
+        for err in program.errors_had
+        if id(err) in owned or source in program.transitive_dependents(err.owner)
+    ];
+}
+
 impl ClientBundleBuilder.postinit -> None {
     if not self.runtime_path {
         self.runtime_path = Path(__file__).with_name('client_runtime.jac');
@@ -98,18 +108,14 @@ impl ClientBundleBuilder._compile_bundle(
 
 impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
     program = client_program(self.program);
-    diagnostic_program = program._get_compiler().selfhost.resolve(
-        str(source_path), program
-    );
+    compiler = program._get_compiler();
+    diagnostic_program = compiler.product_program(str(source_path), program);
     prev_error_count = len(diagnostic_program.errors_had);
-    artifact = program._get_compiler().get_client_artifact(str(source_path), program);
+    artifact = compiler.get_client_artifact(str(source_path), program);
     if artifact is None {
-        formatted = '\n'.join(
-            str(err) for err in diagnostic_program.errors_had[prev_error_count:]
-        );
-        if not formatted {
-            formatted = '\n'.join(str(err) for err in diagnostic_program.errors_had);
-        }
+        errors = diagnostic_program.errors_had[prev_error_count:]
+            or _errors_reaching(diagnostic_program, str(source_path));
+        formatted = '\n'.join(str(err) for err in errors);
         raise ClientBundleError(
             f"Failed to compile '{source_path}' for client bundle:{formatted}"
         );

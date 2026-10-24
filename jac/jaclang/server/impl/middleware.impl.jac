@@ -117,7 +117,7 @@ impl request_context_middleware(
             return await next_fn(request);
         } finally {
             try {
-                scope.close();
+                await scope.aclose();
             } finally {
                 close_exchange(exchange_token);
             }

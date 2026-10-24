@@ -126,6 +126,12 @@ glob RETIRED: tuple[str, ...] = (
              root_prefix="scale-binaries"
          ),
          Bucket(
+             name="admin",
+             relpath="admin",
+             policy=Policy(ttl_days=30.0, markers=[".used"]),
+             summary="built admin consoles, one per UI source and compiler"
+         ),
+         Bucket(
              name="models",
              relpath="models",
              policy=Policy(retention=Retention.PINNED),

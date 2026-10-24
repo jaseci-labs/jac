@@ -252,7 +252,42 @@ impl JacProgram.has_failed_parse(self: JacProgram, path: str) -> bool {
 }
 
 impl JacProgram.drop_module_alerts(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.drop_module_alerts(resolved_path);
+            }
+        }
+    }
     self.diags.drop_module(resolved_path);
+}
+
+impl JacProgram.forget_failed_modules(self: JacProgram) -> None {
+    if self.context_root is not None {
+        self.context_root.forget_failed_modules();
+        return;
+    }
+    programs = {id(prog): prog for prog in [self, *self.contexts.values()]};
+    failed: set[str] = set();
+    for prog in programs.values() {
+        for alert in prog.errors_had {
+            if alert.owner {
+                failed.add(alert.owner);
+            }
+        }
+    }
+    stale = set(failed);
+    for prog in programs.values() {
+        for path in failed {
+            stale.update(prog.transitive_dependents(path));
+        }
+    }
+    for path in stale {
+        self.invalidate_module(path);
+    }
+    for path in failed {
+        self.drop_module_alerts(path);
+    }
 }
 
 impl JacProgram.reset_module_root(

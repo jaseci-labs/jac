@@ -66,7 +66,14 @@ impl EsastGenPass._operand_str(
     rendered = unparser.generate(es_node);
     if isinstance(
         es_node,
-        (es.AssignmentExpression, es.ConditionalExpression, es.ArrowFunctionExpression)
+        (
+            es.AssignmentExpression,
+            es.ConditionalExpression,
+            es.ArrowFunctionExpression,
+            es.AwaitExpression,
+            es.YieldExpression,
+            es.UnaryExpression
+        )
     ) {
         return "(" + rendered + ")";
     }
@@ -566,6 +573,8 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
             es.LogicalExpression(operator=logical_op, left=left, right=right),
             jac_node=here
         );
+    } elif op_name == Tok.FLOOR_DIV {
+        bin_expr = self._floor_div(left, right, here);
     } else {
         operator = ES_BINARY_OPS.get(op_name) if op_name else '+';
         operator = operator or '+';
@@ -606,6 +615,18 @@ impl EsastGenPass._fw_js_binop(
 ) -> es.Expression {
     return self.sync_loc(
         es.BinaryExpression(operator=op, left=left, right=right), jac_node=jac_node
+    );
+}
+
+impl EsastGenPass._floor_div(
+    left: es.Expression, right: es.Expression, jac_node: uni.UniNode
+) -> es.Expression {
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self._build_jac_ref(["Math", "floor"], jac_node),
+            arguments=[self._fw_js_binop("/", left, right, jac_node)]
+        ),
+        jac_node=jac_node
     );
 }
 

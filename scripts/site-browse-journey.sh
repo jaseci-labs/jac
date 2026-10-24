@@ -215,24 +215,15 @@ check '(() => {
   return "live source windows loaded";
 })()'
 
-# ----------------------------------------------------------- Ninja Scores ---
-step "Ninja Scores: the legacy board opens the public JacYac directory"
+# ------------------------------------------------- ninjaclaw and tutorials ---
+step "Retired Ninja Scores: the legacy board redirects into JacYac"
 open_page "$BASE_URL/leaderboard"
-wait_for_text "Ninja Scores" 30
-jac browse wait 'section[aria-label="Ninja Scores"]' || fail "public scores never appeared"
-check '(() => {
-  if (location.pathname !== "/jacyac/scores") {
-    throw new Error("legacy leaderboard did not redirect into JacYac");
+check '(async () => {
+  for (let i = 0; i < 100 && location.pathname !== "/jacyac"; i++) {
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
-  const section = document.querySelector("section[aria-label=\"Ninja Scores\"]");
-  if (!section.querySelector("input[aria-label=\"Search Ninja Scores\"]")) {
-    throw new Error("public scores search is missing");
-  }
-  if (!section.textContent.includes("Sign in to add your project")) {
-    throw new Error("anonymous scores must offer sign-in before submission");
-  }
-  if (section.querySelector("input[aria-label=\"GitHub repository URL\"]")) {
-    throw new Error("anonymous visitor was offered repository submission");
+  if (location.pathname !== "/jacyac") {
+    throw new Error("legacy leaderboard did not redirect into JacYac: " + location.pathname);
   }
   const header = document.querySelector("header");
   const join = [...header.querySelectorAll("a")]
@@ -243,7 +234,31 @@ check '(() => {
   if (header.textContent.includes("Ninja Scores")) {
     throw new Error("Ninja Scores still appears in the site-wide navigation");
   }
-  return "legacy redirect, public scores, and signed-in submission boundary verified";
+  return "legacy redirect and site navigation verified";
+})()'
+
+step "ninjaclaw: tutorials and the activity view are public"
+open_page "$BASE_URL/jacyac/tutorials"
+check '(async () => {
+  for (let i = 0; i < 100; i++) {
+    const text = document.body.innerText;
+    if (document.querySelector("#lx-tutorials") || text.includes("No tutorials yet")) {
+      return "tutorials view rendered";
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error("tutorials view never rendered a list or its empty state");
+})()'
+open_page "$BASE_URL/jacyac/ninjaclaw"
+jac browse wait '#lx-claw-header' || fail "ninjaclaw activity header never appeared"
+check '(() => {
+  if (!document.querySelector("#lx-claw-state")) {
+    throw new Error("ninjaclaw activity view shows no state");
+  }
+  if (!document.querySelector("#lx-claw-header").textContent.includes("@ninjaclaw")) {
+    throw new Error("ninjaclaw activity view does not explain how to ask");
+  }
+  return "ninjaclaw activity view rendered";
 })()'
 
 # -------------------------------------------------------------- socialize ---
@@ -259,6 +274,8 @@ check '(() => {
 })()'
 sleep 1
 jac browse fill '#lx-username' "$USER_NAME" || fail "could not fill username"
+jac browse wait '#lx-email' || fail "signup form has no email field"
+jac browse fill '#lx-email' "${USER_NAME}@example.com" || fail "could not fill email"
 jac browse fill '#lx-password' "$USER_PASS" || fail "could not fill password"
 check '(() => {
   const submit = document.querySelector("button[type=submit]");
@@ -270,26 +287,7 @@ check '(() => {
 jac browse wait 'textarea' || fail "feed composer never appeared after signup"
 wait_for_text "$USER_NAME" 15
 
-step "JacYac: signed-in Ninja Scores validates submissions and retains the draft"
-open_page "$BASE_URL/jacyac/scores"
-jac browse wait 'input[aria-label="GitHub repository URL"]' || fail "signed-in repository input never appeared"
-check '(() => {
-  const submit = document.querySelector("section[aria-label=\"Ninja Scores\"] button[type=submit]");
-  if (!submit || submit.textContent.trim() !== "Add project" || !submit.disabled) {
-    throw new Error("empty repository submission must be disabled");
-  }
-  return "signed-in repository submission rendered";
-})()'
-jac browse fill 'input[aria-label="GitHub repository URL"]' 'https://example.com/owner/repo' || fail "could not fill repository URL"
-jac browse click 'section[aria-label="Ninja Scores"] button[type=submit]' || fail "could not submit invalid repository"
-wait_for_text "That is not a GitHub repository" 20
-check '(() => {
-  const input = document.querySelector("input[aria-label=\"GitHub repository URL\"]");
-  if (input.value !== "https://example.com/owner/repo") {
-    throw new Error("failed submission discarded the repository draft");
-  }
-  return "invalid repository rejected and draft retained";
-})()'
+step "JacYac: the modern route keeps the session"
 open_page "$BASE_URL/jacyac"
 jac browse wait 'textarea' || fail "modern JacYac route lost the session"
 
@@ -466,5 +464,5 @@ if printf '%s' "$console_out" \
 fi
 
 step "done"
-echo "journey complete: landing, wait-wuuut, public Ninja Scores, JacYac"
+echo "journey complete: landing, wait-wuuut, ninjaclaw and tutorials, JacYac"
 echo "(signup/repository validation/post/trend/like/comment/channels/reload), legacy routes, docs, packages, 404, console"
