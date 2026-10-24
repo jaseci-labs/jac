@@ -455,7 +455,7 @@ impl _client_emitted_top(stmt: UniNode, extra_bound: set[str]) -> bool {
         return True;
     }
     return (
-        isinstance(stmt, (Archetype, UniEnum))
+        isinstance(stmt, Archetype)
         and stmt.name is not None
         and stmt.name.value in extra_bound
     );

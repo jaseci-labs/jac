@@ -3523,8 +3523,10 @@ impl _class_typed_operand(
 
 impl NaIRGenPass._literal_destination(nd: uni.Int) -> (str | None) {
     """The fixed-width type a literal is converted to. The checker records it on
-    the outermost expression that is only the literal, so `(x)` and `+x` carry
-    it on the wrapper.""";
+    the outermost expression that is only the literal, so `(x)`, `+x` and `-x`
+    carry it on the wrapper. A negated literal reaches here only for a float
+    destination: the checker refuses one past 64 bits for an integer type, and
+    `-2**63` lowers as a constant before its operand.""";
     dest = nd.coerce_to;
     up: (uni.UniNode | None) = nd.parent;
     while dest is None
@@ -3533,7 +3535,7 @@ impl NaIRGenPass._literal_destination(nd: uni.Int) -> (str | None) {
             or (
                 isinstance(up, uni.UnaryExpr)
                 and isinstance(up.op, uni.Token)
-                and up.op.name == Tok.PLUS
+                and up.op.name in (Tok.PLUS, Tok.MINUS)
             )
         ) {
         dest = up.coerce_to;

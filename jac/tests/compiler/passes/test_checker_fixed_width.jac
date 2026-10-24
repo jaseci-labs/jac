@@ -138,10 +138,42 @@ test "an int literal past 64 bits fits a float or a u64, parenthesized or not" {
         "    c: f64 = -0x_FFFF_FFFF_FFFF_FFFF_FFFF;\n"
         "    d: u64 = (18446744073709551615);\n"
         "    e: u64 = +0xFFFF_FFFF_FFFF_FFFF;\n"
+        "    g: f64 = -18446744073709551615;\n"
         "}\n"
     );
     src = "with entry {\n    f: f32 = " + "1" + "0" * 39 + ";\n}\n";
     assert fw_only(check(src)) == [("E1130", 2, 14)];
+}
+
+# The literal readers the native compiler uses never form an int past 64 bits,
+# so each is pinned to the exact value. A float conversion rounds once: a radix
+# literal whose 53-bit prefix sits halfway between two floats still rounds by
+# its full value (`0x10000000000000801` is 2**64 + 2049, nearest 2**64 + 4096).
+test "literal readers give exact 64-bit values and a once-rounded float" {
+    import from jaclang.compiler.frontend.unitree {
+        int_literal_float,
+        int_literal_i64,
+        int_literal_u64_bits
+    }
+    for text in [
+        "0x10000000000000801",
+        "0x1FFFFFFFFFFFFF",
+        "0x20000000000001",
+        "0x20000000000003",
+        "0o7777777777777777777777777",
+        "0b" + "1" * 80,
+        "0x_FFFF_FFFF_FFFF_FFFF",
+        "123456789012345678901234567890",
+        "0x" + "F" * 300
+    ] {
+        exact = int(text.replace("_", ""), 0);
+        want = float(exact) if exact.bit_length() <= 1024 else float("inf");
+        assert int_literal_float(text) == want , text;
+    }
+    assert int_literal_i64("9223372036854775807") == 9223372036854775807;
+    assert int_literal_i64("9223372036854775808") is None;
+    assert int_literal_u64_bits("18446744073709551615") == -1;
+    assert int_literal_u64_bits("18446744073709551616") is None;
 }
 
 # ── narrowing (E1127) ─────────────────────────────────────────────

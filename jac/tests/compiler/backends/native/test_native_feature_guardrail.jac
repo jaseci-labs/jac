@@ -1111,7 +1111,11 @@ test "a wide literal lowers through parentheses and to a float target" {
     "def plus_top -> u64 {\n    t: u64 = +0xFFFF_FFFF_FFFF_FFFF;\n    return t;\n}\n\n"
     "def paren_low -> int {\n    return -(9223372036854775808);\n}\n\n"
     "def as_float -> int {\n    x: f64 = 9223372036854775808;\n"
-    "    return 1 if x == 9223372036854775808.0 else 0;\n}\n";
+    "    return 1 if x == 9223372036854775808.0 else 0;\n}\n\n"
+    "def neg_float -> int {\n    x: f64 = -18446744073709551615;\n"
+    "    return 1 if x == -18446744073709551615.0 else 0;\n}\n\n"
+    "def radix_float -> int {\n    x: f64 = 0x10000000000000801;\n"
+    "    return 1 if x == 18446744073709555712.0 else 0;\n}\n";
     (prog, ir, log) = compile_na_inline_demote("wide_wrapped", code);
     assert not prog.errors_had , f"wrapped wide literals must lower clean, got: {fmt_errors(
         prog
@@ -1121,6 +1125,8 @@ test "a wide literal lowers through parentheses and to a float target" {
     assert native_answer(eng, "plus_top") == -1;
     assert native_answer(eng, "paren_low") == -9223372036854775808;
     assert native_answer(eng, "as_float") == 1 , "2**63 must not wrap before it becomes a float";
+    assert native_answer(eng, "neg_float") == 1 , "a negated wide literal reaches its float target";
+    assert native_answer(eng, "radix_float") == 1 , "a radix literal rounds once, by its full value";
 }
 
 # Positive control: with the libc `open(path, flags) -> i32` extern in scope

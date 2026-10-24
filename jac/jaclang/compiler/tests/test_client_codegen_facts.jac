@@ -238,3 +238,40 @@ test "a client function reading a module enum binds it once and reports nothing"
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+# A boundary type is emitted into the bundle as a stub: its name, not its body.
+# Counting the name as a binding must not make the audit read the type's own
+# server-only methods as client code, or a server object whose method reads a
+# server global would report that global unbound although no client code
+# touches either.
+test "a stubbed server type's own methods are not audited as client code" {
+    base = os.path.realpath(tempfile.mkdtemp(prefix="jac_codegen_facts_"));
+    try {
+        with open(os.path.join(base, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "ledger"\n\n[placement.pins]\n"ledger.show_cl" = "client"\n'
+            );
+        }
+        path = os.path.join(base, "ledger.jac");
+        with open(path, "w") as f {
+            f.write(
+                "glob RATE: int = 3;\n\n"
+                "enum Kind: int { DEBIT, CREDIT }\n\n"
+                "obj Entry {\n    has amount: int = 0;\n\n"
+                "    def scaled -> int {\n        return self.amount * RATE;\n    }\n}\n\n"
+                "def:pub total -> Entry {\n    return Entry(amount=1);\n}\n\n"
+                "def show_cl -> int {\n    return int(Kind.CREDIT);\n}\n"
+            );
+        }
+        prog = JacProgram();
+        compiler = prog._get_compiler();
+        assert compiler.get_bytecode(full_target=path, target_program=prog)
+            is not None , _codes(prog);
+        artifact = compiler.get_client_artifact(path, prog);
+        assert "E5086" not in _codes(prog) , _codes(prog);
+        assert artifact is not None , _codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}

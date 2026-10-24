@@ -165,19 +165,44 @@ impl int_literal_u64_bits(text: str) -> (int | None) {
 }
 
 impl int_literal_float(text: str) -> float {
-    """The literal's value as a float, without forming the integer: a literal
-    past 64 bits still has one (`x: f64 = 9223372036854775808`).""";
+    """The literal's value as the nearest float, without forming the integer: a
+    literal past 64 bits still has one (`x: f64 = 9223372036854775808`). A
+    power-of-two radix is rounded once, from its bits: the top 53 are the
+    mantissa and the rest decide round-half-to-even.""";
     (body, base) = int_literal_digits(text);
+    digits = body.replace("_", "").lower();
     if base == 10 {
-        return float(body.replace("_", ""));
+        return float(digits);
     }
-    total = 0.0;
-    for c in body.lower() {
-        if c != "_" {
-            total = total * base + _RADIX_DIGITS.find(c);
+    width = 4 if base == 16 else (3 if base == 8 else 1);
+    bits = "";
+    for c in digits {
+        digit = _RADIX_DIGITS.find(c);
+        chunk = "";
+        k = 0;
+        while k < width {
+            chunk = ("1" if digit % 2 == 1 else "0") + chunk;
+            digit = digit // 2;
+            k += 1;
         }
+        bits += chunk;
     }
-    return total;
+    bits = bits.lstrip("0");
+    if not bits {
+        return 0.0;
+    }
+    if len(bits) > 1024 {
+        return float("inf");
+    }
+    if len(bits) <= 53 {
+        return float(radix_int(bits, 2));
+    }
+    mantissa = radix_int(bits[:53], 2);
+    rest = bits[53:];
+    if rest[0] == "1" and ("1" in rest[1:] or mantissa % 2 == 1) {
+        mantissa += 1;
+    }
+    return float(mantissa) * (2.0 ** len(rest));
 }
 
 impl _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {
