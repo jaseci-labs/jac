@@ -30,11 +30,12 @@ from jaclang.jac0 import wiring_key as _jac0_wiring_key  # noqa: E402
 from jaclang import bootstrap_manifest as _bootstrap_manifest  # noqa: E402
 from jaclang.jac0core import ext_registry  # noqa: E402
 from jaclang.jac0core import sealed as _sealed  # noqa: E402
+from jaclang.jac0core.cache_paths import file_sha256 as _file_sha256  # noqa: E402
 from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
 
 _jac0_source_path = getattr(_jac0_mod, "__file__", "")
 _jac0_hash = (
-    hashlib.sha256(Path(_jac0_source_path).read_bytes()).digest()
+    bytes.fromhex(_file_sha256(_jac0_source_path))
     if _jac0_source_path and os.path.isfile(_jac0_source_path)
     else b""
 )
@@ -61,19 +62,30 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
 def _bootstrap_compile(
     file_path: str,
-    jac_source: str,
+    jac_source: str | None = None,
     impl_sources: list[tuple[str, str]] | None = None,
+    impl_paths: list[str] | None = None,
 ) -> types.CodeType:
-    """Compile a bootstrap .jac file, using a marshalled bytecode disk cache."""
+    """Compile a bootstrap .jac file, using a marshalled bytecode disk cache.
+
+    Sources given as text are keyed by their text; sources given as paths are
+    keyed by the files' content digests and only read on a cache miss.
+    """
     # Build the hash key from all source inputs + Python version + transpiler.
     h = hashlib.sha256()
     h.update(sys.version.encode())
     h.update(_jac0_hash)
-    h.update(jac_source.encode())
+    if jac_source is None:
+        h.update(bytes.fromhex(_file_sha256(file_path)))
+    else:
+        h.update(hashlib.sha256(jac_source.encode()).digest())
     if impl_sources:
         for src, path in impl_sources:
             h.update(path.encode())
-            h.update(src.encode())
+            h.update(hashlib.sha256(src.encode()).digest())
+    for path in impl_paths or ():
+        h.update(path.encode())
+        h.update(bytes.fromhex(_file_sha256(path)))
     h.update(_jac0_wiring_key(file_path).encode())
     digest = h.hexdigest()[:16]
 
@@ -100,7 +112,15 @@ def _bootstrap_compile(
             return code
 
     # Cache miss — transpile with jac0, compile, and cache (best-effort).
-    py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)
+    if jac_source is None:
+        with open(file_path, encoding="utf-8") as f:
+            jac_source = f.read()
+    if impl_paths:
+        impl_sources = list(impl_sources or [])
+        for path in impl_paths:
+            with open(path, encoding="utf-8") as f:
+                impl_sources.append((f.read(), path))
+    py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources or None)
     code = compile(py_source, file_path, "exec")
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -319,15 +339,9 @@ class JacMetaImporter(MetaPathFinder, Loader):
                 exec(code, module.__dict__)  # noqa: S102
                 return
 
-        with open(file_path, encoding="utf-8") as f:
-            jac_source = f.read()
-
-        impl_sources: list[tuple[str, str]] = []
-        for impl_path in _jac0_discover_impls(file_path):
-            with open(impl_path, encoding="utf-8") as f:
-                impl_sources.append((f.read(), impl_path))
-
-        code = _bootstrap_compile(file_path, jac_source, impl_sources or None)
+        code = _bootstrap_compile(
+            file_path, impl_paths=list(_jac0_discover_impls(file_path))
+        )
         exec(code, module.__dict__)
 
     def exec_module(self, module: ModuleType) -> None:

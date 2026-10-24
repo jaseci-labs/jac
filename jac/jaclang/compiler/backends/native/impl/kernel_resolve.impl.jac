@@ -143,7 +143,7 @@ impl kernel_plan(
 }
 
 impl _sha256_file(path: str) -> str {
-    import from jaclang.compiler.driver.digests { file_sha256 }
+    import from jaclang.jac0core.cache_paths { file_sha256 }
     return file_sha256(path);
 }
 
