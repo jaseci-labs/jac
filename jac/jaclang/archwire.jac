@@ -15690,6 +15690,11 @@ graph import runtime.na_stdlib {
         },
     ]
     _typename ++> hmac | secrets { typename }
+    _unicodedata_tables ++> unicodedata {
+        UNICODE_CATEGORIES,
+        UNICODE_EAST_ASIAN_WIDTHS,
+        UNICODE_PROPERTY_RANGES
+    }
     _user_home ++> os.path { user_home }
     _utf8 ++> [
         re { cps_str, utf8_cps },
