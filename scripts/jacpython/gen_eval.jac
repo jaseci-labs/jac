@@ -248,32 +248,62 @@ def eval_wires(text: str) -> list[str] {
     return out;
 }
 
+# An eval wire either stands alone (`ops ++> eval { ... }`) or, once the
+# module wires something else too, sits in its list (`ops ++> [ eval { ... },
+# ... ]`, how `jac fmt` folds statements from one source).
 def wire_pattern -> re.Pattern {
     return re.compile(r"^    ops\w* \+\+> eval \{[^}]*\}\n", re.M);
 }
 
-# A wire statement as (source module, names), however it is formatted.
-def wire_key(statement: str) -> str {
-    m = re.match(r"\s*(\w+) \+\+> eval \{([^}]*)\}", statement);
-    if m is None {
-        return statement;
-    }
-    names = sorted(
-        name.strip()
-        for name in m.group(2).split(",")
-        if name.strip()
+def list_pattern -> re.Pattern {
+    return re.compile(r"^    (ops\w*) \+\+> \[\n(.*?)\n    \]\n", re.M | re.S);
+}
+
+def entry_pattern -> re.Pattern {
+    return re.compile(r"^        eval \{([^}]*)\},?\n", re.M);
+}
+
+def wire_key(source: str, names: str) -> str {
+    return source + ":" + ",".join(
+        sorted(name.strip() for name in names.split(",") if name.strip())
     );
-    return m.group(1) + ":" + ",".join(names);
+}
+
+def present_wires(text: str) -> list[str] {
+    keys: list[str] = [];
+    for m in wire_pattern().finditer(text) {
+        head = re.match(r"\s*(\w+) \+\+> eval \{([^}]*)\}", m.group(0));
+        if head is not None {
+            keys.append(wire_key(head.group(1), head.group(2)));
+        }
+    }
+    for m in list_pattern().finditer(text) {
+        for e in entry_pattern().finditer(m.group(2) + "\n") {
+            keys.append(wire_key(m.group(1), e.group(1)));
+        }
+    }
+    return keys;
 }
 
 def wires_current(wires: list[str]) -> bool {
-    have = [wire_key(w) for w in wire_pattern().findall(ARCHWIRE.read_text())];
-    want = [wire_key(w) for w in wires];
-    return sorted(have) == sorted(want);
+    want: list[str] = [];
+    for w in wires {
+        head = re.match(r"\s*(\w+) \+\+> eval \{([^}]*)\}", w);
+        if head is not None {
+            want.append(wire_key(head.group(1), head.group(2)));
+        }
+    }
+    return sorted(present_wires(ARCHWIRE.read_text())) == sorted(want);
+}
+
+def strip_list_entry(m: re.Match) -> str {
+    body = entry_pattern().sub("", m.group(2) + "\n").rstrip("\n");
+    return f"    {m.group(1)} ++> [\n{body}\n    ]\n";
 }
 
 def write_wires(wires: list[str]) {
     text = wire_pattern().sub("", ARCHWIRE.read_text());
+    text = list_pattern().sub(strip_list_entry, text);
     if WIRE_BLOCK not in text {
         text = text.rstrip("\n") + "\n\n" + WIRE_BLOCK + "}\n";
     }

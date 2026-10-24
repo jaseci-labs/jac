@@ -199,7 +199,7 @@ impl sr_is_tagged_int(ref: u64) -> bool {
 }
 
 impl sr_tag_int(value: i64) -> u64 {
-    return u64.wrap(value << 2) | SR_INT_TAG;
+    return ((u64.wrap(value) & u64(0x3FFFFFFFFFFFFFFF)) << u64(2)) | SR_INT_TAG;
 }
 
 impl sr_untag_int(ref: u64) -> i64 {

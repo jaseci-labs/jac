@@ -172,15 +172,31 @@ cpython() {
             }
         ' > "$work/jac-handlers"
         awk -v list="$work/jac-handlers" '
-            BEGIN { while ((getline name < list) > 0) jac["        TARGET(" name ") {"] = 1 }
+            BEGIN {
+                while ((getline name < list) > 0) {
+                    jac["        TARGET(" name ") {"] = 1
+                    jac["        LABEL(" name ")"] = 1
+                }
+            }
             skip && $0 == "        }" { skip = 0; next }
             skip { next }
             $0 in jac { skip = 1; next }
             { print }
         ' Python/generated_cases.c.h > Python/generated_cases.c.h.new
         mv Python/generated_cases.c.h.new Python/generated_cases.c.h
-        sed 's/^Py_PRESERVE_NONE_CC static /Py_PRESERVE_NONE_CC __attribute__((visibility("hidden"))) /; s/^static py_tail_call_funcptr INSTRUCTION_TABLE/__attribute__((visibility("hidden"))) py_tail_call_funcptr INSTRUCTION_TABLE/' \
-            Python/opcode_targets.h > Python/opcode_targets.h.new
+        awk -v list="$work/jac-handlers" '
+            BEGIN { while ((getline name < list) > 0) jac[name] = 1 }
+            /^Py_PRESERVE_NONE_CC static PyObject \*_TAIL_CALL_UNKNOWN_OPCODE\(TAIL_CALL_PARAMS\) \{$/ && ("UNKNOWN_OPCODE" in jac) {
+                print "Py_PRESERVE_NONE_CC static PyObject *_TAIL_CALL_UNKNOWN_OPCODE(TAIL_CALL_PARAMS);"
+                skip = 1
+                next
+            }
+            skip && $0 == "}" { skip = 0; next }
+            skip { next }
+            { print }
+        ' Python/opcode_targets.h |
+            sed 's/^Py_PRESERVE_NONE_CC static /Py_PRESERVE_NONE_CC __attribute__((visibility("hidden"))) /; s/^static py_tail_call_funcptr INSTRUCTION_TABLE/__attribute__((visibility("hidden"))) py_tail_call_funcptr INSTRUCTION_TABLE/' \
+            > Python/opcode_targets.h.new
         mv Python/opcode_targets.h.new Python/opcode_targets.h
     fi
     # cpython-sources.txt decides what the extracted tree holds; detach the

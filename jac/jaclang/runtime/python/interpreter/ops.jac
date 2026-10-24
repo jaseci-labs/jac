@@ -325,7 +325,7 @@ impl _POP_JUMP_IF_FALSE(
     flag = sr_is_false(cond);
     cache = this_instr + 1;
     taken = u16(1) if flag else u16(0);
-    cache.view(1)[0] = (cache.view(1)[0] << u16(1)) | taken;
+    cache.view(1)[0] = u16.wrap((i64(cache.view(1)[0]) << 1) | i64(taken));
     if flag {
         return i64(oparg);
     }
@@ -338,7 +338,7 @@ impl _POP_JUMP_IF_TRUE(
     flag = sr_is_true(cond);
     cache = this_instr + 1;
     taken = u16(1) if flag else u16(0);
-    cache.view(1)[0] = (cache.view(1)[0] << u16(1)) | taken;
+    cache.view(1)[0] = u16.wrap((i64(cache.view(1)[0]) << 1) | i64(taken));
     if flag {
         return i64(oparg);
     }
