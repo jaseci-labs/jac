@@ -874,6 +874,7 @@ impl cmd_ask(
     if key not in st.tray {
         st.tray.append(key);
     }
+    history = transcript_of(st.entries) if session_id else "";
     st.add("user", f"[{key}] {instruction}");
     def gate(path: str, content: str) -> (str | None) {
         old = "";
@@ -913,6 +914,10 @@ impl cmd_ask(
         return 1;
     }
     blocks = context_blocks(model, [key]) + [{"type": "text", "text": instruction}];
+    resumed = bool(resume_id) and getattr(sess, "agent_session_id", "") == resume_id;
+    if history and not resumed {
+        blocks = [{"type": "text", "text": history}] + blocks;
+    }
     rc = 0;
     view = AskView(root_dir=root_dir);
     try {

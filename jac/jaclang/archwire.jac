@@ -33022,7 +33022,8 @@ graph import studio {
             list_sessions,
             load_session,
             new_session,
-            sessions_dir
+            sessions_dir,
+            transcript_of
         },
         tui { load_session, new_session, transcript_of },
     ]

@@ -4426,7 +4426,8 @@ impl open_approval(app: Studio) -> None {
                 verdict = [
                     sp("  Selected changes only: ✗ ", with_bg(THEME.err, 237)),
                     sp(
-                        prv.summary() + "   a writes them anyway, r rejects",
+                        prv.summary()
+                            + "   a writes them anyway, f sends these problems back, r rejects",
                         THEME.overlay
                     )
                 ];
@@ -4831,6 +4832,22 @@ impl deliver(app: Studio, blocks: list[dict[str, any]]) -> None {
 
 
 impl write_feedback(req: dict[str, any]) -> str {
+    part = req.get("partial");
+    keep = req.get("keep");
+    if part is not None
+        and part["done"]
+        and keep is not None
+        and part["keep"] == frozenset(keep) {
+        prv = part.get("review");
+        if prv is not None and not prv.clean() {
+            try {
+                return f"The user kept only part of this edit ({', '.join(
+                    sorted(keep)
+                )}) and that selection does not compile. "
+                    + str(prv.feedback());
+            } except Exception {}
+        }
+    }
     review = req.get("review");
     if review is not None {
         try {
@@ -4884,7 +4901,8 @@ impl restore_session(app: Studio, session_id: str) -> None {
     );
 }
 
-glob AUTO_KINDS: list[str] = ["read", "search", "think", "fetch"];
+glob AUTO_KINDS: list[str] = ["read", "search", "think", "fetch"],
+     REVIEW_LOCK: any = threading.Lock();
 
 def start_gate_and_bridge(app: Studio, session_id: str);
 
@@ -4976,18 +4994,20 @@ impl start_review(app: Studio, req: dict[str, any]) -> None {
     path = str(d.get("path", ""));
     content = str(d.get("content", ""));
     def work {
-        real = os.path.realpath(path);
-        req["saw"] = {
-            p
-            for p in gate.staged().keys()
-            if p != real
-        };
-        try {
-            req["review"] = gate.review(path, content);
-        } except Exception as e {
-            req["error"] = str(e);
+        while True {
+            try {
+                req["review"] = gate.review(path, content);
+            } except Exception as e {
+                req["error"] = str(e);
+            }
+            with REVIEW_LOCK {
+                if req.pop("recheck", False) {
+                    continue;
+                }
+                req["done"] = True;
+                break;
+            }
         }
-        req["done"] = True;
         app.dirty = True;
     }
     threading.Thread(target=work, daemon=True).start();
@@ -5030,18 +5050,29 @@ impl start_partial_review(app: Studio, req: dict[str, any], keep: set[str]) -> N
 
 impl rerun_reviews(app: Studio, req: dict[str, any], path: str) -> None {
     real = os.path.realpath(path);
-    for other in app.pending {
-        if other is req or other.get("type") != "write" {
-            continue;
+    again: list[dict[str, any]] = [];
+    with REVIEW_LOCK {
+        for other in app.pending {
+            if other is req or other.get("type") != "write" {
+                continue;
+            }
+            if not other.get("done") {
+                other["recheck"] = True;
+                continue;
+            }
+            rv = other.get("review");
+            if rv is None or real not in rv.seen_staged {
+                continue;
+            }
+            for k in ["review", "partial", "keep", "error"] {
+                other.pop(k, None);
+            }
+            other["done"] = False;
+            other["seen"] = False;
+            again.append(other);
         }
-        if real not in (other.get("saw") or set()) {
-            continue;
-        }
-        for k in ["review", "partial", "keep", "error"] {
-            other.pop(k, None);
-        }
-        other["done"] = False;
-        other["seen"] = False;
+    }
+    for other in again {
         start_review(app, other);
     }
 }

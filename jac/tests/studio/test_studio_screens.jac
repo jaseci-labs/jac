@@ -2,7 +2,8 @@
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.osprey.ui.virtual_terminal { VirtualTerminal }
-import from jaclang.studio.gate { EditGate }
+import os;
+import from jaclang.studio.gate { EditGate, EditReview }
 import from jaclang.studio.insight { tour_text }
 import from jaclang.studio.model { ProjectModel }
 import from jaclang.studio.tui {
@@ -11,7 +12,8 @@ import from jaclang.studio.tui {
     open_approval,
     open_doc,
     paint,
-    rebuild_nav
+    rebuild_nav,
+    rerun_reviews
 }
 import from tests.studio.shop_fixture { make_shop }
 
@@ -109,5 +111,36 @@ test "the tour opens in a sheet over the workspace" {
         open_doc(app, "Tour of the project", tour_text(app.model, ""));
         text = screen(app);
         assert "Tour of the project" in text and "A tour of shop" in text , text;
+    }
+}
+
+test "rejecting one file rechecks the edits that were checked against it" {
+    with TemporaryDirectory() as tmp {
+        app = open_studio(tmp);
+        rejected = os.path.realpath(str(Path(app.root_dir) / "core" / "util.jac"));
+        other = os.path.realpath(str(Path(app.root_dir) / "core" / "store.jac"));
+        def write(path: str, saw: list[str], done: bool) -> dict[str, any] {
+            req: dict[str, any] = {
+                "type": "write",
+                "data": {"path": path, "content": "", "request_id": 1},
+                "done": done,
+                "seen": done
+            };
+            if done {
+                req["review"] = EditReview(
+                    path=path, old_text="", new_text="", seen_staged=saw
+                );
+            }
+            return req;
+        }
+        first = write(rejected, [], True);
+        against = write(other, [rejected], True);
+        apart = write(other, [], True);
+        running = write(other, [], False);
+        app.pending = [first, against, apart, running];
+        rerun_reviews(app, first, rejected);
+        assert "review" not in against and not against["seen"] , "a review that saw the rejected text runs again";
+        assert "review" in apart , "a review that did not see it is kept";
+        assert running.get("recheck") , "a review still running is rechecked when it finishes";
     }
 }

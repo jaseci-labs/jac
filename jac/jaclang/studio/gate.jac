@@ -82,7 +82,8 @@ obj EditReview {
         checked_files: list[str] = [],
         checked: bool = False,
         check_error: str = "",
-        elapsed: float = 0.0;
+        elapsed: float = 0.0,
+        seen_staged: list[str] = [];
 
     def new_errors -> list[DiagInfo];
     def clean -> bool;
@@ -883,7 +884,14 @@ impl EditGate.review(path: str, new_text: str) -> EditReview {
             path=real,
             old_text=old_text or "",
             new_text=new_text,
-            root_dir=self.root_dir
+            root_dir=self.root_dir,
+            seen_staged=sorted(
+                [
+                    p
+                    for p in self.overlay
+                    if p != real
+                ]
+            )
         );
         rv.diff = "".join(
             difflib.unified_diff(
