@@ -1,6 +1,7 @@
 import asyncio;
 import json;
 import queue;
+import threading;
 import webbrowser;
 import from urllib.parse { urlparse }
 
@@ -26,6 +27,8 @@ async def _pull(gen: any) -> any;
 obj DesktopBrokerExtension(ServerExtension) {
     has store: SessionStore,
         host: any = None,
+        choice: BackendChoice | None = None,
+        relaunch_delay_s: float = 0.25,
         opener: Callable[[str], bool] = webbrowser.open,
         prefix: str = DEFAULT_PREFIX,
         pending: PendingAuth = PendingAuth();
@@ -218,6 +221,50 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
         );
     }
 
+    choice = self.choice;
+    relaunch_delay_s = self.relaunch_delay_s;
+
+    def backend_script(request: Request, **kwargs: any) -> Response {
+        return Response(
+            content=choice.script() if choice is not None else "",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store"}
+        );
+    }
+
+    def backend_get(request: Request, **kwargs: any) -> Response {
+        if choice is None {
+            return JSONResponse(content={"active": "", "default": "", "backends": []});
+        }
+        return JSONResponse(content=choice.describe());
+    }
+
+    def backend_post(request: Request, **kwargs: any) -> Response {
+        if choice is None {
+            return JSONResponse(
+                status_code=404,
+                content={"ok": False, "error": "this app has a single backend"}
+            );
+        }
+        try {
+            body = request.json_sync();
+        } except Exception {
+            body = {};
+        }
+        name = str(body.get("name", "") or "") if isinstance(body, dict) else "";
+        try {
+            changed = choice.choose(name);
+        } except ValueError as e {
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": str(e)}
+            );
+        }
+        if changed and host is not None {
+            threading.Timer(relaunch_delay_s, host.close_window).start();
+        }
+        return JSONResponse(content={"ok": True, "relaunch": changed});
+    }
+
     def events(request: Request, **kwargs: any) -> Response {
         if host is None {
             return JSONResponse(status_code=404, content={"ok": False});
@@ -279,6 +326,9 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
         oauth_callback,
         [APIParameter(name="state", kind=ParameterType.PATH)]
     );
+    add(HTTPMethod.GET, prefix + "/backend.js", backend_script);
+    add(HTTPMethod.GET, prefix + "/backend", backend_get);
+    add(HTTPMethod.POST, prefix + "/backend", backend_post);
     add(HTTPMethod.GET, prefix + "/events", events);
     add(HTTPMethod.POST, prefix + "/invoke", invoke);
 }

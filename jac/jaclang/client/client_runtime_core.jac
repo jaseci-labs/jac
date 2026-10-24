@@ -84,6 +84,7 @@ async def:pub __jacPollBrokerSession(
 
 async def:pub __jacSleep(ms: int) -> None;
 def:pub __getApiBaseUrl -> str;
+def __storageKey(key: str) -> str;
 def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;
 def:pub __removeLocalStorage(key: str) -> None;
