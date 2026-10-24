@@ -772,7 +772,7 @@ one vendored as a git submodule. There is no environment variable for it.
   compiler, even when they start in another directory.
 
 When the source is in use, every command prints
-`jac dev mode — using compiler source at <path>`.
+`[dev] jac dev mode - using compiler source at <path>`.
 
 ### [network]
 
