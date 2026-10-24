@@ -6363,19 +6363,7 @@ def _emit_bytes_drained(
     args: list[ir.Value],
     message: str,
     release_on_error: list[ir.Value]
-) -> (ir.Value | None) {
-    p = ctx.pass_ref;
-    drained = emitter.emit_list(ctx, args);
-    if drained is None {
-        return None;
-    }
-    made = _emit_bytes_from_int_list(p, drained, message, release_on_error);
-    if made is None {
-        return None;
-    }
-    p._release_owned_args([p._mark_owned(drained)]);
-    return made;
-}
+) -> (ir.Value | None);
 
 def _emit_zeroed_bytes(p: NaIRGenPass, count: ir.Value) -> ir.Value;
 
@@ -7711,4 +7699,24 @@ impl _emit_affix_window_match(
     result.add_incoming(ir.Constant(ir.IntType(1), 1), match_bb);
     result.add_incoming(ir.Constant(ir.IntType(1), 0), miss);
     return result;
+}
+
+impl _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    drained = emitter.emit_list(ctx, args);
+    if drained is None {
+        return None;
+    }
+    made = _emit_bytes_from_int_list(p, drained, message, release_on_error);
+    if made is None {
+        return None;
+    }
+    p._release_owned_args([p._mark_owned(drained)]);
+    return made;
 }
