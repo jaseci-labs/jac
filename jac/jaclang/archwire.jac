@@ -233,6 +233,7 @@ graph import {
             | compiler.tools.lang_tools
             | dist.precompile_bytecode
             | dist.seal
+            | dist.self_update
             | lsp.server.engine
             | lsp.server.server
             | packages.commands
@@ -1820,6 +1821,7 @@ graph import {
         cli.commands.project.install { add_packages },
         cli.commands.project.remove { remove_packages },
     ]
+    packages.github ++> dist.self_update.update_self { GitHub, GitHubError, find_token }
     packages.install ++> [
         client.config_loader._package_npm_deps {
             InstallError,
@@ -1837,6 +1839,7 @@ graph import {
     }
     packages.publish ++> cli.commands.project.publish { publish_project }
     packages.publish --> cli.commands.project.publish { yank_version }
+    packages.semver ++> dist.self_update.up_to_date { SemverError, Version }
     packages.templates ++> cli.commands.project._resolve_template {
         TemplateError,
         fetch_template,
@@ -4317,11 +4320,10 @@ graph import {
         client.targets.react_native.build.run_gradle_assemble { offline },
         client.targets.react_native.build.run_xcodebuild_ios { offline },
         data.pg_dist._unpack { Artifact as Download, extract, fetch },
+        dist.self_update.update_self
+            | packages.index.fetch_verified
+            | scale.injector.binary._fetch_verified_asset { Artifact, fetch },
         packages.index.Registry._read { allowed_url, offline },
-        packages.index.fetch_verified | scale.injector.binary._fetch_verified_asset {
-            Artifact,
-            fetch
-        },
     ]
     toolchains.system ++> client.targets.desktop.desktop_build._patchelf_rpath {
         ensure_patchelf
@@ -14661,6 +14663,12 @@ graph import data.storage {
 
 graph import dist {
     archive ++> seal.build_jab { tar_gz_dir }
+    fused_binary ++> self_update.update_self {
+        linked_source_dir,
+        materialized_runtime_dir,
+        running_executable,
+        runtime_trailer
+    }
     jab ++> seal.build_jab { jab_app_meta }
     jab_vendor ++> [
         jab { activate_vendored },
