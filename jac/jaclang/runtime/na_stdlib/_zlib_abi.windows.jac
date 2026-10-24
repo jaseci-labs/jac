@@ -7,7 +7,3 @@ glob:pub ZS_NEXT_IN: int = 0,
      Z_STREAM_SIZE: int = 88;
 
 def:pub zs_load_total(addr: int) -> int;
-
-impl zs_load_total(addr: int) -> int {
-    return int(__mem_load_i32(addr)) & 4294967295;
-}

@@ -9,11 +9,3 @@ glob RTLD_NOW: int = 2,
      SHLIB_EXT: str = ".dylib";
 
 def:pub dl_error -> str;
-
-impl dl_error -> str {
-    p = dlerror();
-    if p == 0 {
-        return "unknown dl error";
-    }
-    return strdup(p);
-}

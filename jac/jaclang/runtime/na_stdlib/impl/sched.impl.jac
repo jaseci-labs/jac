@@ -151,3 +151,11 @@ impl scheduler.run(blocking: bool = True) -> float | None {
     }
     return None;
 }
+
+impl scheduler.queue.getter -> list[Event] {
+    out: list[Event] = [];
+    for ev in self._queue {
+        out.append(ev);
+    }
+    return out;
+}
