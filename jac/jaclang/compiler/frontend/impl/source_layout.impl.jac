@@ -57,6 +57,20 @@ impl style_annex_of(source_path: str) -> (str | None) {
     return candidate if os.path.isfile(candidate) else None;
 }
 
+impl owner_stem_of(tables: LayoutTables, stem: str, names: set[str]) -> (str | None) {
+    parts = stem.split(".");
+    while parts {
+        candidate = ".".join(parts);
+        for ext in tables.module_suffixes {
+            if candidate + ext in names {
+                return candidate;
+            }
+        }
+        parts = parts[:-1];
+    }
+    return None;
+}
+
 impl annex_files_of(
     tables: LayoutTables,
     source_path: str,
@@ -73,6 +87,7 @@ impl annex_files_of(
     mod_folder = os.path.join(parent, base + suffix[:-len(tables.jac_suffix)]);
     folders = [parent, mod_folder, os.path.join(parent, tables.shared_folder(suffix))];
     results: list[str] = [];
+    siblings = set(listing(parent) or []);
     for folder in folders {
         names = listing(folder);
         if names is None {
@@ -82,7 +97,11 @@ impl annex_files_of(
             if not listed.endswith(suffix) {
                 continue;
             }
-            if folder != mod_folder and not listed.startswith(f"{base}.") {
+            if folder != mod_folder
+                and (
+                    not listed.startswith(f"{base}.")
+                    or owner_stem_of(tables, listed[:-len(suffix)], siblings) != base
+                ) {
                 continue;
             }
             candidate = os.path.join(folder, listed);
@@ -103,14 +122,26 @@ impl base_file_of(tables: LayoutTables, annex_path: str) -> (str | None) {
         if not name.endswith(suffix) {
             continue;
         }
-        base_name = name[:-len(suffix)].split('.')[0];
-        candidates: list[tuple[str, str]] = [(folder, base_name)];
+        annex_stem = name[:-len(suffix)];
+        candidates: list[tuple[str, str]] = [];
+        sibling_owner = owner_stem_of(
+            tables, annex_stem, set(list_directory(folder) or [])
+        );
+        if sibling_owner is not None {
+            candidates.append((folder, sibling_owner));
+        }
         if parent.endswith(folder_suffix) {
             candidates.append((os.path.dirname(folder), parent[:-len(folder_suffix)]));
         }
         shared = [tables.shared_folder(annex) for annex in tables.annex_folders];
         if parent in shared {
-            candidates.append((os.path.dirname(folder), base_name));
+            above = os.path.dirname(folder);
+            shared_owner = owner_stem_of(
+                tables, annex_stem, set(list_directory(above) or [])
+            );
+            if shared_owner is not None {
+                candidates.append((above, shared_owner));
+            }
         }
         for (directory, stem) in candidates {
             for ext in tables.module_suffixes {
