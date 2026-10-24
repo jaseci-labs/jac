@@ -37,12 +37,44 @@
 #include "internal/pycore_runtime_structs.h"
 #include "internal/pycore_mimalloc.h"
 #include "sys/mman.h"
+#include "sys/resource.h"
+#include "sys/time.h"
+#include "unistd.h"
+#include "time.h"
+#include "fcntl.h"
+#include "errno.h"
 #include "opcode_ids.h"
 #include <stddef.h>
 #ifdef _Py_FORCE_UTF8_FS_ENCODING
 #define JAC_FORCE_UTF8_FS_ENCODING 1
 #else
 #define JAC_FORCE_UTF8_FS_ENCODING 0
+#endif
+#ifdef __linux__
+#define JAC_PLATFORM_LINUX 1
+#else
+#define JAC_PLATFORM_LINUX 0
+#endif
+#if __has_include(<sys/syscall.h>)
+#include <sys/syscall.h>
+#endif
+#ifndef SYS_getrandom
+#define SYS_getrandom 0
+#endif
+#ifndef MAP_HUGETLB
+#define MAP_HUGETLB 0
+#endif
+#ifndef MADV_HUGEPAGE
+#define MADV_HUGEPAGE 0
+#endif
+#ifndef MAP_NORESERVE
+#define MAP_NORESERVE 0
+#endif
+#ifndef MADV_FREE
+#define MADV_FREE 0
+#endif
+#ifndef VM_FLAGS_SUPERPAGE_SIZE_2MB
+#define VM_FLAGS_SUPERPAGE_SIZE_2MB 0
 #endif
 
 /* The private object structs of the ported Objects/ files, as the
@@ -3108,6 +3140,41 @@ CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
 CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79920LL);
 CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
 CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
+CONSTANT(JAC_PLATFORM_LINUX, 1LL);
+CONSTANT(PROT_NONE, 0LL);
+CONSTANT(PROT_READ, 1LL);
+CONSTANT(PROT_WRITE, 2LL);
+CONSTANT(MAP_PRIVATE, 2LL);
+CONSTANT(MAP_ANONYMOUS, 32LL);
+CONSTANT(MAP_NORESERVE, 16384LL);
+CONSTANT(MAP_HUGETLB, 262144LL);
+CONSTANT(MADV_DONTNEED, 4LL);
+CONSTANT(MADV_FREE, 8LL);
+CONSTANT(MADV_HUGEPAGE, 14LL);
+CONSTANT(_SC_PAGESIZE, 30LL);
+CONSTANT(CLOCK_MONOTONIC, 1LL);
+CONSTANT(O_RDONLY, 0LL);
+CONSTANT(O_CLOEXEC, 524288LL);
+CONSTANT(R_OK, 4LL);
+CONSTANT(RUSAGE_SELF, 0LL);
+CONSTANT(EAGAIN, 11LL);
+CONSTANT(EINTR, 4LL);
+CONSTANT(EINVAL, 22LL);
+CONSTANT(ENOMEM, 12LL);
+CONSTANT(EFAULT, 14LL);
+CONSTANT(EOVERFLOW, 75LL);
+CONSTANT(ENOSYS, 38LL);
+CONSTANT(VM_FLAGS_SUPERPAGE_SIZE_2MB, 0LL);
+CONSTANT(SYS_getrandom, 318LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (30 << 26) : 0, 2013265920LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (21 << 26) : 0, 1409286144LL);
+CONSTANT(offsetof(struct rusage, ru_utime), 0LL);
+CONSTANT(offsetof(struct rusage, ru_stime), 16LL);
+CONSTANT(offsetof(struct rusage, ru_maxrss), 32LL);
+CONSTANT(offsetof(struct rusage, ru_majflt), 72LL);
+CONSTANT(offsetof(struct timeval, tv_usec), 8LL);
+CONSTANT(offsetof(struct timespec, tv_nsec), 8LL);
+CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1024LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 10432LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 10440LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90544LL);
@@ -3230,6 +3297,41 @@ CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
 CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79936LL);
 CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
 CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
+CONSTANT(JAC_PLATFORM_LINUX, 1LL);
+CONSTANT(PROT_NONE, 0LL);
+CONSTANT(PROT_READ, 1LL);
+CONSTANT(PROT_WRITE, 2LL);
+CONSTANT(MAP_PRIVATE, 2LL);
+CONSTANT(MAP_ANONYMOUS, 32LL);
+CONSTANT(MAP_NORESERVE, 16384LL);
+CONSTANT(MAP_HUGETLB, 262144LL);
+CONSTANT(MADV_DONTNEED, 4LL);
+CONSTANT(MADV_FREE, 8LL);
+CONSTANT(MADV_HUGEPAGE, 14LL);
+CONSTANT(_SC_PAGESIZE, 30LL);
+CONSTANT(CLOCK_MONOTONIC, 1LL);
+CONSTANT(O_RDONLY, 0LL);
+CONSTANT(O_CLOEXEC, 524288LL);
+CONSTANT(R_OK, 4LL);
+CONSTANT(RUSAGE_SELF, 0LL);
+CONSTANT(EAGAIN, 11LL);
+CONSTANT(EINTR, 4LL);
+CONSTANT(EINVAL, 22LL);
+CONSTANT(ENOMEM, 12LL);
+CONSTANT(EFAULT, 14LL);
+CONSTANT(EOVERFLOW, 75LL);
+CONSTANT(ENOSYS, 38LL);
+CONSTANT(VM_FLAGS_SUPERPAGE_SIZE_2MB, 0LL);
+CONSTANT(SYS_getrandom, 278LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (30 << 26) : 0, 2013265920LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (21 << 26) : 0, 1409286144LL);
+CONSTANT(offsetof(struct rusage, ru_utime), 0LL);
+CONSTANT(offsetof(struct rusage, ru_stime), 16LL);
+CONSTANT(offsetof(struct rusage, ru_maxrss), 32LL);
+CONSTANT(offsetof(struct rusage, ru_majflt), 72LL);
+CONSTANT(offsetof(struct timeval, tv_usec), 8LL);
+CONSTANT(offsetof(struct timespec, tv_nsec), 8LL);
+CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1024LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 10432LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 10440LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90544LL);
@@ -3352,6 +3454,41 @@ CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
 CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79968LL);
 CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
 CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
+CONSTANT(JAC_PLATFORM_LINUX, 0LL);
+CONSTANT(PROT_NONE, 0LL);
+CONSTANT(PROT_READ, 1LL);
+CONSTANT(PROT_WRITE, 2LL);
+CONSTANT(MAP_PRIVATE, 2LL);
+CONSTANT(MAP_ANONYMOUS, 4096LL);
+CONSTANT(MAP_NORESERVE, 64LL);
+CONSTANT(MAP_HUGETLB, 0LL);
+CONSTANT(MADV_DONTNEED, 4LL);
+CONSTANT(MADV_FREE, 5LL);
+CONSTANT(MADV_HUGEPAGE, 0LL);
+CONSTANT(_SC_PAGESIZE, 29LL);
+CONSTANT(CLOCK_MONOTONIC, 6LL);
+CONSTANT(O_RDONLY, 0LL);
+CONSTANT(O_CLOEXEC, 16777216LL);
+CONSTANT(R_OK, 4LL);
+CONSTANT(RUSAGE_SELF, 0LL);
+CONSTANT(EAGAIN, 35LL);
+CONSTANT(EINTR, 4LL);
+CONSTANT(EINVAL, 22LL);
+CONSTANT(ENOMEM, 12LL);
+CONSTANT(EFAULT, 14LL);
+CONSTANT(EOVERFLOW, 84LL);
+CONSTANT(ENOSYS, 78LL);
+CONSTANT(VM_FLAGS_SUPERPAGE_SIZE_2MB, 0LL);
+CONSTANT(SYS_getrandom, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (30 << 26) : 0, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (21 << 26) : 0, 0LL);
+CONSTANT(offsetof(struct rusage, ru_utime), 0LL);
+CONSTANT(offsetof(struct rusage, ru_stime), 16LL);
+CONSTANT(offsetof(struct rusage, ru_maxrss), 32LL);
+CONSTANT(offsetof(struct rusage, ru_majflt), 72LL);
+CONSTANT(offsetof(struct timeval, tv_usec), 8LL);
+CONSTANT(offsetof(struct timespec, tv_nsec), 8LL);
+CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 9928LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 9936LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90048LL);
@@ -3474,6 +3611,41 @@ CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
 CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79968LL);
 CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
 CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
+CONSTANT(JAC_PLATFORM_LINUX, 0LL);
+CONSTANT(PROT_NONE, 0LL);
+CONSTANT(PROT_READ, 1LL);
+CONSTANT(PROT_WRITE, 2LL);
+CONSTANT(MAP_PRIVATE, 2LL);
+CONSTANT(MAP_ANONYMOUS, 4096LL);
+CONSTANT(MAP_NORESERVE, 64LL);
+CONSTANT(MAP_HUGETLB, 0LL);
+CONSTANT(MADV_DONTNEED, 4LL);
+CONSTANT(MADV_FREE, 5LL);
+CONSTANT(MADV_HUGEPAGE, 0LL);
+CONSTANT(_SC_PAGESIZE, 29LL);
+CONSTANT(CLOCK_MONOTONIC, 6LL);
+CONSTANT(O_RDONLY, 0LL);
+CONSTANT(O_CLOEXEC, 16777216LL);
+CONSTANT(R_OK, 4LL);
+CONSTANT(RUSAGE_SELF, 0LL);
+CONSTANT(EAGAIN, 35LL);
+CONSTANT(EINTR, 4LL);
+CONSTANT(EINVAL, 22LL);
+CONSTANT(ENOMEM, 12LL);
+CONSTANT(EFAULT, 14LL);
+CONSTANT(EOVERFLOW, 84LL);
+CONSTANT(ENOSYS, 78LL);
+CONSTANT(VM_FLAGS_SUPERPAGE_SIZE_2MB, 0LL);
+CONSTANT(SYS_getrandom, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (30 << 26) : 0, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX ? (21 << 26) : 0, 0LL);
+CONSTANT(offsetof(struct rusage, ru_utime), 0LL);
+CONSTANT(offsetof(struct rusage, ru_stime), 16LL);
+CONSTANT(offsetof(struct rusage, ru_maxrss), 32LL);
+CONSTANT(offsetof(struct rusage, ru_majflt), 72LL);
+CONSTANT(offsetof(struct timeval, tv_usec), 8LL);
+CONSTANT(offsetof(struct timespec, tv_nsec), 8LL);
+CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 9928LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 9936LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90048LL);

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 167 C files / 341,443 lines; 148 headers / 136,340 lines.
-#   Total: 315 files / 477,783 source lines.
+#   Excluded: 189 C files / 352,849 lines; 149 headers / 136,455 lines.
+#   Total: 338 files / 489,304 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -265,29 +265,29 @@ Python/uniqueid.c
 # Objects/longobject.c  # removed: 6,875 source lines
 # Objects/memoryobject.c  # removed: 3,610 source lines
 # Objects/methodobject.c  # removed: 578 source lines
-Objects/mimalloc/alloc-aligned.c
-Objects/mimalloc/alloc-override.c
-Objects/mimalloc/alloc-posix.c
-Objects/mimalloc/alloc.c
-Objects/mimalloc/arena.c
-Objects/mimalloc/bitmap.c
-Objects/mimalloc/bitmap.h
-Objects/mimalloc/heap.c
-Objects/mimalloc/init.c
-Objects/mimalloc/options.c
-Objects/mimalloc/os.c
-Objects/mimalloc/page-queue.c
-Objects/mimalloc/page.c
-Objects/mimalloc/prim/osx/alloc-override-zone.c
-Objects/mimalloc/prim/osx/prim.c
-Objects/mimalloc/prim/prim.c
-Objects/mimalloc/prim/unix/prim.c
-Objects/mimalloc/prim/wasi/prim.c
-Objects/mimalloc/random.c
-Objects/mimalloc/segment-map.c
-Objects/mimalloc/segment.c
-Objects/mimalloc/static.c
-Objects/mimalloc/stats.c
+# Objects/mimalloc/alloc-aligned.c  # removed: 298 source lines
+# Objects/mimalloc/alloc-override.c  # removed: 297 source lines
+# Objects/mimalloc/alloc-posix.c  # removed: 185 source lines
+# Objects/mimalloc/alloc.c  # removed: 1,074 source lines
+# Objects/mimalloc/arena.c  # removed: 935 source lines
+# Objects/mimalloc/bitmap.c  # removed: 432 source lines
+# Objects/mimalloc/bitmap.h  # removed: 115 source lines
+# Objects/mimalloc/heap.c  # removed: 696 source lines
+# Objects/mimalloc/init.c  # removed: 687 source lines
+# Objects/mimalloc/options.c  # removed: 571 source lines
+# Objects/mimalloc/os.c  # removed: 698 source lines
+# Objects/mimalloc/page-queue.c  # removed: 332 source lines
+# Objects/mimalloc/page.c  # removed: 976 source lines
+# Objects/mimalloc/prim/osx/alloc-override-zone.c  # removed: 458 source lines
+# Objects/mimalloc/prim/osx/prim.c  # removed: 9 source lines
+# Objects/mimalloc/prim/prim.c  # removed: 24 source lines
+# Objects/mimalloc/prim/unix/prim.c  # removed: 860 source lines
+# Objects/mimalloc/prim/wasi/prim.c  # removed: 276 source lines
+# Objects/mimalloc/random.c  # removed: 254 source lines
+# Objects/mimalloc/segment-map.c  # removed: 153 source lines
+# Objects/mimalloc/segment.c  # removed: 1,684 source lines
+# Objects/mimalloc/static.c  # removed: 40 source lines
+# Objects/mimalloc/stats.c  # removed: 467 source lines
 # Objects/moduleobject.c  # removed: 1,440 source lines
 # Objects/namespaceobject.c  # removed: 332 source lines
 # Objects/object.c  # removed: 3,395 source lines

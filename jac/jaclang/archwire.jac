@@ -22860,6 +22860,7 @@ graph import runtime.python {
             jacpy_is_unicode,
             jacpy_release
         },
+        object_model.mimalloc { jacpy_errno, jacpy_set_errno },
         object_model.module {
             NULL,
             PyCFunction_NewEx,
@@ -25383,6 +25384,12 @@ graph import runtime.python {
             _Py_freelists_PYMETHODOBJECTS,
             _object
         },
+        object_model.mimalloc {
+            MI_BIN_HUGE,
+            MI_LARGE_OBJ_SIZE_MAX,
+            MI_MEDIUM_OBJ_SIZE_MAX,
+            MI_SMALL_OBJ_SIZE_MAX
+        },
         object_model.module {
             METH_CLASS,
             METH_NOARGS,
@@ -26492,6 +26499,43 @@ graph import runtime.python {
         object_model.long {
             PyInterpreterState_LONG_MAX_STR_DIGITS,
             _PyRuntimeState_SMALL_INTS
+        },
+        object_model.mimalloc {
+            CLOCK_MONOTONIC,
+            EAGAIN,
+            EFAULT,
+            EINTR,
+            EINVAL,
+            ENOMEM,
+            ENOSYS,
+            EOVERFLOW,
+            MADV_DONTNEED,
+            MADV_FREE,
+            MADV_HUGEPAGE,
+            MAP_ANONYMOUS,
+            MAP_HUGETLB,
+            MAP_HUGE_1GB,
+            MAP_HUGE_2MB,
+            MAP_NORESERVE,
+            MAP_PRIVATE,
+            MI_PLATFORM_LINUX,
+            O_CLOEXEC,
+            O_RDONLY,
+            PROT_NONE,
+            PROT_READ,
+            PROT_WRITE,
+            RUSAGE_RU_MAJFLT,
+            RUSAGE_RU_MAXRSS,
+            RUSAGE_RU_STIME,
+            RUSAGE_RU_UTIME,
+            RUSAGE_SELF,
+            RU_MAXRSS_UNIT,
+            R_OK,
+            SYS_GETRANDOM,
+            TIMESPEC_TV_NSEC,
+            TIMEVAL_TV_USEC,
+            VM_FLAGS_SUPERPAGE_SIZE_2MB,
+            _SC_PAGESIZE
         },
         object_model.module {
             PyConfig_SAFE_PATH,
