@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 189 C files / 352,849 lines; 149 headers / 136,455 lines.
-#   Total: 338 files / 489,304 source lines.
+#   Excluded: 200 C files / 359,029 lines; 150 headers / 137,043 lines.
+#   Total: 350 files / 496,072 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -109,7 +109,7 @@ Python/bootstrap_hash.c
 Python/brc.c
 # Python/bytecodes.c  # pruned: 5,549 source lines
 Python/ceval.c
-Python/ceval_gil.c
+# Python/ceval_gil.c  # removed: 1,434 source lines
 Python/ceval_macros.h
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
 Python/clinic/_contextvars.c.h
@@ -128,7 +128,7 @@ Python/codecs.c
 Python/condvar.h
 Python/config_common.h
 Python/context.c
-Python/critical_section.c
+# Python/critical_section.c  # removed: 205 source lines
 Python/crossinterp.c
 Python/crossinterp_data_lookup.h
 Python/crossinterp_exceptions.h
@@ -140,14 +140,14 @@ Python/errors.c
 Python/fileutils.c
 # Python/flowgraph.c  # removed: 4,167 source lines
 Python/formatter_unicode.c
-Python/frame.c
+# Python/frame.c  # removed: 159 source lines
 Python/frozen.c
 Python/frozen_modules/
 Python/frozenmain.c
 # Python/future.c  # removed: 119 source lines
-Python/gc.c
+# Python/gc.c  # removed: 2,057 source lines
 Python/gc_free_threading.c
-Python/gc_gil.c
+# Python/gc_gil.c  # removed: 17 source lines
 Python/generated_cases.c.h
 Python/getargs.c
 Python/getcompiler.c
@@ -164,21 +164,21 @@ Python/initconfig.c
 # Python/instruction_sequence.c  # removed: 483 source lines
 Python/instrumentation.c
 Python/interpconfig.c
-Python/intrinsics.c
+# Python/intrinsics.c  # removed: 287 source lines
 # Python/jit.c  # pruned: 523 source lines
 Python/legacy_tracing.c
-Python/lock.c
+# Python/lock.c  # removed: 638 source lines
 Python/marshal.c
 Python/modsupport.c
 Python/mysnprintf.c
 Python/mystrtoul.c
-Python/object_stack.c
+# Python/object_stack.c  # removed: 66 source lines
 Python/opcode_targets.h
 Python/optimizer.c
 # Python/optimizer_analysis.c  # pruned: 664 source lines
 # Python/optimizer_cases.c.h  # pruned: 2,520 source lines
 # Python/optimizer_symbols.c  # pruned: 880 source lines
-Python/parking_lot.c
+# Python/parking_lot.c  # removed: 442 source lines
 Python/pathconfig.c
 # Python/perf_jit_trampoline.c  # removed: 1,376 source lines
 # Python/perf_trampoline.c  # removed: 641 source lines
@@ -195,7 +195,7 @@ Python/pystrhex.c
 Python/pystrtod.c
 Python/pythonrun.c
 Python/pytime.c
-Python/qsbr.c
+# Python/qsbr.c  # removed: 290 source lines
 # Python/remote_debug.h  # removed: 1,191 source lines
 # Python/remote_debugging.c  # removed: 401 source lines
 Python/specialize.c
@@ -540,7 +540,7 @@ Modules/clinic/_threadmodule.c.h
 # Modules/clinic/blake2module.c.h  # removed: 505 source lines
 # Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
 # Modules/clinic/fcntlmodule.c.h  # removed: 273 source lines
-Modules/clinic/gcmodule.c.h
+# Modules/clinic/gcmodule.c.h  # removed: 588 source lines
 # Modules/clinic/grpmodule.c.h  # removed: 155 source lines
 # Modules/clinic/hmacmodule.c.h  # removed: 673 source lines
 # Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
@@ -568,7 +568,7 @@ Modules/config.c.in
 # Modules/errnomodule.c  # removed: 988 source lines
 Modules/faulthandler.c
 # Modules/fcntlmodule.c  # removed: 789 source lines
-Modules/gcmodule.c
+# Modules/gcmodule.c  # removed: 585 source lines
 # Modules/getaddrinfo.c  # removed: 642 source lines
 Modules/getbuildinfo.c
 # Modules/getnameinfo.c  # removed: 207 source lines

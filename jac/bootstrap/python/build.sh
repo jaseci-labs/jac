@@ -160,6 +160,11 @@ cpython() {
     # compiler-bridge.patch carries zero-context hunks, which match on line
     # number alone and so must see pristine ones.
     patch -f -F0 -p1 -i "$recipe/build-graph.patch"
+    # The host keeps the objects the JacPython tree replaces; its pruned
+    # objects come out here (compiler-bridge.patch drops them for JacPython).
+    if [ -z "$host" ]; then
+        patch -f -F0 -p1 -i "$recipe/host-graph.patch"
+    fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
         linux-*)

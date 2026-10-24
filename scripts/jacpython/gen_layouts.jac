@@ -103,6 +103,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/objimpl.h",
          "Include/internal/pycore_llist.h",
          "Include/internal/pycore_obmalloc.h",
+         "Include/internal/pycore_gc.h",
          "Include/internal/pycore_interp_structs.h"
      ],
      # Object files whose private object structs are layouts: the ports of
@@ -196,6 +197,14 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "frameobject.h",
          "internal/pycore_opcode_utils.h",
          "internal/pycore_obmalloc.h",
+         "internal/pycore_semaphore.h",
+         "internal/pycore_optimizer.h",
+         "internal/pycore_object_stack.h",
+         "internal/pycore_lock.h",
+         "internal/pycore_parking_lot.h",
+         "internal/pycore_critical_section.h",
+         "internal/pycore_ceval.h",
+         "pthread.h",
          "internal/pycore_llist.h",
          "internal/pycore_pymem.h",
          "internal/pycore_qsbr.h",
@@ -270,6 +279,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("arena_object", "struct arena_object"),
          ("arena_coverage_t", "arena_coverage_t"),
          ("llist_node", "struct llist_node"),
+         ("gc_generation", "struct gc_generation"),
+         ("gc_generation_stats", "struct gc_generation_stats"),
          ("_PyLineTableOpaque", "struct _opaque"),
          ("PyCodeAddressRange", "PyCodeAddressRange"),
          ("lineiterator", "lineiterator"),
@@ -1034,6 +1045,186 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyByteArrayObject_SIZE", "sizeof(PyByteArrayObject)", "i64"),
          ("bytesiterobject_SIZE", "sizeof(bytesiterobject)", "i64"),
          ("_Py_TYPE_VERSION_BYTEARRAY", "_Py_TYPE_VERSION_BYTEARRAY", "u32"),
+         ("_PY_GIL_DROP_REQUEST_BIT", "_PY_GIL_DROP_REQUEST_BIT", "u64"),
+         ("_PY_SIGNALS_PENDING_BIT", "_PY_SIGNALS_PENDING_BIT", "u64"),
+         ("_PY_CALLS_TO_DO_BIT", "_PY_CALLS_TO_DO_BIT", "u64"),
+         ("_PY_ASYNC_EXCEPTION_BIT", "_PY_ASYNC_EXCEPTION_BIT", "u64"),
+         ("_PY_GC_SCHEDULED_BIT", "_PY_GC_SCHEDULED_BIT", "u64"),
+         ("_PY_EVAL_PLEASE_STOP_BIT", "_PY_EVAL_PLEASE_STOP_BIT", "u64"),
+         (
+             "_PY_EVAL_JIT_INVALIDATE_COLD_BIT",
+             "_PY_EVAL_JIT_INVALIDATE_COLD_BIT",
+             "u64"
+         ),
+         ("_PY_EVAL_EVENTS_MASK", "_PY_EVAL_EVENTS_MASK", "u64"),
+         ("_Py_PENDING_MAINTHREADONLY", "_Py_PENDING_MAINTHREADONLY", "i32"),
+         ("_Py_PENDING_RAWFREE", "_Py_PENDING_RAWFREE", "i32"),
+         ("_Py_ADD_PENDING_SUCCESS", "_Py_ADD_PENDING_SUCCESS", "i32"),
+         ("_Py_ADD_PENDING_FULL", "_Py_ADD_PENDING_FULL", "i32"),
+         ("PENDINGCALLSARRAYSIZE", "PENDINGCALLSARRAYSIZE", "i32"),
+         ("JIT_CLEANUP_THRESHOLD", "JIT_CLEANUP_THRESHOLD", "u64"),
+         ("_pending_call_SIZE", "sizeof(struct _pending_call)", "i64"),
+         (
+             "_pending_calls_HANDLING_THREAD",
+             "offsetof(struct _pending_calls, handling_thread)",
+             "i64"
+         ),
+         ("_pending_calls_MUTEX", "offsetof(struct _pending_calls, mutex)", "i64"),
+         (
+             "_pending_calls_NPENDING",
+             "offsetof(struct _pending_calls, npending)",
+             "i64"
+         ),
+         ("_pending_calls_MAX", "offsetof(struct _pending_calls, max)", "i64"),
+         ("_pending_calls_MAXLOOP", "offsetof(struct _pending_calls, maxloop)", "i64"),
+         ("_pending_calls_CALLS", "offsetof(struct _pending_calls, calls)", "i64"),
+         ("_pending_calls_FIRST", "offsetof(struct _pending_calls, first)", "i64"),
+         ("_pending_calls_NEXT", "offsetof(struct _pending_calls, next)", "i64"),
+         (
+             "_gil_runtime_state_INTERVAL",
+             "offsetof(struct _gil_runtime_state, interval)",
+             "i64"
+         ),
+         (
+             "_gil_runtime_state_LAST_HOLDER",
+             "offsetof(struct _gil_runtime_state, last_holder)",
+             "i64"
+         ),
+         (
+             "_gil_runtime_state_LOCKED",
+             "offsetof(struct _gil_runtime_state, locked)",
+             "i64"
+         ),
+         (
+             "_gil_runtime_state_SWITCH_NUMBER",
+             "offsetof(struct _gil_runtime_state, switch_number)",
+             "i64"
+         ),
+         (
+             "_gil_runtime_state_COND",
+             "offsetof(struct _gil_runtime_state, cond)",
+             "i64"
+         ),
+         ("_PyObjectStackChunk_PREV", "offsetof(_PyObjectStackChunk, prev)", "i64"),
+         ("_PyObjectStackChunk_N", "offsetof(_PyObjectStackChunk, n)", "i64"),
+         ("_PyObjectStackChunk_SIZE", "sizeof(_PyObjectStackChunk)", "i64"),
+         ("_PyObjectStack_HEAD", "offsetof(_PyObjectStack, head)", "i64"),
+         (
+             "_Py_ID___all__",
+             "offsetof(struct _Py_global_strings, identifiers._py___all__)",
+             "i64"
+         ),
+         (
+             "_Py_ID_displayhook",
+             "offsetof(struct _Py_global_strings, identifiers._py_displayhook)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_ENABLED",
+             "offsetof(struct _gc_runtime_state, enabled)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_DEBUG",
+             "offsetof(struct _gc_runtime_state, debug)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_GENERATIONS",
+             "offsetof(struct _gc_runtime_state, generations)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_PERMANENT_GENERATION",
+             "offsetof(struct _gc_runtime_state, permanent_generation)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_GENERATION_STATS",
+             "offsetof(struct _gc_runtime_state, generation_stats)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_COLLECTING",
+             "offsetof(struct _gc_runtime_state, collecting)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_GARBAGE",
+             "offsetof(struct _gc_runtime_state, garbage)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_CALLBACKS",
+             "offsetof(struct _gc_runtime_state, callbacks)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_LONG_LIVED_TOTAL",
+             "offsetof(struct _gc_runtime_state, long_lived_total)",
+             "i64"
+         ),
+         (
+             "_gc_runtime_state_LONG_LIVED_PENDING",
+             "offsetof(struct _gc_runtime_state, long_lived_pending)",
+             "i64"
+         ),
+         ("NUM_GENERATIONS", "NUM_GENERATIONS", "i32"),
+         ("_PyGC_DEBUG_STATS", "_PyGC_DEBUG_STATS", "i32"),
+         ("_PyGC_DEBUG_COLLECTABLE", "_PyGC_DEBUG_COLLECTABLE", "i32"),
+         ("_PyGC_DEBUG_UNCOLLECTABLE", "_PyGC_DEBUG_UNCOLLECTABLE", "i32"),
+         ("_PyGC_DEBUG_SAVEALL", "_PyGC_DEBUG_SAVEALL", "i32"),
+         ("_PyGC_DEBUG_LEAK", "(_PyGC_DEBUG_LEAK)", "i32"),
+         ("_Py_GC_REASON_HEAP", "_Py_GC_REASON_HEAP", "i32"),
+         ("_Py_GC_REASON_SHUTDOWN", "_Py_GC_REASON_SHUTDOWN", "i32"),
+         ("_Py_GC_REASON_MANUAL", "_Py_GC_REASON_MANUAL", "i32"),
+         ("Py_mod_exec", "Py_mod_exec", "i32"),
+         ("_Py_UNLOCKED", "_Py_UNLOCKED", "u8"),
+         ("_Py_LOCKED", "_Py_LOCKED", "u8"),
+         ("_Py_HAS_PARKED", "_Py_HAS_PARKED", "u8"),
+         ("_Py_ONCE_INITIALIZED", "_Py_ONCE_INITIALIZED", "u8"),
+         ("PY_LOCK_FAILURE", "PY_LOCK_FAILURE", "i32"),
+         ("PY_LOCK_INTR", "PY_LOCK_INTR", "i32"),
+         ("_PY_LOCK_DETACH", "_PY_LOCK_DETACH", "i32"),
+         ("_PY_LOCK_HANDLE_SIGNALS", "_PY_LOCK_HANDLE_SIGNALS", "i32"),
+         ("Py_PARK_OK", "Py_PARK_OK", "i32"),
+         ("Py_PARK_AGAIN", "Py_PARK_AGAIN", "i32"),
+         ("Py_PARK_TIMEOUT", "Py_PARK_TIMEOUT", "i32"),
+         ("Py_PARK_INTR", "Py_PARK_INTR", "i32"),
+         ("_Py_THREAD_ATTACHED", "_Py_THREAD_ATTACHED", "i32"),
+         ("QSBR_OFFLINE", "QSBR_OFFLINE", "u64"),
+         ("QSBR_INCR", "QSBR_INCR", "u64"),
+         ("_PyRecursiveMutex_THREAD", "offsetof(_PyRecursiveMutex, thread)", "i64"),
+         ("_PyRecursiveMutex_LEVEL", "offsetof(_PyRecursiveMutex, level)", "i64"),
+         ("_qsbr_thread_state_SEQ", "offsetof(struct _qsbr_thread_state, seq)", "i64"),
+         (
+             "_qsbr_thread_state_SHARED",
+             "offsetof(struct _qsbr_thread_state, shared)",
+             "i64"
+         ),
+         (
+             "_qsbr_thread_state_TSTATE",
+             "offsetof(struct _qsbr_thread_state, tstate)",
+             "i64"
+         ),
+         (
+             "_qsbr_thread_state_ALLOCATED",
+             "offsetof(struct _qsbr_thread_state, allocated)",
+             "i64"
+         ),
+         (
+             "_qsbr_thread_state_FREELIST_NEXT",
+             "offsetof(struct _qsbr_thread_state, freelist_next)",
+             "i64"
+         ),
+         ("_qsbr_pad_SIZE", "sizeof(struct _qsbr_pad)", "i64"),
+         ("_qsbr_shared_WR_SEQ", "offsetof(struct _qsbr_shared, wr_seq)", "i64"),
+         ("_qsbr_shared_RD_SEQ", "offsetof(struct _qsbr_shared, rd_seq)", "i64"),
+         ("_qsbr_shared_ARRAY", "offsetof(struct _qsbr_shared, array)", "i64"),
+         ("_qsbr_shared_ARRAY_RAW", "offsetof(struct _qsbr_shared, array_raw)", "i64"),
+         ("_qsbr_shared_ARRAY_LEN", "offsetof(struct _qsbr_shared, size)", "i64"),
+         ("_qsbr_shared_MUTEX", "offsetof(struct _qsbr_shared, mutex)", "i64"),
+         ("_qsbr_shared_FREELIST", "offsetof(struct _qsbr_shared, freelist)", "i64"),
          ("ALIGNMENT_SHIFT", "ALIGNMENT_SHIFT", "u32"),
          ("SMALL_REQUEST_THRESHOLD", "SMALL_REQUEST_THRESHOLD", "u64"),
          ("NB_SMALL_SIZE_CLASSES", "NB_SMALL_SIZE_CLASSES", "u32"),
@@ -3520,6 +3711,65 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("ENOSYS", "ENOSYS", "i32"),
          ("VM_FLAGS_SUPERPAGE_SIZE_2MB", "VM_FLAGS_SUPERPAGE_SIZE_2MB", "i32"),
          ("SYS_GETRANDOM", "SYS_getrandom", "i64"),
+         (
+             "_gil_runtime_state_MUTEX",
+             "offsetof(struct _gil_runtime_state, mutex)",
+             "i64"
+         ),
+         (
+             "_gil_runtime_state_SWITCH_COND",
+             "offsetof(struct _gil_runtime_state, switch_cond)",
+             "i64"
+         ),
+         (
+             "_gil_runtime_state_SWITCH_MUTEX",
+             "offsetof(struct _gil_runtime_state, switch_mutex)",
+             "i64"
+         ),
+         ("PyThreadState_NEXT", "offsetof(PyThreadState, next)", "i64"),
+         ("PyThreadState_EVAL_BREAKER", "offsetof(PyThreadState, eval_breaker)", "i64"),
+         ("PyThreadState_HOLDS_GIL", "offsetof(PyThreadState, holds_gil)", "i64"),
+         ("PyThreadState_ASYNC_EXC", "offsetof(PyThreadState, async_exc)", "i64"),
+         (
+             "PyInterpreterState_CEVAL_INSTRUMENTATION_VERSION",
+             "offsetof(PyInterpreterState, ceval.instrumentation_version)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CEVAL_GIL",
+             "offsetof(PyInterpreterState, ceval.gil)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CEVAL_PENDING",
+             "offsetof(PyInterpreterState, ceval.pending)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_THREADS_HEAD",
+             "offsetof(PyInterpreterState, threads.head)",
+             "i64"
+         ),
+         ("PyInterpreterState__GIL", "offsetof(PyInterpreterState, _gil)", "i64"),
+         (
+             "PyInterpreterState_TRACE_RUN_COUNTER",
+             "offsetof(PyInterpreterState, trace_run_counter)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_MAIN_TSTATE",
+             "offsetof(_PyRuntimeState, main_tstate)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_CEVAL_PENDING_MAINTHREAD",
+             "offsetof(_PyRuntimeState, ceval.pending_mainthread)",
+             "i64"
+         ),
+         ("ETIMEDOUT", "ETIMEDOUT", "i32"),
+         ("PyThreadState_STATE", "offsetof(PyThreadState, state)", "i64"),
+         ("PyInterpreterState_QSBR", "offsetof(PyInterpreterState, qsbr)", "i64"),
+         ("_PySemaphore_SIZE", "sizeof(_PySemaphore)", "i64"),
          ("MAP_HUGE_1GB", "JAC_PLATFORM_LINUX ? (30 << 26) : 0", "i32"),
          ("MAP_HUGE_2MB", "JAC_PLATFORM_LINUX ? (21 << 26) : 0", "i32"),
          ("RUSAGE_RU_UTIME", "offsetof(struct rusage, ru_utime)", "i64"),

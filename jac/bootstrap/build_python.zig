@@ -11,6 +11,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
     "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
     "bootstrap/python/build-graph.patch",
+    "bootstrap/python/host-graph.patch",
     "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
     "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
     "bootstrap/python/layouts_check.c",    "bootstrap/python/features_check.c",

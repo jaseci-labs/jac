@@ -15960,6 +15960,41 @@ graph import runtime.python {
     }
     bindings.mmap ++> inittab { PyInit_mmap }
     bindings.module ++> [
+        interpreter.frame
+            | modules.datetime_date
+            | modules.decimal_context
+            | modules.socket_object
+            | object_model.bytearray
+            | object_model.bytes
+            | object_model.cell
+            | object_model.cfunction
+            | object_model.descr
+            | object_model.dict
+            | object_model.enumerate
+            | object_model.exceptions
+            | object_model.frame
+            | object_model.func
+            | object_model.gen
+            | object_model.genericalias
+            | object_model.interpolation
+            | object_model.iterator
+            | object_model.list
+            | object_model.memory
+            | object_model.method
+            | object_model.module
+            | object_model.namespace
+            | object_model.odict
+            | object_model.picklebuffer
+            | object_model.set
+            | object_model.slice
+            | object_model.structseq
+            | object_model.template
+            | object_model.tuple
+            | object_model.type
+            | object_model.typevar
+            | object_model.unicode
+            | object_model.union
+            | object_model.weakref { visit_reference },
         modules.abc {
             FunctionTable,
             MethodCallbacks,
@@ -15999,40 +16034,6 @@ graph import runtime.python {
             | modules.sha3
             | modules.termios
             | modules.time { jacpy_binding_state_get },
-        modules.datetime_date
-            | modules.decimal_context
-            | modules.socket_object
-            | object_model.bytearray
-            | object_model.bytes
-            | object_model.cell
-            | object_model.cfunction
-            | object_model.descr
-            | object_model.dict
-            | object_model.enumerate
-            | object_model.exceptions
-            | object_model.frame
-            | object_model.func
-            | object_model.gen
-            | object_model.genericalias
-            | object_model.interpolation
-            | object_model.iterator
-            | object_model.list
-            | object_model.memory
-            | object_model.method
-            | object_model.module
-            | object_model.namespace
-            | object_model.odict
-            | object_model.picklebuffer
-            | object_model.set
-            | object_model.slice
-            | object_model.structseq
-            | object_model.template
-            | object_model.tuple
-            | object_model.type
-            | object_model.typevar
-            | object_model.unicode
-            | object_model.union
-            | object_model.weakref { visit_reference },
         modules.decimal_number { jacpy_binding_state_set, visit_reference },
         modules.elementtree | modules.pyexpat {
             jacpy_binding_module_native_get,
@@ -17639,6 +17640,113 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_new,
             jacpy_tuple_set_owned
+        },
+        interpreter.ceval_gil {
+            PyErr_BadInternalCall,
+            PyMem_RawFree,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyObject,
+            PyThreadState,
+            _PyErr_ChainExceptions1,
+            _PyInterpreterState_Main,
+            _PyRuntime,
+            jacpy_errno,
+            jacpy_set_errno
+        },
+        interpreter.frame {
+            NULL,
+            PyDict_SetItem,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_GivenExceptionMatches,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_ImportError,
+            PyExc_IndexError,
+            PyExc_RuntimeError,
+            PyExc_StopAsyncIteration,
+            PyExc_StopIteration,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyException_SetCause,
+            PyException_SetContext,
+            PyMapping_Keys,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyNumber_Positive,
+            PyObject,
+            PyObject_CallOneArg,
+            PyObject_GetAttr,
+            PyObject_GetOptionalAttr,
+            PyObject_SetItem,
+            PySequence_GetItem,
+            PyUnicode_FromString,
+            PyUnicode_GetLength,
+            PyUnicode_ReadChar,
+            Py_None,
+            _PyRuntime,
+            _PyTuple_FromArray,
+            _Py_Dealloc
+        },
+        interpreter.gc {
+            NULL,
+            PyBool_FromLong,
+            PyErr_BadInternalCall,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_OverflowError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyIndex_Check,
+            PyList_Append,
+            PyList_New,
+            PyLong_AsInt,
+            PyLong_AsLong,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyMethodDef,
+            PyModuleDef,
+            PyModule_AddIntConstant,
+            PyModule_AddObjectRef,
+            PyNumber_AsSsize_t,
+            PyObject,
+            PyObject_CallOneArg,
+            PyObject_Free,
+            PyObject_Malloc,
+            PyObject_Repr,
+            PyObject_Vectorcall,
+            PySys_Audit,
+            PyThreadState,
+            PyTime_AsSecondsDouble,
+            PyTime_PerfCounterRaw,
+            PyUnicode_EncodeFSDefault,
+            PyUnicode_FromString,
+            Py_BuildValue,
+            Py_None,
+            _PyTuple_FromArray,
+            _PyUnicode_EqualToASCIIString,
+            _Py_CalculateSuggestions
+        },
+        interpreter.lock {
+            PyMem_RawCalloc,
+            PyMem_RawFree,
+            PyMutex,
+            PyObject,
+            PyThreadState,
+            Py_MakePendingCalls,
+            _PyDeadline_Get,
+            _PyTime_Add,
+            jacpy_errno
         },
         interpreter.remote_debugging { PyErr_SetString, PyExc_RuntimeError },
         layouts { PyMemberDef, PyMethodDef, PyObject, Py_buffer, Py_complex },
@@ -24097,6 +24205,154 @@ graph import runtime.python {
             Py_tp_str
         },
         bindings.type { PyGetSetDef },
+        interpreter.ceval_gil {
+            JIT_CLEANUP_THRESHOLD,
+            PENDINGCALLSARRAYSIZE,
+            PyStatus,
+            PyThreadState_INTERP,
+            _PY_ASYNC_EXCEPTION_BIT,
+            _PY_CALLS_TO_DO_BIT,
+            _PY_EVAL_EVENTS_MASK,
+            _PY_EVAL_JIT_INVALIDATE_COLD_BIT,
+            _PY_EVAL_PLEASE_STOP_BIT,
+            _PY_GC_SCHEDULED_BIT,
+            _PY_GIL_DROP_REQUEST_BIT,
+            _PY_SIGNALS_PENDING_BIT,
+            _PyStatus_TYPE_OK,
+            _Py_ADD_PENDING_FULL,
+            _Py_ADD_PENDING_SUCCESS,
+            _Py_LOCK_DONT_DETACH,
+            _Py_PENDING_MAINTHREADONLY,
+            _Py_PENDING_RAWFREE,
+            _gil_runtime_state_COND,
+            _gil_runtime_state_INTERVAL,
+            _gil_runtime_state_LAST_HOLDER,
+            _gil_runtime_state_LOCKED,
+            _gil_runtime_state_SWITCH_NUMBER,
+            _pending_call_SIZE,
+            _pending_calls_CALLS,
+            _pending_calls_FIRST,
+            _pending_calls_HANDLING_THREAD,
+            _pending_calls_MAX,
+            _pending_calls_MAXLOOP,
+            _pending_calls_MUTEX,
+            _pending_calls_NEXT,
+            _pending_calls_NPENDING
+        },
+        interpreter.frame {
+            CO_ASYNC_GENERATOR,
+            CO_COROUTINE,
+            FRAME_OWNED_BY_FRAME_OBJECT,
+            FRAME_OWNED_BY_GENERATOR,
+            FRAME_OWNED_BY_INTERPRETER,
+            PyCodeObject_CODE_ADAPTIVE,
+            PyCodeObject_FIRSTTRACEABLE,
+            PyCodeObject_FLAGS,
+            PyFrameObject_BACK,
+            PyFrameObject_FRAME,
+            PyFrameObject_FRAME_DATA,
+            PyListObject,
+            PyTypeObject,
+            Py_TPFLAGS_UNICODE_SUBCLASS,
+            _PyObjectStackChunk_N,
+            _PyObjectStackChunk_PREV,
+            _PyObjectStackChunk_SIZE,
+            _PyObjectStack_HEAD,
+            _Py_ID___all__,
+            _Py_ID___dict__,
+            _Py_ID___name__,
+            _Py_ID_displayhook,
+            _Py_freelists_OBJECT_STACK_CHUNKS,
+            _object
+        },
+        interpreter.gc {
+            METH_FASTCALL,
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_O,
+            METH_VARARGS,
+            ModuleDef,
+            NUM_GENERATIONS,
+            PyBytesObject_OB_SVAL,
+            PyGC_Head,
+            PyGC_Head_SIZE,
+            PyListObject,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyObject_HEAD_SIZE,
+            PyStatus,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            PyVarObject,
+            PyWeakReference,
+            Py_TPFLAGS_INLINE_VALUES,
+            Py_TPFLAGS_UNICODE_SUBCLASS,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            _PY_GC_SCHEDULED_BIT,
+            _PyGC_DEBUG_COLLECTABLE,
+            _PyGC_DEBUG_LEAK,
+            _PyGC_DEBUG_SAVEALL,
+            _PyGC_DEBUG_STATS,
+            _PyGC_DEBUG_UNCOLLECTABLE,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK,
+            _Py_GC_REASON_HEAP,
+            _Py_GC_REASON_MANUAL,
+            _Py_GC_REASON_SHUTDOWN,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _gc_runtime_state_CALLBACKS,
+            _gc_runtime_state_COLLECTING,
+            _gc_runtime_state_DEBUG,
+            _gc_runtime_state_ENABLED,
+            _gc_runtime_state_GARBAGE,
+            _gc_runtime_state_GENERATION0,
+            _gc_runtime_state_GENERATIONS,
+            _gc_runtime_state_GENERATION_STATS,
+            _gc_runtime_state_HEAP_SIZE,
+            _gc_runtime_state_LONG_LIVED_PENDING,
+            _gc_runtime_state_LONG_LIVED_TOTAL,
+            _gc_runtime_state_PERMANENT_GENERATION,
+            _object,
+            gc_generation,
+            gc_generation_stats
+        },
+        interpreter.lock {
+            PY_LOCK_ACQUIRED,
+            PY_LOCK_FAILURE,
+            PY_LOCK_INTR,
+            PyThreadState_INTERP,
+            Py_PARK_AGAIN,
+            Py_PARK_INTR,
+            Py_PARK_OK,
+            Py_PARK_TIMEOUT,
+            QSBR_INCR,
+            QSBR_OFFLINE,
+            _PY_LOCK_DETACH,
+            _PY_LOCK_HANDLE_SIGNALS,
+            _PyRecursiveMutex_LEVEL,
+            _PyRecursiveMutex_THREAD,
+            _Py_HAS_PARKED,
+            _Py_LOCKED,
+            _Py_ONCE_INITIALIZED,
+            _Py_THREAD_ATTACHED,
+            _Py_UNLOCKED,
+            _qsbr_pad_SIZE,
+            _qsbr_shared_ARRAY,
+            _qsbr_shared_ARRAY_LEN,
+            _qsbr_shared_ARRAY_RAW,
+            _qsbr_shared_FREELIST,
+            _qsbr_shared_MUTEX,
+            _qsbr_shared_RD_SEQ,
+            _qsbr_shared_WR_SEQ,
+            _qsbr_thread_state_ALLOCATED,
+            _qsbr_thread_state_FREELIST_NEXT,
+            _qsbr_thread_state_SEQ,
+            _qsbr_thread_state_SHARED,
+            _qsbr_thread_state_TSTATE,
+            llist_node
+        },
         interpreter.perf_trampoline | modules.posix_core {
             PyStatus,
             _PyStatus_TYPE_OK
@@ -26423,6 +26679,57 @@ graph import runtime.python {
         },
     ]
     layouts_platform ++> [
+        interpreter.ceval_gil {
+            ETIMEDOUT,
+            PyInterpreterState_CEVAL_GIL,
+            PyInterpreterState_CEVAL_INSTRUMENTATION_VERSION,
+            PyInterpreterState_CEVAL_OWN_GIL,
+            PyInterpreterState_CEVAL_PENDING,
+            PyInterpreterState_RUNTIME,
+            PyInterpreterState_THREADS_HEAD,
+            PyInterpreterState_TRACE_RUN_COUNTER,
+            PyInterpreterState__GIL,
+            PyThreadState_ASYNC_EXC,
+            PyThreadState_EVAL_BREAKER,
+            PyThreadState_HOLDS_GIL,
+            PyThreadState_NEXT,
+            _PyRuntimeState_CEVAL_PENDING_MAINTHREAD,
+            _PyRuntimeState_INTERPRETERS_MUTEX,
+            _PyRuntimeState_MAIN_TSTATE,
+            _gil_runtime_state_MUTEX,
+            _gil_runtime_state_SWITCH_COND,
+            _gil_runtime_state_SWITCH_MUTEX
+        },
+        interpreter.frame {
+            PyThreadState_CURRENT_FRAME,
+            _PyInterpreterFrame_FRAME_OBJ,
+            _PyInterpreterFrame_F_BUILTINS,
+            _PyInterpreterFrame_F_EXECUTABLE,
+            _PyInterpreterFrame_F_FUNCOBJ,
+            _PyInterpreterFrame_F_GLOBALS,
+            _PyInterpreterFrame_F_LOCALS,
+            _PyInterpreterFrame_INSTR_PTR,
+            _PyInterpreterFrame_LOCALSPLUS,
+            _PyInterpreterFrame_OWNER,
+            _PyInterpreterFrame_PREVIOUS,
+            _PyInterpreterFrame_STACKPOINTER,
+            _PyInterpreterFrame_VISITED,
+            _PyRuntimeState_GLOBAL_STRINGS
+        },
+        interpreter.gc {
+            PyInterpreterState_FREELISTS,
+            PyInterpreterState_GC,
+            PyThreadState_EVAL_BREAKER,
+            _PyInterpreterFrame_LOCALSPLUS,
+            _PyInterpreterFrame_STACKPOINTER
+        },
+        interpreter.lock {
+            EINTR,
+            ETIMEDOUT,
+            PyInterpreterState_QSBR,
+            PyThreadState_STATE,
+            _PyThreadStateImpl_QSBR
+        },
         object_model.bytearray { PyConfig_BYTES_WARNING },
         object_model.bytes {
             PyConfig_BYTES_WARNING,
@@ -29682,6 +29989,7 @@ graph import runtime.python {
             py_true
         },
     ]
+    object_model.call ++> interpreter.gc { exception_raised }
     object_model.capsule ++> [
         bindings.datetime | modules.unicodedata { PyCapsule_New },
         bindings.socket { PyCapsule_GetPointer, PyCapsule_New, _PyCapsule_SetTraverse },
@@ -29701,6 +30009,7 @@ graph import runtime.python {
         },
         modules.decimal_convert { PyComplex_AsCComplex },
     ]
+    object_model.dict ++> interpreter.gc { object_is_immortal }
     object_model.file ++> bindings.converters | modules.select {
         PyObject_AsFileDescriptor
     }
@@ -29713,6 +30022,40 @@ graph import runtime.python {
         | bindings.queue
         | bindings.sre { Py_GenericAlias }
     object_model.header ++> [
+        interpreter.ceval_gil { current_interp, current_tstate, object_decref },
+        interpreter.frame {
+            freelist,
+            freelist_push,
+            object_decref,
+            object_gc_is_tracked,
+            object_gc_track,
+            object_incref,
+            object_is_type,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_type,
+            object_xdecref,
+            type_has_feature
+        },
+        interpreter.gc {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_gc_is_tracked,
+            object_gc_track,
+            object_gc_untrack,
+            object_incref,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_type,
+            object_type_check,
+            object_xdecref,
+            tuple_get_item,
+            type_has_feature
+        },
+        interpreter.lock | modules.posix_core { current_tstate },
         modules.asyncio { freelist_pop, freelist_push },
         modules.datetime_objects { object_type, object_type_check },
         modules.decimal_context
@@ -29723,13 +30066,19 @@ graph import runtime.python {
             | modules.socket_core
             | modules.socket_object
             | modules.sqlite3 { object_type },
-        modules.posix_core { current_tstate },
         modules.sre { object_size, object_type, tuple_get_item, tuple_set_item },
         modules.struct { tuple_get_item, tuple_set_item },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
     object_model.method ++> bindings.functools { PyMethod_New }
     object_model.namespace ++> modules.time { _PyNamespace_New }
+    object_model.object ++> interpreter.gc {
+        gc_finalized,
+        gc_set_finalized,
+        object_init,
+        object_is_gc,
+        var_size
+    }
     object_model.slice ++> modules.elementtree | modules.sqlite3 {
         PySlice_AdjustIndices,
         PySlice_Unpack
@@ -29751,6 +30100,7 @@ graph import runtime.python {
         PyStructSequence_NewType,
         PyStructSequence_UnnamedField
     }
+    object_model.type ++> interpreter.gc { inline_values_size, type_preheader_size }
     objects ++> [
         compiler_integer { PyInt, PyObj, PyStr },
         constant_input {
