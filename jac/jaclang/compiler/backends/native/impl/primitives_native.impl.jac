@@ -3231,126 +3231,262 @@ impl NativeListEmitter.emit_sort(
     if key_fn is None {
         return self._emit_value_sort(ctx, target, rev_i1);
     }
-    len_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sort.len.ptr"
-    );
-    list_len = b.load(len_ptr, name="sort.len");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
+    return self._emit_key_sort(ctx, target, key_fn, rev_i1, _key_node);
+}
 
-    outer_bb = func.append_basic_block(name="sort.outer");
-    inner_start = func.append_basic_block(name="sort.inner.start");
-    inner_bb = func.append_basic_block(name="sort.inner");
-    inner_body = func.append_basic_block(name="sort.inner.body");
-    swap_bb = func.append_basic_block(name="sort.swap");
-    no_swap = func.append_basic_block(name="sort.noswap");
-    inner_next = func.append_basic_block(name="sort.inner.next");
-    outer_next = func.append_basic_block(name="sort.outer.next");
-    done_bb = func.append_basic_block(name="sort.done");
-    len_m1 = b.sub(list_len, one, name="sort.lenm1");
-    trivial = b.icmp_unsigned("<=", list_len, one, name="sort.trivial");
-    b.cbranch(trivial, done_bb, outer_bb);
+impl NativeListEmitter._emit_key_sort(
+    self: NativeListEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    key_fn: ir.Function,
+    reverse: (ir.Value | None),
+    key_node: UniNode
+) -> (ir.Value | None) {
+    """Stable sort by a key: every key computed once, then a merge sort of positions.
 
-    b.position_at_start(outer_bb);
-    oi = b.phi(i64, name="sort.oi");
-    oi.add_incoming(zero, entry_bb);
-    outer_end = b.icmp_unsigned(">=", oi, len_m1, name="sort.oend");
-    b.cbranch(outer_end, done_bb, inner_start);
-
-    b.position_at_start(inner_start);
-    inner_limit = b.sub(len_m1, oi, name="sort.ilimit");
-    b.branch(inner_bb);
-
-    b.position_at_start(inner_bb);
-    ji = b.phi(i64, name="sort.ji");
-    ji.add_incoming(zero, inner_start);
-    inner_end = b.icmp_unsigned(">=", ji, inner_limit, name="sort.iend");
-    b.cbranch(inner_end, outer_next, inner_body);
-
-    b.position_at_start(inner_body);
-    j1 = b.add(ji, one, name="sort.j1");
-    ej = b.call(helpers["get"], [target, ji], name="sort.ej");
-    ej1 = b.call(helpers["get"], [target, j1], name="sort.ej1");
-
-    cj: ir.Value = ej;
-    cj1: ir.Value = ej1;
-    cmp_type = elem_type;
-    if key_fn is not None {
-        _kp_type = key_fn.args[0].type;
-        cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)], name="sort.kj");
-        cj1 = b.call(key_fn, [p._coerce_type(ej1, _kp_type)], name="sort.kj1");
-        cmp_type = key_fn.function_type.return_type;
-
-        if cj.type != cmp_type {
-            cmp_type = cj.type;
-        }
-    }
-
-    cj = p._cast_to_list_elem(b, cj, cmp_type, "sort.cj");
-    cj1 = p._cast_to_list_elem(b, cj1, cmp_type, "sort.cj1");
-    _key_ret = p._sort_key_return_type(_key_node) if key_fn is not None else None;
-    _key_orderable = p._sort_key_orderable(_key_ret);
-    if (_key_orderable is not None and not _key_orderable)
-        or (_key_orderable is None and not p._sort_key_supported(cmp_type)) {
-        p.ctx.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
+    The key sort was a bubble sort that called the key twice per comparison,
+    quadratic in the length. Now each element's key goes into an array once,
+    a stable merge sort orders the positions 0..n-1 by those keys (a tie keeps
+    the earlier position first, which keeps `reverse=True` stable as well),
+    and the elements are rearranged by the sorted positions. Keys the key
+    function handed over owned are released once the order is known.
+    """;
+    p = ctx.pass_ref;
+    helpers = p.list_helpers.get(ctx.type_key);
+    b = get_builder(p);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    key_type = key_fn.function_type.return_type;
+    key_ret = p._sort_key_return_type(key_node);
+    key_orderable = p._sort_key_orderable(key_ret);
+    if (key_orderable is not None and not key_orderable)
+        or (key_orderable is None and not p._sort_key_supported(key_type)) {
+        p.ctx.emit(E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG);
         return None;
     }
-    _cmp_float = isinstance(cmp_type, (ir.DoubleType, ir.FloatType));
-    _cmp_unsigned = key_fn is not None and p._sort_key_unsigned(_key_node);
-    if _cmp_float {
-        (cj, cj1) = p._promote_to_float(cj, cj1, unsigned=_cmp_unsigned);
-    }
-    _sort_errs = len(p.ctx.errors_had);
-    cmp_gt: (ir.Value | None) = p._emit_comparison(
-        Tok.GT, cj, cj1, _cmp_float, unsigned=_cmp_unsigned, key_ret=_key_ret
+    cmp_float = isinstance(key_type, (ir.DoubleType, ir.FloatType));
+    cmp_unsigned = p._sort_key_unsigned(key_node);
+    length = b.load(
+        b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="ksort.len"
     );
-    cmp_lt: (ir.Value | None) = None;
-    if cmp_gt is not None and rev_i1 is not None {
-        cmp_lt = p._emit_comparison(
-            Tok.LT, cj, cj1, _cmp_float, unsigned=_cmp_unsigned, key_ret=_key_ret
+    data_type = helpers["elem_type"].as_pointer();
+    itemsize = p._abi_sizeof(helpers["elem_type"]);
+    keysize = p._abi_sizeof(key_type);
+    fn = b.basic_block.function;
+    allocate = fn.append_basic_block("ksort.allocate");
+    key_loop = fn.append_basic_block("ksort.keys");
+    key_body = fn.append_basic_block("ksort.keys.body");
+    outer = fn.append_basic_block("ksort.merge.pass");
+    pass_start = fn.append_basic_block("ksort.merge.start");
+    pair = fn.append_basic_block("ksort.merge.pair");
+    pair_start = fn.append_basic_block("ksort.merge.pair.start");
+    merge = fn.append_basic_block("ksort.merge.item");
+    left_check = fn.append_basic_block("ksort.merge.left.check");
+    right_check = fn.append_basic_block("ksort.merge.right.check");
+    compare = fn.append_basic_block("ksort.merge.compare");
+    take_left = fn.append_basic_block("ksort.merge.left");
+    take_right = fn.append_basic_block("ksort.merge.right");
+    advance = fn.append_basic_block("ksort.merge.advance");
+    pair_done = fn.append_basic_block("ksort.merge.pair.done");
+    pass_done = fn.append_basic_block("ksort.merge.pass.done");
+    publish = fn.append_basic_block("ksort.publish");
+    place = fn.append_basic_block("ksort.place");
+    place_body = fn.append_basic_block("ksort.place.body");
+    drop_keys = fn.append_basic_block("ksort.drop");
+    drop_body = fn.append_basic_block("ksort.drop.body");
+    finish = fn.append_basic_block("ksort.finish");
+    done = fn.append_basic_block("ksort.done");
+    index_slot = p._entry_alloca(i64, "ksort.index");
+    width_slot = p._entry_alloca(i64, "ksort.width");
+    base_slot = p._entry_alloca(i64, "ksort.base");
+    left_slot = p._entry_alloca(i64, "ksort.left");
+    right_slot = p._entry_alloca(i64, "ksort.right");
+    output_slot = p._entry_alloca(i64, "ksort.output");
+    source_slot = p._entry_alloca(i64.as_pointer(), "ksort.source");
+    target_slot = p._entry_alloca(i64.as_pointer(), "ksort.target");
+    b.cbranch(b.icmp_unsigned("<=", length, one), done, allocate);
+
+    b.position_at_start(allocate);
+    widest = max(keysize, itemsize, 16);
+    p._emit_runtime_raise(
+        b.icmp_unsigned(">", length, ir.Constant(i64, 9223372036854775807 // widest)),
+        "MemoryError",
+        "sort workspace is too large"
+    );
+    malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
+    free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    keys_raw = b.call(
+        malloc, [b.mul(length, ir.Constant(i64, keysize))], name="ksort.keys.raw"
+    );
+    perm_raw = b.call(malloc, [b.mul(length, ir.Constant(i64, 16))], name="ksort.perm.raw");
+    p._emit_runtime_raise(
+        b.or_(
+            b.icmp_unsigned("==", keys_raw, ir.Constant(i8p, None)),
+            b.icmp_unsigned("==", perm_raw, ir.Constant(i8p, None))
+        ),
+        "MemoryError",
+        "cannot allocate sort workspace"
+    );
+    keys = b.bitcast(keys_raw, key_type.as_pointer(), name="ksort.keys");
+    first = b.bitcast(perm_raw, i64.as_pointer(), name="ksort.perm");
+    second = b.gep(first, [length], name="ksort.perm.second");
+    b.store(zero, index_slot);
+    b.branch(key_loop);
+
+    # Each key once, in element order; the positions start as 0..n-1.
+    b.position_at_start(key_loop);
+    i = b.load(index_slot, name="ksort.i");
+    b.cbranch(b.icmp_unsigned("<", i, length), key_body, outer);
+    b.position_at_start(key_body);
+    elem = b.call(helpers["get"], [target, i], name="ksort.elem");
+    # (a call hands its result over owned, as a call expression's is)
+    key = p._mark_reference_owned(
+        b.call(key_fn, [p._coerce_type(elem, key_fn.args[0].type)], name="ksort.key")
+    );
+    key_owned = p._is_owned(key);
+    key_tuple_owned = key.na_tuple_owned;
+    b.store(key, b.gep(keys, [i]));
+    b.store(i, b.gep(first, [i]));
+    b.store(b.add(i, one), index_slot);
+    b.branch(key_loop);
+
+    b.position_at_start(outer);
+    b.store(first, source_slot);
+    b.store(second, target_slot);
+    b.store(one, width_slot);
+    merge_pass = fn.append_basic_block("ksort.merge.width");
+    b.branch(merge_pass);
+    b.position_at_start(merge_pass);
+    width = b.load(width_slot);
+    b.cbranch(b.icmp_unsigned("<", width, length), pass_start, publish);
+    b.position_at_start(pass_start);
+    b.store(zero, base_slot);
+    b.branch(pair);
+    b.position_at_start(pair);
+    base = b.load(base_slot);
+    b.cbranch(b.icmp_unsigned("<", base, length), pair_start, pass_done);
+    b.position_at_start(pair_start);
+    middle_raw = b.add(base, width);
+    middle = b.select(b.icmp_unsigned("<", middle_raw, length), middle_raw, length);
+    end_raw = b.add(middle, width);
+    end = b.select(b.icmp_unsigned("<", end_raw, length), end_raw, length);
+    source = b.load(source_slot);
+    destination = b.load(target_slot);
+    b.store(base, left_slot);
+    b.store(middle, right_slot);
+    b.store(base, output_slot);
+    b.branch(merge);
+    b.position_at_start(merge);
+    output = b.load(output_slot);
+    b.cbranch(b.icmp_unsigned("<", output, end), left_check, pair_done);
+    b.position_at_start(left_check);
+    left = b.load(left_slot);
+    right = b.load(right_slot);
+    b.cbranch(b.icmp_unsigned(">=", left, middle), take_right, right_check);
+    b.position_at_start(right_check);
+    b.cbranch(b.icmp_unsigned(">=", right, end), take_left, compare);
+    b.position_at_start(compare);
+    left_key = b.load(b.gep(keys, [b.load(b.gep(source, [left]))]), name="ksort.lk");
+    right_key = b.load(b.gep(keys, [b.load(b.gep(source, [right]))]), name="ksort.rk");
+    if cmp_float {
+        (left_key, right_key) = p._promote_to_float(
+            left_key, right_key, unsigned=cmp_unsigned
         );
     }
-    if cmp_gt is None or (rev_i1 is not None and cmp_lt is None) {
-        if key_fn is not None {
-            p._release_owned_operands(cj, cj1, op="sort_key");
-        }
-        if len(p.ctx.errors_had) == _sort_errs {
-            p.ctx.emit(
-                E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG
-            );
+    sort_errs = len(p.ctx.errors_had);
+    before = p._emit_comparison(
+        Tok.LT, right_key, left_key, cmp_float, unsigned=cmp_unsigned, key_ret=key_ret
+    );
+    after: (ir.Value | None) = None;
+    if before is not None and reverse is not None {
+        after = p._emit_comparison(
+            Tok.LT, left_key, right_key, cmp_float, unsigned=cmp_unsigned, key_ret=key_ret
+        );
+    }
+    if before is None or (reverse is not None and after is None) {
+        if len(p.ctx.errors_had) == sort_errs {
+            p.ctx.emit(E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG);
         }
         return None;
     }
-    needs_swap = cmp_gt
-        if rev_i1 is None
-        else b.select(rev_i1, cmp_lt, cmp_gt, name="sort.dir");
-    if key_fn is not None {
-        p._release_owned_operands(cj, cj1, op="sort_key");
-    }
-    b.cbranch(needs_swap, swap_bb, no_swap);
+    choose_right = before if reverse is None else b.select(reverse, after, before);
+    b.cbranch(choose_right, take_right, take_left);
+    b.position_at_start(take_left);
+    b.store(b.load(b.gep(source, [left])), b.gep(destination, [output]));
+    b.store(b.add(left, one), left_slot);
+    b.branch(advance);
+    b.position_at_start(take_right);
+    b.store(b.load(b.gep(source, [right])), b.gep(destination, [output]));
+    b.store(b.add(right, one), right_slot);
+    b.branch(advance);
+    b.position_at_start(advance);
+    b.store(b.add(output, one), output_slot);
+    b.branch(merge);
+    b.position_at_start(pair_done);
+    b.store(end, base_slot);
+    b.branch(pair);
+    b.position_at_start(pass_done);
+    previous = b.load(source_slot);
+    b.store(b.load(target_slot), source_slot);
+    b.store(previous, target_slot);
+    b.store(b.mul(width, ir.Constant(i64, 2)), width_slot);
+    b.branch(merge_pass);
 
-    b.position_at_start(swap_bb);
-
-    _sw_dpp = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sort.dpp"
+    # Rearrange the elements by the sorted positions, through a copy.
+    b.position_at_start(publish);
+    data = b.load(
+        b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]), name="ksort.data"
     );
-    _sw_da = b.load(_sw_dpp, name="sort.da");
-    b.store(ej1, b.gep(_sw_da, [ji], name="sort.slot.j"));
-    b.store(ej, b.gep(_sw_da, [j1], name="sort.slot.j1"));
-    b.branch(inner_next);
-    b.position_at_start(no_swap);
-    b.branch(inner_next);
+    data = b.bitcast(data, data_type, name="ksort.data.typed");
+    nbytes = b.mul(length, ir.Constant(i64, itemsize));
+    copy_raw = b.call(malloc, [nbytes], name="ksort.copy.raw");
+    p._emit_runtime_raise(
+        b.icmp_unsigned("==", copy_raw, ir.Constant(i8p, None)),
+        "MemoryError",
+        "cannot allocate sort workspace"
+    );
+    b.call(memcpy, [copy_raw, b.bitcast(data, i8p), nbytes]);
+    copy = b.bitcast(copy_raw, data_type, name="ksort.copy");
+    order = b.load(source_slot, name="ksort.order");
+    b.store(zero, index_slot);
+    b.branch(place);
+    b.position_at_start(place);
+    j = b.load(index_slot, name="ksort.j");
+    b.cbranch(b.icmp_unsigned("<", j, length), place_body, drop_keys);
+    b.position_at_start(place_body);
+    b.store(
+        b.load(b.gep(copy, [b.load(b.gep(order, [j]))])), b.gep(data, [j])
+    );
+    b.store(b.add(j, one), index_slot);
+    b.branch(place);
 
-    b.position_at_start(inner_next);
-    next_ji = b.add(ji, one, name="sort.nji");
-    ji.add_incoming(next_ji, inner_next);
-    b.branch(inner_bb);
+    b.position_at_start(drop_keys);
+    b.call(free, [copy_raw]);
+    b.store(zero, index_slot);
+    drop_loop = fn.append_basic_block("ksort.drop.loop");
+    b.branch(drop_loop if key_owned or key_tuple_owned is not None else finish);
+    b.position_at_start(drop_loop);
+    k = b.load(index_slot, name="ksort.k");
+    b.cbranch(b.icmp_unsigned("<", k, length), drop_body, finish);
+    b.position_at_start(drop_body);
+    held = b.load(b.gep(keys, [k]), name="ksort.held");
+    if key_owned {
+        p._mark_owned(held);
+    }
+    held.na_tuple_owned = key_tuple_owned;
+    p._release_owned_args([held], op="sort_key");
+    b.store(b.add(k, one), index_slot);
+    b.branch(drop_loop);
 
-    b.position_at_start(outer_next);
-    next_oi = b.add(oi, one, name="sort.noi");
-    oi.add_incoming(next_oi, outer_next);
-    b.branch(outer_bb);
-    b.position_at_start(done_bb);
+    b.position_at_start(finish);
+    b.call(free, [keys_raw]);
+    b.call(free, [perm_raw]);
+    b.branch(done);
+    b.position_at_start(done);
     return ir.Constant(i64, 0);
 }
 
