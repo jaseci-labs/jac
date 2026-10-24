@@ -866,6 +866,11 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                         name=type(part.format_part).__name__
                     );
                     return None;
+                } elif self._is_owned(val) and not self._nogc_headerless() {
+                    # (a string made for the f-string, `{w[1:]}` say, is the
+                    # f-string's to release once its text is copied; the
+                    # headerless build's owned strings follow their own rules)
+                    obj_strs.append(val);
                 }
                 fmt_parts.append("%s");
                 args.append(val);
