@@ -197,7 +197,7 @@ async def start(name: str) {
 }
 ```
 
-`profiles.list()` gives `{"id", "name", "created"}` for each, `profiles.current()`
+`profiles.choices()` gives `{"id", "name", "created"}` for each, `profiles.current()`
 the active one or `None`, and `profiles.enabled()` whether this backend uses
 profiles. `await profiles.use(id)` switches to another and `await profiles.leave()`
 returns to no profile; each reloads the page.

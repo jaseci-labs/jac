@@ -231,7 +231,7 @@ obj profiles {
         return bool(globalThis.__JAC_PROFILES__);
     }
 
-    static def list -> list[dict[str, any]] {
+    static def choices -> list[dict[str, any]] {
         info: any = globalThis.__JAC_PROFILES__;
         return info["profiles"] if info else [];
     }
