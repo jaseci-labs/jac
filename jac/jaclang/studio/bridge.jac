@@ -193,7 +193,7 @@ impl BridgeServer.socket_path -> str {
     }
     digest = hashlib.sha1(path.encode("utf-8")).hexdigest()[:16];
     tmp = "/tmp" if os.path.isdir("/tmp") else tempfile.gettempdir();
-    return os.path.join(tmp, f"jac-studio-{os.getuid()}-{digest}.sock");
+    return os.path.join(tmp, f"jac-hack-{os.getuid()}-{digest}.sock");
 }
 
 impl BridgeServer.start -> str {
@@ -261,7 +261,7 @@ impl BridgeServer.stop {
         } except queue.Empty {
             break;
         }
-        req.fail("jac studio is shutting down");
+        req.fail("jac hack is shutting down");
     }
     for c in conns {
         c.close();
@@ -402,7 +402,7 @@ impl BridgeClient.call(
     if not self.path or not os.path.exists(self.path) {
         where = f" (no socket at {self.path})" if self.path else "";
         raise BridgeUnavailable(
-            f"jac studio is not running{where}. These tools only work while the user has `jac studio` open on this project."
+            f"jac hack is not running{where}. These tools only work while the user has `jac hack` open on this project."
         );
     }
     limit = timeout or self.timeout;
@@ -413,7 +413,7 @@ impl BridgeClient.call(
     } except OSError as e {
         s.close();
         raise BridgeUnavailable(
-            f"jac studio is not answering on {self.path} ({e}). It was probably closed; these tools only work while `jac studio` is open."
+            f"jac hack is not answering on {self.path} ({e}). It was probably closed; these tools only work while `jac hack` is open."
         ) from None;
     }
     self.seq += 1;
@@ -431,14 +431,14 @@ impl BridgeClient.call(
             chunk = s.recv(65536);
             if not chunk {
                 raise BridgeUnavailable(
-                    "jac studio closed the connection before answering (it may have exited)."
+                    "jac hack closed the connection before answering (it may have exited)."
                 );
             }
             buf += chunk;
         }
     } except socket.timeout {
         raise BridgeError(
-            f"jac studio did not answer '{method}' within {limit:g}s (the UI may be busy). Try again."
+            f"jac hack did not answer '{method}' within {limit:g}s (the UI may be busy). Try again."
         ) from None;
     } finally {
         s.close();

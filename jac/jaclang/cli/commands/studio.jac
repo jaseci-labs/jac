@@ -1,6 +1,6 @@
 comptime SPEC_STUDIO: CommandSpec = CommandSpec(
-         name="studio",
-         help="Open the studio: a compiler-backed terminal workspace for coding agents",
+         name="hack",
+         help="Open hack mode: a compiler-backed terminal workspace for coding agents",
          args=[
              Arg.create(
                  "action",
@@ -18,13 +18,13 @@ comptime SPEC_STUDIO: CommandSpec = CommandSpec(
                  "agent",
                  `default="",
                  short="a",
-                 help="Agent to drive (see `jac studio agents`)"
+                 help="Agent to drive (see `jac hack agents`)"
              ),
              Arg.create(
                  "session",
                  `default="",
                  short="s",
-                 help="Session id to resume (see `jac studio sessions`)"
+                 help="Session id to resume (see `jac hack sessions`)"
              ),
              Arg.create(
                  "json",
@@ -44,56 +44,56 @@ comptime SPEC_STUDIO: CommandSpec = CommandSpec(
 
          ],
          examples=[
-             ("jac studio", "Open the workspace on the current project"),
+             ("jac hack", "Open the workspace on the current project"),
              (
-                 "jac studio model --json",
+                 "jac hack model --json",
                  "Dump the project model: modules, wires, rules and symbols"
              ),
-             ("jac studio model core.jobs", "Show one module's wiring and symbols"),
+             ("jac hack model core.jobs", "Show one module's wiring and symbols"),
              (
-                 "jac studio graph core",
+                 "jac hack graph core",
                  "Show the wiring between a package's parts: layers, matrix, backward wires and cycles"
              ),
              (
-                 "jac studio roles",
+                 "jac hack roles",
                  "Sort modules into foundations, hubs, integrators and entry points"
              ),
              (
-                 "jac studio interface core",
+                 "jac hack interface core",
                  "List the names that cross a package's boundary, and who uses each"
              ),
              (
-                 "jac studio rules",
+                 "jac hack rules",
                  "Compare the archwire rules with the wires: unused permissions and violations"
              ),
              (
-                 "jac studio slice app.main",
+                 "jac hack slice app.main",
                  "Show everything an entry point rests on, step by step"
              ),
              (
-                 "jac studio blast core.jobs.Runner",
+                 "jac hack blast core.jobs.Runner",
                  "Show what depends on a module or a name"
              ),
              (
-                 "jac studio clusters core",
+                 "jac hack clusters core",
                  "Compare the declared packages with the clusters the wiring implies"
              ),
              (
-                 "jac studio tour",
+                 "jac hack tour",
                  "Write an onboarding tour of the codebase from its wiring"
              ),
              (
-                 "jac studio diff main",
+                 "jac hack diff main",
                  "Show how the architecture changed since a git revision"
              ),
              (
-                 "jac studio ask core.jobs.Runner.start \"add retry with backoff\"",
+                 "jac hack ask core.jobs.Runner.start \"add retry with backoff\"",
                  "Hand a symbol and an instruction to an agent without the UI"
              ),
-             ("jac studio agents", "List the agents the studio can drive"),
-             ("jac studio sessions", "List saved sessions"),
+             ("jac hack agents", "List the agents hack mode can drive"),
+             ("jac hack sessions", "List saved sessions"),
              (
-                 "jac studio sessions fork <id>",
+                 "jac hack sessions fork <id>",
                  "Copy a session to try a different direction"
              ),
 

@@ -1,14 +1,14 @@
-# Jac Studio
+# Hack mode
 
-`jac studio` is a terminal workspace for working on a Jac codebase with coding agents. It is built into the `jac` binary and backed by the compiler: the project is loaded into a graph of packages, modules, archetypes, abilities and impls joined by the wiring in `archwire.jac`, and every view and every piece of context an agent receives comes from that graph.
+`jac hack` (hack mode) is a terminal workspace for working on a Jac codebase with coding agents. It is built into the `jac` binary and backed by the compiler: the project is loaded into a graph of packages, modules, archetypes, abilities and impls joined by the wiring in `archwire.jac`, and every view and every piece of context an agent receives comes from that graph.
 
 There is no text editor. You point at compiler-level things (a module, an archetype, an ability, a wire), put them in the context tray, and tell an agent what to do with them. Agents make the edits, and the compiler checks each edit before it reaches disk.
 
 ```bash
-jac studio                      # open the workspace on the project around the current directory
-jac studio -d path/to/project   # open another project
-jac studio -a claude            # choose the agent for this session
-jac studio -s 20261023-0012     # resume a saved session (a unique prefix is enough)
+jac hack                      # open the workspace on the project around the current directory
+jac hack -d path/to/project   # open another project
+jac hack -a claude            # choose the agent for this session
+jac hack -s 20261023-0012     # resume a saved session (a unique prefix is enough)
 ```
 
 ## The workspace
@@ -76,18 +76,18 @@ A package's map in the context reaches the agent as the level in text: its group
 
 ## Reading the architecture
 
-Because every dependency is a declared wire that names what it carries, the studio can answer higher-level questions about how a codebase is organized. Each answer is a map view, a command, and part of the `studio_insight` tool, so you and an agent see the same thing.
+Because every dependency is a declared wire that names what it carries, hack mode can answer higher-level questions about how a codebase is organized. Each answer is a map view, a command, and part of the `studio_insight` tool, so you and an agent see the same thing.
 
 | Question | Where | What it tells you |
 |----------|-------|-------------------|
-| What is each module for? | Roles view, `jac studio roles [package]` | Sorts modules by how they are wired. *Foundations* feed many modules and depend on few: read these first. *Hubs* feed many and depend on many: central and risky to change. *Integrators* pull from many and feed few. *Entry points* are wired to by nothing (commands, tests, code loaded by name). *Many* means the top tenth of the project. |
-| What does a package expose? | Iface view, `jac studio interface <package>` | The names that cross its boundary with their users: its real API. A name with a single outside user could live next to that user; a name used by many is a core abstraction; a package whose exports mostly go to one place may belong there. |
-| Do the rules match the code? | Rules view, `jac studio rules` | How many wires cross packages and how many a rule admits, which rules and permissions nothing uses (they could be removed), which permissions a single wire uses (the easiest to tighten), and every violation. When every permission is used, the rules mirror the wiring rather than limit it. |
-| What does this rest on? | `s`, `jac studio slice <module>` | Everything a module depends on, step by step: what importing it loads (wires at module level) and what it can reach once functions that import inside them run. |
-| What breaks if this changes? | `b`, `jac studio blast <module or name>` | The modules that use a module or a single name directly (exact, from the wires that carry the name), those that load it at import time, and the upper bound reachable through any wire. |
-| Do the packages match the code? | Clusters view, `jac studio clusters [package]` | Groups modules by how tightly they are wired (Louvain communities) and compares the groups with the packages: modularity, how many modules sit in a cluster their own package leads, packages the wiring splits, and modules most of whose consumers live in another package. |
-| How should I learn this codebase? | Command palette, `jac studio tour [package]` | A tour in markdown: the foundations and hubs to read first, each layer's groups with what they feed and their most used names, where the layering breaks, and the rules. It is generated from the wiring, so it does not go stale. |
-| What did this change do to the architecture? | Command palette, `jac studio diff [revision]` | Compares the wiring now with a git revision, by default the nearest `main`, against its merge base like a code review: wires added and removed, names a wire gained or lost, rules added or changed, and per package level any new backward dependency, a grown cycle, a new violation, or a wider interface. |
+| What is each module for? | Roles view, `jac hack roles [package]` | Sorts modules by how they are wired. *Foundations* feed many modules and depend on few: read these first. *Hubs* feed many and depend on many: central and risky to change. *Integrators* pull from many and feed few. *Entry points* are wired to by nothing (commands, tests, code loaded by name). *Many* means the top tenth of the project. |
+| What does a package expose? | Iface view, `jac hack interface <package>` | The names that cross its boundary with their users: its real API. A name with a single outside user could live next to that user; a name used by many is a core abstraction; a package whose exports mostly go to one place may belong there. |
+| Do the rules match the code? | Rules view, `jac hack rules` | How many wires cross packages and how many a rule admits, which rules and permissions nothing uses (they could be removed), which permissions a single wire uses (the easiest to tighten), and every violation. When every permission is used, the rules mirror the wiring rather than limit it. |
+| What does this rest on? | `s`, `jac hack slice <module>` | Everything a module depends on, step by step: what importing it loads (wires at module level) and what it can reach once functions that import inside them run. |
+| What breaks if this changes? | `b`, `jac hack blast <module or name>` | The modules that use a module or a single name directly (exact, from the wires that carry the name), those that load it at import time, and the upper bound reachable through any wire. |
+| Do the packages match the code? | Clusters view, `jac hack clusters [package]` | Groups modules by how tightly they are wired (Louvain communities) and compares the groups with the packages: modularity, how many modules sit in a cluster their own package leads, packages the wiring splits, and modules most of whose consumers live in another package. |
+| How should I learn this codebase? | Command palette, `jac hack tour [package]` | A tour in markdown: the foundations and hubs to read first, each layer's groups with what they feed and their most used names, where the layering breaks, and the rules. It is generated from the wiring, so it does not go stale. |
+| What did this change do to the architecture? | Command palette, `jac hack diff [revision]` | Compares the wiring now with a git revision, by default the nearest `main`, against its merge base like a code review: wires added and removed, names a wire gained or lost, rules added or changed, and per package level any new backward dependency, a grown cycle, a new violation, or a wider interface. |
 
 ## Telling an agent what to do
 
@@ -105,7 +105,7 @@ Slash verbs turn the tray into a request:
 | `/fix` | Fix the problems in the selected code |
 | `/move` | Move the selected code to another module and rewire `archwire.jac` |
 
-Add your own verbs under `[studio.verbs]` in `jac.toml`.
+Add your own verbs under `[hack.verbs]` in `jac.toml`.
 
 ## Compiler-checked edits
 
@@ -125,19 +125,19 @@ When an agent writes a file, the write is held while the compiler checks the new
 | `r` | Reject |
 | `f` | Reject and send the compiler's findings back to the agent |
 
-An edit cannot be accepted while the compiler is still checking it, and an edit that changes the architecture cannot be accepted with `a`; it always needs `A`. To accept part of an edit, toggle the changes to drop and press `a`: the studio first compiles just the kept changes and shows that verdict, and a second `a` writes them and tells the agent which changes were dropped. When an agent proposes several files at once, rejecting one rechecks the others that were checked against it.
+An edit cannot be accepted while the compiler is still checking it, and an edit that changes the architecture cannot be accepted with `a`; it always needs `A`. To accept part of an edit, toggle the changes to drop and press `a`: hack mode first compiles just the kept changes and shows that verdict, and a second `a` writes them and tells the agent which changes were dropped. When an agent proposes several files at once, rejecting one rechecks the others that were checked against it.
 
 A resumed or forked session gives the agent its earlier conversation: an agent that can reload its own session does, and otherwise the saved transcript goes with the first new request.
 
-Reads, searches, the jac and studio MCP tools, and edits are allowed without asking, because every write is reviewed here. Other tool calls, such as shell commands, ask first. `[studio] auto_allow` adds tool kinds or title fragments to the allowed set.
+Reads, searches, the jac and `studio_*` MCP tools, and edits are allowed without asking, because every write is reviewed here. Other tool calls, such as shell commands, ask first. `[hack] auto_allow` adds tool kinds or title fragments to the allowed set.
 
 ## Agents
 
 ```bash
-jac studio agents
+jac hack agents
 ```
 
-The studio drives any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com): Claude Code and Codex through their ACP adapters, Gemini CLI, or any command you configure. Every agent is started with two MCP servers: `jac mcp` for the compiler tools, and the studio's own server, which gives the agent these tools:
+Hack mode drives any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com): Claude Code and Codex through their ACP adapters, Gemini CLI, or any command you configure. Every agent is started with two MCP servers: `jac mcp` for the compiler tools, and hack mode's own server, which gives the agent these tools:
 
 | Tool | Returns or does |
 |------|-----------------|
@@ -151,48 +151,48 @@ The studio drives any agent that speaks the [Agent Client Protocol](https://agen
 | `studio_search` | Fuzzy search over modules and symbols |
 | `studio_link_plan` | Links each step of the agent's plan to the code it touches |
 
-The built-in agent, `jac`, runs on byLLM inside the studio. It needs byLLM's model client: add `[byllm]` to `jac.toml` and run `jac install`. Choose its model with `[studio] model`, or byLLM's `default_model`.
+The built-in agent, `jac`, runs on byLLM inside hack mode. It needs byLLM's model client: add `[byllm]` to `jac.toml` and run `jac install`. Choose its model with `[hack] model`, or byLLM's `default_model`.
 
 ## Headless use
 
 ```bash
-jac studio model                       # summary of the project model
-jac studio model geo.shape --json      # one module, as JSON
-jac studio model geo.shape.Circle      # a symbol: members, impls, users, uses, walkers
-jac studio graph                       # the architecture map of the project, as text
-jac studio graph core --json           # one package's level, as JSON
-jac studio roles                       # foundations, hubs, integrators and entry points
-jac studio interface core              # the names that cross a package's boundary
-jac studio rules                       # the rules against the wires they admit
-jac studio slice app.main              # what a module rests on
-jac studio blast core.jobs.Runner      # what depends on a module or a name
-jac studio clusters core               # natural clusters against the declared packages
-jac studio tour > TOUR.md              # an onboarding tour, in markdown
-jac studio diff main                   # how the architecture changed since a revision
-jac studio ask geo.shape.Circle "add a perimeter method" -a claude --yes
-jac studio sessions                    # saved sessions
-jac studio sessions fork <id>          # copy a session to take it in another direction
+jac hack model                       # summary of the project model
+jac hack model geo.shape --json      # one module, as JSON
+jac hack model geo.shape.Circle      # a symbol: members, impls, users, uses, walkers
+jac hack graph                       # the architecture map of the project, as text
+jac hack graph core --json           # one package's level, as JSON
+jac hack roles                       # foundations, hubs, integrators and entry points
+jac hack interface core              # the names that cross a package's boundary
+jac hack rules                       # the rules against the wires they admit
+jac hack slice app.main              # what a module rests on
+jac hack blast core.jobs.Runner      # what depends on a module or a name
+jac hack clusters core               # natural clusters against the declared packages
+jac hack tour > TOUR.md              # an onboarding tour, in markdown
+jac hack diff main                   # how the architecture changed since a revision
+jac hack ask geo.shape.Circle "add a perimeter method" -a claude --yes
+jac hack sessions                    # saved sessions
+jac hack sessions fork <id>          # copy a session to take it in another direction
 ```
 
-`jac studio ask` hands a symbol or module and an instruction to an agent without the UI. With `--yes` it approves permission requests and writes, so use it only where that is safe.
+`jac hack ask` hands a symbol or module and an instruction to an agent without the UI. With `--yes` it approves permission requests and writes, so use it only where that is safe.
 
 ## Sessions
 
-The transcript, the context tray and every decision you made are saved on a root graph in the project's `.jac/studio` store when you quit. `jac studio -s <id>` reopens a session in the same state, and `jac studio sessions fork <id>` copies one so you can try a different direction.
+The transcript, the context tray and every decision you made are saved on a root graph in the project's `.jac/studio` store when you quit. `jac hack -s <id>` reopens a session in the same state, and `jac hack sessions fork <id>` copies one so you can try a different direction.
 
 ## Configuration
 
 ```toml
-[studio]
+[hack]
 default_agent = "claude"           # agent used when -a is not given
 model = "anthropic/claude-sonnet-5-5"   # model for the built-in agent
 gate = "ask"                       # ask | auto | strict | off
 auto_allow = ["execute"]           # more tool kinds or title fragments to allow
 
-[studio.verbs]
+[hack.verbs]
 perf = "Find the hot paths in the selected code and make them faster."
 
-[studio.agents.mine]
+[hack.agents.mine]
 command = "my-agent"
 args = ["--acp"]
 env = { MY_AGENT_MODE = "acp" }
@@ -205,7 +205,7 @@ env = { MY_AGENT_MODE = "acp" }
 | `strict` | Broken edits are sent back; clean ones wait for you |
 | `off` | Edits wait for you without a compiler check |
 
-Settings in `~/.jac/studio.toml` (or the file named by `JAC_STUDIO_CONFIG`) apply to every project; the project's `jac.toml` takes precedence.
+Settings in `~/.jac/hack.toml` (or the file named by `JAC_HACK_CONFIG`) apply to every project; the project's `jac.toml` takes precedence.
 
 ## Performance
 

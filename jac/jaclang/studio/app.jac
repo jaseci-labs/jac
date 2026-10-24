@@ -203,9 +203,7 @@ impl run_studio(
     if action == "" {
         return run_tui(root_dir, agent, session);
     }
-    err(
-        f"jac studio: unknown action '{action}'. Expected one of: " + ", ".join(ACTIONS)
-    );
+    err(f"jac hack: unknown action '{action}'. Expected one of: " + ", ".join(ACTIONS));
     return 2;
 }
 
@@ -244,7 +242,7 @@ impl cmd_model(root_dir: str, args: list[str], as_json: bool) -> int {
         }
     }
     if target and target not in model.modules {
-        err(f"jac studio model: no module or symbol matches '{args[0]}'");
+        err(f"jac hack model: no module or symbol matches '{args[0]}'");
         return 1;
     }
     if as_json {
@@ -253,7 +251,7 @@ impl cmd_model(root_dir: str, args: list[str], as_json: bool) -> int {
     }
     if target {
         if target not in model.modules {
-            err(f"jac studio model: no module matches '{args[0]}'");
+            err(f"jac hack model: no module matches '{args[0]}'");
             return 1;
         }
         out(format_module(model, target));
@@ -290,11 +288,11 @@ impl cmd_insight(root_dir: str, action: str, args: list[str], as_json: bool) -> 
     }
     key = resolve_scope_arg(model, target);
     if key is None {
-        err(f"jac studio {action}: no package or module matches '{target}'");
+        err(f"jac hack {action}: no package or module matches '{target}'");
         return 1;
     }
     if action in ["interface", "slice", "blast"] and not key {
-        err(f"jac studio {action}: name a package, module or symbol");
+        err(f"jac hack {action}: name a package, module or symbol");
         return 2;
     }
     if action == "roles" {
@@ -336,7 +334,7 @@ impl cmd_graph(root_dir: str, args: list[str], as_json: bool) -> int {
     model.build(index=False);
     target = resolve_scope_arg(model, args[0] if args else "");
     if target is None {
-        err(f"jac studio graph: no package or module matches '{args[0]}'");
+        err(f"jac hack graph: no package or module matches '{args[0]}'");
         return 1;
     }
     level = graph_level(model, scope_for(model, target));
@@ -362,12 +360,12 @@ impl cmd_gate(directory: str, args: list[str], as_json: bool) -> int {
         i += 1;
     }
     if len(files) != 2 {
-        err("usage: jac studio gate <file> <new-file> [--repeat N] [-d DIR] [--json]");
+        err("usage: jac hack gate <file> <new-file> [--repeat N] [-d DIR] [--json]");
         return 2;
     }
     target = os.path.abspath(files[0]);
     if not os.path.isfile(files[1]) {
-        err(f"jac studio gate: no such file '{files[1]}'");
+        err(f"jac hack gate: no such file '{files[1]}'");
         return 2;
     }
     with open(files[1], encoding="utf-8") as fh {
@@ -407,7 +405,7 @@ impl cmd_mcp(root_dir: str, args: list[str]) -> int {
             i += 1;
         } else {
             err(
-                f"jac studio mcp: unexpected argument '{a}' (usage: jac studio mcp [--socket PATH])"
+                f"jac hack mcp: unexpected argument '{a}' (usage: jac hack mcp [--socket PATH])"
             );
             return 2;
         }
@@ -586,13 +584,13 @@ impl cmd_intel(directory: str, args: list[str]) -> int {
     }
     if not args {
         err(
-            "usage: jac studio intel <file.jac> [line col] [--apps N]   (line and col are 1-based)"
+            "usage: jac hack intel <file.jac> [line col] [--apps N]   (line and col are 1-based)"
         );
         return 2;
     }
     path = os.path.realpath(args[0]);
     if not os.path.isfile(path) {
-        err(f"jac studio intel: no such file: {args[0]}");
+        err(f"jac hack intel: no such file: {args[0]}");
         return 1;
     }
     line = int(args[1]) if len(args) > 1 else 0;
@@ -712,25 +710,25 @@ impl cmd_agents(root_dir: str, as_json: bool) -> int {
         }
         out(line);
     }
-    out(f"default: {reg.default_name()}  (set [studio] default_agent in jac.toml)");
+    out(f"default: {reg.default_name()}  (set [hack] default_agent in jac.toml)");
     return 0;
 }
 
 impl cmd_sessions(root_dir: str, as_json: bool, args: list[str]) -> int {
     if args and args[0] == "fork" {
         if len(args) < 2 {
-            err("usage: jac studio sessions fork <session-id>");
+            err("usage: jac hack sessions fork <session-id>");
             return 1;
         }
         child = fork_session(root_dir, args[1]);
         if child is None {
-            err(f"jac studio sessions: no saved session matches '{args[1]}'");
+            err(f"jac hack sessions: no saved session matches '{args[1]}'");
             return 1;
         }
         out(
             json.dumps(child.summary())
                 if as_json
-                else f"forked {child.parent} as {child.id}; resume it with: jac studio -s {child.id}"
+                else f"forked {child.parent} as {child.id}; resume it with: jac hack -s {child.id}"
         );
         return 0;
     }
@@ -830,7 +828,7 @@ impl cmd_ask(
 ) -> int {
     if len(args) < 2 {
         err(
-            "usage: jac studio ask <symbol-or-module> \"<instruction>\" [--agent NAME] [--session ID] [--yes]"
+            "usage: jac hack ask <symbol-or-module> \"<instruction>\" [--agent NAME] [--session ID] [--yes]"
         );
         return 2;
     }
@@ -842,7 +840,7 @@ impl cmd_ask(
         st = load_session(root_dir, session_id);
         if st is None {
             err(
-                f"jac studio ask: no saved session '{session_id}' (see `jac studio sessions`)"
+                f"jac hack ask: no saved session '{session_id}' (see `jac hack sessions`)"
             );
             return 1;
         }
@@ -852,17 +850,17 @@ impl cmd_ask(
         or reg.default_name();
     spec = reg.get(name);
     if spec is None {
-        err(f"jac studio ask: unknown agent '{name}'. Known: {', '.join(reg.names())}");
+        err(f"jac hack ask: unknown agent '{name}'. Known: {', '.join(reg.names())}");
         return 1;
     }
     if not spec.runnable() {
-        err(f"jac studio ask: agent '{name}' cannot run: {spec.reason()}");
+        err(f"jac hack ask: agent '{name}' cannot run: {spec.reason()}");
         return 1;
     }
     model = build_model(root_dir);
     key = resolve_key(model, target);
     if not key {
-        err(f"jac studio ask: nothing in the project model matches '{target}'");
+        err(f"jac hack ask: nothing in the project model matches '{target}'");
         return 1;
     }
     if key != target {
@@ -894,7 +892,7 @@ impl cmd_ask(
         out("  -> not applied (rerun with --yes to apply)");
         st.decide("write", False, path=path, message="needs --yes");
         return (
-            "The user did not approve this write: `jac studio ask` applies edits only "
+            "The user did not approve this write: `jac hack ask` applies edits only "
             + "with --yes. The proposed change was shown to the user as a diff; do not retry it."
         );
     }
@@ -903,14 +901,14 @@ impl cmd_ask(
             name, project_model=model, load_session_id=resume_id, write_gate=gate
         );
     } except Exception as e {
-        err(f"jac studio ask: {e}");
+        err(f"jac hack ask: {e}");
         return 1;
     }
     err(f"  starting {name} ...");
     try {
         sess.start(root_dir, [jac_mcp_server()]);
     } except Exception as e {
-        err(f"jac studio ask: could not start agent '{name}': {e}");
+        err(f"jac hack ask: could not start agent '{name}': {e}");
         sess.stop();
         return 1;
     }
@@ -998,7 +996,7 @@ impl cmd_ask(
         }
         rc = 130;
     } except Exception as e {
-        err(f"jac studio ask: {e}");
+        err(f"jac hack ask: {e}");
         rc = 1;
     } finally {
         sess.stop();

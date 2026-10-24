@@ -5,7 +5,7 @@ import importlib.util;
 import tomllib;
 
 glob BUILTIN_AGENT: str = "jac",
-     USER_CONFIG_ENV: str = "JAC_STUDIO_CONFIG",
+     USER_CONFIG_ENV: str = "JAC_HACK_CONFIG",
      CLAUDE_EXE_ENV: str = "CLAUDE_CODE_EXECUTABLE";
 
 obj AgentSpec {
@@ -326,7 +326,7 @@ impl read_studio_table(path: str) -> dict[str, any] {
     } except (OSError, tomllib.TOMLDecodeError) {
         return {};
     }
-    table = data.get("studio") or {};
+    table = data.get("hack") or {};
     return table if isinstance(table, dict) else {};
 }
 
@@ -335,7 +335,7 @@ impl user_config_path -> str {
     if cfg_path {
         return os.path.expanduser(cfg_path);
     }
-    return os.path.join(os.path.expanduser("~"), ".jac", "studio.toml");
+    return os.path.join(os.path.expanduser("~"), ".jac", "hack.toml");
 }
 
 impl find_claude_executable -> str {

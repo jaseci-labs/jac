@@ -563,7 +563,7 @@ impl Studio.say(text: str, kind: str = "info", secs: float = 4.0) {
 impl run_tui(root_dir: str, agent_name: str = "", session_id: str = "") -> int {
     if not sys.stdin.isatty() or not sys.stdout.isatty() {
         sys.stderr.write(
-            "jac studio needs an interactive terminal; try `jac studio model`.\n"
+            "jac hack needs an interactive terminal; try `jac hack model`.\n"
         );
         return 1;
     }
@@ -591,7 +591,7 @@ impl run_tui(root_dir: str, agent_name: str = "", session_id: str = "") -> int {
         logging.getLogger().setLevel(logging.WARNING);
         warnings.simplefilter("ignore");
         app.term.start();
-        app.term.set_title("jac studio");
+        app.term.set_title("jac hack");
         app.term.enable_mouse();
         sys.stderr = log_file;
         start_indexing(app);
@@ -607,7 +607,7 @@ impl run_tui(root_dir: str, agent_name: str = "", session_id: str = "") -> int {
             restore_session(app, session_id);
         }
         app.say(
-            "Welcome to jac studio. Tab moves focus, Ctrl+P finds anything, F1 shows keys.",
+            "Welcome to jac hack. Tab moves focus, Ctrl+P finds anything, F1 shows keys.",
             "info",
             8.0
         );
@@ -647,7 +647,7 @@ impl run_tui(root_dir: str, agent_name: str = "", session_id: str = "") -> int {
         log_file.close();
         if app.rec is not None {
             saved_err.write(
-                f"jac studio: session {app.rec.id[:8]} saved; resume with `jac studio -s {app.rec.id[:8]}`\n"
+                f"jac hack: session {app.rec.id[:8]} saved; resume with `jac hack -s {app.rec.id[:8]}`\n"
             );
         }
     }
@@ -1955,7 +1955,7 @@ impl send_to_agent(app: Studio, text: str) {
             0,
             {
                 "type": "text",
-                "text": "I selected these items in jac studio (a compiler-backed view of this Jac project); my request follows them."
+                "text": "I selected these items in jac hack (a compiler-backed view of this Jac project); my request follows them."
             }
         );
     }
@@ -2437,7 +2437,7 @@ impl approval_key(app: Studio, key: str) {
                 finish_write(app, req, True, "");
             }
         } elif key in ["r", "n", "escape"] {
-            finish_write(app, req, False, "The user rejected this edit in jac studio.");
+            finish_write(app, req, False, "The user rejected this edit in jac hack.");
         } elif key == "f" {
             finish_write(app, req, False, write_feedback(req));
         }
@@ -2524,7 +2524,7 @@ impl paint_header(app: Studio) -> None {
     );
     agent = app.agent_name or "no agent";
     spans = [
-        sp(" ◆ jac studio ", THEME.header),
+        sp(" ◆ jac hack ", THEME.header),
         sp("│ ", THEME.header_dim),
         sp(proj + " ", THEME.header),
         sp(f"│ {mods} modules · {len(app.model.wires)} wires ", THEME.header_dim),
@@ -4009,7 +4009,7 @@ impl mcp_servers(app: Studio) -> list[dict[str, any]] {
             {
                 "name": "studio",
                 "command": servers[0]["command"],
-                "args": ["studio", "mcp", "--socket", app.bridge_path],
+                "args": ["hack", "mcp", "--socket", app.bridge_path],
                 "env": []
             }
         );
@@ -4027,7 +4027,7 @@ impl start_agent(app: Studio) -> None {
         app.chat.append(
             ChatEntry(
                 role="error",
-                text="No agent can run here. `jac studio agents` lists what is missing."
+                text="No agent can run here. `jac hack agents` lists what is missing."
             )
         );
         app.queued = [];
@@ -4837,7 +4837,7 @@ impl write_feedback(req: dict[str, any]) -> str {
             return str(review.feedback());
         } except Exception {}
     }
-    return "The user rejected this edit in jac studio. Check that it compiles and keeps the archwire wiring valid, then try again.";
+    return "The user rejected this edit in jac hack. Check that it compiles and keeps the archwire wiring valid, then try again.";
 }
 
 impl restore_session(app: Studio, session_id: str) -> None {
@@ -4927,7 +4927,7 @@ impl start_gate_and_bridge(app: Studio, session_id: str) {
     } except Exception as e {
         app.bridge = None;
         app.bridge_path = "";
-        app.say(f"the studio tools for agents are off: {e}", "warn", 6.0);
+        app.say(f"the jac hack tools for agents are off: {e}", "warn", 6.0);
     }
 }
 

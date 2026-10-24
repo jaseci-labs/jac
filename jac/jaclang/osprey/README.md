@@ -21,7 +21,7 @@ editor and transcript stack.
 ## Where it lives
 
 Osprey is developed inside the Jac repository at `jac/jaclang/osprey`, where
-the `jac studio` workspace is built on it, and is mirrored here with
+the `jac hack` workspace is built on it, and is mirrored here with
 `git subtree`. Make changes in the Jac repository; from its root:
 
 ```bash

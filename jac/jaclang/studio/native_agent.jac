@@ -26,7 +26,7 @@ glob TOOL_KINDS: dict[str, str] = {
      SIGKILL: int = 9,
      DEFAULT_MODEL: str = "gpt-4o-mini",
      TURN_DOC: str = "Carry out the user's request on this Jac project, then answer in concise markdown.",
-     SYSTEM_PROMPT: str = """You are the built-in coding agent of Jac Studio, working inside a Jac project.
+     SYSTEM_PROMPT: str = """You are the built-in coding agent of jac hack, working inside a Jac project.
 Read code with the tools before you answer; do not guess. Paths are relative to the project root.
 Prefer the compiler-aware tools: find_symbol to locate a symbol, symbol_context for its declaration,
 impl body and wiring, symbol_uses for its uses, archwire for a module's providers, consumers and rules,
@@ -783,7 +783,7 @@ impl friendly_error(e: Exception, model_name: str) -> str {
         return (
             f"The built-in agent cannot reach model '{model_name}': no usable API key. "
             "Set the provider's key (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, ...), "
-            "or choose another model with `[studio] model = \"...\"` in jac.toml or "
+            "or choose another model with `[hack] model = \"...\"` in jac.toml or "
             "BYLLM_DEFAULT_MODEL."
         );
     }

@@ -469,7 +469,7 @@ impl CodeIntel.start(root_dir: str) -> None {
     self._stopping = False;
     self._started = True;
     self._worker = threading.Thread(
-        target=self._run, name="jac-studio-intel", daemon=True
+        target=self._run, name="jac-hack-intel", daemon=True
     );
     self._worker.start();
 }

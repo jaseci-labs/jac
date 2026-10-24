@@ -551,7 +551,7 @@ impl transcript_of(entries: list[dict[str, any]]) -> str {
         kept.insert(0, line);
         size += len(line);
     }
-    return "This conversation continues an earlier jac studio session. You do not have its history, so here is what was said, oldest first:\n\n"
+    return "This conversation continues an earlier jac hack session. You do not have its history, so here is what was said, oldest first:\n\n"
         + "\n\n".join(kept)
         + "\n\nThe new request follows.";
 }

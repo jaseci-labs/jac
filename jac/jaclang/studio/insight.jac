@@ -1468,7 +1468,7 @@ impl model_at_rev(
         return (None, f"{rev} is not a commit in the repository around {where}", "");
     }
     rel = os.path.relpath(os.path.realpath(where), os.path.realpath(top));
-    tmp = tempfile.mkdtemp(prefix="jac-studio-rev-");
+    tmp = tempfile.mkdtemp(prefix="jac-hack-rev-");
     spec = "." if rel == "." else rel;
     try {
         listed = subprocess.run(
@@ -1744,7 +1744,7 @@ impl arch_diff(model: ProjectModel, rev: str) -> ArchDiff {
 
 impl diff_text(d: ArchDiff) -> str {
     if d.error {
-        return f"jac studio diff: {d.error}";
+        return f"jac hack diff: {d.error}";
     }
     lines = [
         f"Architecture changes since {d.base}: {len(d.added)} wire(s) added, {len(

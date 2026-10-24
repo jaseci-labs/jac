@@ -7,7 +7,7 @@ import threading;
 import time;
 
 glob ACP_PROTOCOL_VERSION: int = 1,
-     CLIENT_NAME: str = "jac-studio",
+     CLIENT_NAME: str = "jac-hack",
      HANDSHAKE_SECS: float = 120.0,
      CANCEL_GRACE_SECS: float = 10.0,
      TERMINAL_DEFAULT_LIMIT: int = 262144,
@@ -179,7 +179,7 @@ impl AcpSession.start(cwd: str, mcp_servers: list[dict[str, any]]) -> None {
             },
             "clientInfo": {
                 "name": CLIENT_NAME,
-                "title": "Jac Studio",
+                "title": "jac hack",
                 "version": self.client_version or jac_version()
             }
         },

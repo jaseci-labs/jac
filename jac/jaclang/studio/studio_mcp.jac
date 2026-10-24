@@ -6,7 +6,7 @@ glob STUDIO_MCP_VERSION: str = "0.1.0",
      MCP_PROTOCOL: str = "2025-06-18",
      MCP_PROTOCOLS: list[str] = ["2025-06-18", "2025-03-26", "2024-11-05"],
      KEY_HELP: str = "A studio model key: a module (`core.jobs`), a symbol (`core.jobs.Runner`, `core.jobs.Runner.start`), a `jac://sym/<key>` URI, or a file path with an optional `:line` (resolves to the innermost symbol at that line).",
-     STUDIO_INSTRUCTIONS: str = "These tools connect you to jac studio, the terminal workspace the user is driving you from. The studio keeps a live, compiler-built model of this Jac project: every module, archetype, ability and field, and the archwire graph (in this codebase imports are wires declared in archwire.jac files, not import statements in the code). Use studio_selection to see what the user is pointing at, studio_wiring / studio_rules before changing dependencies, studio_graph to see the architecture a package level at a time, studio_insight for roles, interfaces, rule use, slices, blast radius, clusters, a tour or the architecture diff since main, studio_symbol to read a declaration together with its impl, studio_focus to show the user code you are discussing, and studio_link_plan to tie your plan steps to the code they touch.";
+     STUDIO_INSTRUCTIONS: str = "These tools connect you to jac hack, the terminal workspace the user is driving you from. The studio keeps a live, compiler-built model of this Jac project: every module, archetype, ability and field, and the archwire graph (in this codebase imports are wires declared in archwire.jac files, not import statements in the code). Use studio_selection to see what the user is pointing at, studio_wiring / studio_rules before changing dependencies, studio_graph to see the architecture a package level at a time, studio_insight for roles, interfaces, rule use, slices, blast radius, clusters, a tour or the architecture diff since main, studio_symbol to read a declaration together with its impl, studio_focus to show the user code you are discussing, and studio_link_plan to tie your plan steps to the code they touch.";
 
 obj StudioTool {
     has name: str,
@@ -50,12 +50,12 @@ impl studio_tools -> list[StudioTool] {
         StudioTool(
             name="studio_selection",
             method="selection",
-            description="What the user has selected in jac studio right now. Returns: `tray`, the context tray (modules, symbols and wires the user deliberately picked for you, each with key, kind and location); `code`, the file open in the code view with the cursor line/column, its module, and the symbol under the cursor; `wiring_module`, the module focused in the wiring view. Call this first whenever the user says 'this', 'here', 'the selected code', 'what I picked', or refers to code without naming it. The keys it returns are accepted by every other studio_* tool."
+            description="What the user has selected in jac hack right now. Returns: `tray`, the context tray (modules, symbols and wires the user deliberately picked for you, each with key, kind and location); `code`, the file open in the code view with the cursor line/column, its module, and the symbol under the cursor; `wiring_module`, the module focused in the wiring view. Call this first whenever the user says 'this', 'here', 'the selected code', 'what I picked', or refers to code without naming it. The keys it returns are accepted by every other studio_* tool."
         ),
         StudioTool(
             name="studio_focus",
             method="focus",
-            description="Show the user a module, symbol or file location in jac studio: opens it in the code view (at `line` if given, otherwise at the declaration) and focuses its module in the wiring view, with an optional one-sentence `note` in the status bar. Use it to point at the code you are explaining, asking about, or about to change. It changes no files and returns once the studio has moved.",
+            description="Show the user a module, symbol or file location in jac hack: opens it in the code view (at `line` if given, otherwise at the declaration) and focuses its module in the wiring view, with an optional one-sentence `note` in the status bar. Use it to point at the code you are explaining, asking about, or about to change. It changes no files and returns once the studio has moved.",
             schema={
                 "type": "object",
                 "properties": {
@@ -75,7 +75,7 @@ impl studio_tools -> list[StudioTool] {
         StudioTool(
             name="studio_wiring",
             method="wiring",
-            description="The archwire neighbourhood of a module or symbol, from the studio's live project model. In this codebase imports are not written in files: they are wires in archwire.jac (`provider ++> consumer { names }`), governed by rules between top-level packages. For a module: `providers` (modules that feed it and the names each provides), `consumers` (modules that use it and which of its names), the `rules` that govern it, and its top-level `symbols`. For a symbol: its declaration and impl locations, `imported_by` (modules that import it by name), `walkers` that traverse it (nodes/edges) or what it `traverses` (walkers), its members, and its module's wiring. Use this instead of grepping for imports before moving, renaming, deleting or adding a dependency on code.",
+            description="The archwire neighbourhood of a module or symbol, from jac hack's live project model. In this codebase imports are not written in files: they are wires in archwire.jac (`provider ++> consumer { names }`), governed by rules between top-level packages. For a module: `providers` (modules that feed it and the names each provides), `consumers` (modules that use it and which of its names), the `rules` that govern it, and its top-level `symbols`. For a symbol: its declaration and impl locations, `imported_by` (modules that import it by name), `walkers` that traverse it (nodes/edges) or what it `traverses` (walkers), its members, and its module's wiring. Use this instead of grepping for imports before moving, renaming, deleting or adding a dependency on code.",
             schema={
                 "type": "object",
                 "properties": {"key": key_prop},
@@ -142,7 +142,7 @@ impl studio_tools -> list[StudioTool] {
         StudioTool(
             name="studio_search",
             method="search",
-            description="Fuzzy search the studio's project model for modules and symbols (archetypes, abilities, fields) by name or dotted key. Returns keys with kind, file, line and signature; pass a key to studio_symbol, studio_wiring or studio_focus for more.",
+            description="Fuzzy search jac hack's project model for modules and symbols (archetypes, abilities, fields) by name or dotted key. Returns keys with kind, file, line and signature; pass a key to studio_symbol, studio_wiring or studio_focus for more.",
             schema={
                 "type": "object",
                 "properties": {
@@ -161,7 +161,7 @@ impl studio_tools -> list[StudioTool] {
         StudioTool(
             name="studio_link_plan",
             method="link_plan",
-            description="Tell the studio which code each step of your current plan touches, so the user sees it next to the plan and can jump to it. Call it after you publish or update a plan. `step` is the plan entry's 0-based index (or its exact text); `keys` are studio model keys or file paths. Returns the resolved keys and any it could not match.",
+            description="Tell jac hack which code each step of your current plan touches, so the user sees it next to the plan and can jump to it. Call it after you publish or update a plan. `step` is the plan entry's 0-based index (or its exact text); `keys` are studio model keys or file paths. Returns the resolved keys and any it could not match.",
             schema={
                 "type": "object",
                 "properties": {
@@ -228,7 +228,7 @@ impl StudioMcp.handle(msg: dict[str, any]) -> (dict[str, any] | None) {
         result = {
             "protocolVersion": asked if asked in MCP_PROTOCOLS else MCP_PROTOCOL,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "jac-studio", "version": STUDIO_MCP_VERSION},
+            "serverInfo": {"name": "jac-hack", "version": STUDIO_MCP_VERSION},
             "instructions": STUDIO_INSTRUCTIONS
         };
     } elif method == "ping" or method.startswith("notifications/") {

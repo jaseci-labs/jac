@@ -32,7 +32,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Manage config or profiles | `jac config` |
 | Manage byLLM local models | `jac model` |
 | Use Jac from an AI assistant | `jac guide` · `jac mcp` |
-| Work on a codebase with coding agents | `jac studio` |
+| Work on a codebase with coding agents | `jac hack` |
 | Convert between Python, Jac, and JS | `jac tool py2jac` · `jac tool jac2py` · `jac tool jac2js` |
 | Clean caches / artifacts | `jac clean` (project) · `jac cache` (machine-wide) |
 
@@ -55,7 +55,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
 | `jac code` | Query code structure via the compiler (symbols, uses, walkers, slices) |
 | `jac mcp` | Start the MCP server so AI assistants can use the live Jac compiler |
-| `jac studio` | Open a compiler-backed terminal workspace for working on the project with coding agents |
+| `jac hack` | Open a compiler-backed terminal workspace for working on the project with coding agents |
 | `jac completions` | Generate (and optionally install) shell completions |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
@@ -951,24 +951,32 @@ jac mcp [-t stdio|sse|streamable-http] [-p PORT] [--host HOST] [--mode lite|stan
 
 See the [MCP Server Reference](../mcp.md) for the full tool catalog and per-client setup snippets.
 
-### jac studio
+### jac hack
 
 Open a terminal workspace for the project: navigate it by its archwire wiring, select modules, symbols and wires as context, and have a coding agent act on them. Every edit an agent makes is checked by the compiler before it reaches disk.
 
 ```bash
-jac studio [action] [args...] [-a AGENT] [-s SESSION] [-d DIR] [--json]
+jac hack [action] [args...] [-a AGENT] [-s SESSION] [-d DIR] [--json]
 ```
 
 | Action | Description |
 |--------|-------------|
 | (none) | Open the workspace |
 | `model [module-or-symbol]` | Print the project model, one module, or one symbol (`--json` for JSON) |
+| `graph [package]` | The architecture map of one package level: layers, matrix, backward wires and cycles |
+| `roles [package]` | Foundations, hubs, integrators and entry points, by how modules are wired |
+| `interface <package>` | The names that cross a package's boundary, with their users |
+| `rules` | Each archwire rule against the wires it admits, unused permissions and violations |
+| `slice <module>` / `blast <module-or-name>` | What a module rests on / what depends on a module or name |
+| `clusters [package]` | Natural clusters of the wiring against the declared packages |
+| `tour [package]` | An onboarding tour of the codebase, in markdown |
+| `diff [revision]` | How the architecture changed since a git revision (default: the nearest `main`) |
 | `ask <symbol> "<instruction>"` | Hand a symbol and an instruction to an agent without the UI (`--yes` approves writes) |
-| `agents` | List the agents the studio can drive |
+| `agents` | List the agents hack mode can drive |
 | `sessions` | List saved sessions; `sessions fork <id>` copies one |
-| `mcp` | Run the studio's MCP server (started for agents automatically) |
+| `mcp` | Run hack mode's MCP server (started for agents automatically) |
 
-See the [Jac Studio reference](../studio.md) for the workspace, keys, edit review and configuration.
+See the [hack mode reference](../hack.md) for the workspace, keys, edit review and configuration.
 
 ---
 
