@@ -2540,6 +2540,8 @@ def int_literal_i64(text: str) -> (int | None);
 
 def int_literal_u64_bits(text: str) -> (int | None);
 
+def int_literal_float(text: str) -> float;
+
 def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int;
 
 def _decode_str_escapes(text: str) -> str;

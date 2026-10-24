@@ -276,11 +276,17 @@ impl adopt_literal(
     probe: bool = False
 ) -> AssignVerdict {
     name = target.shared.class_name;
-    fits = (
-        value.fits_u64() and _wide_unsigned(name)
-            if isinstance(value, WideLiteral)
-            else JAC_TYPE_REGISTRY.literal_fits(name, value)
-    );
+    fits = False;
+    if not isinstance(value, WideLiteral) {
+        fits = JAC_TYPE_REGISTRY.literal_fits(name, value);
+    } elif JAC_TYPE_REGISTRY.numeric_kind_of(name) == NumericKind.FloatKind {
+        magnitude = int_literal_float(value.text);
+        fits = JAC_TYPE_REGISTRY.literal_fits(
+            name, -magnitude if value.negative else magnitude
+        );
+    } else {
+        fits = value.fits_u64() and _wide_unsigned(name);
+    }
     if fits {
         if not probe {
             annotate_coercion(expr, target);

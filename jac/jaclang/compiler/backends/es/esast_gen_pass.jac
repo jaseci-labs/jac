@@ -246,6 +246,7 @@ walker EsastGenPass(TreePass) {
     ) -> es.Expression;
 
     def _apply_fw_coercion(nd: uni.Expr) -> None;
+    def _js_int_spelling(text: str) -> str;
     def _fw_js_binop(
         op: str, left: es.Expression, right: es.Expression, jac_node: uni.UniNode
     ) -> es.Expression;

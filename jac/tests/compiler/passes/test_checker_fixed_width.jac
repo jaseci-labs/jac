@@ -127,6 +127,23 @@ test "a float literal past the type's range is E1130, not a silent inf" {
     );
 }
 
+# An integer literal past 64 bits is judged by the target's own range: a float
+# holds it, a u64 holds it up to 2**64 - 1, parentheses change nothing, and a
+# float the literal overflows is still E1130.
+test "an int literal past 64 bits fits a float or a u64, parenthesized or not" {
+    assert_clean(
+        "with entry {\n"
+        "    a: f64 = 9223372036854775808;\n"
+        "    b: f32 = 123456789012345678901234567890;\n"
+        "    c: f64 = -0x_FFFF_FFFF_FFFF_FFFF_FFFF;\n"
+        "    d: u64 = (18446744073709551615);\n"
+        "    e: u64 = +0xFFFF_FFFF_FFFF_FFFF;\n"
+        "}\n"
+    );
+    src = "with entry {\n    f: f32 = " + "1" + "0" * 39 + ";\n}\n";
+    assert fw_only(check(src)) == [("E1130", 2, 14)];
+}
+
 # ── narrowing (E1127) ─────────────────────────────────────────────
 test "narrowing a sized value into a narrower parameter is E1127" {
     src = (

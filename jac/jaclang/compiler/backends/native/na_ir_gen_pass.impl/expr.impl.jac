@@ -16,13 +16,17 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     }
     if isinstance(nd, uni.Int) {
         _bits = uni.int_literal_i64(nd.value);
-        _shape = self._scalar_shape_named(nd.coerce_to);
-        if _bits is None
-            and _shape is not None
-            and not _shape.is_float
-            and not _shape.signed
-            and _shape.width >= 64 {
-            _bits = uni.int_literal_u64_bits(nd.value);
+        if _bits is None {
+            _shape = self._scalar_shape_named(self._literal_destination(nd));
+            if _shape is not None and _shape.is_float {
+                _wide = ir.Constant(ir.DoubleType(), uni.int_literal_float(nd.value));
+                return self._lower_coercion(nd, _wide)
+                    if nd.coerce_to is not None
+                    else _wide;
+            }
+            if _shape is not None and not _shape.signed and _shape.width >= 64 {
+                _bits = uni.int_literal_u64_bits(nd.value);
+            }
         }
         if _bits is None {
             self.emit(
@@ -2041,11 +2045,15 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if lent is not None {
         return self._c_lent_address(nd, lent);
     }
+    _magnitude: (uni.UniNode | None) = nd.operand;
+    while isinstance(_magnitude, uni.AtomUnit) {
+        _magnitude = _magnitude.value;
+    }
     if isinstance(nd.op, uni.Token)
         and nd.op.name == Tok.MINUS
-        and isinstance(nd.operand, uni.Int)
-        and uni.int_literal_i64(nd.operand.value) is None
-        and uni.int_literal_u64_bits(nd.operand.value) == -9223372036854775807 - 1 {
+        and isinstance(_magnitude, uni.Int)
+        and uni.int_literal_i64(_magnitude.value) is None
+        and uni.int_literal_u64_bits(_magnitude.value) == -9223372036854775807 - 1 {
         _i64_min = ir.Constant(ir.IntType(64), -9223372036854775807 - 1);
         return self._lower_coercion(nd, _i64_min)
             if nd.coerce_to is not None
@@ -3511,4 +3519,25 @@ impl _class_typed_operand(
     }
     typed = pass_ref.builder.bitcast(value, class_type.as_pointer(), name="cmp.typed");
     return typed;
+}
+
+impl NaIRGenPass._literal_destination(nd: uni.Int) -> (str | None) {
+    """The fixed-width type a literal is converted to. The checker records it on
+    the outermost expression that is only the literal, so `(x)` and `+x` carry
+    it on the wrapper.""";
+    dest = nd.coerce_to;
+    up: (uni.UniNode | None) = nd.parent;
+    while dest is None
+        and (
+            isinstance(up, uni.AtomUnit)
+            or (
+                isinstance(up, uni.UnaryExpr)
+                and isinstance(up.op, uni.Token)
+                and up.op.name == Tok.PLUS
+            )
+        ) {
+        dest = up.coerce_to;
+        up = up.parent;
+    }
+    return dest;
 }

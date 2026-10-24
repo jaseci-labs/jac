@@ -164,6 +164,22 @@ impl int_literal_u64_bits(text: str) -> (int | None) {
     return high * 4294967296 + low;
 }
 
+impl int_literal_float(text: str) -> float {
+    """The literal's value as a float, without forming the integer: a literal
+    past 64 bits still has one (`x: f64 = 9223372036854775808`).""";
+    (body, base) = int_literal_digits(text);
+    if base == 10 {
+        return float(body.replace("_", ""));
+    }
+    total = 0.0;
+    for c in body.lower() {
+        if c != "_" {
+            total = total * base + _RADIX_DIGITS.find(c);
+        }
+    }
+    return total;
+}
+
 impl _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {
     digits = text[at + 2:at + 2 + width];
     bad = len(digits) != width;

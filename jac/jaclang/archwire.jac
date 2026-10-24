@@ -9180,6 +9180,7 @@ graph import compiler {
             Token,
             UnaryExpr,
             UniNode,
+            int_literal_float,
             int_literal_i64,
             int_literal_u64_bits
         },

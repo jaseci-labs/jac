@@ -1103,6 +1103,26 @@ test "an integer literal past 64 bits is a refusal, while i64.MIN and u64.MAX li
     assert native_answer(edge_ir.gen.native_engine, "top") == -1 , "u64.MAX reads as -1 through c_int64";
 }
 
+# A literal's destination type sits on the outermost expression that is only
+# the literal, so a parenthesized or unary-plus literal lowers through its
+# wrapper: to the u64 bit pattern, or to a float when the target is one.
+test "a wide literal lowers through parentheses and to a float target" {
+    code = "def paren_top -> u64 {\n    t: u64 = (18446744073709551615);\n    return t;\n}\n\n"
+    "def plus_top -> u64 {\n    t: u64 = +0xFFFF_FFFF_FFFF_FFFF;\n    return t;\n}\n\n"
+    "def paren_low -> int {\n    return -(9223372036854775808);\n}\n\n"
+    "def as_float -> int {\n    x: f64 = 9223372036854775808;\n"
+    "    return 1 if x == 9223372036854775808.0 else 0;\n}\n";
+    (prog, ir, log) = compile_na_inline_demote("wide_wrapped", code);
+    assert not prog.errors_had , f"wrapped wide literals must lower clean, got: {fmt_errors(
+        prog
+    )}";
+    eng = ir.gen.native_engine;
+    assert native_answer(eng, "paren_top") == -1;
+    assert native_answer(eng, "plus_top") == -1;
+    assert native_answer(eng, "paren_low") == -9223372036854775808;
+    assert native_answer(eng, "as_float") == 1 , "2**63 must not wrap before it becomes a float";
+}
+
 # Positive control: with the libc `open(path, flags) -> i32` extern in scope
 # (the real native-build case, where cef_dispatch.jac declares it), the call
 # resolves to the POSIX extern rather than the file-open builtin — no crash and

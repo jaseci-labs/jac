@@ -366,7 +366,10 @@ impl EsastGenPass.exit_int with uni.Int exit {
     may run as the native kernel, holds no wider int, and JavaScript reads the
     text itself.""";
     int_lit = self.sync_loc(
-        es.Literal(value=uni.int_literal_i64(here.value), raw=here.value), jac_node=here
+        es.Literal(
+            value=uni.int_literal_i64(here.value), raw=self._js_int_spelling(here.value)
+        ),
+        jac_node=here
     );
     here.gen.es_ast = int_lit;
 }
