@@ -3167,7 +3167,60 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PY_SOCKET_PROTO_OFFSET", "offsetof(PySocketSockObject, sock_proto)", "i64"),
          ("PY_SOCKET_API_SIZE", "sizeof(PySocketModule_APIObject)", "i64"),
          ("PY_OS_ERROR_OBJECT_SIZE", "sizeof(PyOSErrorObject)", "i64"),
-         ("Py_CLEANUP_SUPPORTED", "Py_CLEANUP_SUPPORTED", "i32")
+         ("Py_CLEANUP_SUPPORTED", "Py_CLEANUP_SUPPORTED", "i32"),
+         (
+             "_Py_ID___build_class__",
+             "offsetof(struct _Py_global_strings, identifiers._py___build_class__)",
+             "i64"
+         ),
+         ("JUMP_BACKWARD", "JUMP_BACKWARD", "i32"),
+         ("JUMP_BACKWARD_JIT", "JUMP_BACKWARD_JIT", "i32"),
+         ("JUMP_BACKWARD_NO_JIT", "JUMP_BACKWARD_NO_JIT", "i32"),
+         ("CO_NO_MONITORING_EVENTS", "CO_NO_MONITORING_EVENTS", "i32"),
+         ("PY_MONITORING_EVENT_RAISE", "PY_MONITORING_EVENT_RAISE", "i32"),
+         (
+             "PY_MONITORING_EVENT_EXCEPTION_HANDLED",
+             "PY_MONITORING_EVENT_EXCEPTION_HANDLED",
+             "i32"
+         ),
+         ("PY_MONITORING_EVENT_PY_UNWIND", "PY_MONITORING_EVENT_PY_UNWIND", "i32"),
+         ("PY_MONITORING_EVENT_RERAISE", "PY_MONITORING_EVENT_RERAISE", "i32"),
+         (
+             "_PyCoMonitoringData_ACTIVE_MONITORS",
+             "offsetof(_PyCoMonitoringData, active_monitors)",
+             "i64"
+         ),
+         (
+             "_PyCoLineInstrumentationData_BYTES_PER_ENTRY",
+             "offsetof(_PyCoLineInstrumentationData, bytes_per_entry)",
+             "i64"
+         ),
+         (
+             "_PyCoLineInstrumentationData_DATA",
+             "offsetof(_PyCoLineInstrumentationData, data)",
+             "i64"
+         ),
+         ("PY_MONITORING_EVENT_PY_RESUME", "PY_MONITORING_EVENT_PY_RESUME", "i32"),
+         ("PY_MONITORING_EVENT_PY_RETURN", "PY_MONITORING_EVENT_PY_RETURN", "i32"),
+         ("PY_MONITORING_EVENT_PY_YIELD", "PY_MONITORING_EVENT_PY_YIELD", "i32"),
+         ("PY_MONITORING_EVENT_CALL", "PY_MONITORING_EVENT_CALL", "i32"),
+         ("PY_MONITORING_EVENT_JUMP", "PY_MONITORING_EVENT_JUMP", "i32"),
+         ("PY_MONITORING_EVENT_BRANCH_LEFT", "PY_MONITORING_EVENT_BRANCH_LEFT", "i32"),
+         (
+             "PY_MONITORING_EVENT_BRANCH_RIGHT",
+             "PY_MONITORING_EVENT_BRANCH_RIGHT",
+             "i32"
+         ),
+         (
+             "PY_MONITORING_EVENT_STOP_ITERATION",
+             "PY_MONITORING_EVENT_STOP_ITERATION",
+             "i32"
+         ),
+         (
+             "_Py_ID_send",
+             "offsetof(struct _Py_global_strings, identifiers._py_send)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -3797,6 +3850,48 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          (
              "_PyRuntimeState_TUPLE_EMPTY",
              "offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_COMMON_CONSTS",
+             "offsetof(PyInterpreterState, common_consts)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CALLABLE_CACHE_ISINSTANCE",
+             "offsetof(PyInterpreterState, callable_cache.isinstance)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CALLABLE_CACHE_LEN",
+             "offsetof(PyInterpreterState, callable_cache.len)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CALLABLE_CACHE_LIST_APPEND",
+             "offsetof(PyInterpreterState, callable_cache.list_append)",
+             "i64"
+         ),
+         (
+             "PyThreadState_DATASTACK_TOP",
+             "offsetof(PyThreadState, datastack_top)",
+             "i64"
+         ),
+         (
+             "PyThreadState_DATASTACK_LIMIT",
+             "offsetof(PyThreadState, datastack_limit)",
+             "i64"
+         ),
+         ("PyThreadState_TRACING", "offsetof(PyThreadState, tracing)", "i64"),
+         (
+             "PyInterpreterState_MONITORS_TOOLS",
+             "offsetof(PyInterpreterState, monitors.tools)",
+             "i64"
+         ),
+         ("PyInterpreterState_JIT", "offsetof(PyInterpreterState, jit)", "i64"),
+         (
+             "PyInterpreterState_MONITORS",
+             "offsetof(PyInterpreterState, monitors.tools)",
              "i64"
          )
      ],

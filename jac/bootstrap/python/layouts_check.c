@@ -3135,6 +3135,27 @@ CONSTANT(offsetof(PySocketSockObject, sock_proto), 28LL);
 CONSTANT(sizeof(PySocketModule_APIObject), 24LL);
 CONSTANT(sizeof(PyOSErrorObject), 112LL);
 CONSTANT(Py_CLEANUP_SUPPORTED, 131072LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___build_class__), 2880LL);
+CONSTANT(JUMP_BACKWARD, 75LL);
+CONSTANT(JUMP_BACKWARD_JIT, 175LL);
+CONSTANT(JUMP_BACKWARD_NO_JIT, 176LL);
+CONSTANT(CO_NO_MONITORING_EVENTS, 33554432LL);
+CONSTANT(PY_MONITORING_EVENT_RAISE, 11LL);
+CONSTANT(PY_MONITORING_EVENT_EXCEPTION_HANDLED, 12LL);
+CONSTANT(PY_MONITORING_EVENT_PY_UNWIND, 13LL);
+CONSTANT(PY_MONITORING_EVENT_RERAISE, 15LL);
+CONSTANT(offsetof(_PyCoMonitoringData, active_monitors), 11LL);
+CONSTANT(offsetof(_PyCoLineInstrumentationData, bytes_per_entry), 0LL);
+CONSTANT(offsetof(_PyCoLineInstrumentationData, data), 1LL);
+CONSTANT(PY_MONITORING_EVENT_PY_RESUME, 1LL);
+CONSTANT(PY_MONITORING_EVENT_PY_RETURN, 2LL);
+CONSTANT(PY_MONITORING_EVENT_PY_YIELD, 3LL);
+CONSTANT(PY_MONITORING_EVENT_CALL, 4LL);
+CONSTANT(PY_MONITORING_EVENT_JUMP, 7LL);
+CONSTANT(PY_MONITORING_EVENT_BRANCH_LEFT, 8LL);
+CONSTANT(PY_MONITORING_EVENT_BRANCH_RIGHT, 9LL);
+CONSTANT(PY_MONITORING_EVENT_STOP_ITERATION, 10LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_send), 36168LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -3313,6 +3334,16 @@ CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1024LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 10432LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 10440LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90544LL);
+CONSTANT(offsetof(PyInterpreterState, common_consts), 223144LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.isinstance), 223112LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.len), 223120LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.list_append), 223128LL);
+CONSTANT(offsetof(PyThreadState, datastack_top), 240LL);
+CONSTANT(offsetof(PyThreadState, datastack_limit), 248LL);
+CONSTANT(offsetof(PyThreadState, tracing), 60LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223240LL);
+CONSTANT(offsetof(PyInterpreterState, jit), 223184LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223240LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3489,6 +3520,16 @@ CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1024LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 10432LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 10440LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90544LL);
+CONSTANT(offsetof(PyInterpreterState, common_consts), 223160LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.isinstance), 223128LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.len), 223136LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.list_append), 223144LL);
+CONSTANT(offsetof(PyThreadState, datastack_top), 240LL);
+CONSTANT(offsetof(PyThreadState, datastack_limit), 248LL);
+CONSTANT(offsetof(PyThreadState, tracing), 60LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223256LL);
+CONSTANT(offsetof(PyInterpreterState, jit), 223200LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223256LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3665,6 +3706,16 @@ CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 9928LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 9936LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90048LL);
+CONSTANT(offsetof(PyInterpreterState, common_consts), 223192LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.isinstance), 223160LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.len), 223168LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.list_append), 223176LL);
+CONSTANT(offsetof(PyThreadState, datastack_top), 240LL);
+CONSTANT(offsetof(PyThreadState, datastack_limit), 248LL);
+CONSTANT(offsetof(PyThreadState, tracing), 60LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
+CONSTANT(offsetof(PyInterpreterState, jit), 223232LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3841,6 +3892,16 @@ CONSTANT(JAC_PLATFORM_LINUX ? 1024 : 1, 1LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 9928LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 9936LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90048LL);
+CONSTANT(offsetof(PyInterpreterState, common_consts), 223192LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.isinstance), 223160LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.len), 223168LL);
+CONSTANT(offsetof(PyInterpreterState, callable_cache.list_append), 223176LL);
+CONSTANT(offsetof(PyThreadState, datastack_top), 240LL);
+CONSTANT(offsetof(PyThreadState, datastack_limit), 248LL);
+CONSTANT(offsetof(PyThreadState, tracing), 60LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
+CONSTANT(offsetof(PyInterpreterState, jit), 223232LL);
+CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif
