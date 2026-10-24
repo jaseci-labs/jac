@@ -353,7 +353,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
     _raw_for_free = b.gep(
         ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.for.free"
     );
-    b.call(self.rc_safe_free_fn, [_raw_for_free]);
+    b.call(self.rc_free_block_fn, [_raw_for_free]);
     b.branch(done_bb);
     return log_free_bb;
 }

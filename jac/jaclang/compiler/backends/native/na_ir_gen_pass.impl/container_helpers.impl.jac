@@ -830,7 +830,7 @@ impl NaIRGenPass._emit_release_header_free(
         _cl_tag
     );
     b = ir.IRBuilder(actual_free_cont_bb);
-    b.call(self.rc_safe_free_fn, [_cont_raw]);
+    b.call(self.rc_free_block_fn, [_cont_raw]);
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
@@ -1189,7 +1189,7 @@ impl NaIRGenPass._tuple_box_release_fn(
     free_bb = release_fn.append_basic_block("tup_free");
     self._emit_live_list_remove(b, tup_i8, i8_ptr, i64_ptr, free_bb, free_bb);
     b = ir.IRBuilder(free_bb);
-    b.call(self.rc_safe_free_fn, [tup_raw]);
+    b.call(self.rc_free_block_fn, [tup_raw]);
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();

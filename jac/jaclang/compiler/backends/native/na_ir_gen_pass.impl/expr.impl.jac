@@ -2652,6 +2652,11 @@ impl NaIRGenPass._null_safe_field_load(
 }
 
 impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    """A field read, an index or a slice on an expression, without null-safety.
+
+    A heap tuple made only for this read, such as `pair(i)[1]` or
+    `unpack(...)[0]`, is released once its field is read.
+    """;
     if isinstance(nd.right, uni.FilterCompr) {
         return self._codegen_chained_filter(nd);
     }
@@ -3301,9 +3306,17 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                             idx_val = self._codegen_expr(idx_node.start);
                         }
                         if idx_val is not None {
-                            return self._codegen_tuple_index(
+                            _tup_item = self._codegen_tuple_index(
                                 target_val, idx_val, tsub_struct
                             );
+
+                            if _tup_item is not None
+                                and isinstance(target_val.type, ir.PointerType) {
+                                return self._finish_borrowed_read(
+                                    target_val, _tup_item
+                                );
+                            }
+                            return _tup_item;
                         }
                     }
                 }
