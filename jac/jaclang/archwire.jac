@@ -16830,6 +16830,7 @@ graph import runtime.python {
             | bindings.sysconfig
             | bindings.tracemalloc
             | inittab
+            | interpreter.eval
             | interpreter.perf_trampoline
             | modules.codecs_cn
             | modules.codecs_hk
@@ -17748,7 +17749,15 @@ graph import runtime.python {
             _PyTime_Add,
             jacpy_errno
         },
+        interpreter.ops { PyLong_Type, PyObject },
         interpreter.remote_debugging { PyErr_SetString, PyExc_RuntimeError },
+        interpreter.stackref {
+            PyObject,
+            _Py_Dealloc,
+            _Py_FalseStruct,
+            _Py_NoneStruct,
+            _Py_TrueStruct
+        },
         layouts { PyMemberDef, PyMethodDef, PyObject, Py_buffer, Py_complex },
         modules.abc {
             NULL,
@@ -24353,10 +24362,12 @@ graph import runtime.python {
             _qsbr_thread_state_TSTATE,
             llist_node
         },
+        interpreter.ops { PyCodeObject_CONSTS, PyLongObject },
         interpreter.perf_trampoline | modules.posix_core {
             PyStatus,
             _PyStatus_TYPE_OK
         },
+        interpreter.stackref | modules.decimal_objects { PyTypeObject, _object },
         modules.asyncio {
             PYGEN_ERROR,
             PYGEN_NEXT,
@@ -24446,7 +24457,6 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
-        modules.decimal_objects { PyTypeObject, _object },
         modules.posix_fileio { PY_BUFFER_SIZE },
         modules.posix_stat { PyTypeObject as TypeLayout },
         modules.socket_address {
@@ -26729,6 +26739,14 @@ graph import runtime.python {
             PyInterpreterState_QSBR,
             PyThreadState_STATE,
             _PyThreadStateImpl_QSBR
+        },
+        interpreter.ops {
+            PyThreadState_CURRENT_FRAME,
+            _PyInterpreterFrame_F_EXECUTABLE,
+            _PyInterpreterFrame_INSTR_PTR,
+            _PyInterpreterFrame_LOCALSPLUS,
+            _PyInterpreterFrame_RETURN_OFFSET,
+            _PyInterpreterFrame_STACKPOINTER
         },
         object_model.bytearray { PyConfig_BYTES_WARNING },
         object_model.bytes {
@@ -30056,6 +30074,8 @@ graph import runtime.python {
             type_has_feature
         },
         interpreter.lock | modules.posix_core { current_tstate },
+        interpreter.ops { tuple_get_item },
+        interpreter.stackref { object_incref, object_new_ref },
         modules.asyncio { freelist_pop, freelist_push },
         modules.datetime_objects { object_type, object_type_check },
         modules.decimal_context
@@ -30070,15 +30090,19 @@ graph import runtime.python {
         modules.struct { tuple_get_item, tuple_set_item },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
+    object_model.long ++> interpreter.ops { get_small_int }
     object_model.method ++> bindings.functools { PyMethod_New }
     object_model.namespace ++> modules.time { _PyNamespace_New }
-    object_model.object ++> interpreter.gc {
-        gc_finalized,
-        gc_set_finalized,
-        object_init,
-        object_is_gc,
-        var_size
-    }
+    object_model.object ++> [
+        interpreter.gc {
+            gc_finalized,
+            gc_set_finalized,
+            object_init,
+            object_is_gc,
+            var_size
+        },
+        interpreter.stackref { reftracer_track },
+    ]
     object_model.slice ++> modules.elementtree | modules.sqlite3 {
         PySlice_AdjustIndices,
         PySlice_Unpack
@@ -31742,6 +31766,65 @@ graph import runtime.python.bindings {
             TypeHooks,
             jacpy_binding_allocate,
             jacpy_binding_basicsize
+        },
+    ]
+}
+
+graph import runtime.python.interpreter {
+    ops ++> eval {
+        COPY,
+        JUMP_FORWARD,
+        LOAD_CONST,
+        LOAD_CONST_IMMORTAL,
+        LOAD_CONST_MORTAL,
+        LOAD_FAST,
+        LOAD_FAST_AND_CLEAR,
+        LOAD_FAST_BORROW,
+        LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+        LOAD_FAST_LOAD_FAST,
+        LOAD_SMALL_INT,
+        NOP,
+        NOT_TAKEN,
+        PUSH_NULL,
+        STORE_FAST,
+        STORE_FAST_LOAD_FAST,
+        STORE_FAST_STORE_FAST,
+        SWAP,
+        UNARY_NOT,
+        _BINARY_OP_ADD_INT,
+        _BINARY_OP_MULTIPLY_INT,
+        _BINARY_OP_SUBTRACT_INT,
+        _GUARD_NOS_INT,
+        _GUARD_TOS_INT,
+        _IS_NONE,
+        _POP_JUMP_IF_FALSE,
+        _POP_JUMP_IF_TRUE,
+        frame_set_instr_ptr,
+        frame_set_stackpointer,
+        next_handler,
+        next_oparg
+    }
+    stackref ++> [
+        eval { sr_close },
+        ops {
+            SR_NULL,
+            SR_PTR_MASK,
+            SR_TAG_REFCNT,
+            sr_borrow,
+            sr_borrow_ref,
+            sr_close_long,
+            sr_dup,
+            sr_false,
+            sr_immortal,
+            sr_is_false,
+            sr_is_none,
+            sr_is_true,
+            sr_new,
+            sr_new_mortal,
+            sr_steal,
+            sr_true,
+            sr_type,
+            sr_xclose
         },
     ]
 }

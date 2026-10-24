@@ -154,6 +154,34 @@ cpython() {
         cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
         cp "$work/native/jacpython.o" Python/jacpython.o
+        # Instructions whose handlers the interpreter's Jac modules define
+        # (eval.jac generates them, ops*.jac hold the few written by hand)
+        # leave the C interpreter. Every remaining C handler and label, and
+        # the dispatch table that still lists both, become hidden external
+        # symbols, so Jac handlers can tail-call and read them without
+        # widening libpython's exports.
+        cat "$root/jaclang/runtime/python/interpreter/eval.jac" \
+            "$root"/jaclang/runtime/python/interpreter/ops*.jac | awk '
+            /def _TAIL_CALL_[A-Za-z0-9_]+\(/ {
+                match($0, /_TAIL_CALL_[A-Za-z0-9_]+/)
+                name = substr($0, RSTART + 11, RLENGTH - 11)
+            }
+            name != "" && /-> ptr\[PyObject\]/ {
+                if ($0 ~ /\{ *$/) print name
+                name = ""
+            }
+        ' > "$work/jac-handlers"
+        awk -v list="$work/jac-handlers" '
+            BEGIN { while ((getline name < list) > 0) jac["        TARGET(" name ") {"] = 1 }
+            skip && $0 == "        }" { skip = 0; next }
+            skip { next }
+            $0 in jac { skip = 1; next }
+            { print }
+        ' Python/generated_cases.c.h > Python/generated_cases.c.h.new
+        mv Python/generated_cases.c.h.new Python/generated_cases.c.h
+        sed 's/^Py_PRESERVE_NONE_CC static /Py_PRESERVE_NONE_CC __attribute__((visibility("hidden"))) /; s/^static py_tail_call_funcptr INSTRUCTION_TABLE/__attribute__((visibility("hidden"))) py_tail_call_funcptr INSTRUCTION_TABLE/' \
+            Python/opcode_targets.h > Python/opcode_targets.h.new
+        mv Python/opcode_targets.h.new Python/opcode_targets.h
     fi
     # cpython-sources.txt decides what the extracted tree holds; detach the
     # upstream rules that still name pruned paths. This runs second because

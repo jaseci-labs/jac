@@ -2950,6 +2950,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_entry_escape_fn(c_entry: ir.Function, jac_fn: ir.Function) -> ir.Function;
     def _c_entry_escape_shell(c_entry: ir.Function) -> ir.Function;
     def _tail_frame_blocker -> (str | None);
+    def _retype_tail_call(blk: ir.Block, func: ir.Function) -> (ir.CallInstr | None);
     def _tail_call_mismatch(call: ir.CallInstr, func: ir.Function) -> (str | None);
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -> None;

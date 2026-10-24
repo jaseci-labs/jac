@@ -36,3 +36,25 @@ test "preserve_none handlers tail-call each other in constant stack" {
     steps = 1000000;
     assert run(steps) == (steps * (steps + 1) // 2) * 1000 + steps;
 }
+
+test "a tail call to a C function returning a pointer takes the caller's prototype" {
+    options = CompileOptions(
+        aot_mode=True,
+        default_codespace="native",
+        skip_native_engine=True,
+        native_required=True,
+        memory_profile="rc",
+        no_ir_cache=True,
+        native_target="x86_64-unknown-linux-gnu",
+        native_tls=True,
+        native_sjlj=True
+    );
+    text = str(
+        compile_native_ir("clib_preserve_none_extern.jac", options=options).gen.llvm_ir
+    );
+    # The Jac body keeps pointers as words, so the call is made through the
+    # body's own prototype and nothing (no pointer-to-word conversion) follows.
+    assert text.count("musttail call preserve_nonecc i64 %\"tail.callee") == 2 , text;
+    assert "bitcast i8* (i8*, i8*, i32)* @\"c_handler\" to i64 (i64, i64, i32)*"
+        in text , text;
+}
