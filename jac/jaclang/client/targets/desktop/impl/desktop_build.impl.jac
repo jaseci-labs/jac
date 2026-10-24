@@ -120,7 +120,7 @@ impl _stage_fused_runtime(out_dir: Path) {
     dst.mkdir(parents=True, exist_ok=True);
     for f in sorted(src.`glob("*.jac")) {
         if f.is_file() {
-            shutil.copy2(f, dst / f.name);
+            stage_module(f, dst);
         }
     }
 }
@@ -224,6 +224,18 @@ impl _top_level_import_boundary(lines: list[str]) -> int {
     return len(lines);
 }
 
+impl _unit_source(module: Path, keep_imports: bool = True) -> str {
+    parts: list[str] = [];
+    for part in module_files(module) {
+        lines = part.read_text().rstrip("\n").split("\n");
+        if not keep_imports {
+            lines = lines[_top_level_import_boundary(lines):];
+        }
+        parts.append("\n".join(lines));
+    }
+    return "\n".join(parts) + "\n";
+}
+
 impl _inject_platform(host_src: str, platform_src: str) -> str {
     plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
     lines = host_src.split("\n");
@@ -238,8 +250,8 @@ impl _native_build_cef(
         build_dir = cef_dir / ".build";
         build_dir.mkdir(parents=True, exist_ok=True);
         build_src = build_dir / build_name;
-        host_src = (cef_dir / source_name).read_text();
-        platform_src = (cef_dir / "cef_platform.jac").read_text();
+        host_src = _unit_source(cef_dir / source_name);
+        platform_src = _unit_source(cef_dir / "cef_platform.jac", keep_imports=False);
         build_src.write_text(_inject_platform(host_src, platform_src));
         cmd = [_jac_bin(), "build", "--native"];
         if shared {

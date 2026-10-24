@@ -28,7 +28,7 @@ impl _assemble_native_host(
     shutil.copy2(
         ensure_webview(webview_dir), layout.library_dir() / webview_library_name()
     );
-    shutil.copy2(webview_dir / "webview.jac", output_dir / "webview.jac");
+    stage_module(webview_dir / "webview.jac", output_dir);
 
     backend = cfg.get_backend();
     program = stage_program(

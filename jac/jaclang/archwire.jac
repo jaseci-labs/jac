@@ -5,7 +5,7 @@ graph import {
     edge Cache: cache.* --> byllm.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | scale.* | server.* | toolchains.*;
     edge Cli: cli.* --> byllm.* | client.* | compiler.* | dist.* | jac0core.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Client: client.* --> cli.* | compiler.* | dist.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
-    edge Compiler: compiler.* --> cli.* | client.* | dist.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.*;
+    edge Compiler: compiler.* --> cli.* | client.* | dist.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Comptime: comptime --> byllm.* | cli.* | client.* | scale.* | server.*;
     edge Data: data.* --> cli.* | client.* | compiler.* | runtime.* | scale.* | server.*;
     edge Dist: dist.* --> cli.* | client.* | compiler.* | packages.* | scale.*;
@@ -660,7 +660,8 @@ graph import {
         cli.commands.analysis._drop_covered_annexes { discover_base_file },
         cli.commands.analysis._float_impls_to_annex
             | cli.commands.architecture
-            | project.compiler_host.ProjectHost.annex_files { discover_annex_files },
+            | project.compiler_host.ProjectHost.annex_files
+            | toolchains.desktop.module_files { discover_annex_files },
         cli.commands.analysis._unit_weight { discover_annex_files },
         lsp.server.engine { discover_annex_files, discover_base_file },
         project.compiler_host.ProjectHost.is_annex_path_of
@@ -4292,6 +4293,14 @@ graph import {
     }
     toolchains.cef ++> client.targets.desktop.cef_shell { ensure_cef }
     toolchains.desktop ++> [
+        client.targets.desktop.cef_shell._ensure_cef_subprocess
+            | client.targets.desktop.desktop_build._unit_source { module_files },
+        client.targets.desktop.cef_shell._ensure_libcef_dispatch { module_files },
+        client.targets.desktop.cef_shell.cef_build
+            | client.targets.desktop.desktop_build._stage_fused_runtime
+            | client.targets.desktop.webview_shell._assemble_native_host {
+            stage_module
+        },
         client.targets.desktop.desktop_build._find_cef_dir { source_workspace },
         client.targets.desktop.desktop_build._find_webview_dir { source_workspace },
         client.targets.desktop.desktop_build.build_cef_dispatch { source_workspace },

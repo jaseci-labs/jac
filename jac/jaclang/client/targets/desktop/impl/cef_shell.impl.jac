@@ -14,7 +14,9 @@ impl _is_stale(output: Path, inputs: list[Path]) -> bool {
 impl _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
     src = cef_dir / "cef_dispatch.jac";
-    stale = _is_stale(lib, [src, cef_dir / "cef_platform.jac"]);
+    stale = _is_stale(
+        lib, module_files(src) + module_files(cef_dir / "cef_platform.jac")
+    );
     if not stale {
         return lib;
     }
@@ -27,7 +29,9 @@ impl _ensure_libcef_dispatch(cef_dir: Path) -> Path {
 impl _ensure_cef_subprocess(cef_dir: Path) -> Path {
     helper = cef_dir / "cef-subprocess";
     src = cef_dir / "cef_subprocess.jac";
-    stale = _is_stale(helper, [src, cef_dir / "cef_platform.jac"]);
+    stale = _is_stale(
+        helper, module_files(src) + module_files(cef_dir / "cef_platform.jac")
+    );
     if not stale {
         return helper;
     }
@@ -191,7 +195,7 @@ impl cef_build(
     shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");
     shutil.copy2(cef_subprocess, out_dir / "cef-subprocess");
     (out_dir / "cef-subprocess").chmod(0o755);
-    shutil.copy2(cef_dir / "cef.jac", out_dir / "cef.jac");
+    stage_module(cef_dir / "cef.jac", out_dir);
     _stage_cef_runtime(cef_dist, out_dir);
 
     backend = cfg.get_backend();
