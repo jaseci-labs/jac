@@ -3667,6 +3667,12 @@ impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
+    """A `for ... in` loop.
+
+    A list loop variable that the ownership pass proved a borrow names the
+    element the list keeps alive, so it takes no retain and no release per
+    element.
+    """;
     if nd.is_comptime {
         (ok, items) = self._ct_value_with_bindings(nd.collection);
         if not ok or items is None {
@@ -4085,6 +4091,19 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
+
+    _loop_borrow = (
+        id(nd) in self.module.managed_borrow_binds
+        and self._gc_mode() != "none"
+        and not self._nogc_headerless()
+        and _unpack_target is None
+        and isinstance(actual_elem_type, ir.PointerType)
+        and self._gen_ctx is None
+    );
+    if _loop_borrow {
+        self.borrowed_vars.add(loop_var_name);
+        self.rc_ops_elided += 2;
+    }
     self._codegen_for_indexed(
         nd,
         kind="list",
@@ -4092,7 +4111,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         helpers=helpers,
         var_names=[loop_var_name],
         var_types=[actual_elem_type],
-        rc_vars=True,
+        rc_vars=not _loop_borrow,
         coll_release_op="forl_coll",
         elem_cast=inner_type,
         unpack_target=_unpack_target

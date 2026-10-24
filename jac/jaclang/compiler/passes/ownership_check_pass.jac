@@ -132,6 +132,47 @@ walker OwnershipCheckPass(CompilerPass) {
     def _store_fields(tgt: Expr, out: set[str]) -> None;
     def _call_writes(call: FuncCall) -> set[str];
     def _stamp_managed_borrows -> None;
+    def _stamp_inferred_borrows -> None;
+    def _infer_nodes_of(ab: Ability) -> list[UniNode];
+    def _infer_is_generator(nds: list[UniNode]) -> bool;
+    def _infer_plain_type(t: object) -> bool;
+    def _infer_expr_plain(e: object) -> bool;
+    def _infer_region_effects(nds: list[UniNode], callees: list[Ability]) -> set[str];
+    def _infer_indexable(target: object) -> bool;
+    def _infer_iterable(coll: object) -> bool;
+    def _infer_call_effects(call: FuncCall, callees: list[Ability]) -> set[str];
+    def _infer_path(expr: object) -> (tuple[Name, set[str]] | None);
+    def _infer_borrows_in(
+        ab: Ability, nds: list[UniNode], effects: dict[int, set[str]]
+    ) -> int;
+
+    def _infer_bound_names(tgt: object) -> list[Name];
+    def _infer_loop_borrows(
+        ab: Ability,
+        nds: list[UniNode],
+        other_binds: dict[SymId, int],
+        simple: dict[SymId, list[Assignment]],
+        captured: set[SymId],
+        effects: dict[int, set[str]]
+    ) -> int;
+
+    def _infer_in_else(nm: UniNode, st: InForStmt) -> bool;
+    def _infer_contains(outer: UniNode, inner: UniNode) -> bool;
+    def _infer_is_local(nm: Name) -> bool;
+    def _infer_builtin_outer(e: object) -> bool;
+    def _infer_scalar_slot(tgt: object) -> bool;
+    def _infer_is_type_expr(nd: object) -> bool;
+    def _infer_mutator_effects(
+        mname: str, call: FuncCall, args: list[Expr]
+    ) -> set[str];
+
+    def _infer_owner_stable(
+        ab: Ability,
+        sid: SymId,
+        other_binds: dict[SymId, int],
+        simple: dict[SymId, list[Assignment]]
+    ) -> bool;
+
     def _is_place_borrow(nd: Assignment) -> bool;
     def _is_null_bind(nd: Assignment) -> bool;
     def _managed_start_ok(start: Name) -> bool;

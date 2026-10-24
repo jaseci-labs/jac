@@ -3,7 +3,8 @@
 `head: &memo | None = &p.tokens[p.mark].memo_head` borrows a path the
 checker proved stable, so the slot holds no reference: the walk emits no
 retain and no release, while the same walk written without the annotation
-pays both per step.
+pays both per step unless borrow inference proves it a borrow too, which it
+does for this walk.
 """
 
 import ctypes;
@@ -34,7 +35,15 @@ test "a borrowed walk answers what the owning walk answers" {
 }
 
 test "the borrowed walk emits no retain and no release" {
-    module = compile_native_ir("managed_borrow_walk.jac");
+    # (with borrow inference off, so that the unannotated walk is the
+    # counted control)
+    import os;
+    os.environ["JAC_NO_BORROW_INFER"] = "1";
+    try {
+        module = compile_native_ir("managed_borrow_walk.jac");
+    } finally {
+        del os.environ["JAC_NO_BORROW_INFER"];
+    }
     ir = str(module.gen.llvm_ir);
     borrowed = function_body(ir, re.escape(unit_symbol(module, "borrowed_walk")));
     owning = function_body(ir, re.escape(unit_symbol(module, "owning_walk")));
@@ -46,5 +55,14 @@ test "the borrowed walk emits no retain and no release" {
     );
     assert re.findall(r"@\"?_*rc_retain", owning) , (
         "the owning walk is expected to retain, so this test would prove nothing"
+    );
+}
+
+test "borrow inference makes the unannotated walk a borrow as well" {
+    module = compile_native_ir("managed_borrow_walk.jac");
+    ir = str(module.gen.llvm_ir);
+    owning = function_body(ir, re.escape(unit_symbol(module, "owning_walk")));
+    assert not re.findall(r"@\"?_*rc_retain", owning) , (
+        "the unannotated walk still retains: " + owning
     );
 }
