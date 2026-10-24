@@ -86,8 +86,7 @@ impl build_serve_manifest(
         services: list[AppConfig] = [];
         if config is not None {
             selected = config.app_for_path(str(entry_file.resolve()));
-            if selected is not None
-                and kind_has_server(config.resolved_kind(selected)) {
+            if selected is not None {
                 services = service_apps(config, selected);
             }
         }

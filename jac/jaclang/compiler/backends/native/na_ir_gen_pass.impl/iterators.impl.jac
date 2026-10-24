@@ -1554,19 +1554,18 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         );
         self.builder.branch(cond_bb);
     }
-    self._emit_loop_else(nd, else_bb, end_bb);
     self.loop_stack.pop();
-
-    if _gen_it_spill is not None {
-        _it_end = self._mark_owned(
-            self.builder.load(_gen_it_spill, name="iterf.it.end")
-        );
-        self._emit_rc_release_simple(_it_end, op="iter_end", loc=_loc);
-        self.builder.store(ir.Constant(_it_end.type, None), _gen_it_spill);
-    } elif _it_slot_var is not None {
-        self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
-    } elif owns_iter {
-        self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
+    if else_bb is None {
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+    } else {
+        join_bb = self.builder.function.append_basic_block(name="iterf.join");
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(else_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self._emit_loop_else(nd, else_bb, join_bb);
     }
     return True;
 }

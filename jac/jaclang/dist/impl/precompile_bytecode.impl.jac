@@ -154,10 +154,8 @@ impl _application_sources(package_dir: str, app: str) -> list[str] | None {
     }
     program = JacProgram();
     entries: list[any] = [selected];
-    if selected.has_server {
-        import from jaclang.server.assembly { service_apps }
-        entries.extend(service_apps(workspace, selected));
-    }
+    import from jaclang.server.assembly { service_apps }
+    entries.extend(service_apps(workspace, selected));
     try {
         for application in entries {
             options = bind_options(
@@ -824,8 +822,9 @@ impl app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any
         `entry = {"module": f"{pkg_name}.{stem}", "path": rel};
     }
 
+    serving = config.serving_apps();
     caps: list[str] = [];
-    if kind in ["service", "service-mesh", "web-app", "desktop", "mobile"] {
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         caps.append("has-server");
     }
     if `entry {
