@@ -1091,7 +1091,7 @@ graph import {
     compiler.frontend.diagnostics ++> client.client_diagnostics._diag
         | project.kernel_check.alert_of { DIAGNOSTICS }
     compiler.frontend.host ++> [
-        cli.commands.architecture | project.kernel_check | studio.model { active_host },
+        cli.commands.architecture | project.kernel_check { active_host },
         project.compiler_host {
             CheckSettings,
             HostPlatform,
@@ -1949,7 +1949,7 @@ graph import {
         client.targets.desktop.desktop_build.stage_program { client_assets_dir },
         compiler.driver.application._prepare_revision { client_input_dirs },
     ]
-    project.compiler_host ++> studio.gate { ProjectHost }
+    project.compiler_host ++> studio.gate | studio.model { ProjectHost }
     project.config ++> [
         artifacts.router._provision
             | data.pg_dist.bundled_dist_dir

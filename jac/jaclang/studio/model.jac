@@ -129,7 +129,8 @@ obj ProjectModel {
         arch_mtimes: dict[str, float] = {},
         rule_recs: dict[str, any] = {},
         dir_mtimes: dict[str, float] = {},
-        found: list[str] = [];
+        found: list[str] = [],
+        _host: (ProjectHost | None) = None;
 
     def postinit;
     def build(on_progress: any = None, index: bool = True);
@@ -156,6 +157,7 @@ obj ProjectModel {
     def _link_walkers;
     def refresh(path: str) -> list[str];
     def stale_files -> list[str];
+    def project_host -> ProjectHost;
     def new_files -> list[str];
     def module_for_file(path: str) -> (StModule | None);
     def providers(key: str) -> list[WireInfo];
@@ -611,7 +613,7 @@ impl ProjectModel.index_module(key: str) -> bool {
         return True;
     }
     try {
-        tree = active_host().woven_module(mod.file, self.prog);
+        tree = self.project_host().woven_module(mod.file, self.prog);
     } except Exception as e {
         mod.error = str(e);
         return False;
@@ -770,7 +772,7 @@ impl ProjectModel.refresh(path: str) -> list[str] {
     }
     key = self.by_file.get(real);
     if key is None {
-        base = active_host().base_file(real);
+        base = self.project_host().base_file(real);
         if base {
             key = self.by_file.get(os.path.realpath(base));
         }
@@ -848,6 +850,13 @@ impl ProjectModel.new_files -> list[str] {
         }
     }
     return list(self.found);
+}
+
+impl ProjectModel.project_host -> ProjectHost {
+    if self._host is None {
+        self._host = ProjectHost();
+    }
+    return self._host;
 }
 
 impl ProjectModel.stale_files -> list[str] {
@@ -1567,7 +1576,7 @@ impl ProjectModel._load_cache(mod: StModule) -> bool {
         return False;
     }
     try {
-        for annex in active_host().annex_files(mod.file) {
+        for annex in self.project_host().annex_files(mod.file) {
             if os.path.realpath(annex) not in stamps {
                 return False;
             }

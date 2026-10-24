@@ -5,6 +5,7 @@ import json;
 import from contextlib { redirect_stdout }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from jaclang.compiler.frontend.host { HostServices, active_host, install_host }
 import from jaclang.studio.app { cmd_model }
 import from jaclang.studio.model { ProjectModel, StImpl }
 import from tests.studio.shop_fixture { make_shop }
@@ -82,7 +83,13 @@ test "refreshing a package keeps its children's symbols, and new files are found
             "def leaf -> int {\n    return 2;\n}\n"
         );
         model = ProjectModel(root_dir=str(base));
-        model.build();
+        ambient = active_host();
+        install_host(HostServices());
+        try {
+            model.build();
+        } finally {
+            install_host(ambient);
+        }
         child = [
             k
             for k in model.symbols
