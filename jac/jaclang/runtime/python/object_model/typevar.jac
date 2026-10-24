@@ -16,8 +16,7 @@ import from c {
         fname: str, displayname: str, expected: ptr[u8], arg: ptr[PyObject]
     );  obj TypevarCall {
         has free: Callable[[ptr], None] = 0;
-    }  glob:priv call_slot: TypevarCall = TypevarCall(),
-         origin_key: ptr[PyObject] = ptr[PyObject](),
+    }  glob:priv origin_key: ptr[PyObject] = ptr[PyObject](),
          args_key: ptr[PyObject] = ptr[PyObject](),
          qualname_key: ptr[PyObject] = ptr[PyObject](),
          module_key: ptr[PyObject] = ptr[PyObject](),
@@ -1332,7 +1331,9 @@ impl set_cached_type(offset: i64, type: ptr[PyObject]) {
 
 impl heap_free(op: ptr[PyObject]) {
     tp = object_type(op);
-    calls = addressof(call_slot);
+    calls = ptr[TypevarCall](
+        __thread_local_block("jac_object_model_typevar_call_slot", 8)
+    );
     calls.view(1)[0].free = int(tp.view(1)[0].tp_free);
     calls.view(1)[0].free(ptr(op));
     object_decref(ptr[PyObject](tp));

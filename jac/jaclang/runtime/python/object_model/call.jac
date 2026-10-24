@@ -46,7 +46,7 @@ import from c {
                     [ptr[PyObject], ptr[PyObject], ptr[PyObject]],
                     ptr[PyObject]
                 ] = 0;
-    }  glob:priv call_slot: CallSlot = CallSlot();
+    }
 }
 
 glob:priv PY_SSIZE_T_MAX: i64 = 0x7FFFFFFFFFFFFFFF,
@@ -753,7 +753,7 @@ impl call_vectorcall(
     nargsf: u64,
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    slot = addressof(call_slot);
+    slot = ptr[CallSlot](__thread_local_block("jac_object_model_call_call_slot", 16));
     slot.view(1)[0].vectorcall = func;
     return slot.view(1)[0].vectorcall(callable, args, nargsf, kwnames);
 }
@@ -761,7 +761,7 @@ impl call_vectorcall(
 impl call_ternary(
     func: int, callable: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    slot = addressof(call_slot);
+    slot = ptr[CallSlot](__thread_local_block("jac_object_model_call_call_slot", 16));
     slot.view(1)[0].ternary = func;
     return slot.view(1)[0].ternary(callable, args, kwargs);
 }

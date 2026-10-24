@@ -137,8 +137,7 @@ import from c {
             ] = 0;
     }  obj FastCall {
         has call: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0;
-    }  glob:priv exception_glue: KeywordsCall = KeywordsCall(),
-         set_result_glue: KeywordsCall = KeywordsCall(),
+    }  glob:priv set_result_glue: KeywordsCall = KeywordsCall(),
          add_done_callback_glue: KeywordsCall = KeywordsCall(),
          get_loop_glue: KeywordsCall = KeywordsCall(),
          add_awaited_glue: FastCall = FastCall(),
@@ -305,7 +304,15 @@ impl fast_exception(
     if nargs == 0 and not kwnames {
         return _asyncio_Future_exception_impl(receiver, NULL);
     }
-    return keywords_glue(addressof(exception_glue), receiver, args, nargs, kwnames);
+    return keywords_glue(
+        ptr[KeywordsCall](
+            __thread_local_block("jac_bindings_asyncio_exception_glue", 8)
+        ),
+        receiver,
+        args,
+        nargs,
+        kwnames
+    );
 }
 
 impl fast_get_loop(
@@ -453,7 +460,11 @@ impl with_fast_paths(table: list[MethodDefinition]) -> list[MethodDefinition] {
         } elif method.name == "result" {
             callbacks = MethodCallbacks(positional=fast_result);
         } elif method.name == "exception" {
-            addressof(exception_glue).view(1)[0].call = method.callbacks.fast_keywords;
+            ptr[KeywordsCall](
+                __thread_local_block("jac_bindings_asyncio_exception_glue", 8)
+            ).view(
+                1
+            )[0].call = method.callbacks.fast_keywords;
             callbacks = MethodCallbacks(fast_keywords=fast_exception);
         } elif method.name == "get_loop" {
             addressof(get_loop_glue).view(1)[0].call = method.callbacks.fast_keywords;

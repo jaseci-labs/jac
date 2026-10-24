@@ -29,8 +29,7 @@ import from c {
             usable: i64 = 0,
             nentries: i64 = 0,
             indices: u64 = 0;
-    }  glob:priv call_slot: DictCall = DictCall(),
-         empty_keys_struct: EmptyKeys = EmptyKeys(
+    }  glob:priv empty_keys_struct: EmptyKeys = EmptyKeys(
              refcnt=-9223372036854775807 - 1,
              log2_size=0,
              log2_index_bytes=3,
@@ -678,7 +677,9 @@ import from c {
         if ix == DKIX_EMPTY or not old_value {
             return i32(0);
         }
-        calls = addressof(call_slot);
+        calls = ptr[DictCall](
+            __thread_local_block("jac_object_model_dict_call_slot", 32)
+        );
         calls.view(1)[0].predicate = int(predicate);
         res = calls.view(1)[0].predicate(old_value, arg);
         if res == -1 {
@@ -1607,7 +1608,9 @@ import from c {
         value: ptr[PyObject]
     ) {
         watcher_bits = watcher_bits_in;
-        calls = addressof(call_slot);
+        calls = ptr[DictCall](
+            __thread_local_block("jac_object_model_dict_call_slot", 32)
+        );
         for i in range(DICT_MAX_WATCHERS) {
             if watcher_bits & i32(1) != 0 {
                 cb = watcher_slot(i).view(1)[0];
@@ -3314,7 +3317,7 @@ impl dict_dealloc(self: ptr[PyObject]) {
 }
 
 impl free_object(op: ptr[PyObject]) {
-    calls = addressof(call_slot);
+    calls = ptr[DictCall](__thread_local_block("jac_object_model_dict_call_slot", 32));
     calls.view(1)[0].free = int(object_type(op).view(1)[0].tp_free);
     calls.view(1)[0].free(ptr(op));
 }
@@ -4071,7 +4074,7 @@ impl dict_ior(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
 impl dict_new(
     type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    calls = addressof(call_slot);
+    calls = ptr[DictCall](__thread_local_block("jac_object_model_dict_call_slot", 32));
     calls.view(1)[0].alloc = int(ptr[PyTypeObject](type).view(1)[0].tp_alloc);
     self = calls.view(1)[0].alloc(type, 0);
     if not self {

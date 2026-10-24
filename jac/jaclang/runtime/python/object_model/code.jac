@@ -20,8 +20,7 @@ import from c {
     ) -> ptr;  obj CodeCall {
         has watcher: Callable[[i32, ptr[PyObject]], i32] = 0,
             free: Callable[[ptr], None] = 0;
-    }  glob:priv call_slot: CodeCall = CodeCall(),
-         code_opcode_caches: list[u8] = [
+    }  glob:priv code_opcode_caches: list[u8] = [
              u8(0),
              u8(0),
              u8(0),
@@ -2120,7 +2119,7 @@ impl notify_code_watchers(event: i32, co: ptr[PyObject]) {
     interp = current_interp();
     bits = active_code_watchers(interp).view(1)[0];
     i: i64 = 0;
-    calls = addressof(call_slot);
+    calls = ptr[CodeCall](__thread_local_block("jac_object_model_code_call_slot", 16));
     while bits != u8(0) {
         if (bits & u8(1)) != u8(0) {
             calls.view(1)[0].watcher = code_watcher_slot(interp, i).view(1)[0];
@@ -2847,7 +2846,7 @@ impl extra_freefunc(interp: ptr[u8], index: i64) -> int {
 }
 
 impl call_free_extra(free_extra: int, value: ptr) {
-    calls = addressof(call_slot);
+    calls = ptr[CodeCall](__thread_local_block("jac_object_model_code_call_slot", 16));
     calls.view(1)[0].free = free_extra;
     calls.view(1)[0].free(value);
 }

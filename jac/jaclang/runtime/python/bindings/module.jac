@@ -1,9 +1,3 @@
-"""Native module declarations. C stores only CPython's opaque ABI records.
-
-Declarations contain no Python objects and are constructed once during native
-initialization. The immutable records can be shared by isolated interpreters.
-"""
-
 import from c {
     obj ModuleHooks {
         has execute: Callable[[ptr[PyObject]], i32] = 0,
@@ -50,62 +44,16 @@ import from c {
     obj VisitProc {
         has call: Callable[[ptr[PyObject], ptr], i32] = 0;
     }
-    # The visitproc a traversal is calling, in C storage so a visit allocates
-    # nothing. Each call reads it before the visitor runs, so a traversal the
-    # visitor starts cannot change the callee of the one in progress.
-    glob:priv visit_slot: VisitProc = VisitProc();
 }
 
-"""Py_VISIT: pass one reference to a tp_traverse visitor (a C visitproc),
-skipping NULL."""
-def visit_reference(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    if value == 0 {
-        return i32(0);
-    }
-    slot = addressof(visit_slot);
-    slot.view(1)[0].call = int(visitor);
-    return slot.view(1)[0].call(value, context);
-}
+def visit_reference(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def traverse_state(module: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    if jacpy_binding_module_native_present(module) != 0 {
-        state = jacpy_binding_module_native_get(module);
-        status = state.traverse_refs(visitor, context);
-        if status != 0 {
-            return status;
-        }
-    }
-    for index in range(int(jacpy_binding_state_count(module))) {
-        result = visit_reference(
-            jacpy_binding_state_get(module, i64(index)), visitor, context
-        );
-        if result != 0 {
-            return result;
-        }
-    }
-    return i32(0);
-}
+def traverse_state(module: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def clear_state(module: ptr[PyObject]) -> i32 {
-    if jacpy_binding_module_native_present(module) != 0 {
-        state = jacpy_binding_module_native_get(module);
-        state.clear();
-        jacpy_binding_module_native_clear(module);
-    }
-    for index in range(int(jacpy_binding_state_count(module))) {
-        jacpy_binding_state_set(module, i64(index), NULL);
-    }
-    return i32(0);
-}
+def clear_state(module: ptr[PyObject]) -> i32;
 
-def free_state(module: ptr[PyObject]) {
-    clear_state(module);
-}
+def free_state(module: ptr[PyObject]);
 
-# A PyMethodDef's C function, one per calling convention: `keywords` for
-# METH_VARARGS|METH_KEYWORDS, `positional` for METH_VARARGS, METH_NOARGS and
-# METH_O, `fast` for METH_FASTCALL and `fast_keywords` for
-# METH_FASTCALL|METH_KEYWORDS. The flags select which one CPython calls.
 import from c {
     obj MethodCallbacks {
         has keywords:
@@ -128,8 +76,6 @@ obj MethodDefinition {
 }
 
 import from c {
-    # A PyMethodDef whose callback takes positional arguments (METH_NOARGS,
-    # METH_O or METH_VARARGS).
     obj PositionalMethodRecord {
         has ml_name: ptr[u8] = ptr[u8](),
             ml_meth: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
@@ -139,8 +85,6 @@ import from c {
 }
 
 import from c {
-    # A PyMethodDef whose callback takes (self, args, kwargs)
-    # (METH_VARARGS | METH_KEYWORDS).
     obj KeywordMethodRecord {
         has ml_name: ptr[u8] = ptr[u8](),
             ml_meth:
@@ -150,18 +94,13 @@ import from c {
                 ] = 0,
             ml_flags: i32 = 0,
             ml_doc: ptr[u8] = ptr[u8]();
-    }
-    # A PyMethodDef whose callback takes (self, args, nargs) (METH_FASTCALL).
-    obj FastMethodRecord {
+    }  obj FastMethodRecord {
         has ml_name: ptr[u8] = ptr[u8](),
             ml_meth:
                 Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0,
             ml_flags: i32 = 0,
             ml_doc: ptr[u8] = ptr[u8]();
-    }
-    # A PyMethodDef whose callback takes (self, args, nargs, kwnames)
-    # (METH_FASTCALL | METH_KEYWORDS).
-    obj FastKeywordMethodRecord {
+    }  obj FastKeywordMethodRecord {
         has ml_name: ptr[u8] = ptr[u8](),
             ml_meth:
                 Callable[
@@ -173,12 +112,97 @@ import from c {
     }
 }
 
-# A NULL-terminated PyMethodDef table of `methods` for a static type's
-# tp_methods: an object-model port defines its types as C data and fills
-# their method tables, clinic glue included, before readying them. Like a
-# static table it lives for the process lifetime; an empty doc is C's NULL.
-# NULL with MemoryError when allocation fails.
-def method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef] {
+def method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef];
+
+def builtin_function(
+    definition: MethodDefinition, owner: ptr[PyObject]
+) -> ptr[PyObject];
+
+def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool;
+
+obj ModuleDefinition {
+    has handle: ptr = NULL;
+
+    def init(
+        name: str,
+        doc: str,
+        methods: list[MethodDefinition],
+        hooks: ModuleHooks = ModuleHooks(),
+        state_count: int = 0,
+        own_lifecycle: bool = False
+    );
+
+    def initialize -> ptr[PyObject];
+}
+
+import from c {
+    def jacpy_binding_functions(count: i64) -> ptr;  def jacpy_binding_functions_discard(
+        handle: ptr
+    );  def jacpy_binding_function(
+        handle: ptr, index: i64, receiver: ptr[PyObject], module: ptr[PyObject]
+    ) -> ptr[PyObject];
+}
+
+obj FunctionTable {
+    has handle: ptr = NULL;
+
+    def init(methods: list[MethodDefinition]);
+    def bind(
+        index: int, receiver: ptr[PyObject], module: ptr[PyObject] = NULL
+    ) -> ptr[PyObject];
+}
+
+def add_state_owned(
+    module: ptr[PyObject], index: int, name: str, value: ptr[PyObject]
+) -> bool;
+
+def add_owned(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool;
+
+impl visit_reference(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    if value == 0 {
+        return i32(0);
+    }
+    slot = ptr[VisitProc](__thread_local_block("jac_bindings_module_visit_slot", 8));
+    slot.view(1)[0].call = int(visitor);
+    return slot.view(1)[0].call(value, context);
+}
+
+impl traverse_state(module: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    if jacpy_binding_module_native_present(module) != 0 {
+        state = jacpy_binding_module_native_get(module);
+        status = state.traverse_refs(visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    for index in range(int(jacpy_binding_state_count(module))) {
+        result = visit_reference(
+            jacpy_binding_state_get(module, i64(index)), visitor, context
+        );
+        if result != 0 {
+            return result;
+        }
+    }
+    return i32(0);
+}
+
+impl clear_state(module: ptr[PyObject]) -> i32 {
+    if jacpy_binding_module_native_present(module) != 0 {
+        state = jacpy_binding_module_native_get(module);
+        state.clear();
+        jacpy_binding_module_native_clear(module);
+    }
+    for index in range(int(jacpy_binding_state_count(module))) {
+        jacpy_binding_state_set(module, i64(index), NULL);
+    }
+    return i32(0);
+}
+
+impl free_state(module: ptr[PyObject]) {
+    clear_state(module);
+}
+
+impl method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef] {
     count = len(methods);
     table = ptr[PyMethodDef](PyMem_RawCalloc(u64(count + 1), 32));
     if table.is_null() {
@@ -194,8 +218,7 @@ def method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef] {
             return ptr[PyMethodDef]();
         }
         slot = table + index;
-        # The flags select the callback's shape, as jacpy_binding_method()
-        # does: METH_FASTCALL (0x80), then METH_KEYWORDS (0x2).
+
         fastcall = (method.flags & 0x80) != 0;
         keywords = (method.flags & 2) != 0;
         if fastcall and keywords {
@@ -227,9 +250,7 @@ def method_table(methods: list[MethodDefinition]) -> ptr[PyMethodDef] {
     return table;
 }
 
-# PyCFunction_New(): a builtin function over a positional callback, bound to
-# `owner`. Its method record lives for the process, as a static PyMethodDef does.
-def builtin_function(
+impl builtin_function(
     definition: MethodDefinition, owner: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = ptr[PositionalMethodRecord](PyMem_RawCalloc(1, 32));
@@ -244,7 +265,7 @@ def builtin_function(
     return PyCFunction_NewEx(ptr[PyMethodDef](record), owner, NULL);
 }
 
-def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
+impl install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
     for index in range(len(methods)) {
         method = methods[index];
         if jacpy_binding_method(
@@ -265,77 +286,53 @@ def install_methods(handle: ptr, methods: list[MethodDefinition]) -> bool {
     return True;
 }
 
-# A module definition. Its state (`state_count` references and any native
-# state) is traversed and cleared by traverse_state() and clear_state(); a
-# module whose teardown does more gives `own_lifecycle` and its own
-# traverse, clear and free hooks, which call those two for the state.
-obj ModuleDefinition {
-    has handle: ptr = NULL;
-
-    def init(
-        name: str,
-        doc: str,
-        methods: list[MethodDefinition],
-        hooks: ModuleHooks = ModuleHooks(),
-        state_count: int = 0,
-        own_lifecycle: bool = False
-    ) {
-        lifecycle = hooks
-            if own_lifecycle
-            else ModuleHooks(
-                execute=hooks.execute,
-                traverse=traverse_state,
-                clear=clear_state,
-                free=free_state
-            );
-        self.handle = jacpy_binding_module(
-            name, doc, i64(len(methods)), lifecycle, i64(state_count)
+impl ModuleDefinition.init(
+    name: str,
+    doc: str,
+    methods: list[MethodDefinition],
+    hooks: ModuleHooks = ModuleHooks(),
+    state_count: int = 0,
+    own_lifecycle: bool = False
+) {
+    lifecycle = hooks
+        if own_lifecycle
+        else ModuleHooks(
+            execute=hooks.execute,
+            traverse=traverse_state,
+            clear=clear_state,
+            free=free_state
         );
-        if not self.handle {
-            return;
-        }
-        if not install_methods(self.handle, methods) {
-            jacpy_binding_discard(self.handle);
-            self.handle = ptr();
-        }
+    self.handle = jacpy_binding_module(
+        name, doc, i64(len(methods)), lifecycle, i64(state_count)
+    );
+    if not self.handle {
+        return;
     }
-
-    def initialize -> ptr[PyObject] {
-        return jacpy_binding_init(self.handle);
+    if not install_methods(self.handle, methods) {
+        jacpy_binding_discard(self.handle);
+        self.handle = ptr();
     }
 }
 
-# Method records for callables created at run time with a bound `self`
-# (PyCFunction_NewEx), outside any module or type table. Like a static
-# PyMethodDef, the records live for the process lifetime.
-import from c {
-    def jacpy_binding_functions(count: i64) -> ptr;  def jacpy_binding_functions_discard(
-        handle: ptr
-    );  def jacpy_binding_function(
-        handle: ptr, index: i64, receiver: ptr[PyObject], module: ptr[PyObject]
-    ) -> ptr[PyObject];
+impl ModuleDefinition.initialize -> ptr[PyObject] {
+    return jacpy_binding_init(self.handle);
 }
 
-obj FunctionTable {
-    has handle: ptr = NULL;
-
-    def init(methods: list[MethodDefinition]) {
-        self.handle = jacpy_binding_functions(i64(len(methods)));
-        if self.handle and not install_methods(self.handle, methods) {
-            jacpy_binding_functions_discard(self.handle);
-            self.handle = ptr();
-        }
-    }
-
-    # A new builtin function for methods[index] with `receiver` as its self.
-    def bind(
-        index: int, receiver: ptr[PyObject], module: ptr[PyObject] = NULL
-    ) -> ptr[PyObject] {
-        return jacpy_binding_function(self.handle, i64(index), receiver, module);
+impl FunctionTable.init(methods: list[MethodDefinition]) {
+    self.handle = jacpy_binding_functions(i64(len(methods)));
+    if self.handle and not install_methods(self.handle, methods) {
+        jacpy_binding_functions_discard(self.handle);
+        self.handle = ptr();
     }
 }
 
-def add_state_owned(
+impl FunctionTable.bind(
+    index: int, receiver: ptr[PyObject], module: ptr[PyObject] = NULL
+) -> ptr[PyObject] {
+    return jacpy_binding_function(self.handle, i64(index), receiver, module);
+}
+
+impl add_state_owned(
     module: ptr[PyObject], index: int, name: str, value: ptr[PyObject]
 ) -> bool {
     if value == 0 {
@@ -345,7 +342,7 @@ def add_state_owned(
     return add_owned(module, name, value);
 }
 
-def add_owned(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
+impl add_owned(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
     if value == 0 {
         return False;
     }

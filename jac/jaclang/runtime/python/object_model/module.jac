@@ -29,8 +29,7 @@ import from c {
             traverse: Callable[[ptr[PyObject], ptr, ptr], i32] = 0,
             clear: Callable[[ptr[PyObject]], i32] = 0,
             free: Callable[[ptr], None] = 0;
-    }  glob:priv call_slot: ModuleCall = ModuleCall(),
-         module_members: list[PyMemberDef] = [
+    }  glob:priv module_members: list[PyMemberDef] = [
              PyMemberDef(
                  name=ptr[u8]("__dict__"),
                  type_=_Py_T_OBJECT,
@@ -273,7 +272,9 @@ import from c {
         while cur_slot and cur_slot.view(1)[0].slot != i32(0) {
             slot = cur_slot.view(1)[0].slot;
             if slot == SLOT_EXEC {
-                calls = addressof(call_slot);
+                calls = ptr[ModuleCall](
+                    __thread_local_block("jac_object_model_module_call_slot", 40)
+                );
                 calls.view(1)[0].exec = int(cur_slot.view(1)[0].value);
                 ret = calls.view(1)[0].exec(module);
                 if ret != i32(0) {
@@ -850,7 +851,9 @@ impl from_def_and_spec(
     }
     m = NULL;
     if create {
-        calls = addressof(call_slot);
+        calls = ptr[ModuleCall](
+            __thread_local_block("jac_object_model_module_call_slot", 40)
+        );
         calls.view(1)[0].create = int(create);
         m = calls.view(1)[0].create(spec, mdef);
         if not m {
@@ -1179,7 +1182,9 @@ impl module_dealloc(op: ptr[PyObject]) {
     mdef = ptr[PyModuleDef](md.view(1)[0].md_def);
 
     if mdef and int(def_fields(mdef).view(1)[0].m_free) != 0 and hooks_ready(op) {
-        calls = addressof(call_slot);
+        calls = ptr[ModuleCall](
+            __thread_local_block("jac_object_model_module_call_slot", 40)
+        );
         calls.view(1)[0].free = int(def_fields(mdef).view(1)[0].m_free);
         calls.view(1)[0].free(ptr(op));
     }
@@ -1199,7 +1204,9 @@ impl module_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     mdef = def_of(op);
 
     if mdef and int(def_fields(mdef).view(1)[0].m_traverse) != 0 and hooks_ready(op) {
-        calls = addressof(call_slot);
+        calls = ptr[ModuleCall](
+            __thread_local_block("jac_object_model_module_call_slot", 40)
+        );
         calls.view(1)[0].traverse = int(def_fields(mdef).view(1)[0].m_traverse);
         res = calls.view(1)[0].traverse(op, visitor, arg);
         if res != 0 {
@@ -1213,7 +1220,9 @@ impl module_clear(op: ptr[PyObject]) -> i32 {
     md = module_of(op);
     mdef = ptr[PyModuleDef](md.view(1)[0].md_def);
     if mdef and int(def_fields(mdef).view(1)[0].m_clear) != 0 and hooks_ready(op) {
-        calls = addressof(call_slot);
+        calls = ptr[ModuleCall](
+            __thread_local_block("jac_object_model_module_call_slot", 40)
+        );
         calls.view(1)[0].clear = int(def_fields(mdef).view(1)[0].m_clear);
         res = calls.view(1)[0].clear(op);
         if PyErr_Occurred() {

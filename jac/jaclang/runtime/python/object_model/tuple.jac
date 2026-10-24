@@ -7,8 +7,7 @@ import from c {
         out: ptr, block_name: str, num_blocks: i32, sizeof_block: u64
     );  obj RefTracerCall {
         has call: Callable[[ptr[PyObject], i32, ptr], i32] = 0;
-    }  glob:priv tracer_slot: RefTracerCall = RefTracerCall(),
-         tuple_as_sequence: PySequenceMethods = PySequenceMethods(
+    }  glob:priv tuple_as_sequence: PySequenceMethods = PySequenceMethods(
              sq_length=tuple_length,
              sq_concat=tuple_concat,
              sq_repeat=tuple_repeat,
@@ -491,7 +490,9 @@ impl reftracer_track(op: ptr[PyObject], operation: i32) {
         return;
     }
     data = ptr[ptr](runtime + _PyRuntimeState_REF_TRACER_DATA).view(1)[0];
-    slot = addressof(tracer_slot);
+    slot = ptr[RefTracerCall](
+        __thread_local_block("jac_object_model_tuple_tracer_slot", 8)
+    );
     slot.view(1)[0].call = int(tracer);
     slot.view(1)[0].call(op, operation, data);
 }

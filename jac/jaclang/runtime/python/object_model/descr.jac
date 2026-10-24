@@ -53,8 +53,7 @@ import from c {
             get_fn: Callable[[ptr[PyObject], ptr], ptr[PyObject]] = 0,
             set_fn: Callable[[ptr[PyObject], ptr[PyObject], ptr], i32] = 0,
             free: Callable[[ptr], None] = 0;
-    }  glob:priv call_slot: DescrCall = DescrCall(),
-         qualname_key: ptr[PyObject] = ptr[PyObject](),
+    }  glob:priv qualname_key: ptr[PyObject] = ptr[PyObject](),
          name_key: ptr[PyObject] = ptr[PyObject](),
          doc_key: ptr[PyObject] = ptr[PyObject](),
          descr_methods: list[PyMethodDef] = [
@@ -1114,7 +1113,9 @@ impl getset_get(
     }
     getset = getset_of(self);
     if int(getset.view(1)[0].get) != 0 {
-        calls = addressof(call_slot);
+        calls = ptr[DescrCall](
+            __thread_local_block("jac_object_model_descr_call_slot", 80)
+        );
         calls.view(1)[0].get_fn = int(getset.view(1)[0].get);
         return calls.view(1)[0].get_fn(ob, getset.view(1)[0].closure);
     }
@@ -1153,7 +1154,9 @@ impl getset_set(self: ptr[PyObject], ob: ptr[PyObject], value: ptr[PyObject]) ->
     }
     getset = getset_of(self);
     if int(getset.view(1)[0].set) != 0 {
-        calls = addressof(call_slot);
+        calls = ptr[DescrCall](
+            __thread_local_block("jac_object_model_descr_call_slot", 80)
+        );
         calls.view(1)[0].set_fn = int(getset.view(1)[0].set);
         return calls.view(1)[0].set_fn(ob, value, getset.view(1)[0].closure);
     }
@@ -1215,7 +1218,9 @@ impl method_vectorcall_VARARGS(
         object_decref(argstuple);
         return NULL;
     }
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].one = meth;
     result = calls.view(1)[0].one(args.view(1)[0], argstuple);
     object_decref(argstuple);
@@ -1245,7 +1250,9 @@ impl method_vectorcall_VARARGS_KEYWORDS(
     if not failed {
         meth = method_enter_call(func);
         if meth != 0 {
-            calls = addressof(call_slot);
+            calls = ptr[DescrCall](
+                __thread_local_block("jac_object_model_descr_call_slot", 80)
+            );
             calls.view(1)[0].keywords = meth;
             result = calls.view(1)[0].keywords(args.view(1)[0], argstuple, kwdict);
             Py_LeaveRecursiveCall();
@@ -1267,7 +1274,9 @@ impl method_vectorcall_FASTCALL_KEYWORDS_METHOD(
     if meth == 0 {
         return NULL;
     }
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].method = meth;
     result = calls.view(1)[0].method(
         args.view(1)[0], descr_type(func), args + 1, nargs - 1, kwnames
@@ -1287,7 +1296,9 @@ impl method_vectorcall_FASTCALL(
     if meth == 0 {
         return NULL;
     }
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].fast = meth;
     result = calls.view(1)[0].fast(args.view(1)[0], args + 1, nargs - 1);
     Py_LeaveRecursiveCall();
@@ -1305,7 +1316,9 @@ impl method_vectorcall_FASTCALL_KEYWORDS(
     if meth == 0 {
         return NULL;
     }
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].fast_keywords = meth;
     result = calls.view(1)[0].fast_keywords(
         args.view(1)[0], args + 1, nargs - 1, kwnames
@@ -1329,7 +1342,9 @@ impl method_vectorcall_NOARGS(
     if meth == 0 {
         return NULL;
     }
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].one = meth;
     result = calls.view(1)[0].one(args.view(1)[0], NULL);
     Py_LeaveRecursiveCall();
@@ -1351,7 +1366,9 @@ impl method_vectorcall_O(
     if meth == 0 {
         return NULL;
     }
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].one = meth;
     result = calls.view(1)[0].one(args.view(1)[0], (args + 1).view(1)[0]);
     Py_LeaveRecursiveCall();
@@ -1386,7 +1403,9 @@ impl wrapperdescr_raw_call(
 ) -> ptr[PyObject] {
     base = wrapper_base(descr);
     wrapped = descr_field(descr, PyWrapperDescrObject_WRAPPED);
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     if (base.view(1)[0].flags & PyWrapperFlag_KEYWORDS) != 0 {
         calls.view(1)[0].wrapper_kwds = int(base.view(1)[0].wrapper);
         return calls.view(1)[0].wrapper_kwds(self, args, wrapped, kwds);
@@ -1911,7 +1930,9 @@ impl property_dealloc(self: ptr[PyObject]) {
     object_xdecref(prop_del(self));
     object_xdecref(prop_doc(self));
     object_xdecref(prop_name(self));
-    calls = addressof(call_slot);
+    calls = ptr[DescrCall](
+        __thread_local_block("jac_object_model_descr_call_slot", 80)
+    );
     calls.view(1)[0].free = int(object_type(self).view(1)[0].tp_free);
     calls.view(1)[0].free(ptr(self));
 }

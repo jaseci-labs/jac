@@ -10,8 +10,7 @@ import from c {
     ) -> i32;  obj ExcCall {
         has alloc: Callable[[ptr[PyObject], i64], ptr[PyObject]] = 0,
             free: Callable[[ptr], None] = 0;
-    }  glob:priv call_slot: ExcCall = ExcCall(),
-         notes_key: ptr[PyObject] = ptr[PyObject](),
+    }  glob:priv notes_key: ptr[PyObject] = ptr[PyObject](),
          import_error_keywords: list[ptr[u8]] = [
              ptr[u8]("name"),
              ptr[u8]("path"),
@@ -2840,13 +2839,17 @@ impl base_field(op: ptr[PyObject], which: int) -> ptr[PyObject] {
 }
 
 impl type_alloc(type: ptr[PyObject]) -> ptr[PyObject] {
-    calls = addressof(call_slot);
+    calls = ptr[ExcCall](
+        __thread_local_block("jac_object_model_exceptions_call_slot", 16)
+    );
     calls.view(1)[0].alloc = int(ptr[PyTypeObject](type).view(1)[0].tp_alloc);
     return calls.view(1)[0].alloc(type, 0);
 }
 
 impl type_free(op: ptr[PyObject]) {
-    calls = addressof(call_slot);
+    calls = ptr[ExcCall](
+        __thread_local_block("jac_object_model_exceptions_call_slot", 16)
+    );
     calls.view(1)[0].free = int(object_type(op).view(1)[0].tp_free);
     calls.view(1)[0].free(ptr(op));
 }

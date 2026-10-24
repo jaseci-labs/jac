@@ -23,8 +23,7 @@ import from c {
     );  obj FuncCall {
         has watcher: Callable[[i32, ptr[PyObject], ptr[PyObject]], i32] = 0,
             free: Callable[[ptr], None] = 0;
-    }  glob:priv call_slot: FuncCall = FuncCall(),
-         name_key: ptr[PyObject] = ptr[PyObject](),
+    }  glob:priv name_key: ptr[PyObject] = ptr[PyObject](),
          module_key: ptr[PyObject] = ptr[PyObject](),
          qualname_key: ptr[PyObject] = ptr[PyObject](),
          doc_key: ptr[PyObject] = ptr[PyObject](),
@@ -1014,7 +1013,7 @@ impl notify_func_watchers(
 ) {
     bits = active_watchers(interp).view(1)[0];
     i: i64 = 0;
-    calls = addressof(call_slot);
+    calls = ptr[FuncCall](__thread_local_block("jac_object_model_func_call_slot", 16));
     while bits != u8(0) {
         if (bits & u8(1)) != u8(0) {
             calls.view(1)[0].watcher = watcher_slot(interp, i).view(1)[0];
@@ -1631,7 +1630,7 @@ impl wrapper_dealloc(self: ptr[PyObject], callable_offset: i64, dict_offset: i64
     object_gc_untrack(self);
     object_xdecref(field(self, callable_offset));
     object_xdecref(field(self, dict_offset));
-    calls = addressof(call_slot);
+    calls = ptr[FuncCall](__thread_local_block("jac_object_model_func_call_slot", 16));
     calls.view(1)[0].free = int(object_type(self).view(1)[0].tp_free);
     calls.view(1)[0].free(ptr(self));
 }

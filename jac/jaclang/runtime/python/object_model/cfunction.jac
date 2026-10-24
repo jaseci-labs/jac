@@ -33,8 +33,7 @@ import from c {
                     [ptr[PyObject], ptr[PyObject], ptr[PyObject]],
                     ptr[PyObject]
                 ] = 0;
-    }  glob:priv call_slot: MethodCall = MethodCall(),
-         meth_methods: list[PyMethodDef] = [
+    }  glob:priv meth_methods: list[PyMethodDef] = [
              PyMethodDef(
                  ml_name=ptr[u8]("__reduce__"),
                  ml_meth=ptr(meth_reduce),
@@ -533,7 +532,9 @@ impl cfunction_vectorcall_FASTCALL(
     if not meth {
         return NULL;
     }
-    slot = addressof(call_slot);
+    slot = ptr[MethodCall](
+        __thread_local_block("jac_object_model_cfunction_call_slot", 40)
+    );
     slot.view(1)[0].fast = int(meth);
     return slot.view(1)[0].fast(cfunction_self(func), args, nargs);
 }
@@ -546,7 +547,9 @@ impl cfunction_vectorcall_FASTCALL_KEYWORDS(
     if not meth {
         return NULL;
     }
-    slot = addressof(call_slot);
+    slot = ptr[MethodCall](
+        __thread_local_block("jac_object_model_cfunction_call_slot", 40)
+    );
     slot.view(1)[0].fast_keywords = int(meth);
     return slot.view(1)[0].fast_keywords(cfunction_self(func), args, nargs, kwnames);
 }
@@ -560,7 +563,9 @@ impl cfunction_vectorcall_FASTCALL_KEYWORDS_METHOD(
     if not meth {
         return NULL;
     }
-    slot = addressof(call_slot);
+    slot = ptr[MethodCall](
+        __thread_local_block("jac_object_model_cfunction_call_slot", 40)
+    );
     slot.view(1)[0].method = int(meth);
     return slot.view(1)[0].method(cfunction_self(func), cls, args, nargs, kwnames);
 }
@@ -586,7 +591,9 @@ impl cfunction_vectorcall_NOARGS(
     if not meth {
         return NULL;
     }
-    slot = addressof(call_slot);
+    slot = ptr[MethodCall](
+        __thread_local_block("jac_object_model_cfunction_call_slot", 40)
+    );
     slot.view(1)[0].one = int(meth);
     return slot.view(1)[0].one(cfunction_self(func), NULL);
 }
@@ -615,7 +622,9 @@ impl cfunction_vectorcall_O(
     if not meth {
         return NULL;
     }
-    slot = addressof(call_slot);
+    slot = ptr[MethodCall](
+        __thread_local_block("jac_object_model_cfunction_call_slot", 40)
+    );
     slot.view(1)[0].one = int(meth);
     return slot.view(1)[0].one(cfunction_self(func), args.view(1)[0]);
 }
@@ -629,7 +638,9 @@ impl cfunction_call(
     }
     meth = method_def(func).view(1)[0].ml_meth;
     self = cfunction_self(func);
-    slot = addressof(call_slot);
+    slot = ptr[MethodCall](
+        __thread_local_block("jac_object_model_cfunction_call_slot", 40)
+    );
     result = NULL;
     if (flags & METH_KEYWORDS) != i32(0) {
         slot.view(1)[0].keywords = int(meth);

@@ -18,8 +18,7 @@ import from c {
         s: ptr[u8]
     ) -> u64;  obj BufferProcCall {
         has call: Callable[[ptr[PyObject], ptr[Py_buffer], i32], i32] = 0;
-    }  glob:priv bufferproc_slot: BufferProcCall = BufferProcCall(),
-         memory_as_buffer: PyBufferProcs = PyBufferProcs(
+    }  glob:priv memory_as_buffer: PyBufferProcs = PyBufferProcs(
              bf_getbuffer=memory_getbuf, bf_releasebuffer=memory_releasebuf
          ),
          memory_as_mapping: PyMappingMethods = PyMappingMethods(
@@ -547,7 +546,9 @@ import from c {
         if not mbuf {
             return NULL;
         }
-        slot = addressof(bufferproc_slot);
+        slot = ptr[BufferProcCall](
+            __thread_local_block("jac_object_model_memory_bufferproc_slot", 8)
+        );
         slot.view(1)[0].call = int(bufferproc);
         res = slot.view(1)[0].call(v, master_of(mbuf), flags);
         if res < i32(0) {

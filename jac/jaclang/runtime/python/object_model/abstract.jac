@@ -46,8 +46,7 @@ import from c {
                     ptr[PyObject]
                 ] = 0,
             repeat: Callable[[ptr[PyObject], i64], ptr[PyObject]] = 0;
-    }  glob:priv number_call: NumberCall = NumberCall(),
-         length_hint_key: ptr[PyObject] = ptr[PyObject](),
+    }  glob:priv length_hint_key: ptr[PyObject] = ptr[PyObject](),
          class_getitem_key: ptr[PyObject] = ptr[PyObject](),
          format_key: ptr[PyObject] = ptr[PyObject](),
          keys_key: ptr[PyObject] = ptr[PyObject](),
@@ -2145,7 +2144,9 @@ impl nb_slot(nb: ptr[PyNumberMethods], slot: i64) -> int {
 }
 
 impl call_binary(func: int, v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
-    slot = addressof(number_call);
+    slot = ptr[NumberCall](
+        __thread_local_block("jac_object_model_abstract_number_call", 24)
+    );
     slot.view(1)[0].binary = func;
     return slot.view(1)[0].binary(v, w);
 }
@@ -2153,13 +2154,17 @@ impl call_binary(func: int, v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject]
 impl call_ternary(
     func: int, v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]
 ) -> ptr[PyObject] {
-    slot = addressof(number_call);
+    slot = ptr[NumberCall](
+        __thread_local_block("jac_object_model_abstract_number_call", 24)
+    );
     slot.view(1)[0].ternary = func;
     return slot.view(1)[0].ternary(v, w, z);
 }
 
 impl call_repeat(func: int, seq: ptr[PyObject], count: i64) -> ptr[PyObject] {
-    slot = addressof(number_call);
+    slot = ptr[NumberCall](
+        __thread_local_block("jac_object_model_abstract_number_call", 24)
+    );
     slot.view(1)[0].repeat = func;
     return slot.view(1)[0].repeat(seq, count);
 }

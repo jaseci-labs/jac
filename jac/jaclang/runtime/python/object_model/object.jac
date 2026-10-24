@@ -169,8 +169,7 @@ import from c {
         data: ptr, size: u64, count: u64, stream: ptr
     ) -> u64;  def ferror(stream: ptr) -> i32;  def clearerr(stream: ptr);  obj ObjectCall {
         has tracer: Callable[[ptr[PyObject], i32, ptr], i32] = 0;
-    }  glob:priv call_slot: ObjectCall = ObjectCall(),
-         interned_ids: list[ptr[PyObject]] = [
+    }  glob:priv interned_ids: list[ptr[PyObject]] = [
              ptr[PyObject](),
              ptr[PyObject](),
              ptr[PyObject](),
@@ -2071,7 +2070,9 @@ impl reftracer_track(op: ptr[PyObject], operation: i32) {
         return;
     }
     data = ptr[ptr](runtime + _PyRuntimeState_REF_TRACER_DATA).view(1)[0];
-    slot = addressof(call_slot);
+    slot = ptr[ObjectCall](
+        __thread_local_block("jac_object_model_object_call_slot", 8)
+    );
     slot.view(1)[0].tracer = int(tracer);
     slot.view(1)[0].tracer(op, operation, data);
 }

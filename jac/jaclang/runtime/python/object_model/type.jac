@@ -72,7 +72,7 @@ import from c {
                 ] = 0,
             freefunc: Callable[[ptr], None] = 0,
             traverseproc: Callable[[ptr[PyObject], ptr, ptr], i32] = 0;
-    }  glob:priv type_calls: TypeCall = TypeCall(); obj StackArgs {
+    }  obj StackArgs {
         has s0: ptr[PyObject] = ptr[PyObject](),
             s1: ptr[PyObject] = ptr[PyObject](),
             s2: ptr[PyObject] = ptr[PyObject](),
@@ -734,7 +734,9 @@ import from c {
     }  def _PyType_Validate(
         ty: ptr[PyTypeObject], validate: ptr, tp_version: ptr[u32]
     ) -> i32 {
-        calls = addressof(type_calls);
+        calls = ptr[TypeCall](
+            __thread_local_block("jac_object_model_type_type_calls", 208)
+        );
         calls.view(1)[0].validate_type = int(validate);
         err = calls.view(1)[0].validate_type(ty);
         if err == 0 {
@@ -777,7 +779,9 @@ import from c {
                 return NULL;
             }
         }
-        calls = addressof(type_calls);
+        calls = ptr[TypeCall](
+            __thread_local_block("jac_object_model_type_type_calls", 208)
+        );
 
         meta_get: int = 0;
 
@@ -4866,7 +4870,9 @@ impl type_modified_unlocked(type: ptr[PyTypeObject]) {
 
     if type.view(1)[0].tp_watched != u8(0) {
         watchers = ptr[ptr](current_interp() + PyInterpreterState_TYPE_WATCHERS);
-        calls = addressof(type_calls);
+        calls = ptr[TypeCall](
+            __thread_local_block("jac_object_model_type_type_calls", 208)
+        );
         bits = i32(type.view(1)[0].tp_watched);
         watcher: i32 = 0;
         while bits != 0 {
@@ -6119,7 +6125,9 @@ impl subtype_traverse(self_: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
         }
     }
     if basetraverse != 0 {
-        calls = addressof(type_calls);
+        calls = ptr[TypeCall](
+            __thread_local_block("jac_object_model_type_type_calls", 208)
+        );
         calls.view(1)[0].traverseproc = basetraverse;
         return calls.view(1)[0].traverseproc(self_, visitor, arg);
     }
@@ -10500,7 +10508,9 @@ impl wrap_lenfunc(
     if check_num_args(args, 0) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].lenfunc = int(wrapped);
     res = calls.view(1)[0].lenfunc(self_);
     if res == -1 and PyErr_Occurred() {
@@ -10515,7 +10525,9 @@ impl wrap_inquirypred(
     if check_num_args(args, 0) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].inquiry = int(wrapped);
     res = calls.view(1)[0].inquiry(self_);
     if res == -1 and PyErr_Occurred() {
@@ -10531,7 +10543,9 @@ impl wrap_binaryfunc(
         return NULL;
     }
     other = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].binaryfunc = int(wrapped);
     return calls.view(1)[0].binaryfunc(self_, other);
 }
@@ -10543,7 +10557,9 @@ impl wrap_binaryfunc_l(
         return NULL;
     }
     other = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].binaryfunc = int(wrapped);
     return calls.view(1)[0].binaryfunc(self_, other);
 }
@@ -10555,7 +10571,9 @@ impl wrap_binaryfunc_r(
         return NULL;
     }
     other = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].binaryfunc = int(wrapped);
     return calls.view(1)[0].binaryfunc(other, self_);
 }
@@ -10572,7 +10590,9 @@ impl wrap_ternaryfunc(
     if size == 2 {
         third = tuple_get_item(args, 1);
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ternaryfunc = int(wrapped);
     return calls.view(1)[0].ternaryfunc(self_, other, third);
 }
@@ -10589,7 +10609,9 @@ impl wrap_ternaryfunc_r(
     if size == 2 {
         third = tuple_get_item(args, 1);
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ternaryfunc = int(wrapped);
     return calls.view(1)[0].ternaryfunc(other, self_, third);
 }
@@ -10600,7 +10622,9 @@ impl wrap_unaryfunc(
     if check_num_args(args, 0) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].unaryfunc = int(wrapped);
     return calls.view(1)[0].unaryfunc(self_);
 }
@@ -10616,7 +10640,9 @@ impl wrap_indexargfunc(
     if i == -1 and PyErr_Occurred() {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ssizeargfunc = int(wrapped);
     return calls.view(1)[0].ssizeargfunc(self_, i);
 }
@@ -10648,7 +10674,9 @@ impl wrap_sq_item(
         if i == -1 and PyErr_Occurred() {
             return NULL;
         }
-        calls = addressof(type_calls);
+        calls = ptr[TypeCall](
+            __thread_local_block("jac_object_model_type_type_calls", 208)
+        );
         calls.view(1)[0].ssizeargfunc = int(wrapped);
         return calls.view(1)[0].ssizeargfunc(self_, i);
     }
@@ -10669,7 +10697,9 @@ impl wrap_sq_setitem(
     if i == -1 and PyErr_Occurred() {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ssizeobjargproc = int(wrapped);
     res = calls.view(1)[0].ssizeobjargproc(self_, i, value);
     if res == -1 and PyErr_Occurred() {
@@ -10689,7 +10719,9 @@ impl wrap_sq_delitem(
     if i == -1 and PyErr_Occurred() {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ssizeobjargproc = int(wrapped);
     res = calls.view(1)[0].ssizeobjargproc(self_, i, NULL);
     if res == -1 and PyErr_Occurred() {
@@ -10705,7 +10737,9 @@ impl wrap_objobjproc(
         return NULL;
     }
     value = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjproc = int(wrapped);
     res = calls.view(1)[0].objobjproc(self_, value);
     if res == -1 and PyErr_Occurred() {
@@ -10722,7 +10756,9 @@ impl wrap_objobjargproc(
     if PyArg_UnpackTuple(args, "__setitem__", 2, 2, &mut key, &mut value) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjargproc = int(wrapped);
     res = calls.view(1)[0].objobjargproc(self_, key, value);
     if res == -1 and PyErr_Occurred() {
@@ -10738,7 +10774,9 @@ impl wrap_delitem(
         return NULL;
     }
     key = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjargproc = int(wrapped);
     res = calls.view(1)[0].objobjargproc(self_, key, NULL);
     if res == -1 and PyErr_Occurred() {
@@ -10809,7 +10847,9 @@ impl wrap_setattr(
         return NULL;
     }
 
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjargproc = int(wrapped);
     res = calls.view(1)[0].objobjargproc(self_, name, value);
     if res < 0 {
@@ -10828,7 +10868,9 @@ impl wrap_delattr(
     if hackcheck(self_, wrapped, ptr[u8]("__delattr__")) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjargproc = int(wrapped);
     res = calls.view(1)[0].objobjargproc(self_, name, NULL);
     if res < 0 {
@@ -10843,7 +10885,9 @@ impl wrap_hashfunc(
     if check_num_args(args, 0) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].hashfunc = int(wrapped);
     res = calls.view(1)[0].hashfunc(self_);
     if res == -1 and PyErr_Occurred() {
@@ -10855,7 +10899,9 @@ impl wrap_hashfunc(
 impl wrap_call(
     self_: ptr[PyObject], args: ptr[PyObject], wrapped: ptr, kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ternaryfunc = int(wrapped);
     return calls.view(1)[0].ternaryfunc(self_, args, kwds);
 }
@@ -10866,7 +10912,9 @@ impl wrap_del(
     if check_num_args(args, 0) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].destructor = int(wrapped);
     calls.view(1)[0].destructor(self_);
     return object_new_ref(Py_None);
@@ -10879,7 +10927,9 @@ impl wrap_richcmpfunc(
         return NULL;
     }
     other = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].richcmpfunc = int(wrapped);
     return calls.view(1)[0].richcmpfunc(self_, other, op);
 }
@@ -10926,7 +10976,9 @@ impl wrap_next(
     if check_num_args(args, 0) == 0 {
         return NULL;
     }
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].unaryfunc = int(wrapped);
     res = calls.view(1)[0].unaryfunc(self_);
     if not res and not PyErr_Occurred() {
@@ -10954,7 +11006,9 @@ impl wrap_descr_get(
         return NULL;
     }
 
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].ternaryfunc = int(wrapped);
     return calls.view(1)[0].ternaryfunc(self_, obj_, type);
 }
@@ -10968,7 +11022,9 @@ impl wrap_descr_set(
         return NULL;
     }
 
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjargproc = int(wrapped);
     ret = calls.view(1)[0].objobjargproc(self_, obj_, value);
     if ret < 0 {
@@ -10984,7 +11040,9 @@ impl wrap_descr_delete(
         return NULL;
     }
     obj_ = tuple_get_item(args, 0);
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].objobjargproc = int(wrapped);
     ret = calls.view(1)[0].objobjargproc(self_, obj_, NULL);
     if ret < 0 {
@@ -11055,7 +11113,9 @@ impl wrap_releasebuffer(
 impl wrap_init(
     self_: ptr[PyObject], args: ptr[PyObject], wrapped: ptr, kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    calls = addressof(type_calls);
+    calls = ptr[TypeCall](
+        __thread_local_block("jac_object_model_type_type_calls", 208)
+    );
     calls.view(1)[0].initproc = int(wrapped);
     if calls.view(1)[0].initproc(self_, args, kwds) < 0 {
         return NULL;
@@ -12637,7 +12697,9 @@ impl releasebuffer_maybe_call_super_unlocked(
 impl releasebuffer_maybe_call_super(self_: ptr[PyObject], buffer: ptr[Py_buffer]) {
     base_releasebuffer = releasebuffer_maybe_call_super_unlocked(self_, buffer);
     if base_releasebuffer != 0 {
-        calls = addressof(type_calls);
+        calls = ptr[TypeCall](
+            __thread_local_block("jac_object_model_type_type_calls", 208)
+        );
         calls.view(1)[0].releasebufferproc = base_releasebuffer;
         calls.view(1)[0].releasebufferproc(self_, buffer);
     }

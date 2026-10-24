@@ -9,8 +9,7 @@ import from c {
         stream: ptr[FILE]
     ) -> i32;  def ungetc(c: i32, stream: ptr[FILE]) -> i32;  def isatty(
         fd: i32
-    ) -> i32;  glob:priv open_code_call: OpenCodeHook = OpenCodeHook(),
-         stdprinter_methods: list[PyMethodDef] = [
+    ) -> i32;  glob:priv stdprinter_methods: list[PyMethodDef] = [
              PyMethodDef(
                  ml_name=ptr[u8]("close"),
                  ml_meth=ptr(stdprinter_noop),
@@ -288,7 +287,9 @@ import from c {
         }
         hook = jacpy_open_code_hook().view(1)[0];
         if hook {
-            call = addressof(open_code_call);
+            call = ptr[OpenCodeHook](
+                __thread_local_block("jac_object_model_file_open_code_call", 8)
+            );
             call.view(1)[0].call = int(hook);
             return call.view(1)[0].call(path, jacpy_open_code_userdata().view(1)[0]);
         }
