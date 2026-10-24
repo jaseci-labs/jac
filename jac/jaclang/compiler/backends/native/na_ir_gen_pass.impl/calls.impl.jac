@@ -4475,14 +4475,26 @@ impl NaIRGenPass._emit_intrinsic_c_thread_local(
         return None;
     }
 
-    defining = intr.name == "__thread_local";
-    cell = ir.IntType(64) if defining else ir.IntType(8);
+    defining = intr.name != "__c_thread_local";
+    cell: ir.Type = ir.IntType(64) if defining else ir.IntType(8);
+    if intr.name == "__thread_local_block" {
+        (ok, size) = c_scalar_constant(args[1]);
+        if not ok or not isinstance(size, int) or size <= 0 {
+            self._emit_intrinsic_misuse(
+                nd, intr, "the block size is a positive constant"
+            );
+            return None;
+        }
+        cell = ir.ArrayType(ir.IntType(64), (size + 7) // 8);
+    }
     existing = self.llvm_module.globals.get(name);
     if existing is None {
         existing = ir.GlobalVariable(self.llvm_module, cell, name=name);
         existing.linkage = "weak" if defining else "external";
         if defining {
-            existing.initializer = ir.Constant(cell, 0);
+            existing.initializer = ir.Constant(cell, 0)
+                if isinstance(cell, ir.IntType)
+                else ir.Constant(cell, None);
         }
         existing.thread_local = True;
         existing.tls_model = "initialexec";
