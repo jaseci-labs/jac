@@ -19,6 +19,7 @@ import from tests.support { TESTS_DIR, native_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.diagnostics {
+    E5095,
     E1050,
     E1051,
     E1052,
@@ -50,14 +51,18 @@ def _native_opts(gc_mode: str | None = None) -> any {
 }
 
 """Compile a probe source in an isolated tempdir; return (prog, module)."""
-def _compile_src(source: str, gc_mode: str | None = None) -> tuple[any, ...] {
+def _compile_src(
+    source: str, gc_mode: str | None = None, engine: bool = True
+) -> tuple[any, ...] {
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "intrinsic_probe.jac");
         with open(src, "w") as f {
             f.write(source);
         }
         prog = JacProgram();
-        ir_mod = prog.compile(file_path=src, options=_native_opts(gc_mode));
+        options = _native_opts(gc_mode);
+        options.skip_native_engine = not engine;
+        ir_mod = prog.compile(file_path=src, options=options);
         return (prog, ir_mod);
     }
 }
@@ -175,6 +180,12 @@ def _probe_source(intr: any) -> str {
             "return x + 7 if __str_data(s) != 0 else 0; }\n"
         );
     }
+    if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+        return (
+            "def probe(x: int) -> int { "
+            "return x + 7 if __c_thread_local(\"jac_probe_tls\") != 0 else 0; }\n"
+        );
+    }
     if intr.dispatch == IntrinsicDispatch.REGION_TLS {
         return (
             "def probe(x: int) -> int { old = __jac_region_tls_get(); "
@@ -194,6 +205,19 @@ test "every registry intrinsic lowers through its registered emitter" {
     entries = INTRINSIC_REGISTRY.entries();
     assert len(entries) >= 7 , "registry lost entries";
     for intr in entries {
+        if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+            # The JIT links no initial-exec TLS reference to a host symbol;
+            # the declaration and the address it yields are the lowering.
+            (prog, ir_mod) = _compile_src(_probe_source(intr), engine=False);
+            assert not prog.errors_had , [str(e) for e in prog.errors_had];
+            ir_text = str(ir_mod.gen.llvm_ir);
+            assert "@\"jac_probe_tls\" = external thread_local(initialexec) global i8"
+                in ir_text
+                or "@jac_probe_tls = external thread_local(initialexec) global i8"
+                    in ir_text , ir_text;
+            assert "c.tls.addr" in ir_text , f"{intr.name}: the intrinsic was stranded";
+            continue;
+        }
         (prog, ir_mod) = _compile_src(_probe_source(intr), gc_mode=intr.gc_mode_gate);
         errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not errs , f"{intr.name}: compile errors: {errs}";
@@ -339,4 +363,21 @@ test "user stubs colliding with intrinsics warn W6008 and never hijack" {
         bits_of = _get_func(eng, "bits_of", ctypes.c_int64, ctypes.c_double);
         assert bits_of(1.5) == BITS_1_5 , "call reached the stub body";
     }
+}
+
+test "a C thread-local is named by a string literal" {
+    with tempfile.TemporaryDirectory() as tmp {
+        src = os.path.join(tmp, "intrinsic_probe.jac");
+        with open(src, "w") as f {
+            f.write("def probe(name: str) -> int { return __c_thread_local(name); }\n");
+        }
+        prog = JacProgram();
+        options = CompileOptions(
+            force_codespace="native", native_required=True, skip_native_engine=True
+        );
+        prog.compile(file_path=src, options=options);
+    }
+    assert any(
+        e.code is E5095 and "string literal" in str(e) for e in prog.errors_had
+    ) , [str(e) for e in prog.errors_had];
 }

@@ -5,6 +5,7 @@ enum IntrinsicDispatch {
     MEM_LOAD = "mem_load",
     MEM_STORE = "mem_store",
     ATOMIC_XCHG = "atomic_xchg",
+    C_THREAD_LOCAL = "c_thread_local",
     CALL_DTOR = "call_dtor",
     REGION_TLS = "region_tls",
     ALLOCA = "alloca",
@@ -161,6 +162,12 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i64", "i64"],
                  result_spec="i64",
                  dispatch=IntrinsicDispatch.ATOMIC_XCHG
+             ),
+             "__c_thread_local": IntrinsicEntry(
+                 name="__c_thread_local",
+                 param_specs=["str"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.C_THREAD_LOCAL
              ),
              "__mem_call_dtor": IntrinsicEntry(
                  name="__mem_call_dtor",

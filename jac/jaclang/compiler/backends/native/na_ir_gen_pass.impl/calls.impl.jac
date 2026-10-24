@@ -1378,6 +1378,9 @@ impl NaIRGenPass._codegen_intrinsic(
     if _dispatch == IntrinsicDispatch.ATOMIC_XCHG {
         return self._emit_intrinsic_atomic_xchg(nd, intr, positional);
     }
+    if _dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+        return self._emit_intrinsic_c_thread_local(nd, intr, positional);
+    }
     if _dispatch == IntrinsicDispatch.CALL_DTOR {
         return self._emit_intrinsic_call_dtor(nd, intr, positional);
     }
@@ -4449,4 +4452,30 @@ impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
         return None;
     }
     return ir.Constant(ir.IntType(64), ord(value));
+}
+
+impl NaIRGenPass._emit_intrinsic_c_thread_local(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    name = c_string_literal(args[0]);
+    if not name {
+        self._emit_intrinsic_misuse(
+            nd, intr, "the C variable is named by a string literal"
+        );
+        return None;
+    }
+    i8 = ir.IntType(8);
+    existing = self.llvm_module.globals.get(name);
+    if existing is None {
+        existing = ir.GlobalVariable(self.llvm_module, i8, name=name);
+        existing.linkage = "external";
+        existing.thread_local = True;
+        existing.tls_model = "initialexec";
+    } elif not isinstance(existing, ir.GlobalVariable) or not existing.thread_local {
+        self._emit_intrinsic_misuse(
+            nd, intr, f"'{name}' is already declared and is not thread-local"
+        );
+        return None;
+    }
+    return self.builder.ptrtoint(existing, ir.IntType(64), name="c.tls.addr");
 }
