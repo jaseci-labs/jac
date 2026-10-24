@@ -463,30 +463,11 @@ impl write_compiler_identity(pkg_dir: str, dest_dir: str) -> str {
     return digest;
 }
 
-impl _digest_manifest_path(pkg_dir: str) -> Path {
-    tag = hashlib.sha256(str(Path(pkg_dir).resolve()).encode()).hexdigest()[:8];
-    return get_jir_cache_dir() / f"compiler_digest.{tag}.json";
-}
-
 impl _manifest_compiler_digest(pkg_dir: str) -> str {
-    import json;
     base = str(Path(pkg_dir));
     recorded = read_compiler_identity(base);
     rels = declared_compiler_inputs(base, recorded);
     (_roots, roster) = compiler_input_rules(base);
-    manifest_path = _digest_manifest_path(base);
-    entries: dict[str, any] = {};
-    stored_digest = "";
-    try {
-        raw = json.loads(manifest_path.read_text());
-        entries: any = raw.get("entries", {}) or {};
-        stored_digest = raw.get("digest", "") or "";
-    } except Exception {
-        entries = {};
-        stored_digest = "";
-    }
-    changed = False;
-    new_entries: dict[str, list[float | int | str]] = {};
     rows: list[tuple[str, str]] = [];
     for rel in rels {
         if is_roster_input(rel, roster) {
@@ -494,75 +475,20 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
             continue;
         }
         full = os.path.join(base, rel.replace("/", os.sep));
-        st: any = None;
-        try {
-            st = os.stat(full);
-        } except OSError {
-            st = None;
-        }
-        if st is None {
-            rows.append((rel, resolve_compiler_input(base, rel, recorded)));
-            continue;
-        }
-        prev = entries.get(rel);
-        if (
-            isinstance(prev, list)
-            and len(prev) == 3
-            and prev[0] == st.st_mtime
-            and prev[1] == st.st_size
-        ) {
-            sha = prev[2];
+        if os.path.isfile(full) {
+            rows.append((rel, compute_content_sha256(full)));
         } else {
-            sha = compute_content_sha256(full);
-            changed = True;
+            rows.append((rel, resolve_compiler_input(base, rel, recorded)));
         }
-        new_entries[rel] = [st.st_mtime, st.st_size, sha];
-        rows.append((rel, sha));
-    }
-    if len(new_entries) != len(entries) {
-        changed = True;
     }
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
-    rewrite = changed or digest != stored_digest;
-    if rewrite {
-        try {
-            manifest_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp = manifest_path.with_suffix(f".{os.getpid()}.tmp");
-            tmp.write_text(json.dumps({"entries": new_entries, "digest": digest}));
-            tmp.rename(manifest_path);
-        } except OSError {}
-    }
-
-    _DIGEST_BOOKKEEPING.append((rewrite, str(manifest_path)));
-    if _COMPILER_DIGEST_CACHE {
-        _digest_bookkeeping();
-    }
     return digest;
-}
-
-impl _digest_bookkeeping {
-    pending = list(_DIGEST_BOOKKEEPING);
-    _DIGEST_BOOKKEEPING.clear();
-    if not pending {
-        return;
-    }
-    try {
-        import from jaclang.cache.registry { bucket, maybe_sweep }
-        for (rewrote, path) in pending {
-            if rewrote {
-                maybe_sweep("jir-digests");
-            } else {
-                bucket("jir-digests").note_hit(Path(path));
-            }
-        }
-    } except Exception {}
 }
 
 impl running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
         _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
-        _digest_bookkeeping();
     }
     return _COMPILER_DIGEST_CACHE[0];
 }

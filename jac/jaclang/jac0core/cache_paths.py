@@ -165,7 +165,8 @@ def atomic_write(path: str | Path, data: bytes, mode: int | None = None) -> None
 
 # File content digests: the one authority for "sha256 of this file". A digest
 # is memoized for the process and recorded in a ledger shared across
-# processes (one shard per directory under ``jir/digests``), keyed by the
+# processes (one shard per directory under ``jir/digests``, holding that
+# directory's files by name), keyed by the
 # file's identity: inode, size, and nanosecond mtime and ctime. ctime moves on
 # every write and cannot be set back, so a same-size rewrite that restores its
 # mtime still misses. A digest is only reused when the file was already stable
@@ -218,22 +219,23 @@ def _hash_file(path: str) -> str:
 
 def file_sha256(path: str | Path) -> str:
     """The sha256 hex digest of a file's contents (raises OSError like open)."""
-    real = os.path.realpath(path)
-    ident = file_identity(real)
+    full = os.path.abspath(path)
+    ident = file_identity(full)
     if ident is None:
-        return _hash_file(real)
-    known = _digest_memo.get(real)
+        return _hash_file(full)
+    known = _digest_memo.get(full)
     if known is not None and known[0] == ident:
         return known[1]
-    name = hashlib.sha256(os.path.dirname(real).encode()).hexdigest()[:16]
-    rec = _digest_shard(name).get(real)
+    (folder, base) = os.path.split(full)
+    name = hashlib.sha256(folder.encode()).hexdigest()[:16]
+    rec = _digest_shard(name).get(base)
     if isinstance(rec, list) and len(rec) == 5 and tuple(rec[:4]) == ident:
-        _digest_memo[real] = (ident, str(rec[4]))
+        _digest_memo[full] = (ident, str(rec[4]))
         return str(rec[4])
-    digest = _hash_file(real)
+    digest = _hash_file(full)
     if time.time_ns() - max(ident[2], ident[3]) > _DIGEST_RACY_NS:
-        _digest_memo[real] = (ident, digest)
-        _digest_shard(name)[real] = [*ident, digest]
+        _digest_memo[full] = (ident, digest)
+        _digest_shard(name)[base] = [*ident, digest]
         _digest_dirty.add(name)
         if not _digest_flush_armed:
             import atexit
