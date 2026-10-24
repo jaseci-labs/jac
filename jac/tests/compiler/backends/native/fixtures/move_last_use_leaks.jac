@@ -90,7 +90,7 @@ def in_try(n: int) -> int {
     }
 }
 
-def run() -> int {
+def run -> int {
     head = Node(v=0);
     cur = head;
     for k in range(1, 20) {

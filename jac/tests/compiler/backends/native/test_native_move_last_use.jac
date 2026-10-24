@@ -31,8 +31,7 @@ def fixture_ir(gc_mode: str, moves: bool) -> str {
     try {
         prog = JacProgram();
         mod = prog.compile(
-            file_path=FIXTURE,
-            options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
+            file_path=FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
         );
     } finally {
         if not moves {
@@ -47,7 +46,9 @@ def fixture_ir(gc_mode: str, moves: bool) -> str {
 def rc_ops(text: str, name: str) -> int {
     found = re.search(r'define [^\n]*\.' + name + r'"?\(.*?\n}\n', text, re.S);
     assert found is not None , f"{name} not found in the IR";
-    return len(re.findall(r'call void @"__rc_(retain|release)[^"]*"\(', found.group(0)));
+    return len(
+        re.findall(r'call void @"__rc_(retain|release)[^"]*"\(', found.group(0))
+    );
 }
 
 test "a copy at the source's last use moves the reference" {
@@ -56,7 +57,9 @@ test "a copy at the source's last use moves the reference" {
         off = fixture_ir(gc_mode, False);
         for name in ["append", "cut", "rotate", "after_call", "after_field"] {
             assert rc_ops(on, name) < rc_ops(off, name) , (
-                f"{gc_mode} {name}: {rc_ops(on, name)} with moves, {rc_ops(off, name)} without"
+                f"{gc_mode} {name}: {rc_ops(on, name)} with moves, {rc_ops(
+                    off, name
+                )} without"
             );
         }
         for name in ["keep_after", "in_try"] {
@@ -91,12 +94,18 @@ test "moved references are released once" {
                 timeout=900
             );
             assert comp.returncode == 0 , comp.stderr[-1500:];
-            proc = subprocess.run([binary], capture_output=True, text=True, timeout=120);
+            proc = subprocess.run(
+                [binary], capture_output=True, text=True, timeout=120
+            );
             assert proc.returncode == 0 , proc.stderr[-800:];
         }
         assert proc.stdout.splitlines()[0] == "6634" , proc.stdout[:400];
         assert "RC LIVE OBJECTS at exit" in proc.stdout , proc.stdout[-400:];
-        leaks = [line for line in proc.stdout.splitlines() if "<- LEAK" in line];
+        leaks = [
+            line
+            for line in proc.stdout.splitlines()
+            if "<- LEAK" in line
+        ];
         assert not leaks , f"{memory}: {leaks[:5]}";
     }
 }
