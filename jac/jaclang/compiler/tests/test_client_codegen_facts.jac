@@ -201,3 +201,40 @@ test "a client module compiled without asked-for analysis still lowers its built
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+# An enum that client code reads is emitted into the bundle as a boundary type
+# stub, so a client function pinned beside server code can read `Color.RED`. The
+# unbound-reference audit (E5086) did not count those stubs as bindings, so it
+# reported every such read: an error that blocked nothing until blocking errors
+# raised during codegen began to block, and then a false one that stopped the
+# module (the cross-backend `prim_enums` fixture).
+test "a client function reading a module enum binds it once and reports nothing" {
+    base = os.path.realpath(tempfile.mkdtemp(prefix="jac_codegen_facts_"));
+    try {
+        with open(os.path.join(base, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "shades"\n\n[placement.pins]\n"shades.pick_cl" = "client"\n'
+            );
+        }
+        path = os.path.join(base, "shades.jac");
+        with open(path, "w") as f {
+            f.write(
+                "enum Color: int { RED, GREEN, BLUE }\n\n"
+                "def pick_py -> int {\n    return int(Color.GREEN);\n}\n\n"
+                "def pick_cl -> int {\n    return int(Color.GREEN);\n}\n"
+            );
+        }
+        prog = JacProgram();
+        compiler = prog._get_compiler();
+        assert compiler.get_bytecode(full_target=path, target_program=prog)
+            is not None , _codes(prog);
+        artifact = compiler.get_client_artifact(path, prog);
+        assert "E5086" not in _codes(prog) , _codes(prog);
+        assert artifact is not None , _codes(prog);
+        assert artifact.js.count("const Color =") == 1 , artifact.js;
+        assert "GREEN: 2" in artifact.js , artifact.js;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
