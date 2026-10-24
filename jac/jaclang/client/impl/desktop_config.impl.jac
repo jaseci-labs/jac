@@ -162,6 +162,21 @@ impl JacDesktopConfig.get_build_backend(self: JacDesktopConfig) -> str {
     return list(backends.values())[0];
 }
 
+impl JacDesktopConfig.get_profiles(self: JacDesktopConfig) -> bool {
+    raw = self.load().get('profiles', False);
+    if not isinstance(raw, bool) {
+        raise ValueError(
+            f"Desktop configuration error: profiles must be true or false, got '{raw}'"
+        );
+    }
+    if raw and self.get_build_backend() != 'embedded' {
+        raise ValueError(
+            "Desktop configuration error: profiles needs an embedded backend; a remote server keeps its own accounts"
+        );
+    }
+    return raw;
+}
+
 impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
     config = self.load();
     plugins = config.get('plugins', {});
@@ -241,6 +256,7 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
         _validate_plugin_keys(plugins);
     }
     self.get_default_backend();
+    self.get_profiles();
 }
 
 def _validate_plugin_keys(plugins: dict[str, any]) -> None;

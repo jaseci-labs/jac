@@ -85,6 +85,7 @@ impl desktop_sdk_exports -> list[str] {
         'fs',
         'notification',
         'path',
+        'profiles',
         'shell'
     ];
 }
@@ -194,6 +195,10 @@ impl _desktop_config_schema -> PluginConfigSchema {
             "default_backend": schema_str_option(
                 "ask",
                 "With `backends`: the backend a first launch uses, or 'ask' to leave the choice to the app's UI"
+            ),
+            "profiles": schema_bool_option(
+                False,
+                "Local profiles instead of sign-in for the embedded backend: the user creates and picks named profiles, each its own user and root, with no password"
             ),
             "window": schema_dict_option(
                 "Window geometry: title, width, height, min_width, min_height, resizable.",

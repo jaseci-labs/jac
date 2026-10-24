@@ -16,7 +16,8 @@ def _host_boot_py(
     identifier: str = "",
     pg_dist: str = "",
     backends: (dict[str, str] | None) = None,
-    default_backend: str = ""
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;
 
 
@@ -34,7 +35,8 @@ def _generate_host_source(
     identifier: str = "",
     pg_dist: str = "",
     backends: (dict[str, str] | None) = None,
-    default_backend: str = ""
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;
 
 impl _fused_runtime_import_block -> str {
@@ -57,7 +59,8 @@ impl _host_boot_py(
     identifier: str = "",
     pg_dist: str = "",
     backends: (dict[str, str] | None) = None,
-    default_backend: str = ""
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str {
     config = {
         "app_name": app_name,
@@ -68,6 +71,7 @@ impl _host_boot_py(
         "backend": backend or "embedded",
         "backends": dict(backends or {}),
         "default_backend": default_backend,
+        "profiles": profiles,
         "dispatch": {
             "timeout_s": dispatch_timeout_s,
             "max_queue": dispatch_max_queue,
@@ -98,7 +102,8 @@ impl _generate_host_source(
     identifier: str = "",
     pg_dist: str = "",
     backends: (dict[str, str] | None) = None,
-    default_backend: str = ""
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -112,7 +117,8 @@ impl _generate_host_source(
         identifier,
         pg_dist,
         backends,
-        default_backend
+        default_backend,
+        profiles
     );
 
     bootstrap_js = (

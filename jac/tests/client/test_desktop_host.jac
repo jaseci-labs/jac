@@ -494,3 +494,64 @@ test "a backend choice boots only the backend the user picked" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+def _post_auth(url: str, body: dict[str, any], token: str) -> tuple[int, str] {
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}
+    );
+    try {
+        with urllib.request.urlopen(req, timeout=15) as r {
+            return (int(r.status), r.read().decode("utf-8"));
+        }
+    } except urllib.error.HTTPError as e {
+        return (int(e.code), e.read().decode("utf-8"));
+    }
+}
+
+
+test "local profiles each sign in to their own root, with no password" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    (Path(proj) / "main.jac").write_text(
+        _APP_SRC
+            + "\nwalker:protect whoami {\n    can run with Root entry {\n        report jid(root);\n    }\n}\n"
+    );
+    ctx: any = None;
+    try {
+        app_dir = _app_dir(tmp);
+        os.environ["JAC_DATA_PATH"] = os.path.join(tmp, "data");
+        cfg = json.loads(_config(app_dir, {"entry": os.path.join(proj, "main.jac")}));
+        cfg["profiles"] = True;
+        ctx = host_boot.boot(json.dumps(cfg));
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert code == 200 and 'window.__JAC_PROFILES__={"active": ""' in body , body;
+
+        roots: list[str] = [];
+        for name in ["Work", "Play"] {
+            (code, body) = _post(f"{origin}/__jac/profiles", {"name": name});
+            assert code == 200 , (code, body);
+            (code, body) = _post(f"{origin}/__jac/profiles/session", {});
+            token = json.loads(body)["token"];
+            assert token , body;
+            (code, body) = _post_auth(f"{origin}/walker/whoami", {}, token);
+            assert code == 200 , (code, body);
+            roots.append(json.loads(body)["data"]["reports"][0]);
+        }
+        assert roots[0] != roots[1] , ("each profile is its own root", roots);
+        (code, body) = _post(f"{origin}/walker/whoami", {});
+        assert code == 401 , "the app is still protected without a profile session";
+    } finally {
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

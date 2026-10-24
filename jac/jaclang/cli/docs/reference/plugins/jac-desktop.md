@@ -163,6 +163,45 @@ a choice, and `await backend.use(name)` saves a choice and relaunches (it
 returns `False` when `name` is already running). A remote backend must accept
 requests from the app's loopback origin, as with a single remote `backend`.
 
+### Local profiles instead of sign-in
+
+An app that runs on its embedded server can drop sign-in altogether and let the
+user keep named profiles instead, like save slots:
+
+```toml
+[desktop]
+profiles = true
+```
+
+- Each profile is its own user, and so its own root and graph, created by the
+  host with no password. The host keeps the list in the app's data directory
+  (`.jac/desktop/profiles.json`). The page never sees the user behind a profile.
+- Before the bundle runs, `/__jac/backend.js` signs the page in as the active
+  profile: it sets `window.__JAC_PROFILES__` and puts a fresh session in
+  `localStorage["jac_token"]` (none when no profile is active). The token comes
+  from a synchronous same-origin request, never from the script body, so a
+  foreign page that loads the script gets nothing. Protected endpoints and
+  `jacIsLoggedIn()` work as after a sign-in.
+- `profiles` needs an embedded backend. With `backends`, it applies while an
+  embedded backend runs, and a remote one keeps its own sign-in.
+
+The UI manages them through `profiles` from `@jac/desktop`:
+
+```jac
+import from "@jac/desktop" { profiles }
+
+async def start(name: str) {
+    if profiles.current() is None {
+        await profiles.create(name);    # creates it, picks it, and reloads signed in
+    }
+}
+```
+
+`profiles.list()` gives `{"id", "name", "created"}` for each, `profiles.current()`
+the active one or `None`, and `profiles.enabled()` whether this backend uses
+profiles. `await profiles.use(id)` switches to another and `await profiles.leave()`
+returns to no profile; each reloads the page.
+
 `engine` defaults to `"native"`. Set it to `"cef"` when the project should use
 Chromium Embedded Framework. Then build or launch the app as usual:
 

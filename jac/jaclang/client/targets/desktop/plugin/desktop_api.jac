@@ -206,3 +206,62 @@ obj backend {
         return bool(parsed["relaunch"]);
     }
 }
+
+
+async def _profiles_post(path: str, body: dict[str, any]) -> dict[str, any] {
+    broker = globalThis.__JAC_BROKER__ or "/__jac";
+    resp = await fetch(
+        f"{broker}/profiles{path}",
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": JSON.stringify(body)
+        }
+    );
+    parsed: any = await resp.json();
+    if not parsed["ok"] {
+        raise Exception(str(parsed["error"]));
+    }
+    return parsed;
+}
+
+
+obj profiles {
+    static def enabled -> bool {
+        return bool(globalThis.__JAC_PROFILES__);
+    }
+
+    static def list -> list[dict[str, any]] {
+        info: any = globalThis.__JAC_PROFILES__;
+        return info["profiles"] if info else [];
+    }
+
+    static def current -> dict[str, any] | None {
+        info: any = globalThis.__JAC_PROFILES__;
+        if not info or not info["active"] {
+            return None;
+        }
+        for option in info["profiles"] {
+            if option["id"] == info["active"] {
+                return option;
+            }
+        }
+        return None;
+    }
+
+    static async def create(name: str) -> dict[str, any] {
+        parsed = await _profiles_post("", {"name": name});
+        window.location.reload();
+        return parsed["profile"];
+    }
+
+    static async def use(profile_id: str) {
+        await _profiles_post("/active", {"id": profile_id});
+        window.location.reload();
+    }
+
+    static async def leave {
+        await _profiles_post("/active", {"id": ""});
+        window.location.reload();
+    }
+}

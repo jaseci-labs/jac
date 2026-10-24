@@ -72,6 +72,19 @@ async def go_online {
 
 A remote backend must accept the app's loopback origin (CORS), as with a single remote `backend`.
 
+## Local profiles instead of sign-in - `[desktop] profiles = true`
+
+For an embedded backend: the user creates and picks named profiles (save slots) instead of signing in. Each profile is its own passwordless user and root; `/__jac/backend.js` signs the page in as the active one before the bundle runs, so protected endpoints and `jacIsLoggedIn()` just work. With `backends`, it applies only while an embedded backend runs.
+
+```jac
+import from "@jac/desktop" { profiles }
+
+profiles.list();                 # [{"id", "name", "created"}]
+profiles.current();              # the active profile, or None -> show a picker
+await profiles.create("Work");   # create + pick + reload signed in
+await profiles.use(pid);  await profiles.leave();   # switch / back to none (both reload)
+```
+
 ## OS capabilities - the `@jac/desktop` plugins (IPC)
 
 The native host exposes OS capabilities to your client UI through a plugin bridge: `window.__jac.invoke(plugin, command, args)` (async, resolves to data or throws) and `window.__jac.on(event, cb)`. Don't hand-write those magic strings - import the typed SDK instead:

@@ -27,7 +27,8 @@ def _generate_host_source(
     identifier: str = "",
     pg_dist: str = "",
     backends: (dict[str, str] | None) = None,
-    default_backend: str = ""
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;
 
 def _stage_cef_runtime(cef_dist: Path, out_dir: Path);
@@ -93,6 +94,7 @@ impl _generate_host_source(
     pg_dist: str = "",
     backends: (dict[str, str] | None) = None,
     default_backend: str = "",
+    profiles: bool = False,
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -106,7 +108,8 @@ impl _generate_host_source(
         identifier,
         pg_dist,
         backends,
-        default_backend
+        default_backend,
+        profiles
     );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
@@ -230,7 +233,7 @@ impl cef_build(
     out_dir.mkdir(parents=True, exist_ok=True);
 
     shutil.copytree(dist_dir, out_dir / "dist");
-    if cfg.get_backends() {
+    if cfg.get_backends() or cfg.get_profiles() {
         inject_backend_script(out_dir / "dist" / "index.html");
     }
 
@@ -277,6 +280,7 @@ impl cef_build(
         pg_dist,
         backends,
         cfg.get_default_backend(),
+        cfg.get_profiles(),
     );
     (out_dir / "host.jac").write_text(host_src);
 

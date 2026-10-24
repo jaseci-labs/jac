@@ -24,6 +24,7 @@ import from jaclang.client.targets.desktop.native.broker_extension {
 }
 import from jaclang.client.targets.desktop.native.oauth_broker { SessionStore }
 import from jaclang.client.targets.desktop.native.backend_choice { BackendChoice }
+import from jaclang.client.targets.desktop.native.profile_store { ProfileStore }
 
 
 obj _FakeHost {
@@ -55,11 +56,16 @@ obj _FakeHost {
 }
 
 
-glob _counter: list[int] = [0];
+glob _counter: list[int] = [0],
+     _servers: list[any] = [];
 
 
 def _server(
-    tmp: str, opened: list[any], host: _FakeHost, choice: (BackendChoice | None) = None
+    tmp: str,
+    opened: list[any],
+    host: _FakeHost,
+    choice: (BackendChoice | None) = None,
+    profiles: (ProfileStore | None) = None
 ) -> tuple[TestClient, SessionStore] {
     _counter[0] += 1;
     mod = f"broker_app_{_counter[0]}";
@@ -77,9 +83,15 @@ def _server(
         return True;
     }
     ext = DesktopBrokerExtension(
-        store=store, host=host, opener=fake_open, choice=choice, relaunch_delay_s=0.0
+        store=store,
+        host=host,
+        opener=fake_open,
+        choice=choice,
+        profiles=profiles,
+        relaunch_delay_s=0.0
     );
     srv = JacAPIServer(module_name=mod, port=0, base_path=tmp, extensions=[ext]);
+    _servers.append(srv);
     srv.load_module();
     srv._ensure_internal_users();
     app = srv.build_app();
@@ -340,7 +352,7 @@ test "a single-backend broker serves an empty script and refuses a switch" {
 """Run `/__jac/backend.js` for each pick in turn against one localStorage (under
 the bundled JS runtime) and return what the page sees after each load."""
 def _run_backend_scripts(
-    scripts: list[str], seed: dict[str, str]
+    scripts: list[str], seed: dict[str, str], session_token: str = ""
 ) -> list[dict[str, any]] {
     import subprocess;
     import from tests.support { js_runtime_or_none }
@@ -356,11 +368,17 @@ def _run_backend_scripts(
         + "getItem:function(k){return k in store?store[k]:null;},"
         + "setItem:function(k,v){store[k]=String(v);},"
         + "removeItem:function(k){delete store[k];}}};"
+        + "var calls=[];globalThis.XMLHttpRequest=function(){this.status=0;this.responseText='';};"
+        + "XMLHttpRequest.prototype.open=function(m,u,a){calls.push([m,u,a]);};"
+        + "XMLHttpRequest.prototype.send=function(){this.status=200;"
+        + "this.responseText=JSON.stringify({token:"
+        + json.dumps(session_token)
+        + "});};"
         + "var seen=[];var scripts="
         + json.dumps(scripts)
         + ";"
         + "for(var i=0;i<scripts.length;i++){(0,eval)(scripts[i]);"
-        + "seen.push({store:JSON.parse(JSON.stringify(store)),base:window.__JAC_API_BASE_URL__||''});"
+        + "seen.push({store:JSON.parse(JSON.stringify(store)),base:window.__JAC_API_BASE_URL__||'',calls:calls.slice(),profiles:window.__JAC_PROFILES__||null});"
         + "delete window.__JAC_API_BASE_URL__;}"
         + "console.log(JSON.stringify(seen));"
     );
@@ -447,4 +465,107 @@ test "concurrent switches save one choice and relaunch once" {
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
+}
+
+
+test "local profiles are created, picked and signed into through the broker" {
+    (tmp, opened, host) = _setup();
+    try {
+        path = os.path.join(tmp, "data", "profiles.json");
+        profiles = ProfileStore.load(path);
+        (client, _store) = _server(tmp, opened, host, profiles=profiles);
+        srv = _servers[-1];
+        info = client.get("/__jac/profiles", headers=LOOPBACK).json();
+        assert info == {"enabled": True, "active": "", "profiles": []} , info;
+        none = client.post("/__jac/profiles/session", headers=LOOPBACK).json();
+        assert none["token"] == "" , "no profile, no session";
+        assert client.post(
+            "/__jac/profiles", json={"name": "  "}, headers=LOOPBACK
+        ).status_code
+            == 400;
+
+        work = client.post(
+            "/__jac/profiles", json={"name": "Work"}, headers=LOOPBACK
+        ).json();
+        assert work["ok"] and work["profile"]["name"] == "Work" , work;
+        play = client.post(
+            "/__jac/profiles", json={"name": "Side project"}, headers=LOOPBACK
+        ).json();
+        info = client.get("/__jac/profiles", headers=LOOPBACK).json();
+        assert info["active"] == play["profile"]["id"] , "creating a profile picks it";
+        assert [p["name"] for p in info["profiles"]] == ["Work", "Side project"];
+        assert "user_id" not in str(info) , "the page never sees the user behind a profile";
+
+        play_token = client.post("/__jac/profiles/session", headers=LOOPBACK).json()[
+            "token"
+        ];
+        picked = client.post(
+            "/__jac/profiles/active",
+            json={"id": work["profile"]["id"]},
+            headers=LOOPBACK
+        );
+        assert picked.json()["active"] == work["profile"]["id"] , picked.text;
+        work_token = client.post("/__jac/profiles/session", headers=LOOPBACK).json()[
+            "token"
+        ];
+        play_user = srv.user_manager.validate_jwt_token(play_token);
+        work_user = srv.user_manager.validate_jwt_token(work_token);
+        assert play_user and work_user and play_user != work_user , "each profile is its own user";
+        assert srv.user_manager.get_root_id(play_user)
+            != srv.user_manager.get_root_id(work_user) , "and its own root";
+
+        assert client.post(
+            "/__jac/profiles/active", json={"id": "nope"}, headers=LOOPBACK
+        ).status_code
+            == 400;
+        assert client.post(
+            "/__jac/profiles/active", json={"id": ""}, headers=LOOPBACK
+        ).json()["active"]
+            == "";
+        reloaded = ProfileStore.load(path);
+        assert reloaded.active == "" and len(reloaded.profiles) == 2 , "profiles persist; leaving keeps them";
+        script = client.get("/__jac/backend.js", headers=LOOPBACK).text;
+        assert script.startswith("window.__JAC_PROFILES__=") , script;
+        assert "/__jac/profiles/session" in script and "eyJ" not in script , "the token never rides in the script body";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "a broker without profiles refuses the profile routes" {
+    (tmp, opened, host) = _setup();
+    try {
+        (client, _store) = _server(tmp, opened, host);
+        assert client.get("/__jac/profiles", headers=LOOPBACK).json()["enabled"]
+            == False;
+        for route in [
+            "/__jac/profiles",
+            "/__jac/profiles/active",
+            "/__jac/profiles/session"
+        ] {
+            assert client.post(route, json={}, headers=LOOPBACK).status_code
+                == 404 , route;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "the profile script signs the page in as the active profile before the bundle runs" {
+    store = ProfileStore(path="/unused", active="p1", profiles=[]);
+    seen = _run_backend_scripts(
+        [store.script()], {"jac_token": "stale"}, session_token="tok-p1"
+    );
+    if not seen {
+        return;
+    }
+    assert seen[0]["calls"] == [["POST", "/__jac/profiles/session", False]] , "one synchronous, relative POST";
+    assert seen[0]["store"]["jac_token"] == "tok-p1" , seen[0];
+    assert seen[0]["profiles"] == {"active": "p1", "profiles": []};
+    none = _run_backend_scripts(
+        [store.script()], {"jac_token": "stale"}, session_token=""
+    );
+    assert "jac_token" not in none[0]["store"] , "no active profile leaves no session behind";
 }

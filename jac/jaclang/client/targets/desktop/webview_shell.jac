@@ -51,7 +51,7 @@ impl _assemble_native_host(
 
     if dist_dir is not None {
         shutil.copytree(dist_dir, layout.resources / "dist");
-        if cfg.get_backends() {
+        if cfg.get_backends() or cfg.get_profiles() {
             inject_backend_script(layout.resources / "dist" / "index.html");
         }
     }
@@ -90,7 +90,8 @@ impl _assemble_native_host(
         ),
         pg_dist=pg_dist,
         backends=backends,
-        default_backend=cfg.get_default_backend()
+        default_backend=cfg.get_default_backend(),
+        profiles=cfg.get_profiles()
     );
     (output_dir / "host.jac").write_text(host_src);
 
@@ -191,7 +192,8 @@ impl webview_dev(
     if not vite_process {
         raise RuntimeError("Failed to start Vite dev server");
     }
-    if get_desktop_config(project_dir).get_backends() {
+    dev_cfg = get_desktop_config(project_dir);
+    if dev_cfg.get_backends() or dev_cfg.get_profiles() {
         inject_backend_script(bundler._get_client_dir() / "index.html");
     }
 

@@ -28,6 +28,7 @@ obj DesktopBrokerExtension(ServerExtension) {
     has store: SessionStore,
         host: any = None,
         choice: BackendChoice | None = None,
+        profiles: ProfileStore | None = None,
         relaunch_delay_s: float = 0.25,
         opener: Callable[[str], bool] = webbrowser.open,
         prefix: str = DEFAULT_PREFIX,
@@ -222,13 +223,102 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
     }
 
     choice = self.choice;
+    profiles = self.profiles;
     relaunch_delay_s = self.relaunch_delay_s;
 
     def backend_script(request: Request, **kwargs: any) -> Response {
+        content = choice.script() if choice is not None else "";
+        if profiles is not None {
+            content += profiles.script();
+        }
         return Response(
-            content=choice.script() if choice is not None else "",
+            content=content,
             media_type="application/javascript",
             headers={"Cache-Control": "no-store"}
+        );
+    }
+
+    def _body(request: Request) -> dict[str, any] {
+        try {
+            body = request.json_sync();
+        } except Exception {
+            return {};
+        }
+        return body if isinstance(body, dict) else {};
+    }
+
+    def _no_profiles -> Response {
+        return JSONResponse(
+            status_code=404,
+            content={
+                "ok": False,
+                "error": "profiles are off, or this backend is remote"
+            }
+        );
+    }
+
+    def profiles_get(request: Request, **kwargs: any) -> Response {
+        if profiles is None {
+            return JSONResponse(
+                content={"enabled": False, "active": "", "profiles": []}
+            );
+        }
+        return JSONResponse(content={"enabled": True, ** profiles.describe()});
+    }
+
+    def profiles_create(request: Request, **kwargs: any) -> Response {
+        if profiles is None {
+            return _no_profiles();
+        }
+        try {
+            name = clean_profile_name(str(_body(request).get("name", "") or ""));
+        } except ValueError as e {
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": str(e)}
+            );
+        }
+        profile_id = new_profile_id();
+        made = server.user_manager.create_federated_user(
+            [{"type": "username", "value": "profile_" + profile_id}]
+        );
+        user_id = str(made.get("user_id") or "");
+        if not user_id {
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "ok": False,
+                    "error": str(made.get("error") or "could not create the profile")
+                }
+            );
+        }
+        created = profiles.add(name, user_id, profile_id);
+        return JSONResponse(content={"ok": True, "profile": created.public()});
+    }
+
+    def profiles_select(request: Request, **kwargs: any) -> Response {
+        if profiles is None {
+            return _no_profiles();
+        }
+        try {
+            profiles.select(str(_body(request).get("id", "") or ""));
+        } except ValueError as e {
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": str(e)}
+            );
+        }
+        return JSONResponse(content={"ok": True, "active": profiles.active});
+    }
+
+    def profiles_session(request: Request, **kwargs: any) -> Response {
+        if profiles is None {
+            return _no_profiles();
+        }
+        current = profiles.find(profiles.active);
+        token = server.user_manager.create_jwt_token(current.user_id)
+            if current is not None
+            else "";
+        return JSONResponse(
+            content={"token": token}, headers={"Cache-Control": "no-store"}
         );
     }
 
@@ -329,6 +419,10 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
     add(HTTPMethod.GET, prefix + "/backend.js", backend_script);
     add(HTTPMethod.GET, prefix + "/backend", backend_get);
     add(HTTPMethod.POST, prefix + "/backend", backend_post);
+    add(HTTPMethod.GET, prefix + "/profiles", profiles_get);
+    add(HTTPMethod.POST, prefix + "/profiles", profiles_create);
+    add(HTTPMethod.POST, prefix + "/profiles/active", profiles_select);
+    add(HTTPMethod.POST, prefix + "/profiles/session", profiles_session);
     add(HTTPMethod.GET, prefix + "/events", events);
     add(HTTPMethod.POST, prefix + "/invoke", invoke);
 }

@@ -537,7 +537,14 @@ impl boot(config_json: str) -> HostContext {
 
         entry_file = resolve_program(program, app_dir) if backend == EMBEDDED else "";
         store = SessionStore(os.path.join(data_dir, ".jac", "desktop", session_file));
-        broker = DesktopBrokerExtension(store=store, host=host, choice=choice);
+        profiles = ProfileStore.load(
+            os.path.join(data_dir, ".jac", "desktop", "profiles.json")
+        )
+            if cfg.get("profiles") and backend == EMBEDDED
+            else None;
+        broker = DesktopBrokerExtension(
+            store=store, host=host, choice=choice, profiles=profiles
+        );
         (runtime, port, stop) = serve_program(
             entry_file,
             data_dir,
