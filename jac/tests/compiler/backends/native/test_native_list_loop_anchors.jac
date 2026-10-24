@@ -19,13 +19,16 @@ import from tests.support { assert_native_identity, NATIVE_FIXTURES }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "list_loop_anchors.jac");
+glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "list_loop_anchors.jac"),
+     USER_CODE_FIXTURE: str = os.path.join(
+         NATIVE_FIXTURES, "list_loop_anchors_user_code.jac"
+     );
 
-"""The fixture's unoptimized IR."""
-def fixture_ir() -> str {
+"""The unoptimized IR of `path`, by default the main fixture."""
+def fixture_ir(path: str = FIXTURE) -> str {
     prog = JacProgram();
     mod = prog.compile(
-        file_path=FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode="rc")
+        file_path=path, options=CompileOptions(aot_mode=True, na_gc_mode="rc")
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     return str(mod.gen.llvm_ir);
@@ -60,4 +63,15 @@ test "loops that cannot change a list read its header once" {
 test "the program prints what the Python backend prints under rc and managed" {
     out = assert_native_identity(FIXTURE, profiles=["rc", "managed"]);
     assert "caught 2.0 4.0" in out , out;
+}
+
+test "loops whose body can run user code keep the old access" {
+    text = fixture_ir(USER_CODE_FIXTURE);
+    for name in ["shadowed", "nested"] {
+        assert "anchor.len" not in body_of(text, name) , (
+            f"{name} reads its list header once although its body runs user code"
+        );
+    }
+    out = assert_native_identity(USER_CODE_FIXTURE, profiles=["rc", "managed"]);
+    assert out.splitlines()[:2] == ["caught 5", "caught 6"] , out;
 }

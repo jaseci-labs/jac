@@ -638,6 +638,14 @@ impl NaIRGenPass._emit_list_index_check(
 impl NaIRGenPass._codegen_index(
     target_val: ir.Value, index_val: ir.Value, elem_type_name: str
 ) -> (ir.Value | None) {
+    """A subscript read, `target[index]`.
+
+    An element read of a list that a range loop anchored checks against the
+    anchored length and loads through the anchored data pointer. Behind that
+    fast path the old path stays out of line, so LLVM cannot merge the two
+    loads into one through a pointer phi; both helpers only read, so the calls
+    clobber nothing.
+    """;
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
         return None;
@@ -1161,9 +1169,15 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
     """Can nothing in `body` change a list's length or data pointer?
 
     Only an operation on the list itself (append, pop, a slice store, `del`)
-    or code the body runs out of sight (a call, a spawn, a context manager, a
-    generator step) can; element stores cannot. Calls to a few builtins that
-    touch no list are allowed.
+    or code the body runs out of sight can; element stores cannot. Code runs
+    out of sight through a call, a generator step, a context manager or a
+    spawn, and also through a user object's dunder methods: an operator, a
+    comparison, a truth test, formatting, `len`, indexing or iterating it, or
+    a property read. So the body may call only a few builtins, and only when
+    the name is the builtin itself (a function of the user's called `min`
+    is not) and its arguments are plain values; it may iterate only a range
+    or a builtin container, index only a builtin container, and apply
+    operators, comparisons and truth tests only to plain values.
     """;
     allowed = (
         "range",
@@ -1195,21 +1209,192 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                     "ReportStmt",
                     "GlobalStmt",
                     "NonLocalStmt",
-                    "Ability"
+                    "Ability",
+                    "ListCompr",
+                    "GenCompr",
+                    "SetCompr",
+                    "DictCompr",
+                    "MatchStmt",
+                    "EdgeRefTrailer",
+                    "FilterCompr",
+                    "AssignCompr"
                 ) {
                 return False;
             }
             if isinstance(nd, uni.FuncCall) {
                 if not isinstance(nd.target, uni.Name)
-                    or nd.target.value not in allowed {
+                    or nd.target.value not in allowed
+                    or not self._anchor_builtin_call(nd) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.AtomTrailer) {
+                if nd.is_attr {
+                    decl: any = nd.right.sym.decl
+                        if isinstance(nd.right, uni.Name) and nd.right.sym is not None
+                        else None;
+                    if decl is not None and isinstance(decl?.name_of, uni.Ability) {
+                        return False;
+                    }
+                } elif isinstance(nd.right, uni.IndexSlice) {
+                    if nd.right.is_range or not self._anchor_container(nd.target) {
+                        return False;
+                    }
+                }
+            } elif isinstance(nd, uni.InForStmt) {
+                if not self._anchor_container(nd.collection) {
+                    return False;
+                }
+            } elif kind == "BinaryExpr" {
+                if not (isinstance(nd.op, uni.Token) and nd.op.name == Tok.WALRUS_EQ)
+                    and not (
+                        self._anchor_plain(nd.left) and self._anchor_plain(nd.right)
+                    ) {
+                    return False;
+                }
+            } elif kind == "CompareExpr" {
+                ops = [str(getattr(op, "value", "")) for op in (nd.ops or [])];
+                if not all(op in ("is", "is not") for op in ops)
+                    and not all(
+                        self._anchor_plain(o) for o in [nd.left] + list(nd.rights or [])
+                    ) {
+                    return False;
+                }
+            } elif kind == "BoolExpr" {
+                if not all(self._anchor_plain(v) for v in (nd.values or [])) {
+                    return False;
+                }
+            } elif kind == "UnaryExpr" {
+                if not self._anchor_plain(nd.operand) {
+                    return False;
+                }
+            } elif kind == "FormattedValue" {
+                if not self._anchor_plain(nd.format_part) {
+                    return False;
+                }
+            } elif kind
+                in ("IfStmt", "ElseIf", "WhileStmt", "IfElseExpr", "AssertStmt") {
+                if not self._anchor_plain(nd?.condition) {
+                    return False;
+                }
+            } elif kind in ("DictVal", "SetVal") {
+                if not self._anchor_plain(nd) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.Assignment) and nd.aug_op is not None {
+                if not all(self._anchor_plain(t) for t in nd.target) {
                     return False;
                 }
             }
-            if isinstance(nd, uni.AtomTrailer)
-                and isinstance(nd.right, uni.IndexSlice)
-                and nd.right.is_range {
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._anchor_plain(e: object) -> bool {
+    """Whether `e`'s value is a builtin scalar, a string or a builtin container of them.
+
+    Using such a value (an operator, a comparison, a truth test, formatting,
+    hashing) runs no user code. A value of unknown type is not plain.
+    """;
+    while type(e).__name__ == "CfgExpr" {
+        e = e.expr;
+    }
+    if not isinstance(e, uni.Expr) or e.type is None {
+        return False;
+    }
+    mangled = "";
+    try {
+        mangled = e.type.mangle();
+    } except Exception {
+        return False;
+    }
+    plain = (
+        "int",
+        "float",
+        "bool",
+        "str",
+        "bytes",
+        "bytearray",
+        "None",
+        "NoneType",
+        "list",
+        "dict",
+        "set",
+        "frozenset",
+        "tuple",
+        "range",
+        "complex",
+        "LiteralString",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "f32",
+        "f64",
+        "isize",
+        "usize",
+        "byte"
+    );
+    words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
+    return bool(words) and all(w in plain for w in words);
+}
+
+impl NaIRGenPass._anchor_container(e: object) -> bool {
+    """Whether indexing or iterating `e` runs no user code: a range, or a builtin container.
+
+    A list, tuple or string never runs code to be indexed or iterated,
+    whatever it holds. A dict or set hashes and compares keys, so its keys
+    have to be plain as well.
+    """;
+    while type(e).__name__ == "CfgExpr" {
+        e = e.expr;
+    }
+    if not isinstance(e, uni.Expr) or e.type is None {
+        return False;
+    }
+    mangled = "";
+    try {
+        mangled = e.type.mangle();
+    } except Exception {
+        return False;
+    }
+    head = mangled.split("[")[0].strip();
+    if head in ("list", "tuple", "str", "bytes", "bytearray", "range") {
+        return True;
+    }
+    return head in ("dict", "set", "frozenset") and self._anchor_plain(e);
+}
+
+impl NaIRGenPass._anchor_builtin_call(nd: uni.FuncCall) -> bool {
+    """Whether `nd` calls the builtin its name spells, on values that run no user code.
+
+    The name has to resolve to the builtins stub: a function or class of the
+    user's with the same name runs code of its own. `len` looks only at a
+    builtin container itself; every other allowed builtin compares, converts
+    or measures its arguments, so they have to be plain values.
+    """;
+    tgt = nd.target;
+    if not isinstance(tgt, uni.Name) or tgt.sym is None {
+        return False;
+    }
+    decl: any = tgt.sym.decl;
+    if decl is None
+        or decl.loc is None
+        or not str(decl.loc.mod_path).endswith("builtins.pyi") {
+        return False;
+    }
+    for p in (nd.params or []) {
+        arg: any = p.value if isinstance(p, uni.KWPair) else p;
+        if tgt.value == "len" {
+            if not (self._anchor_container(arg) or self._anchor_plain(arg)) {
                 return False;
             }
+        } elif not self._anchor_plain(arg) {
+            return False;
         }
     }
     return True;
@@ -1226,6 +1411,9 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
     and its scalar element reads and writes in the body check against and
     index through them; anything out of range takes the old path, which
     raises as before. A local that holds no list yet reads as an empty one.
+
+    A name the body binds, directly or by unpacking, is never anchored: `(a,
+    b) = (b, a)` rebinds `a` as surely as `a = b` does.
     """;
     import os;
     if os.environ.get("JAC_NO_LIST_ANCHORS")
@@ -1327,7 +1515,11 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
 impl NaIRGenPass._list_anchor_of(
     target_val: ir.Value, elem_type: ir.Type
 ) -> (tuple[ir.Value, ir.Value] | None) {
-    """The anchored (length, data) of the list `target_val` was loaded from, for a scalar element.""";
+    """The anchored (length, data) of the list `target_val` was loaded from, for a scalar element.
+
+    A comprehension or generator body may be a function of its own, so an
+    anchor counts only in the function that read it.
+    """;
     if not self._list_anchors or self._elem_kind(elem_type) != "raw" {
         return None;
     }

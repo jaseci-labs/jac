@@ -4718,6 +4718,11 @@ impl NaIRGenPass._codegen_for_indexed(
     range_step: (ir.Value | None) = None,
     items_source: (uni.Expr | None) = None
 ) -> None {
+    """A `for` loop that walks a sequence by index.
+
+    Before a range loop, the lists its body indexes have their headers read
+    once (`_emit_list_anchors`).
+    """;
     i64 = ir.IntType(64);
     _for_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
         if nd.loc

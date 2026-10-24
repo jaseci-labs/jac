@@ -9,19 +9,19 @@ same IndexError, and `unset` indexes a list that is still None when its loop
 runs zero times.
 """
 
-def axpy(y: list[float], x: list[float], a: float) -> None {
+def axpy(y: list[float], x: list[float], a: float) {
     for j in range(len(y)) {
         y[j] += a * x[j];
     }
 }
 
-def copy_into(dst: list[int], src: list[int]) -> None {
+def copy_into(dst: list[int], src: list[int]) {
     for j in range(len(dst)) {
         dst[j] = src[j];
     }
 }
 
-def reverse(xs: list[int]) -> None {
+def reverse(xs: list[int]) {
     n = len(xs);
     for j in range(n // 2) {
         t = xs[j];
@@ -118,7 +118,10 @@ with entry {
     axpy(y, x, 2.0);
     print(y[:6], y[-1]);
     src = [i * i for i in range(12)];
-    dst = [0] * 12;
+}
+
+glob dst = [0] * 12;
+with entry {
     copy_into(dst, src);
     print(dst);
     r = list(range(9));

@@ -3623,10 +3623,14 @@ walker NaIRGenPass(CompilerPass) {
     def _volatilize_setjmp_locals -> None;
     def _apply_list_tbaa -> None;
     def _body_keeps_list_headers(body: list[uni.UniNode]) -> bool;
+    def _anchor_plain(e: object) -> bool;
+    def _anchor_container(e: object) -> bool;
+    def _anchor_builtin_call(nd: uni.FuncCall) -> bool;
     def _emit_list_anchors(body: list[uni.UniNode]) -> None;
     def _list_anchor_of(
         target_val: ir.Value, elem_type: ir.Type
     ) -> (tuple[ir.Value, ir.Value] | None);
+
     def _tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any;
     def _tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None);
     def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
