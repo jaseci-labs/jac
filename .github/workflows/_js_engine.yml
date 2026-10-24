@@ -91,6 +91,8 @@ jobs:
         run: >-
           jac test jac/tests/client/test_js_engine_node.jac
           jac/tests/runtimelib/test_client_bundle.jac
+      - name: Run the WebAssembly runtime smoke test
+        run: jac/zig-out/js/bin/node jac/js_engine/engine/tests/wasm/test_externref_js_values.js
 
       - name: Restore the test262 checkout
         uses: actions/cache@v4
@@ -122,3 +124,82 @@ jobs:
           path: jac/js_engine/engine/tests/test262/.run_logs
           retention-days: 7
           if-no-files-found: ignore
+
+  # The WebAssembly interpreter's own gate: regenerate the pinned spec
+  # testsuite corpus (no binary fixture is vendored), compile the standalone
+  # Jac-native driver, and run the ~88-suite corpus sharded across runners.
+  # A suite failing alone fails only its shard; logs upload regardless.
+  wasm-spec:
+    name: wasm-spec (shard ${{ matrix.shard }})
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      SHARDS: "4"
+      SPEC_COMMIT: 6aacfd8929504d8e02a5144a14d184196ede6790
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+        with:
+          need-build-inputs: "true"
+
+      - name: Build the LLVM shim for native codegen
+        run: jac native build llvm-shim
+
+      - name: Regenerate the spec corpus (pinned testsuite + wast2json 1.0.36)
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 https://github.com/WebAssembly/spec.git /tmp/spec
+          git -C /tmp/spec fetch --quiet --depth 1 origin "$SPEC_COMMIT"
+          git -C /tmp/spec checkout --quiet FETCH_HEAD
+          curl -sSL -o /tmp/wabt.tar.gz \
+            https://github.com/WebAssembly/wabt/releases/download/1.0.36/wabt-1.0.36-ubuntu-20.04.tar.gz
+          mkdir /tmp/wabt
+          tar xzf /tmp/wabt.tar.gz -C /tmp/wabt --strip-components=1
+          python3 jac/js_engine/engine/tests/wasm/gen_fixtures.py \
+            /tmp/spec /tmp/fixtures /tmp/wabt/bin/wast2json
+          python3 jac/js_engine/engine/tests/wasm/spec_cmds.py \
+            /tmp/fixtures /tmp/cmds
+
+      - name: Build the native spec driver
+        working-directory: jac
+        run: jac build --native js_engine/engine/tests/wasm/spec_driver.jac -o "$RUNNER_TEMP/spec_driver"
+
+      - name: Run the spec corpus (shard ${{ matrix.shard }}/${{ env.SHARDS }})
+        run: |
+          set -uo pipefail
+          mapfile -t all < <(ls /tmp/cmds/*.cmds | sort)
+          shard_list=()
+          for i in "${!all[@]}"; do
+            [ $((i % SHARDS)) -eq "${{ matrix.shard }}" ] && shard_list+=("${all[$i]}")
+          done
+          echo "shard ${{ matrix.shard }}: ${#shard_list[@]} suite(s)"
+          fails=0
+          : > /tmp/shard-summary.txt
+          for f in "${shard_list[@]}"; do
+            s="$(basename "$f" .cmds)"
+            if timeout 600 "$RUNNER_TEMP/spec_driver" "$f" > "/tmp/spec-$s.log" 2>&1; then
+              echo "PASS $s" >> /tmp/shard-summary.txt
+            else
+              rc=$?
+              echo "FAIL($rc) $s" >> /tmp/shard-summary.txt
+              fails=$((fails+1))
+            fi
+          done
+          cat /tmp/shard-summary.txt
+          echo "shard ${{ matrix.shard }}: $(( ${#shard_list[@]} - fails )) passed, $fails failed"
+          exit $(( fails > 0 ))
+
+      - name: Upload the spec run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-spec-logs-${{ matrix.shard }}
+          path: /tmp/spec-*.log
+          if-no-files-found: ignore
+          retention-days: 14

@@ -994,7 +994,11 @@ glob:pub NATIVE_KIND_CONSOLE_LOG: int = 1,
      NATIVE_KIND_NET_TCP_SHUTDOWN: int = 1105,
      NATIVE_KIND_PROMISE_THEN_RAW: int = 1106,
      NATIVE_KIND_PROMISE_THEN_SETUP: int = 1107,
-     NATIVE_KIND_LAST: int = 1108;
+     NATIVE_KIND_WASM_TABLE_GET_REF: int = 1108,
+     NATIVE_KIND_WASM_TABLE_SET_VALUE: int = 1109,
+     NATIVE_KIND_WASM_EXTERN_VALUE: int = 1110,
+     NATIVE_KIND_WASM_TABLE_ELEM_KIND: int = 1111,
+     NATIVE_KIND_LAST: int = 1112;
 
 
 # ── Global numeric / string utilities ────────────────────────────────────────
@@ -1347,11 +1351,10 @@ glob:pub NATIVE_KIND_CONSOLE_LOG: int = 1,
 # __cp.unref(hid) — drop child from loop keep-alive
 # __cp.ref(hid) — re-add child to loop keep-alive
 
-# ── WebAssembly / Wasmtime bridge (docs/wasm.md Phase 2) ─────────────────────
-# __wasm.* native methods backing engine/src/builtins/js/webassembly.js. Bytes
-# cross the boundary as (ptr,len) via __buf.alloc; module/instance/func/memory
-# are opaque small-int handles held by the JS shim. Imports/tables/globals/traps
-# → RuntimeError are Phase 3.
+# ── WebAssembly / Jac-native interpreter bridge ───────────────────────────────
+# __wasm.* native methods back engine/src/builtins/js/webassembly.js. Wasm bytes
+# cross as (ptr,len) via __buf.alloc; module, instance, function, memory, table
+# and global handles are owned by engine/src/wasm/bridge.jac.
 # __wasm.validate(ptr,len) -> bool
 # __wasm.compile(ptr,len) -> moduleHandle (0=err)
 # __wasm.instantiate(moduleHandle) -> instHandle
@@ -1372,23 +1375,22 @@ glob:pub NATIVE_KIND_CONSOLE_LOG: int = 1,
 # __wasm.moduleImports(modH) -> [{module,name,kind}]
 # __wasm.moduleExports(modH) -> [{name,kind}]
 # __wasm.exportGlobal(inst, name) -> globalHandle
-# __wasm.globalGet(globalHandle) -> number|BigInt (read global .value)
-
-# ── Phase 3: imports (JS→WASM callbacks), tables, globals (create/set), traps ──
-# __wasm.lastErrorClass() -> int (0none/1compile/2link/3runtime)
+# __wasm.globalGet(globalHandle) -> number|BigInt|reference
 # __wasm.globalCreate(kind,mutable,ival,dval) -> globalHandle
 # __wasm.globalSet(gh, ival, dval) -> bool
 # __wasm.globalIsMutable(gh) -> bool
-# __wasm.globalKind(gh) -> int (I32=0..F64=3)
-# __wasm.tableCreate(elemKind,initial,maximum) -> tableHandle
+# __wasm.globalKind(gh) -> int (I32=0..F64=3, refs=5/6)
+# __wasm.tableCreate(elemKind,initial,maximum,initValue) -> tableHandle
 # __wasm.tableSize(th) -> int
 # __wasm.tableGetKind(th, idx) -> int (-1oob/0null/1func/2extern)
-# __wasm.tableSetNull(th, idx) -> bool
-# __wasm.tableSetFunc(th, idx, fh) -> bool
-# __wasm.tableGrow(th, delta) -> prevSize | -1
+# __wasm.tableGetRef(th, idx) -> handle/id
+# __wasm.tableSetValue(th, idx, value) -> bool
+# __wasm.externValue(id) -> JSValue
+# __wasm.tableElemKind(th) -> ref kind
+# __wasm.tableGrow(th, delta, initValue) -> prevSize | -1
 # __wasm.exportTable(inst, name) -> tableHandle
-# __wasm.importsBegin(modH, nimports) -> storeHandle
-# __wasm.importsAddFunc(idx, pkinds[], rkinds[], jsFn) -> bool
+# __wasm.importsBegin(modH) -> nimports
+# __wasm.importsAddFunc(idx, jsFn|funcHandle) -> bool
 # __wasm.importsAddMemory(idx, memH) -> bool
 # __wasm.importsAddGlobal(idx, gh) -> bool
 # __wasm.importsAddTable(idx, th) -> bool

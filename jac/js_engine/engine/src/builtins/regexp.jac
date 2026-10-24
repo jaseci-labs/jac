@@ -34,7 +34,14 @@ import from engine.src.ffi.libpcre2 {
     pcre2_pattern_info_8,
     pcre2_code_free_8
 }
-import from engine.src.runtime.mem { io_alloc, io_free, write_byte, read_u64, read_u32, byte_chr }
+import from engine.src.runtime.mem {
+    io_alloc,
+    io_free,
+    write_byte,
+    read_u64,
+    read_u32,
+    byte_chr
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -72,7 +79,11 @@ import from engine.src.runtime.jsstring {
     u16ix_byte_to_unit,
     u16ix_unit_to_byte,
     U16Index,
-    utf8_encode_scalar
+    utf8_encode_scalar,
+    str_byte_substr,
+    _raw_byte_at,
+    _str_utf8_bytes,
+    utf8_byte_len
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -137,6 +148,7 @@ import from engine.src.runtime.jssymbol {
     SYMBOL_SPLIT,
     SYMBOL_SPECIES
 }
+import from engine.src.runtime.gc { gc_total_cycles }
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  PCRE2 option constants (must match /usr/include/pcre2.h)
@@ -1550,8 +1562,9 @@ def _pcre2_compile(pattern: str, flags: str) -> JSRegExpState {
         }
     }
 
+    compile_pat_bytes: bytes = compile_pat.encode();
     code_ptr: int = pcre2_compile_8(
-        compile_pat, len(compile_pat), options, err_code_buf, err_off_buf, cctx
+        compile_pat, len(compile_pat_bytes), options, err_code_buf, err_off_buf, cctx
     );
 
     if cctx != 0 {
@@ -1682,7 +1695,9 @@ def _normalize_unicode_pattern(
         # (_dm_converted), so every NUL form compiles to PCRE2's `\\x00` — a
         # literal NUL in the pattern (sentinel bytes) included. Inside a class
         # `\\0` / `\\x00` are already PCRE2's NUL.
-        if ord(pattern[i]) == 192 and i + 1 < len(pattern) and ord(pattern[i + 1]) == 128 {
+        if ord(pattern[i]) == 192
+            and i + 1 < len(pattern)
+            and ord(pattern[i + 1]) == 128 {
             out = out + "\\x00";
             i = i + 2;
             continue;
@@ -2058,15 +2073,13 @@ Offsets map back to the subject's own bytes.
 glob _DM_ASCII: bool = False;
 # The string cell the public entry point is matching (_dm_subject_ascii), and a
 # cache of the last subject checked: whether it needs the rewritten copy and, if
-# so, the copy plus its offset breakpoints. Keyed by cell id, length, GC epoch (a
-# swept heap-string id is only reused after a collection) and whether pairs are
-# joined, so a /g loop rewrites its subject once.
+# so, the copy plus its offset breakpoints. Keyed by immutable cell id, the
+# collection counter (which advances on minor collections too), and pair mode.
 glob _DM_SUBJ_ID: int = -1,
      _DM_NUL: str = "",
      _DM_ED: str = "",
      _DM_CV_ID: int = -2,
-     _DM_CV_LEN: int = -1,
-     _DM_CV_EPOCH: int = -1,
+     _DM_CV_GC_CYCLE: int = -1,
      _DM_CV_PAIRS: bool = False,
      _DM_CV_ON: bool = False,
      _DM_CV_BUF: int = 0,
@@ -2101,14 +2114,14 @@ lone half stays as it is. Every rewrite shrinks the copy, so _DM_CV_END[k] (the
 copy's offset just past rewrite k) and _DM_CV_CUM[k] (original minus copy offset
 from there on) map offsets both ways. Cached per subject (see _DM_SUBJ_ID)."""
 def _dm_converted(s: str, pairs: bool) -> bool {
-    n: int = len(s);
     if _DM_SUBJ_ID >= 0
         and _DM_SUBJ_ID == _DM_CV_ID
-        and n == _DM_CV_LEN
         and pairs == _DM_CV_PAIRS
-        and _DM_CV_EPOCH == _RE_REALM.gc_epoch {
+        and _DM_CV_GC_CYCLE == gc_total_cycles {
         return _DM_CV_ON;
     }
+    raw: bytes = s.encode();
+    n: int = len(raw);
     if len(_DM_NUL) == 0 {
         _DM_NUL = nul_sentinel();
         _DM_ED = byte_chr(237);
@@ -2118,10 +2131,10 @@ def _dm_converted(s: str, pairs: bool) -> bool {
         _DM_CV_BUF = 0;
     }
     _DM_CV_ID = _DM_SUBJ_ID;
-    _DM_CV_LEN = n;
     _DM_CV_PAIRS = pairs;
-    _DM_CV_EPOCH = _RE_REALM.gc_epoch;
-    _DM_CV_ON = s.find(_DM_NUL) >= 0 or (pairs and s.find(_DM_ED) >= 0);
+    _DM_CV_GC_CYCLE = gc_total_cycles;
+    _DM_CV_ON = raw.find(_DM_NUL.encode()) >= 0
+        or (pairs and raw.find(_DM_ED.encode()) >= 0);
     if not _DM_CV_ON {
         return False;
     }
@@ -2132,8 +2145,8 @@ def _dm_converted(s: str, pairs: bool) -> bool {
     i: int = 0;
     o: int = 0;
     while i < n {
-        b: int = ord(s[i]);
-        if b == 192 and i + 1 < n and ord(s[i + 1]) == 128 {
+        b: int = raw[i];
+        if b == 192 and i + 1 < n and raw[i + 1] == 128 {
             write_byte(buf, o, 0);
             i = i + 2;
             o = o + 1;
@@ -2143,11 +2156,15 @@ def _dm_converted(s: str, pairs: bool) -> bool {
             continue;
         }
         if pairs and b == 237 and i + 5 < n {
-            b1: int = ord(s[i + 1]);
-            b4: int = ord(s[i + 4]);
-            if b1 >= 160 and b1 <= 175 and ord(s[i + 3]) == 237 and b4 >= 176 and b4 <= 191 {
-                hs: int = 53248 | ((b1 & 63) << 6) | (ord(s[i + 2]) & 63);
-                ls: int = 53248 | ((b4 & 63) << 6) | (ord(s[i + 5]) & 63);
+            b1: int = raw[i + 1];
+            b4: int = raw[i + 4];
+            if b1 >= 160
+                and b1 <= 175
+                and raw[i + 3] == 237
+                and b4 >= 176
+                and b4 <= 191 {
+                hs: int = 53248 | ((b1 & 63) << 6) | (raw[i + 2] & 63);
+                ls: int = 53248 | ((b4 & 63) << 6) | (raw[i + 5] & 63);
                 sc: int = 65536 + ((hs - 55296) << 10) + (ls - 56320);
                 write_byte(buf, o, 240 | (sc >> 18));
                 write_byte(buf, o + 1, 128 | ((sc >> 12) & 63));
@@ -2223,7 +2240,8 @@ def _do_match_buf(re: JSRegExpState, p: int, n: int, start: int) -> list[int] {
 }
 
 def _do_match_raw(re: JSRegExpState, subj: str, start: int) -> list[int] {
-    return _do_match_on(re, subj, len(subj), start);
+    subj_bytes: bytes = subj.encode();
+    return _do_match_on(re, subj, len(subj_bytes), start);
 }
 
 def _do_match_on(re: JSRegExpState, subj: str, slen: int, start: int) -> list[int] {
@@ -2899,7 +2917,7 @@ def _build_match_array(
     # §22.2.7.2 step 24: ArrayCreate → [[Prototype]] is %Array.prototype%. The
     # elements are collected first and handed to js_array_create in one go
     # (dense storage, no per-index key interning, no length re-sets).
-    elems: list[JSValue] = [_mk_jstr(str_substr(s3, match_start, match_end))];
+    elems: list[JSValue] = [_mk_jstr(str_byte_substr(s3, match_start, match_end))];
 
     # Capture groups: ov[2], ov[3] = group 1; ov[4], ov[5] = group 2; …
     names4: list[str] = re4.group_names;
@@ -2932,7 +2950,7 @@ def _build_match_array(
         gv: JSValue = js_undefined();
         # PCRE2_UNSET becomes -1 (i64 all-ones).  Any negative value = unset.
         if cap_s >= 0 and cap_e >= 0 {
-            gv = _mk_jstr(str_substr(s3, cap_s, cap_e));
+            gv = _mk_jstr(str_byte_substr(s3, cap_s, cap_e));
         }
         elems.append(gv);
         if has_named and gi < len(names4) and names4[gi] != "" {
@@ -3111,15 +3129,15 @@ def _expand_replacement(repl: str, s: str, ov: list[int], re_st: JSRegExpState) 
         if c == "$" and i + 1 < n {
             nc: str = repl[i + 1];
             if nc == "&" {
-                out = out + str_substr(s, ov[0], ov[1]);
+                out = out + str_byte_substr(s, ov[0], ov[1]);
                 i = i + 2;
                 continue;
             } elif nc == "`" {
-                out = out + str_substr(s, 0, ov[0]);
+                out = out + str_byte_substr(s, 0, ov[0]);
                 i = i + 2;
                 continue;
             } elif nc == "'" {
-                out = out + str_substr(s, ov[1], len(s));
+                out = out + str_byte_substr(s, ov[1], utf8_byte_len(s));
                 i = i + 2;
                 continue;
             } elif nc >= "0" and nc <= "9" {
@@ -3139,7 +3157,7 @@ def _expand_replacement(repl: str, s: str, ov: list[int], re_st: JSRegExpState) 
                     cs: int = ov[2 + (gn - 1) * 2];
                     ce: int = ov[2 + (gn - 1) * 2 + 1];
                     if cs >= 0 and ce >= 0 {
-                        out = out + str_substr(s, cs, ce);
+                        out = out + str_byte_substr(s, cs, ce);
                     }
                     i = i + 2;
                     if consumed2 {
@@ -3162,7 +3180,7 @@ def _expand_replacement(repl: str, s: str, ov: list[int], re_st: JSRegExpState) 
                             csn: int = ov[2 + gi_name * 2];
                             cen: int = ov[2 + gi_name * 2 + 1];
                             if csn >= 0 and cen >= 0 {
-                                out = out + str_substr(s, csn, cen);
+                                out = out + str_byte_substr(s, csn, cen);
                             }
                             break;
                         }
@@ -3205,14 +3223,14 @@ def:pub js_str_match_re(s_val: JSValue, re_val: JSValue) -> JSValue {
     # Global: collect all full-match strings into a real Array.
     elems_m: list[JSValue] = [];
     pos: int = 0;
-    slen: int = len(s);
+    slen: int = utf8_byte_len(s);
     _DM_ASCII = _dm_subject_ascii(s_val);
     while pos <= slen {
         res: list[int] = _do_match(re7, s, pos);
         if res[0] < 0 {
             break;
         }
-        elems_m.append(_mk_jstr(str_substr(s, res[0], res[1])));
+        elems_m.append(_mk_jstr(str_byte_substr(s, res[0], res[1])));
         # lastIndex = e; an empty match then advances one character (§22.2.6.8
         # step 6.e.iii — AdvanceStringIndex; the subject is UTF-8)
         if res[1] > res[0] {
@@ -3254,7 +3272,7 @@ def:pub js_str_matchAll_re(s_val: JSValue, re_val: JSValue) -> JSValue {
     out: JSValue = js_array_create([]);
     pos: int = 0;
     cnt: int = 0;
-    slen: int = len(s);
+    slen: int = utf8_byte_len(s);
     _DM_ASCII = _dm_subject_ascii(s_val);
     asc_m: bool = _DM_ASCII;
     while pos <= slen {
@@ -3346,7 +3364,7 @@ def:pub js_str_replace_re(
     } else {
         r7 = js_to_string_prim(repl3);
     }
-    slen7: int = len(s7);
+    slen7: int = utf8_byte_len(s7);
     _DM_ASCII = _dm_subject_ascii(s_val3);
 
     if not re10.flag_g {
@@ -3356,9 +3374,9 @@ def:pub js_str_replace_re(
         }
         # All pieces inline: a named owned str local would never be released.
         return _mk_jstr(
-            str_substr(s7, 0, res7[0])
+            str_byte_substr(s7, 0, res7[0])
                 + _expand_replacement(r7, s7, res7, re10)
-                + str_substr(s7, res7[1], slen7)
+                + str_byte_substr(s7, res7[1], slen7)
         );
     }
     return _mk_jstr(_re_replace_global_build(re10, s7, r7, _DM_ASCII));
@@ -3369,7 +3387,7 @@ def:pub js_str_replace_re(
 def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -> str {
     parts: list[str] = [];
     has_dollar: bool = r7.find("$") >= 0;
-    slen7: int = len(s7);
+    slen7: int = utf8_byte_len(s7);
     pos7: int = 0;
     # nextSourcePosition (§22.2.6.11 step 14): the subject copied up to each
     # match, the replacement for it, then from the match's end.
@@ -3380,7 +3398,7 @@ def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -
         if res8[0] < 0 {
             break;
         }
-        parts.append(str_substr(s7, nsp7, res8[0]));
+        parts.append(str_byte_substr(s7, nsp7, res8[0]));
         if has_dollar {
             parts.append(_expand_replacement(r7, s7, res8, re10));
         } else {
@@ -3394,17 +3412,22 @@ def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -
             pos7 = res8[1] + _re_char_len(s7, res8[1]);
         }
     }
-    parts.append(str_substr(s7, nsp7, slen7));
+    parts.append(str_byte_substr(s7, nsp7, slen7));
     return "".join(parts);
 }
 
 """Byte length of the UTF-8 character at byte `i` of `s` (1 past the end):
 the matchers' AdvanceStringIndex step."""
 def _re_char_len(s: str, i: int) -> int {
-    if i >= len(s) {
+    if s.isascii() {
         return 1;
     }
-    cl_b: int = ord(s[i]);
+    raw: bytes = _str_utf8_bytes(s);
+    n: int = len(raw);
+    if i >= n {
+        return 1;
+    }
+    cl_b: int = _raw_byte_at(raw, i);
     if cl_b < 192 {
         return 1;
     }
@@ -3454,7 +3477,7 @@ def:pub js_str_split_re(s_val4: JSValue, sep4: JSValue, limit_v4: JSValue) -> JS
     # RegExp.prototype[@@split] — ECMAScript §22.2.5.11. Build a real Array via
     # js_array_create so it inherits Array.prototype.
     elems10: list[JSValue] = [];
-    slen10: int = len(s9);
+    slen10: int = utf8_byte_len(s9);
 
     # lim == 0 → empty array (spec step 12).
     if lim9 == 0 {
@@ -3506,7 +3529,7 @@ def:pub js_str_split_re(s_val4: JSValue, sep4: JSValue, limit_v4: JSValue) -> JS
             continue;
         }
         # Emit the piece [p, mstart) and any captures, then resume after the match.
-        elems10.append(_mk_jstr(str_substr(s9, p10, mstart)));
+        elems10.append(_mk_jstr(str_byte_substr(s9, p10, mstart)));
         if len(elems10) >= lim9 {
             return js_array_create(elems10);
         }
@@ -3516,7 +3539,7 @@ def:pub js_str_split_re(s_val4: JSValue, sep4: JSValue, limit_v4: JSValue) -> JS
             cap_e: int = res10[2 + gi10 * 2 + 1];
             gv10: JSValue = js_undefined();
             if cap_s >= 0 and cap_e >= 0 {
-                gv10 = _mk_jstr(str_substr(s9, cap_s, cap_e));
+                gv10 = _mk_jstr(str_byte_substr(s9, cap_s, cap_e));
             }
             elems10.append(gv10);
             if len(elems10) >= lim9 {
@@ -3527,7 +3550,7 @@ def:pub js_str_split_re(s_val4: JSValue, sep4: JSValue, limit_v4: JSValue) -> JS
         p10 = e10;
         q10 = p10;
     }
-    elems10.append(_mk_jstr(str_substr(s9, p10, slen10)));
+    elems10.append(_mk_jstr(str_byte_substr(s9, p10, slen10)));
     return js_array_create(elems10);
 }
 

@@ -310,8 +310,10 @@ impl JsEngineArtifact.build(log: Callable[[str], None], force: bool, exact: bool
     import subprocess;
 
     if force or self.probe_checkout().found is None {
-        log("  zig build js-engine (about 18 minutes and 7 GB cold)");
-        subprocess.run(["zig", "build", "js-engine"], cwd=_repo_root(), check=True);
+        log("  zig build js-engine -j1 (serial build)");
+        subprocess.run(
+            ["zig", "build", "js-engine", "-j1"], cwd=_repo_root(), check=True
+        );
         atomic_write(
             os.path.join(js_engine_build_dir(), RECORD_SUFFIX),
             json.dumps({"inputs": js_engine_inputs_digest(_repo_root())}).encode(

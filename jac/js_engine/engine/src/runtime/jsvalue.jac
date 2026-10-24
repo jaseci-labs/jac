@@ -567,14 +567,13 @@ def:pub jsv_to_double(v: JSValue) -> float {
 
 """Reinterpret a float64 as its raw IEEE-754 bit pattern (u64). Public wrapper
 over the __float_bits codegen intrinsic (which is file-private because it is
-intercepted at IR-gen). Used by the Wasmtime bridge to store an f64 value into
-a wasmtime_val_t union slot."""
+intercepted at IR-gen)."""
 def:pub jsv_double_bits(d: float) -> int {
     return __float_bits(d);
 }
 
 """Reinterpret a raw IEEE-754 u64 bit pattern back into a float64. Inverse of
-jsv_double_bits; wraps the __bits_float intrinsic for the Wasmtime bridge."""
+jsv_double_bits; wraps the __bits_float intrinsic."""
 def:pub jsv_double_from_bits(b: int) -> float {
     return __bits_float(b);
 }

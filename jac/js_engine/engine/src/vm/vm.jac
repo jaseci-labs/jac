@@ -486,7 +486,11 @@ import from engine.src.vm.vm_obs {
     js_object_delete_observable,
     js_to_string_observable,
     vm_wasm_get_import_cb,
-    vm_wasm_has_import_cb
+    vm_wasm_has_import_cb,
+    vm_wasm_extern_id,
+    vm_wasm_extern_value,
+    vm_wasm_funcref_marker,
+    vm_wasm_funcref_h
 }
 import from engine.src.runtime.jsobject {
     js_object_register_napi_obs_scope,
@@ -593,6 +597,7 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_FN_CALL,
     NATIVE_KIND_FN_APPLY,
     NATIVE_KIND_FN_BIND,
+    NATIVE_KIND_FN_HAS_INSTANCE,
     NATIVE_KIND_FN_TOSTRING,
     NATIVE_KIND_FUNCTION,
     NATIVE_KIND_STRING,
@@ -1217,8 +1222,9 @@ import from napi.src.napi_env {
 }
 import from napi.src.napi_func { _napi_invoke_callback_from_vm }
 import from engine.src.ffi.libc { fflush, abort, getenv, write }
-import from engine.src.ffi.wasmtime {
+import from engine.src.wasm.bridge {
     wasm_register_host_call,
+    wasm_register_grow_notify,
     wasm_host_arg_count,
     wasm_host_arg_kind,
     wasm_host_arg_int,
@@ -1230,10 +1236,14 @@ import from engine.src.ffi.wasmtime {
     wasm_i64_to_decimal,
     wasm_i64_from_decimal,
     wasm_set_host_throw,
+    wasm_f64_to_i32,
+    wasm_f64_to_i64,
     WASMTIME_I32,
     WASMTIME_I64,
     WASMTIME_F32,
-    WASMTIME_F64
+    WASMTIME_F64,
+    WASMTIME_FUNCREF,
+    WASMTIME_EXTERNREF
 }
 
 # N-API (native `.node` addon) support is INCOMPLETE and disabled by default.
@@ -1280,9 +1290,11 @@ glob:pub VM_IC_ENABLED: bool = False;
 def:pub vm_ic_enable {
     VM_IC_ENABLED = True;
 }
+
 def:pub vm_ic_disable {
     VM_IC_ENABLED = False;
 }
+
 """Whether the property ICs are on (read back by feature_gates_report)."""
 def:pub vm_ic_enabled -> bool {
     return VM_IC_ENABLED;
@@ -4285,6 +4297,7 @@ obj VM {
     def _push(v: JSValue) {
         self.stack.append(v);
     }
+
     def _pop -> JSValue {
         n: int = len(self.stack);
         if n == 0 {
@@ -8365,7 +8378,8 @@ obj VM {
                         }
                     }
                     # Own accessor with [[Get]] undefined (setter-only) → undefined.
-                    if jsv_is_object_cell(fga_fp) and js_object_has_own_accessor(fga_fp, key) {
+                    if jsv_is_object_cell(fga_fp)
+                        and js_object_has_own_accessor(fga_fp, key) {
                         return js_undefined();
                     }
                 }
@@ -9420,7 +9434,10 @@ obj VM {
                 # Function.prototype in the chain.
                 fn_cproto_h: JSValue = self.realm.closures[fn_idx_h].object_proto;
                 if is_fn_val(fn_cproto_h)
-                    or (jsv_is_object_cell(fn_cproto_h) and jsv_to_table_id(fn_cproto_h) > 0) {
+                    or (
+                        jsv_is_object_cell(fn_cproto_h)
+                        and jsv_to_table_id(fn_cproto_h) > 0
+                    ) {
                     return self.obs_has(fn_cproto_h, key);
                 }
             }
@@ -11716,7 +11733,9 @@ obj VM {
         # Extension loader routing (Vite §4.2 — custom require.extensions override)
         if not bi_packed
             and (
-                mod_format == "cjs-json" or mod_format == "napi" or mod_format == "cjs-js"
+                mod_format == "cjs-json"
+                or mod_format == "napi"
+                or mod_format == "cjs-js"
             ) {
             ext_loader: JSValue = _lookup_ext_loader(resolved);
             if _is_custom_ext_loader(ext_loader, mod_format) {
@@ -32839,10 +32858,17 @@ obj VM {
                         gr_nf = gr_nf + len(gr_f.locals);
                     }
                 }
-                gr_msg: str = "[GCROOTS] stack=0.." + str(len(self.stack)) + " regs="
-                    + str(len(self.stack)) + ".." + str(len(self.stack) + self.rtop)
-                    + " then frames (" + str(len(self.frames)) + " frames, "
-                    + str(gr_nf) + " non-window locals), globals, …\n";
+                gr_msg: str = "[GCROOTS] stack=0.."
+                    + str(len(self.stack))
+                    + " regs="
+                    + str(len(self.stack))
+                    + ".."
+                    + str(len(self.stack) + self.rtop)
+                    + " then frames ("
+                    + str(len(self.frames))
+                    + " frames, "
+                    + str(gr_nf)
+                    + " non-window locals), globals, …\n";
                 write(2, gr_msg, len(gr_msg));
             }
             gc_collect(self.realm, gc_roots_all);
@@ -32857,7 +32883,8 @@ obj VM {
             # "collect when the heap has grown by ~itself" policy), scaled by
             # _GC_GROWTH_PCT (JAC_GC_GROWTH).
             # The growth tapers for very large heaps (gc_growth_pct_for).
-            _gc_nlive: int = len(self.realm.objects) - len(self.realm.free_object_slots);
+            _gc_nlive: int = len(self.realm.objects)
+                - len(self.realm.free_object_slots);
             _gc_live: int = (_gc_nlive * gc_growth_pct_for(_gc_nlive)) // 100;
             if _gc_live > _GC_MIN_THRESHOLD {
                 self.realm.gc_threshold = _gc_live;
@@ -33503,7 +33530,11 @@ obj VM {
         if argpc >= 0 {
             while rc_k < np and rc_k < argc {
                 self.regs[rc_base + pb + rc_k] = frame.locals[
-                    frame.lb + (__mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8))) & 32767)
+                    frame.lb
+                        + (
+                            __mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8)))
+                            & 32767
+                        )
                 ];
                 rc_k = rc_k + 1;
             }
@@ -37135,14 +37166,16 @@ obj VM {
                     }
                 } elif op == 106 {
                     # FINENTER slot, src
-                    if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+                    if self._gen_ret_pending
+                        and len(self.frames) == self._gen_ret_depth {
                         regs[lb + ((w >> 8) & 65535)] = js_undefined();
                     } else {
                         regs[lb + ((w >> 8) & 65535)] = regs[lb + ((w >> 24) & 65535)];
                     }
                 } elif op == 107 {
                     # FINRETHROW slot
-                    if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+                    if self._gen_ret_pending
+                        and len(self.frames) == self._gen_ret_depth {
                         st.running = False;
                     } else {
                         self._reg_throw(
@@ -39554,7 +39587,8 @@ def _vm_object_integrity(
             fi_p: int = get_fn_idx(target_i);
             prevented = fi_p >= 0
                 and fi_p < len(vm.realm.closures)
-                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p])) == 0;
+                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p]))
+                    == 0;
         } elif is_native_val(target_i) {
             prevented = js_object_prevent_extensions(native_props_ensure(target_i))
                 == 0;
@@ -44557,14 +44591,11 @@ def _vm_array_push(vm: VM, this_val: JSValue, items: list[JSValue]) -> JSValue {
                     and (vp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (vp_pk & 1) != 0 {
                     vp_lv: JSValue = vp_raw.sget(vp_pk // 16);
-                    if jsv_is_int32(vp_lv)
-                        and jsv_to_int32(vp_lv) == vp_raw.elen() {
+                    if jsv_is_int32(vp_lv) and jsv_to_int32(vp_lv) == vp_raw.elen() {
                         for vp_itm in items {
                             vp_raw.epush(vp_itm);
                         }
-                        vp_raw.sset(vp_pk // 16, js_array_len_value(
-                            vp_raw.elen()
-                        ));
+                        vp_raw.sset(vp_pk // 16, js_array_len_value(vp_raw.elen()));
                         return js_array_len_value(vp_raw.elen());
                     }
                 }
@@ -47487,15 +47518,16 @@ def _vm_invoke_napi_cb(
 }
 
 # ── WASM host imports (JS→WASM callbacks) — VM re-entry bridge ────────────────
-# Registered into ffi/wasmtime.jac's trampoline via wasm_register_host_call. The
-# trampoline (a raw C callback fired by Wasmtime) marshals WASM args into the
-# wasm_host_arg_* globals, then calls _wasm_host_call(import_index, nargs), which
-# re-enters the VM to run the JS import fn and pushes results back. The JS import
-# callbacks are registered per import index by the dispatch layer (into vm_obs).
+# Registered into wasm/bridge.jac via wasm_register_host_call. A call from wasm
+# to an imported JS function marshals its args into the wasm_host_arg_* globals
+# and calls _wasm_host_call(token, nargs), which re-enters the VM to run the JS
+# function and pushes its results back. The dispatch layer registers each JS
+# import under a per-function token (into vm_obs).
 
 """Convert one WASM arg (by its recorded kind) into a JSValue: i32→Number,
-i64→BigInt, f32/f64→Number."""
-def _wasm_arg_to_jsval(i: int) -> JSValue {
+i64→BigInt, f32/f64→Number, externref→the JSValue it carries, funcref→a
+{__jacFuncRefH:h} marker (not callable; JS can pass it back into wasm)."""
+def _wasm_arg_to_jsval(vm: VM, i: int) -> JSValue {
     k: int = wasm_host_arg_kind(i);
     if k == WASMTIME_I64 {
         return js_bigint_from_decimal_str(wasm_i64_to_decimal(wasm_host_arg_int(i)));
@@ -47503,14 +47535,62 @@ def _wasm_arg_to_jsval(i: int) -> JSValue {
     if k == WASMTIME_I32 {
         return js_number(float(wasm_host_arg_int(i)));
     }
+    if k == WASMTIME_FUNCREF {
+        h: int = wasm_host_arg_int(i);
+        if h == 0 {
+            return js_null();
+        }
+        # Hand the import the cached callable the API surface uses, not a
+        # bare marker: callbacks like `fn => fn()` need a callable, and
+        # identity against the matching export wrapper must hold. Falls
+        # back to the marker when the JS layer has not registered a
+        # resolver (engine builds without the WebAssembly builtin).
+        if "__jacWasmFuncrefResolve" in vm.globals {
+            resolver: JSValue = vm.globals["__jacWasmFuncrefResolve"];
+            out: JSValue = _vm_invoke_callback(
+                vm, resolver, js_undefined(), [js_int(h)]
+            );
+            if not vm.had_exception {
+                return out;
+            }
+            vm.had_exception = False;
+            vm.pending_exc = js_undefined();
+        }
+        return vm_wasm_funcref_marker(h);
+    }
+    if k == WASMTIME_EXTERNREF {
+        return vm_wasm_extern_value(wasm_host_arg_int(i));
+    }
     # f32 / f64
     return js_number(wasm_host_arg_dbl(i));
 }
 
 """Marshal one JS return value into a WASM result of the given kind, pushing it
 via wasm_host_push_result. i64 results accept BigInt or Number; i32/f* accept
-Number/BigInt coercions."""
-def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
+Number/BigInt coercions; externref carries any JSValue back to its id;
+funcref takes an export wrapper/marker's handle. Returns False for a funcref
+result that is not a wasm function."""
+def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> bool {
+    if want_kind == WASMTIME_EXTERNREF {
+        if jsv_is_null(v) {
+            wasm_host_push_result(want_kind, 0, 0.0);
+        } else {
+            wasm_host_push_result(want_kind, vm_wasm_extern_id(v), 0.0);
+        }
+        return True;
+    }
+    if want_kind == WASMTIME_FUNCREF {
+        if jsv_is_null(v) or jsv_is_undefined(v) {
+            wasm_host_push_result(want_kind, 0, 0.0);
+            return True;
+        }
+        fh: int = vm_wasm_funcref_h(v);
+        if fh < 0 {
+            return False;
+        }
+        wasm_host_push_result(want_kind, fh, 0.0);
+        return True;
+    }
     if want_kind == WASMTIME_I64 {
         if jsv_is_bigint_cell(v) {
             dec: str = str_from_id(jsv_to_table_id(v));
@@ -47518,23 +47598,24 @@ def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
         } elif jsv_is_int32(v) {
             wasm_host_push_result(want_kind, jsv_to_int32(v), 0.0);
         } elif jsv_is_double(v) {
-            wasm_host_push_result(want_kind, int(jsv_to_double(v)), 0.0);
+            wasm_host_push_result(want_kind, wasm_f64_to_i64(jsv_to_double(v)), 0.0);
         } else {
             wasm_host_push_result(want_kind, 0, 0.0);
         }
-        return;
+        return True;
     }
     if want_kind == WASMTIME_I32 {
         iv: int = 0;
         if jsv_is_int32(v) {
             iv = jsv_to_int32(v);
         } elif jsv_is_double(v) {
-            iv = int(jsv_to_double(v));
+            iv = wasm_f64_to_i32(jsv_to_double(v));
         } elif jsv_is_bigint_cell(v) {
-            iv = wasm_i64_from_decimal(str_from_id(jsv_to_table_id(v)));
+            big: int = wasm_i64_from_decimal(str_from_id(jsv_to_table_id(v)));
+            iv = ((big & 0xFFFF_FFFF) ^ 0x8000_0000) - 0x8000_0000;
         }
         wasm_host_push_result(want_kind, iv, 0.0);
-        return;
+        return True;
     }
     # f32 / f64
     dv: float = 0.0;
@@ -47546,6 +47627,7 @@ def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
         dv = float(wasm_i64_from_decimal(str_from_id(jsv_to_table_id(v))));
     }
     wasm_host_push_result(want_kind, 0, dv);
+    return True;
 }
 
 """Host-import bridge: run the JS import fn `import_index` with the marshalled
@@ -47564,7 +47646,7 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
     js_args: list[JSValue] = [];
     i: int = 0;
     while i < nargs {
-        js_args.append(_wasm_arg_to_jsval(i));
+        js_args.append(_wasm_arg_to_jsval(vm, i));
         i = i + 1;
     }
 
@@ -47585,7 +47667,12 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
         return 0;
     }
     if nres == 1 {
-        _wasm_push_jsval_result(wasm_host_result_kind(import_index, 0), ret);
+        if not _wasm_push_jsval_result(wasm_host_result_kind(import_index, 0), ret) {
+            wasm_set_host_throw(
+                "funcref results must be null or a WASM exported function"
+            );
+            return 1;
+        }
         return 0;
     }
     # Multi-value: JS fn should return an array of results.
@@ -47595,7 +47682,12 @@ def _wasm_host_call(import_index: int, nargs: int) -> int {
         if jsv_is_object_cell(ret) {
             elem = js_object_get(ret, str_intern_index(k));
         }
-        _wasm_push_jsval_result(wasm_host_result_kind(import_index, k), elem);
+        if not _wasm_push_jsval_result(wasm_host_result_kind(import_index, k), elem) {
+            wasm_set_host_throw(
+                "funcref results must be null or a WASM exported function"
+            );
+            return 1;
+        }
         k = k + 1;
     }
     return 0;
@@ -47615,12 +47707,51 @@ def _wasm_exc_message(vm: VM, exc: JSValue) -> str {
     return "wasm host import threw";
 }
 
-"""Register the WASM host-call bridge into ffi/wasmtime.jac (idempotent)."""
+"""Growth observer for wasm/bridge.jac: a memory.grow moved the backing
+store of `mem_h` from `old_ptr`; detach the JS ArrayBuffers wrapping it
+before the engine frees it. webassembly.js installs
+globalThis.__jacWasmMemGrow, which refreshes every MemoryObject of `mem_h`
+(buffers that no longer match the live base — the replaced one and any
+base parked by an earlier failed detach — are detached). Returns 0 when the
+old base is safe to free; non-zero makes the engine retain it until a
+later successful grow."""
+def _wasm_grow_notify(mem_h: int, old_ptr: int) -> int {
+    if len(_NATIVE_OBS_VM_STACK) == 0 {
+        # No VM is running (e.g. the native spec driver): no JS MemoryObject
+        # exists, so nothing wraps the replaced base.
+        return 0;
+    }
+    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    if not ("__jacWasmMemGrow" in vm.globals) {
+        # Engine build without the WebAssembly JS builtin.
+        return 0;
+    }
+    hook: JSValue = vm.globals["__jacWasmMemGrow"];
+    result: JSValue = _vm_invoke_callback(
+        vm, hook, js_undefined(), [js_int(mem_h), js_number(float(old_ptr))]
+    );
+    if vm.had_exception {
+        vm.had_exception = False;
+        vm.pending_exc = js_undefined();
+        # Detachment state unknown: keep the engine's fallback retention
+        # instead of risking views into freed memory.
+        return 1;
+    }
+    # The JS hook reports 0 only when every stale wrapper detached; any
+    # missing/invalid result is a failure and must retain the old allocation.
+    if not jsv_is_int32(result) or jsv_to_int32(result) != 0 {
+        return 1;
+    }
+    return 0;
+}
+
+"""Register the WASM host-call bridge into wasm/bridge.jac (idempotent)."""
 def:pub vm_wasm_init_host_bridge -> None {
     if _WASM_HOST_BRIDGE_READY {
         return;
     }
     wasm_register_host_call(_wasm_host_call);
+    wasm_register_grow_notify(_wasm_grow_notify);
     _WASM_HOST_BRIDGE_READY = True;
 }
 
@@ -50533,7 +50664,9 @@ def:pub vm_dump_pair_stats -> None {
                 + ")"
         );
         rs_gkeys: list[str] = _reg_stats_sorted_names(_REG_BRIDGE_GPKEYS, 40);
-        print("register loop: bridged GET_PROP / SET_PROP by property name @ receiver kind");
+        print(
+            "register loop: bridged GET_PROP / SET_PROP by property name @ receiver kind"
+        );
         rs_i = 0;
         while rs_i < len(rs_gkeys) and rs_i < 40 {
             print(

@@ -302,16 +302,10 @@ def _unescape_string(raw: str) -> str {
                 if esc == chr(13) and i < n and raw[i] == "\n" {
                     i = i + 1;
                 }
-            } elif esc == byte_chr(226)
-                and i + 1 < n
-                and raw[i] == byte_chr(128)
-                and (raw[i + 1] == byte_chr(168) or raw[i + 1] == byte_chr(169)) {
-                # LineContinuation with a multi-byte LineTerminator: U+2028 LINE
-                # SEPARATOR (0xE2 0x80 0xA8) or U+2029 PARAGRAPH SEPARATOR
-                # (0xE2 0x80 0xA9). Jac strings are byte-indexed, so `esc` above only
-                # captured the lead byte (0xE2); swallow the remaining two bytes so the
-                # whole terminator is removed (produces nothing).
-                i = i + 2;
+            } elif ord(esc) == 0x2028 or ord(esc) == 0x2029 {
+                # LineContinuation with U+2028 LINE SEPARATOR or U+2029
+                # PARAGRAPH SEPARATOR. `esc` is one code point, so advancing
+                # past the backslash and escape consumed it all.
             } elif esc >= "0" and esc <= "7" {
                 # Legacy octal escape (Annex B.1.2): `\` + 1-3 octal digits (first digit
                 # 0-3 allows 3 digits; 4-7 allows 2) → the character with that code.
@@ -8051,7 +8045,7 @@ obj Compiler {
     # outermost link opens a scope; the object/callee a link compiles continues
     # it, while anything else (arguments, keys) starts its own.
 
-    def _compile_chain_link(nd: ASTNode) -> None {
+    def _compile_chain_link(nd: ASTNode) {
         cont: bool = self.oc_cont;
         self.oc_cont = False;
         if not cont {
@@ -8077,7 +8071,7 @@ obj Compiler {
     }
 
     """Compile a link's object/callee as part of the same chain."""
-    def _compile_chain_object(nd: ASTNode) -> None {
+    def _compile_chain_object(nd: ASTNode) {
         if nd.ntype == ASTNodeType.CallExpression
             or nd.ntype == ASTNodeType.MemberExpression
             or nd.ntype == ASTNodeType.OptionalChainExpr {
@@ -8087,7 +8081,7 @@ obj Compiler {
     }
 
     """After a `?.` landing has pushed undefined: skip the rest of the chain."""
-    def _oc_escape -> None {
+    def _oc_escape {
         if self.oc_active and len(self.oc_scopes) > 0 {
             oe_top: list[int] = self.oc_scopes[len(self.oc_scopes) - 1];
             oe_top.append(self._jump(Opcode.JUMP));

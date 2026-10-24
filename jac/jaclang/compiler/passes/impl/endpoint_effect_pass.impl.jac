@@ -135,36 +135,51 @@ impl EndpointEffectPass._summary(ability: Ability) -> (dict[str, any] | None) {
     self._assumptions.clear();
     self._touches.clear();
     self._visited.clear();
-    declared = self._declaration_effects(ability);
-    if declared is not None {
-        self._declared_reads.update(declared["reads"]);
-        self._declared_writes.update(declared["writes"]);
-    } else {
-        body = self._resolved_body(ability);
-        if not body {
-            self._unknown = True;
+    declared: (dict[str, list[str]] | None) = None;
+    summary: dict[str, any] = {};
+    try {
+        declared = self._declaration_effects(ability);
+        if declared is not None {
+            self._declared_reads.update(declared["reads"]);
+            self._declared_writes.update(declared["writes"]);
+        } else {
+            body = self._resolved_body(ability);
+            if not body {
+                self._unknown = True;
+            }
+            for nd in body {
+                self._scan(nd);
+            }
         }
-        for nd in body {
-            self._scan(nd);
-        }
+        summary = {
+            "declared": declared is not None,
+            "writer": self._is_writer,
+            "unknown": self._unknown,
+            "touches": sorted(self._touches),
+            "reads": sorted(self._declared_reads),
+            "writes": sorted(self._declared_writes),
+            "assumptions": sorted(self._assumptions)
+        };
+    } except RecursionError {
+        summary = {
+            "declared": declared is not None,
+            "writer": self._is_writer,
+            "unknown": True,
+            "touches": sorted(self._touches),
+            "reads": sorted(self._declared_reads),
+            "writes": sorted(self._declared_writes),
+            "assumptions": sorted(self._assumptions)
+        };
+    } finally {
+        self._is_writer = was_writer;
+        self._unknown = was_unknown;
+        self._declared_reads = reads;
+        self._declared_writes = writes;
+        self._assumptions = assumptions;
+        self._touches = touches;
+        self._visited = visited;
+        self._summarizing.discard(key);
     }
-    summary = {
-        "declared": declared is not None,
-        "writer": self._is_writer,
-        "unknown": self._unknown,
-        "touches": sorted(self._touches),
-        "reads": sorted(self._declared_reads),
-        "writes": sorted(self._declared_writes),
-        "assumptions": sorted(self._assumptions)
-    };
-    self._is_writer = was_writer;
-    self._unknown = was_unknown;
-    self._declared_reads = reads;
-    self._declared_writes = writes;
-    self._assumptions = assumptions;
-    self._touches = touches;
-    self._visited = visited;
-    self._summarizing.discard(key);
     self._summaries[key] = summary;
     return summary;
 }
@@ -225,8 +240,12 @@ impl EndpointEffectPass._classify(
         self._declared_writes.update(declared["writes"]);
         self._assumptions.add("Declared effects of " + name);
     } else {
-        for nd in body_nodes {
-            self._scan(nd);
+        try {
+            for nd in body_nodes {
+                self._scan(nd);
+            }
+        } except RecursionError {
+            self._unknown = True;
         }
     }
     result: dict[str, any] = {};
