@@ -1,3 +1,4 @@
+import hashlib;
 import json;
 import os;
 import sys;
@@ -50,6 +51,15 @@ def unit_drift(
     units: list[str],
     spec: (TargetSpec | None) = None
 ) -> list[str];
+
+def _verdict_key(
+    lib_path: str,
+    sidecar: dict[str, any],
+    units: list[str],
+    spec: (TargetSpec | None) = None
+) -> str;
+
+def _verdict_path(lib_path: str) -> str;
 
 def _inspect(
     lib_path: str, expected_sha: str = "", spec: (TargetSpec | None) = None

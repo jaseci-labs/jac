@@ -143,7 +143,6 @@ impl kernel_plan(
 }
 
 impl _sha256_file(path: str) -> str {
-    import from jaclang.jac0core.cache_paths { file_sha256 }
     return file_sha256(path);
 }
 
@@ -227,8 +226,71 @@ impl _inspect(
     if not units or not isinstance(recorded, dict) or not recorded {
         return (None, ["the kernel's record names no unit sources"]);
     }
+    key = _verdict_key(lib_path, sidecar, units, spec);
+    stamp = _verdict_path(lib_path);
+    if key {
+        try {
+            with open(stamp) as f {
+                held = json.load(f);
+            }
+            if isinstance(held, dict) and held.get("key") == key {
+                kept = [str(d) for d in held.get("drift", [])];
+                return ((None if kept else sidecar), kept);
+            }
+        } except (OSError, ValueError) {}
+    }
     drift = unit_drift(sidecar, recorded, units, spec);
+    if key {
+        try {
+            atomic_write(stamp, json.dumps({"key": key, "drift": drift}).encode());
+        } except OSError {}
+    }
     return ((None if drift else sidecar), drift);
+}
+
+impl _verdict_key(
+    lib_path: str,
+    sidecar: dict[str, any],
+    units: list[str],
+    spec: (TargetSpec | None) = None
+) -> str {
+    """What a clean drift check depended on. The running compiler digest
+    covers every unit, annex and archwire.jac the compiler inputs declare by
+    content, so only units outside that cover are digested here.""";
+    lib_id = file_identity(lib_path);
+    side_id = file_identity(lib_path + LAYOUT_SIDECAR_SUFFIX);
+    if lib_id is None or side_id is None {
+        return "";
+    }
+    options = kernel_options(spec);
+    pkg = jaclang_pkg_root();
+    (roots, roster) = compiler_input_rules(pkg);
+    h = hashlib.sha256();
+    for part in (
+        repr(lib_id),
+        repr(side_id),
+        running_compiler_digest(),
+        options.base_codegen_identity(),
+        options.effective_triple(),
+        f"{sys.version_info.major}.{sys.version_info.minor}"
+    ) {
+        h.update(part.encode());
+        h.update(b"\x00");
+    }
+    for unit in units {
+        rel = os.path.relpath(os.path.realpath(unit), pkg).replace(os.sep, "/");
+        covered = any([rel == r or rel.startswith(r + "/") for r in roots])
+            and not is_roster_input(rel, roster);
+        if not covered {
+            h.update(unit_source_digest(unit).encode());
+        }
+    }
+    return h.hexdigest();
+}
+
+impl _verdict_path(lib_path: str) -> str {
+    tag = hashlib.sha256(os.path.realpath(lib_path).encode()).hexdigest()[:16];
+    return str(get_digest_ledger_dir() / f"kernel_verdict.{tag}");
 }
 
 impl _bundled_kernel -> tuple[str, dict[str, any]] | None {

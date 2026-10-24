@@ -261,7 +261,6 @@ impl get_jir_cache_dir -> Path {
 }
 
 impl compute_content_sha256(file_path: str) -> str {
-    import from jaclang.jac0core.cache_paths { file_sha256 }
     return file_sha256(file_path);
 }
 

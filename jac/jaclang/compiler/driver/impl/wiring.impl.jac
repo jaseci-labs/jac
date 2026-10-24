@@ -10,6 +10,12 @@ impl WiringSpec.postinit -> None {
             }
         }
     }
+    for path in self._raw {
+        parts = path.split(".");
+        for k in range(1, len(parts) + 1) {
+            self._raw_by_prefix.setdefault(".".join(parts[:k]), []).append(path);
+        }
+    }
     rows: list[str] = [];
     for rule in self.rules {
         srcs = "|".join([p.text for p in rule.sources]);
@@ -305,11 +311,9 @@ impl WiringSpec.consumer_wires(consumer: str) -> list[WireRec] {
     }
     dotted = consumer + ".";
     candidates: dict[int, WireRec] = {};
-    for (path, wires) in self._raw.items() {
-        if path == consumer or path.startswith(dotted) {
-            for wire in wires {
-                candidates[wire.index] = wire;
-            }
+    for path in self._raw_by_prefix.get(consumer, []) {
+        for wire in self._raw[path] {
+            candidates[wire.index] = wire;
         }
     }
     found: list[WireRec] = [];

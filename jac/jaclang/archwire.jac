@@ -102,6 +102,7 @@ graph import {
     artifacts.router as router ++> cli.commands.native
         | compiler.tests.test_stubcat_roundtrip;
     bootstrap_manifest ++> [
+        compiler.backends.native.kernel_resolve._verdict_key { is_roster_input },
         compiler.backends.native.kernel_stage0.running_kernel_target {
             NATIVE_LOWERED_PATHS,
             NATIVE_ONLY_DIR_REL,
@@ -1664,6 +1665,7 @@ graph import {
         artifacts.router.publish | compiler.driver.jir { FileLock, atomic_write },
         cache.home { get_cache_home },
         client.js_runtime.JsEngineArtifact.build
+            | compiler.backends.native.kernel_resolve._inspect
             | compiler.backends.native.link_plan
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
@@ -1684,6 +1686,10 @@ graph import {
             | toolchains.desktop
             | toolchains.store { FileLock },
         compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
+        compiler.backends.native.kernel_resolve._sha256_file
+            | compiler.driver.jir.compute_content_sha256 { file_sha256 },
+        compiler.backends.native.kernel_resolve._verdict_key { file_identity },
+        compiler.backends.native.kernel_resolve._verdict_path { get_digest_ledger_dir },
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
     ]
     jac0core.ext_registry ++> [
@@ -5821,6 +5827,11 @@ graph import compiler {
     driver.jir ++> [
         backends.es.client_kernel_cache._artifact_path { running_compiler_digest },
         backends.native.kernel_resolve._inspect { sidecar_unit_paths },
+        backends.native.kernel_resolve._verdict_key {
+            compiler_input_rules,
+            running_compiler_digest,
+            unit_source_digest
+        },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
             running_compiler_digest,
@@ -6177,6 +6188,7 @@ graph import compiler {
             endpoint_key
         },
         backends.es.esast_gen_pass.EsastGenPass.prepare { ClientManifest },
+        backends.native.kernel_resolve._verdict_key { jaclang_pkg_root },
         backends.native.kernel_resolve.source_tree_kernel_path { jaclang_pkg_root },
         backends.native.kernel_resolve.unit_drift
             | backends.native.kernel_stage0.plan_kernel_prefix
