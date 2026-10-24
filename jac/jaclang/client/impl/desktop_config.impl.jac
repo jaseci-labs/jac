@@ -222,3 +222,39 @@ impl _generate_identifier(name: str) -> str {
     }
     return cleaned;
 }
+
+impl WindowConfig.from_dict(
+    data: dict[str, any], title_fallback: str = ""
+) -> WindowConfig {
+    kw: dict[str, any] = {
+        "title": str(data.get("title", title_fallback) or title_fallback)
+    };
+    comptime for f in fields(WindowConfig) {
+        comptime if f.name != "title" {
+            kw[f.name] = f.`type(data.get(f.name, f.`default));
+        }
+    }
+    return WindowConfig(**kw);
+}
+
+impl DispatchConfig.from_dict(data: dict[str, any]) -> DispatchConfig {
+    kw: dict[str, any] = {};
+    comptime for f in fields(DispatchConfig) {
+        kw[f.name] = f.`type(data.get(f.name, f.`default));
+    }
+    return DispatchConfig(**kw);
+}
+
+impl DesktopDefaultConfig.to_dict -> dict[str, any] {
+    window: dict[str, any] = {};
+    comptime for f in fields(WindowConfig) {
+        window[f.name] = get_field(self.window, f.name);
+    }
+    window['fullscreen'] = False;
+    return {
+        'name': self.name,
+        'identifier': self.identifier,
+        'version': self.version,
+        'window': window
+    };
+}

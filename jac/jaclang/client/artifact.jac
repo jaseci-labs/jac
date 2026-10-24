@@ -14,37 +14,3 @@ obj ClientBundle {
 def client_output_dir(source_path: Path) -> Path;
 
 def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None;
-
-impl client_output_dir(source_path: Path) -> Path {
-    prepared = client_dist_for(str(source_path));
-    if prepared is not None {
-        return prepared;
-    }
-    config = get_config_for_path(source_path);
-    return client_app_dir_for(config, str(source_path)) / 'dist'
-        if config is not None
-        else source_path.parent / '.jac' / 'client' / 'dist';
-}
-
-impl prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None {
-    dist = client_dist_for(str(source_path));
-    if dist is None {
-        return None;
-    }
-    candidates = sorted(dist.`glob('client.*.js'));
-    if len(candidates) != 1 {
-        raise ClientBundleError(
-            f'Expected one client bundle in {dist}, found {len(candidates)}'
-        );
-    }
-    bundle_js = candidates[0];
-    manifest = serve_manifest_for(str(source_path)) or {};
-    client = manifest.get('client', {}) or {};
-    return ClientBundle(
-        module_name=module.__name__,
-        code=bundle_js.read_text(encoding='utf-8'),
-        client_functions=list(client.get('exports', []) or []),
-        client_globals=list(client.get('globals', []) or []),
-        hash=bundle_js.name.split('.')[1]
-    );
-}

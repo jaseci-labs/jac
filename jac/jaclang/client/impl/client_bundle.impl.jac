@@ -156,3 +156,15 @@ impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
     parts = [f"{path}:{ct_dep_digest(str(path), with_annexes=True)}" for path in paths];
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
 }
+
+impl client_program(program: JacProgram | None) -> JacProgram {
+    if program is not None {
+        return program;
+    }
+
+    current = JacRuntime.program;
+    if current is None {
+        raise ClientBundleError('No active compilation program for client products');
+    }
+    return current;
+}

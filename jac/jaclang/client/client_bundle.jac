@@ -43,15 +43,3 @@ def emitted_tree_digest(tree_root: Path) -> str;
 
 
 def client_program(program: JacProgram | None) -> JacProgram;
-
-impl client_program(program: JacProgram | None) -> JacProgram {
-    if program is not None {
-        return program;
-    }
-
-    current = JacRuntime.program;
-    if current is None {
-        raise ClientBundleError('No active compilation program for client products');
-    }
-    return current;
-}

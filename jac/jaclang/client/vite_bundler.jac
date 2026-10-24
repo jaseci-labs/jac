@@ -137,18 +137,3 @@ class ViteBundler {
         self: ViteBundler, command: list[str], build_dir: Path, sys_module: any
     ) -> any;
 }
-
-impl _build_vite_dev_command(
-    build_dir: Path, config_rel: Path, port: int, host: str = ""
-) -> list[str] {
-    cmd = _build_vite_command(
-        build_dir, ['--config', str(config_rel), '--port', str(port)]
-    );
-    if host {
-        cmd.append('--host');
-        cmd.append(host);
-    } else {
-        cmd.append('--host');
-    }
-    return cmd;
-}
