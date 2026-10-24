@@ -130,10 +130,11 @@ default_backend = "ask"   # or one of the names: the backend a first launch uses
 - The page learns the choice before the bundle runs: the build adds
   `<script src="/__jac/backend.js">` to the top of `<head>`, and the broker
   answers it with `window.__JAC_BACKEND__` and, for a remote pick, the API base.
-- Sessions are per backend. The client keys its `localStorage` entries
-  (`jac_token` among them) by the active backend, and the broker keeps one
-  session file per backend, so a token from one backend is never sent to
-  another.
+- Sessions are per backend. Before the bundle runs, `/__jac/backend.js` puts
+  the active backend's token in `localStorage["jac_token"]` and keeps each other
+  backend's under `jac_token@<name>`; the broker keeps one session file per
+  backend. A token from one backend is never sent to another, and code that
+  reads `jac_token` itself keeps working.
 - Switching saves the choice and relaunches the app into it.
 
 The UI reads and changes the choice through `backend` from `@jac/desktop`:

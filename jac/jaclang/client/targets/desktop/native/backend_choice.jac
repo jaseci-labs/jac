@@ -2,7 +2,15 @@ import json;
 import os;
 
 glob ASK: str = "ask",
-     EMBEDDED_BACKEND: str = "embedded";
+     EMBEDDED_BACKEND: str = "embedded",
+     TOKEN_SWAP_JS: str = (
+         "(function(a){try{var s=window.localStorage,p=s.getItem('jac_backend');"
+         + "if(p===a)return;var t=s.getItem('jac_token');"
+         + "if(p){if(t)s.setItem('jac_token@'+p,t);else s.removeItem('jac_token@'+p);}"
+         + "var n=s.getItem('jac_token@'+a);"
+         + "if(n)s.setItem('jac_token',n);else if(p)s.removeItem('jac_token');"
+         + "s.setItem('jac_backend',a);}catch(e){}})"
+     );
 
 
 obj BackendChoice {
@@ -71,6 +79,9 @@ impl BackendChoice.script -> str {
     base = self.api_base();
     if base {
         lines.append("window.__JAC_API_BASE_URL__=" + json.dumps(base) + ";");
+    }
+    if self.active {
+        lines.append(TOKEN_SWAP_JS + "(" + json.dumps(self.active) + ");");
     }
     return "\n".join(lines) + "\n";
 }

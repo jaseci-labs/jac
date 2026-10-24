@@ -335,3 +335,70 @@ test "a single-backend broker serves an empty script and refuses a switch" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+"""Run `/__jac/backend.js` for each pick in turn against one localStorage (under
+the bundled JS runtime) and return what the page sees after each load."""
+def _run_backend_scripts(
+    scripts: list[str], seed: dict[str, str]
+) -> list[dict[str, any]] {
+    import subprocess;
+    import from tests.support { js_runtime_or_none }
+    bun = js_runtime_or_none();
+    if bun is None {
+        return [];
+    }
+    driver = (
+        "var store="
+        + json.dumps(seed)
+        + ";"
+        + "globalThis.window={localStorage:{"
+        + "getItem:function(k){return k in store?store[k]:null;},"
+        + "setItem:function(k,v){store[k]=String(v);},"
+        + "removeItem:function(k){delete store[k];}}};"
+        + "var seen=[];var scripts="
+        + json.dumps(scripts)
+        + ";"
+        + "for(var i=0;i<scripts.length;i++){(0,eval)(scripts[i]);"
+        + "seen.push({store:JSON.parse(JSON.stringify(store)),base:window.__JAC_API_BASE_URL__||''});"
+        + "delete window.__JAC_API_BASE_URL__;}"
+        + "console.log(JSON.stringify(seen));"
+    );
+    tmp = tempfile.mkdtemp(prefix="jac_backend_js_");
+    try {
+        path = os.path.join(tmp, "drive.js");
+        Path(path).write_text(driver);
+        out = subprocess.run([bun, path], capture_output=True, text=True, timeout=60);
+        assert out.returncode == 0 , out.stderr;
+        return json.loads(out.stdout.strip().splitlines()[-1]);
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "the backend script keeps jac_token the active backend's own" {
+    backends = {"local": "embedded", "web": "https://web.example"};
+    def script_for(active: str) -> str {
+        return BackendChoice(backends=backends, active=active).script();
+    }
+    seen = _run_backend_scripts(
+        [script_for("local"), script_for("web"), script_for("local"), script_for("")],
+        {"jac_token": "tok-before"}
+    );
+    if not seen {
+        return;
+    }
+    assert seen[0]["store"] == {"jac_token": "tok-before", "jac_backend": "local"} , "a first pick adopts the token already there";
+    assert seen[1]["store"]
+        == {"jac_token@local": "tok-before", "jac_backend": "web"} , "the web backend never sees the local token";
+    assert seen[1]["base"] == "https://web.example";
+    seen2 = _run_backend_scripts(
+        [script_for("web")],
+        {"jac_token@local": "tok-local", "jac_token": "tok-web", "jac_backend": "web"}
+    );
+    assert seen2[0]["store"]["jac_token"] == "tok-web" , "an unchanged pick leaves the token alone";
+    assert seen[2]["store"]["jac_token"] == "tok-before"
+        and seen[2]["store"]["jac_backend"] == "local" , "switching back restores that backend's token";
+    assert seen[3]["store"] == seen[2]["store"] , "before a choice the script touches nothing";
+}

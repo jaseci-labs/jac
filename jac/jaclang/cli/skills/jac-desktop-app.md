@@ -58,7 +58,7 @@ backends = { local = "embedded", web = "https://my-app.example" }   # >= 2 entri
 default_backend = "ask"     # or a name; "ask" leaves the first choice to the UI
 ```
 
-The build ships every listed backend (sealed image + Postgres if one is embedded; no API base baked in). At launch the host boots only the saved choice (`<data dir>/.jac/desktop/backend.json`, else `default_backend`); with `"ask"` and nothing saved it serves just the bundle, so the UI must show a picker. The bundle learns the choice from `/__jac/backend.js`, which the build puts first in `<head>`. Tokens and broker sessions are kept per backend. Read and change it with `backend` from `@jac/desktop`:
+The build ships every listed backend (sealed image + Postgres if one is embedded; no API base baked in). At launch the host boots only the saved choice (`<data dir>/.jac/desktop/backend.json`, else `default_backend`); with `"ask"` and nothing saved it serves just the bundle, so the UI must show a picker. The bundle learns the choice from `/__jac/backend.js`, which the build puts first in `<head>`. Tokens and broker sessions are kept per backend (`localStorage["jac_token"]` always holds the active backend's). Read and change it with `backend` from `@jac/desktop`:
 
 ```jac
 import from "@jac/desktop" { backend }

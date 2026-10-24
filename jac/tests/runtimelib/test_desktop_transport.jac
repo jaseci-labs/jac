@@ -10,7 +10,7 @@ that a broker is there. These pin that with `fetch` mocked, so no host is
 needed.
 """
 
-import from "@jac/runtime" { __getLocalStorage, __jacCallFunction, __setLocalStorage }
+import from "@jac/runtime" { __jacCallFunction, __setLocalStorage }
 
 """A minimal mock `fetch` Response carrying `body` from `.json()`."""
 def _resp(body: dict[str, any], status: int = 200) -> dict[str, any] {
@@ -87,7 +87,7 @@ def _clear_choice {
     globalThis.__JAC_API_BASE_URL__ = undefined;
 }
 
-test "a remote pick sends calls to that server with that server's token" {
+test "a remote pick sends calls to that server" {
     seen = _install_desktop();
     _install_choice("web", "https://web.example");
     __setLocalStorage("jac_token", "tok-web");
@@ -101,16 +101,4 @@ test "a remote pick sends calls to that server with that server's token" {
     assert seen[0]["init"]["headers"]["Authorization"] == "Bearer tok-web";
     _clear_choice();
     _clear_desktop();
-}
-
-test "each backend keeps its own token" {
-    _install_choice("web", "https://web.example");
-    __setLocalStorage("jac_token", "tok-web");
-    _install_choice("local", "");
-    assert __getLocalStorage("jac_token") == "" , "the local backend must not see the web token";
-    __setLocalStorage("jac_token", "tok-local");
-    _install_choice("web", "https://web.example");
-    assert __getLocalStorage("jac_token") == "tok-web";
-    _clear_choice();
-    assert __getLocalStorage("jac_token") != "tok-web" , "a single-backend app keeps the plain key";
 }
