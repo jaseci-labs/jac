@@ -5793,6 +5793,10 @@ impl NativeBuiltinEmitter.emit_str(
             if unsigned
             else b.sext(arg_val, ir.IntType(64));
     }
+    if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 64 {
+        p._str_finish(b, buf_ptr, p._emit_fmt_int(b, arg_val, buf_ptr, unsigned));
+        return buf_ptr;
+    }
     fmt = p._get_snprintf_fmt("%llu" if unsigned else "%lld");
     fmt_ptr = b.bitcast(fmt, i8p, name="str.fmt.ptr");
     str_n32 = b.call(

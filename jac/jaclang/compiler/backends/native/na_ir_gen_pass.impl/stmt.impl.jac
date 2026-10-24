@@ -2012,9 +2012,176 @@ impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | 
     return lowered;
 }
 
+impl NaIRGenPass._same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool {
+    """Do `a` and `b` name the same key without running code: one local, or equal literals?""";
+    if isinstance(a, uni.Name) and isinstance(b, uni.Name) {
+        return a.value == b.value and a.sym is not None and a.sym is b.sym;
+    }
+    if isinstance(a, uni.String) and isinstance(b, uni.String) {
+        return a.lit_value == b.lit_value;
+    }
+    if isinstance(a, uni.Int) and isinstance(b, uni.Int) {
+        return a.lit_value == b.lit_value;
+    }
+    return False;
+}
+
+impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
+    """`d[k] = d.get(k, c) op e` with one hash of `k` and one probe of `d`.
+
+    The `get` hashed `k` and probed the table, then the store hashed and probed
+    again to find where `k` goes. When `d` and `k` are plain names (or `k` a
+    literal), `c` and `e` run no code (literals or names) and the values are
+    scalars, the key is hashed once, one probe finds its value slot, and the
+    new value is written into the slot in place; only a key that is missing
+    inserts, with the hash already in hand. Nothing between the probe and the
+    store can change the table, so the slot stays valid.
+    """;
+    if nd.aug_op is not None or len(nd.target) != 1 or self._nogc_headerless() {
+        return False;
+    }
+    tgt = nd.target[0];
+    if not isinstance(tgt, uni.AtomTrailer)
+        or not isinstance(tgt.right, uni.IndexSlice)
+        or tgt.right.is_range
+        or not tgt.right.slices
+        or len(tgt.right.slices) != 1
+        or not isinstance(tgt.target, uni.Name) {
+        return False;
+    }
+    d_node = tgt.target;
+    slice0 = tgt.right.slices[0];
+    key_node = slice0.start if slice0?.start else slice0;
+    val = nd.value;
+    if not isinstance(val, uni.BinaryExpr) or not isinstance(val.op, uni.Token) {
+        return False;
+    }
+    aug = {
+        Tok.PLUS: "+=",
+        Tok.MINUS: "-=",
+        Tok.STAR_MUL: "*=",
+        Tok.BW_OR: "|=",
+        Tok.BW_AND: "&=",
+        Tok.BW_XOR: "^="
+    }.get(
+        val.op.name
+    );
+    call = val.left;
+    if aug is None
+        or not isinstance(call, uni.FuncCall)
+        or not isinstance(call.target, uni.AtomTrailer)
+        or not call.target.is_attr
+        or not isinstance(call.target.target, uni.Name)
+        or not isinstance(call.target.right, uni.Name)
+        or call.target.right.value != "get"
+        or call.target.target.value != d_node.value
+        or call.target.target.sym is not d_node.sym {
+        return False;
+    }
+    params = list(call.params or []);
+    if len(params) != 2
+        or isinstance(params[0], uni.KWPair)
+        or isinstance(params[1], uni.KWPair) {
+        return False;
+    }
+    if not self._same_pure_key(params[0], key_node) {
+        return False;
+    }
+    for part in (params[1], val.right) {
+        if not isinstance(part, (uni.Name, uni.Int, uni.Float)) {
+            return False;
+        }
+    }
+    dict_type_key = self._dict_key_of(d_node);
+    helpers = self.dict_helpers.get(dict_type_key) if dict_type_key else None;
+    if helpers is None or "lookup_ph" not in helpers or "hash" not in helpers {
+        return False;
+    }
+    val_type = helpers["val_type"];
+    if not (val_type == ir.IntType(64) or isinstance(val_type, ir.DoubleType)) {
+        return False;
+    }
+    dval = self._codegen_expr(d_node);
+    if dval is None or self._dict_key_reconcile(dict_type_key, dval) != dict_type_key {
+        return False;
+    }
+    dval = self._unwrap_opt_container(dval);
+    kval = self._codegen_expr(key_node);
+    if kval is None {
+        return False;
+    }
+    kval = self._coerce_type(kval, helpers["key_type"]);
+    b = self.builder;
+    fn = b.function;
+    (_ph_fn, static_h) = self._static_key_op(helpers, "set", key_node);
+    h = static_h
+        if static_h is not None
+        else b.call(helpers["hash"], [kval], name="dcu.hash");
+    slot = b.call(helpers["lookup_ph"], [dval, kval, h], name="dcu.slot");
+    hit = b.icmp_unsigned("!=", slot, ir.Constant(slot.type, None), name="dcu.hit");
+    hit_bb = fn.append_basic_block("dcu.hit");
+    miss_bb = fn.append_basic_block("dcu.miss");
+    cur_bb = fn.append_basic_block("dcu.cur");
+    b.cbranch(hit, hit_bb, miss_bb);
+    b.position_at_end(hit_bb);
+    cur_hit = b.load(slot, name="dcu.old");
+    hit_end = b.block;
+    b.branch(cur_bb);
+    b.position_at_end(miss_bb);
+    fallback = self._codegen_expr(params[1]);
+    if fallback is None {
+        return False;
+    }
+    cur_miss = self._coerce_type(fallback, val_type);
+    miss_end = self.builder.block;
+    self.builder.branch(cur_bb);
+    b = self.builder;
+    b.position_at_end(cur_bb);
+    cur = b.phi(val_type, name="dcu.cur");
+    cur.add_incoming(cur_hit, hit_end);
+    cur.add_incoming(cur_miss, miss_end);
+    rhs = self._codegen_expr(val.right);
+    new = (
+        self._apply_scalar_aug_op(
+            cur,
+            rhs,
+            aug,
+            val.right,
+            target_type=tgt.type,
+            checked=self._is_sized_node(tgt) or self._is_sized_node(val)
+        )
+            if rhs is not None
+            else None
+    );
+    if new is None {
+        self.emit(E5092, node_override=nd.value, kind="expression", name="dict update");
+        return True;
+    }
+    new = self._coerce_type(new, val_type);
+    b = self.builder;
+    store_bb = fn.append_basic_block("dcu.store");
+    insert_bb = fn.append_basic_block("dcu.insert");
+    done_bb = fn.append_basic_block("dcu.done");
+    b.cbranch(hit, store_bb, insert_bb);
+    b.position_at_end(store_bb);
+    b.store(new, slot);
+    b.branch(done_bb);
+    b.position_at_end(insert_bb);
+    self._rc_call_with_ctx(
+        helpers["set_ph"], [dval, kval, new, h], op="dict_set", loc=new.jac_loc
+    );
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    self._release_owned_args([kval], op="dict_set");
+    return True;
+}
+
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
+        return;
+    }
+    if self._codegen_dict_counter_update(nd) {
         return;
     }
     pending_value: (ir.Value | None) = None;

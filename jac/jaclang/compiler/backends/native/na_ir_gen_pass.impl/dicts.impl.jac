@@ -128,6 +128,8 @@ impl NaIRGenPass._emit_dict_helpers(
         "get": core["get"],
         "get_ph": core["get_ph"],
         "lookup": core["lookup"],
+        "lookup_ph": core["lookup_ph"],
+        "hash": core["hash"],
         "len": len_fn,
         "contains": core["contains"],
         "contains_ph": core["contains_ph"],
