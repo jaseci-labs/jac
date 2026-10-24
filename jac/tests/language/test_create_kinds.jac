@@ -187,7 +187,7 @@ test "create --kind mobile scaffolds a single-app mobUI project" {
     assert "client" not in plan.flags , "the plan carries no client flag";
     assert plan.spec.ui == "mobui";
     assert plan.command_line() == "jac run main.jac --dev" , plan.command_line();
-    assert plan.build_line() == "jac build main.jac" , plan.build_line();
+    assert plan.build_line() == "jac build" , plan.build_line();
     assert plan.entry_path.endswith("main.jac") , plan.entry_path;
     _cleanup();
 }

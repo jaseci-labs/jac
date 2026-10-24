@@ -27,7 +27,7 @@ impl RunPlan.command_line -> str {
 }
 
 impl RunPlan.build_line -> str {
-    parts = ["jac", "build", self._target()];
+    parts = ["jac", "build", self.app];
     platform = self.flags.get("platform", "");
     if platform {
         parts += ["--platform", str(platform)];

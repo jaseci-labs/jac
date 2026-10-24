@@ -96,7 +96,9 @@ test "kind native-binary -> run executes it; jac build writes the binary" {
     assert "output" in p.flags;
     # The build output path is jac build's business, never a run flag.
     assert p.command_line() == "jac run main.jac" , p.command_line();
-    assert p.build_line() == "jac build main.jac" , p.build_line();
+    # An implicit app needs no target: `jac build` resolves it, and a bare
+    # entry basename would lose a nested entry-point's directory.
+    assert p.build_line() == "jac build" , p.build_line();
 }
 
 test "kind native-lib -> build-only: its run line is the build line" {
@@ -105,7 +107,7 @@ test "kind native-lib -> build-only: its run line is the build line" {
     assert p.verb == "native";
     assert p.flags.get("lib") == True;
     # The kind routes `jac build` to the shared library; no flag is needed.
-    assert p.command_line() == "jac build lib.jac" , p.command_line();
+    assert p.command_line() == "jac build" , p.command_line();
     assert p.build_line() == p.command_line();
 }
 
@@ -192,7 +194,7 @@ test "kind mobile -> serve the Expo dev server (QR code for a phone)" {
     assert p.spec.ui == "mobui";
     assert "as" not in p.flags;
     assert p.command_line() == "jac run app.jac --dev" , p.command_line();
-    assert p.build_line() == "jac build app.jac" , p.build_line();
+    assert p.build_line() == "jac build" , p.build_line();
 }
 
 test "kind mobile with a platform carries it on the plan" {
@@ -456,11 +458,7 @@ test "jac run executes a native-binary project and builds nothing" {
 }
 
 test "jac run refuses a build-only kind with the jac build line" {
-    for (kind, line) in [
-        ("py-package", "jac build"),
-        ("native-lib", "jac build lib.jac"),
-
-    ] {
+    for (kind, line) in [("py-package", "jac build"), ("native-lib", "jac build"), ] {
         d = _mk_project(f"kind = \"{kind}\"\nentry-point = \"lib\"\n", "lib.jac");
         old = os.getcwd();
         os.chdir(d);
