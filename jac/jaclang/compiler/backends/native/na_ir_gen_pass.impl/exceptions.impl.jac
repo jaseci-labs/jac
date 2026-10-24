@@ -1512,6 +1512,10 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     raise walks the chain down to the handler's saved head, releasing each
     crossed frame's locals, before it jumps. A frame whose locals need no
     cleanup (scalars, borrowed values, parameters) links nothing.
+
+    The record's allocas go first in the entry block: the context lookup is
+    inlined, and an alloca behind its branch would leave the entry block and
+    become a dynamic stack adjustment.
     """;
     if self._builder is None or self._gen_ctx is not None {
         return;
@@ -1627,9 +1631,7 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if cached is not None {
         entry_blk.instructions.remove(cached);
     }
-    # (the record's allocas go first: the context lookup is inlined, and
-    # an alloca behind its branch would leave the entry block and become a
-    # dynamic stack adjustment)
+
     node_ty = self._unwind_node_type();
     ab = ir.IRBuilder(entry_blk);
     ab.position_at_start(entry_blk);
@@ -1699,19 +1701,20 @@ impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
     if name.startswith("__rc_") or name.startswith("llvm.") {
         return True;
     }
-    return name in (
-        "__jac_exception_context",
-        "__jac_exception_context.inl",
-        "__jac_str_stamp",
-        "snprintf",
-        "malloc",
-        "calloc",
-        "realloc",
-        "free",
-        "memcpy",
-        "memmove",
-        "memset"
-    );
+    return name
+        in (
+            "__jac_exception_context",
+            "__jac_exception_context.inl",
+            "__jac_str_stamp",
+            "snprintf",
+            "malloc",
+            "calloc",
+            "realloc",
+            "free",
+            "memcpy",
+            "memmove",
+            "memset"
+        );
 }
 
 impl NaIRGenPass._unwind_raise_sites(
@@ -1729,6 +1732,12 @@ impl NaIRGenPass._unwind_raise_sites(
     no record at all. A forward pass over the finished body tracks which
     slots may hold a reference. Returns each own raise site with the slots
     that may hold one there, or None when the frame needs its record.
+
+    A slot whose address goes anywhere but a load or a store's target can
+    change behind the pass's back, so the frame keeps its record. On entry to
+    the function every slot may hold anything until its null store. A raise
+    must end its block, followed by `unreachable`, since the release goes
+    between the raise and what precedes it.
     """;
     if os.environ.get("JAC_NO_UNWIND_SKIP") {
         return None;
@@ -1742,8 +1751,7 @@ impl NaIRGenPass._unwind_raise_sites(
     for (_name, slot) in slots {
         tracked[id(slot)] = slot;
     }
-    # (a slot whose address goes anywhere but a load or a store's target can
-    # change behind the pass's back)
+
     for blk in func.blocks {
         for inst_value in blk.instructions {
             inst: any = inst_value;
@@ -1771,14 +1779,18 @@ impl NaIRGenPass._unwind_raise_sites(
         }
         if isinstance(term, ir.SwitchInstr) {
             succs[id(blk)] = [term.default_bb] + [dest for (_val, dest) in term.cases];
-        } elif getattr(term, "opname", "") in ("br", "ret", "ret void", "unreachable") {
-            succs[id(blk)] = [op for op in term.operands if isinstance(op, ir.Block)];
+        } elif getattr(term, "opname", "")
+            in ("br", "ret", "ret void", "unreachable") {
+            succs[id(blk)] = [
+                op
+                for op in term.operands
+                if isinstance(op, ir.Block)
+            ];
         } else {
             return None;
         }
     }
-    # Which slots may hold a reference on entry to each block: until its
-    # null store an entry slot holds anything.
+
     held_in: dict[int, set[int]] = {};
     for blk in func.blocks {
         held_in[id(blk)] = set();
@@ -1829,8 +1841,6 @@ impl NaIRGenPass._unwind_raise_sites(
             callee: any = inst.callee;
             name = callee.name if isinstance(callee, ir.Function) else None;
             if name == "__jac_exc_raise" {
-                # (the release goes between the raise and what precedes it,
-                # which takes the raise ending its block)
                 if len(blk.instructions) < 2
                     or blk.instructions[-2] is not inst
                     or not isinstance(blk.instructions[-1], ir.Unreachable) {

@@ -51,7 +51,7 @@ def guard(i: int) -> int {
     }
 }
 
-def run() -> int {
+def run -> int {
     TABLE.append(Item(v=1, tag="one"));
     TABLE.append(None);
     TABLE.append(Item(v=-5, tag="minus"));

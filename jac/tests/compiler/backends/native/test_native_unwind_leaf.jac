@@ -61,9 +61,8 @@ test "frames and handlers fetch the context through the inlined fast path" {
     assert '@"__jac_exception_context.inl"()' in body_of(text, "keep");
     found = re.search(r'define [^\n]*@"__jac_exception_context\.inl"\(\)[^\n]*', text);
     assert found is not None , "no inlined lookup";
-    assert "alwaysinline" in found.group(0) or re.search(
-        r'attributes #\d+ = \{[^}]*alwaysinline', text
-    ) is not None;
+    assert "alwaysinline" in found.group(0)
+        or re.search(r'attributes #\d+ = \{[^}]*alwaysinline', text) is not None;
     guard = body_of(text, "guard");
     assert '@"__jac_region_tls_used"' in guard;
     assert "region.depth.read" in guard;
@@ -95,12 +94,18 @@ test "raises from frames without a record leak nothing" {
                 timeout=900
             );
             assert comp.returncode == 0 , comp.stderr[-1500:];
-            proc = subprocess.run([binary], capture_output=True, text=True, timeout=120);
+            proc = subprocess.run(
+                [binary], capture_output=True, text=True, timeout=120
+            );
             assert proc.returncode == 0 , proc.stderr[-800:];
         }
         assert proc.stdout.splitlines()[0] == "24080280" , proc.stdout[:400];
         assert "RC LIVE OBJECTS at exit" in proc.stdout , proc.stdout[-400:];
-        leaks = [line for line in proc.stdout.splitlines() if "<- LEAK" in line];
+        leaks = [
+            line
+            for line in proc.stdout.splitlines()
+            if "<- LEAK" in line
+        ];
         # (the global table itself is still alive at exit)
         assert len(leaks) == 1 and "type=list_ptr" in leaks[0] , f"{memory}: {leaks[:5]}";
     }

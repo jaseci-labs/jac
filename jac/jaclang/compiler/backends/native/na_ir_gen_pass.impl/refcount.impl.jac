@@ -116,6 +116,12 @@ impl NaIRGenPass._emit_rc_mark_threaded -> None {
 }
 
 impl NaIRGenPass._emit_rc_helpers -> None {
+    """The refcount runtime helpers: allocation, retain, release and free.
+
+    Only a debug build reads the alloc id, so a release build's allocation
+    writes the header magic alone and spares every allocation the shared
+    alloc-id counter.
+    """;
     if self._nogc_headerless() {
         i8_ptr_hl = ir.IntType(8).as_pointer();
         i64_hl = ir.IntType(64);
@@ -258,8 +264,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
         b.store(b.or_(_magic_base, _aid_lo32, name="aid.magic"), _aid_ptr);
     } else {
-        # (only a debug build reads the alloc id: a release build writes the
-        # magic alone and spares every allocation the shared counter)
         _aid_old = ir.Constant(i64, 0);
         b.store(_magic_base, _aid_ptr);
     }

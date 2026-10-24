@@ -25,14 +25,20 @@ impl NaIRGenPass._region_kernel_fn(name: str) -> ir.Function {
 }
 
 impl NaIRGenPass._emit_region_tls_slot -> None {
+    """The thread-local slot for the region block, and its `_used` flag.
+
+    A thread sets its block only when it first enters a region, and the setter
+    stores the flag first: while the flag is clear no thread has a block, so a
+    `try` takes its region depth as 0 and an allocation its current region as
+    null, without a call.
+    """;
     if REGION_GBL_GET in self.extern_funcs {
         return;
     }
     (_get_fn, set_fn) = self._emit_tls_slot(
         REGION_TLS_GLOBAL, REGION_TLS_GET, REGION_TLS_SET
     );
-    # (a thread sets its block only when it first enters a region: the flag
-    # tells a `try` that no thread has one, so its depth is 0 without a call)
+
     used_gv = ir.GlobalVariable(
         self.llvm_module, ir.IntType(8), name=f"{REGION_TLS_GLOBAL}_used"
     );
@@ -177,7 +183,9 @@ impl NaIRGenPass._region_depth_if_used -> ir.Value {
     done_bb = fn.append_basic_block("region.depth.done");
     used = b.load_atomic(used_gv, "monotonic", 1, name="region.used");
     br = b.cbranch(
-        b.icmp_unsigned("!=", used, ir.Constant(ir.IntType(8), 0), name="region.used.on"),
+        b.icmp_unsigned(
+            "!=", used, ir.Constant(ir.IntType(8), 0), name="region.used.on"
+        ),
         read_bb,
         done_bb
     );

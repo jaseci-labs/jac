@@ -64,7 +64,10 @@ with entry {
     TABLE.append(Item(v=-5, tag="minus"));
     TABLE.append(Item(v=500, tag="big"));
     total = 0;
-    errors: list[str] = [];
+}
+
+glob errors: list[str] = [];
+with entry {
     for r in range(40) {
         for i in range(5) {
             try {

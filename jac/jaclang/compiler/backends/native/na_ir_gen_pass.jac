@@ -2961,10 +2961,12 @@ walker NaIRGenPass(CompilerPass) {
     def _unwind_shadow_slots(
         func: ir.Function, slots: list[tuple[str, ir.Value]]
     ) -> dict[int, ir.Value];
+
     def _unwind_nothrow_callee(name: str) -> bool;
     def _unwind_raise_sites(
         func: ir.Function, slots: list[tuple[str, ir.Value]]
     ) -> (list[tuple[ir.Instruction, set[int]]] | None);
+
     def _unwind_release_at_raises(
         func: ir.Function,
         slots: list[tuple[str, ir.Value]],
