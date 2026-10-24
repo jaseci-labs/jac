@@ -368,6 +368,76 @@ test "lintfix moves separate-impls bodies into the module's impl annex" {
     }
 }
 
+test "lintfix moves impls-in-annex impls and sibling annexes into an impl folder" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = make_project();
+        (Path(repo) / "jac.toml").write_text(
+            '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+                + '[check.lint]\nselect = ["impls-in-annex"]\n'
+        );
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            decl = "obj Foo {\n    def bar -> int;\n}\n";
+            proj = Path(repo);
+            (proj / "inline.jac").write_text(decl + "\n" + ANNEX_SRC);
+            (proj / "side.jac").write_text(decl);
+            (proj / "side.impl.jac").write_text(ANNEX_SRC);
+            (proj / "both.jac").write_text(
+                "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n\n"
+                    + "impl Foo.baz -> int {\n    return 2;\n}\n"
+            );
+            (proj / "both.impl.jac").write_text(ANNEX_SRC);
+            (proj / "plat.native.jac").write_text(decl);
+            (proj / "plat.native.impl.jac").write_text(ANNEX_SRC);
+            (proj / "settled.jac").write_text(decl);
+            (proj / "impl").mkdir();
+            settled_src = "impl Foo.bar -> int {\n    return 1;\n}\n";
+            (proj / "impl" / "settled.impl.jac").write_text(settled_src);
+            inputs = [str(p) for p in sorted(proj.glob("*.jac"))];
+            reset_state();
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                if mode == "lint" {
+                    ret = lint_cmd(inputs, fix=True);
+                } else {
+                    ret = fmt_cmd(inputs, lintfix=True, jobs=mode[-1]);
+                }
+            }
+            left = sorted(p.name for p in proj.glob("*.impl.jac"));
+            inline_text = (proj / "inline.jac").read_text();
+            inline_annex = (proj / "impl" / "inline.impl.jac").read_text();
+            side_annex = (proj / "impl" / "side.impl.jac").read_text();
+            both_text = (proj / "both.jac").read_text();
+            both_annex = (proj / "impl" / "both.impl.jac").read_text();
+            plat_annex = (
+                proj / "plat.native.impl" / "plat.native.impl.jac"
+            ).read_text();
+            settled_annex = (proj / "impl" / "settled.impl.jac").read_text();
+            reset_state();
+            inputs = [str(p) for p in sorted(proj.glob("**/*.jac"))];
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                again = fmt_cmd(inputs, lintfix=True, check=True);
+            }
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] every move is fixable, got {ret}";
+        assert left == [] , f"[{mode}] no annex stays beside its module, got {left}";
+        assert "impl" not in inline_text and "return 1" in inline_annex , (
+            f"[{mode}] an impl in the module moves to impl/, got:\n{inline_text!r}"
+        );
+        assert "return 1" in side_annex , f"[{mode}] a sibling annex moves to impl/";
+        assert "impl" not in both_text , f"[{mode}] got:\n{both_text!r}";
+        assert "Foo.bar" in both_annex and "Foo.baz" in both_annex , (
+            f"[{mode}] the moved impl joins the relocated annex, got:\n{both_annex!r}"
+        );
+        assert "return 1" in plat_annex , f"[{mode}] a dotted stem keeps its folder";
+        assert settled_annex == settled_src , f"[{mode}] a placed annex is untouched";
+        assert again == 0 , f"[{mode}] a second run must find nothing to move";
+    }
+}
+
 test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {
     broken = "impl Foo.bar -> int {\n    return 1;\n";
     for mode in ("fmt-0", "fmt-2", "lint") {

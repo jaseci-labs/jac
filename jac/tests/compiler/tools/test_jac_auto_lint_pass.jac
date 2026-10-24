@@ -1627,6 +1627,53 @@ test "W3055 separate-impls is on under all and off under default" {
     assert "impl Foo.bar(" not in format_separate_impls(["default", "strip-comments"]);
 }
 
+"""Lint-format `source` as mod.jac under `select`; return the text and W3056 count."""
+def format_impls_in_annex(source: str, select: list[str]) -> tuple[str, int] {
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=select));
+    set_config(config);
+    try {
+        with tempfile.TemporaryDirectory() as tmpdir {
+            path = os.path.join(tmpdir, "mod.jac");
+            with open(path, "w") as f {
+                f.write(source);
+            }
+            prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+            flagged = [
+                w
+                for w in prog.warnings_had
+                if w.code is not None and w.code.code == "W3056"
+            ];
+            return (prog.mod.main.gen.jac, len(flagged));
+        }
+    } finally {
+        set_config(None);
+    }
+}
+
+glob IMPLS_IN_MODULE = (
+         "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n\n"
+         "impl Foo.bar -> int {\n    return 1;\n}\n\n"
+         "glob LIMIT: int = 3;\n\n"
+         "impl Foo.baz -> int {\n    return 2;\n}\n\n"
+         "def top -> int;\n"
+     );
+
+test "W3056 impls-in-annex flags each impl and sinks them below the module" {
+    (formatted, flagged) = format_impls_in_annex(IMPLS_IN_MODULE, ["impls-in-annex"]);
+    assert flagged == 2 , flagged;
+    head = formatted[:formatted.index("impl Foo.bar")];
+    assert "glob LIMIT: int = 3;" in head and "def top -> int;" in head , formatted;
+    assert formatted.index("impl Foo.bar") < formatted.index("impl Foo.baz");
+    assert formatted.rstrip().endswith("return 2;\n}") , formatted;
+}
+
+test "W3056 impls-in-annex is on under all and off under default" {
+    assert format_impls_in_annex(IMPLS_IN_MODULE, ["all"])[1] == 2;
+    assert format_impls_in_annex(IMPLS_IN_MODULE, ["default"])[1] == 0;
+    assert format_impls_in_annex(IMPLS_IN_MODULE, ["separate-impls"])[1] == 0;
+}
+
 test "deslop rules are disabled under default select" {
     input_path = auto_lint_fixture_path("deslop.jac");
     config = JacConfig();

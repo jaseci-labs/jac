@@ -2702,13 +2702,19 @@ impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
     }
     folder = os.path.dirname(os.path.realpath(path));
     if path.endswith(".impl.jac") {
-        base = discover_base_file(path);
-        if base is not None and os.path.dirname(os.path.realpath(base)) == folder {
-            self.ctx.emit(
-                W3056,
-                node_override=module,
-                what=f"Annex '{os.path.basename(path)}' belongs inside an impl folder"
-            );
+        parts = os.path.basename(path)[:-len(".impl.jac")].split(".");
+        while parts {
+            if os.path.isfile(os.path.join(folder, ".".join(parts) + ".jac")) {
+                self.ctx.emit(
+                    W3056,
+                    node_override=module,
+                    what=f"Annex '{os.path.basename(
+                        path
+                    )}' belongs inside an impl folder"
+                );
+                break;
+            }
+            parts = parts[:-1];
         }
         return;
     }
