@@ -990,3 +990,99 @@ impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
     }
     return False;
 }
+
+impl NaIRGenPass._tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any {
+    """The access tag of scalar TBAA type `name` under the module's root.""";
+    found = cache.get(name);
+    if found is not None {
+        return found;
+    }
+    i64 = ir.IntType(64);
+    type_node = self.llvm_module.add_metadata([name, tbaa_root, ir.Constant(i64, 0)]);
+    tag = self.llvm_module.add_metadata([type_node, type_node, ir.Constant(i64, 0)]);
+    cache[name] = tag;
+    return tag;
+}
+
+impl NaIRGenPass._tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None) {
+    """Which header field (0 len, 1 cap, 2 data) of a list `gep` addresses, if any.""";
+    base_ty: any = gep.pointer.type;
+    if not isinstance(base_ty, ir.PointerType) or id(base_ty.pointee) not in list_tys {
+        return None;
+    }
+    idx = list(gep.indices);
+    if len(idx) != 2 or not isinstance(idx[0], ir.Constant) or not isinstance(idx[1], ir.Constant) {
+        return None;
+    }
+    if idx[0].constant != 0 or idx[1].constant not in (0, 1, 2) {
+        return None;
+    }
+    return int(idx[1].constant);
+}
+
+impl NaIRGenPass._apply_list_tbaa -> None {
+    """Tell LLVM that list headers and list elements never overlap.
+
+    The IR carried no alias information, so a store into a list element might
+    have changed any list's length or data pointer as far as LLVM knew: a loop
+    over `c[j] += a * b[j]` reloaded both lengths and both data pointers after
+    every store, and the bounds checks could not leave the loop. Each load and
+    store of a list header field (`len`, `cap`, `data`, by field index, the same
+    for every list type) now gets its own TBAA tag, and so does each element
+    access whose address indexes a `data` pointer loaded right there, by the
+    element's type (all pointers share one tag). Everything else stays untagged,
+    which TBAA treats as possibly aliasing anything, so no access is ever told
+    apart from memory it might share. `JAC_NO_TBAA=1` turns this off.
+    """;
+    import os;
+    if os.environ.get("JAC_NO_TBAA") or not self.list_types {
+        return;
+    }
+    list_tys: set[int] = set();
+    for lt in self.list_types.values() {
+        list_tys.add(id(lt));
+    }
+    cache: dict[str, any] = {};
+    tbaa_root = self.llvm_module.add_metadata(["jac.tbaa"]);
+    header = {0: "jac.list.len", 1: "jac.list.cap", 2: "jac.list.data"};
+    for fn_value in self.llvm_module.functions {
+        fn: any = fn_value;
+        if fn.is_declaration {
+            continue;
+        }
+        data_loads: set[int] = set();
+        elem_sites: list[tuple[any, any]] = [];
+        for blk in fn.blocks {
+            for inst_value in blk.instructions {
+                inst: any = inst_value;
+                is_load = isinstance(inst, ir.LoadInstr);
+                if not is_load and not isinstance(inst, ir.StoreInstr) {
+                    continue;
+                }
+                ptr = inst.operands[0] if is_load else inst.operands[1];
+                if not isinstance(ptr, ir.GEPInstr) {
+                    continue;
+                }
+                field = self._tbaa_list_field(ptr, list_tys);
+                if field is not None {
+                    inst.set_metadata("tbaa", self._tbaa_tag(tbaa_root, cache, header[field]));
+                    if is_load and field == 2 {
+                        data_loads.add(id(inst));
+                    }
+                    continue;
+                }
+                if len(list(ptr.indices)) == 1 {
+                    elem_sites.append((inst, ptr));
+                }
+            }
+        }
+        for (inst, gep) in elem_sites {
+            if id(gep.pointer) not in data_loads {
+                continue;
+            }
+            vt = inst.type if isinstance(inst, ir.LoadInstr) else inst.operands[0].type;
+            kind = "ptr" if isinstance(vt, ir.PointerType) else str(vt);
+            inst.set_metadata("tbaa", self._tbaa_tag(tbaa_root, cache, f"jac.list.elem.{kind}"));
+        }
+    }
+}

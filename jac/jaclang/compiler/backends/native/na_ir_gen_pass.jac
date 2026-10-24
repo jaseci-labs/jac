@@ -3620,6 +3620,9 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_exc_push(b: ir.IRBuilder, state: ir.Value) -> None;
     def _emit_exc_pop(b: ir.IRBuilder) -> None;
     def _volatilize_setjmp_locals -> None;
+    def _apply_list_tbaa -> None;
+    def _tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any;
+    def _tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None);
     def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
     def _block_successors(block: ir.Block) -> list[ir.Block];
     def _push_exception_handler(

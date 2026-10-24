@@ -263,6 +263,7 @@ impl NaIRGenPass._lower_module -> None {
         if not self.scope.binds_function("__jac_glob_init") {
             self._emit_glob_init_func();
         }
+        self._apply_list_tbaa();
         self._volatilize_setjmp_locals();
         self._exc_context_cache = {};
         self.module.gen.ir_module = self.llvm_module;
