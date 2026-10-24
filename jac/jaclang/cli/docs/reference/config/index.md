@@ -771,8 +771,8 @@ one vendored as a git submodule. There is no environment variable for it.
 - The choice is made once per process tree: child processes run the same
   compiler, even when they start in another directory.
 
-When the source is in use, every command prints
-`jac dev mode — using compiler source at <path>`.
+When the source is in use, every command prints a `jac dev mode` message
+with the source path.
 
 ### [network]
 
