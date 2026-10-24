@@ -113,37 +113,3 @@ walker PlacementApplyPass(CompilerPass) {
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
 }
-
-impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
-    """What syntax alone decides about placement is decided here, before the
-    module is typed: client seeds, and whether the module's native preference
-    is open. A construct that closes it (an async or by-llm ability, inline
-    Python, an endpoint, a Python-only import, persistent-graph access) is
-    known from the tree, and the checker needs the answer to know whether a
-    native-only idiom is a requirement or an error.""";
-    import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
-    if ir_in.loc is not None {
-        self.prog.analysis.placement_refusals.pop(
-            os.path.realpath(ir_in.loc.mod_path), None
-        );
-    }
-    if ir_in.gen.native_undecided and ir_in.loc is not None and ir_in.loc.mod_path {
-        import from jaclang.compiler.placement.placement { native_blocker_scan }
-        base_dir = os.path.dirname(os.path.abspath(ir_in.loc.mod_path)) or ".";
-        closed = native_blocker_scan(ir_in, base_dir).first();
-        if closed {
-            ir_in.gen.native_undecided = False;
-            ir_in.gen.native_closed_why = closed;
-        }
-    }
-    refresh_placement_module(ir_in, self.prog);
-    if solve_module_placement(ir_in, self.prog) {
-        placement_work(self.prog).changed(ir_in);
-    }
-    report_serverless_kind_errors(self, ir_in);
-    return ir_in;
-}
-
-impl PlacementApplyPass.run_walk with uni.Module entry {
-    self.module = self._run_impl(here);
-}

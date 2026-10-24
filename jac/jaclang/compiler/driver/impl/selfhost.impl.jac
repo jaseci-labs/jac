@@ -114,3 +114,14 @@ impl SelfHostCache.exit_bytecode {
 impl SelfHostCache.at_outermost_bytecode -> bool {
     return self._bytecode_depth == 1;
 }
+
+impl SelfHostCache.program.getter -> JacProgram {
+    if (self._program is None) {
+        import from jaclang.runtime.runtime { JacRuntime }
+        prog = JacProgram();
+        prog._compiler = JacRuntime.get_compiler();
+        prog.internal = True;
+        self._program = prog;
+    }
+    return self._program;
+}

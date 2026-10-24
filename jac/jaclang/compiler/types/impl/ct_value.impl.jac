@@ -1113,3 +1113,7 @@ impl ct_mangle(v: CtValue) -> str {
         + format(_fnv32(data, 2166136261), "08x")
         + format(_fnv32(data, 3735928559), "08x");
 }
+
+impl CtValue.is_deferred.getter -> bool {
+    return isinstance(self, CtDeferred);
+}

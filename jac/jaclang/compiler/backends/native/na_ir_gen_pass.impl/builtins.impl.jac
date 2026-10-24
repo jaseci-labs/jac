@@ -2510,3 +2510,11 @@ impl NaIRGenPass._codegen_str_splitlines(
     b.position_at_end(done);
     return result;
 }
+
+impl _restore_entry[V](table: dict[str, V], key: str, prior: (V | None)) {
+    if prior is None {
+        table.pop(key, None);
+    } else {
+        table[key] = prior;
+    }
+}
