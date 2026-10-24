@@ -166,3 +166,38 @@ test "an unlowered builtin in the bundle is an error, never silence" {
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+# The toolchain precompile (jaclang's own seal) compiles every module with
+# `skip_analysis`, which stops analysis for code that runs on the server. A
+# module that declares client code still needs the checker's facts, because its
+# client codegen reads them: without them `len(xs)` was emitted bare (E5103).
+# The error used to be reported and then ignored, since a blocking error raised
+# during codegen blocked nothing, so jaclang/client/auth_contract.jac and three
+# siblings sealed with bare builtins in their client code.
+test "a client module compiled without asked-for analysis still lowers its builtins" {
+    base = os.path.realpath(tempfile.mkdtemp(prefix="jac_codegen_facts_"));
+    try {
+        with open(os.path.join(base, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "counts"\n\n[placement.pins]\n"counts" = "client"\n'
+            );
+        }
+        path = os.path.join(base, "counts.jac");
+        with open(path, "w") as f {
+            f.write(
+                "def:pub count(xs: list[str]) -> int {\n"
+                "    return len(xs) + len([x for x in range(3)]);\n"
+                "}\n"
+            );
+        }
+        prog = JacProgram();
+        code = prog._get_compiler().get_bytecode(
+            full_target=path, target_program=prog, skip_analysis=True
+        );
+        assert "E5103" not in _codes(prog) , _codes(prog);
+        assert code is not None , f"no bytecode: {_codes(prog)}";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
