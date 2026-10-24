@@ -9,6 +9,8 @@ enum CallKind {
     INTRINSIC = "intrinsic"
 }
 
+def import_binds_name(nd: UniNode, name: str) -> bool;
+
 def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol | None);
 
 def imported_module_name(expr: Expr) -> str | None;

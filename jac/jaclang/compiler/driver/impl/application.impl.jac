@@ -628,6 +628,7 @@ impl _prepare(
     dev: any,
     console: any
 ) -> PreparedApplication {
+    program.forget_failed_modules();
     inputs: dict[str, str] = {};
     selfhost = program._get_compiler().selfhost;
     def capture(path: str) {

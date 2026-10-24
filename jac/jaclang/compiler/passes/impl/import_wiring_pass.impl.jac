@@ -281,34 +281,37 @@ impl ImportWiringPass._check_module(mod: Module, spec: WiringSpec) -> None {
     }
     owners: (dict[str, list[(Ability | ImplDef)]] | None) = None;
     for wire in spec.consumer_wires(consumer) {
-        scope = spec.consumer_scope(consumer, wire);
-        target = ".".join([consumer, *scope]);
-        if scope {
-            if owners is None {
-                owners = scope_owners(mod);
+        for scope in spec.consumer_scopes(consumer, wire) {
+            target = ".".join([consumer, *scope]);
+            if scope {
+                if owners is None {
+                    owners = scope_owners(mod);
+                }
+                if ".".join(scope) not in owners {
+                    self.ctx.emit(
+                        E1142,
+                        node_override=mod,
+                        module=target,
+                        detail=f"'{consumer}' has no function or method '{'.'.join(
+                            scope
+                        )}'"
+                    );
+                    continue;
+                }
             }
-            if ".".join(scope) not in owners {
-                self.ctx.emit(
-                    E1142,
-                    node_override=mod,
-                    module=target,
-                    detail=f"'{consumer}' has no function or method '{'.'.join(scope)}'"
-                );
+            if wire.is_injected {
                 continue;
             }
-        }
-        if wire.is_injected {
-            continue;
-        }
-        for binding in wire.bindings() {
-            if (".".join(scope), binding.key()) not in declared {
-                self.ctx.emit(
-                    E1147,
-                    node_override=mod,
-                    name=binding.bound_name() or binding.provider,
-                    consumer=target,
-                    line=wire.line
-                );
+            for binding in wire.bindings() {
+                if (".".join(scope), binding.key()) not in declared {
+                    self.ctx.emit(
+                        E1147,
+                        node_override=mod,
+                        name=binding.bound_name() or binding.provider,
+                        consumer=target,
+                        line=wire.line
+                    );
+                }
             }
         }
     }
@@ -476,8 +479,9 @@ impl unused_wire_bindings(mod: Module) -> list[UnusedBinding] {
     }
     exports = ModuleFacts.literal_exports(mod) or set();
     reads = ScopeReads(mod=mod);
-    for wire in wires {
-        scope = ".".join(spec.consumer_scope(consumer, wire));
+    for (wire, scope) in [
+        (w, ".".join(s)) for w in wires for s in spec.consumer_scopes(consumer, w)
+    ] {
         for binding in wire.bindings() {
             name = binding.bound_name();
             at = bound.get((scope, binding.key()));

@@ -119,8 +119,12 @@ impl CodeGenTarget.interop_manifest.setter(value: InteropManifest) -> None {
     self._interop_manifest = value;
 }
 
-impl str_len_tag(length: int) -> int {
-    return (length << STR_LEN_TAG_SHIFT) | STR_LEN_TAG_BIT;
+impl str_len_tag(length: int, is_ascii: bool = False) -> int {
+    return (
+        (length << STR_LEN_TAG_SHIFT)
+        | (STR_ASCII_TAG_BIT if is_ascii else 0)
+        | STR_LEN_TAG_BIT
+    );
 }
 
 impl native_safe_sym(src: str) -> str {
@@ -185,13 +189,13 @@ impl _reserved_c_symbols -> frozenset[str] {
         "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
         "opendir readdir closedir getpid getpwuid_r getpwnam_r getuid uname "
         "gnu_get_libc_version errno __error "
-        "pipe poll waitpid posix_spawnp posix_spawn_file_actions_init "
+        "pipe poll fcntl ioctl tcgetattr tcsetattr cfgetispeed cfgetospeed cfsetispeed cfsetospeed waitpid posix_spawnp posix_spawn_file_actions_init "
         "posix_spawn_file_actions_destroy posix_spawn_file_actions_addopen "
         "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
         "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
-        "pthread_setspecific "
+        "pthread_setspecific sched_yield "
         "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "

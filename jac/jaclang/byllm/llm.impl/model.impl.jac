@@ -58,7 +58,36 @@ impl Model.postinit -> None {
 }
 
 
-glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"];
+glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"],
+     _NO_FORCED_TOOL_MODELS: set[str] = set();
+
+def _forced_tool_rejected(e: Exception) -> bool;
+
+def _without_forced_output(params: dict[str, any]) -> dict[str, any];
+
+def _forced_output_params(params: dict[str, any]) -> dict[str, any];
+
+impl _forced_tool_rejected(e: Exception) -> bool {
+    text = str(e);
+    return "tool_choice" in text and "not supported" in text;
+}
+
+impl _without_forced_output(params: dict[str, any]) -> dict[str, any] {
+    out = dict(params);
+    out.pop("response_format", None);
+    choice = out.get("tool_choice");
+    if isinstance(choice, dict) or choice in ("required", "any") {
+        out["tool_choice"] = "auto";
+    }
+    return out;
+}
+
+impl _forced_output_params(params: dict[str, any]) -> dict[str, any] {
+    if str(params.get("model", "")) in _NO_FORCED_TOOL_MODELS {
+        return _without_forced_output(params);
+    }
+    return params;
+}
 
 def _model_lacks_tool_role(model_name: str) -> bool;
 
@@ -231,12 +260,26 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = litellm.completion(
-                api_key=self.api_key or None,
-                api_base=self.api_base or None,
-                num_retries=0,
-                **params
-            );
+            sent = _forced_output_params(params);
+            try {
+                response = litellm.completion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **sent
+                );
+            } except Exception as rejected {
+                if sent is not params or not _forced_tool_rejected(rejected) {
+                    raise;
+                }
+                _NO_FORCED_TOOL_MODELS.add(str(params.get("model", "")));
+                response = litellm.completion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **_without_forced_output(params)
+                );
+            }
         }
     } except Exception as e {
         self._raise_mapped_provider_error(e);
@@ -317,12 +360,26 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
             response = await async_client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = await litellm.acompletion(
-                api_key=self.api_key or None,
-                api_base=self.api_base or None,
-                num_retries=0,
-                **params
-            );
+            sent = _forced_output_params(params);
+            try {
+                response = await litellm.acompletion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **sent
+                );
+            } except Exception as rejected {
+                if sent is not params or not _forced_tool_rejected(rejected) {
+                    raise;
+                }
+                _NO_FORCED_TOOL_MODELS.add(str(params.get("model", "")));
+                response = await litellm.acompletion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **_without_forced_output(params)
+                );
+            }
         }
     } except Exception as e {
         self._raise_mapped_provider_error(e);

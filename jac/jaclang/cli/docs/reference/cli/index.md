@@ -175,7 +175,7 @@ A named file otherwise runs under the project that owns it: the nearest `jac.tom
 
 Like Python, everything after the target is passed to the script. Jac flags must come **before** the target.
 
-**App-aware run.** `jac run` resolves the target app -- the named app, `[project] default-app`, or the sole app (a project with no `[apps]` table is one implicit app) -- reads its *kind* (`[apps.<name>] kind`, or `[project] kind`, or inferred from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`), **serve** server kinds (`service`, `web-app`, ...), or **build** artifact kinds (`native-binary`, `native-lib`, `py-package`, `js-package`). Flag defaults with a `config_key` (`--port`, `--cache`, ...) come from the app's *effective config* -- base `jac.toml` merged with its `[apps.<name>.*]` overlays and the active profile. Use `jac run --show` to preview the plan and the equivalent command without running it. A serve-only flag against a kind that executes (or the reverse) is a hard error, not a silent no-op -- pass `--serve` / `--no-serve` to override the kind deliberately. See [project kinds](../../quick-guide/project-kinds.md), [Workspaces & Apps](../apps.md) and [config `[apps]`](../config/index.md#apps).
+**App-aware run.** `jac run` resolves the target app -- the named app, `[project] default-app`, or the sole app (a project with no `[apps]` table is one implicit app) -- reads its *kind* (`[apps.<name>] kind`, or `[project] kind`, or inferred from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`, and `native-binary`, compiled in-process), or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a build-only kind with no program to run (`native-lib`, `py-package`, `js-package`) is refused with the `jac build` command that makes it. Flag defaults with a `config_key` (`--port`, `--cache`, ...) come from the app's *effective config* -- base `jac.toml` merged with its `[apps.<name>.*]` overlays and the active profile. Use `jac run --show` to preview the plan and the equivalent command without running it. A serve-only flag against a kind that executes (or the reverse) is a hard error, not a silent no-op -- pass `--serve` / `--no-serve` to override the kind deliberately. See [project kinds](../../quick-guide/project-kinds.md), [Workspaces & Apps](../apps.md) and [config `[apps]`](../config/index.md#apps).
 
 **Diagnostics modes:**
 
@@ -316,14 +316,17 @@ jac run --dev --no-client
 # Print the endpoint docs without starting a server
 jac run --faux
 
-# Mobile dev for the app named `mobile` (Metro Fast Refresh on a device or simulator)
-jac run --dev mobile
+# Serve the app named `mobile` to your phone: scan the printed QR code with Expo Go
+jac run mobile
+
+# The same, through an Expo tunnel when the phone can't reach this machine
+jac run --tunnel mobile
+
+# Open it in Expo Go on the iOS simulator (no app build)
+jac run --platform ios mobile
 
 # The same app in a browser, through react-native-web
-jac run --dev --platform web mobile
-
-# Build the mobile app for iOS and launch it on the simulator
-jac run --platform ios mobile
+jac run --platform web mobile
 
 # Evict a stuck session holding this project's database
 jac run --takeover
@@ -1661,6 +1664,7 @@ Every bucket has a **retention policy**:
 | `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
+| `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
 | `toolchains-downloads` | verified toolchain archives | unused 14 days |
 | `toolchains-installed`, `toolchains-build` | installed toolchains and builds | unused 90 days |
 | `models` | byLLM model weights | pinned: never collected, `purge` removes it |
@@ -2089,7 +2093,8 @@ jac setup mobile
 | `jac create` | `--kind web-app` | Create full-stack project template |
 | `jac create` | `--app <name> --kind <kind>` | Add an app to the current project |
 | `jac create` | `--skip` | Skip npm package installation |
-| `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs (device/simulator, or a browser via react-native-web) |
+| `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs (Expo Go on an emulator/simulator, or a browser via react-native-web; omit for the QR code) |
+| `jac run` | `--tunnel` | Serve a mobile app through an Expo tunnel instead of the LAN |
 | `jac build` | `--as client` | Build only the app's client bundle |
 | `jac run` | `--fleet` | Run service apps as separate local processes |
 | `jac install` | `--npm` | Add npm (client-side) dependency |

@@ -1238,6 +1238,9 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 }
 
 impl KubernetesTarget._apply_ops_rbac(namespace: str, ops_rbac: dict[str, any]) {
+    self._apply_provider_service_account(
+        ops_rbac["service_account"], namespace, client.CoreV1Api()
+    );
     try {
         rbac_v1 = client.RbacAuthorizationV1Api();
         role = ops_rbac["role"];
@@ -2000,6 +2003,31 @@ impl KubernetesTarget._destroy_ops_rbac(app_name: str, namespace: str) {
             }
         }
     }
+
+    core_v1 = client.CoreV1Api();
+    sa_name = ops_sa_name(app_name);
+    try {
+        existing = core_v1.read_namespaced_service_account(
+            name=sa_name, namespace=namespace
+        );
+        if ops_sa_is_ours(existing.metadata.labels, app_name) {
+            core_v1.delete_namespaced_service_account(
+                name=sa_name, namespace=namespace
+            );
+        } elif self.logger {
+            self.logger.warning(
+                f"Leaving ServiceAccount '{sa_name}' in place: it was not "
+                f"created by jac-scale for '{app_name}'"
+            );
+        }
+    } except ApiException as e {
+        if e.status != 404 and self.logger {
+            self.logger.warning(
+                f"Could not remove ServiceAccount '{sa_name}' ({e.status}); "
+                f"delete it by hand if the Ops Console was enabled"
+            );
+        }
+    }
 }
 
 impl KubernetesTarget._wait_for_namespace_deletion(
@@ -2024,7 +2052,7 @@ impl KubernetesTarget._wait_for_namespace_deletion(
 
 impl KubernetesTarget._reclaim_namespace(namespace: str, core_v1: any) -> bool {
     try {
-        delete_namespace(namespace);
+        delete_namespace(core_v1, namespace);
     } except ApiException as e {
         if e.status != 403 {
             raise;
