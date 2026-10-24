@@ -537,8 +537,11 @@ impl JacAutoLintPass.enter_module with uni.Module entry {
     }
     if self.report_only {
         self._separate_impls(here, here.body);
+        self._sink_impls(here, list(here.body));
+        self._check_annex_placement(here);
         return;
     }
+    self._check_annex_placement(here);
     module = here;
     if self.main_module is None {
         self.main_module = module;
@@ -601,7 +604,9 @@ impl JacAutoLintPass.enter_module with uni.Module entry {
     if not self.ctx._is_suppressed(W3003) {
         new_body = self.combine_consecutive_glob(new_body);
     }
-    new_body.extend(self._separate_impls(module, new_body));
+    floated = self._separate_impls(module, new_body);
+    new_body = self._sink_impls(module, new_body);
+    new_body.extend(floated);
     module._role_set(BodyRole, new_body);
     module._invalidate_sub_node_tab();
     new_kid: list[uni.UniNode] = [];
@@ -2654,6 +2659,80 @@ impl JacAutoLintPass._separate_impls(
         floated.append(impl_node);
     }
     return floated;
+}
+
+impl JacAutoLintPass._sink_impls(
+    module: uni.Module, body: list[(uni.ElementStmt | uni.String | uni.EmptyToken)]
+) -> list[(uni.ElementStmt | uni.String | uni.EmptyToken)] {
+    path = module.loc.mod_path;
+    if self.ctx._is_suppressed(W3056)
+        or not path
+        or path.endswith((".impl.jac", ".test.jac"))
+        or self._is_file_excluded(path) {
+        return body;
+    }
+    sunk: list[(uni.ElementStmt | uni.String | uni.EmptyToken)] = [];
+    for st in body {
+        if isinstance(st, uni.ImplDef) and st.loc.mod_path == path {
+            target = ".".join(nm.sym_name for nm in st.target);
+            if self.ctx.emit(
+                W3056,
+                node_override=st,
+                what=f"impl '{target}' belongs in an annex inside an impl folder"
+            ) {
+                sunk.append(st);
+            }
+        }
+    }
+    if not sunk or self.report_only {
+        return body;
+    }
+    kept = [
+        st
+        for st in body
+        if not any(st is s for s in sunk)
+    ];
+    return kept + sunk;
+}
+
+impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
+    path = module.loc.mod_path;
+    if self.ctx._is_suppressed(W3056) or not path or self._is_file_excluded(path) {
+        return;
+    }
+    folder = os.path.dirname(os.path.realpath(path));
+    if path.endswith(".impl.jac") {
+        base = discover_base_file(path);
+        if base is not None and os.path.dirname(os.path.realpath(base)) == folder {
+            self.ctx.emit(
+                W3056,
+                node_override=module,
+                what=f"Annex '{os.path.basename(path)}' belongs inside an impl folder"
+            );
+        }
+        return;
+    }
+    if path.endswith(".test.jac") {
+        return;
+    }
+    seen: set[str] = set();
+    for st in module.body {
+        annex = st.loc.mod_path;
+        if not isinstance(st, uni.ImplDef)
+            or not annex
+            or annex == path
+            or annex in seen
+            or not annex.endswith(".impl.jac")
+            or os.path.dirname(os.path.realpath(annex)) != folder {
+            continue;
+        }
+        seen.add(annex);
+        self.ctx.emit(
+            W3056,
+            node_override=st,
+            what=f"Annex '{os.path.basename(annex)}' belongs inside an impl folder"
+        );
+    }
 }
 
 impl JacAutoLintPass._in_floated_spec(nd: uni.UniNode) -> bool {

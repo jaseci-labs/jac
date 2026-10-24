@@ -91,6 +91,11 @@ walker JacAutoLintPass(TreePass) {
         quiet: bool = False
     ) -> None;
 
+    def _sink_impls(
+        module: uni.Module, body: list[(uni.ElementStmt | uni.String | uni.EmptyToken)]
+    ) -> list[(uni.ElementStmt | uni.String | uni.EmptyToken)];
+
+    def _check_annex_placement(module: uni.Module) -> None;
     def _in_floated_spec(nd: uni.UniNode) -> bool;
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;

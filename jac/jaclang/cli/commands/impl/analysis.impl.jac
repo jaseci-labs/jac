@@ -450,10 +450,22 @@ impl lint(
             }
             error_count = fixed_count + unfixable_count;
 
+            import from jaclang.compiler.driver.bccache { discover_annex_files }
+            annex_paths = (
+                discover_annex_files(str(path_obj), '.impl.jac')
+                + discover_annex_files(str(path_obj), '.test.jac')
+            );
+            moves = _annex_moves(str(path_obj), annex_paths, {});
+            float_source = "";
             if fixed_count > 0 {
                 (formatted_code, float_target, float_text) = _float_impls_to_annex(
-                    prog, str(path_obj), str(path_obj), formatted_code
+                    prog, str(path_obj), str(path_obj), formatted_code, moves
                 );
+                for (old_path, new_path) in moves.items() {
+                    if float_target and new_path == float_target {
+                        float_source = old_path;
+                    }
+                }
                 float_prog: (JacProgram | None) = None;
                 if float_target {
                     float_prog = JacProgram.jac_str_formatter(
@@ -493,15 +505,17 @@ impl lint(
                     _restore_files(backups);
                     raise;
                 }
+                if float_source {
+                    Path(float_source).unlink(missing_ok=True);
+                }
             }
 
-            import from jaclang.compiler.driver.bccache { discover_annex_files }
-            annex_paths = (
-                discover_annex_files(str(path_obj), '.impl.jac')
-                + discover_annex_files(str(path_obj), '.test.jac')
-            );
             for annex_path in annex_paths {
-                if os.path.realpath(annex_path) in covered {
+                if annex_path == float_source {
+                    continue;
+                }
+                home = moves.get(annex_path, "");
+                if not home and os.path.realpath(annex_path) in covered {
                     continue;
                 }
                 try {
@@ -522,7 +536,13 @@ impl lint(
                     error_count += 1;
                     unfixable_count += 1;
                 }
-                if (annex_formatted and annex_formatted != annex_original) {
+                if home and annex_formatted {
+                    os.makedirs(os.path.dirname(home), exist_ok=True);
+                    with open(home, 'w', encoding='utf-8') as f {
+                        f.write(annex_formatted);
+                    }
+                    Path(annex_path).unlink(missing_ok=True);
+                } elif (annex_formatted and annex_formatted != annex_original) {
                     with open(annex_path, 'w', encoding='utf-8') as f {
                         f.write(annex_formatted);
                     }
@@ -542,6 +562,9 @@ impl lint(
     import os;
     covered: set[str] = {os.path.realpath(f) for f in all_files};
     for file_path in all_files {
+        if fix and not os.path.exists(file_path) {
+            continue;
+        }
         total_files += 1;
         if fix {
             (success, errors, unfixable) = lint_fix_file(file_path, covered);
@@ -588,8 +611,20 @@ def _format_single_file_worker(
 ) -> dict[str, any];
 
 def _float_impls_to_annex(
-    prog: JacProgram, file_path: str, logical: str, formatted: str
+    prog: JacProgram,
+    file_path: str,
+    logical: str,
+    formatted: str,
+    moves: dict[str, str]
 ) -> tuple[str, str, str];
+
+def _annex_home(file_path: str, annex_path: str) -> str;
+
+def _annex_slot(annex_path: str) -> str;
+
+def _annex_moves(
+    file_path: str, annex_paths: list[str], logical: dict[str, str]
+) -> dict[str, str];
 
 def _snapshot_file(path: str) -> (bytes | None);
 
@@ -611,8 +646,72 @@ impl _restore_files(backups: dict[str, (bytes | None)]) -> None {
     }
 }
 
+impl _annex_home(file_path: str, annex_path: str) -> str {
+    import os;
+
+    stem = os.path.basename(file_path)[:-len(".jac")];
+    parent = os.path.dirname(file_path);
+    folder = os.path.join(parent, stem + ".impl")
+        if "." in stem
+        else os.path.join(parent, "impl");
+    return os.path.join(folder, os.path.basename(annex_path));
+}
+
+impl _annex_slot(annex_path: str) -> str {
+    import os;
+
+    return os.path.join(
+        os.path.basename(os.path.dirname(annex_path)), os.path.basename(annex_path)
+    );
+}
+
+impl _annex_moves(
+    file_path: str, annex_paths: list[str], logical: dict[str, str]
+) -> dict[str, str] {
+    import os;
+
+    moves: dict[str, str] = {};
+    if file_path.endswith((".impl.jac", ".test.jac")) {
+        return moves;
+    }
+    folder = os.path.dirname(os.path.realpath(file_path));
+    for ap in annex_paths {
+        if not ap.endswith(".impl.jac")
+            or os.path.dirname(os.path.realpath(ap)) != folder {
+            continue;
+        }
+        home = _annex_home(file_path, ap);
+        if os.path.exists(home) {
+            continue;
+        }
+        annex_logical = logical.get(ap, ap);
+        try {
+            annex_prog = JacProgram.jac_str_formatter(
+                read_file_with_encoding(ap), annex_logical, auto_lint=True
+            );
+        } except (OSError, ValueError, TypeError, AttributeError) {
+            continue;
+        }
+        annex_real = os.path.realpath(annex_logical);
+        for warning in annex_prog.warnings_had {
+            if warning.code is not None
+                and warning.code.code == "W3056"
+                and warning.loc.mod_path
+                and os.path.realpath(warning.loc.mod_path) == annex_real {
+                moves[ap] = home;
+                break;
+            }
+        }
+    }
+    return moves;
+}
+
 impl _float_impls_to_annex(
-    prog: JacProgram, file_path: str, logical: str, formatted: str
+    prog: JacProgram,
+    file_path: str,
+    logical: str,
+    formatted: str,
+    moves: dict[str, str]
 ) -> tuple[str, str, str] {
     import os;
 
@@ -623,7 +722,7 @@ impl _float_impls_to_annex(
     floated = 0;
     for warning in prog.warnings_had {
         if warning.code is not None
-            and warning.code.code == "W3055"
+            and warning.code.code in ("W3055", "W3056")
             and warning.loc.mod_path
             and os.path.realpath(warning.loc.mod_path) == own_path {
             floated += 1;
@@ -666,14 +765,27 @@ impl _float_impls_to_annex(
         if os.path.basename(a) == stem + ".impl.jac"
             or os.path.realpath(os.path.dirname(a)) == os.path.realpath(folder)
     ];
+    owned = [
+        a
+        for a in owned
+        if a not in moves
+    ]
+        + [
+            a
+            for a in owned
+            if a in moves
+        ];
     if owned {
-        target = owned[0];
+        target = moves.get(owned[0], owned[0]);
+        source = owned[0];
     } elif "." in stem {
         target = os.path.join(folder, stem + ".impl.jac");
+        source = target;
     } else {
         target = os.path.join(os.path.dirname(file_path), "impl", stem + ".impl.jac");
+        source = target;
     }
-    existing = read_file_with_encoding(target) if os.path.exists(target) else "";
+    existing = read_file_with_encoding(source) if os.path.exists(source) else "";
     annex_text = (existing.rstrip() + "\n\n" + moved) if existing.strip() else moved;
     return (base, target, annex_text);
 }
@@ -915,6 +1027,15 @@ impl format(
                                     if os.path.realpath(p) in owned
                                 }
                             );
+                        }
+                    }
+                }
+                if not write_errors and not to_screen {
+                    for gone in res.get('removed_annexes', []) {
+                        try {
+                            Path(gone).unlink(missing_ok=True);
+                        } except OSError as e {
+                            write_errors.append(f"Error removing '{gone}': {e}");
                         }
                     }
                 }
@@ -1837,6 +1958,7 @@ impl _format_single_file_worker(
         'formatted_code': None,
         'impl_results': [],
         'floated_annexes': [],
+        'removed_annexes': [],
         'cache_status': 'off'
     };
     if not path_obj.exists() {
@@ -1853,6 +1975,7 @@ impl _format_single_file_worker(
     annex_error_count = 0;
 
     annex_paths: list[str] = [];
+    moves: dict[str, str] = {};
     annex_formatted_map: dict[str, str] = {};
     annex_logical_map: dict[str, str] = {};
     if lintfix {
@@ -1901,6 +2024,7 @@ impl _format_single_file_worker(
             for ap in annex_paths {
                 ap_obj = Path(ap);
                 if ap_obj.exists() {
+                    unit_parts.append(_annex_slot(ap).encode());
                     unit_parts.append(ap_obj.read_bytes());
                 }
             }
@@ -1964,8 +2088,9 @@ impl _format_single_file_worker(
             float_target = "";
             float_text = "";
             if lintfix {
+                moves = _annex_moves(str(path_obj), annex_paths, annex_logical_map);
                 (formatted_code, float_target, float_text) = _float_impls_to_annex(
-                    prog, str(path_obj), effective_logical, formatted_code
+                    prog, str(path_obj), effective_logical, formatted_code, moves
                 );
             }
             changed = formatted_code != original_code;
@@ -1979,11 +2104,14 @@ impl _format_single_file_worker(
                 float_done = False;
                 float_ok = False;
                 for annex_path in annex_paths {
+                    home = moves.get(annex_path, "");
+                    out_path = home or annex_path;
                     is_float_target = bool(float_target)
-                        and os.path.realpath(annex_path)
+                        and os.path.realpath(out_path)
                             == os.path.realpath(float_target);
                     if covered is not None
                         and not is_float_target
+                        and not home
                         and (os.path.realpath(annex_path) in covered) {
                         continue;
                     }
@@ -2035,7 +2163,14 @@ impl _format_single_file_worker(
                     annex_formatted_map[annex_path] = (
                         annex_formatted if annex_formatted is not None else ""
                     );
-                    if (annex_formatted and annex_formatted != annex_original) {
+                    if home and annex_formatted {
+                        result['changed'] = True;
+                        result['floated_annexes'].extend([home, annex_path]);
+                        if not check {
+                            result['impl_results'].append((home, annex_formatted));
+                            result['removed_annexes'].append(annex_path);
+                        }
+                    } elif (annex_formatted and annex_formatted != annex_original) {
                         result['changed'] = True;
                         if not check {
                             result['impl_results'].append(
@@ -2083,7 +2218,7 @@ impl _format_single_file_worker(
                     ];
                     return result;
                 } elif float_target {
-                    result['floated_annexes'] = [float_target];
+                    result['floated_annexes'].append(float_target);
                 }
             }
         } except (OSError, ValueError, TypeError, AttributeError) {
@@ -2123,7 +2258,14 @@ impl _format_single_file_worker(
                         formatted_code.encode() if changed else path_obj.read_bytes()
                     );
                     new_parts = [main_clean];
+                    if moves {
+                        annex_ok = False;
+                    }
                     for ap in annex_paths {
+                        if not annex_ok {
+                            break;
+                        }
+                        new_parts.append(_annex_slot(ap).encode());
                         if ap in annex_formatted_map {
                             new_parts.append(annex_formatted_map[ap].encode());
                         } elif Path(ap).exists() {

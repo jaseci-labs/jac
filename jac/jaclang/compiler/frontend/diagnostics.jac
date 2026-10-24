@@ -2141,6 +2141,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "`jac fmt --lintfix` leaves the declaration in place and moves its body"
          " into an `impl` at the bottom of the module."
      ),
+     W3056 = _warn(
+         "W3056",
+         Category.LINT,
+         "{what} [impls-in-annex]",
+         help="On under select = [\"all\"] (not [\"default\"]) or when "
+         "\"impls-in-annex\" is named in [check.lint] select. Every impl lives in"
+         " its module's `impl/<module>.impl.jac` annex (or `<module>.impl/` for a"
+         " dotted stem such as a platform variant), never in the module itself or"
+         " beside it. `jac fmt --lintfix` moves the impls and relocates the annex."
+     ),
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
          "combine-has": "W3002",
@@ -2174,7 +2184,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "strip-docstrings": "W3051",
          "remove-wired-import": "W3053",
          "remove-dead-import": "W3054",
-         "separate-impls": "W3055"
+         "separate-impls": "W3055",
+         "impls-in-annex": "W3056"
      },
      E5001 = _err(
          "E5001",

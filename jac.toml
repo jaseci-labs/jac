@@ -103,7 +103,8 @@ exclude = [
 # "all" enables every autolint rule, including the ones "default" leaves off:
 # the "deslop" rules (W3050/W3051) that remove all comments and docstrings, and
 # separate-impls (W3055), which moves every function, method and ability body
-# into an impl at the bottom of its module. `jac fmt --lintfix`,
+# into an impl at the bottom of its module, and impls-in-annex (W3056), which
+# then moves every impl into the module's annex under impl/. `jac fmt --lintfix`,
 # `jac precommit`, and CI's `jac fmt --check --lintfix` apply them to every
 # non-excluded .jac file.
 select = ["all"]

@@ -893,7 +893,7 @@ graph import {
         | cli.commands.transform.py2jac
         | project.compiler_host.ProjectHost.parse_python { CompilationProduct }
     compiler.driver.program ++> [
-        cli.commands.analysis._check_file_job
+        cli.commands.analysis._annex_moves
             | cli.commands.architecture
             | cli.commands.execution.debug
             | cli.commands.fix._format_source
@@ -916,26 +916,27 @@ graph import {
             | server.hmr.HotReloader._classify_declarations
             | testing.cl_test_runner.compile_cl_module
             | testing.test_runner._fresh_jac_state { JacProgram },
-        cli.commands.analysis._float_impls_to_annex
+        cli.commands.analysis._check_file_job
             | cli.commands.fix._verify_claims
             | cli.commands.transform.jac2py
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
             | dist.precompile_bytecode.prebuild_native_closure
             | testing.cl_test_runner.module_is_client { JacProgram },
-        cli.commands.analysis._format_single_file_worker
+        cli.commands.analysis._float_impls_to_annex
             | cli.commands.transform.py2jac
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py
             | dist.precompile_bytecode.precompile_native_unit { JacProgram },
-        cli.commands.analysis.explain
+        cli.commands.analysis._format_single_file_worker
             | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse
             | dist.precompile_bytecode.precompile_unit_context { JacProgram },
-        cli.commands.analysis.grammar
+        cli.commands.analysis.explain
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
             | dist.precompile_bytecode.seal_native { JacProgram },
-        cli.commands.analysis.lint
+        cli.commands.analysis.grammar
             | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
             JacProgram
         },
+        cli.commands.analysis.lint { JacProgram },
         dist.publish.builder._backend_source { JacProgram as JacProgramRt },
         dist.publish.builder._module_is_client_source { JacProgram as JacProgramRt },
     ]
@@ -2329,12 +2330,13 @@ graph import {
         TemplateRegistry
     }
     project.textio ++> [
-        cli.commands.analysis._float_impls_to_annex
+        cli.commands.analysis._annex_moves
             | cli.commands.architecture
             | cli.commands.transform.py2jac
             | compiler.driver.compiler
             | compiler.tools.lang_tools
             | runtime.traceback_render { read_file_with_encoding },
+        cli.commands.analysis._float_impls_to_annex { read_file_with_encoding },
         cli.commands.analysis._format_single_file_worker { read_file_with_encoding },
         cli.commands.analysis._iter_jac_files | cli.commands.architecture._arch_files {
             drop_git_ignored
@@ -5616,7 +5618,9 @@ graph import compiler {
         backends.native.kernel_stage0.unit_line_count | tools.code_intel {
             discover_annex_files
         },
-        tests.test_batch_decl_identity | tests.test_global_narrowing {
+        tests.test_batch_decl_identity
+            | tests.test_global_narrowing
+            | tools.jac_auto_lint_pass.JacAutoLintPass._check_annex_placement {
             discover_base_file
         },
     ]
@@ -7100,7 +7104,8 @@ graph import compiler {
             W3051,
             W3053,
             W3054,
-            W3055
+            W3055,
+            W3056
         },
         tools.jac_auto_lint_pass.JacAutoLintPass._check_filter_compare_tautology {
             W3040
