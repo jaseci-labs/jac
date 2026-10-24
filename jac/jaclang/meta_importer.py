@@ -173,7 +173,14 @@ if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
         _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
 if _modresolver_code is None:
     with open(_modresolver_jac, encoding="utf-8") as _f:
-        _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
+        _modresolver_src = _f.read()
+    _modresolver_impls: list[tuple[str, str]] = []
+    for _impl_path in _jac0_discover_impls(_modresolver_jac):
+        with open(_impl_path, encoding="utf-8") as _f:
+            _modresolver_impls.append((_f.read(), _impl_path))
+    _modresolver_code = _bootstrap_compile(
+        _modresolver_jac, _modresolver_src, _modresolver_impls or None
+    )
 _modresolver = types.ModuleType("jaclang.project.modresolver")
 _modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.project"
