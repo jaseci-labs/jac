@@ -3681,7 +3681,8 @@ impl NativeDictEmitter.emit_get(
 
     val_type = helpers["val_type"];
 
-    wrap_optional = (len(args) < 2) and (not isinstance(val_type, ir.PointerType));
+    wrap_optional = (len(args) < 2 or p._is_null_ptr_const(args[1]))
+        and (not isinstance(val_type, ir.PointerType));
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
@@ -3905,6 +3906,10 @@ impl NativeDictEmitter.emit_pop(
     key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
     has_default = len(args) >= 2;
+    none_default = has_default
+        and p._is_null_ptr_const(args[1])
+        and not isinstance(val_type, ir.PointerType);
+    result_type = p._jac_optional_type(val_type) if none_default else val_type;
 
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dpop.yes");
@@ -3915,12 +3920,23 @@ impl NativeDictEmitter.emit_pop(
     b.cbranch(found_i1, found_bb, notfound_bb);
 
     b.position_at_start(found_bb);
-    popped_val = b.call(helpers["pop"], [target, key], name="dpop.val");
+    popped_val: ir.Value = b.call(helpers["pop"], [target, key], name="dpop.val");
+    if none_default {
+        _tagged = b.insert_value(
+            ir.Constant(result_type, None),
+            ir.Constant(ir.IntType(8), 1),
+            0,
+            name="dpop.some.tag"
+        );
+        popped_val = b.insert_value(_tagged, popped_val, 1, name="dpop.some");
+    }
     _found_pred = b.basic_block;
     b.branch(done_bb);
 
     b.position_at_start(notfound_bb);
-    if has_default {
+    if none_default {
+        default_val: ir.Value = ir.Constant(result_type, None);
+    } elif has_default {
         default_val = p._coerce_type(args[1], val_type);
     } else {
         p._emit_runtime_raise(
@@ -3936,7 +3952,7 @@ impl NativeDictEmitter.emit_pop(
     b.branch(done_bb);
 
     b.position_at_start(done_bb);
-    result = b.phi(val_type, name="dpop.result");
+    result = b.phi(result_type, name="dpop.result");
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
     p._release_owned_args([key], op="dict_method_key");
