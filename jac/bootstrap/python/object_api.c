@@ -497,7 +497,9 @@ PyObject *jacpy_struct_sequence_type(const char *name, const char *doc,
         return PyErr_NoMemory();
     }
     size_t index = 0;
-    for (char *line = strtok(names, "\n"); line; line = strtok(NULL, "\n")) {
+    char *rest = NULL;
+    /* strtok_r: interpreters with their own GIL create these types at once. */
+    for (char *line = strtok_r(names, "\n", &rest); line; line = strtok_r(NULL, "\n", &rest)) {
         char *tab = strchr(line, '\t');
         if (tab) *tab = '\0';
         table[index++] = (PyStructSequence_Field){line, tab && tab[1] ? tab + 1 : NULL};
