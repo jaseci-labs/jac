@@ -474,6 +474,35 @@ so the interop stubs and the meta importer are unchanged. Native imports of
 Python functions bind through the JIT's symbol table and are not served by
 a sealed artifact.
 
+### The seal pair and the entry-library lane
+
+The seal's native bake compiles once and links the payload pair from that
+single plan: the standalone executable and, beside it, an **entry
+library** -- `ArtifactKind.ENTRY_LIB`, a shared artifact that also exports
+the host protocol: `jac_entry` (chained to the root unit's entry; an empty
+stub when the app has no `with entry`), the weak `__jac_argc`/`__jac_argv`
+cells `sys.argv`'s lowering reads, and a `__jac_bind_<symbol>` dispatch
+slot per `na → sv` callback. Unlike every other shared artifact it does
+NOT put `__jac_shared_init` in `.init_array`: dlopen must not run user
+code before the host writes argv and the callback slots. The boot order
+the host owes the library is dlopen (RTLD_NOW) → argv → callbacks →
+`__jac_shared_init` → `jac_entry`; the runner
+(`cli/commands/impl/execution.impl.jac`) loads interop jabs exactly that
+way after verifying every recorded slot, and refuses the in-process lane
+on any mismatch instead of trusting the artifact.
+
+An app whose native code calls Python (`native_imports`) cannot be
+self-contained, so its pair collapses: the bake links the entry library
+alone and records the callback contract -- symbol, wire signature, source
+module per callee, plus the library's sha256 -- in `<lib>.interop.json`
+beside it. The load lane re-reads the record as the source of truth:
+unreadable → warn and refuse the lane; sha256 mismatch or a missing slot →
+"re-seal the product". Once `__jac_shared_init` (or the entry) has
+started, failures abort the run rather than re-entering the image in
+another lane, because module-level side effects would repeat. Non-interop
+jabs stay exe-first (`execv`) with the entry library as the in-process
+fallback and the JIT runtime as the last resort.
+
 ## Costs and where they come from
 
 Measured on the chess example (`jac/examples/chess`) and the compiler's own

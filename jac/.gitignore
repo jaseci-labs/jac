@@ -91,7 +91,7 @@ zig-pkg/
 # committed -- only the PIN / TARBALL_SHA256 / LICENSE / PROVENANCE.md beside
 # the stubs are tracked.
 jaclang/vendor/typeshed/stdlib
-.llvm-build/
+.llvm-build
 # CI staging dir for a cache-restored prebuilt shim.
 .shim-build/
 # Persistent JIR precompile cache: mkpayload seeds site/_precompiled from it

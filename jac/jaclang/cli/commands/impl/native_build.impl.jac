@@ -1,11 +1,45 @@
+import hashlib;
 import os;
 import sys;
 
 
 def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]];
-
-
 def _application_ir(plan: LinkPlan) -> str;
+def _target_triple(target: str) -> str;
+def _sealed_native_plan(
+    filename: str,
+    target: str = "",
+    debug: bool = False,
+    memory: str = "",
+    no_ir_cache: bool = False
+) -> (LinkPlan | None);
+
+def _link_kind_artifact(
+    plan: LinkPlan, output: str, kind: ArtifactKind, label: str
+) -> int;
+
+def _callback_source_path(stored: str, unit_path: str, image_root: str) -> str;
+
+
+impl _target_triple(target: str) -> str {
+    if target in ["wasm", "wasm32", "wasm32-unknown-unknown"] {
+        return "wasm32-unknown-unknown";
+    }
+    if ("windows" in target) or (target in ["win", "win64", "mingw"]) {
+        return target if "-" in target else "x86_64-pc-windows-msvc";
+    }
+    if (target in ["macos", "darwin", "osx", "macosx"])
+        or ("apple" in target)
+        or ("darwin" in target) {
+        return target if "-" in target else "arm64-apple-darwin";
+    }
+    if (target in ["linux", "elf"])
+        or ("linux-gnu" in target)
+        or ("linux-musl" in target) {
+        return target if "-" in target else "x86_64-unknown-linux-gnu";
+    }
+    return "" if target in ("", "host") else target;
+}
 
 
 impl native_build(
@@ -18,26 +52,6 @@ impl native_build(
     memory: str = "",
     no_ir_cache: bool = False
 ) -> int {
-    def _target_triple(target: str) -> str {
-        if target in ["wasm", "wasm32", "wasm32-unknown-unknown"] {
-            return "wasm32-unknown-unknown";
-        }
-        if ("windows" in target) or (target in ["win", "win64", "mingw"]) {
-            return target if "-" in target else "x86_64-pc-windows-msvc";
-        }
-        if (target in ["macos", "darwin", "osx", "macosx"])
-            or ("apple" in target)
-            or ("darwin" in target) {
-            return target if "-" in target else "arm64-apple-darwin";
-        }
-        if (target in ["linux", "elf"])
-            or ("linux-gnu" in target)
-            or ("linux-musl" in target) {
-            return target if "-" in target else "x86_64-unknown-linux-gnu";
-        }
-        return "" if target in ("", "host") else target;
-    }
-
     _cfg = get_config();
     _mem_cfg = _cfg.memory if _cfg else None;
     if not memory {
@@ -325,4 +339,262 @@ impl _application_ir(plan: LinkPlan) -> str {
 
 impl _restore_target(prev_target: (str | None)) {
     pop_native_target(prev_target);
+}
+
+
+impl _sealed_native_plan(
+    filename: str,
+    target: str = "",
+    debug: bool = False,
+    memory: str = "",
+    no_ir_cache: bool = False
+) -> (LinkPlan | None) {
+    if not is_jac(filename) {
+        console.error("Input must be a .jac file.");
+        return None;
+    }
+    if not os.path.exists(filename) {
+        console.error(f"File not found: {filename}");
+        return None;
+    }
+    if is_retired_native_marker(filename) {
+        console.error(
+            f"{filename}: the .na.jac marker was retired in 0.35 -- rename the "
+            "file to .jac; 'jac build --native' compiles plain .jac natively."
+        );
+        return None;
+    }
+    _cfg = get_config();
+    if not memory {
+        memory = _cfg.memory.profile if _cfg else "managed";
+    }
+    if memory not in ("managed", "rc", "nogc") {
+        console.error(
+            f"Invalid memory profile '{memory}' (expected: managed, rc, nogc)"
+        );
+        return None;
+    }
+    triple = _target_triple(target or (_cfg.native.target if _cfg else ""));
+    prev = push_native_target(triple);
+    try {
+        prog = JacProgram();
+        options = CompileOptions(
+            aot_mode=True,
+            default_codespace="native",
+            skip_native_engine=True,
+            memory_profile=memory,
+            native_target=triple,
+            native_debug=(True if debug else None),
+            no_ir_cache=debug or no_ir_cache
+        );
+        prog.options = options;
+        plan = build_link_plan(prog, [os.path.abspath(filename)], options);
+    } except LinkPlanError as e {
+        console.print(str(e));
+        return None;
+    } except Exception as e {
+        console.error(f"Jac compilation failed: {e}");
+        import traceback;
+        traceback.print_exc();
+        return None;
+    } finally {
+        _restore_target(prev);
+    }
+    if prog.errors_had {
+        for _err in prog.errors_had {
+            console.print(_err.pretty_print());
+        }
+        return None;
+    }
+    return plan;
+}
+
+
+impl _link_kind_artifact(
+    plan: LinkPlan, output: str, kind: ArtifactKind, label: str
+) -> int {
+    prev = push_native_target(plan.triple);
+    try {
+        link_artifact(plan, output, kind, log=console.print);
+    } except LinkPlanError as e {
+        console.error(str(e));
+        return 1;
+    } except Exception as e {
+        console.error(f"{label} failed: {e}");
+        import traceback;
+        traceback.print_exc();
+        return 1;
+    } finally {
+        _restore_target(prev);
+    }
+    return 0;
+}
+
+
+impl _callback_source_path(stored: str, unit_path: str, image_root: str) -> str {
+    """The provider module of a callback, relative to the image root: the
+    path the sealed image carries and the load lane imports from. The unit
+    iface recorded it relative to the calling unit's directory; a dotted
+    module name (the pre-iface fallback) resolves beside the unit too.""";
+    if not stored or os.path.isabs(stored) {
+        return stored;
+    }
+    unit_dir = os.path.dirname(unit_path);
+    if stored.endswith(".jac") or ("/" in stored) {
+        candidate = os.path.join(unit_dir, stored);
+    } else {
+        candidate = os.path.join(unit_dir, stored.replace(".", os.sep) + ".jac");
+        if not os.path.isfile(candidate) {
+            candidate = os.path.join(unit_dir, stored.replace(".", os.sep));
+        }
+    }
+    try {
+        return os.path.relpath(
+            os.path.realpath(candidate), os.path.realpath(image_root)
+        ).replace(
+            os.sep, "/"
+        );
+    } except ValueError {
+        return stored;
+    }
+}
+
+
+impl native_build_sealed_pair(
+    filename: str, exe_output: str, lib_output: str, image_root: str = ""
+) -> int {
+    """Seal one compile as the native payload pair of a jab.
+
+    An app whose native code calls into Python (`native_imports`) cannot be
+    self-contained: the pair is the host-driven entry library alone, and the
+    callback contract -- symbol, wire signature, source module, per callee
+    -- lands in `<lib>.interop.json` beside it. Any other app seals the
+    standalone executable first and the entry library beside it as the
+    in-process fallback lane (no interop record: absence of the record is
+    what makes the runner go exe-first).""";
+    import json;
+    import from jaclang.server.sealed_serve { interop_record_path }
+
+    plan = _sealed_native_plan(filename);
+    if plan is None {
+        return 1;
+    }
+    img_root = image_root or os.path.dirname(os.path.abspath(filename));
+    bindings = [];
+    for unit in plan.units {
+        for cb in unit.iface.server_callbacks {
+            """The iface carries the exact extern symbol each call site
+            declared, so the collection cannot mismatch an aliased or
+            same-named import -- and it survives registry cache hits, where
+            the plan program's hub was never populated.""";
+            source = _callback_source_path(cb.source, unit.path, img_root);
+            if (
+                not source
+                or os.path.isabs(source)
+                or source == ".."
+                or source.startswith("../")
+            ) {
+                console.error(
+                    f"callback provider for {cb.name!r} is not inside "
+                    "the sealed image"
+                );
+                return 1;
+            }
+            bindings.append(
+                InteropBinding(
+                    name=cb.name,
+                    source_context=InteropContext.SERVER,
+                    ret_type=cb.ret_type,
+                    param_types=list(cb.param_types),
+                    source_module=source,
+                    native_symbol=cb.native_symbol
+                )
+            );
+        }
+    }
+    plan.callback_bindings = bindings;
+    (resolved, _) = resolved_callback_bindings(plan);
+    has_native_imports = any(unit.iface.python_imports for unit in plan.units)
+        or bool(resolved);
+    record = interop_record_path(lib_output);
+
+    if has_native_imports {
+        callback_records = [
+            {
+                "symbol": b.native_symbol or b.name,
+                "name": b.name,
+                "ret_type": b.ret_type,
+                "param_types": list(b.param_types),
+                "source": b.source_module or ""
+            } for b in resolved
+        ];
+        console.print(
+            "  App calls from native code into Python (native_imports): "
+            "sealing the host-driven entry library only (a standalone "
+            "executable cannot be self-contained)."
+        );
+        if _link_kind_artifact(
+            plan, lib_output, ArtifactKind.ENTRY_LIB, "Entry-library link"
+        )
+            != 0 {
+            console.error("Native compilation failed; seal aborted.");
+            return 1;
+        }
+        h = hashlib.sha256();
+        with open(lib_output, "rb") as f {
+            h.update(f.read());
+        }
+        record.parent.mkdir(parents=True, exist_ok=True);
+        record.write_text(
+            json.dumps(
+                {
+                    "interop": True,
+                    "version": 1,
+                    "plan_digest": plan.plan_digest(),
+                    "triple": plan.triple,
+                    "sha256": h.hexdigest(),
+                    "callbacks": callback_records
+                },
+                sort_keys=True
+            )
+                + "\n",
+            encoding="utf-8"
+        );
+        return 0;
+    }
+
+    if record.exists() {
+        record.unlink();
+    }
+    if not plan.root_unit().iface.entry_symbol {
+        console.error(
+            "No entry point found. The file must have a 'with entry { }' block."
+        );
+        return 1;
+    }
+    _demoted = plan.demoted_symbols();
+    if _demoted {
+        console.error(
+            f"{len(_demoted)} function(s) in the native closure were demoted to "
+            "Python-only: "
+                + ", ".join(_demoted),
+            hint="A self-contained binary cannot run a demoted function. Run `jac explain placement` on the file to see why each one failed to lower."
+        );
+        return 1;
+    }
+    if _link_kind_artifact(plan, exe_output, ArtifactKind.EXECUTABLE, "Native link")
+        != 0 {
+        console.error("Native compilation failed; seal aborted.");
+        return 1;
+    }
+    if _link_kind_artifact(
+        plan, lib_output, ArtifactKind.ENTRY_LIB, "Entry-library link"
+    )
+        != 0 {
+        console.warning(
+            "In-process entry library compilation failed; the sealed bundle "
+            "will run via the standalone binary only."
+        );
+    }
+    return 0;
 }

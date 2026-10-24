@@ -97,6 +97,8 @@ def bundle_app(config: any, app: str = "") -> any;
 
 def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any];
 
+def _native_payload_meta(native_dir: Path) -> dict[str, any];
+
 def collect_payloads(pkg_path: Path) -> dict[str, str];
 
 def seal_runtime_closure(
@@ -146,7 +148,6 @@ def write_manifest(
     modules: dict[str, dict[str, any]],
     payloads: (dict[str, str] | None) = None,
     app_meta: (dict[str, any] | None) = None,
-    native_record: (dict[str, any] | None) = None,
     omits: (list[str] | None) = None
 );
 

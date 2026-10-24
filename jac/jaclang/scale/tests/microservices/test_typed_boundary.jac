@@ -125,7 +125,7 @@ test "split services recursively reconstruct returned archetypes" {
             stop_server(other);
             for server in [consumer, provider, other] {
                 if server is not None {
-                    (stdout, stderr) = server.communicate();
+                    (stdout, stderr) = server.communicate(timeout=30);
                     print(stdout + stderr);
                 }
             }

@@ -458,7 +458,11 @@ impl NativeIface.to_dict -> dict[str, any] {
 }
 
 impl NativeIface._with_references(fields: dict[str, any]) -> dict[str, any] {
+    """Host-surface facts ride beside the digest inputs: like deps, they say
+    where a provider lives rather than what dependent units must lower
+    against, so a callback change alone never re-keys a dependent's cache.""";
     fields["deps"] = [native_unit_ref(x) for x in self.deps];
+    fields["server_callbacks"] = [cb.to_dict() for cb in self.server_callbacks];
     fields["coverage"] = dict(self.coverage);
     fields["runtime_globals"] = list(self.runtime_globals);
     fields["init_reads"] = list(self.init_reads);
@@ -505,6 +509,12 @@ impl NativeIface.from_dict(d: dict[str, any]) -> (NativeIface | None) {
     for (k, v) in _json_dict(d.get("coverage")).items() {
         coverage[k] = v;
     }
+    server_callbacks: list[NativeServerCallback] = [];
+    for raw in _json_list(d.get("server_callbacks")) {
+        if isinstance(raw, dict) {
+            server_callbacks.append(NativeServerCallback.from_dict(raw));
+        }
+    }
     return NativeIface(
         module=str(d.get("module", "")),
         prefix=str(d.get("prefix", "")),
@@ -516,6 +526,7 @@ impl NativeIface.from_dict(d: dict[str, any]) -> (NativeIface | None) {
         demoted=_json_str_list(d.get("demoted")),
         clib_paths=_json_str_list(d.get("clib_paths")),
         python_imports=_json_str_list(d.get("python_imports")),
+        server_callbacks=server_callbacks,
         clib_symbol_lib=clib_symbol_lib,
         layout=(
             native_layout_from_dict(layout_d) if isinstance(layout_d, dict) else None
@@ -674,4 +685,24 @@ impl merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
 impl layout_digest(classes: dict[str, any]) -> str {
     body = json.dumps(classes, sort_keys=True, separators=(",", ":"));
     return hashlib.sha256(body.encode("utf-8")).hexdigest();
+}
+
+impl NativeServerCallback.to_dict -> dict[str, any] {
+    return {
+        "name": self.name,
+        "symbol": self.native_symbol,
+        "source": self.source,
+        "ret_type": self.ret_type,
+        "param_types": list(self.param_types)
+    };
+}
+
+impl NativeServerCallback.from_dict(d: dict[str, any]) -> NativeServerCallback {
+    return NativeServerCallback(
+        name=str(d.get("name", "")),
+        native_symbol=str(d.get("symbol", "")),
+        source=str(d.get("source", "")),
+        ret_type=str(d.get("ret_type", "")),
+        param_types=_json_str_list(d.get("param_types"))
+    );
 }

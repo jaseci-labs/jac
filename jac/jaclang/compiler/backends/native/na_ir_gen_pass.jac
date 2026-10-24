@@ -1274,6 +1274,7 @@ walker NaIRGenPass(CompilerPass) {
     def _is_kernel_unit -> bool;
     def _record_lowering_issue(issue: NativeLoweringIssue) -> None;
     def _export_native_iface -> None;
+    def _server_callback_contract(mod_path: str) -> list[NativeServerCallback];
     def _build_class_layouts -> dict[str, any];
     def _osp_kernel_init_fns -> list[ir.Function];
     def _vtable_symbol(arch_name: str) -> str;

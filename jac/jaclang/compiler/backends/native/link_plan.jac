@@ -11,6 +11,7 @@ glob PLAN_DIGEST_FORMAT: int = 3,
 enum ArtifactKind {
     EXECUTABLE = "executable",
     SHARED = "shared",
+    ENTRY_LIB = "entry-lib",
     WASM = "wasm",
     JIT = "jit"
 }
@@ -206,3 +207,7 @@ def jit_engine_for_cached(
 ) -> (ExecutionEngine | None);
 
 def internalize_native_implementation(module: ModuleRef, exports: list[str]);
+
+def resolved_callback_bindings(
+    plan: LinkPlan
+) -> tuple[list[InteropBinding], dict[str, str]];

@@ -1283,6 +1283,16 @@ __JAC_DEV_HEAD__
   <body>
     <div id="root"></div>
     <script type="module">
+    // The entry import can transiently fail while the dev server is still
+    // warming (vite dep re-optimization resets, compiled/ mid-write): retry
+    // a few times before reporting, so one dropped fetch isn't a blank page.
+    function loadEntry(attemptsLeft) {
+      return import(__JAC_DEV_ENTRY__).catch(function(err) {
+        if (attemptsLeft <= 1) { throw err; }
+        return new Promise(function(resolve) { setTimeout(resolve, 400); })
+          .then(function() { return loadEntry(attemptsLeft - 1); });
+      });
+    }
     if (import.meta.hot) {
       function report(d) {
         try { import.meta.hot.send("jac:client-error", d); } catch(e) {}
@@ -1312,7 +1322,7 @@ __JAC_DEV_HEAD__
         window.$RefreshReg$ = function() {};
         window.$RefreshSig$ = function() { return function(type) { return type; }; };
         window.__jac_refresh_installed__ = true;
-        return import(__JAC_DEV_ENTRY__);
+        return loadEntry(8);
       }).then(function() {
         // entry loaded cleanly: clears the client slot in /__build_status
         try { import.meta.hot.send("jac:client-ready"); } catch(e) {}
@@ -1326,7 +1336,7 @@ __JAC_DEV_HEAD__
         });
       });
     } else {
-      import(__JAC_DEV_ENTRY__).catch(function() {});
+      loadEntry(8).catch(function() {});
     }
     </script>
   </body>

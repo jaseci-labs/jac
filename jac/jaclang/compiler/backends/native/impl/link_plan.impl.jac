@@ -217,12 +217,20 @@ impl LinkPlan.glue_spec(
     return GlueSpec(
         units=units,
         root_index=root_index,
-        shared=(kind == ArtifactKind.SHARED),
+        shared=(kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB),
+        entry_lib=(kind == ArtifactKind.ENTRY_LIB),
         platform=platform if kind != ArtifactKind.JIT else "jit",
         static_musl=static_musl,
         triple=self.triple,
         clib_paths=self.clib_paths(),
-        needs_atexit_shim=(is_elf and (kind == ArtifactKind.SHARED or not static_musl)),
+        needs_atexit_shim=(
+            is_elf
+            and (
+                kind == ArtifactKind.SHARED
+                or kind == ArtifactKind.ENTRY_LIB
+                or not static_musl
+            )
+        ),
         needs_region_hook=not hook_supplied
     );
 }
@@ -624,40 +632,16 @@ impl callback_glue_ir(plan: LinkPlan) -> str {
     if not plan.callback_bindings {
         return "";
     }
-
-    wanted = {binding.name for binding in plan.callback_bindings};
-    declarations: dict[str, str] = {};
-    defined: set[str] = set();
-    registry = plan.prog.native_units();
-    for unit in plan.units {
-        bitcode = registry.bitcode_for(unit.path, plan.options);
-        if bitcode is None {
-            raise LinkPlanError(f"No bitcode for {unit.path}");
-        }
-        module = llvm.parse_bitcode(bitcode);
-        for function in module.functions {
-            if function.name in wanted {
-                if function.is_declaration {
-                    declarations[function.name] = str(function);
-                } else {
-                    defined.add(function.name);
-                }
-            }
-        }
-    }
-    bindings = [
-        b
-        for b in plan.callback_bindings
-        if b.name not in defined
-    ];
-    missing = {b.name for b in bindings} - set(declarations);
-    if missing {
-        raise LinkPlanError(
-            "Missing callback declarations: " + ", ".join(sorted(missing))
-        );
+    import from jaclang.compiler.backends.native.link_glue { bind_shared_callbacks }
+    (bindings, declarations) = resolved_callback_bindings(plan);
+    if not bindings {
+        return "";
     }
     (text, _) = bind_shared_callbacks(
-        "\n".join(declarations[b.name] for b in bindings), bindings
+        "\n".join(
+            declarations[binding.native_symbol or binding.name] for binding in bindings
+        ),
+        bindings
     );
     return text;
 }
@@ -715,7 +699,10 @@ impl _glue_module(
     callback_ir = callback_glue_ir(plan);
     if callback_ir {
         mod.link_in(llvm.parse_assembly(callback_ir));
-        exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        exports.extend(
+            '__jac_bind_' + (binding.native_symbol or binding.name)
+            for binding in resolved_callback_bindings(plan)[0]
+        );
     }
     mod.verify();
     return (mod, exports);
@@ -812,7 +799,7 @@ impl optimize_whole_program(
     assert isinstance(pb, llvm.PassBuilder);
     mpm = pb.getModulePassManager();
     assert isinstance(mpm, llvm.ModulePassManager);
-    if kind == ArtifactKind.SHARED {
+    if kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB {
         exports = plan.pub_exports()
             + [
                 SHARED_INIT_SYMBOL,
@@ -824,7 +811,18 @@ impl optimize_whole_program(
                 "jac_heap_size",
                 "jac_list_heap_size"
             ];
-        exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        if kind == ArtifactKind.ENTRY_LIB {
+            exports.extend([ENTRY_SYMBOL, "__jac_argc", "__jac_argv"]);
+            exports = [
+                symbol
+                for symbol in exports
+                if symbol != SHARED_MAIN_SYMBOL
+            ];
+        }
+        exports.extend(
+            '__jac_bind_' + (binding.native_symbol or binding.name)
+            for binding in resolved_callback_bindings(plan)[0]
+        );
         internalize_native_implementation(merged, exports);
     }
     if kind == ArtifactKind.EXECUTABLE {
@@ -1023,24 +1021,13 @@ impl link_artifact(
     log: any = None,
     app_imports: (set | None) = None
 ) -> LinkResult {
-    if kind == ArtifactKind.SHARED {
-        for unit in plan.units {
-            if set(unit.iface.python_imports)
-                - {b.name for b in plan.callback_bindings} {
-                raise LinkPlanError(
-                    f"Cannot link shared native unit {unit.path}: Python imports "
-                    f"require the JIT bridge ({', '.join(unit.iface.python_imports)})"
-                );
-            }
-        }
-    }
     if kind == ArtifactKind.WASM {
         return link_wasm(plan, output_path, app_imports);
     }
     platform = _platform_of(plan.triple);
     is_macos = platform == "macho";
     is_windows = platform == "pe";
-    shared = kind == ArtifactKind.SHARED;
+    shared = kind == ArtifactKind.SHARED or kind == ArtifactKind.ENTRY_LIB;
 
     clib_paths = plan.clib_paths();
     clib_symbol_lib = plan.clib_symbol_lib();
@@ -1083,7 +1070,10 @@ impl link_artifact(
     callback_ir = callback_glue_ir(plan);
     glue_ir += callback_ir;
     if callback_ir {
-        glue_exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        glue_exports.extend(
+            '__jac_bind_' + (binding.native_symbol or binding.name)
+            for binding in resolved_callback_bindings(plan)[0]
+        );
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
@@ -1567,4 +1557,59 @@ impl internalize_native_implementation(module: ModuleRef, exports: list[str]) {
         }
         value.linkage = "internal";
     }
+}
+
+impl resolved_callback_bindings(
+    plan: LinkPlan
+) -> tuple[list[InteropBinding], dict[str, str]] {
+    """Resolve callbacks against emitted unit IR. A manifest may name a server
+    function that has no native call site; such a callback needs no slot.""";
+    wanted: dict[str, InteropBinding] = {};
+    for binding in plan.callback_bindings {
+        symbol = binding.native_symbol or binding.name;
+        wanted.setdefault(symbol, binding);
+    }
+    if not wanted {
+        return ([], {});
+    }
+    declarations: dict[str, str] = {};
+    defined: set[str] = set();
+    registry = plan.prog.native_units();
+    for unit in plan.units {
+        bitcode = registry.bitcode_for(unit.path, plan.options);
+        if bitcode is None {
+            raise LinkPlanError(f"No bitcode for {unit.path}");
+        }
+        module = llvm.parse_bitcode(bitcode);
+        for function in module.functions {
+            if function.name in wanted {
+                if function.is_declaration {
+                    declarations[function.name] = str(function);
+                } else {
+                    defined.add(function.name);
+                }
+            }
+        }
+    }
+    bindings = [
+        binding
+        for binding in wanted.values()
+        if (binding.native_symbol or binding.name) not in defined
+    ];
+    unreferenced = {(binding.native_symbol or binding.name) for binding in bindings}
+        - set(declarations);
+    if unreferenced {
+        sys.stderr.write(
+            f"[link plan] no IR references for na->sv callback(s) {', '.join(
+                sorted(unreferenced)
+            )}; "
+            "skipping their bind slots\n"
+        );
+        bindings = [
+            binding
+            for binding in bindings
+            if (binding.native_symbol or binding.name) in declarations
+        ];
+    }
+    return (bindings, declarations);
 }

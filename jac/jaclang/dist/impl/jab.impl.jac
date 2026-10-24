@@ -64,11 +64,18 @@ impl jab_app_meta(img_root: Path) -> dict[str, any] {
         (img_root / "_precompiled" / MANIFEST_NAME).read_text(encoding="utf-8")
     );
     meta = raw if isinstance(raw, dict) else {};
-    return {
+    out = {
         "kind": meta.get("kind", ""),
         "app": meta.get("app", ""),
         "capabilities": meta.get("capabilities") or [],
         "entry": meta.get("entry") or {},
         "package": meta.get("package", "")
     };
+    if meta.get("native") {
+        out["native"] = meta.get("native");
+    }
+    if meta.get("native_payloads") {
+        out["native_payloads"] = meta.get("native_payloads");
+    }
+    return out;
 }

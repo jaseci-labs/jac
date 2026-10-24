@@ -91,7 +91,7 @@ impl BoundaryAnalysisPass._extract_type_name(expr: (UniNode | None)) -> str {
 }
 
 impl BoundaryAnalysisPass._in_native_module -> bool {
-    if (self.module.gen.native_codespace) {
+    if (self.module and self.module.gen.native_codespace) {
         return True;
     }
     if not (self.module and self.module.loc) {
@@ -181,7 +181,6 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
 impl BoundaryAnalysisPass._caller_context(
     nd: Import, import_context: InteropContext
 ) -> InteropContext {
-    """Interop context of the caller site: client wins, then native.""";
     if (nd.in_client_context()) {
         return InteropContext.CLIENT;
     }

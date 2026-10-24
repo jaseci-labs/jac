@@ -435,6 +435,7 @@ impl NaIRGenPass._export_native_iface -> None {
     iface.python_imports = [
         binding.name for binding in self.module.gen.interop_manifest.native_imports
     ];
+    iface.server_callbacks = self._server_callback_contract(mod_path);
     iface.clib_symbol_lib = dict(self.module.gen._clib_symbol_lib or {});
     iface.deps = list(self._native_dep_paths);
     init_symbols = self._glob_init_symbols();
@@ -2737,4 +2738,51 @@ impl _native_emitter_of(suffix: str) -> (object | None) {
         return _pn.NativeBuiltinEmitter();
     }
     return None;
+}
+
+impl NaIRGenPass._server_callback_contract(
+    mod_path: str
+) -> list[NativeServerCallback] {
+    """Server callables this unit's code calls natively, with the exact
+    extern symbols the call sites declared -- one canonical name per
+    callback for the iface, the sealed record and the bind slots. A binding
+    with no lowered call site keeps no symbol and drops out: no call, no
+    slot. The provider path rides along relative to this unit's directory,
+    the same reference shape deps use.""";
+    import os;
+    callbacks: list[NativeServerCallback] = [];
+    unit_dir = os.path.dirname(mod_path) if mod_path else "";
+    for binding in self.module.gen.interop_manifest.bindings.values() {
+        if (
+            binding.kind != "function"
+            or binding.source_context.value != "server"
+            or not binding.native_symbol
+            or not any(caller.value == "native" for caller in binding.callers)
+        ) {
+            continue;
+        }
+        source = "";
+        if binding.ast_node is not None {
+            mod = binding.ast_node.find_parent_of_type(uni.Module);
+            provider_path = mod.loc.mod_path if mod is not None and mod.loc else "";
+            if provider_path and unit_dir {
+                try {
+                    source = os.path.relpath(provider_path, unit_dir);
+                } except ValueError {
+                    source = "";
+                }
+                source = source.replace(os.sep, "/");
+            }
+        }
+        callbacks.append(
+            NativeServerCallback(
+                name=binding.name,
+                native_symbol=binding.native_symbol,
+                source=source or (binding.source_module or ""),
+                ret_type=binding.ret_type,
+                param_types=list(binding.param_types)
+            )
+        );
+    }
+    return callbacks;
 }

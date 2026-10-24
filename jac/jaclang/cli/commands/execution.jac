@@ -291,6 +291,27 @@ def run_jab_image(
     img_root: Path, port: (int | None), args: list[str], serve_only: bool, label: str
 ) -> int;
 
+class NativeEntryStartedError(RuntimeError) {}
+
+def _jab_interop_record(lib_path: str) -> tuple[(dict[(str, any)] | None, str)];
+def _set_native_argv_in_dll(nl: any, argv0: str, args: list[str]) -> None;
+def _run_native_lib(
+    img_root: Path,
+    lib_path: str,
+    record: (dict[(str, any)] | None),
+    argv0: str,
+    args: list[str],
+    label: str
+) -> (int | None);
+
+def _jab_run_entry_lib(
+    img_root: Path,
+    entry_rel: str,
+    args: list[str],
+    label: str,
+    native_meta: (dict[str, any] | None) = None
+) -> (int | None);
+
 comptime SPEC_X: CommandSpec = CommandSpec(
          name="x",
          help="Run an installed CLI tool (console-script) under the Jac runtime",

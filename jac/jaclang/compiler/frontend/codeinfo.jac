@@ -353,7 +353,9 @@ obj InteropBinding {
         kind: str = 'function',
         provider_app: str = '',
         native_contract: dict[str, any] = {},
-        endpoint_id: str = '';
+        endpoint_id: str = "",
+        native_symbol: str = "",
+        lookup_name: str = "";
 
     has is_cross_module: bool { getter; }
 }

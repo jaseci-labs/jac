@@ -13,6 +13,7 @@ import gc;
 import glob;
 import os;
 import shutil;
+import signal;
 import socket;
 import subprocess;
 import time;
@@ -150,13 +151,19 @@ def start_server(
         proc_env.update(env);
     }
     apply_fixture_policy(proc_env);
+    # The server master forks worker children that inherit these stdout and
+    # stderr pipes. Launching the server in its own session puts master and
+    # workers in one process group, so stop_server can take the whole group
+    # down; killing only the master would orphan the workers, which keep the
+    # pipes open and make any later communicate() wait on EOF forever.
     server = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         cwd=str(fixtures_dir),
-        env=proc_env
+        env=proc_env,
+        start_new_session=True
     );
     base_url = f"http://localhost:{port}";
     # A subprocess that has to compile the tree cold takes minutes, and a
@@ -166,7 +173,8 @@ def start_server(
     deadline = time.monotonic() + 300.0;
     while time.monotonic() < deadline {
         if server.poll() is not None {
-            (stdout, stderr) = server.communicate();
+            _kill_server_group(server);
+            (stdout, stderr) = server.communicate(timeout=30);
             raise RuntimeError(
                 f"server exited before serving {jac_file.name} on port {port}"
                 f"\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
@@ -180,12 +188,29 @@ def start_server(
         } except Exception {}
         time.sleep(1);
     }
-    server.kill();
-    (stdout, stderr) = server.communicate(timeout=5);
+    _kill_server_group(server);
+    (stdout, stderr) = server.communicate(timeout=30);
     raise RuntimeError(
         f"server did not answer /healthz for {jac_file.name} on port {port} "
         f"within 300s\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
     );
+}
+
+"""SIGKILL a started server's whole process group, workers included.
+
+The server master forks worker children that inherit the harness's stdout and
+stderr pipes, so killing only the master orphans the workers: they keep
+running and hold the pipes open, and any later communicate() blocks on an EOF
+that never comes. start_server puts each server in its own session, so the
+group kill reaches every worker. Falls back to the single-process kill when
+the group is already gone.
+"""
+def _kill_server_group(server: subprocess.Popen) -> None {
+    try {
+        os.killpg(server.pid, signal.SIGKILL);
+    } except OSError {
+        server.kill();
+    }
 }
 
 """Terminate a server started by start_server, escalating to kill if it lingers.
@@ -199,8 +224,8 @@ def stop_server(server: subprocess.Popen | None) {
         try {
             server.`wait(timeout=5);
         } except subprocess.TimeoutExpired {
-            server.kill();
-            server.`wait();
+            _kill_server_group(server);
+            server.`wait(timeout=5);
         }
     }
     time.sleep(0.2);

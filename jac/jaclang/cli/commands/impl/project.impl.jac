@@ -516,7 +516,7 @@ impl remove(
 def _major_minor(version: str) -> str;
 
 impl update(
-    packages: list[str] = [],
+    packages: (list[str] | None) = None,
     pypi: bool = False,
     dev: bool = False,
     verbose: bool = False
@@ -533,7 +533,7 @@ impl update(
         return _update_pypi(config, packages, dev, ctx);
     }
 
-    (specs, stray) = split_package_specs(packages);
+    (specs, stray) = split_package_specs(packages if packages is not None else []);
     if stray {
         console.error(f"Not Jac package names: {', '.join(stray)}", hint=PYPI_HINT);
         return 1;

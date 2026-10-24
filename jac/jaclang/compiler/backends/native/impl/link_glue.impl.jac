@@ -263,7 +263,7 @@ impl shared_main_ir(spec: GlueSpec) -> str {
 
 impl platform_entry_ir(spec: GlueSpec) -> str {
     if spec.shared {
-        return shared_main_ir(spec);
+        return "" if spec.entry_lib else shared_main_ir(spec);
     }
     if spec.platform in ("jit", "wasm") {
         return "";
@@ -352,10 +352,18 @@ impl link_glue_ir(spec: GlueSpec) -> tuple[str, list[str]] {
         parts.append(posix_floor_ir(floor_osarch));
     }
     if spec.shared {
-        parts.append(shared_init_registration_ir(spec));
+        if not spec.entry_lib {
+            parts.append(shared_init_registration_ir(spec));
+        } elif spec.platform == "pe" {
+            parts.append(entry_lib_pe_dll_entry_ir());
+        }
         exports.append(SHARED_INIT_SYMBOL);
     }
-    if shared_entry_symbol(spec) {
+    if spec.entry_lib {
+        parts.append(entry_lib_protocol_ir(spec));
+        exports.extend([ENTRY_SYMBOL, "__jac_argc", "__jac_argv"]);
+    }
+    if shared_entry_symbol(spec) and not spec.entry_lib {
         exports.append(SHARED_MAIN_SYMBOL);
     }
     return ("".join(parts), exports);
@@ -375,21 +383,20 @@ impl bind_shared_callbacks(
     definitions: list[str] = [];
     callbacks: list[InteropBinding] = [];
     for binding in bindings {
-        function = module.get_function(binding.name);
+        symbol = binding.native_symbol or binding.name;
+        function = module.get_function(symbol);
         assert isinstance(function, llvm.ValueRef);
         if not function.is_declaration {
             continue;
         }
         (result, parameters, variadic) = function.function_signature();
         if variadic {
-            raise ValueError(
-                f'Python callbacks cannot use a variadic ABI: {binding.name}'
-            );
+            raise ValueError(f'Python callbacks cannot use a variadic ABI: {symbol}');
         }
         callbacks.append(binding);
-        name = _wrapname(binding.name);
-        slot = _wrapname('__jac_callback_' + binding.name);
-        bind_function = _wrapname('__jac_bind_' + binding.name);
+        name = _wrapname(symbol);
+        slot = _wrapname('__jac_callback_' + symbol);
+        bind_function = _wrapname('__jac_bind_' + symbol);
         arguments = ', '.join(
             f'{kind} %arg{index}' for (index, kind) in enumerate(parameters)
         );
@@ -473,4 +480,36 @@ impl inject_heap_accounting(
         definitions.append(body);
     }
     return (llvm_ir_str + "\n" + "\n".join(definitions) + "\n", requested);
+}
+
+impl entry_lib_protocol_ir(spec: GlueSpec) -> str {
+    root_unit = spec.units[spec.root_index] if spec.root_index >= 0 else None;
+    decl = (
+        _decl_void_fn(root_unit.entry_symbol)
+            if root_unit is not None and root_unit.entry_symbol
+            else ""
+    );
+    call = (
+        f'  call void @"{root_unit.entry_symbol}"()\n'
+            if root_unit is not None and root_unit.entry_symbol
+            else ""
+    );
+    return (
+        argv_globals_ir()
+        + decl
+        + "define void @"
+        + ENTRY_SYMBOL
+        + "() {\nentry:\n"
+        + call
+        + "  ret void\n}\n\n"
+    );
+}
+
+impl entry_lib_pe_dll_entry_ir -> str {
+    return (
+        "define i32 @__jac_dll_main(ptr %module, i32 %reason, ptr %reserved) {\n"
+        "entry:\n"
+        "    ret i32 1\n"
+        "}\n\n"
+    );
 }

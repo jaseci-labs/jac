@@ -860,8 +860,53 @@ impl app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any
             caps.append("platform-locked");
             meta["triples"] = triples;
         }
+        native_meta = _native_payload_meta(native_dir);
+        if native_meta {
+            meta["native_payloads"] = native_meta;
+        }
     }
     return meta;
+}
+
+impl _native_payload_meta(native_dir: Path) -> dict[str, any] {
+    import json;
+    out: dict[str, any] = {};
+    if not native_dir.is_dir() {
+        return out;
+    }
+    for triple_dir in sorted(native_dir.iterdir()) {
+        if not triple_dir.is_dir() {
+            continue;
+        }
+        for lib in sorted(triple_dir.iterdir()) {
+            if not lib.is_file() or not lib.name.endswith((".so", ".dylib", ".dll")) {
+                continue;
+            }
+            info: dict[str, any] = {
+                "lib": f"{NATIVE_DIR_REL}/{triple_dir.name}/{lib.name}",
+                "sha256": hashlib.sha256(lib.read_bytes()).hexdigest(),
+                "interop": False,
+                "record_sha256": ""
+            };
+            record = Path(str(lib) + ".interop.json");
+            if record.is_file() {
+                try {
+                    raw = json.loads(record.read_text(encoding="utf-8"));
+                    info["interop"] = bool(raw.get("interop"));
+                    info["record_sha256"] = hashlib.sha256(
+                        record.read_bytes()
+                    ).hexdigest();
+                    info["callbacks"] = len(raw.get("callbacks") or []);
+                } except Exception as e {
+                    console.warning(f"{record}: unreadable interop record ({e})");
+
+                    info["interop"] = "corrupt";
+                }
+            }
+            out[triple_dir.name] = info;
+        }
+    }
+    return out;
 }
 
 impl collect_payloads(pkg_path: Path) -> dict[str, str] {
@@ -1120,6 +1165,10 @@ impl seal_finalize(
         app_meta = dict(app_meta);
         app_meta["placement"] = placement;
     }
+    if native_record {
+        app_meta = dict(app_meta or {});
+        app_meta["native"] = native_record;
+    }
     write_manifest(
         precompiled_dir,
         pkg_name,
@@ -1127,7 +1176,6 @@ impl seal_finalize(
         manifest_modules,
         payloads,
         app_meta,
-        native_record,
         kit_omissions(pkg_name)
     );
     _phase("payloads and manifest");
@@ -1471,7 +1519,6 @@ impl write_manifest(
     modules: dict[str, dict[str, any]],
     payloads: (dict[str, str] | None) = None,
     app_meta: (dict[str, any] | None) = None,
-    native_record: (dict[str, any] | None) = None,
     omits: (list[str] | None) = None
 ) {
     import from importlib.metadata { version as pkg_version }
@@ -1494,9 +1541,6 @@ impl write_manifest(
     }
     if app_meta {
         manifest.update(app_meta);
-    }
-    if native_record {
-        manifest["native"] = native_record;
     }
     if omits {
         manifest["omits"] = sorted(omits);

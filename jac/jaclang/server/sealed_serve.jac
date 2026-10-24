@@ -10,6 +10,13 @@ glob SERVE_MANIFEST_REL: str = os.path.join(".jac", "serve_manifest.json"),
      _MODULE_KEYS_CACHE: dict[str, tuple[float, set]] = {};
 
 
+def native_lib_suffix -> str;
+
+def native_lib_name(stem: str) -> str;
+
+def interop_record_path(lib_output: str) -> Path;
+
+
 def _image_module_keys(img_root: str) -> set;
 
 

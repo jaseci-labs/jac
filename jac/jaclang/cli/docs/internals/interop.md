@@ -314,6 +314,22 @@ to the Python path when it cannot lower). The
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.
 
+Sealed jabs take this further: the seal's native bake records every
+`na → sv` callback the native side imports -- symbol, ctypes-wire
+signature, and the provider module's path relative to the image root --
+in `<lib>.interop.json` beside the sealed entry library. The manifest keeps
+per-target entry-library hashes and sidecar hashes under `native_payloads`;
+`native` remains reserved for the package-level native-unit record. `jac run
+<jab>` then loads the library in process. It temporarily sets Python `sys.argv`
+to the app's arguments before importing any provider module *from the image
+root*. After loading the library, it verifies every recorded
+`__jac_bind_*` dispatch slot, writes `__jac_argc`/`__jac_argv`, registers
+the callbacks, and only then starts the image (`__jac_shared_init` →
+`jac_entry`). A record
+that is unreadable, stale (sha256 mismatch) or missing a slot refuses the
+load loudly; a sealed binary without a record still prefers its
+standalone executable.
+
 ---
 
 ## `na ↔ C`: foreign function interface (row 12)

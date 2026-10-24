@@ -2749,10 +2749,11 @@ test "py interop py function not defined in native ir" {
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    py_double_symbol = unit_sym(ir, "py_double");
     # Must not have a define (body) for py_double -- it lives in Python
-    assert 'define i64 @"py_double"' not in llvm_ir_str;
+    assert f'define i64 @"{py_double_symbol}"' not in llvm_ir_str;
     # Should have an external declare so the native code can call it
-    assert 'declare i64 @"py_double"' in llvm_ir_str;
+    assert f'declare i64 @"{py_double_symbol}"' in llvm_ir_str;
 }
 
 test "py interop py functions in python codegen" {

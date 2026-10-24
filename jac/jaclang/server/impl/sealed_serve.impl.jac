@@ -122,6 +122,25 @@ impl serve_manifest_for(path: str) -> (dict[str, any] | None) {
     return read_serve_manifest(img_root)['module_manifests'].get(relative);
 }
 
+impl native_lib_suffix -> str {
+    import sys;
+    if sys.platform.startswith("win") {
+        return ".dll";
+    }
+    if sys.platform == "darwin" {
+        return ".dylib";
+    }
+    return ".so";
+}
+
+impl native_lib_name(stem: str) -> str {
+    return stem + native_lib_suffix();
+}
+
+impl interop_record_path(lib_output: str) -> Path {
+    return Path(str(lib_output) + ".interop.json");
+}
+
 impl client_dist_for(path: str) -> (Path | None) {
     prepared = application_for(path);
     if prepared is not None and prepared.client_dist and not prepared.dev {

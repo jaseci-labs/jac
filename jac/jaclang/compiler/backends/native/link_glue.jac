@@ -20,6 +20,7 @@ obj GlueSpec {
     has units: list[GlueUnit],
         root_index: int = -1,
         shared: bool = False,
+        entry_lib: bool = False,
         platform: str = "elf",
         static_musl: bool = False,
         triple: str = "",
@@ -72,3 +73,7 @@ def bind_shared_callbacks(
 def inject_heap_accounting(
     llvm_ir_str: str, managed: bool = False
 ) -> tuple[str, list[str]];
+
+def entry_lib_protocol_ir(spec: GlueSpec) -> str;
+
+def entry_lib_pe_dll_entry_ir -> str;

@@ -107,6 +107,7 @@ obj NativeIface {
         demoted: list[str] = [],
         clib_paths: list[str] = [],
         python_imports: list[str] = [],
+        server_callbacks: list[NativeServerCallback] = [],
         clib_symbol_lib: dict[str, str] = {},
         layout: (NativeModuleLayout | None) = None,
         deps: list[str] = [],
@@ -136,3 +137,14 @@ def _rekey_class_refs(value: any, keys: dict[str, str]) -> any;
 def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any];
 
 def layout_digest(classes: dict[str, any]) -> str;
+
+obj NativeServerCallback {
+    has name: str,
+        native_symbol: str,
+        source: str,
+        ret_type: str = "",
+        param_types: list[str] = [];
+
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> NativeServerCallback;
+}

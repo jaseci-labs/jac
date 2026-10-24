@@ -28,6 +28,7 @@ def _pin_run_scope(filename: str, takeover: (bool | None)) -> None;
 
 def _default_codespace_is_native -> bool;
 
+
 def _populate_native_argv(
     engine: ExecutionEngine | SharedNativeEngine, argv: list[str]
 ) -> None;
@@ -135,7 +136,31 @@ impl run_jab_image(
         if kind != "cli" {
             native_bin = _jab_native_bin(img_root, entry_rel);
             if native_bin {
-                os.execv(native_bin, [native_bin] + [str(a) for a in args]);
+                try {
+                    os.execv(native_bin, [native_bin] + [str(a) for a in args]);
+                } except OSError as e {
+                    console.warning(
+                        f"{label}: standalone native binary failed to start: {e}; trying the entry library."
+                    );
+                }
+            }
+            try {
+                rc = _jab_run_entry_lib(
+                    img_root,
+                    entry_rel,
+                    args,
+                    label,
+                    native_meta=meta.get("native_payloads") or {}
+                );
+            } except NativeEntryStartedError as e {
+                console.error(str(e));
+                console.error(
+                    f"{label}: native entry already started; refusing to retry and repeat side effects."
+                );
+                return 1;
+            }
+            if rc is not None {
+                return rc;
             }
         }
         return run(target=entry_abs, args=args);
@@ -1333,6 +1358,365 @@ impl _jab_native_bin(img_root: Path, entry_rel: str) -> (str | None) {
         return cand;
     }
     return None;
+}
+
+
+impl _jab_interop_record(lib_path: str) -> tuple[(dict[(str, any)] | None, str)] {
+    """Read the interop sidecar beside an entry library.
+
+    Returns (record, status) with status 'absent' (no record; sealed metadata
+    distinguishes a plain payload from a missing interop record), 'ok', or
+    'corrupt' (unreadable -- warned; the
+    caller must not trust the library in-process, because the contract it
+    would need to honor is unknown).""";
+    import json;
+    import from jaclang.server.sealed_serve { interop_record_path }
+
+    record_path = interop_record_path(lib_path);
+    if not record_path.is_file() {
+        return (None, "absent");
+    }
+    try {
+        data = json.loads(record_path.read_text(encoding="utf-8"));
+        if (
+            not isinstance(data, dict)
+            or data.get("version") != 1
+            or data.get("interop") is not True
+            or not isinstance(data.get("sha256"), str)
+            or not isinstance(data.get("triple"), str)
+            or not isinstance(data.get("callbacks"), list)
+        ) {
+            raise ValueError("record schema is invalid");
+        }
+        for cb in data["callbacks"] {
+            if (
+                not isinstance(cb, dict)
+                or not isinstance(cb.get("symbol"), str)
+                or not isinstance(cb.get("name"), str)
+                or not isinstance(cb.get("source"), str)
+                or not isinstance(cb.get("ret_type"), str)
+                or not isinstance(cb.get("param_types"), list)
+            ) {
+                raise ValueError("callback record schema is invalid");
+            }
+        }
+        return (data, "ok");
+    } except Exception as e {
+        console.warning(
+            f"{record_path}: unreadable interop record ({e}); refusing to "
+            "trust the entry library in-process."
+        );
+        return (None, "corrupt");
+    }
+}
+
+
+impl _set_native_argv_in_dll(nl: any, argv0: str, args: list[str]) -> None {
+    """Write `__jac_argc`/`__jac_argv` before any user code can run.
+
+    sys.argv's lowering reads these weak globals; an entry library does NOT
+    register `__jac_shared_init` in .init_array, so the host owns the boot
+    order: dlopen -> argv -> callbacks -> __jac_shared_init -> jac_entry.
+    This function is step two; the buffer is pinned on the library so the
+    strings outlive the entry.""";
+    import ctypes;
+
+    handle = nl.handle();
+    encoded = [v.encode() for v in [argv0] + [str(a) for a in args]];
+    argv_arr = (ctypes.c_char_p * len(encoded))(*encoded);
+    argc_addr = ctypes.cast(getattr(handle, "__jac_argc"), ctypes.c_void_p).value;
+    argv_addr = ctypes.cast(getattr(handle, "__jac_argv"), ctypes.c_void_p).value;
+    if argc_addr is None or argv_addr is None {
+        raise RuntimeError("entry library argv globals have no address");
+    }
+    ctypes.cast(argc_addr, ctypes.POINTER(ctypes.c_int)).contents.value = len(encoded);
+    ctypes.cast(argv_addr, ctypes.POINTER(ctypes.c_void_p)).contents.value = ctypes.addressof(
+        argv_arr
+    );
+    nl.callbacks.append(argv_arr);
+}
+
+
+impl _run_native_lib(
+    img_root: Path,
+    lib_path: str,
+    record: (dict[(str, any)] | None),
+    argv0: str,
+    args: list[str],
+    label: str
+) -> (int | None) {
+    """Load a sealed entry library in-process and run its entry.
+
+    Order is the entry-library contract: verify the record's library digest
+    before dlopen, load under RTLD_NOW, verify the recorded `__jac_bind_*`
+    slots and the argv/entry protocol symbols exist
+    (a slot the artifact lacks means a stale record or a broken seal),
+    resolve every recorded callback from the image root, write argv, and
+    only then start the image (`__jac_shared_init` -> `jac_entry`).
+
+    Returns None when the load must be refused before the entry starts, so
+    the caller can fall back. Any failure after the entry has started raises
+    NativeEntryStartedError: __jac_shared_init runs user code, so a retry in
+    another lane would repeat side effects.""";
+    import hashlib;
+    import from jaclang.runtime.interop_bridge {
+        NativeCallback,
+        NativeLibrary,
+        resolve_sv_callbacks
+    }
+    import from jaclang.server.sealed_serve { interop_record_path }
+
+    callbacks: list[dict[(str, any)]] = [
+        cb
+        for cb in (record.get("callbacks") if record else None) or []
+        if isinstance(cb, dict)
+    ];
+    if record and bool(record.get("interop")) {
+        want = str(record.get("sha256") or "");
+        if not want {
+            console.error(
+                f"{label}: interop record has no library digest; "
+                "re-seal the product and re-run."
+            );
+            return None;
+        }
+        h = hashlib.sha256();
+        with open(lib_path, "rb") as f {
+            h.update(f.read());
+        }
+        if h.hexdigest() != want {
+            console.error(
+                f"{label}: '{interop_record_path(lib_path).name}' describes "
+                "a different build of this entry library (sha256 mismatch) "
+                "-- re-seal the product and re-run."
+            );
+            return None;
+        }
+    }
+
+    nl = NativeLibrary(path=lib_path, eager=True);
+    try {
+        handle = nl.handle();
+    } except OSError as e {
+        console.error(f"{label}: entry library failed to load: {e}");
+        return None;
+    }
+
+    missing: list[str] = [];
+    for symbol in ["__jac_argc", "__jac_argv", "__jac_shared_init", "jac_entry"] {
+        if not hasattr(handle, symbol) {
+            missing.append(symbol);
+        }
+    }
+    for cb in callbacks {
+        slot = "__jac_bind_" + str(cb.get("symbol") or cb.get("name") or "");
+        if slot == "__jac_bind_" or not hasattr(handle, slot) {
+            missing.append(slot);
+        }
+    }
+    if missing {
+        console.error(
+            f"{label}: entry library lacks recorded protocol symbol(s) "
+                + ", ".join(sorted(set(missing)))
+                + " -- re-seal the product and re-run."
+        );
+        return None;
+    }
+
+    try {
+        _set_native_argv_in_dll(nl, argv0, args);
+    } except Exception as e {
+        console.error(
+            f"{label}: could not set entry-library argv before initialization: {e}"
+        );
+        return None;
+    }
+
+    nl.functions = {};
+    nl.bindings = [];
+    if callbacks {
+        (functions, failures) = resolve_sv_callbacks(callbacks, str(img_root));
+        if failures {
+            for failure in failures {
+                console.error(f"{label}: {failure}");
+            }
+            console.error(
+                f"{label}: refusing the entry-library load; "
+                f"{len(failures)} recorded callback(s) did not resolve."
+            );
+            return None;
+        }
+        if len(functions) != len(callbacks) {
+            console.error(
+                f"{label}: recorded {len(callbacks)} callback(s) but resolved "
+                f"{len(functions)} -- refusing the load; re-seal the product."
+            );
+            return None;
+        }
+        nl.functions = functions;
+        nl.bindings = [
+            NativeCallback(
+                name=str(cb.get("name") or ""),
+                native_symbol=str(cb.get("symbol") or ""),
+                lookup_name=str(cb.get("symbol") or ""),
+                ret_type=str(cb.get("ret_type") or "int"),
+                param_types=[str(t) for t in (cb.get("param_types") or [])]
+            ) for cb in callbacks
+        ];
+    }
+
+    try {
+        import from jaclang.runtime.interop_bridge { _loaded_native_libraries }
+        _loaded_native_libraries.append(nl);
+        nl.initialize();
+        entry_fn = getattr(handle, "jac_entry");
+        entry_fn.argtypes = [];
+        entry_fn.restype = None;
+        entry_fn();
+    } except NativeEntryStartedError {
+        raise;
+    } except Exception as e {
+        raise NativeEntryStartedError(
+            f"{label}: native entry started but failed: {e}"
+        ) from e;
+    }
+    return 0;
+}
+
+
+impl _jab_run_entry_lib(
+    img_root: Path,
+    entry_rel: str,
+    args: list[str],
+    label: str,
+    native_meta: (dict[str, any] | None) = None
+) -> (int | None) {
+    """Run a sealed image through its entry library.
+
+    Returns the exit code, or None when the lane is unavailable before the
+    entry starts (no library for this host triple, or a record we cannot
+    trust) so the caller can fall back. NativeEntryStartedError propagates
+    once the entry has started.""";
+    import hashlib;
+    import from jaclang.server.sealed_serve { interop_record_path, native_lib_name }
+    try {
+        import jaclang.compiler.backends.native.llvm.binding as llvm;
+        triple = str(llvm.get_default_triple());
+    } except Exception {
+        return None;
+    }
+    stem = base_stem(os.path.basename(entry_rel));
+    native_dir = os.path.join(str(img_root), NATIVE_DIR_REL, triple);
+    lib_path = os.path.join(native_dir, native_lib_name(stem));
+    if not os.path.isfile(lib_path) {
+        return None;
+    }
+    (record, status) = _jab_interop_record(lib_path);
+    expected_info = native_meta.get(triple) if isinstance(native_meta, dict) else None;
+    expected_interop = (
+        isinstance(expected_info, dict) and bool(expected_info.get("interop"))
+    );
+    if status == "corrupt" {
+        """An unreadable record may contract callbacks we would then leave
+        dangling -- refuse the in-process lane entirely (already warned).""";
+        return None;
+    }
+    metadata_has_triple = isinstance(native_meta, dict) and triple in native_meta;
+    if not metadata_has_triple or not isinstance(expected_info, dict) {
+        console.error(
+            f"{label}: sealed metadata has no trusted entry-library record for "
+            f"'{triple}'; refusing to load the library."
+        );
+        return None;
+    }
+    expected_library_digest = str(expected_info.get("sha256") or "");
+    if not expected_library_digest {
+        console.error(
+            f"{label}: sealed metadata has no entry-library digest for "
+            f"'{triple}'; refusing to load the library."
+        );
+        return None;
+    }
+    library_hash = hashlib.sha256();
+    try {
+        with open(lib_path, "rb") as f {
+            library_hash.update(f.read());
+        }
+    } except OSError as e {
+        console.error(
+            f"{label}: could not verify entry library "
+            f"'{os.path.basename(lib_path)}': {e}"
+        );
+        return None;
+    }
+    if library_hash.hexdigest() != expected_library_digest {
+        console.error(
+            f"{label}: entry library '{os.path.basename(lib_path)}' does not "
+            "match sealed metadata (sha256 mismatch); refusing to load it."
+        );
+        return None;
+    }
+    record_interop = bool(record.get("interop")) if record else False;
+    if record and record.get("triple") != triple {
+        console.error(
+            f"{label}: interop record target does not match host triple "
+            f"'{triple}'; refusing the entry library."
+        );
+        return None;
+    }
+    if expected_interop != record_interop {
+        console.error(
+            f"{label}: sealed metadata and interop record disagree for "
+            f"'{os.path.basename(lib_path)}'; refusing the entry library."
+        );
+        return None;
+    }
+    if expected_interop and (record is None or not bool(record.get("interop"))) {
+        console.error(
+            f"{label}: sealed metadata expects an interop record for "
+            f"'{os.path.basename(lib_path)}', but the record is absent or "
+            "does not match; refusing to run with empty callback slots."
+        );
+        return None;
+    }
+    if record_interop {
+        if not metadata_has_triple or not expected_interop {
+            console.error(
+                f"{label}: interop record has no matching trusted native metadata "
+                f"for '{triple}'; refusing to run with unverified callback slots."
+            );
+            return None;
+        }
+        expected_digest = str(expected_info.get("record_sha256") or "");
+        if not expected_digest {
+            console.error(
+                f"{label}: sealed metadata has no interop-record digest; "
+                "refusing to run with unverified callback slots."
+            );
+            return None;
+        }
+        record_hash = hashlib.sha256();
+        with open(interop_record_path(lib_path), "rb") as f {
+            record_hash.update(f.read());
+        }
+        if record_hash.hexdigest() != expected_digest {
+            console.error(
+                f"{label}: interop record does not match sealed metadata; "
+                "refusing to run with untrusted callback slots."
+            );
+            return None;
+        }
+    }
+    argv0 = os.path.join(native_dir, stem);
+    saved_argv = sys.argv;
+    sys.argv = [argv0] + [str(a) for a in args];
+    try {
+        return _run_native_lib(
+            img_root, lib_path, record, argv0=argv0, args=args, label=label
+        );
+    } finally {
+        sys.argv = saved_argv;
+    }
 }
 
 

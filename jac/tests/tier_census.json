@@ -632,7 +632,7 @@
     },
     "tests/language/fixtures/self_type.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for integer operator layout 'PLUS on %\"Money\"* vs %\"Money\"*'"
+      "reason": "E5092 Native lowering failed for method '_'"
     },
     "tests/language/fixtures/self_type_errors.jac": {
       "class": "refused",
@@ -661,7 +661,7 @@
     },
     "tests/language/fixtures/trailing_comma.jac": {
       "class": "refused",
-      "reason": "E5092 Native lowering failed for statement 'Archetype'"
+      "reason": "E1145 Cannot import name 'timezone' from Jac module 'time': it defines no such name"
     },
     "tests/language/fixtures/try_finally.jac": {
       "class": "same"
