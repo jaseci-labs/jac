@@ -88,10 +88,12 @@ graph import {
         client.js_runtime._engine | compiler.backends.native.native_link.musl_lib_dir {
             resolve
         },
+        client.targets.desktop.native.host_boot._enter_embedded_env
+            | project.kernel_snapshot.require_stub_catalog { forget },
+        client.targets.desktop.native.host_boot._leave_embedded_env { forget },
         compiler.backends.native.kernel_resolve.build_kernel { publish },
         compiler.types.stubcat.build.build_catalog { building },
         project.kernel_snapshot.build_stub_catalog { artifact_named, build, forget },
-        project.kernel_snapshot.require_stub_catalog { forget },
     ]
     artifacts.router --> [
         compiler.driver.toolchain.native_pipeline_available { resolve },
