@@ -17749,7 +17749,7 @@ graph import runtime.python {
             _PyTime_Add,
             jacpy_errno
         },
-        interpreter.ops { PyLong_Type, PyObject },
+        interpreter.ops { PyList_Type, PyLong_Type, PyObject, PyThreadState },
         interpreter.remote_debugging { PyErr_SetString, PyExc_RuntimeError },
         interpreter.stackref {
             PyObject,
@@ -24362,7 +24362,13 @@ graph import runtime.python {
             _qsbr_thread_state_TSTATE,
             llist_node
         },
-        interpreter.ops { PyCodeObject_CONSTS, PyLongObject },
+        interpreter.ops {
+            PyCodeObject_CONSTS,
+            PyLongObject,
+            PyThreadState_INTERP,
+            PyThreadState_PY_RECURSION_REMAINING,
+            PyTypeObject
+        },
         interpreter.perf_trampoline | modules.posix_core {
             PyStatus,
             _PyStatus_TYPE_OK
@@ -26741,7 +26747,9 @@ graph import runtime.python {
             _PyThreadStateImpl_QSBR
         },
         interpreter.ops {
+            PyInterpreterState_EVAL_FRAME,
             PyThreadState_CURRENT_FRAME,
+            PyThreadState_EVAL_BREAKER,
             _PyInterpreterFrame_F_EXECUTABLE,
             _PyInterpreterFrame_INSTR_PTR,
             _PyInterpreterFrame_LOCALSPLUS,

@@ -2251,6 +2251,7 @@ CONSTANT(offsetof(rangeobject, stop), 24LL);
 CONSTANT(offsetof(rangeobject, step), 32LL);
 CONSTANT(sizeof(longrangeiterobject), 40LL);
 CONSTANT(offsetof(PyThreadState, interp), 16LL);
+CONSTANT(offsetof(PyThreadState, py_recursion_remaining), 48LL);
 CONSTANT(offsetof(struct _gc_runtime_state, generation0), 256LL);
 CONSTANT(offsetof(struct _gc_runtime_state, heap_size), 216LL);
 CONSTANT(sizeof(PyGC_Head), 16LL);

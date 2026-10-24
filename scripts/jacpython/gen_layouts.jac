@@ -906,6 +906,11 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          # and heap size), as _Py_freelists_GET and _PyObject_GC_TRACK do.
          ("PyThreadState_INTERP", "offsetof(PyThreadState, interp)", "i64"),
          (
+             "PyThreadState_PY_RECURSION_REMAINING",
+             "offsetof(PyThreadState, py_recursion_remaining)",
+             "i64"
+         ),
+         (
              "_gc_runtime_state_GENERATION0",
              "offsetof(struct _gc_runtime_state, generation0)",
              "i64"

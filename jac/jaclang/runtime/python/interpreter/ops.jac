@@ -9,7 +9,7 @@ import from c {
         a: ptr[PyLongObject], b: ptr[PyLongObject]
     ) -> ptr[PyObject];  def _PyLong_Multiply(
         a: ptr[PyLongObject], b: ptr[PyLongObject]
-    ) -> ptr[PyObject];
+    ) -> ptr[PyObject];  def _Py_HandlePending(tstate: ptr[PyThreadState]) -> i32;
 }
 
 glob OP_LOAD_CONST: Final[u16] = u16(82),
@@ -347,4 +347,86 @@ impl _POP_JUMP_IF_TRUE(
 
 impl JUMP_FORWARD(oparg: i32) -> i64 {
     return i64(oparg);
+}
+
+def tstate_interp(tstate: ptr) -> ptr[u8];
+
+def eval_breaker_check(tstate: ptr) -> i32;
+
+def _CHECK_PEP_523(tstate: ptr) -> bool;
+
+def _PUSH_FRAME(tstate: ptr, new_frame: u64) -> ptr[u8];
+
+def _SAVE_RETURN_OFFSET(frame: ptr[u8], this_instr: ptr[u16], next_instr: ptr[u16]);
+
+def _CHECK_PERIODIC(tstate: ptr) -> i32;
+
+def _CHECK_PERIODIC_IF_NOT_YIELD_FROM(tstate: ptr, oparg: i32) -> i32;
+
+def _PUSH_NULL_CONDITIONAL(oparg: i32, null: ptr[u64]);
+
+def _GUARD_TYPE_VERSION(type_version: u32, owner: u64) -> bool;
+
+def _GUARD_TOS_LIST(tos: u64) -> bool;
+
+impl tstate_interp(tstate: ptr) -> ptr[u8] {
+    return ptr[ptr[u8]](ptr[u8](tstate) + PyThreadState_INTERP).view(1)[0];
+}
+
+impl eval_breaker_check(tstate: ptr) -> i32 {
+    breaker = __atomic_load_i64(int(ptr[u8](tstate) + PyThreadState_EVAL_BREAKER), 0);
+    if (breaker & 255) != 0 {
+        if _Py_HandlePending(ptr[PyThreadState](tstate)) != 0 {
+            return ST_ERROR;
+        }
+    }
+    return ST_OK;
+}
+
+impl _CHECK_PEP_523(tstate: ptr) -> bool {
+    return not ptr[ptr[u8]](tstate_interp(tstate) + PyInterpreterState_EVAL_FRAME).view(
+        1
+    )[0];
+}
+
+impl _PUSH_FRAME(tstate: ptr, new_frame: u64) -> ptr[u8] {
+    temp = ptr[u8](i64.wrap(new_frame));
+    ptr[ptr[u8]](ptr[u8](tstate) + PyThreadState_CURRENT_FRAME).view(1)[0] = temp;
+    remaining = ptr[i32](ptr[u8](tstate) + PyThreadState_PY_RECURSION_REMAINING);
+    remaining.view(1)[0] = remaining.view(1)[0] - 1;
+    return temp;
+}
+
+impl _SAVE_RETURN_OFFSET(frame: ptr[u8], this_instr: ptr[u16], next_instr: ptr[u16]) {
+    ptr[u16](frame + _PyInterpreterFrame_RETURN_OFFSET).view(1)[0] = u16.wrap(
+        (int(next_instr) - int(this_instr)) // 2
+    );
+}
+
+impl _CHECK_PERIODIC(tstate: ptr) -> i32 {
+    if eval_breaker_check(tstate) != ST_OK {
+        return ST_ERROR;
+    }
+    return ST_OK;
+}
+
+impl _CHECK_PERIODIC_IF_NOT_YIELD_FROM(tstate: ptr, oparg: i32) -> i32 {
+    if (oparg & 3) < 2 and eval_breaker_check(tstate) != ST_OK {
+        return ST_ERROR;
+    }
+    return ST_OK;
+}
+
+impl _PUSH_NULL_CONDITIONAL(oparg: i32, null: ptr[u64]) {
+    if (oparg & 1) != 0 {
+        null.view(1)[0] = SR_NULL;
+    }
+}
+
+impl _GUARD_TYPE_VERSION(type_version: u32, owner: u64) -> bool {
+    return sr_type(owner).view(1)[0].tp_version_tag == type_version;
+}
+
+impl _GUARD_TOS_LIST(tos: u64) -> bool {
+    return sr_type(tos) == ptr[PyTypeObject](addressof(PyList_Type));
 }

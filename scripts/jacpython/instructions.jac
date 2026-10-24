@@ -107,7 +107,15 @@ glob OPS: list[Op] = [
          Op("_BINARY_OP_MULTIPLY_INT", "left!, right! -- res", error=True),
          Op("_IS_NONE", "value -- b", escapes=False),
          Op("_POP_JUMP_IF_FALSE", "cond! --", escapes=False),
-         Op("_POP_JUMP_IF_TRUE", "cond! --", escapes=False)
+         Op("_POP_JUMP_IF_TRUE", "cond! --", escapes=False),
+         Op("_CHECK_PEP_523", "--"),
+         Op("_PUSH_FRAME", "new_frame! --", resume="start"),
+         Op("_SAVE_RETURN_OFFSET", "--", escapes=False),
+         Op("_CHECK_PERIODIC", "--"),
+         Op("_CHECK_PERIODIC_IF_NOT_YIELD_FROM", "--"),
+         Op("_PUSH_NULL_CONDITIONAL", "-- null[oparg & 1]", escapes=False),
+         Op("_GUARD_TYPE_VERSION", "type_version/2, owner -- owner"),
+         Op("_GUARD_TOS_LIST", "tos -- tos")
      ],
      MACROS: list[Macro] = [
          Macro(
