@@ -3209,7 +3209,7 @@ impl NativeListEmitter.emit_sort(
         p._pending_lambda_captures = None;
         _key_val = p._codegen_expr(_key_node);
         _key_caps = p._pending_lambda_captures
-            or p.lambda_captures.get(p._get_name(_key_node) or "")
+            or p.scope.lambda_captures(p._get_name(_key_node) or "")
             or [];
         p._pending_lambda_captures = None;
         _closure = p._closure_struct_of(_key_val.type)
