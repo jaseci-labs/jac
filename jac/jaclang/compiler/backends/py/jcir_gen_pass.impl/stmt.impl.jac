@@ -230,31 +230,18 @@ impl JcirGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
     return [self._release_name_stmt(n, stmt) for n in names];
 }
 
-impl JcirGenPass.scope_directive_stmts(
-    scopes: list[UniScopeNode | None]
-) -> list[CgNode] {
+impl JcirGenPass.scope_directive_stmts(scope: UniScopeNode) -> list[CgNode] {
     global_names: list[str] = [];
     nonlocal_names: list[str] = [];
-    seen: set[str] = set();
-    for scope in scopes {
-        if scope is None {
+    linked = self.loop_links.linked_within(scope);
+    for (name, sym) in scope.implicit_rebinds.items() {
+        if sym in linked {
             continue;
         }
-        linked = self.loop_links.linked_within(scope);
-        for name in scope.implicit_rebinds {
-            if name in seen {
-                continue;
-            }
-            seen.add(name);
-            sym = scope.implicit_rebinds[name];
-            if sym in linked {
-                continue;
-            }
-            if isinstance(sym.parent_tab, Module) {
-                global_names.append(name);
-            } else {
-                nonlocal_names.append(name);
-            }
+        if isinstance(sym.parent_tab, Module) {
+            global_names.append(name);
+        } else {
+            nonlocal_names.append(name);
         }
     }
     stmts: list[CgNode] = [];

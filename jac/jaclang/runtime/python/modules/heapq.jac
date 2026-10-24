@@ -5,24 +5,6 @@ list length before accessing slots. Swaps use the current slots, including
 changes made by comparisons. Derived from CPython; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_IndexError,
-    PyExc_RuntimeError,
-    PyList_Append,
-    PyList_GetItemRef,
-    PyObject,
-    Py_NewRef,
-    Py_None,
-    jacpy_less,
-    jacpy_list_delete,
-    jacpy_list_exchange,
-    jacpy_list_size,
-    jacpy_list_swap,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error }
-
 def heap_size_unchanged(heap: ptr[PyObject], size: i64) -> bool {
     if jacpy_list_size(heap) != size {
         object_error(PyExc_RuntimeError, "list changed size during iteration");

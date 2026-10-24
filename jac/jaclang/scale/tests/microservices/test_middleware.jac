@@ -1,8 +1,4 @@
 import asyncio;
-import from jaclang.scale.runtime.middleware.middleware {
-    Middleware,
-    MiddlewareRegistry
-}
 
 
 obj RecordingMiddleware(Middleware) {

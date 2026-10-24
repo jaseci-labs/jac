@@ -1,5 +1,3 @@
-import type from jaclang.compiler.frontend.unitree { Source, Token }
-
 obj Span {
     has mod_path: str = '',
         first_line: int = 0,
@@ -12,100 +10,27 @@ obj Span {
         window_offset: int = 0,
         window_line: int = 0;
 
-    static def from_loc(loc: CodeLocInfo) -> Span {
-        code = loc.orig_src.code;
-        (win, win_off, win_line) = Span._capture_window(
-            code, loc.first_line, loc.pos_start
-        );
-        return Span(
-            mod_path=loc.mod_path,
-            first_line=loc.first_line,
-            last_line=loc.last_line,
-            col_start=loc.col_start,
-            col_end=loc.col_end,
-            pos_start=loc.pos_start,
-            pos_end=loc.pos_end,
-            src_window=win,
-            window_offset=win_off,
-            window_line=win_line
-        );
-    }
-
+    static def from_loc(loc: CodeLocInfo) -> Span;
     static def make(
         mod_path: str,
         code: str,
         lines: tuple[int, int],
         cols: tuple[int, int],
         poss: tuple[int, int]
-    ) -> Span {
-        (win, win_off, win_line) = Span._capture_window(code, lines[0], poss[0]);
-        return Span(
-            mod_path=mod_path,
-            first_line=lines[0],
-            last_line=lines[1],
-            col_start=cols[0],
-            col_end=cols[1],
-            pos_start=poss[0],
-            pos_end=poss[1],
-            src_window=win,
-            window_offset=win_off,
-            window_line=win_line
-        );
-    }
+    ) -> Span;
 
     static def _capture_window(
         code: str, first_line: int, pos_start: int
-    ) -> tuple[str, int, int] {
-        if code == '' {
-            return ('', 0, 0);
-        }
-        fb = code.encode("utf-8");
-        flen = len(fb);
-        NL = 10;
-        start_line = first_line - 2;
-        if start_line < 1 {
-            start_line = 1;
-        }
-        idx = pos_start;
-        if idx > flen {
-            idx = flen;
-        }
-        curr_line = first_line;
-        while idx >= 0 and curr_line >= start_line {
-            idx -= 1;
-            if idx < 0 {
-                break;
-            }
-            if fb[idx] == NL {
-                curr_line -= 1;
-            }
-        }
-        idx += 1;
-        win_start = idx;
-        end_line = start_line + 5;
-        curr_line = start_line;
-        while idx < flen and curr_line < end_line {
-            if fb[idx] == NL {
-                curr_line += 1;
-            }
-            idx += 1;
-        }
-        return (
-            fb[win_start:idx].decode("utf-8", errors="replace"),
-            win_start,
-            start_line
-        );
-    }
+    ) -> tuple[str, int, int];
 
-    def __str__ -> str {
-        return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
-    }
+    def __str__ -> str;
 }
 
 obj CodeLocInfo {
     has first_tok: Token,
         last_tok: Token;
 
+    static has __slots__: tuple[str, ...] = ("first_tok", "last_tok");
     has orig_src: Source { getter; }
     has mod_path: str { getter; }
     has first_line: int { getter; }
@@ -115,18 +40,9 @@ obj CodeLocInfo {
     has pos_start: int { getter; }
     has pos_end: int { getter; }
 
-    def update_token_range(first_tok: Token, last_tok: Token) {
-        self.first_tok = first_tok;
-        self.last_tok = last_tok;
-    }
-
-    def __str__ -> str {
-        return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
-    }
-
-    def span -> Span {
-        return Span.from_loc(self);
-    }
+    def update_token_range(first_tok: Token, last_tok: Token);
+    def __str__ -> str;
+    def span -> Span;
 }
 
 impl CodeLocInfo.orig_src.getter -> Source {

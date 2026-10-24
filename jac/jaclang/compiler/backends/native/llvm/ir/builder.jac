@@ -1,9 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir.instructions as instructions;
-import jaclang.compiler.backends.native.llvm.ir.types as types;
-import jaclang.compiler.backends.native.llvm.ir.values as values;
-import from jaclang.compiler.backends.native.llvm.ir.values { Value }
-import type from jaclang.compiler.backends.native.llvm.ir.module { Module }
-
 glob _CMP_MAP: dict[str, str] = {
          '>': 'gt',
          '<': 'lt',

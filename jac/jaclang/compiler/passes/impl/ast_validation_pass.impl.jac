@@ -301,7 +301,7 @@ impl ASTValidationPass.enter_import with Import entry {
 }
 
 impl ASTValidationPass.enter_yield_expr with YieldExpr entry {
-    if here.find_parent_of_type(Ability) is None
+    if here.enclosing_decl(Ability) is None
         and here.find_parent_of_type(ImplDef) is None {
         self.ctx.emit(E0055, node_override=here);
     }

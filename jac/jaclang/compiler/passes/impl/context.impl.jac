@@ -21,7 +21,6 @@ impl Alert.__repr__ -> str {
 }
 
 impl Alert.as_log(*, colors: bool = False) -> str {
-    import from jaclang.project.source { render_diagnostic_header }
     return render_diagnostic_header(
         self.msg,
         self.code.code if self.code else '',
@@ -32,7 +31,6 @@ impl Alert.as_log(*, colors: bool = False) -> str {
 }
 
 impl Alert.pretty_print(*, colors: bool = False) -> str {
-    import from jaclang.project.source { render_diagnostic }
     return render_diagnostic(
         self.msg,
         self.code.code if self.code else '',
@@ -74,13 +72,9 @@ impl DiagnosticPolicy.is_suppressed(
             or (kebab_name is not None and kebab_name in self.lint_ignore)
         );
 
-        non_default_codes: set[str] = {"E3012"};
-
-        explicit_only_codes: set[str] = {"W3050", "W3051"};
+        non_default_codes: set[str] = {"E3012", "W3050", "W3051", "W3055"};
         enabled = False;
-        if diag.code in explicit_only_codes {
-            enabled = code_in_select;
-        } elif "all" in self.lint_select {
+        if "all" in self.lint_select {
             enabled = True;
         } elif "default" in self.lint_select {
             enabled = (diag.code not in non_default_codes) or code_in_select;
@@ -217,4 +211,35 @@ impl CompilerPass.prog.getter -> JacProgram {
         raise RuntimeError(f"{self.ctx.pass_name} needs the program it runs in");
     }
     return program;
+}
+
+impl CompileContext.is_canceled -> bool {
+    return self.cancel_requested;
+}
+
+impl CompilerPass.release {}
+
+impl TreePass.enter_walk with UniNode entry {
+    self.ctx.enter_node(here);
+}
+
+impl TreePass.exit_walk with UniNode exit {
+    self.ctx.exit_node(here);
+}
+
+impl TreePass.walk_decl_body(decl: UniNode) -> None {
+    for impl_def in decl.own_impls {
+        self._decl_bodies.append(impl_def);
+        try {
+            self.ctx.walk_subtree(impl_def, self);
+        } finally {
+            self._decl_bodies.pop();
+        }
+    }
+}
+
+impl TreePass.reached_by_syntax(nd: UniNode) -> bool {
+    return isinstance(nd, ImplDef)
+        and nd.decl_link is not None
+        and nd not in self._decl_bodies;
 }

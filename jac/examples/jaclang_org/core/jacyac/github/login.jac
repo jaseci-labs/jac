@@ -1,6 +1,10 @@
 import from "@jac/runtime" { jacSetToken, __getLocalStorage, __setLocalStorage }
 
-async def:pub github_login -> bool {
+async def:pub github_login -> bool;
+
+async def:pub complete_web_login(code: str, state: str) -> str;
+
+impl github_login -> bool {
     browser: any = window;
     random_data: any = new(Uint8Array, 32);
     browser.crypto.getRandomValues(random_data);
@@ -32,7 +36,7 @@ async def:pub github_login -> bool {
     return False;
 }
 
-async def:pub complete_web_login(code: str, state: str) -> str {
+impl complete_web_login(code: str, state: str) -> str {
     key = "jacyac_github_" + state;
     verifier = sessionStorage.getItem(key) or "";
     sessionStorage.removeItem(key);
@@ -42,6 +46,6 @@ async def:pub complete_web_login(code: str, state: str) -> str {
     }
     jacSetToken(result.token);
     __setLocalStorage("jacyac_username", result.username);
-    window.location.replace("/jacyac/scores");
+    window.location.replace("/jacyac");
     return "";
 }

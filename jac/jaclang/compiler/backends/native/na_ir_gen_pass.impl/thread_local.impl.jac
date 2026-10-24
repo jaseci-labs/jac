@@ -28,7 +28,7 @@ impl NaIRGenPass._emit_tls_slot(
     set_fn.args[0].name = "v";
     self.extern_funcs[get_name] = get_fn;
     self.extern_funcs[set_name] = set_fn;
-    if "wasm" in str(self.llvm_module.triple or "") {
+    if self._target_is_wasm() {
         slot = ir.GlobalVariable(self.llvm_module, i8p, name=slot_name);
         slot.linkage = "weak";
         slot.initializer = ir.Constant(i8p, None);

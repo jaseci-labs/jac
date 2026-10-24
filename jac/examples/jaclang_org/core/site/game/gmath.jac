@@ -5,15 +5,11 @@ glob PI: float = 3.141592653589793,
 
 def jcos(a: float) -> float;
 
-def jsin(a: float) -> float {
-    return jcos(a - HALF_PI);
-}
+def jsin(a: float) -> float;
 
 def jsqrt(v: float) -> float;
 
-def lerp(a: float, b: float, t: float) -> float {
-    return a + (b - a) * t;
-}
+def lerp(a: float, b: float, t: float) -> float;
 
 def clampf(v: float, lo: float, hi: float) -> float;
 
@@ -23,10 +19,22 @@ obj Rng {
 
 def rand01(r: &mut Rng) -> float;
 
-def rand_range(r: &mut Rng, lo: float, hi: float) -> float {
+def rand_range(r: &mut Rng, lo: float, hi: float) -> float;
+
+def rand_sign(r: &mut Rng) -> float;
+
+impl jsin(a: float) -> float {
+    return jcos(a - HALF_PI);
+}
+
+impl lerp(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t;
+}
+
+impl rand_range(r: &mut Rng, lo: float, hi: float) -> float {
     return lo + rand01(r) * (hi - lo);
 }
 
-def rand_sign(r: &mut Rng) -> float {
+impl rand_sign(r: &mut Rng) -> float {
     return 1.0 if rand01(r) < 0.5 else -1.0;
 }

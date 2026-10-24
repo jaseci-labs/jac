@@ -3,27 +3,152 @@ import os;
 import sys;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.jac0core.ext_registry {
-    MODULE_SUFFIXES,
-    is_jac_namespace_package,
-    language_of
-}
 
 glob _project_root_cache: dict[str, str | None] = {},
      _import_base_stack: list[str] = [],
      COMPILER_PACKAGE: str = 'jaclang';
 
-def push_import_base(base_dir: str) {
+def push_import_base(base_dir: str);
+
+def pop_import_base;
+
+def _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | None);
+
+def _find_spec_no_exec(target: str) -> (ModuleSpec | None);
+
+def find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None);
+
+def find_jac_project_root(start: (str | None) = None) -> (str | None);
+
+glob _mounts_by_root: dict[str, tuple[str, str]] = {},
+     _self_mounted: set[str] = set(),
+     MOUNTS_DIR_NAME: str = 'packages';
+
+def is_scoped_package_name(name: str) -> bool;
+
+def _ensure_self_mount(mounts: str, name: str, project_root: str);
+
+def _mounts_entry(project_root: str) -> tuple[str, str];
+
+def project_mounts_dir(project_root: str) -> str;
+
+def enclosing_mounts(project_root: str) -> (str | None);
+
+def project_mounts(project_root: str) -> (str | None);
+
+def module_name_in(root_dir: str, path: str) -> (str | None);
+
+def get_jac_search_paths(base_path: (str | None) = None) -> list[str];
+
+glob _CASE_BLIND_FS: list[bool] = [];
+
+def case_blind_filesystem -> bool;
+
+def named_exactly_any(candidate: str) -> bool;
+
+def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None);
+
+def _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | None);
+
+def _self_tree_candidate(
+    base_dir: str, actual_parts: list[str]
+) -> (tuple[(str, str)] | None);
+
+def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None);
+
+def resolve_jac_virtual_module_path(target: str) -> (str | None);
+
+def resolve_jac_virtual_module_exports(target: str) -> list[str];
+
+def _get_path_aliases -> dict[str, str];
+
+def _resolve_path_alias(target: str, base_path: str) -> (str | None);
+
+def is_path_alias_import(target: str, base_path: str) -> bool;
+
+def resolve_module(
+    target: str, base_path: str, string_spec: bool = False
+) -> tuple[(str, str)];
+
+def infer_language(target: str, base_path: str, string_spec: bool = False) -> str;
+
+def resolve_relative_path(
+    target: str, base_path: str, string_spec: bool = False
+) -> str;
+
+glob NPM_RUNTIME_CONDITIONS: tuple[str, ...] = (
+         'browser',
+         'module',
+         'import',
+         'default'
+     ),
+     NPM_TYPES_CONDITIONS: tuple[str, ...] = ('types', 'import', 'default'),
+     NPM_DTS_SUFFIXES: tuple[str, ...] = ('.d.ts', '.d.mts', '.d.cts');
+
+def _find_npm_package(
+    spec: str, base_path: str
+) -> (tuple[(str, list[str], str)] | None);
+
+def _read_package_json(pkg_dir: str) -> dict[str, any];
+
+def _resolve_export_target(
+    target: object,
+    conditions: tuple[str, ...],
+    pkg_dir: str,
+    star_sub: (str | None) = None
+) -> (str | None);
+
+def _resolve_pkg_exports(
+    exports: object, subpath: str, conditions: tuple[str, ...], pkg_dir: str
+) -> (str | None);
+
+def has_client_npm_package(spec: str, base_path: str) -> bool;
+
+def resolve_client_npm_package(spec: str, base_path: str) -> (str | None);
+
+def resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None);
+
+def _resolve_at_types_declarations(
+    spec: str, subpath: list[str], node_modules: str
+) -> (str | None);
+
+def sibling_declaration_file(js_path: str) -> (str | None);
+
+def _npm_file_with_ext(candidate: str) -> (str | None);
+
+def _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None);
+
+def get_typeshed_paths -> list[str];
+
+def in_typeshed_tree(path: str) -> bool;
+
+def in_native_library(path: str) -> bool;
+
+def _stub_catalog_active -> bool;
+
+def _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None);
+
+def _candidate_from_typeshed(
+    base: str, parts: list[str]
+) -> (tuple[(str, str)] | None);
+
+def _candidate_from_stub_package(
+    base: str, parts: list[str]
+) -> (tuple[(str, str)] | None);
+
+def is_untyped_third_party_module(path: str) -> bool;
+
+impl push_import_base(base_dir: str) {
     _import_base_stack.append(base_dir);
 }
 
-def pop_import_base {
+impl pop_import_base {
     if _import_base_stack {
         _import_base_stack.pop();
     }
 }
 
-def _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | None) {
+impl _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | None) {
     for finder in `list(sys.meta_path) {
         fs = finder?.find_spec;
         if fs is None {
@@ -41,7 +166,7 @@ def _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | N
     return None;
 }
 
-def _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
+impl _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
     import from importlib.machinery { PathFinder }
     loaded_target = sys.modules.get(target);
     if loaded_target is not None {
@@ -94,7 +219,7 @@ def _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
     return spec;
 }
 
-def find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None) {
+impl find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None) {
     if start is None {
         start = Path.cwd();
     }
@@ -116,7 +241,7 @@ def find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None)
     return None;
 }
 
-def find_jac_project_root(start: (str | None) = None) -> (str | None) {
+impl find_jac_project_root(start: (str | None) = None) -> (str | None) {
     if start {
         current = os.path.abspath(start);
         if os.path.isfile(current) {
@@ -135,11 +260,7 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     return found;
 }
 
-glob _mounts_by_root: dict[str, tuple[str, str]] = {},
-     _self_mounted: set[str] = set(),
-     MOUNTS_DIR_NAME: str = 'packages';
-
-def is_scoped_package_name(name: str) -> bool {
+impl is_scoped_package_name(name: str) -> bool {
     parts = (name or '').split('/');
     if len(parts) != 2 {
         return False;
@@ -158,7 +279,7 @@ def is_scoped_package_name(name: str) -> bool {
     return True;
 }
 
-def _ensure_self_mount(mounts: str, name: str, project_root: str) {
+impl _ensure_self_mount(mounts: str, name: str, project_root: str) {
     parts = name.split('/');
     link = os.path.join(mounts, parts[0], parts[1]);
     if os.path.lexists(link) {
@@ -172,7 +293,7 @@ def _ensure_self_mount(mounts: str, name: str, project_root: str) {
     }
 }
 
-def _mounts_entry(project_root: str) -> tuple[str, str] {
+impl _mounts_entry(project_root: str) -> tuple[str, str] {
     if project_root not in _mounts_by_root {
         mounts = os.path.join(project_root, '.jac', MOUNTS_DIR_NAME);
         name = '';
@@ -196,13 +317,13 @@ def _mounts_entry(project_root: str) -> tuple[str, str] {
     return _mounts_by_root[project_root];
 }
 
-def project_mounts_dir(project_root: str) -> str {
+impl project_mounts_dir(project_root: str) -> str {
     """Where a project mounts its packages, without touching the disk: a
     caller asking about someone else's package must not mount into it.""";
     return _mounts_entry(project_root)[0];
 }
 
-def enclosing_mounts(project_root: str) -> (str | None) {
+impl enclosing_mounts(project_root: str) -> (str | None) {
     mounts = os.path.dirname(os.path.dirname(os.path.normpath(project_root)));
     if os.path.basename(mounts) == MOUNTS_DIR_NAME
         and os.path.basename(os.path.dirname(mounts)) == '.jac' {
@@ -211,7 +332,7 @@ def enclosing_mounts(project_root: str) -> (str | None) {
     return None;
 }
 
-def project_mounts(project_root: str) -> (str | None) {
+impl project_mounts(project_root: str) -> (str | None) {
     (mounts, name) = _mounts_entry(project_root);
     if project_root not in _self_mounted {
         _self_mounted.add(project_root);
@@ -222,7 +343,7 @@ def project_mounts(project_root: str) -> (str | None) {
     return mounts if os.path.isdir(mounts) else None;
 }
 
-def module_name_in(root_dir: str, path: str) -> (str | None) {
+impl module_name_in(root_dir: str, path: str) -> (str | None) {
     try {
         rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
     } except ValueError {
@@ -254,7 +375,7 @@ def module_name_in(root_dir: str, path: str) -> (str | None) {
     return '.'.join(parts);
 }
 
-def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
+impl get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     paths = [];
     if base_path {
         paths.append(base_path);
@@ -307,9 +428,7 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     );
 }
 
-glob _CASE_BLIND_FS: list[bool] = [];
-
-def case_blind_filesystem -> bool {
+impl case_blind_filesystem -> bool {
     if not _CASE_BLIND_FS {
         probe = os.path.realpath(str(__file__));
         folder = os.path.dirname(probe);
@@ -319,7 +438,7 @@ def case_blind_filesystem -> bool {
     return _CASE_BLIND_FS[0];
 }
 
-def named_exactly_any(candidate: str) -> bool {
+impl named_exactly_any(candidate: str) -> bool {
     if not case_blind_filesystem() {
         return True;
     }
@@ -338,7 +457,7 @@ def named_exactly_any(candidate: str) -> bool {
     return False;
 }
 
-def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
+impl resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     candidate = os.path.join(base, *parts);
     if parts and not named_exactly_any(candidate) {
         return None;
@@ -373,7 +492,7 @@ def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | No
     return None;
 }
 
-def _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
+impl _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     candidate = os.path.join(base, *parts);
     if os.path.isdir(candidate) and is_jac_namespace_package(candidate) {
         return (candidate, 'jac');
@@ -381,7 +500,7 @@ def _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | No
     return None;
 }
 
-def _self_tree_candidate(
+impl _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None) {
     is_compiler_pkg = actual_parts[0] == COMPILER_PACKAGE;
@@ -407,7 +526,7 @@ def _self_tree_candidate(
     }
 }
 
-def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
+impl _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     if not target.startswith('@jac/') {
         return None;
     }
@@ -448,12 +567,12 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     return None;
 }
 
-def resolve_jac_virtual_module_path(target: str) -> (str | None) {
+impl resolve_jac_virtual_module_path(target: str) -> (str | None) {
     result = _resolve_jac_virtual_module(target);
     return result[0] if result else None;
 }
 
-def resolve_jac_virtual_module_exports(target: str) -> list[str] {
+impl resolve_jac_virtual_module_exports(target: str) -> list[str] {
     if not target.startswith('@jac/') {
         return [];
     }
@@ -473,7 +592,7 @@ def resolve_jac_virtual_module_exports(target: str) -> list[str] {
     return [];
 }
 
-def _get_path_aliases -> dict[str, str] {
+impl _get_path_aliases -> dict[str, str] {
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
@@ -485,7 +604,7 @@ def _get_path_aliases -> dict[str, str] {
     return {};
 }
 
-def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
+impl _resolve_path_alias(target: str, base_path: str) -> (str | None) {
     if not target.startswith('@') {
         return None;
     }
@@ -531,11 +650,11 @@ def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
     return None;
 }
 
-def is_path_alias_import(target: str, base_path: str) -> bool {
+impl is_path_alias_import(target: str, base_path: str) -> bool {
     return _resolve_path_alias(target, base_path) is not None;
 }
 
-def resolve_module(
+impl resolve_module(
     target: str, base_path: str, string_spec: bool = False
 ) -> tuple[(str, str)] {
     base_dir = os.path.dirname(base_path);
@@ -710,28 +829,19 @@ def resolve_module(
     return (os.path.join(base_dir, *actual_parts), 'py');
 }
 
-def infer_language(target: str, base_path: str, string_spec: bool = False) -> str {
+impl infer_language(target: str, base_path: str, string_spec: bool = False) -> str {
     (_, lang) = resolve_module(target, base_path, string_spec=string_spec);
     return lang;
 }
 
-def resolve_relative_path(
+impl resolve_relative_path(
     target: str, base_path: str, string_spec: bool = False
 ) -> str {
     (path, _) = resolve_module(target, base_path, string_spec=string_spec);
     return path;
 }
 
-glob NPM_RUNTIME_CONDITIONS: tuple[str, ...] = (
-         'browser',
-         'module',
-         'import',
-         'default'
-     ),
-     NPM_TYPES_CONDITIONS: tuple[str, ...] = ('types', 'import', 'default'),
-     NPM_DTS_SUFFIXES: tuple[str, ...] = ('.d.ts', '.d.mts', '.d.cts');
-
-def _find_npm_package(
+impl _find_npm_package(
     spec: str, base_path: str
 ) -> (tuple[(str, list[str], str)] | None) {
     if not spec or spec.startswith('.') {
@@ -765,7 +875,7 @@ def _find_npm_package(
     return (pkg_dir, subpath, node_modules);
 }
 
-def _read_package_json(pkg_dir: str) -> dict[str, any] {
+impl _read_package_json(pkg_dir: str) -> dict[str, any] {
     import json;
     pkg_json = os.path.join(pkg_dir, 'package.json');
     if not os.path.isfile(pkg_json) {
@@ -781,7 +891,7 @@ def _read_package_json(pkg_dir: str) -> dict[str, any] {
     return data if isinstance(data, dict) else {};
 }
 
-def _resolve_export_target(
+impl _resolve_export_target(
     target: object,
     conditions: tuple[str, ...],
     pkg_dir: str,
@@ -820,7 +930,7 @@ def _resolve_export_target(
     return None;
 }
 
-def _resolve_pkg_exports(
+impl _resolve_pkg_exports(
     exports: object, subpath: str, conditions: tuple[str, ...], pkg_dir: str
 ) -> (str | None) {
     if isinstance(exports, dict) {
@@ -870,11 +980,11 @@ def _resolve_pkg_exports(
     return None;
 }
 
-def has_client_npm_package(spec: str, base_path: str) -> bool {
+impl has_client_npm_package(spec: str, base_path: str) -> bool {
     return _find_npm_package(spec, base_path) is not None;
 }
 
-def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
+impl resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
     found = _find_npm_package(spec, base_path);
     if found is None {
         return None;
@@ -907,7 +1017,7 @@ def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
     return _npm_package_entry(pkg_dir, data);
 }
 
-def resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) {
+impl resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) {
     found = _find_npm_package(spec, base_path);
     if found is None {
         return None;
@@ -970,7 +1080,7 @@ def resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) {
     return _resolve_at_types_declarations(spec, subpath, node_modules);
 }
 
-def _resolve_at_types_declarations(
+impl _resolve_at_types_declarations(
     spec: str, subpath: list[str], node_modules: str
 ) -> (str | None) {
     parts = [
@@ -1014,7 +1124,7 @@ def _resolve_at_types_declarations(
     return os.path.normpath(index_dts) if os.path.isfile(index_dts) else None;
 }
 
-def sibling_declaration_file(js_path: str) -> (str | None) {
+impl sibling_declaration_file(js_path: str) -> (str | None) {
     (stem, ext) = os.path.splitext(js_path);
     by_ext = {'.mjs': '.d.mts', '.cjs': '.d.cts', '.js': '.d.ts'};
     preferred = by_ext.get(ext);
@@ -1035,7 +1145,7 @@ def sibling_declaration_file(js_path: str) -> (str | None) {
     return None;
 }
 
-def _npm_file_with_ext(candidate: str) -> (str | None) {
+impl _npm_file_with_ext(candidate: str) -> (str | None) {
     if os.path.isfile(candidate) {
         return os.path.normpath(candidate);
     }
@@ -1047,7 +1157,7 @@ def _npm_file_with_ext(candidate: str) -> (str | None) {
     return None;
 }
 
-def _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None) {
+impl _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None) {
     entries: list[str] = [];
     for key in ('module', 'main') {
         val = data.get(key);
@@ -1073,7 +1183,7 @@ def _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None) {
     return None;
 }
 
-def get_typeshed_paths -> list[str] {
+impl get_typeshed_paths -> list[str] {
     import jaclang;
     base = os.path.join(os.path.dirname(str(jaclang.__file__)), 'vendor', 'typeshed');
     base = os.path.abspath(base);
@@ -1085,20 +1195,19 @@ def get_typeshed_paths -> list[str] {
     return paths;
 }
 
-def in_typeshed_tree(path: str) -> bool {
+impl in_typeshed_tree(path: str) -> bool {
     return "/vendor/typeshed/" in path.replace("\\", "/");
 }
 
-def in_native_library(path: str) -> bool {
+impl in_native_library(path: str) -> bool {
     return "/runtime/na_stdlib/" in path.replace("\\", "/");
 }
 
-def _stub_catalog_active -> bool {
-    import from jaclang.jac0core.stubcat_hook { active }
+impl _stub_catalog_active -> bool {
     return active() is not None;
 }
 
-def _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None) {
+impl _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None) {
     if not parts {
         return None;
     }
@@ -1114,7 +1223,7 @@ def _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None)
     return (path, 'pyi');
 }
 
-def _candidate_from_typeshed(
+impl _candidate_from_typeshed(
     base: str, parts: list[str]
 ) -> (tuple[(str, str)] | None) {
     if not parts {
@@ -1142,7 +1251,7 @@ def _candidate_from_typeshed(
     return None;
 }
 
-def _candidate_from_stub_package(
+impl _candidate_from_stub_package(
     base: str, parts: list[str]
 ) -> (tuple[(str, str)] | None) {
     if not parts {
@@ -1174,7 +1283,7 @@ def _candidate_from_stub_package(
     return None;
 }
 
-def is_untyped_third_party_module(path: str) -> bool {
+impl is_untyped_third_party_module(path: str) -> bool {
     if not path.endswith('.py') {
         return False;
     }

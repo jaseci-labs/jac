@@ -21,7 +21,47 @@ glob PWA_BANNER_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_IOS_MODAL_Z_INDEX = 10000,
      PWA_MS_PER_DAY = 86400000;
 
-def _load_pwa_context -> tuple[dict[str, any], str] {
+def _load_pwa_context -> tuple[dict[str, any], str];
+
+def _get_default_manifest(
+    project_name: str, pwa_config: dict[str, any]
+) -> dict[str, any];
+
+def _generate_pwa_icon(dest_path: Path, size: int) -> bool;
+
+def _generate_default_pwa_icons(dest_dir: Path) -> int;
+
+def _copy_icons(src_dir: Path, dest_dir: Path) -> int;
+
+def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None;
+
+def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict[str, any]);
+
+def _get_precache_files(dist_dir: Path) -> list[str];
+
+def _build_service_worker_content(cache_name: str, precache_files: list[str]) -> str;
+
+def _generate_service_worker(dist_dir: Path, pwa_config: dict[str, any]);
+
+def _build_install_prompt_capture_script -> str;
+
+def _build_pwa_head_tags(theme_color: str) -> str;
+
+def _build_sw_registration_script -> str;
+
+def _build_banner_css(position: str) -> str;
+
+def _build_pwa_install_banner_script(pwa_config: dict[str, any]) -> str;
+
+def _update_html_for_pwa(dist_dir: Path, pwa_config: dict[str, any]) -> None;
+
+def ensure_pwa_icons(project_dir: Path) -> None;
+
+def _copy_pwa_icons_to_project(dest_dir: Path);
+
+def apply_pwa(dist_dir: Path, project_dir: Path);
+
+impl _load_pwa_context -> tuple[dict[str, any], str] {
     config = get_config();
     project_name = "Jac App";
     pwa_config: dict[str, any] = {};
@@ -38,7 +78,7 @@ def _load_pwa_context -> tuple[dict[str, any], str] {
     return (pwa_config, project_name);
 }
 
-def _get_default_manifest(
+impl _get_default_manifest(
     project_name: str, pwa_config: dict[str, any]
 ) -> dict[str, any] {
     theme_color = pwa_config.get("theme_color", PWA_DEFAULT_THEME_COLOR);
@@ -65,7 +105,7 @@ def _get_default_manifest(
     };
 }
 
-def _generate_pwa_icon(dest_path: Path, size: int) -> bool {
+impl _generate_pwa_icon(dest_path: Path, size: int) -> bool {
     import subprocess;
     python_code = f'''
 import sys
@@ -99,7 +139,7 @@ except Exception:
     }
 }
 
-def _generate_default_pwa_icons(dest_dir: Path) -> int {
+impl _generate_default_pwa_icons(dest_dir: Path) -> int {
     dest_dir.mkdir(parents=True, exist_ok=True);
     generated = 0;
     icon_192 = dest_dir / PWA_ICON_SMALL;
@@ -118,7 +158,7 @@ def _generate_default_pwa_icons(dest_dir: Path) -> int {
     return generated;
 }
 
-def _copy_icons(src_dir: Path, dest_dir: Path) -> int {
+impl _copy_icons(src_dir: Path, dest_dir: Path) -> int {
     icon_files = list(src_dir.`glob("*.png"));
     if not icon_files {
         return 0;
@@ -130,7 +170,7 @@ def _copy_icons(src_dir: Path, dest_dir: Path) -> int {
     return len(icon_files);
 }
 
-def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
+impl _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     try {
         user_icons_dir = project_dir / "pwa_icons";
         if user_icons_dir.exists() {
@@ -151,7 +191,7 @@ def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     }
 }
 
-def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict[str, any]) {
+impl _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict[str, any]) {
     manifest = _get_default_manifest(project_name, pwa_config);
 
     user_manifest = pwa_config.get("manifest", {});
@@ -166,7 +206,7 @@ def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict[str, 
     }
 }
 
-def _get_precache_files(dist_dir: Path) -> list[str] {
+impl _get_precache_files(dist_dir: Path) -> list[str] {
     precache_files: list[str] = [];
     if not dist_dir.exists() {
         return precache_files;
@@ -179,7 +219,7 @@ def _get_precache_files(dist_dir: Path) -> list[str] {
     return precache_files;
 }
 
-def _build_service_worker_content(cache_name: str, precache_files: list[str]) -> str {
+impl _build_service_worker_content(cache_name: str, precache_files: list[str]) -> str {
     return f'''// Jac PWA Service Worker
 const CACHE_NAME = '{cache_name}';
 const PRECACHE_ASSETS = [
@@ -238,7 +278,7 @@ self.addEventListener('fetch', (event) => {{
 ''';
 }
 
-def _generate_service_worker(dist_dir: Path, pwa_config: dict[str, any]) {
+impl _generate_service_worker(dist_dir: Path, pwa_config: dict[str, any]) {
     cache_name = pwa_config.get("cache_name", PWA_DEFAULT_CACHE_NAME);
     precache_files = _get_precache_files(dist_dir);
     sw_content = _build_service_worker_content(cache_name, precache_files);
@@ -252,7 +292,7 @@ def _generate_service_worker(dist_dir: Path, pwa_config: dict[str, any]) {
     }
 }
 
-def _build_install_prompt_capture_script -> str {
+impl _build_install_prompt_capture_script -> str {
     return '''
     <script>
       // Capture beforeinstallprompt EARLY before any modules load
@@ -271,14 +311,14 @@ def _build_install_prompt_capture_script -> str {
     </script>''';
 }
 
-def _build_pwa_head_tags(theme_color: str) -> str {
+impl _build_pwa_head_tags(theme_color: str) -> str {
     return f'''
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="{theme_color}">
     <link rel="apple-touch-icon" href="{PWA_ICON_SMALL}">''';
 }
 
-def _build_sw_registration_script -> str {
+impl _build_sw_registration_script -> str {
     return '''
     <script>
       if ('serviceWorker' in navigator) {
@@ -291,7 +331,7 @@ def _build_sw_registration_script -> str {
     </script>''';
 }
 
-def _build_banner_css(position: str) -> str {
+impl _build_banner_css(position: str) -> str {
     pos_style = "bottom: 16px;" if position == "bottom" else "top: 16px;";
     return f'''
           .jac-pwa-banner {{
@@ -350,7 +390,7 @@ def _build_banner_css(position: str) -> str {
           }}''';
 }
 
-def _build_pwa_install_banner_script(pwa_config: dict[str, any]) -> str {
+impl _build_pwa_install_banner_script(pwa_config: dict[str, any]) -> str {
     if not pwa_config.get("install_banner", True) {
         return "";
     }
@@ -503,7 +543,7 @@ def _build_pwa_install_banner_script(pwa_config: dict[str, any]) -> str {
     </script>''';
 }
 
-def _update_html_for_pwa(dist_dir: Path, pwa_config: dict[str, any]) -> None {
+impl _update_html_for_pwa(dist_dir: Path, pwa_config: dict[str, any]) -> None {
     index_path = dist_dir / "index.html";
     if not index_path.exists() {
         console.warning("  index.html not found, skipping PWA HTML update");
@@ -556,7 +596,7 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict[str, any]) -> None {
     }
 }
 
-def ensure_pwa_icons(project_dir: Path) -> None {
+impl ensure_pwa_icons(project_dir: Path) -> None {
     icons_dest = project_dir / "pwa_icons";
     if icons_dest.exists() {
         console.print("  ✔ pwa_icons/ directory already exists", style="muted");
@@ -567,7 +607,7 @@ def ensure_pwa_icons(project_dir: Path) -> None {
     _copy_pwa_icons_to_project(icons_dest);
 }
 
-def _copy_pwa_icons_to_project(dest_dir: Path) {
+impl _copy_pwa_icons_to_project(dest_dir: Path) {
     try {
         generated = _generate_default_pwa_icons(dest_dir);
         if generated == 0 {
@@ -585,7 +625,7 @@ def _copy_pwa_icons_to_project(dest_dir: Path) {
     }
 }
 
-def apply_pwa(dist_dir: Path, project_dir: Path) {
+impl apply_pwa(dist_dir: Path, project_dir: Path) {
     (pwa_config, project_name) = _load_pwa_context();
     console.print("\n  Adding PWA features...", style="muted");
     _copy_pwa_icons_to_dist(dist_dir, project_dir);

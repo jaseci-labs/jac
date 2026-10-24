@@ -12,7 +12,8 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.commands { project }
 import from jaclang.project.config { JacConfig }
-import from jaclang.project.kinds { plan_app_run, is_valid_kind, kind_entry }
+import from jaclang.project.kinds { plan_app_run }
+import from jaclang.project.app_kinds { is_valid_kind, kind_entry }
 import from jaclang.project.template_registry { initialize_template_registry }
 
 glob _tmp_dirs: list[str] = [],

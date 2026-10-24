@@ -29,13 +29,29 @@ permissions:
   contents: read
 
 jobs:
+  # The macOS kit's compiler kernel, built on x86 Linux (#10219): the kit
+  # adopts it instead of spending most of its 44-68 min building one.
+  kernel:
+    uses: ./.github/workflows/build-kernel.yml
+    with:
+      platforms: '["macos-aarch64"]'
+
   build-kit-macos:
+    needs: kernel
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
 
+      - name: Download the compiler kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-macos-aarch64
+          path: .kernel
+
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
+        with:
+          kernel-dir: ${{ github.workspace }}/.kernel
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2

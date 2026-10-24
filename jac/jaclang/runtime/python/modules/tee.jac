@@ -6,29 +6,6 @@ standard trashcan mechanism bounds destruction of long block chains.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_RuntimeError,
-    PyExc_ValueError,
-    PyIter_Next,
-    PyList_GetItemRef,
-    PyObject,
-    PyObject_GetIter,
-    PyTuple_New,
-    Py_NewRef,
-    jacpy_list_size,
-    jacpy_object_type,
-    jacpy_release,
-    jacpy_tuple_set_owned,
-    jacpy_type_check
-}
-import from jaclang.runtime.python.capi {
-    required,
-    checked,
-    object_error,
-    boundary_failure
-}
-
 obj tee_block {
     has source: ptr[PyObject] = NULL,
         next_block: ptr[PyObject] = NULL,

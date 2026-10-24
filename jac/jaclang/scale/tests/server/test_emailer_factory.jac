@@ -2,13 +2,6 @@ import sys;
 import from email { message_from_string, policy }
 import from email.message { EmailMessage }
 import from pathlib { Path }
-import from jaclang.scale.emailer.emailer { Emailer, EmailAttachment }
-import from jaclang.scale.emailer.emailers { SMTPEmailer }
-import from jaclang.scale.emailer.factory { create as create_emailer, register }
-import from jaclang.server.identity.auth_tokens {
-    AuthTokenStore,
-    reset_auth_token_store
-}
 
 
 obj _RecordingEmailer(Emailer) {
@@ -49,7 +42,6 @@ test "factory_returns_none_when_provider_unset" {
 }
 
 test "factory_builds_smtp_provider" {
-    import from jaclang.scale.emailer.emailers { SMTPEmailer }
     cfg = {
         "provider": "smtp",
         "from_address": "noreply@example.com",

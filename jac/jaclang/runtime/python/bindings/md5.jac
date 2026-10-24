@@ -1,38 +1,5 @@
 """The _md5 module: the md5 type over its generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyLong_FromLong,
-    PyModule_AddIntConstant,
-    PyObject,
-    PyUnicode_FromString
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.md5 {
-    MD5Type_methods,
-    module_methods
-}
-import from jaclang.runtime.python.modules.hashlib { HASHLIB_GIL_MINSIZE }
-import from jaclang.runtime.python.modules.md5 {
-    MD5Type_token,
-    MD5_BLOCKSIZE,
-    MD5_DIGESTSIZE
-}
-
 def:priv md5_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, MD5Type_token.handle);
 }

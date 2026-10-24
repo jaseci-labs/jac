@@ -20,35 +20,10 @@ glob DEFAULT_PREFIX: str = "/__jac",
 
 
 class SessionStore {
-    def init(self: SessionStore, path: str) {
-        self.path = path;
-    }
-
-    def read(self: SessionStore) -> str {
-        try {
-            with open(self.path, encoding="utf-8") as f {
-                return str(json.load(f).get("token", "") or "");
-            }
-        } except (OSError, ValueError) {
-            return "";
-        }
-    }
-
-    def write(self: SessionStore, token: str) {
-        token = token or "";
-        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True);
-        tmp = self.path + ".tmp";
-        with open(tmp, "w", encoding="utf-8") as f {
-            json.dump({"token": token}, f);
-        }
-        os.replace(tmp, self.path);
-    }
-
-    def clear(self: SessionStore) {
-        with contextlib.suppress(OSError) {
-            os.remove(self.path);
-        }
-    }
+    def init(self: SessionStore, path: str);
+    def read(self: SessionStore) -> str;
+    def write(self: SessionStore, token: str);
+    def clear(self: SessionStore);
 }
 
 
@@ -57,73 +32,114 @@ class PendingAuth {
         states: dict[str, float];
     }
 
-    def init(self: PendingAuth, ttl_seconds: float = 600.0, max_entries: int = 16) {
-        self.ttl = ttl_seconds;
-        self.max_entries = max_entries;
-
-        self.states = {};
-    }
-
-    def _prune(self: PendingAuth) {
-        now = time.monotonic();
-        stale: list[str] = [];
-        for (nonce, deadline) in self.states.items() {
-            if deadline < now {
-                stale.append(nonce);
-            }
-        }
-        for nonce in stale {
-            self.states.pop(nonce, None);
-        }
-    }
-
-    def issue(self: PendingAuth) -> str {
-        self._prune();
-
-        while len(self.states) >= self.max_entries {
-            oldest: (str | None) = None;
-            oldest_deadline: (float | None) = None;
-            for (nonce, deadline) in self.states.items() {
-                if oldest_deadline is None or deadline < oldest_deadline {
-                    oldest = nonce;
-                    oldest_deadline = deadline;
-                }
-            }
-            if oldest is None {
-                break;
-            }
-            self.states.pop(oldest, None);
-        }
-        nonce = secrets.token_urlsafe(32);
-        self.states[nonce] = time.monotonic() + self.ttl;
-        return nonce;
-    }
-
-    def consume(self: PendingAuth, nonce: str) -> bool {
-        if not nonce {
-            return False;
-        }
-        self._prune();
-        matched: (str | None) = None;
-        for known in list(self.states.keys()) {
-            if hmac.compare_digest(known.encode("utf-8"), nonce.encode("utf-8")) {
-                matched = known;
-                break;
-            }
-        }
-        if matched is None {
-            return False;
-        }
-        deadline = self.states.pop(matched, None);
-        if deadline is None {
-            return False;
-        }
-        return time.monotonic() <= deadline;
-    }
+    def init(self: PendingAuth, ttl_seconds: float = 600.0, max_entries: int = 16);
+    def _prune(self: PendingAuth);
+    def issue(self: PendingAuth) -> str;
+    def consume(self: PendingAuth, nonce: str) -> bool;
 }
 
 
 def build_sso_login_url(
+    api_base: str, platform: str, client_callback: str, operation: str = "login"
+) -> str;
+
+impl SessionStore.init(self: SessionStore, path: str) {
+    self.path = path;
+}
+
+impl SessionStore.read(self: SessionStore) -> str {
+    try {
+        with open(self.path, encoding="utf-8") as f {
+            return str(json.load(f).get("token", "") or "");
+        }
+    } except (OSError, ValueError) {
+        return "";
+    }
+}
+
+impl SessionStore.write(self: SessionStore, token: str) {
+    token = token or "";
+    os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True);
+    tmp = self.path + ".tmp";
+    with open(tmp, "w", encoding="utf-8") as f {
+        json.dump({"token": token}, f);
+    }
+    os.replace(tmp, self.path);
+}
+
+impl SessionStore.clear(self: SessionStore) {
+    with contextlib.suppress(OSError) {
+        os.remove(self.path);
+    }
+}
+
+impl PendingAuth.init(
+    self: PendingAuth, ttl_seconds: float = 600.0, max_entries: int = 16
+) {
+    self.ttl = ttl_seconds;
+    self.max_entries = max_entries;
+
+    self.states = {};
+}
+
+impl PendingAuth._prune(self: PendingAuth) {
+    now = time.monotonic();
+    stale: list[str] = [];
+    for (nonce, deadline) in self.states.items() {
+        if deadline < now {
+            stale.append(nonce);
+        }
+    }
+    for nonce in stale {
+        self.states.pop(nonce, None);
+    }
+}
+
+impl PendingAuth.issue(self: PendingAuth) -> str {
+    self._prune();
+
+    while len(self.states) >= self.max_entries {
+        oldest: (str | None) = None;
+        oldest_deadline: (float | None) = None;
+        for (nonce, deadline) in self.states.items() {
+            if oldest_deadline is None or deadline < oldest_deadline {
+                oldest = nonce;
+                oldest_deadline = deadline;
+            }
+        }
+        if oldest is None {
+            break;
+        }
+        self.states.pop(oldest, None);
+    }
+    nonce = secrets.token_urlsafe(32);
+    self.states[nonce] = time.monotonic() + self.ttl;
+    return nonce;
+}
+
+impl PendingAuth.consume(self: PendingAuth, nonce: str) -> bool {
+    if not nonce {
+        return False;
+    }
+    self._prune();
+    matched: (str | None) = None;
+    for known in list(self.states.keys()) {
+        if hmac.compare_digest(known.encode("utf-8"), nonce.encode("utf-8")) {
+            matched = known;
+            break;
+        }
+    }
+    if matched is None {
+        return False;
+    }
+    deadline = self.states.pop(matched, None);
+    if deadline is None {
+        return False;
+    }
+    return time.monotonic() <= deadline;
+}
+
+impl build_sso_login_url(
     api_base: str, platform: str, client_callback: str, operation: str = "login"
 ) -> str {
     if platform not in ALLOWED_PLATFORMS {

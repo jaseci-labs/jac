@@ -407,26 +407,7 @@ impl EsastGenPass._jac_exc_ref(
     );
 }
 
-def _raised_exc_identity(cause: (uni.Expr | None)) -> tuple[bool, (str | None)] {
-    if cause is None {
-        return (False, None);
-    }
-    target = cause.target if isinstance(cause, uni.FuncCall) else cause;
-    ty = target?.type;
-    if ty is None {
-        return (False, None);
-    }
-    if not isinstance(ty, ClassType) {
-        return (True, None);
-    }
-    shared = ty.shared;
-    if not shared.is_builtin_class {
-        return (True, None);
-    }
-
-    name = shared.class_name;
-    return (True, name if JAC_TYPE_REGISTRY.is_exception(name) else None);
-}
+def _raised_exc_identity(cause: (uni.Expr | None)) -> tuple[bool, (str | None)];
 
 impl EsastGenPass.exit_raise_stmt with uni.RaiseStmt exit {
     argument: es.Expression = cast(es.Expression, here.cause.gen.es_ast)
@@ -998,4 +979,25 @@ impl EsastGenPass.exit_if_stmt with uni.IfStmt exit {
         jac_node=here
     );
     here.gen.es_ast = if_stmt;
+}
+
+impl _raised_exc_identity(cause: (uni.Expr | None)) -> tuple[bool, (str | None)] {
+    if cause is None {
+        return (False, None);
+    }
+    target = cause.target if isinstance(cause, uni.FuncCall) else cause;
+    ty = target?.type;
+    if ty is None {
+        return (False, None);
+    }
+    if not isinstance(ty, ClassType) {
+        return (True, None);
+    }
+    shared = ty.shared;
+    if not shared.is_builtin_class {
+        return (True, None);
+    }
+
+    name = shared.class_name;
+    return (True, name if JAC_TYPE_REGISTRY.is_exception(name) else None);
 }

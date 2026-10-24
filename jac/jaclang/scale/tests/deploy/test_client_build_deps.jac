@@ -14,11 +14,6 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.runtime.context.util { jac_executable }
 
 # Tiny, pure-python, zero-dependency package: enough to prove the host build
 # env is populated from [dependencies] without making this a download test.

@@ -69,6 +69,69 @@ test "placeholders inside quotes and unknown names are untouched" {
 }
 
 
+test "named params preserve dollar quoted literals" {
+    for literal in [
+        '$$:x$$',
+        '$tag$:x$tag$',
+        '$_tag1$:x$_tag1$',
+        '$é$:x$é$',
+        "$tag$it's $$:x$$ and $other$:unused$other$$tag$",
+        '$Tag$:x $tag$ :unused$Tag$'
+    ] {
+        (sql, args) = _named_to_positional(
+            f'SELECT {literal}, :x::int, :x', {'x': 7, 'unused': 9}
+        );
+        assert sql == f'SELECT {literal}, $1::int, $1';
+        assert args == [7];
+    }
+    (sql, args) = _named_to_positional('SELECT identifier$tag$, :x', {'x': 7});
+    assert sql == 'SELECT identifier$tag$, $1';
+    assert args == [7];
+}
+
+
+test "named params preserve SQL comments" {
+    for comment in [
+        "-- user's :unused note\n",
+        '-- :unused\r\n',
+        '-- :unused\r',
+        "/* user's :unused note */",
+        '/* outer /* :unused */ still :unused */'
+    ] {
+        (sql, args) = _named_to_positional(
+            f'{comment}SELECT :x::int', {'x': 7, 'unused': 9}
+        );
+        assert sql == f'{comment}SELECT $1::int';
+        assert args == [7];
+    }
+    for comment in ['-- :unused', '/* :unused */'] {
+        (sql, args) = _named_to_positional(
+            f'SELECT :x::int {comment}', {'x': 7, 'unused': 9}
+        );
+        assert sql == f'SELECT $1::int {comment}';
+        assert args == [7];
+    }
+}
+
+
+test "named params preserve escape string literals" {
+    for literal in [
+        r"E'it\'s :x'",
+        r"e'it\'s :x'",
+        r"E'back\\slash :x'",
+        "E':x''quoted'",
+        "E'first'\n'it\\'s :x'"
+    ] {
+        (sql, args) = _named_to_positional(f'SELECT {literal}, :x::int', {'x': 7});
+        assert sql == f'SELECT {literal}, $1::int';
+        assert args == [7];
+    }
+    (sql, args) = _named_to_positional(r"SELECT 'back\', :x::int", {'x': 7});
+    assert sql == r"SELECT 'back\', $1::int";
+    assert args == [7];
+}
+
+
 test "array literal escapes quotes and backslashes" {
     lit = _array_literal(['plain', 'has"quote', 'back\\slash']);
     assert lit == '{"plain","has\\"quote","back\\\\slash"}';
@@ -109,6 +172,62 @@ test "one named-param rewrite per text and bound-name set" {
     assert args1 == [1, 2] and args2 == ['x', 'y'];
     assert partial == "SELECT :a, $1 FROM t WHERE c = ':a'";
     assert args3 == [3];
+}
+
+
+test "bytes params preserve bytea values in text binds" {
+    with TemporaryDirectory() as td {
+        conn = _live_conn(td);
+        try {
+            conn.run('CREATE TEMP TABLE pgwire_bytea_probe (payload bytea)');
+            cases = [
+                (b'hello', '68656c6c6f'),
+                (b'', ''),
+                (b'\\x4142', '5c7834313432'),
+                (b'\\101', '5c313031'),
+                (b'a\\b', '615c62'),
+                (b'a\x00b', '610062'),
+                (b'\xff\xfe', 'fffe'),
+                (
+                    bytes(range(256)),
+                    '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff'
+                )
+            ];
+            for (value, expected) in cases {
+                conn.run('TRUNCATE pgwire_bytea_probe');
+                conn.run(
+                    'INSERT INTO pgwire_bytea_probe (payload) VALUES (:v::bytea)',
+                    v=value
+                );
+                actual = conn.run(
+                    "SELECT encode(payload, 'hex') FROM pgwire_bytea_probe"
+                )[0][0];
+                assert actual == expected , (
+                    f"bytea roundtrip expected {expected}, got {actual}"
+                );
+            }
+            conn.run('TRUNCATE pgwire_bytea_probe');
+            conn.run(
+                'INSERT INTO pgwire_bytea_probe (payload) VALUES (:v)', v=b'\x00\xff'
+            );
+            assert conn.run("SELECT encode(payload, 'hex') FROM pgwire_bytea_probe")[0][
+                0
+            ]
+                == '00ff';
+            assert conn.run(
+                "SELECT encode(:blob::bytea, 'hex'), :text::text, "
+                ":number::int, :flag::bool, :missing::text",
+                blob=b'\x00\xff',
+                text='plain text',
+                number=7,
+                flag=True,
+                missing=None
+            )
+                == [('00ff', 'plain text', 7, True, None)];
+        } finally {
+            conn.close();
+        }
+    }
 }
 
 
@@ -159,6 +278,36 @@ def _live_conn(td: str, app_name: str = 'jac_pgwire_test') -> any {
         password=(info.password or None),
         startup_params={'application_name': app_name}
     );
+}
+
+
+test "named params preserve SQL literals and bind counts against Postgres" {
+    cases = [
+        ("SELECT ':x', :x::int", {'x': 7}, [(':x', 7)]),
+        ('SELECT $$:x$$, :x::int', {'x': 7}, [(':x', 7)]),
+        ('SELECT $tag$:x$tag$, :x::int', {'x': 7}, [(':x', 7)]),
+        ('SELECT :x::int -- :unused\n', {'x': 7, 'unused': 9}, [(7, )]),
+        ('SELECT :x::int /* :unused */', {'x': 7, 'unused': 9}, [(7, )]),
+        ("-- user's note\nSELECT :x::int", {'x': 7}, [(7, )]),
+        ("/* user's note */ SELECT :x::int", {'x': 7}, [(7, )]),
+        (
+            '/* outer /* :unused */ still :unused */ SELECT :x::int',
+            {'x': 7, 'unused': 9},
+            [(7, )]
+        ),
+        (r"SELECT E'it\'s :x', :x::int", {'x': 7}, [("it's :x", 7)])
+    ];
+    with TemporaryDirectory() as td {
+        conn = _live_conn(td);
+        try {
+            for (sql, params, expected) in cases {
+                assert conn.run(sql, **params) == expected;
+            }
+            assert conn.run('SELECT 42::int') == [(42, )];
+        } finally {
+            conn.close();
+        }
+    }
 }
 
 

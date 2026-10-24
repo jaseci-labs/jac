@@ -6,17 +6,7 @@ import from pathlib { Path }
 
 glob _SWEPT_ROOTS: set[str] = set();
 
-def _env_days(name: str) -> float | None {
-    raw = os.environ.get(name, "").strip();
-    if not raw {
-        return None;
-    }
-    try {
-        return max(0.0, float(raw));
-    } except ValueError {
-        return None;
-    }
-}
+def _env_days(name: str) -> float | None;
 
 impl Policy.ttl_seconds -> float {
     days = self.ttl_days;
@@ -299,45 +289,11 @@ impl remove_entry(path: Path) -> tuple[bool, int, str] {
     return (True, size, "");
 }
 
-def _rel(base: Path, item: Path) -> str {
-    try {
-        return item.relative_to(base).as_posix();
-    } except ValueError {
-        return item.name;
-    }
-}
+def _rel(base: Path, item: Path) -> str;
 
-def _prune_empty_parents(base: Path, item: Path, depth: int) {
-    parent = item.parent;
-    for step in range(depth - 1) {
-        if parent == base {
-            return;
-        }
-        try {
-            parent.rmdir();
-        } except OSError {
-            return;
-        }
-        parent = parent.parent;
-    }
-}
+def _prune_empty_parents(base: Path, item: Path, depth: int);
 
-def _reclaim(base: Path, item: Path, depth: int, dry_run: bool, result: SweepReport) {
-    rel = _rel(base, item);
-    if dry_run {
-        result.removed.append(rel);
-        result.reclaimed_bytes += dir_size(item);
-        return;
-    }
-    (ok, size, err) = remove_entry(item);
-    if not ok {
-        result.errors.append(err);
-        return;
-    }
-    result.removed.append(rel);
-    result.reclaimed_bytes += size;
-    _prune_empty_parents(base, item, depth);
-}
+def _reclaim(base: Path, item: Path, depth: int, dry_run: bool, result: SweepReport);
 
 impl sweep_dir(
     base: Path | str,
@@ -439,4 +395,56 @@ impl maybe_sweep_dir(
         return False;
     }
     return True;
+}
+
+impl _env_days(name: str) -> float | None {
+    raw = os.environ.get(name, "").strip();
+    if not raw {
+        return None;
+    }
+    try {
+        return max(0.0, float(raw));
+    } except ValueError {
+        return None;
+    }
+}
+
+impl _rel(base: Path, item: Path) -> str {
+    try {
+        return item.relative_to(base).as_posix();
+    } except ValueError {
+        return item.name;
+    }
+}
+
+impl _prune_empty_parents(base: Path, item: Path, depth: int) {
+    parent = item.parent;
+    for step in range(depth - 1) {
+        if parent == base {
+            return;
+        }
+        try {
+            parent.rmdir();
+        } except OSError {
+            return;
+        }
+        parent = parent.parent;
+    }
+}
+
+impl _reclaim(base: Path, item: Path, depth: int, dry_run: bool, result: SweepReport) {
+    rel = _rel(base, item);
+    if dry_run {
+        result.removed.append(rel);
+        result.reclaimed_bytes += dir_size(item);
+        return;
+    }
+    (ok, size, err) = remove_entry(item);
+    if not ok {
+        result.errors.append(err);
+        return;
+    }
+    result.removed.append(rel);
+    result.reclaimed_bytes += size;
+    _prune_empty_parents(base, item, depth);
 }

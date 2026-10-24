@@ -27,7 +27,7 @@ output.mkdir(parents=True, exist_ok=True)
 import jaclang
 from jaclang.compiler.driver.program import JacProgram
 from jaclang.compiler.driver.compile_options import CompileOptions
-from jaclang.compiler.backends.native.na_compile_pass import require_native_ir
+from jaclang.compiler.backends.native.lowering import native_fallbacks_in_ir
 from jaclang.compiler.backends.native.link_glue import init_object_codegen
 from jaclang.compiler.backends.native.link_plan import (
     ArtifactKind, build_link_plan, whole_program_module,
@@ -50,7 +50,7 @@ if program.errors_had:
 init_object_codegen()
 spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
 compiled, runtime_exports = whole_program_module(plan, spec)
-require_native_ir(str(compiled))
+native_fallbacks_in_ir(str(compiled)).require()
 internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )

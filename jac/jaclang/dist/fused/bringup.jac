@@ -1,10 +1,14 @@
 import from _exec_native { executable_path }
 
-def:pub open_runtime(exe_path: str) -> Embed {
+def:pub open_runtime(exe_path: str) -> Embed;
+
+def:pub engine_boot -> Embed;
+
+impl open_runtime(exe_path: str) -> Embed {
     return open_tree(materialize(exe_path), exe_path);
 }
 
-def:pub engine_boot -> Embed {
+impl engine_boot -> Embed {
     exe = executable_path();
     if exe == "" {
         die("cannot resolve executable path");

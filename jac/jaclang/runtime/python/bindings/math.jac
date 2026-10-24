@@ -1,52 +1,6 @@
 """The math module: its clinic-generated functions, the FUNC1/FUNC2 ones
 mathmodule.c writes by hand, and the constants."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyFloat_FromDouble, PyObject }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    MethodCallbacks,
-    MethodDefinition,
-    ModuleHooks,
-    add_owned
-}
-import from jaclang.runtime.python.bindings.arguments { check_positional }
-import from jaclang.runtime.python.bindings.clinic.math {
-    math_acos_doc,
-    math_acosh_doc,
-    math_asin_doc,
-    math_asinh_doc,
-    math_atan_doc,
-    math_atan2_doc,
-    math_atanh_doc,
-    math_cbrt_doc,
-    math_copysign_doc,
-    math_cos_doc,
-    math_cosh_doc,
-    math_erf_doc,
-    math_erfc_doc,
-    math_exp_doc,
-    math_exp2_doc,
-    math_expm1_doc,
-    math_fabs_doc,
-    math_gamma_doc,
-    math_lgamma_doc,
-    math_log_doc,
-    math_log1p_doc,
-    math_remainder_doc,
-    math_sin_doc,
-    math_sinh_doc,
-    math_sqrt_doc,
-    math_tan_doc,
-    math_tanh_doc,
-    module_doc,
-    module_methods
-}
-import from jaclang.runtime.python.modules.math {
-    jacpy_math_binary,
-    jacpy_math_log,
-    jacpy_math_unary
-}
-
 # FUNC1/FUNC1A/FUNC1D/FUNC1AD: METH_O over math_1().
 def:priv acos_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(0, value);

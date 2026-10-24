@@ -1,62 +1,14 @@
 import os;
-import from ._directory_native { directory_names }
-import from ._file_native { read_file_bytes }
 
-def _root_of(p: str) -> str {
-    if p.startswith("//") and not p.startswith("///") {
-        return "//";
-    }
-    if p.startswith("/") {
-        return "/";
-    }
-    return "";
-}
+def _root_of(p: str) -> str;
 
-def _parts_of(p: str) -> list[str] {
-    out: list[str] = [];
-    for comp in p.split("/") {
-        if comp == "" or comp == "." {
-            continue;
-        }
-        out.append(comp);
-    }
-    return out;
-}
+def _parts_of(p: str) -> list[str];
 
-def _assemble(anchor: str, parts: list[str]) -> str {
-    out: str = anchor + "/".join(parts);
-    if out == "" {
-        return ".";
-    }
-    return out;
-}
+def _assemble(anchor: str, parts: list[str]) -> str;
 
-def _norm(p: str) -> str {
-    return _assemble(_root_of(p), _parts_of(p));
-}
+def _norm(p: str) -> str;
 
-def _collapse(p: str) -> str {
-    anchor: str = _root_of(p);
-    out: list[str] = [];
-    for comp in _parts_of(p) {
-        if comp != ".." {
-            out.append(comp);
-            continue;
-        }
-        if anchor != "" {
-            if out {
-                out.pop();
-            }
-            continue;
-        }
-        if out and out[len(out) - 1] != ".." {
-            out.pop();
-            continue;
-        }
-        out.append("..");
-    }
-    return _assemble(anchor, out);
-}
+def _collapse(p: str) -> str;
 
 obj:pub Path {
     has _p: str = ".";
@@ -64,60 +16,14 @@ obj:pub Path {
     has stem: str { getter; }
     has parent: Path { getter; }
 
-    def init(p: (str | Path) = "") {
-        if isinstance(p, Path) {
-            self._p = p._p;
-        } else {
-            self._p = _norm(p);
-        }
-    }
-
-    def __str__ -> str {
-        return self._p;
-    }
-
-    def __truediv__(other: str) -> Path {
-        if other.startswith("/") {
-            return Path(other);
-        }
-        if self._p.endswith("/") {
-            return Path(self._p + other);
-        }
-        return Path(self._p + "/" + other);
-    }
-
-    def exists -> bool {
-        return os.path.exists(self._p);
-    }
-
-    def is_dir -> bool {
-        return os.path.isdir(self._p);
-    }
-
-    def read_bytes -> bytes {
-        return read_file_bytes(self._p);
-    }
-
-    def iterdir -> Iterator[Path] {
-        children: list[Path] = [];
-        for name in directory_names(self._p) {
-            children.append(self / name);
-        }
-        return iter(children);
-    }
-
-    def resolve -> Path {
-        base: str = self._p;
-        if not base.startswith("/") {
-            cwd: str = os.getcwd();
-            if base == "." {
-                base = cwd;
-            } else {
-                base = cwd + "/" + base;
-            }
-        }
-        return Path(_collapse(os.path.realpath(base)));
-    }
+    def init(p: (str | Path) = "");
+    def __str__ -> str;
+    def __truediv__(other: str) -> Path;
+    def exists -> bool;
+    def is_dir -> bool;
+    def read_bytes -> bytes;
+    def iterdir -> Iterator[Path];
+    def resolve -> Path;
 }
 
 impl Path.name.getter -> str {

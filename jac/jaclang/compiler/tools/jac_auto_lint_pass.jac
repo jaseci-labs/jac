@@ -1,6 +1,8 @@
 import keyword;
 import os;
 
+glob _HEADER_COL = 10000;
+
 walker JacAutoLintPass(TreePass) {
     static has contract: PassContract = PassContract();
     has lint_enabled: bool = True,
@@ -11,7 +13,8 @@ walker JacAutoLintPass(TreePass) {
         _did_convert_usestate: bool = False,
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
-        _base_decls_loaded: bool = False;
+        _base_decls_loaded: bool = False,
+        _floated_ids: set[int] = set();
 
     def postinit -> None;
     def _is_file_excluded(file_path: str) -> bool;
@@ -82,9 +85,13 @@ walker JacAutoLintPass(TreePass) {
     def _stmt_body_list(nd: uni.UniNode) -> (Sequence[uni.UniNode] | None);
     def _strip_redundant_semis(nd: uni.Module) -> None;
     def _remove_empty_parens_from_sig(
-        target_node: uni.UniNode, sig: uni.FuncSignature, sig_attr: str
+        target_node: uni.UniNode,
+        sig: uni.FuncSignature,
+        sig_attr: str,
+        quiet: bool = False
     ) -> None;
 
+    def _in_floated_spec(nd: uni.UniNode) -> bool;
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
     def _check_unnecessary_pass(body: list[uni.UniNode]) -> None;
@@ -127,20 +134,35 @@ walker JacAutoLintPass(TreePass) {
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def _strip_wired_imports(nd: uni.Module) -> None;
-    def _resolved_import_keys(
-        stmt: uni.Import, spec: WiringSpec
-    ) -> set[tuple[str, str, str, str]];
-
     def _wired_items(
         stmt: uni.Import,
         spec: WiringSpec,
-        provided: dict[tuple[str, str, str, str], WireRec]
+        provided: dict[tuple[str, str, str, str], WireRec],
+        reads: Callable[[], list[ScopeReads]],
+        scope: str
     ) -> set[int];
 
-    def _strip_duplicate_wires(nd: uni.Module) -> None;
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;
+    def _separate_impls(
+        module: uni.Module, body: Sequence[uni.UniNode]
+    ) -> list[uni.ImplDef];
+
+    def _collect_inline_abilities(
+        body: Sequence[uni.UniNode],
+        path: list[uni.Name],
+        found: list[tuple[uni.Ability, list[uni.Name]]]
+    ) -> None;
+
+    def _can_separate(ab: uni.Ability) -> bool;
+    def _impl_target_text(ab: uni.Ability, path: list[uni.Name]) -> (str | None);
+    def _impl_header(
+        ab: uni.Ability, path: list[uni.Name], line: int
+    ) -> (uni.ImplDef | None);
+
+    def _move_body_to_impl(ab: uni.Ability, impl_node: uni.ImplDef) -> None;
+    def _drop_impl_return(impl_node: uni.ImplDef) -> None;
     def _strip_docstrings(start: uni.UniNode) -> None;
     def _collect_doc_nodes(start: uni.UniNode) -> list[tuple[uni.UniNode, uni.String]];
     def _check_stale_has_read(ability_node: uni.Ability) -> None;

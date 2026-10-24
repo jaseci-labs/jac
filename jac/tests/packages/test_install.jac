@@ -6,7 +6,9 @@ import from unittest.mock { patch }
 import from jaclang.packages.index { forget_registries }
 import from jaclang.packages.install { InstallError, sync, write_lock }
 import from jaclang.packages.lock { Lockfile }
+import from jaclang.packages.resolve { GraphSource, ResolveError, pack_checkout }
 import from jaclang.project.config { JacConfig }
+import from jaclang.project.dependencies { PackageDep }
 import from tests.packages.fixture_registry {
     FixtureRegistry,
     fresh_dir,
@@ -203,6 +205,182 @@ test "a path dependency mounts the directory in place" {
     }
 }
 
+test "conflicting transitive path sources are rejected in either order" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        write_tree(
+            w.tmp / "shared_a",
+            {
+                "jac.toml": package_toml("local/shared", "1.0.0", ["api"]),
+                "api.jac": "def marker -> str { return \"A\"; }\n"
+            }
+        );
+        write_tree(
+            w.tmp / "shared_b",
+            {
+                "jac.toml": package_toml("local/shared", "1.0.0", ["api"]),
+                "api.jac": "def marker -> str { return \"B\"; }\n"
+            }
+        );
+        for (name, path) in (("left", "../shared_a"), ("right", "../shared_b")) {
+            write_tree(
+                w.tmp / name,
+                {
+                    "jac.toml": (
+                        "[project]\nname = \"local/"
+                        + name
+                        + "\"\n"
+                        + "version = \"1.0.0\"\nexports = [\"api\"]\n\n"
+                        + "[dependencies]\n\"local/shared\" = { path = \""
+                        + path
+                        + "\" }\n"
+                    ),
+                    "api.jac": "def marker -> str { return \"package\"; }\n"
+                }
+            );
+        }
+        for (order, label) in (
+            (["left", "right"], "left-first"),
+            (["right", "left"], "right-first")
+        ) {
+            app = w.tmp / label;
+            write_tree(
+                app,
+                {
+                    "jac.toml": (
+                        "[project]\nname = \"app\"\nversion = \"1.0.0\"\n\n"
+                        + "[dependencies]\n\"local/"
+                        + order[0]
+                        + "\" = { path = \"../"
+                        + order[0]
+                        + "\" }\n\"local/"
+                        + order[1]
+                        + "\" = { path = \"../"
+                        + order[1]
+                        + "\" }\n"
+                    )
+                }
+            );
+            try {
+                sync(_config(app));
+                assert False , "conflicting path sources must fail";
+            } except InstallError as e {
+                message = str(e);
+                assert "local/shared" in message , message;
+                assert "shared_a" in message and "shared_b" in message , message;
+                assert str(w.tmp / "left" / "jac.toml") in message , message;
+                assert str(w.tmp / "right" / "jac.toml") in message , message;
+            }
+            assert not (app / "jac.lock").exists();
+            assert not (app / ".jac" / "packages").exists();
+        }
+    }
+}
+
+test "a repeated path source is validated before deduplication" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        write_tree(
+            w.tmp / "shared",
+            {
+                "jac.toml": package_toml("local/shared", "1.0.0", ["api"]),
+                "api.jac": "def marker -> str { return \"shared\"; }\n"
+            }
+        );
+        for (name, path) in (("left", "../shared"), ("missing", "../does_not_exist")) {
+            write_tree(
+                w.tmp / name,
+                {
+                    "jac.toml": (
+                        "[project]\nname = \"local/"
+                        + name
+                        + "\"\n"
+                        + "version = \"1.0.0\"\nexports = [\"api\"]\n\n"
+                        + "[dependencies]\n\"local/shared\" = { path = \""
+                        + path
+                        + "\" }\n"
+                    ),
+                    "api.jac": "def marker -> str { return \"package\"; }\n"
+                }
+            );
+        }
+        for (order, label) in (
+            (["left", "missing"], "missing-second"),
+            (["missing", "left"], "missing-first")
+        ) {
+            app = w.tmp / label;
+            write_tree(
+                app,
+                {
+                    "jac.toml": (
+                        "[project]\nname = \"app\"\nversion = \"1.0.0\"\n\n"
+                        + "[dependencies]\n\"local/"
+                        + order[0]
+                        + "\" = { path = \"../"
+                        + order[0]
+                        + "\" }\n\"local/"
+                        + order[1]
+                        + "\" = { path = \"../"
+                        + order[1]
+                        + "\" }\n"
+                    )
+                }
+            );
+            try {
+                sync(_config(app));
+                assert False , "a missing repeated path source must fail";
+            } except InstallError as e {
+                assert "does_not_exist" in str(e) , str(e);
+            }
+            assert not (app / "jac.lock").exists();
+            assert not (app / ".jac" / "packages").exists();
+        }
+    }
+}
+
+test "equivalent path aliases still deduplicate" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        write_tree(
+            w.tmp / "shared",
+            {
+                "jac.toml": package_toml("local/shared", "1.0.0", ["api"]),
+                "api.jac": "def marker -> str { return \"shared\"; }\n"
+            }
+        );
+        for (name, path) in (("left", "../shared"), ("alias", "../shared/../shared")) {
+            write_tree(
+                w.tmp / name,
+                {
+                    "jac.toml": (
+                        "[project]\nname = \"local/"
+                        + name
+                        + "\"\n"
+                        + "version = \"1.0.0\"\nexports = [\"api\"]\n\n"
+                        + "[dependencies]\n\"local/shared\" = { path = \""
+                        + path
+                        + "\" }\n"
+                    ),
+                    "api.jac": "def marker -> str { return \"package\"; }\n"
+                }
+            );
+        }
+        app = w.tmp / "aliases";
+        write_tree(
+            app,
+            {
+                "jac.toml": (
+                    "[project]\nname = \"app\"\nversion = \"1.0.0\"\n\n"
+                    + "[dependencies]\n\"local/left\" = { path = \"../left\" }\n"
+                    + "\"local/alias\" = { path = \"../alias\" }\n"
+                )
+            }
+        );
+        result = sync(_config(app));
+        assert result.lock.by_name()["local/shared"].source == "path+../shared";
+    }
+}
+
 test "a git dependency locks its commit and content hash" {
     w = _world();
     repo = w.tmp / "gitpkg";
@@ -243,6 +421,115 @@ test "a git dependency locks its commit and content hash" {
         assert os.path.realpath(result.targets["acme/gitpkg"]).startswith(
             str(w.tmp / "store")
         );
+    }
+}
+
+test "symlink aliases preserve local dependency cycles" {
+    w = _world();
+    with patch.dict(os.environ, w.env) {
+        for (name, dependency, path) in (
+            ("left", "right", "../right"),
+            ("right", "left", "../left_alias")
+        ) {
+            write_tree(
+                w.tmp / name,
+                {
+                    "jac.toml": package_toml("local/" + name, "1.0.0", ["api"])
+                        + "\n[dependencies]\n\"local/"
+                        + dependency
+                        + "\" = { path = \""
+                        + path
+                        + "\" }\n",
+                    "api.jac": "def ok -> bool { return True; }\n"
+                }
+            );
+        }
+        try {
+            (w.tmp / "left_alias").symlink_to(w.tmp / "left", target_is_directory=True);
+        } except OSError {
+            import pytest;
+            pytest.skip("directory symlinks are unavailable");
+        }
+        (w.app / "jac.toml").write_text(
+            "[project]\nname = \"app\"\n\n[dependencies]\n"
+                + "\"local/left\" = { path = \"../left\" }\n"
+        );
+        result = sync(_config(w.app));
+        assert _versions(result.lock)
+            == {"local/left": "1.0.0", "local/right": "1.0.0"};
+        assert result.lock.by_name()["local/left"].source == "path+../left";
+    }
+}
+
+test "repeated git sources compare resolved commits" {
+    w = _world();
+    repo = w.tmp / "gitpkg";
+    write_tree(
+        repo,
+        {
+            "jac.toml": package_toml("acme/gitpkg", "0.1.0", ["mod"]),
+            "mod.jac": "def ok -> bool { return True; }\n"
+        }
+    );
+    git_env = {
+        ** os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.com"
+    };
+    for args in (
+        ["init", "-q"],
+        ["add", "."],
+        ["commit", "-q", "-m", "first"],
+        ["tag", "first"]
+    ) {
+        subprocess.run(["git", *args], cwd=str(repo), check=True, env=git_env);
+    }
+    first = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True
+    ).stdout.strip();
+    (repo / "mod.jac").write_text("def ok -> bool { return False; }\n");
+    for args in (["add", "."], ["commit", "-q", "-m", "second"]) {
+        subprocess.run(["git", *args], cwd=str(repo), check=True, env=git_env);
+    }
+    with patch.dict(os.environ, w.env) {
+        for (old, new) in ((first, "HEAD"), ("HEAD", first)) {
+            resolver = GraphSource(root_dir=w.app, registries={});
+            resolver.add_local(
+                PackageDep(name="acme/gitpkg", git=repo.as_uri(), rev=old),
+                w.tmp / "left"
+            );
+            try {
+                resolver.add_local(
+                    PackageDep(name="acme/gitpkg", git=repo.as_uri(), rev=new),
+                    w.tmp / "right"
+                );
+                assert False , "different commits must not silently deduplicate";
+            } except ResolveError as e {
+                message = str(e);
+                assert "acme/gitpkg" in message and first in message , message;
+                assert str(w.tmp / "left" / "jac.toml") in message , message;
+                assert str(w.tmp / "right" / "jac.toml") in message , message;
+            }
+        }
+        resolver = GraphSource(root_dir=w.app, registries={});
+        with patch(
+            "jaclang.packages.resolve.pack_checkout", wraps=pack_checkout
+        ) as pack {
+            original = resolver.add_local(
+                PackageDep(name="acme/gitpkg", git=repo.as_uri(), rev=first), w.app
+            );
+            alias = resolver.add_local(
+                PackageDep(name="acme/gitpkg", git=repo.as_uri(), rev="first"), w.app
+            );
+            assert alias is original;
+            assert pack.call_count == 1;
+        }
     }
 }
 

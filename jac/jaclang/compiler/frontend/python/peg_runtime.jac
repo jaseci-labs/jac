@@ -7,33 +7,6 @@
 #
 # Product module: imports token_model + tokenizer only.
 
-import from jaclang.compiler.frontend.python.token_model {
-    ENDMARKER,
-    NAME,
-    NUMBER,
-    NEWLINE,
-    INDENT,
-    DEDENT,
-    NL,
-    COMMENT,
-    TYPE_IGNORE,
-    ERRORTOKEN,
-    NT_OFFSET,
-    TOK_NO_LINE,
-    TOK_NO_COLUMN,
-    is_whitespace_token,
-    tok_diag,
-    mk_diag,
-    tok_loc,
-    tok_no_loc,
-    tok_token,
-}
-import from jaclang.compiler.frontend.python.tokenizer {
-    tok_state,
-    tokenizer_from_string,
-    tokenizer_next
-}
-
 # Keyword token ids start at 500 in CPython's pegen generator (parser_generator.py).
 glob PEG_KEYWORD_TYPE_BASE: int = 500;
 glob STAR_TARGETS: int = 0,

@@ -8,64 +8,6 @@ reads its descriptor and timeout. The C module's socket-function callbacks
 here: sock_call_ex() runs one with the GIL released and retries it as the C
 function does.
 """
-import from jaclang.runtime.python.cpython_api {
-    jacpy_errno,
-    jacpy_release,
-    jacpy_set_errno,
-    NULL,
-    Py_BuildValue,
-    Py_None,
-    PyErr_CheckSignals,
-    PyErr_SetFromErrno,
-    PyErr_SetObject,
-    PyErr_SetString,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_OSError,
-    PyExc_TimeoutError,
-    PyExc_ValueError,
-    PyObject,
-    PyTime_AsSecondsDouble,
-    PyFloat_FromDouble,
-    Py_NewRef,
-    _PyDeadline_Get,
-    _PyDeadline_Init,
-    _PyTime_AsMilliseconds,
-    _PyTime_FromSecondsObject
-}
-import from jaclang.runtime.python.layouts {
-    PySocketSockObject,
-    PyTypeObject,
-    _PyTime_ROUND_CEILING,
-    _PyTime_ROUND_TIMEOUT,
-    _socket_state
-}
-import from jaclang.runtime.python.object_model.header { object_type }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module {
-    jacpy_binding_module_native_get,
-    jacpy_binding_module_native_present,
-    jacpy_binding_state_get
-}
-import from jaclang.runtime.python.bindings.type { jacpy_binding_owner }
-import from jaclang.runtime.python.modules.errno_constants {
-    EAGAIN,
-    EINTR,
-    EWOULDBLOCK
-}
-import from jaclang.runtime.python.modules.socket_constants {
-    EAI_SYSTEM,
-    FIONBIO,
-    POLLERR,
-    POLLIN,
-    POLLOUT,
-    SOCK_CLOEXEC,
-    SOCK_NONBLOCK
-}
-import from jaclang.runtime.python.modules.socket_platform {
-    HAS_SOCK_CLOEXEC,
-    HAS_SOCK_NONBLOCK
-}
 
 import from c {
     obj pollfd {

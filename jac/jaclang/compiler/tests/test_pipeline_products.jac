@@ -3,26 +3,7 @@
 import os;
 import from tempfile { TemporaryDirectory }
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options { CancelToken }
 import from unittest.mock { patch }
-import jaclang.compiler.driver.pass_driver as pass_driver;
-import from jaclang.testing.test { parametrize }
-import from jaclang.compiler.driver.pipeline {
-    require,
-    product_facts,
-    product_ready,
-    _LOADING
-}
-import from jaclang.compiler.driver.pipeline_types {
-    AnalysisFact,
-    CompilationProduct,
-    ProductTask,
-    TaskState
-}
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 
 
 def tasks_of(

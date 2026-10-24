@@ -66,13 +66,13 @@ glob SCAN_ROOTS: list[str] = [
              "has_heavy_edges primitive and save's cascade reads through "
              "all_edges so light edges materialize first"
          ),
-         "runtime/osp_graph_sv.jac": (
+         "runtime/impl/osp_graph_sv.impl.jac": (
              1,
              "THE hydration mint: sv_register_hydrated loading the "
              "persistence record into the store is the one sanctioned live "
              "read"
          ),
-         "runtime/graph_walk.jac": (
+         "runtime/impl/graph_walk.impl.jac": (
              1,
              "the in-memory traversal primitive enumerates live anchor "
              "objects directly; detach keeps node.edges and the sv store in "

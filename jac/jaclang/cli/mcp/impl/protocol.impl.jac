@@ -247,7 +247,51 @@ impl serve_sse(engine: McpEngine, host: str, port: int) -> None {
     _serve_forever(httpd);
 }
 
-def _error_response(msg_id: any, code: int, message: str) -> dict[str, any] {
+def _error_response(msg_id: any, code: int, message: str) -> dict[str, any];
+
+def _process(engine: McpEngine, msg: any) -> any;
+
+def _stdio_write(stream: any, payload: any);
+
+def _new_session_id -> str;
+
+def _query_param(path: str, key: str) -> str | None;
+
+class _McpHttpServer(ThreadingHTTPServer) {
+    has engine: McpEngine,
+        mcp_path: str,
+        session_id: str,
+        sessions: dict[str, Queue[str | None]],
+        lock: threading.Lock;
+}
+
+def _mcp_server(handler: BaseHTTPRequestHandler) -> _McpHttpServer;
+
+def _make_http_server(
+    host: str, port: int, handler: type[BaseHTTPRequestHandler]
+) -> _McpHttpServer;
+
+def _serve_forever(httpd: _McpHttpServer);
+
+class _StreamableHttpHandler(BaseHTTPRequestHandler) {
+    def do_POST(self: _StreamableHttpHandler) -> None;
+    def do_GET(self: _StreamableHttpHandler);
+    def do_DELETE(self: _StreamableHttpHandler);
+    def _read_body(self: _StreamableHttpHandler) -> any;
+    def _send_json(self: _StreamableHttpHandler, status: int, payload: any);
+    def _send_status(self: _StreamableHttpHandler, status: int);
+    def log_message(self: _StreamableHttpHandler, fmt: str, *args: any);
+}
+
+class _SseHandler(BaseHTTPRequestHandler) {
+    def do_GET(self: _SseHandler) -> None;
+    def do_POST(self: _SseHandler) -> None;
+    def _send_event(self: _SseHandler, event: str, data: str);
+    def _send_status(self: _SseHandler, status: int);
+    def log_message(self: _SseHandler, fmt: str, *args: any);
+}
+
+impl _error_response(msg_id: any, code: int, message: str) -> dict[str, any] {
     return {
         "jsonrpc": "2.0",
         "id": msg_id,
@@ -255,7 +299,7 @@ def _error_response(msg_id: any, code: int, message: str) -> dict[str, any] {
     };
 }
 
-def _process(engine: McpEngine, msg: any) -> any {
+impl _process(engine: McpEngine, msg: any) -> any {
     if isinstance(msg, list) {
         responses: list[any] = [];
         for m in msg {
@@ -273,31 +317,23 @@ def _process(engine: McpEngine, msg: any) -> any {
     return engine.handle_message(msg);
 }
 
-def _stdio_write(stream: any, payload: any) {
+impl _stdio_write(stream: any, payload: any) {
     stream.write((json.dumps(payload) + "\n").encode("utf-8"));
     stream.flush();
 }
 
-def _new_session_id -> str {
+impl _new_session_id -> str {
     import uuid;
     return uuid.uuid4().hex;
 }
 
-def _query_param(path: str, key: str) -> str | None {
+impl _query_param(path: str, key: str) -> str | None {
     import from urllib.parse { urlparse, parse_qs }
     vals = parse_qs(urlparse(path).query).get(key);
     return vals[0] if vals else None;
 }
 
-class _McpHttpServer(ThreadingHTTPServer) {
-    has engine: McpEngine,
-        mcp_path: str,
-        session_id: str,
-        sessions: dict[str, Queue[str | None]],
-        lock: threading.Lock;
-}
-
-def _mcp_server(handler: BaseHTTPRequestHandler) -> _McpHttpServer {
+impl _mcp_server(handler: BaseHTTPRequestHandler) -> _McpHttpServer {
     srv = handler.server;
     if not isinstance(srv, _McpHttpServer) {
         raise RuntimeError("handler is not bound to an mcp server");
@@ -305,7 +341,7 @@ def _mcp_server(handler: BaseHTTPRequestHandler) -> _McpHttpServer {
     return srv;
 }
 
-def _make_http_server(
+impl _make_http_server(
     host: str, port: int, handler: type[BaseHTTPRequestHandler]
 ) -> _McpHttpServer {
     httpd = _McpHttpServer((host, port), handler);
@@ -313,7 +349,7 @@ def _make_http_server(
     return httpd;
 }
 
-def _serve_forever(httpd: _McpHttpServer) {
+impl _serve_forever(httpd: _McpHttpServer) {
     try {
         httpd.serve_forever();
     } except KeyboardInterrupt {} finally {
@@ -321,170 +357,170 @@ def _serve_forever(httpd: _McpHttpServer) {
     }
 }
 
-class _StreamableHttpHandler(BaseHTTPRequestHandler) {
-    def do_POST(self: _StreamableHttpHandler) -> None {
-        srv = _mcp_server(self);
-        if self.path.split("?")[0] != srv.mcp_path {
-            self._send_status(404);
-            return;
-        }
-        msg = self._read_body();
-        if msg is _BODY_ERROR {
-            self._send_json(
-                400,
-                {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {"code": -32700, "message": "Parse error"}
-                }
-            );
-            return;
-        }
-        if msg is None {
-            self._send_status(202);
-            return;
-        }
-        reply = _process(srv.engine, msg);
-        if reply is None {
-            self._send_status(202);
-        } else {
-            self._send_json(200, reply);
-        }
+impl _StreamableHttpHandler.do_POST(self: _StreamableHttpHandler) -> None {
+    srv = _mcp_server(self);
+    if self.path.split("?")[0] != srv.mcp_path {
+        self._send_status(404);
+        return;
     }
-
-    def do_GET(self: _StreamableHttpHandler) {
-        self._send_status(405);
+    msg = self._read_body();
+    if msg is _BODY_ERROR {
+        self._send_json(
+            400,
+            {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "Parse error"}
+            }
+        );
+        return;
     }
-
-    def do_DELETE(self: _StreamableHttpHandler) {
-        self._send_status(200);
+    if msg is None {
+        self._send_status(202);
+        return;
     }
-
-    def _read_body(self: _StreamableHttpHandler) -> any {
-        length = int(self.headers.get("Content-Length", 0) or 0);
-        if length <= 0 {
-            return None;
-        }
-        raw = self.rfile.read(length);
-        if not raw {
-            return None;
-        }
-        try {
-            return json.loads(raw.decode("utf-8"));
-        } except Exception {
-            return _BODY_ERROR;
-        }
-    }
-
-    def _send_json(self: _StreamableHttpHandler, status: int, payload: any) {
-        data = json.dumps(payload).encode("utf-8");
-        self.send_response(status);
-        self.send_header("Content-Type", "application/json");
-        self.send_header("Content-Length", str(len(data)));
-        self.send_header("Mcp-Session-Id", _mcp_server(self).session_id);
-        self.end_headers();
-        self.wfile.write(data);
-    }
-
-    def _send_status(self: _StreamableHttpHandler, status: int) {
-        self.send_response(status);
-        self.send_header("Content-Length", "0");
-        self.send_header("Mcp-Session-Id", _mcp_server(self).session_id);
-        self.end_headers();
-    }
-
-    def log_message(self: _StreamableHttpHandler, fmt: str, *args: any) {
-        _logger.debug("streamable-http %s", fmt % args);
+    reply = _process(srv.engine, msg);
+    if reply is None {
+        self._send_status(202);
+    } else {
+        self._send_json(200, reply);
     }
 }
 
-class _SseHandler(BaseHTTPRequestHandler) {
-    def do_GET(self: _SseHandler) -> None {
-        if self.path.split("?")[0] != "/sse" {
-            self._send_status(404);
-            return;
-        }
-        srv = _mcp_server(self);
-        session_id = _new_session_id();
-        q: Queue[str | None] = Queue();
-        with srv.lock {
-            srv.sessions[session_id] = q;
-        }
-        self.send_response(200);
-        self.send_header("Content-Type", "text/event-stream");
-        self.send_header("Cache-Control", "no-cache");
-        self.send_header("Connection", "keep-alive");
-        self.end_headers();
-        try {
-            self._send_event("endpoint", f"/messages?session_id={session_id}");
-            while True {
-                try {
-                    item = q.get(timeout=15.0);
-                } except Exception {
-                    self.wfile.write(b": keep-alive\n\n");
-                    self.wfile.flush();
-                    continue;
-                }
-                if item is None {
-                    break;
-                }
-                self._send_event("message", item);
+impl _StreamableHttpHandler.do_GET(self: _StreamableHttpHandler) {
+    self._send_status(405);
+}
+
+impl _StreamableHttpHandler.do_DELETE(self: _StreamableHttpHandler) {
+    self._send_status(200);
+}
+
+impl _StreamableHttpHandler._read_body(self: _StreamableHttpHandler) -> any {
+    length = int(self.headers.get("Content-Length", 0) or 0);
+    if length <= 0 {
+        return None;
+    }
+    raw = self.rfile.read(length);
+    if not raw {
+        return None;
+    }
+    try {
+        return json.loads(raw.decode("utf-8"));
+    } except Exception {
+        return _BODY_ERROR;
+    }
+}
+
+impl _StreamableHttpHandler._send_json(
+    self: _StreamableHttpHandler, status: int, payload: any
+) {
+    data = json.dumps(payload).encode("utf-8");
+    self.send_response(status);
+    self.send_header("Content-Type", "application/json");
+    self.send_header("Content-Length", str(len(data)));
+    self.send_header("Mcp-Session-Id", _mcp_server(self).session_id);
+    self.end_headers();
+    self.wfile.write(data);
+}
+
+impl _StreamableHttpHandler._send_status(self: _StreamableHttpHandler, status: int) {
+    self.send_response(status);
+    self.send_header("Content-Length", "0");
+    self.send_header("Mcp-Session-Id", _mcp_server(self).session_id);
+    self.end_headers();
+}
+
+impl _StreamableHttpHandler.log_message(
+    self: _StreamableHttpHandler, fmt: str, *args: any
+) {
+    _logger.debug("streamable-http %s", fmt % args);
+}
+
+impl _SseHandler.do_GET(self: _SseHandler) -> None {
+    if self.path.split("?")[0] != "/sse" {
+        self._send_status(404);
+        return;
+    }
+    srv = _mcp_server(self);
+    session_id = _new_session_id();
+    q: Queue[str | None] = Queue();
+    with srv.lock {
+        srv.sessions[session_id] = q;
+    }
+    self.send_response(200);
+    self.send_header("Content-Type", "text/event-stream");
+    self.send_header("Cache-Control", "no-cache");
+    self.send_header("Connection", "keep-alive");
+    self.end_headers();
+    try {
+        self._send_event("endpoint", f"/messages?session_id={session_id}");
+        while True {
+            try {
+                item = q.get(timeout=15.0);
+            } except Exception {
+                self.wfile.write(b": keep-alive\n\n");
+                self.wfile.flush();
+                continue;
             }
-        } except Exception {} finally {
-            with srv.lock {
-                srv.sessions.pop(session_id, None);
+            if item is None {
+                break;
             }
+            self._send_event("message", item);
         }
-    }
-
-    def do_POST(self: _SseHandler) -> None {
-        if self.path.split("?")[0] != "/messages" {
-            self._send_status(404);
-            return;
-        }
-        session_id = _query_param(self.path, "session_id");
-        if session_id is None {
-            self._send_status(404);
-            return;
-        }
-        srv = _mcp_server(self);
+    } except Exception {} finally {
         with srv.lock {
-            q = srv.sessions.get(session_id);
-        }
-        if q is None {
-            self._send_status(404);
-            return;
-        }
-        length = int(self.headers.get("Content-Length", 0) or 0);
-        raw = self.rfile.read(length) if length > 0 else b"";
-        try {
-            msg = json.loads(raw.decode("utf-8")) if raw else None;
-        } except Exception {
-            self._send_status(400);
-            return;
-        }
-        self._send_status(202);
-        if msg is None {
-            return;
-        }
-        reply = _process(srv.engine, msg);
-        if reply is not None {
-            q.put(json.dumps(reply));
+            srv.sessions.pop(session_id, None);
         }
     }
+}
 
-    def _send_event(self: _SseHandler, event: str, data: str) {
-        self.wfile.write(f"event: {event}\ndata: {data}\n\n".encode("utf-8"));
-        self.wfile.flush();
+impl _SseHandler.do_POST(self: _SseHandler) -> None {
+    if self.path.split("?")[0] != "/messages" {
+        self._send_status(404);
+        return;
     }
+    session_id = _query_param(self.path, "session_id");
+    if session_id is None {
+        self._send_status(404);
+        return;
+    }
+    srv = _mcp_server(self);
+    with srv.lock {
+        q = srv.sessions.get(session_id);
+    }
+    if q is None {
+        self._send_status(404);
+        return;
+    }
+    length = int(self.headers.get("Content-Length", 0) or 0);
+    raw = self.rfile.read(length) if length > 0 else b"";
+    try {
+        msg = json.loads(raw.decode("utf-8")) if raw else None;
+    } except Exception {
+        self._send_status(400);
+        return;
+    }
+    self._send_status(202);
+    if msg is None {
+        return;
+    }
+    reply = _process(srv.engine, msg);
+    if reply is not None {
+        q.put(json.dumps(reply));
+    }
+}
 
-    def _send_status(self: _SseHandler, status: int) {
-        self.send_response(status);
-        self.send_header("Content-Length", "0");
-        self.end_headers();
-    }
+impl _SseHandler._send_event(self: _SseHandler, event: str, data: str) {
+    self.wfile.write(f"event: {event}\ndata: {data}\n\n".encode("utf-8"));
+    self.wfile.flush();
+}
 
-    def log_message(self: _SseHandler, fmt: str, *args: any) {
-        _logger.debug("sse %s", fmt % args);
-    }
+impl _SseHandler._send_status(self: _SseHandler, status: int) {
+    self.send_response(status);
+    self.send_header("Content-Length", "0");
+    self.end_headers();
+}
+
+impl _SseHandler.log_message(self: _SseHandler, fmt: str, *args: any) {
+    _logger.debug("sse %s", fmt % args);
 }

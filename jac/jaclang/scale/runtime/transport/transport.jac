@@ -4,11 +4,7 @@ obj ServiceTransport {
         name: str,
         payload: dict[str, any],
         headers: dict[str, str] | None = None
-    ) -> any {
-        raise NotImplementedError(
-            "call_function() must be implemented by a ServiceTransport"
-        );
-    }
+    ) -> any;
 
     def call_walker(
         service: str,
@@ -16,44 +12,25 @@ obj ServiceTransport {
         payload: dict[str, any],
         stub_cls: any = None,
         headers: dict[str, str] | None = None
-    ) -> any {
-        raise NotImplementedError(
-            "call_walker() must be implemented by a ServiceTransport"
-        );
-    }
+    ) -> any;
 }
 
 
-def _member_key(service: str, name: str) -> str {
-    return f"{service}:{name}";
-}
+def _member_key(service: str, name: str) -> str;
 
 
 obj InProcessTransport(ServiceTransport) {
     has _functions: dict[str, any] = {},
         _walkers: dict[str, any] = {};
 
-    def register_function(service: str, name: str, handler: any) {
-        self._functions[_member_key(service, name)] = handler;
-    }
-
-    def register_walker(service: str, name: str, handler: any) {
-        self._walkers[_member_key(service, name)] = handler;
-    }
-
+    def register_function(service: str, name: str, handler: any);
+    def register_walker(service: str, name: str, handler: any);
     def call_function(
         service: str,
         name: str,
         payload: dict[str, any],
         headers: dict[str, str] | None = None
-    ) -> any {
-        key = _member_key(service, name);
-        handler = self._functions.get(key);
-        if handler is None {
-            raise KeyError(f"no in-process function registered for {key}");
-        }
-        return handler(payload);
-    }
+    ) -> any;
 
     def call_walker(
         service: str,
@@ -61,15 +38,7 @@ obj InProcessTransport(ServiceTransport) {
         payload: dict[str, any],
         stub_cls: any = None,
         headers: dict[str, str] | None = None
-    ) -> any {
-        key = _member_key(service, name);
-        handler = self._walkers.get(key);
-        if handler is None {
-            raise KeyError(f"no in-process walker registered for {key}");
-        }
-
-        return handler(payload);
-    }
+    ) -> any;
 }
 
 
@@ -79,9 +48,7 @@ obj HttpTransport(ServiceTransport) {
         name: str,
         payload: dict[str, any],
         headers: dict[str, str] | None = None
-    ) -> any {
-        return service_call(service, name, payload, headers=headers);
-    }
+    ) -> any;
 
     def call_walker(
         service: str,
@@ -89,15 +56,11 @@ obj HttpTransport(ServiceTransport) {
         payload: dict[str, any],
         stub_cls: any = None,
         headers: dict[str, str] | None = None
-    ) -> any {
-        return walker_call(service, name, payload, stub_cls, headers=headers);
-    }
+    ) -> any;
 }
 
 
 glob _HTTP_TRANSPORT: HttpTransport = HttpTransport();
 
 
-def http_transport -> HttpTransport {
-    return _HTTP_TRANSPORT;
-}
+def http_transport -> HttpTransport;

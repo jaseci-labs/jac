@@ -8,44 +8,6 @@ Compiled only on Windows, so absent here:
     mmap.mmap.__sizeof__
     mmap.mmap._protect
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
-import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
-import from jaclang.runtime.python.bindings.type {
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.arguments { check_positional }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi { boundary_failure }
-import from jaclang.runtime.python.bindings.converters {
-    argument_label,
-    borrowed_none,
-    convert_buffer,
-    convert_int,
-    convert_optional_ssize,
-    convert_ssize,
-    convert_unsigned_bounded
-}
-import from jaclang.runtime.python.modules.mmap {
-    mmap_mmap___enter___impl,
-    mmap_mmap___exit___impl,
-    mmap_mmap_close_impl,
-    mmap_mmap_find_impl,
-    mmap_mmap_flush_impl,
-    mmap_mmap_madvise_impl,
-    mmap_mmap_move_impl,
-    mmap_mmap_read_byte_impl,
-    mmap_mmap_read_impl,
-    mmap_mmap_readline_impl,
-    mmap_mmap_resize_impl,
-    mmap_mmap_rfind_impl,
-    mmap_mmap_seek_impl,
-    mmap_mmap_seekable_impl,
-    mmap_mmap_size_impl,
-    mmap_mmap_tell_impl,
-    mmap_mmap_write_byte_impl,
-    mmap_mmap_write_impl
-}
 
 def:priv mmap_mmap_close_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]

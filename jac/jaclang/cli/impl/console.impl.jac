@@ -601,3 +601,74 @@ impl use_line_buffered_output(streams: (list[TextIO] | None) = None) -> int {
     }
     return switched;
 }
+
+impl Content.__str__ -> str {
+    return self.text;
+}
+
+impl _Spinner.postinit {
+    import from threading { Event }
+    self._stop = Event();
+}
+
+impl _Spinner.update(text: any = '') {
+    self.text = text;
+}
+
+impl _Spinner.clear {
+    try {
+        self.stream.write("\r\033[K");
+        self.stream.flush();
+    } except (BrokenPipeError, OSError) {}
+}
+
+impl _Spinner._run {
+    idx = 0;
+    while not self._stop.is_set() {
+        frame = self.frames[idx % len(self.frames)];
+        current = self.text;
+        text = str(current() if callable(current) else current);
+        try {
+            width = os.get_terminal_size().columns;
+        } except OSError {
+            width = 0;
+        }
+        if width > 8 and len(text) > width - 3 {
+            text = text[:width - 6] + "...";
+        }
+        try {
+            self.stream.write(f"\r{self.style_prefix}{frame}{self.reset} {text}\033[K");
+            self.stream.flush();
+        } except (BrokenPipeError, OSError) {
+            return;
+        }
+        idx += 1;
+        self._stop.`wait(self.interval);
+    }
+}
+
+impl _Spinner.start {
+    import from threading { Thread }
+    self._thread = Thread(target=self._run, daemon=True);
+    self._thread.start();
+}
+
+impl _Spinner.stop {
+    self._stop.set();
+    if self._thread is not None {
+        self._thread.join(timeout=1.0);
+    }
+    self.clear();
+}
+
+impl _NullStatus.update(text: any = '') -> None {
+    return;
+}
+
+impl _NullStatus.clear -> None {
+    return;
+}
+
+impl _ConsoleProxy.__getattr__(self: _ConsoleProxy, name: str) -> any {
+    return getattr(_get_console(), name);
+}

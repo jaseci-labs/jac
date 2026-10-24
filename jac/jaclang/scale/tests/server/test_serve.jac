@@ -6,34 +6,12 @@ import os;
 import socket;
 import subprocess;
 import tempfile;
-import from jaclang.scale.runtime.context.util { jac_executable }
 import time;
 import uuid;
 import shutil;
 import requests;
-import from jaclang.server.serving.authcrypt {
-    jwt_decode as _jwt_decode,
-    jwt_encode as _jwt_encode
-}
-import from jaclang.server.identity.config { signing_secret as jwt_secret }
-import from jaclang.server.serving.client { run_blocking }
-import from jaclang.server.serving.datatypes { Headers, Request, URL }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data,
-    fresh_totp_code,
-    totp_code,
-    wrong_totp_code
-}
-import from jaclang.scale.tests.support {
-    cleanup_db_files,
-    get_free_port,
-    start_server,
-    stop_server
-}
 
 def _as_any(v: any) -> any {
     return v;

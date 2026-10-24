@@ -1,6 +1,8 @@
 import from "@jac/mobui" { StyleSheet }
 
-def:pub makeStyles(C: Colors) -> any {
+def:pub makeStyles(C: Colors) -> any;
+
+impl makeStyles(C: Colors) -> any {
     S = spacing();
     R = radii();
     F = fonts();
@@ -570,6 +572,19 @@ def:pub makeStyles(C: Colors) -> any {
                 "paddingVertical": S.xs,
                 "paddingHorizontal": S.sm
             },
+            "clawBody": {"gap": S.md, "paddingTop": S.sm},
+            "clawHeading": {
+                "color": C.text,
+                "fontFamily": FONT,
+                "fontSize": F.lg,
+                "fontWeight": "bold"
+            },
+            "codeBlock": {
+                "backgroundColor": C.elevated,
+                "borderRadius": R.md,
+                "padding": S.md
+            },
+            "codeText": {"color": C.text, "fontFamily": "monospace", "fontSize": F.sm},
             "badgeText": {
                 "color": C.text,
                 "fontFamily": FONT,

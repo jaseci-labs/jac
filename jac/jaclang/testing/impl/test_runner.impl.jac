@@ -27,7 +27,14 @@ impl TestPlan.is_empty -> bool {
 }
 
 impl NameFilter.postinit -> None {
-    self.tree = _parse_filter_expr(self.expr);
+    if not self.literal {
+        self.tree = _parse_filter_expr(self.expr);
+        return;
+    }
+    for word in self.expr.split() {
+        term = ("word", word.lower());
+        self.tree = term if self.tree is None else ("and", self.tree, term);
+    }
 }
 
 impl NameFilter.matches(name: str) -> bool {
@@ -142,17 +149,13 @@ impl _eval_filter(expr_node: any, name: str) -> bool {
 }
 
 impl _build_selector(test_name: str, filter: str) -> (NameFilter | None) {
-    expr = "";
-    if test_name {
-        parts = test_name.split();
-        expr = " and ".join(parts) if parts else test_name;
-    } elif filter {
-        expr = filter;
+    if test_name.strip() {
+        return NameFilter(expr=test_name, literal=True);
     }
-    if not expr {
-        return None;
+    if filter.strip() {
+        return NameFilter(expr=filter);
     }
-    return NameFilter(expr=expr);
+    return None;
 }
 
 impl _should_ignore(path: str, ignore: list[str]) -> bool {
@@ -1096,9 +1099,7 @@ impl resolve_jobs(requested: (str | int | None) = None) -> int {
     return _resolve_pool_jobs(requested, env_var="JAC_TEST_JOBS");
 }
 
-def _test_rss_cap_mb -> int {
-    return env_int("JAC_TEST_RECYCLE_MB", 8192);
-}
+def _test_rss_cap_mb -> int;
 
 impl _test_retire(served: int, rss_mb: int) -> bool {
     return _should_retire(
@@ -1181,4 +1182,8 @@ impl _run_plan(
     } else {
         pool.run();
     }
+}
+
+impl _test_rss_cap_mb -> int {
+    return env_int("JAC_TEST_RECYCLE_MB", 8192);
 }

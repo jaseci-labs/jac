@@ -31,74 +31,13 @@ impl ExecutionManager.report_collector(
 
 async def _begin_request_context(
     user_root_id: str, target: object | None = None
-) -> tuple[(ExecutionContext, any)] {
-    req_ctx = await ExecutionContext.for_target(
-        target, RequestScope.current(), user_root_id
-    );
-    token = Jac.push_request_context(req_ctx);
-
-    isolate_request_walk_stack();
-    return (req_ctx, token);
-}
+) -> tuple[(ExecutionContext, any)];
 
 async def _abegin_user_request_context(
     user_manager: UserManager, username: str, target: object | None = None
-) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
-    root_id = await user_manager.aget_root_id(username);
-    if not root_id {
-        import os;
-        if username != Con.GUEST.value and os.environ.get('JAC_SV_SIBLING') {
-            ensure_root = getattr(
-                user_manager, 'ensure_user_root', user_manager.get_root_id
-            );
-            root_id = await asyncio.to_thread(ensure_root, username);
-        }
-        if not root_id {
-            return {'error': 'User not found'};
-        }
-    }
-    try {
-        (ctx, token) = await _begin_request_context(root_id, target);
-        return (ctx, token, root_id);
-    } except MissingAnchorError {
-        if username != Con.GUEST.value {
-            raise RuntimeError(
-                f"Root anchor {root_id} for user '{username}' does not "
-                "exist in the anchor store. The data store was likely "
-                "reset or migrated out from under the users db; restore "
-                "it or re-register the user."
-            );
-        }
-        import logging;
-        logging.getLogger('jaclang.serve').warning(
-            f"Guest root anchor {root_id} is missing from the anchor store; "
-            "minting a fresh guest root."
-        );
-        healed_id = await asyncio.to_thread(user_manager.reset_root, username);
-        if not healed_id {
-            return {'error': 'User not found'};
-        }
-        (ctx, token) = await _begin_request_context(healed_id, target);
-        return (ctx, token, healed_id);
-    }
-}
+) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue];
 
-def _deserialize_wire_args(args: dict[(str, any)]) {
-    for (k, v) in list(args.items()) {
-        if isinstance(v, dict) and '__type__' in v {
-            deserialized = Serializer.deserialize(v);
-            if deserialized is not None {
-                args[k] = deserialized;
-            }
-        } elif isinstance(v, list) {
-            args[k] = [
-                Serializer.deserialize(item)
-                    if isinstance(item, dict) and '__type__' in item
-                    else item for item in v
-            ];
-        }
-    }
-}
+def _deserialize_wire_args(args: dict[(str, any)]);
 
 impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
     import logging;
@@ -118,48 +57,16 @@ impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
 }
 
 
-def _unit_key_for(target: any) -> (str | None) {
-    mod = str(getattr(target, '__module__', '') or '');
-    name = str(getattr(target, '__name__', '') or '');
-    if not name {
-        return None;
-    }
-    return f"{mod}.{name}";
-}
+def _unit_key_for(target: any) -> (str | None);
 
 
 glob _TURN_POOL: list[any] = [];
 
 
-def _conflict_turn_pool -> any {
-    if not _TURN_POOL {
-        import from concurrent.futures { ThreadPoolExecutor }
-        _TURN_POOL.append(
-            ThreadPoolExecutor(max_workers=8, thread_name_prefix="jac-conflict-turn")
-        );
-    }
-    return _TURN_POOL[0];
-}
+def _conflict_turn_pool -> any;
 
 
-def _occ_policy -> tuple[str, int, int] {
-    mode = "retry";
-    max_attempts = 5;
-    backoff_ms = 0;
-    try {
-        import from jaclang.project.config { get_config }
-        cfg = get_config();
-        if cfg is not None {
-            mode = str(cfg.serve.on_conflict).strip().lower();
-            if mode not in ("retry", "fail") {
-                mode = "retry";
-            }
-            max_attempts = cfg.serve.conflict_max_attempts;
-            backoff_ms = cfg.serve.conflict_backoff_ms;
-        }
-    } except Exception {}
-    return (mode, max_attempts, backoff_ms);
-}
+def _occ_policy -> tuple[str, int, int];
 
 impl ExecutionManager._finalize_call_response(
     call_state: CallState, result: any, serialize_result: bool = True
@@ -191,22 +98,7 @@ impl ExecutionManager._finalize_call_response(
     return dict[(str, JsonValue)](envelope);
 }
 
-def _plain_value(val: object) -> bool {
-    kind = type(val);
-    if val is None or kind in (str, int, float, bool, UUID) or isinstance(val, Enum) {
-        return True;
-    }
-    if isinstance(val, (list, tuple)) and kind in (list, tuple) {
-        return all(_plain_value(item) for item in val);
-    }
-    if isinstance(val, dict) and kind is dict {
-        return all(
-            type(k) in (str, int, float, bool) and _plain_value(v)
-            for (k, v) in val.items()
-        );
-    }
-    return False;
-}
+def _plain_value(val: object) -> bool;
 
 async def _run_function_with_occ(
     mgr: ExecutionManager,
@@ -216,153 +108,7 @@ async def _run_function_with_occ(
     deserialize_args: bool = True,
     unit_key: (str | None) = None,
     target: object | None = None
-) -> dict[str, JsonValue] | Generator | AsyncGenerator {
-    resolved = await _abegin_user_request_context(mgr.user_manager, username, target);
-    if isinstance(resolved, dict) {
-        return resolved;
-    }
-    (ctx, req_token, root_id) = resolved;
-    ctx.mem.unit_enter(unit_key);
-    settled = False;
-    streaming = False;
-    try {
-        if deserialize_args {
-            _deserialize_wire_args(args);
-        }
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
-        attempt = 0;
-        ro_retries = 0;
-        reload_root = False;
-        while attempt < max_attempts {
-            attempt += 1;
-            call_token = ctx.call_state.set(CallState());
-            call_state = ctx.call_state.get();
-            try {
-                if reload_root {
-                    reload_root = False;
-                    await ctx.aset_user_root(root_id);
-                }
-                outcome = await run_attempt(call_state, ctx);
-                ctx.mem.unit_exit();
-                settled = True;
-                streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
-                return await ctx.bind_stream(outcome) if streaming else outcome;
-            } except ReadOnlyRetry as rr {
-                settled = False;
-                if ctx.mem.unit_depth() == 0 {
-                    ctx.mem.unit_enter(unit_key);
-                }
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-                ctx.diagnostics.clear();
-                forget_response_choice();
-                ro_retries += 1;
-                observe_read_tier_retry(mgr.metrics, rr.unit_key or unit_key or "");
-                if ro_retries <= 2 {
-                    attempt -= 1;
-                }
-                reload_root = True;
-            } except WriteConflict as wc {
-                settled = False;
-                if ctx.mem.unit_depth() == 0 {
-                    ctx.mem.unit_enter(unit_key);
-                }
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-
-                ctx.diagnostics.clear();
-                forget_response_choice();
-                if attempt >= max_attempts {
-                    return {
-                        'error': wc.message(),
-                        'error_code': 'write_conflict',
-                        'http_status': 409
-                    };
-                }
-                if occ_backoff_ms > 0 {
-                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                }
-                import from jaclang.server.session { Session }
-                mem: any = ctx.mem;
-                if isinstance(mem, Session) {
-                    import contextvars;
-                    turn_context = contextvars.copy_context();
-                    def take_turn {
-                        turn_context.run(mem.wait_turn);
-                    }
-                    turn = asyncio.get_running_loop().run_in_executor(
-                        _conflict_turn_pool(), take_turn
-                    );
-                    try {
-                        await asyncio.shield(turn);
-                    } except asyncio.CancelledError {
-                        while not turn.done() {
-                            try {
-                                await asyncio.shield(turn);
-                            } except asyncio.CancelledError {
-                                continue;
-                            }
-                        }
-                        raise;
-                    }
-                }
-                reload_root = True;
-            } except Exception as e {
-                import from jaclang.server.session { transient_db_error }
-                if attempt < max_attempts and transient_db_error(e) {
-                    settled = False;
-                    if ctx.mem.unit_depth() == 0 {
-                        ctx.mem.unit_enter(unit_key);
-                    }
-                    ctx.mem.abort();
-                    ctx.pending_effects.clear();
-                    ctx.read_versions.clear();
-                    ctx.diagnostics.clear();
-                    forget_response_choice();
-                    if occ_backoff_ms > 0 {
-                        await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                    }
-                    reload_root = True;
-                    continue;
-                }
-                ctx.mem.abort();
-                import logging;
-                logging.getLogger('jaclang.serve').exception(
-                    f"{unit_key or 'request'} raised {type(e).__name__}: {e}"
-                );
-                return {'error': str(e), 'error_code': 'execution_error'};
-            } finally {
-                ctx.call_state.reset(call_token);
-            }
-        }
-        return {
-            'error': 'write_conflict: retries exhausted',
-            'error_code': 'write_conflict',
-            'http_status': 409
-        };
-    } finally {
-        try {
-            if not settled {
-                ctx.mem.unit_exit();
-            }
-        } except Exception as ue {
-            import logging;
-            logging.getLogger(__name__).warning(
-                f"unit exit failed: {type(ue).__name__}: {ue}"
-            );
-        }
-        try {
-            if not streaming {
-                ctx.close();
-            }
-        } finally {
-            Jac.reset_request_context(req_token);
-        }
-    }
-}
+) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
 impl ExecutionManager.execute_function(
     func: Callable[(..., any)],
@@ -635,6 +381,32 @@ impl ModuleIntrospector.scheduled_members -> list[tuple[str, any, bool]] {
             found.append((name, member, True));
         } elif inspect.isfunction(member) {
             found.append((name, member, False));
+        }
+    }
+    return found;
+}
+
+impl ModuleIntrospector.scheduled_targets -> list[tuple[str, any, ScheduleSpec, bool]] {
+    found: list[tuple[str, any, ScheduleSpec, bool]] = [];
+    seen: set[str] = set();
+    for (name, member, is_walker) in self.scheduled_members() {
+        spec = member?.schedule_spec;
+        if isinstance(spec, ScheduleSpec) {
+            seen.add(name);
+            found.append((name, member, spec, is_walker));
+        }
+    }
+    for kind in ('walker', 'function') {
+        for rec in self.served(kind) {
+            if rec.name in seen or not self.is_scheduled(rec.name) {
+                continue;
+            }
+            member = self.target(rec.name);
+            spec = member?.schedule_spec;
+            if isinstance(spec, ScheduleSpec) {
+                seen.add(rec.name);
+                found.append((rec.name, member, spec, kind == 'walker'));
+            }
         }
     }
     return found;
@@ -1127,20 +899,7 @@ impl ModuleIntrospector.function_protocol(func_name: str) -> APIProtocol {
 }
 
 
-def _warm_persistence {
-    try {
-        ctx = Jac.get_context();
-        anchor = ctx.system_root;
-        ctx.mem.commit();
-        logger.debug(f"persistent store ready (system root {anchor.id})");
-    } except Exception as e {
-        logger.warning(
-            f"persistent store not reachable while starting up "
-            f"({type(e).__name__}: {e}); requests that touch graph state will "
-            "provision it on demand"
-        );
-    }
-}
+def _warm_persistence;
 
 
 impl JacAPIServer.postinit -> None {
@@ -1480,25 +1239,26 @@ impl JacAPIServer._ensure_internal_users -> None {
 }
 
 impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
-    found: list[tuple[str, any, bool]] = [];
-    seen: set[str] = set();
-    for (name, member, is_walker) in self.introspector.scheduled_members() {
-        spec = member?.schedule_spec;
-        if isinstance(spec, ScheduleSpec) {
-            seen.add(name);
-            found.append((name, spec, is_walker));
-        }
+    return [
+        (name, spec, is_walker)
+        for (name, _member, spec, is_walker) in self.introspector.scheduled_targets()
+    ];
+}
+
+impl JacAPIServer._colocated_scheduled_targets -> list[
+    tuple[str, str, any, ScheduleSpec, bool]
+] {
+    found: list[tuple[str, str, any, ScheduleSpec, bool]] = [];
+    if self.is_sv_sibling {
+        return found;
     }
-    for kind in ('walker', 'function') {
-        for rec in self.introspector.served(kind) {
-            if rec.name in seen or not self.introspector.is_scheduled(rec.name) {
-                continue;
-            }
-            spec = self.introspector.target(rec.name)?.schedule_spec;
-            if isinstance(spec, ScheduleSpec) {
-                seen.add(rec.name);
-                found.append((rec.name, spec, kind == 'walker'));
-            }
+    for (app, module) in sorted(colocated_providers().items()) {
+        intro = provider_introspector(self, app, module);
+        if intro is None {
+            continue;
+        }
+        for (name, member, spec, is_walker) in intro.scheduled_targets() {
+            found.append((app, name, member, spec, is_walker));
         }
     }
     return found;
@@ -1522,9 +1282,15 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 }
             }
             if name not in registry {
+                resolved = intro.target(name);
+                if resolved is not None and isinstance(resolved, type) == is_walker {
+                    registry[name] = resolved;
+                }
+            }
+            if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            with _self.request_scope() {
+            async with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
@@ -1553,6 +1319,42 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             continue;
         }
         self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
+    }
+    def _make_member_target(
+        label: str, member: any, is_walker: bool
+    ) -> Callable[[], None] {
+        async def _run_member -> any {
+            with _self.request_scope() {
+                if is_walker {
+                    return await _self.execution_manager.spawn_walker(
+                        member, {}, SYSTEM_USER
+                    );
+                }
+                return await _self.execution_manager.execute_function(
+                    member, {}, SYSTEM_USER
+                );
+            }
+        }
+        def member_target {
+            outcome = asyncio.run(_run_member());
+            if (
+                isinstance(outcome, dict)
+                and 'error' in outcome
+                and outcome.get('error_code') != 'execution_error'
+            ) {
+                logger.error(f"scheduled {label} failed: {outcome.get('error')}");
+            }
+        }
+        return member_target;
+    }
+    for (app, name, member, spec, is_walker) in self._colocated_scheduled_targets() {
+        if spec.trigger == ScheduleTrigger.DYNAMIC {
+            continue;
+        }
+        label = f"{app}.{name}";
+        self.scheduler.register(
+            label, _make_member_target(label, member, is_walker), spec, is_walker
+        );
     }
     if self.scheduler.has_pending() {
         logger.info(
@@ -1927,4 +1729,379 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     );
     console.print(('=' * 80));
     console.print('\nAuth: Bearer token (Authorization: Bearer <token>)\n');
+}
+
+impl _begin_request_context(
+    user_root_id: str, target: object | None = None
+) -> tuple[(ExecutionContext, any)] {
+    req_ctx = await ExecutionContext.for_target(
+        target, RequestScope.current(), user_root_id
+    );
+    token = Jac.push_request_context(req_ctx);
+
+    isolate_request_walk_stack();
+    return (req_ctx, token);
+}
+
+impl _abegin_user_request_context(
+    user_manager: UserManager, username: str, target: object | None = None
+) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
+    root_id = await user_manager.aget_root_id(username);
+    if not root_id {
+        import os;
+        if username != Con.GUEST.value and os.environ.get('JAC_SV_SIBLING') {
+            ensure_root = getattr(
+                user_manager, 'ensure_user_root', user_manager.get_root_id
+            );
+            root_id = await asyncio.to_thread(ensure_root, username);
+        }
+        if not root_id {
+            return {'error': 'User not found'};
+        }
+    }
+    try {
+        (ctx, token) = await _begin_request_context(root_id, target);
+        return (ctx, token, root_id);
+    } except MissingAnchorError {
+        if username != Con.GUEST.value {
+            raise RuntimeError(
+                f"Root anchor {root_id} for user '{username}' does not "
+                "exist in the anchor store. The data store was likely "
+                "reset or migrated out from under the users db; restore "
+                "it or re-register the user."
+            );
+        }
+        import logging;
+        logging.getLogger('jaclang.serve').warning(
+            f"Guest root anchor {root_id} is missing from the anchor store; "
+            "minting a fresh guest root."
+        );
+        healed_id = await asyncio.to_thread(user_manager.reset_root, username);
+        if not healed_id {
+            return {'error': 'User not found'};
+        }
+        (ctx, token) = await _begin_request_context(healed_id, target);
+        return (ctx, token, healed_id);
+    }
+}
+
+impl _deserialize_wire_args(args: dict[(str, any)]) {
+    for (k, v) in list(args.items()) {
+        if isinstance(v, dict) and '__type__' in v {
+            deserialized = Serializer.deserialize(v);
+            if deserialized is not None {
+                args[k] = deserialized;
+            }
+        } elif isinstance(v, list) {
+            args[k] = [
+                Serializer.deserialize(item)
+                    if isinstance(item, dict) and '__type__' in item
+                    else item for item in v
+            ];
+        }
+    }
+}
+
+
+impl _unit_key_for(target: any) -> (str | None) {
+    mod = str(getattr(target, '__module__', '') or '');
+    name = str(getattr(target, '__name__', '') or '');
+    if not name {
+        return None;
+    }
+    return f"{mod}.{name}";
+}
+
+
+impl _conflict_turn_pool -> any {
+    if not _TURN_POOL {
+        import from concurrent.futures { ThreadPoolExecutor }
+        _TURN_POOL.append(
+            ThreadPoolExecutor(max_workers=8, thread_name_prefix="jac-conflict-turn")
+        );
+    }
+    return _TURN_POOL[0];
+}
+
+
+impl _occ_policy -> tuple[str, int, int] {
+    mode = "retry";
+    max_attempts = 5;
+    backoff_ms = 0;
+    try {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        if cfg is not None {
+            mode = str(cfg.serve.on_conflict).strip().lower();
+            if mode not in ("retry", "fail") {
+                mode = "retry";
+            }
+            max_attempts = cfg.serve.conflict_max_attempts;
+            backoff_ms = cfg.serve.conflict_backoff_ms;
+        }
+    } except Exception {}
+    return (mode, max_attempts, backoff_ms);
+}
+
+impl _plain_value(val: object) -> bool {
+    kind = type(val);
+    if val is None or kind in (str, int, float, bool, UUID) or isinstance(val, Enum) {
+        return True;
+    }
+    if isinstance(val, (list, tuple)) and kind in (list, tuple) {
+        return all(_plain_value(item) for item in val);
+    }
+    if isinstance(val, dict) and kind is dict {
+        return all(
+            type(k) in (str, int, float, bool) and _plain_value(v)
+            for (k, v) in val.items()
+        );
+    }
+    return False;
+}
+
+impl _run_function_with_occ(
+    mgr: ExecutionManager,
+    args: dict[(str, any)],
+    username: str,
+    run_attempt: Callable,
+    deserialize_args: bool = True,
+    unit_key: (str | None) = None,
+    target: object | None = None
+) -> dict[str, JsonValue] | Generator | AsyncGenerator {
+    resolved = await _abegin_user_request_context(mgr.user_manager, username, target);
+    if isinstance(resolved, dict) {
+        return resolved;
+    }
+    (ctx, req_token, root_id) = resolved;
+    ctx.mem.unit_enter(unit_key);
+    settled = False;
+    streaming = False;
+    try {
+        if deserialize_args {
+            _deserialize_wire_args(args);
+        }
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        ro_retries = 0;
+        reload_root = False;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                if reload_root {
+                    reload_root = False;
+                    await ctx.aset_user_root(root_id);
+                }
+                outcome = await run_attempt(call_state, ctx);
+                ctx.mem.unit_exit();
+                settled = True;
+                streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
+                return await ctx.bind_stream(outcome) if streaming else outcome;
+            } except ReadOnlyRetry as rr {
+                settled = False;
+                ctx.mem.take_ro_retry();
+                if ctx.mem.unit_depth() == 0 {
+                    ctx.mem.unit_enter(unit_key);
+                }
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+                ctx.diagnostics.clear();
+                forget_response_choice();
+                ro_retries += 1;
+                observe_read_tier_retry(mgr.metrics, rr.unit_key or unit_key or "");
+                if ro_retries <= 2 {
+                    attempt -= 1;
+                }
+                reload_root = True;
+            } except WriteConflict as wc {
+                settled = False;
+                if ctx.mem.unit_depth() == 0 {
+                    ctx.mem.unit_enter(unit_key);
+                }
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+
+                ctx.diagnostics.clear();
+                forget_response_choice();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                import from jaclang.server.session { Session }
+                mem: any = ctx.mem;
+                if isinstance(mem, Session) {
+                    import contextvars;
+                    turn_context = contextvars.copy_context();
+                    def take_turn {
+                        turn_context.run(mem.wait_turn);
+                    }
+                    turn = asyncio.get_running_loop().run_in_executor(
+                        _conflict_turn_pool(), take_turn
+                    );
+                    try {
+                        await asyncio.shield(turn);
+                    } except asyncio.CancelledError {
+                        while not turn.done() {
+                            try {
+                                await asyncio.shield(turn);
+                            } except asyncio.CancelledError {
+                                continue;
+                            }
+                        }
+                        raise;
+                    }
+                }
+                reload_root = True;
+            } except Exception as e {
+                import from jaclang.server.session { transient_db_error }
+                if attempt < max_attempts and transient_db_error(e) {
+                    settled = False;
+                    if ctx.mem.unit_depth() == 0 {
+                        ctx.mem.unit_enter(unit_key);
+                    }
+                    ctx.mem.abort();
+                    ctx.pending_effects.clear();
+                    ctx.read_versions.clear();
+                    ctx.diagnostics.clear();
+                    forget_response_choice();
+                    if occ_backoff_ms > 0 {
+                        await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                    }
+                    reload_root = True;
+                    continue;
+                }
+                ctx.mem.abort();
+                import logging;
+                logging.getLogger('jaclang.serve').exception(
+                    f"{unit_key or 'request'} raised {type(e).__name__}: {e}"
+                );
+                return {'error': str(e), 'error_code': 'execution_error'};
+            } finally {
+                ctx.call_state.reset(call_token);
+            }
+        }
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
+    } finally {
+        try {
+            if not settled {
+                ctx.mem.unit_exit();
+            }
+        } except Exception as ue {
+            import logging;
+            logging.getLogger(__name__).warning(
+                f"unit exit failed: {type(ue).__name__}: {ue}"
+            );
+        }
+        try {
+            if not streaming {
+                ctx.close();
+            }
+        } finally {
+            Jac.reset_request_context(req_token);
+        }
+    }
+}
+
+
+impl _warm_persistence {
+    try {
+        ctx = Jac.get_context();
+        anchor = ctx.system_root;
+        ctx.mem.commit();
+        logger.debug(f"persistent store ready (system root {anchor.id})");
+    } except Exception as e {
+        logger.warning(
+            f"persistent store not reachable while starting up "
+            f"({type(e).__name__}: {e}); requests that touch graph state will "
+            "provision it on demand"
+        );
+    }
+}
+
+impl ServerExtension.validate(server: JacAPIServer) -> list[str] {
+    return [];
+}
+
+impl ServerExtension.mail_transport -> any {
+    return None;
+}
+
+impl ServerExtension.on_worker_start(server: JacAPIServer) {}
+
+impl ServerExtension.on_worker_exit(server: JacAPIServer, pid: int) {}
+
+impl EndpointHost.mailer -> IdentityMailer {
+    return IdentityMailer(emailer=self?.emailer);
+}
+
+impl target_restspec(target: any) -> any {
+    return target.restspec if target?.restspec else None;
+}
+
+impl target_protocol(target: any) -> APIProtocol {
+    restspec: any = target_restspec(target);
+    if restspec?.protocol {
+        return APIProtocol(restspec.protocol);
+    }
+    return APIProtocol.HTTP;
+}
+
+impl target_schedule_spec(target: any) -> any {
+    return target.schedule_spec if target?.schedule_spec else None;
+}
+
+impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
+    specs = dict(specs);
+    protocol = specs.get('protocol');
+    if protocol is not None and not isinstance(protocol, APIProtocol) {
+        raw_p = str(protocol).strip().lower();
+        try {
+            specs['protocol'] = APIProtocol('websocket' if raw_p == 'ws' else raw_p);
+        } except ValueError {
+            raise ValueError(
+                f"@restspec protocol={protocol!r} is not recognized. Expected "
+                "APIProtocol.HTTP / WEBHOOK / WEBSOCKET (or the strings "
+                "'http', 'webhook', 'websocket'/'ws')."
+            );
+        }
+    }
+    method = specs.get('method');
+    if method is not None and not isinstance(method, HTTPMethod) {
+        try {
+            specs['method'] = HTTPMethod(str(method).strip().upper());
+        } except ValueError {
+            raise ValueError(
+                f"@restspec method={method!r} is not routable. Expected one "
+                f"of: {', '.join([m.value for m in HTTPMethod])}."
+            );
+        }
+    }
+    scheme = specs.get('scheme');
+    if scheme is not None {
+        raw_s = str(scheme).strip().lower();
+        if raw_s not in ('', 'jac', 'github') {
+            raise ValueError(
+                f"@restspec scheme={scheme!r} is not recognized. Expected "
+                "'jac' (api key plus timestamped HMAC, the default) or "
+                "'github' (X-Hub-Signature-256 over the raw body)."
+            );
+        }
+        specs['scheme'] = '' if raw_s == 'jac' else raw_s;
+    }
+    return specs;
 }

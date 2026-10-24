@@ -1,19 +1,5 @@
 """The grp module: generated clinic tables plus the struct_group type."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyExc_ImportError,
-    PyObject,
-    jacpy_struct_sequence_type
-}
-import from jaclang.runtime.python.modules.user_records { PLATFORM }
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.clinic.grp { module_methods }
-
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(

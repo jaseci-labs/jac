@@ -9,42 +9,6 @@ Bound by hand in the module binding (no generic Jac converter):
     datetime.date.replace: C default GET_YEAR(self)
     datetime.time.replace: C default TIME_GET_HOUR(self)
 """
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyMem_Free,
-    PyObject,
-    PyTuple_Size,
-    jacpy_dict_size,
-    jacpy_tuple_items
-}
-import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
-import from jaclang.runtime.python.bindings.type {
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.arguments {
-    CallSignature,
-    PARSE_KEYWORDS,
-    invoke_stack,
-    invoke_tuple,
-    unpack_mapping,
-    unpack_stack
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi { boundary_failure }
-import from jaclang.runtime.python.bindings.converters {
-    argument_label,
-    borrowed_none,
-    convert_int
-}
-import from jaclang.runtime.python.modules.datetime {
-    datetime_date_fromtimestamp_impl,
-    datetime_date_replace_impl,
-    datetime_datetime_now_impl,
-    datetime_datetime_replace_impl,
-    datetime_time_replace_impl,
-    iso_calendar_date_new_impl
-}
 
 glob:priv datetime_datetime_now_signature = CallSignature(
          "now", ["tz"], 0, 1, 0, parser=PARSE_KEYWORDS

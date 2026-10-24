@@ -102,18 +102,18 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
             "ValueError",
             "embedded null byte"
         );
-        triple = str(self.llvm_module.triple or "").lower();
-        darwin = "darwin" in triple or "apple" in triple or "macos" in triple;
-
-        open_fn = self._get_or_declare_extern("opendir", i8p, [i8p]);
-        read_fn = self._get_or_declare_extern(
-            "readdir$INODE64" if darwin and "x86_64" in triple else "readdir",
-            i8p,
-            [i8p]
+        wasm = self._target_is_wasm();
+        open_fn = self._get_or_declare_extern(
+            "opendir" if wasm else "__jac_opendir", i8p, [i8p]
         );
-        close_fn = self._get_or_declare_extern("closedir", i32, [i8p]);
+        read_fn = self._get_or_declare_extern(
+            "readdir" if wasm else "__jac_readdir", i8p, [i8p]
+        );
+        close_fn = self._get_or_declare_extern(
+            "closedir" if wasm else "__jac_closedir", i32, [i8p]
+        );
         errno_fn = self._get_or_declare_extern(
-            "__error" if darwin else "__errno_location", i64, []
+            "__errno_location" if wasm else "__jac_errno", i64, []
         );
         directory = self.builder.call(open_fn, [path]);
         errptr = self.builder.inttoptr(
@@ -160,7 +160,9 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
             self.builder.icmp_unsigned("==", item, ir.Constant(i8p, None)), done, body
         );
         self.builder.position_at_end(body);
-        filename = self.builder.gep(item, [ir.Constant(i64, 21 if darwin else 19)]);
+        filename = self.builder.gep(item, [ir.Constant(i64, 19)])
+            if wasm
+            else self._floor_call("__jac_dirent_name", i8p, [item], "listdir.name");
         strcmp = self._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
         dot = self.builder.call(strcmp, [filename, self._make_global_string(".")]);
         dots = self.builder.call(strcmp, [filename, self._make_global_string("..")]);
@@ -465,7 +467,40 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
 
         hit_i = self.builder.ptrtoint(hit, i64, name="dn.hiti");
         p_i = self.builder.ptrtoint(p, i64, name="dn.pi");
-        dlen = self.builder.sub(hit_i, p_i, name="dn.len");
+        head_len = self.builder.add(
+            self.builder.sub(hit_i, p_i, name="dn.slash"),
+            ir.Constant(i64, 1),
+            name="dn.headlen"
+        );
+        scan_bb = func.append_basic_block(name="dn.scan");
+        peek_bb = func.append_basic_block(name="dn.peek");
+        back_bb = func.append_basic_block(name="dn.back");
+        trim_bb = func.append_basic_block(name="dn.trim");
+        self.builder.branch(scan_bb);
+        self.builder.position_at_end(scan_bb);
+        keep = self.builder.phi(i64, name="dn.keep");
+        keep.add_incoming(head_len, cut_bb);
+        at_start = self.builder.icmp_signed(
+            "==", keep, ir.Constant(i64, 0), name="dn.atstart"
+        );
+        self.builder.cbranch(at_start, trim_bb, peek_bb);
+        self.builder.position_at_end(peek_bb);
+        prev_idx = self.builder.sub(keep, ir.Constant(i64, 1), name="dn.previdx");
+        prev_ch = self.builder.load(
+            self.builder.gep(p, [prev_idx], name="dn.prevptr"), name="dn.prevch"
+        );
+        prev_slash = self.builder.icmp_signed(
+            "==", prev_ch, ir.Constant(i8, 47), name="dn.prevslash"
+        );
+        self.builder.cbranch(prev_slash, back_bb, trim_bb);
+        self.builder.position_at_end(back_bb);
+        keep.add_incoming(prev_idx, back_bb);
+        self.builder.branch(scan_bb);
+        self.builder.position_at_end(trim_bb);
+        all_slashes = self.builder.icmp_signed(
+            "==", keep, ir.Constant(i64, 0), name="dn.allslash"
+        );
+        dlen = self.builder.select(all_slashes, head_len, keep, name="dn.len");
         bufsz = self.builder.add(dlen, ir.Constant(i64, 1), name="dn.bufsz");
         self._set_rc_ctx("dirname", "");
         raw = self._str_alloc(self.builder, bufsz, name="dn.raw");
@@ -535,39 +570,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
             return None;
         }
 
-        triple = str(self.llvm_module.triple or "").lower();
-        stat_sym = "stat";
-        mode_off = 24;
-        mode_bits = 32;
-        if ("darwin" in triple) or ("apple" in triple) or ("macos" in triple) {
-            mode_off = 4;
-            mode_bits = 16;
-            if "x86_64" in triple {
-                stat_sym = "stat$INODE64";
-            }
-        } elif ("aarch64" in triple) or ("arm64" in triple) {
-            mode_off = 16;
-        }
-        buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), "stat.buf");
-        bufp = self.builder.gep(
-            buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="stat.bufp"
-        );
-        fn = self._get_or_declare_extern(stat_sym, i32, [i8p, i8p]);
-        rc = self.builder.call(fn, [p, bufp], name="ospath.stat");
-        ok = self.builder.icmp_signed("==", rc, ir.Constant(i32, 0), name="stat.ok");
-        mode_p8 = self.builder.gep(
-            bufp, [ir.Constant(i64, mode_off)], name="stat.modep8"
-        );
-        if mode_bits == 16 {
-            mode_p16 = self.builder.bitcast(
-                mode_p8, ir.IntType(16).as_pointer(), name="stat.modep"
-            );
-            mode16 = self.builder.load(mode_p16, name="stat.mode16");
-            mode = self.builder.zext(mode16, i32, name="stat.mode");
-        } else {
-            mode_p = self.builder.bitcast(mode_p8, i32.as_pointer(), name="stat.modep");
-            mode = self.builder.load(mode_p, name="stat.mode");
-        }
+        (ok, mode, _size, _sec, _nsec) = self._emit_stat_fields(p, "stat");
         fmt = self.builder.and_(mode, ir.Constant(i32, 0o170000), name="stat.fmt");
         want = 0o040000 if name == "isdir" else 0o100000;
         kind = self.builder.icmp_signed(
@@ -589,31 +592,8 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         if p is None {
             return None;
         }
-        triple = str(self.llvm_module.triple or "").lower();
-        stat_sym = "stat";
-        sec_off = 88;
-        if ("darwin" in triple) or ("apple" in triple) or ("macos" in triple) {
-            sec_off = 48;
-            if "x86_64" in triple {
-                stat_sym = "stat$INODE64";
-            }
-        }
-        buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), "gmt.buf");
-        bufp = self.builder.gep(
-            buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="gmt.bufp"
-        );
-        fn = self._get_or_declare_extern(stat_sym, i32, [i8p, i8p]);
-        rc = self.builder.call(fn, [p, bufp], name="ospath.gmt.stat");
-        ok = self.builder.icmp_signed("==", rc, ir.Constant(i32, 0), name="gmt.ok");
         f64 = ir.DoubleType();
-        sec_p8 = self.builder.gep(bufp, [ir.Constant(i64, sec_off)], name="gmt.secp8");
-        sec_p = self.builder.bitcast(sec_p8, i64.as_pointer(), name="gmt.secp");
-        sec = self.builder.load(sec_p, name="gmt.sec");
-        nsec_p8 = self.builder.gep(
-            bufp, [ir.Constant(i64, sec_off + 8)], name="gmt.nsecp8"
-        );
-        nsec_p = self.builder.bitcast(nsec_p8, i64.as_pointer(), name="gmt.nsecp");
-        nsec = self.builder.load(nsec_p, name="gmt.nsec");
+        (ok, _mode, _size, sec, nsec) = self._emit_stat_fields(p, "gmt");
         sec_f = self.builder.sitofp(sec, f64, name="gmt.secf");
         nsec_f = self.builder.sitofp(nsec, f64, name="gmt.nsecf");
         scaled = self.builder.fmul(
@@ -630,31 +610,67 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         if p is None {
             return None;
         }
-        triple = str(self.llvm_module.triple or "").lower();
-        stat_sym = "stat";
-        size_off = 48;
-        if ("darwin" in triple) or ("apple" in triple) or ("macos" in triple) {
-            size_off = 96;
-            if "x86_64" in triple {
-                stat_sym = "stat$INODE64";
-            }
-        }
-        buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), "gsz.buf");
-        bufp = self.builder.gep(
-            buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="gsz.bufp"
-        );
-        fn = self._get_or_declare_extern(stat_sym, i32, [i8p, i8p]);
-        rc = self.builder.call(fn, [p, bufp], name="ospath.gsz.stat");
-        ok = self.builder.icmp_signed("==", rc, ir.Constant(i32, 0), name="gsz.ok");
-        size_p8 = self.builder.gep(
-            bufp, [ir.Constant(i64, size_off)], name="gsz.sizep8"
-        );
-        size_p = self.builder.bitcast(size_p8, i64.as_pointer(), name="gsz.sizep");
-        size = self.builder.load(size_p, name="gsz.size");
+        (ok, _mode, size, _sec, _nsec) = self._emit_stat_fields(p, "gsz");
         return self.builder.select(
             ok, size, ir.Constant(i64, -1), name="ospath.getsize"
         );
     }
 
     return None;
+}
+
+impl NaIRGenPass._emit_stat_fields(
+    path: ir.Value, prefix: str
+) -> tuple[ir.Value, ir.Value, ir.Value, ir.Value, ir.Value] {
+    """stat(path) as (ok, mode as i32, size, mtime seconds, mtime nanoseconds).
+    The floor reads the record, so its layout never reaches the lowered code;
+    wasm keeps reading the Linux x86-64 record its libc fills.""";
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i32, 0);
+    if not self._target_is_wasm() {
+        out = self._stack_entry_alloca(ir.ArrayType(i64, 4), f"{prefix}.fields");
+        outp = self.builder.gep(out, [zero, zero], name=f"{prefix}.fieldsp");
+        rc = self._floor_call("__jac_stat", i32, [path, outp], f"{prefix}.stat");
+        ok = self.builder.icmp_signed("==", rc, zero, name=f"{prefix}.ok");
+        fields: list[ir.Value] = [];
+        k: int = 0;
+        while k < 4 {
+            fields.append(
+                self.builder.load(
+                    self.builder.gep(out, [zero, ir.Constant(i32, k)]),
+                    name=f"{prefix}.f{k}"
+                )
+            );
+            k += 1;
+        }
+        mode = self.builder.trunc(fields[0], i32, name=f"{prefix}.mode");
+        return (ok, mode, fields[1], fields[2], fields[3]);
+    }
+    buf = self._stack_entry_alloca(ir.ArrayType(i8, 144), f"{prefix}.buf");
+    bufp = self.builder.gep(buf, [zero, zero], name=f"{prefix}.bufp");
+    fn = self._get_or_declare_extern("stat", i32, [i8p, i8p]);
+    rc = self.builder.call(fn, [path, bufp], name=f"{prefix}.stat");
+    ok = self.builder.icmp_signed("==", rc, zero, name=f"{prefix}.ok");
+    mode_p = self.builder.bitcast(
+        self.builder.gep(bufp, [ir.Constant(i64, 24)]), i32.as_pointer()
+    );
+    size_p = self.builder.bitcast(
+        self.builder.gep(bufp, [ir.Constant(i64, 48)]), i64.as_pointer()
+    );
+    sec_p = self.builder.bitcast(
+        self.builder.gep(bufp, [ir.Constant(i64, 88)]), i64.as_pointer()
+    );
+    nsec_p = self.builder.bitcast(
+        self.builder.gep(bufp, [ir.Constant(i64, 96)]), i64.as_pointer()
+    );
+    return (
+        ok,
+        self.builder.load(mode_p, name=f"{prefix}.mode"),
+        self.builder.load(size_p, name=f"{prefix}.size"),
+        self.builder.load(sec_p, name=f"{prefix}.sec"),
+        self.builder.load(nsec_p, name=f"{prefix}.nsec")
+    );
 }

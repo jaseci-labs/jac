@@ -7,170 +7,6 @@ here, with the Task step machinery and the type slots the binding installs;
 the object layouts, state and Future primitives are in asyncio_core.jac.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyCFunction_NewEx,
-    PyContext_CopyCurrent,
-    PyContext_Enter,
-    PyContext_Exit,
-    PyDict_New,
-    PyDict_SetItem,
-    PyErr_Format,
-    PyErr_FormatUnraisable,
-    PyErr_GetRaisedException,
-    PyErr_GivenExceptionMatches,
-    PyErr_ExceptionMatches,
-    PyErr_NormalizeException,
-    PyErr_Restore,
-    PyErr_SetObject,
-    PyErr_SetRaisedException,
-    PyErr_SetString,
-    PyErr_WarnEx,
-    PyException_GetTraceback,
-    PyExc_AttributeError,
-    PyExc_DeprecationWarning,
-    PyExc_KeyboardInterrupt,
-    PyExc_RuntimeError,
-    PyExc_SystemExit,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyFrozenSet_New,
-    PyGen_Type,
-    PyIter_Send,
-    PyList_Append,
-    PyList_Extend,
-    PyList_GetItem,
-    PyList_New,
-    PyList_SetItem,
-    PyList_SetSlice,
-    PyList_Size,
-    PyLong_FromLong,
-    PyMethodDef,
-    PyLong_FromSsize_t,
-    PyLong_FromUnsignedLongLong,
-    PyObject,
-    PyObject_CallFinalizerFromDealloc,
-    PyObject_CallMethodObjArgs,
-    PyObject_CallNoArgs,
-    PyObject_CallOneArg,
-    PyObject_ClearManagedDict,
-    PyObject_ClearWeakRefs,
-    PyObject_GC_Del,
-    PyObject_GC_Track,
-    PyObject_GC_UnTrack,
-    PyObject_GetAttr,
-    PyObject_GetOptionalAttr,
-    PyObject_IsInstance,
-    PyObject_IsTrue,
-    PyObject_RichCompareBool,
-    PyObject_SetAttr,
-    PyObject_Str,
-    PyObject_Vectorcall,
-    PyObject_VisitManagedDict,
-    PySet_Add,
-    PySet_Discard,
-    PySet_New,
-    PyTraceBack_Type,
-    PyTuple_GetItem,
-    PyTuple_New,
-    PyTuple_Size,
-    PyUnicode_FromFormat,
-    PyUnicode_FromString,
-    Py_NewRef,
-    Py_None,
-    Py_TYPE,
-    _PyArg_CheckPositional,
-    _PyErr_ChainExceptions1,
-    _PyGen_FetchStopIterationValue,
-    _PyGen_SetStopIterationValue,
-    _PyObject_GC_New,
-    _PyType_Name,
-    jacpy_asyncio_add_tasks,
-    jacpy_asyncio_thread_task,
-    jacpy_dict_size,
-    jacpy_is_exact_long,
-    jacpy_is_exact_unicode,
-    jacpy_release,
-    jacpy_tuple_set_owned
-}
-import from jaclang.runtime.python.layouts {
-    PYGEN_ERROR,
-    PYGEN_NEXT,
-    PYGEN_RETURN,
-    Py_futureiters_MAXFREELIST,
-    _Py_freelists_FUTUREITERS
-}
-import from jaclang.runtime.python.object_model.bool { py_false, py_true }
-import from jaclang.runtime.python.object_model.header { freelist_pop, freelist_push }
-import from jaclang.runtime.python.bindings.module {
-    PositionalMethodRecord,
-    visit_reference
-}
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.asyncio_core {
-    BIT_BLOCKING,
-    BIT_LOG_DESTROY_PENDING,
-    BIT_LOG_TB,
-    BIT_MUST_CANCEL,
-    FutureIterObject,
-    STATE_CANCELLED,
-    STATE_CANCELLED_ERROR,
-    STATE_FINISHED,
-    STATE_FUTURE_ITER_TYPE,
-    STATE_FUTURE_REPR_FUNC,
-    STATE_INVALID_STATE_ERROR,
-    STATE_NON_ASYNCIO_EAGER_TASKS,
-    STATE_NON_ASYNCIO_TASKS,
-    STATE_PENDING,
-    STATE_TASK_GET_STACK_FUNC,
-    STATE_TASK_PRINT_STACK_FUNC,
-    STATE_TASK_REPR_FUNC,
-    STATE_TASK_STEP_WRAPPER_TYPE,
-    STATE_CONTEXT_KWNAME,
-    TASK_NODE_OFFSET,
-    TaskStepMethWrapper,
-    call_soon,
-    create_cancelled_error,
-    enter_task,
-    exception_class_check,
-    exception_instance_check,
-    fut_of,
-    future_add_done_callback,
-    future_awaited_by_add,
-    future_awaited_by_discard,
-    future_cancel,
-    future_check_exact,
-    future_ensure_alive,
-    future_get_result,
-    future_init,
-    future_is_alive,
-    future_set_cancelled_error,
-    future_set_exception,
-    future_set_result,
-    get_event_loop,
-    get_future_loop,
-    has_bit,
-    ids,
-    is_coroutine,
-    leave_task,
-    module_of,
-    module_of_type,
-    native_state,
-    register_task,
-    release,
-    running_loop,
-    running_loop_slot,
-    running_task_slot,
-    set_bit,
-    state_ref,
-    swap_current_task,
-    task_check,
-    task_check_exact,
-    task_of,
-    task_or_future_check,
-    unregister_task
-}
-
 glob Future_token = ClassToken(),
      Task_token = ClassToken();
 
@@ -211,7 +47,6 @@ def _asyncio_Future___init___impl(receiver: ptr[PyObject], loop: ptr[PyObject]) 
 
 """FutureObj_clear()."""
 def future_clear(op: ptr[PyObject]) -> i32 {
-    import from jaclang.runtime.python.modules.asyncio_core { clear_future_fields }
     clear_future_fields(op);
     fut_of(op).view(1)[0].fut_awaited_by_is_set = i8(0);
     PyObject_ClearManagedDict(op);
@@ -703,7 +538,6 @@ def future_dealloc(op: ptr[PyObject]) {
 
 """tp->tp_free(self); Py_DECREF(tp)."""
 def:priv free_object(type: ptr[PyObject], op: ptr[PyObject]) {
-    import from jaclang.runtime.python.bindings.type { jacpy_binding_free }
     jacpy_binding_free(op);
 }
 
@@ -1503,7 +1337,6 @@ def:priv call_with_context(
     ctx: ptr[PyObject],
     module: ptr[PyObject]
 ) -> ptr[PyObject] {
-    import from jaclang.runtime.python.modules.asyncio_core { CallStack }
     stack = CallStack(slot0=arg, slot1=ctx, slot2=NULL, slot3=NULL, slot4=NULL);
     return PyObject_Vectorcall(
         callable,

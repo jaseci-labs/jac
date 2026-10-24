@@ -414,7 +414,7 @@ hash_cost = 14           # log2 of the scrypt work factor, 10..17
 
 [serve.auth.registration]
 enabled = true           # false = no self-registration; accounts are created by an admin
-challenge = false        # Proof-of-work challenge before /user/register
+challenge = false        # Proof-of-work challenge before /user/register; jacSignup solves it
 attempts_per_hour = 0    # Per source address; 0 = unlimited
 challenges_per_10_minutes = 0
 
@@ -428,6 +428,8 @@ attempts = 5
 lockout_seconds = 900
 challenge_ttl_seconds = 300
 ```
+
+Access logs replace the values of `token`, `access_token`, and `api_key` query parameters with `[REDACTED]` in both text and JSON, including WebSocket upgrades. Matching is case-insensitive and recognizes percent-encoded names; other query components keep their original encoding.
 
 Every `[serve.auth]` key can be overridden by an environment variable named
 `JAC_SERVE_AUTH_<TABLE>_<KEY>`, for example `JAC_SERVE_AUTH_PASSWORD_MIN_LENGTH`
@@ -658,21 +660,30 @@ select = ["combine-has", "remove-empty-parens"]
 | `fix-impl-signature` | `W3010` | Fix signature mismatches between declarations and implementations | default |
 | `no-print` | `E3012` | Error on bare `print()` calls (use console abstraction instead) | all |
 | `remove-redundant-semi` | `W3013` | Remove standalone no-op semicolons from any body (`{;}` → `{}`, `x = 1;;` → `x = 1;`); `remove-import-semi` is an accepted alias for this rule | default |
-| `strip-comments` | `W3050` | Remove **all** comments | opt-in |
-| `strip-docstrings` | `W3051` | Remove **all** docstrings | opt-in |
+| `strip-comments` | `W3050` | Remove **all** comments | all |
+| `strip-docstrings` | `W3051` | Remove **all** docstrings | all |
+| `separate-impls` | `W3055` | Move every function, method and ability body into an `impl` in its module's `.impl.jac` annex | all |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
 
-**Opt-in (deslop) rules:**
+**Rules only `all` turns on:**
 
-`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. Unlike every other rule, they are **never** activated by `select = ["all"]` or `select = ["default"]`; they fire only when named explicitly. A project that wants them on by default lists them alongside its other selections:
+`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. `separate-impls` restructures every module: `jac fmt --lintfix` keeps each declaration in place (`def f(x: int) -> int;`) and moves its body into `impl f(x: int) -> int { ... }` in the module's impl annex, in declaration order. The annex is the module's existing `.impl.jac` file, or a new `impl/<module>.impl.jac` beside it. `impl` blocks already in the module stay where they are. Bodies an `impl` cannot name stay inline: nested functions, nameless abilities (`can with Root entry`), accessors and `@property` methods, and names a field or another member of the same scope also uses. A generic function or method is separated like any other, and its impl restates the type parameters: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Client component bodies are separated like any other: a body behaves the same inline and in an `impl`, so JSX, body-level `has` state and a `JsxElement` return type all move with it.
+
+`select = ["all"]` turns all three on; `select = ["default"]` leaves them off. Each can also be named on its own, or turned off under `all` with `ignore`:
 
 ```toml
 [check.lint]
 select = ["default", "strip-comments", "strip-docstrings"]
 ```
 
-The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
+```toml
+[check.lint]
+select = ["all"]
+ignore = ["separate-impls"]
+```
+
+The deslop rules are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` applies it and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
 
 **Excluding files from lint:**
 

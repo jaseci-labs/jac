@@ -50,6 +50,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
+      kernel: ${{ steps.filter.outputs.kernel }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -60,6 +61,7 @@ jobs:
           filters: |
             core:
               - 'jac/**'
+              - 'jac.toml'
               - 'scripts/run_cpython_compiler_tests.jac'
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
@@ -113,6 +115,49 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
+            # Sources the native compiler kernel is lowered from, plus the
+            # compiler that lowers them. A pull request touching any of them
+            # seals the kernel in build-kit, as the `native:kernel` label does:
+            # its kit otherwise skips the seal and the break lands on main.
+            kernel:
+              - 'jac/jaclang/compiler/**'
+              - 'jac/jaclang/runtime/na_stdlib/**'
+              - 'jac/jaclang/runtime/constants.jac'
+              - 'jac/jaclang/runtime/osp_graph.jac'
+              - 'jac/jaclang/runtime/osp_kernel.jac'
+              - 'jac/jaclang/runtime/osp_tag.jac'
+              - 'jac/jaclang/runtime/portability.jac'
+              - 'jac/jaclang/runtime/region_native.jac'
+              - 'jac/jaclang/runtime/scalars.jac'
+              - 'jac/jaclang/runtime/semantic.jac'
+              - 'jac/jaclang/runtime/surface.jac'
+              - 'jac/jaclang/runtime/impl/constants.impl.jac'
+              - 'jac/jaclang/runtime/impl/osp_graph.impl.jac'
+              - 'jac/jaclang/runtime/impl/osp_kernel.impl.jac'
+              - 'jac/jaclang/runtime/impl/osp_tag.impl.jac'
+              - 'jac/jaclang/runtime/impl/portability.impl.jac'
+              - 'jac/jaclang/runtime/impl/region_native.impl.jac'
+              - 'jac/jaclang/runtime/impl/scalars.impl.jac'
+              - 'jac/jaclang/runtime/impl/semantic.impl.jac'
+              - 'jac/jaclang/runtime/impl/surface.impl.jac'
+              - 'jac/jaclang/project/app_kinds.jac'
+              - 'jac/jaclang/project/mobui_scope.jac'
+              - 'jac/jaclang/project/source.jac'
+              - 'jac/jaclang/project/workspace_model.jac'
+              - 'jac/jaclang/project/impl/app_kinds.impl.jac'
+              - 'jac/jaclang/project/impl/mobui_scope.impl.jac'
+              - 'jac/jaclang/project/impl/source.impl.jac'
+              - 'jac/jaclang/project/impl/workspace_model.impl.jac'
+              - 'jac/jaclang/client/client_surface.jac'
+              - 'jac/jaclang/client/targets/react_native/html_tag_map.jac'
+              - 'jac/jaclang/archwire.jac'
+              - 'jac/jaclang/artifacts/kit.jac'
+              - 'jac/jaclang/artifacts/impl/kit.impl.jac'
+              - 'jac/jaclang/dist/precompile_bytecode.jac'
+              - 'jac/jaclang/dist/impl/precompile_bytecode.impl.jac'
+              - 'jac/native/**'
+              - 'jac.toml'
+              - '.github/actions/setup-jac/action.yml'
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -124,9 +169,11 @@ jobs:
     # kernel build itself compiles through. The kernel is most of a kit's build
     # time and a pull request rarely changes what it does. Main, nightly and
     # release kits build it, and so does a pull request carrying the
-    # `native:kernel` label (adding the label starts a new run). The seal reads
-    # that from the pull request's event (artifacts/kit.jac pr_kit_omits), and
-    # the kit's manifest records the omission for the runtime to read.
+    # `native:kernel` label (adding the label starts a new run) or touching a
+    # path in the `kernel` filter. setup-jac turns that into JAC_KIT_OMIT, the
+    # only thing the seal reads (artifacts/kit.jac pr_kit_omits), and the kit's
+    # manifest records the omission for the runtime to read.
+    needs: changes
     steps:
       - uses: actions/checkout@v5
 
@@ -137,6 +184,7 @@ jobs:
           # source-built interpreter and its native compiler object. A binary
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
+          native-kernel: ${{ needs.changes.outputs.kernel }}
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -186,7 +234,7 @@ jobs:
           "$BIN" -c 'import ctypes; assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired")'
           # The kit carries every artifact a release does, less what its
           # manifest declares it leaves out -- only a pull request's kit may
-          # (the seal decides that, artifacts/kit.jac pr_kit_omits).
+          # (setup-jac asks through JAC_KIT_OMIT, artifacts/kit.jac pr_kit_omits).
           "$BIN" native status
           "$BIN" native status --require kit
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
@@ -709,6 +757,9 @@ jobs:
         run: |
           set -o pipefail
           cp -r jac/jaclang/byllm/tests "$RUNNER_TEMP/byllm-tests"
+          # The suite's archwire.jac fences it off from jaclang's graph inside
+          # the checkout; copied out, it is ordinary code beside the package.
+          rm "$RUNNER_TEMP/byllm-tests/archwire.jac"
           timeout --kill-after=30 300 jac test "$RUNNER_TEMP/byllm-tests/test_mtir_integration.jac"
       - name: HMR refresh (scale server)
         env:
@@ -1085,9 +1136,9 @@ jobs:
       # should name the quickstart step, not a missing module at bundle time.
       - name: Verify the scaffold came from the bundled template
         run: |
-          test -f site/web/main.jac && test -f site/core/site/game/arena.jac \
+          test -f site/web.jac && test -f site/core/site/game/arena.jac \
             || { echo "::error::scaffold is missing the site's entry or the wasm game"; exit 1; }
-          test -f site/desktop/main.jac \
+          test -f site/desktop.jac \
             || { echo "::error::scaffold is missing the desktop app"; exit 1; }
           # Client npm deps live under the project's build dir (.jac/client),
           # not a top-level node_modules; that is where the vite bundler looks.
@@ -1596,7 +1647,7 @@ jobs:
           cat >> site/archwire.jac <<'JAC'
 
           graph import core.site.game {
-              sim --> core.site.game.arena_replay { Game, world_new, sim_tick }
+              sim ++> arena_replay { sim_tick, world_new }
           }
           JAC
           cat >> site/jac.toml <<'TOML'

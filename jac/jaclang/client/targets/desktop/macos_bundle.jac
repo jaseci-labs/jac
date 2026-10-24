@@ -9,6 +9,16 @@ glob ICON_NAME: str = "AppIcon",
 
 def bundle_info(
     identity: DesktopIdentity, executable: str, title: str, icon: bool
+) -> dict[str, object];
+
+def write_bundle_metadata(
+    layout: AppLayout, identity: DesktopIdentity, title: str, icon: Path | None
+) -> Path;
+
+def write_icon(source: Path, destination: Path);
+
+impl bundle_info(
+    identity: DesktopIdentity, executable: str, title: str, icon: bool
 ) -> dict[str, object] {
     info: dict[str, object] = {
         "CFBundleDevelopmentRegion": "en",
@@ -30,7 +40,7 @@ def bundle_info(
     return info;
 }
 
-def write_bundle_metadata(
+impl write_bundle_metadata(
     layout: AppLayout, identity: DesktopIdentity, title: str, icon: Path | None
 ) -> Path {
     bundle = layout.bundle;
@@ -52,7 +62,7 @@ def write_bundle_metadata(
     return info;
 }
 
-def write_icon(source: Path, destination: Path) {
+impl write_icon(source: Path, destination: Path) {
     if source.suffix == ".icns" {
         shutil.copy2(source, destination);
         return;

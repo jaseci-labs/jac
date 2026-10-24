@@ -4,87 +4,23 @@ import os;
 import from importlib.abc { Loader, MetaPathFinder }
 import from importlib.machinery { ModuleSpec }
 import from types { ModuleType }
-import type from jaclang.runtime.prepared { PreparedApplication }
 
 obj PreparedAliasLoader(Loader) {
     has target: str;
 
-    def create_module(spec: ModuleSpec) -> ModuleType {
-        return importlib.import_module(self.target);
-    }
-
-    def exec_module(module: ModuleType) {}
+    def create_module(spec: ModuleSpec) -> ModuleType;
+    def exec_module(module: ModuleType);
 }
 
 obj PreparedLoader(Loader) {
     has application: PreparedApplication;
 
-    def create_module(spec: ModuleSpec) -> ModuleType | None {
-        return None;
-    }
-
-    def exec_module(module: ModuleType) {
-        import from jaclang.runtime.prepared { execute_module }
-        execute_module(module, self.application);
-    }
+    def create_module(spec: ModuleSpec) -> ModuleType | None;
+    def exec_module(module: ModuleType);
 }
 
 obj PreparedFinder(MetaPathFinder) {
     def find_spec(
         fullname: str, path: list[str] | None = None, target: ModuleType | None = None
-    ) -> ModuleSpec | None {
-        import from jaclang.runtime.prepared {
-            _applications,
-            application_namespace,
-            entry_alias,
-            module_index
-        }
-        if not any(
-            fullname == application_namespace(application)
-                or fullname.startswith(application_namespace(application) + '.')
-            for application in _applications.values()
-        ) {
-            return None;
-        }
-        alias = entry_alias(fullname);
-        if alias is not None {
-            return importlib.util.spec_from_loader(
-                fullname, PreparedAliasLoader(alias[0]), origin=alias[1]
-            );
-        }
-        for application in _applications.values() {
-            namespace = application_namespace(application);
-            if fullname != namespace and not fullname.startswith(namespace + '.') {
-                continue;
-            }
-            relative = fullname[len(namespace):].lstrip('.');
-            index = module_index(application);
-            source = index.names.get(relative);
-            if source is not None {
-                if target is not None and application.dev {
-                    import from jaclang.runtime.build_services { build_services }
-                    import from jaclang.runtime.runtime { JacRuntime }
-                    application = build_services().prepare_dynamic_module(
-                        source, JacRuntime.get_program(), application
-                    );
-                }
-                package = os.path.basename(source).startswith('__init__.');
-                return importlib.util.spec_from_file_location(
-                    fullname,
-                    source,
-                    loader=PreparedLoader(application),
-                    submodule_search_locations=[os.path.dirname(source)]
-                        if package
-                        else None
-                );
-            }
-            directory = os.path.join(application.root, *relative.split('.'));
-            if directory in index.packages {
-                spec = ModuleSpec(fullname, loader=None, is_package=True);
-                spec.submodule_search_locations = [directory];
-                return spec;
-            }
-        }
-        return None;
-    }
+    ) -> ModuleSpec | None;
 }

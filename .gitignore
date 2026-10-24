@@ -75,7 +75,7 @@ zig-out/
 reference/
 
 # Agent / IDE working notes (not repo artifacts)
-AGENTS.md
+/AGENTS.md
 PLAN.md
 IMPLEMENTATION.md
 RUNTIME_SPLIT_PROGRESS.md

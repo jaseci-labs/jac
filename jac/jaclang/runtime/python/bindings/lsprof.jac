@@ -1,28 +1,5 @@
 """The _lsprof module: the Profiler type and the two stats struct sequences."""
 
-import from jaclang.runtime.python.cpython_api { jacpy_struct_sequence_type, PyObject }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    jacpy_binding_untrack,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.lsprof {
-    Profiler_doc,
-    Profiler_methods,
-    profiler_init_init
-}
-import from jaclang.runtime.python.modules.lsprof { Profiler_token, profiler_finalize }
-
 # Untracked first: flushing unmatched calls can run the user's timer.
 def:priv profiler_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_untrack(instance);

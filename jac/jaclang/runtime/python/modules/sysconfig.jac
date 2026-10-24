@@ -1,12 +1,3 @@
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyDict_New,
-    PyDict_SetItemString,
-    PyLong_FromLong,
-    PyObject,
-    jacpy_release
-}
-
 """Build variables for sysconfig; derived from CPython 3.14.6 Modules/_sysconfig.c.
 
 Release runtimes are neither free-threaded nor debug builds.

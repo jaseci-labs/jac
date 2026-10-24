@@ -6,56 +6,6 @@ pointer, depending on the command. The struct flock layout comes from
 fcntl_records.<os>.jac and the command constants from fcntl_constants.<os>.jac.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_bytes_from_memory,
-    jacpy_errno,
-    jacpy_is_bytes,
-    jacpy_is_long,
-    jacpy_is_unicode,
-    jacpy_memory_copy,
-    NULL,
-    Py_NewRef,
-    PyErr_CheckSignals,
-    PyErr_Clear,
-    PyErr_ExceptionMatches,
-    PyErr_NoMemory,
-    PyErr_Occurred,
-    PyErr_SetFromErrno,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_BufferError,
-    PyExc_OSError,
-    PyExc_OverflowError,
-    PyExc_SystemError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyIndex_Check,
-    PyLong_AsLong,
-    PyLong_AsLongLong,
-    PyLong_AsUnsignedLongMask,
-    PyLong_FromLong,
-    PyLong_FromUnsignedLong,
-    PyMem_Calloc,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject,
-    PyObject_CheckBuffer
-}
-import from jaclang.runtime.python.capi { audit_event, object_error, type_name }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.modules.fcntl_records { flock_record }
-import from jaclang.runtime.python.modules.fcntl_constants {
-    F_RDLCK,
-    F_SETLK,
-    F_SETLKW,
-    F_UNLCK,
-    F_WRLCK,
-    LOCK_EX,
-    LOCK_NB,
-    LOCK_SH,
-    LOCK_UN
-}
 import from c {
     def flock(fd: i32, operation: i32) -> i32;  def fcntl(
         fd: i32, cmd: i32, *args: any

@@ -4,67 +4,6 @@ CPython owns public objects and protocol calls; typed native state owns parsing
 and quoting. Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_dict_get,
-    jacpy_dict_pop_discard,
-    jacpy_error_pending,
-    jacpy_is_exact_long,
-    jacpy_is_unicode,
-    jacpy_list_new,
-    jacpy_release,
-    jacpy_set_exception,
-    jacpy_tuple_item,
-    jacpy_type_check,
-    jacpy_unicode_size,
-    jacpy_writer_new,
-    NULL,
-    Py_NewRef,
-    Py_None,
-    PyDict_Keys,
-    PyDict_SetItem,
-    PyErr_Clear,
-    PyErr_ExceptionMatches,
-    PyExc_SystemError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyIter_Next,
-    PyList_Append,
-    PyLong_AsInt,
-    PyLong_AsLong,
-    PyLong_AsLongLong,
-    PyLong_FromLongLong,
-    PyNumber_Check,
-    PyNumber_Float,
-    PyObject,
-    PyObject_CallOneArg,
-    PyObject_GetAttrString,
-    PyObject_GetIter,
-    PyObject_IsTrue,
-    PyObject_Str,
-    PyUnicode_ReadChar,
-    PyUnicodeWriter,
-    PyUnicodeWriter_Discard,
-    PyUnicodeWriter_Finish,
-    PyUnicodeWriter_WriteChar
-}
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
-import from jaclang.runtime.python.capi {
-    new_writer,
-    boundary_failure,
-    required,
-    checked,
-    object_error,
-    text_object,
-    type_name,
-    object_tuple
-}
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module {
-    jacpy_binding_module_native_get,
-    jacpy_binding_module_native_present,
-    jacpy_binding_state_get
-}
-
 obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;
 

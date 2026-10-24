@@ -513,6 +513,17 @@ test "gap 50 postinit assignment tracking" {
     f"All errors: {[e.pretty_print()[:100] for e in program.errors_had]}";
 }
 
+test "postinit fields assigned by a self-method postinit calls are not reported" {
+    program = compile_and_check("checker_postinit_delegated.jac");
+    unassigned = [
+        e.pretty_print()
+        for e in program.errors_had
+        if e.code and e.code.code == "E1095"
+    ];
+    assert len(unassigned) == 1 , f"expected only Shallow.count, got {unassigned}";
+    assert "'count'" in unassigned[0];
+}
+
 # =========================================================================
 # Gap #51: @property on union types returns FunctionType instead of return type
 # =========================================================================

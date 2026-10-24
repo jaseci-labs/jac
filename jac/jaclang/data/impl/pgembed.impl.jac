@@ -1,7 +1,4 @@
-def _effective_uid -> int {
-    `getter = os?.geteuid;
-    return int(`getter()) if `getter is not None else -1;
-}
+def _effective_uid -> int;
 
 
 impl pg_run_candidates -> list[PgRunAs] {
@@ -261,6 +258,22 @@ impl PgRuntime._resolve_binaries -> str {
         self._bin_dir = postgres_bin_dir();
     }
     return self._bin_dir;
+}
+
+
+impl stop_cluster(data_dir: str) -> None {
+    """Stop the embedded cluster at `data_dir` if it is running.
+
+    A desktop app owns its per-app cluster and stops it when the app process
+    exits; a missing pidfile or a stopped cluster is a no-op. Failures are
+    logged, never raised: this runs from an exit path.
+    """;
+    rt = PgRuntime(data_dir=data_dir);
+    try {
+        rt.stop();
+    } except Exception as e {
+        logger.warning(f"could not stop the embedded postgres at {data_dir}: {e}");
+    }
 }
 
 
@@ -618,4 +631,9 @@ impl PgRuntime.serve -> int {
     signal.signal(int(signal.SIGTERM), _forward);
     signal.signal(int(signal.SIGINT), _forward);
     return proc.`wait();
+}
+
+impl _effective_uid -> int {
+    `getter = os?.geteuid;
+    return int(`getter()) if `getter is not None else -1;
 }

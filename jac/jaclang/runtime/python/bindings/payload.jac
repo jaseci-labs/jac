@@ -1,14 +1,5 @@
 """Native state owned by a Python object through an opaque ABI payload slot."""
 
-import from jaclang.runtime.python.cpython_api { PyObject, Py_TYPE }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { visit_reference }
-import from jaclang.runtime.python.bindings.type {
-    jacpy_binding_dict_visit,
-    jacpy_binding_dict_clear,
-    jacpy_binding_free
-}
-
 import from c {
     # get returns an owned native reference; set retains its borrowed argument.
     def jacpy_binding_native_get(

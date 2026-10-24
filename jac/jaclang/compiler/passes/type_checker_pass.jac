@@ -11,9 +11,11 @@ walker TypeCheckPass(TreePass) {
         _lambda_depth: int = 0,
         _restores_evaluator: bool = False,
         _outer_pass: (CompileContext | None) = None,
-        _outer_ct_quiet: bool = False;
+        _outer_ct_quiet: bool = False,
+        _generator_bodies: dict[int, bool] = {};
 
     def postinit -> None;
+    def _is_generator(scope: Ability) -> bool;
     can initialize with entry;
     override def release -> None;
     can prepare with entry;

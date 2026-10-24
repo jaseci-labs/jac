@@ -26,6 +26,7 @@ from types import ModuleType
 import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
+from jaclang.jac0 import wiring_key as _jac0_wiring_key  # noqa: E402
 from jaclang import bootstrap_manifest as _bootstrap_manifest  # noqa: E402
 from jaclang.jac0core import ext_registry  # noqa: E402
 from jaclang.jac0core import sealed as _sealed  # noqa: E402
@@ -73,6 +74,7 @@ def _bootstrap_compile(
         for src, path in impl_sources:
             h.update(path.encode())
             h.update(src.encode())
+    h.update(_jac0_wiring_key(file_path).encode())
     digest = h.hexdigest()[:16]
 
     base_name = os.path.splitext(os.path.basename(file_path))[0]

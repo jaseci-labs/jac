@@ -25,10 +25,6 @@ import from kubernetes.client {
     V1PodList,
     V1PodStatus
 }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 
 
 obj PodListStub {

@@ -13,10 +13,6 @@ user_id index actually exists in the catalog (issue 1.4).
 import json;
 import threading;
 import from tempfile { mkdtemp }
-import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.data.store { PgStore }
-import from jaclang.scale.scheduler.scheduler { PgJobStore }
-import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
 glob _holder: dict[str, any] = {};
 

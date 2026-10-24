@@ -7,49 +7,6 @@ records which implementation owns it: the portable BLAKE2s or BLAKE2b, or on
 x86-64 CPUs that can run them the vectorized ones of blake2_simd.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_NoMemory,
-    PyExc_OverflowError,
-    PyExc_ValueError,
-    PyLong_FromLong,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject,
-    PyUnicode_FromString,
-    Py_TYPE,
-    jacpy_hacl_simd_features,
-    jacpy_memory_copy,
-    jacpy_memory_zero,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.hashlib {
-    HashLock,
-    UINT32_MAX,
-    data_argument,
-    hash_digest,
-    hash_initial_data,
-    hash_object_new,
-    hash_state_of,
-    hash_update
-}
-import from jaclang.runtime.python.modules.blake2_simd {
-    Hacl_Hash_Blake2b_blake2_params,
-    simd128_copy,
-    simd128_digest,
-    simd128_free,
-    simd128_malloc,
-    simd128_update,
-    simd256_copy,
-    simd256_digest,
-    simd256_free,
-    simd256_malloc,
-    simd256_update
-}
 import from c {
     def _Py_LibHacl_Hacl_Hash_Blake2s_malloc_with_params_and_key(
         p: &mut Pinned[Hacl_Hash_Blake2b_blake2_params], last_node: i32, k: ptr

@@ -17,13 +17,27 @@ import from c { def sigismember(set: bytes, signum: i32) -> i32;  }
 glob _ITIMER_REAL: int = 0,
      _fn_handlers: dict[int, Callable[[int, any], None]] = {};
 
-def _trampoline(signum: int) {
+def _trampoline(signum: int);
+
+def:pub sig_install_fn(signum: int, handler: Callable[[int, any], None]) -> int;
+
+def:pub sig_install_addr(signum: int, handler: int) -> int;
+
+def:pub sig_kill_self(signum: int) -> int;
+
+def:pub sig_alarm(seconds: int) -> int;
+
+def:pub sig_pause;
+
+def:pub sig_mask(how: int, signums: list[int], nsig: int) -> tuple[(int, list[int])];
+
+impl _trampoline(signum: int) {
     if signum in _fn_handlers {
         _fn_handlers[signum](signum, None);
     }
 }
 
-def:pub sig_install_fn(signum: int, handler: Callable[[int, any], None]) -> int {
+impl sig_install_fn(signum: int, handler: Callable[[int, any], None]) -> int {
     _fn_handlers[signum] = handler;
     old = bsd_signal(i32(signum), _trampoline);
     if old == -1 {
@@ -32,18 +46,18 @@ def:pub sig_install_fn(signum: int, handler: Callable[[int, any], None]) -> int 
     return old;
 }
 
-def:pub sig_install_addr(signum: int, handler: int) -> int {
+impl sig_install_addr(signum: int, handler: int) -> int {
     if signum in _fn_handlers {
         del _fn_handlers[signum];
     }
     return bsd_signal(i32(signum), handler);
 }
 
-def:pub sig_kill_self(signum: int) -> int {
+impl sig_kill_self(signum: int) -> int {
     return kill(getpid(), i32(signum));
 }
 
-def:pub sig_alarm(seconds: int) -> int {
+impl sig_alarm(seconds: int) -> int {
     new_it = malloc(32);
     old_it = malloc(32);
     __mem_store_i64(new_it + 0, 0);
@@ -61,11 +75,11 @@ def:pub sig_alarm(seconds: int) -> int {
     return int(old_sec + (1 if old_usec > 0 else 0));
 }
 
-def:pub sig_pause {
+impl sig_pause {
     select(i32(0), 0, 0, 0, 0);
 }
 
-def:pub sig_mask(how: int, signums: list[int], nsig: int) -> tuple[(int, list[int])] {
+impl sig_mask(how: int, signums: list[int], nsig: int) -> tuple[(int, list[int])] {
     set_bits = b"\x00" * 128;
     sigemptyset(set_bits);
     for s in signums {

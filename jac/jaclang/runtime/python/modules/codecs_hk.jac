@@ -4,48 +4,6 @@ imported through that module's map capsule as the C does. See
 ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.modules.cjkcodecs {
-    DbcsMap,
-    DecodeWriter,
-    MBENC_FLUSH,
-    MBERR_EXCEPTION,
-    MBERR_INTERNAL,
-    MBERR_TOOFEW,
-    MBERR_TOOSMALL,
-    MULTIC,
-    MultibyteCodec,
-    MultibyteCodec_State,
-    NOCHAR,
-    UNIINV,
-    getcodec,
-    importmap,
-    inbyte,
-    inchar,
-    map_decode,
-    map_encode,
-    next_in,
-    next_inchar,
-    next_out,
-    no_decode_reset,
-    no_encode_reset,
-    no_state_init,
-    outbyte,
-    outchar,
-    outchar2,
-    register_maps
-}
-import from jaclang.runtime.python.modules.cjkcodecs_mappings_hk {
-    CJK_HK_MAPPINGS,
-    cjk_big5hkscs_bmp_map,
-    cjk_big5hkscs_map,
-    cjk_big5hkscs_nonbmp_map,
-    cjk_big5hkscs_phint_0,
-    cjk_big5hkscs_phint_12130,
-    cjk_big5hkscs_phint_21924,
-    cjk_hk_mappings
-}
-
 import from c {
     # The big5 map of _codecs_tw, which big5hkscs_codec_init imports (the
     # C's CJK_MOD_SPECIFIC_STATE).

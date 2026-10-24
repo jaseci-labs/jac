@@ -102,9 +102,12 @@ treat it as an app:
 ```
 
 The directory is relocatable: the binary finds `dist/`, the image and the
-webview library relative to itself. A macOS app keeps its graph and session
-under `~/Library/Application Support/<identifier>`, since a bundle stays
-read-only; Linux keeps them beside the binary. `JAC_DATA_PATH` overrides both.
+webview library relative to itself. Each app keeps its graph and session in a
+per-user, per-app directory -- `~/Library/Application Support/<identifier>` on
+macOS and `$XDG_DATA_HOME/<identifier>` (or `~/.local/share/<identifier>`) on
+Linux -- so two apps never share state and it never lands in a read-only
+bundle. `JAC_DATA_PATH` overrides it. An embedded app also starts its own
+Postgres cluster there and runs the distribution vendored into the bundle.
 
 To build with Chromium Embedded Framework instead of the OS webview, set
 `engine = "cef"`:

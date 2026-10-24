@@ -3,11 +3,6 @@ import kubernetes;
 import from datetime { datetime, timezone, timedelta }
 import from types { SimpleNamespace }
 import unittest.mock;
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.models.resource_status { REPLICA_FLOOR_ANNOTATION }
 
 def _cs(
     name: str,

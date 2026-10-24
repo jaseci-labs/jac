@@ -6,59 +6,6 @@ preprocessed here, giving %z, %:z, %Z and %f their datetime meanings and
 padding four-digit years where the C library does not. See
 ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    NULL,
-    Py_None,
-    PyErr_Occurred,
-    PyErr_SetString,
-    PyExc_TypeError,
-    PyImport_ImportModuleAttrString,
-    PyLong_AsLong,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyNumber_Long,
-    PyObject,
-    PyObject_CallFunction,
-    PyObject_CallMethod,
-    PyObject_CallNoArgs,
-    PySequence_GetItem,
-    PyUnicodeWriter,
-    PyUnicodeWriter_Create,
-    PyUnicodeWriter_Discard,
-    PyUnicodeWriter_Finish,
-    PyUnicodeWriter_WriteStr,
-    PyUnicodeWriter_WriteSubstring,
-    PyUnicode_FindChar,
-    PyUnicode_FromFormat,
-    PyUnicode_FromString,
-    PyUnicode_GetLength,
-    PyUnicode_ReadChar,
-    PyUnicode_Substring,
-    Py_NewRef,
-    jacpy_is_unicode
-}
-import from jaclang.runtime.python.modules.time_records { tm }
-import from jaclang.runtime.python.modules.datetime_calendar {
-    days_before_month,
-    weekday
-}
-import from jaclang.runtime.python.modules.datetime_objects {
-    call_tzname,
-    call_utcoffset,
-    date_get_microsecond,
-    datetime_check,
-    delta_negative,
-    get_day,
-    get_month,
-    get_tzinfo_member,
-    get_year,
-    td_days,
-    td_microseconds,
-    td_seconds,
-    time_check,
-    time_get_microsecond
-}
 
 import from c {
     def strftime(buffer: ptr[u8], size: u64, format: str, value: &tm) -> u64;

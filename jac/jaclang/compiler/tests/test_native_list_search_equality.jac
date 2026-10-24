@@ -1,5 +1,4 @@
 import ctypes;
-import from jaclang.compiler.tests.xbackend_equiv { compile_native, get_func }
 
 test "native list searches use value equality and valid comparison loop edges" {
     (engine, ir) = compile_native("native_list_search_equality.jac", no_ir_cache=True);

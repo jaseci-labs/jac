@@ -1,16 +1,5 @@
 """The fcntl module: generated clinic tables and the platform constants."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyExc_ImportError,
-    PyModule_AddIntConstant,
-    PyObject
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHooks }
-import from jaclang.runtime.python.bindings.clinic.fcntl { module_methods }
-import from jaclang.runtime.python.modules.fcntl_records { PLATFORM }
-import from jaclang.runtime.python.modules.fcntl_constants { CONSTANTS }
-
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" or len(CONSTANTS) == 0 {
         object_error(

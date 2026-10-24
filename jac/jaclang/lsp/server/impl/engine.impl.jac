@@ -457,19 +457,7 @@ impl JacLangServer.get_references(
     return [];
 }
 
-def _definition_symbol(sym: any) -> any {
-    cur = sym;
-    seen: set[int] = set();
-    while cur is not None and cur.provider is not None and id(cur) not in seen {
-        seen.add(id(cur));
-        target = cur.provider.definition();
-        if target is None or target is cur {
-            break;
-        }
-        cur = target;
-    }
-    return cur;
-}
+def _definition_symbol(sym: any) -> any;
 
 impl JacLangServer.get_definition(
     file_path: str, position: lspt.Position
@@ -763,14 +751,7 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
             node_info += f"\n{unparse_node(sym_node.signature)}";
         }
         try {
-            top: (uni.UniNode | None) = sym_node;
-            while (
-                top is not None
-                and not isinstance(top.parent, uni.Module)
-                and top.parent is not None
-            ) {
-                top = top.parent;
-            }
+            top = sym_node.top_element or sym_node;
             if isinstance(top, uni.ContextAwareNode) {
                 space = sym_node.codespace().value;
                 tags: list[str] = [];
@@ -977,7 +958,7 @@ impl JacLangServer.get_node_at_position(
         return None;
     }
     if (ast := self.get_ast_of_file(file_path)) {
-        for ast_node in ast._in_mod_nodes {
+        for ast_node in ast._in_mod_nodes or [] {
             if not isinstance(ast_node, uni.Token) {
                 continue;
             }
@@ -1214,4 +1195,18 @@ impl JacLangServer.diagnostics.getter -> dict[str, list[lspt.Diagnostic]] {
         }
         return result;
     }
+}
+
+impl _definition_symbol(sym: any) -> any {
+    cur = sym;
+    seen: set[int] = set();
+    while cur is not None and cur.provider is not None and id(cur) not in seen {
+        seen.add(id(cur));
+        target = cur.provider.definition();
+        if target is None or target is cur {
+            break;
+        }
+        cur = target;
+    }
+    return cur;
 }

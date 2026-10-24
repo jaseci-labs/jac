@@ -33,3 +33,23 @@ obj MobileTarget(ClientTarget) {
     def:priv _provision(project_dir: Path, rn_dir: Path) -> None;
     def:priv _compile_native_jac_modules(entry_file: Path) -> tuple[(any, Path)];
 }
+
+impl _simctl_install_and_launch(
+    xcrun: str, udid: str, app_path: Path, bundle_id: str | None
+) {
+    console.print(
+        f"  Installing .app on simulator {udid}: {app_path.name}", style="muted"
+    );
+    subprocess.run(
+        [xcrun, "simctl", "install", udid, str(app_path)],
+        check=True,
+        capture_output=True
+    );
+    if bundle_id {
+        bid: str = str(bundle_id);
+        console.print(f"  Launching: {bid}", style="muted");
+        subprocess.run(
+            [xcrun, "simctl", "launch", udid, bid], check=False, capture_output=True
+        );
+    }
+}

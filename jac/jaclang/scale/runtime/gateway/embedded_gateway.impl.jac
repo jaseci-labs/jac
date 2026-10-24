@@ -131,9 +131,7 @@ impl EmbeddedGateway.setup -> None {
 }
 
 
-def _log_embedded_ready(host: str, bound: int) {
-    _logger.info(f"Embedded gateway serving in-process on {host}:{bound}");
-}
+def _log_embedded_ready(host: str, bound: int);
 
 
 impl EmbeddedGateway.serve(on_ready: any = None) -> None {
@@ -149,4 +147,8 @@ impl EmbeddedGateway.serve(on_ready: any = None) -> None {
         ready = partial(_log_embedded_ready, self.host);
     }
     serving.run(on_ready=ready, port_retries=0 if pinned else PORT_RETRY_LIMIT);
+}
+
+impl _log_embedded_ready(host: str, bound: int) {
+    _logger.info(f"Embedded gateway serving in-process on {host}:{bound}");
 }

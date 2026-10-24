@@ -2321,7 +2321,7 @@ test "lambda_param_unresolved_requires_annotation" {
     # is checked in place instead; deferring it would drop the checks on its
     # other statements entirely, which is what this assertion guards. (The
     # rationale lives here because jaclang source is deslopped: jac.toml's
-    # `[check.lint]` selects `strip-comments`/`strip-docstrings`, and
+    # `[check.lint]` selects `all`, which strips comments and docstrings, and
     # `*/tests/*` is the exclusion that lets a note like this survive.)
     e1053 = [
         e

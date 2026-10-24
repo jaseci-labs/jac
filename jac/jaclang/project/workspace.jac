@@ -5,17 +5,7 @@ import os;
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from jaclang.project.modresolver { find_jac_project_root }
 
-import from jaclang.project.app_kinds {
-    kind_codespace,
-    kind_has_server,
-    kind_entry,
-    kind_ui,
-    UI_MOBUI
-}
-
-import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
 
 obj WorkspaceResolution {
     has paths: dict[str, str] = {},
@@ -28,18 +18,7 @@ glob _ws_cache: dict[str, tuple[tuple[float, ...], WorkspaceSpec]] = {},
      );
 
 @contextmanager
-def workspace_scope -> Iterator[None] {
-    if _resolution.get() is not None {
-        yield ;
-        return;
-    }
-    token = _resolution.set(WorkspaceResolution());
-    try {
-        yield ;
-    } finally {
-        _resolution.reset(token);
-    }
-}
+def workspace_scope -> Iterator[None];
 
 def workspace_for_path(path: str) -> (WorkspaceSpec | None);
 def _workspace_for_path(path: str) -> (WorkspaceSpec | None);

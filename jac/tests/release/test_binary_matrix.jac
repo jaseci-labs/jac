@@ -2,6 +2,7 @@
 
 import json;
 import os;
+import re;
 import subprocess;
 import tempfile;
 import textwrap;
@@ -12,7 +13,9 @@ test "stable and dev matrices build one official binary per platform" {
     workflow = (repo_root / ".github/workflows/build-binaries.yml").read_text();
     step = workflow.split("      - name: Select build legs for the channel\n", 1)[1];
     script = textwrap.dedent(
-        step.split("        run: |\n", 1)[1].split("\n  build:", 1)[0]
+        re.split(
+            r"\n  [a-z][a-z-]*:\n", step.split("        run: |\n", 1)[1], maxsplit=1
+        )[0]
     );
     for channel in ["release", "dev"] {
         for (only, tag, count, success) in [
@@ -54,6 +57,8 @@ test "stable and dev matrices build one official binary per platform" {
                 }
                 assert len(set(leg["platform"] for leg in legs)) == count;
                 assert values["required"].split() == required;
+                assert json.loads(values["platforms"])
+                    == [leg["platform"] for leg in legs];
             }
         }
     }

@@ -70,15 +70,11 @@ glob SITE_ORIGIN: str = os.environ.get(
      };
 
 node PublicNode {
-    def __jac_access__ -> AccessLevel {
-        return AccessLevel.READ;
-    }
+    def __jac_access__ -> AccessLevel;
 }
 
 edge PublicEdge: PublicNode --> PublicNode {
-    def __jac_access__ -> AccessLevel {
-        return AccessLevel.READ;
-    }
+    def __jac_access__ -> AccessLevel;
 }
 
 node DocsHub(PublicNode) {
@@ -125,7 +121,7 @@ walker:protect trace_route {
 
     can name_page with DocPage entry;
     can climb_dir with DocDir entry;
-    can arrive with DocVersion entry {}
+    can arrive with DocVersion entry;
 }
 
 def _route_up(target: object) -> str;
@@ -140,30 +136,7 @@ def _series_of(label: str) -> tuple[int, int] | None;
 
 def _latest_label(labels: list[str]) -> str;
 
-def _version(wanted: str) -> list[DocVersion] {
-    all_vers = [root.shared-->[?:DocsHub]->:HasVersion:->[?:DocVersion]];
-    if wanted == "latest" {
-        lab = _latest_label([v.label for v in all_vers]);
-        if lab != "" {
-            wanted = lab;
-        }
-    }
-    vers = [
-        v
-        for v in all_vers
-        if v.label == wanted
-    ];
-    if not vers {
-        return [];
-    }
-    best = vers[0];
-    for v in vers {
-        if v.fetched_at > best.fetched_at {
-            best = v;
-        }
-    }
-    return [best];
-}
+def _version(wanted: str) -> list[DocVersion];
 
 def slugify(t: str) -> str;
 
@@ -196,31 +169,13 @@ walker:protect collect_tree {
         tree: list[TreeNode] = [],
         seq: list[DocPage] = [];
 
-    can scan with DocContainer entry {
-        visit [-->[?:DocDir]];
-    }
-
-    can fold_version with DocVersion exit {
-        (self.tree, self.seq) = self.fold_children(here);
-    }
-
+    can scan with DocContainer entry;
+    can fold_version with DocVersion exit;
     can fold_dir with DocDir exit;
     def fold_children(container: object) -> tuple[list[TreeNode], list[DocPage]];
 }
 
-def:pub docs_status -> DocsStatus {
-    hub = _get_hub();
-    if hub is None {
-        return DocsStatus();
-    }
-    infos = _version_list();
-    return DocsStatus(
-        ready=True,
-        built_at=hub.built_at,
-        latest_label=_latest_label([v.label for v in infos]),
-        versions=infos
-    );
-}
+def:pub docs_status -> DocsStatus;
 
 def:pub doc_tree(version: str = "latest") -> DocTree | None;
 
@@ -267,4 +222,61 @@ walker:pub doc_page {
     can note_dir with DocDir entry;
     can deliver with DocPage entry;
     def settle(container: object);
+}
+
+impl PublicNode.__jac_access__ -> AccessLevel {
+    return AccessLevel.READ;
+}
+
+impl PublicEdge.__jac_access__ -> AccessLevel {
+    return AccessLevel.READ;
+}
+
+impl trace_route.arrive with DocVersion entry {}
+
+impl _version(wanted: str) -> list[DocVersion] {
+    all_vers = [root.shared-->[?:DocsHub]->:HasVersion:->[?:DocVersion]];
+    if wanted == "latest" {
+        lab = _latest_label([v.label for v in all_vers]);
+        if lab != "" {
+            wanted = lab;
+        }
+    }
+    vers = [
+        v
+        for v in all_vers
+        if v.label == wanted
+    ];
+    if not vers {
+        return [];
+    }
+    best = vers[0];
+    for v in vers {
+        if v.fetched_at > best.fetched_at {
+            best = v;
+        }
+    }
+    return [best];
+}
+
+impl collect_tree.scan with DocContainer entry {
+    visit [-->[?:DocDir]];
+}
+
+impl collect_tree.fold_version with DocVersion exit {
+    (self.tree, self.seq) = self.fold_children(here);
+}
+
+impl docs_status -> DocsStatus {
+    hub = _get_hub();
+    if hub is None {
+        return DocsStatus();
+    }
+    infos = _version_list();
+    return DocsStatus(
+        ready=True,
+        built_at=hub.built_at,
+        latest_label=_latest_label([v.label for v in infos]),
+        versions=infos
+    );
 }

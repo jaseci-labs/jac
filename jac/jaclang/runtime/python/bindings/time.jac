@@ -1,51 +1,5 @@
 """The time module: its method table, struct_time, the clock constants and time zone."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_struct_sequence_type,
-    PyExc_ImportError,
-    PyModule_AddIntConstant,
-    PyObject
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    MethodCallbacks,
-    MethodDefinition,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.clinic.time { module_methods }
-import from jaclang.runtime.python.modules.time {
-    init_clock_bases,
-    init_timezone,
-    time_asctime,
-    time_clock_getres,
-    time_clock_settime,
-    time_clock_settime_ns,
-    time_ctime,
-    time_get_clock_info,
-    time_gmtime,
-    time_localtime,
-    time_mktime,
-    time_monotonic,
-    time_monotonic_ns,
-    time_perf_counter,
-    time_perf_counter_ns,
-    time_process_time,
-    time_process_time_ns,
-    time_pthread_getcpuclockid,
-    time_sleep,
-    time_strftime,
-    time_strptime,
-    time_thread_time,
-    time_thread_time_ns,
-    time_time,
-    time_time_ns,
-    time_tzset
-}
-import from jaclang.runtime.python.modules.time_constants { PLATFORM, CONSTANTS }
-import from jaclang.runtime.python.modules.time_platform { HAS_PTHREAD_GETCPUCLOCKID }
-
 glob:priv METH_VARARGS: i64 = 1,
      METH_NOARGS: i64 = 4,
      METH_O: i64 = 8,

@@ -26,9 +26,7 @@ import ctypes;
 import from tests.support { get_func, jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.na_compile_pass {
-    native_demoted_ir_symbols
-}
+import from jaclang.compiler.backends.native.lowering { native_fallbacks_in_ir }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -107,7 +105,7 @@ test "a cold JIT importer demotes a caller of a demoted linked function" {
     );
     lib_demoted = unit_demotions(prog, "xmod_demote_lib.jac");
     assert "pyonly_len" in lib_demoted , f"the callee lowered after all: {lib_demoted}";
-    demoted = native_demoted_ir_symbols(text);
+    demoted = native_fallbacks_in_ir(text).symbols;
     assert "call_seam" in demoted , (
         f"the caller of the demoted function stayed native: {demoted}"
     );
@@ -124,7 +122,7 @@ test "a cold JIT importer sees a demotion only the callee's emitter discovers" {
         "the importer emitted a call to 'from_code' before its unit refused it: "
         f"{dangling_declares(text, 'from_code')}"
     );
-    demoted = native_demoted_ir_symbols(text);
+    demoted = native_fallbacks_in_ir(text).symbols;
     assert "call_dyn" in demoted , f"the caller of 'from_code' stayed native: {demoted}";
     assert "call_double" not in demoted , f"the clean caller demoted: {demoted}";
     call_double = get_func(

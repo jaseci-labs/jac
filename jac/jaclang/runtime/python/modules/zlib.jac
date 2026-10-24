@@ -6,69 +6,6 @@ calls, so every stream is pinned. zlib runs with the GIL released; only its
 allocator callbacks, which touch no Python object, run in that window.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyBytes_AsString,
-    PyBytes_FromStringAndSize,
-    PyBytes_Size,
-    PyErr_NoMemory,
-    PyErr_SetNone,
-    PyErr_SetString,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_EOFError,
-    PyExc_MemoryError,
-    PyExc_OverflowError,
-    PyExc_SystemError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyLong_FromUnsignedLong,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyMem_RawFree,
-    PyMem_RawMalloc,
-    PyMem_Realloc,
-    PyObject,
-    PyObject_CheckBuffer,
-    PyThreadState,
-    PyThread_acquire_lock,
-    PyThread_allocate_lock,
-    PyThread_free_lock,
-    PyThread_release_lock,
-    PyType_GetModule,
-    Py_NewRef,
-    Py_TYPE,
-    _PyBytes_Resize,
-    jacpy_buffer_acquire,
-    jacpy_buffer_new,
-    jacpy_buffer_release,
-    jacpy_fs_text,
-    jacpy_memory_copy,
-    jacpy_memory_move,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error, text_value }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module {
-    jacpy_binding_state_get,
-    visit_reference
-}
-import from jaclang.runtime.python.bindings.type {
-    jacpy_binding_allocate,
-    jacpy_binding_record
-}
-import from jaclang.runtime.python.bindings.members {
-    record_set_byte,
-    record_set_object
-}
-import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_set,
-    jacpy_binding_native_present
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.output_buffer { BlocksOutputBuffer, Cursor }
 import from z {
     obj z_stream {
         has next_in: ptr[u8] = ptr[u8](),

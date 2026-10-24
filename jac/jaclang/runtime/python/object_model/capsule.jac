@@ -9,42 +9,6 @@ callbacks are C function pointers C code stores and Jac calls. See
 ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_Format,
-    PyErr_NoMemory,
-    PyErr_SetString,
-    PyExc_AttributeError,
-    PyExc_ImportError,
-    PyExc_ValueError,
-    PyImport_ImportModule,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject,
-    PyObject_GC_Del,
-    PyObject_GC_IsTracked,
-    PyObject_GetAttrString,
-    PyUnicode_FromFormat,
-    _PyObject_GC_New,
-    jacpy_release
-}
-import from jaclang.runtime.python.layouts {
-    PyCapsule,
-    PyCapsule_SIZE,
-    PyTypeObject,
-    PyVarObject,
-    Py_TPFLAGS_DEFAULT,
-    Py_TPFLAGS_HAVE_GC,
-    _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
-    _object
-}
-import from jaclang.runtime.python.object_model.header {
-    object_gc_track,
-    object_gc_untrack,
-    object_is_type,
-    PyType_Type
-}
-
 import from c {
     def strcmp(left: ptr[u8], right: ptr[u8]) -> i32;  def strlen(
         text: ptr[u8]

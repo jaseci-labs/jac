@@ -1031,6 +1031,26 @@ test "guardrail: open() with a non-string (POSIX flags) mode is a clean diagnost
     }
 }
 
+test "guardrail: a dict comprehension with untyped keys or always-None values is refused, not an emitter crash" {
+    for (label, value, refusal) in [
+        ("any_key", "1", "dict with mixed key types"),
+        ("none_value", "None", "dict with mixed key types"),
+        ("str_key_none_value", "None", "dict whose values are always None")
+    ] {
+        elem = "str" if label == "str_key_none_value" else "any";
+        (prog, ir, log) = compile_na_inline_demote(
+            f"dcompr_{label}",
+            f"def build(xs: list[{elem}]) -> int {{\n"
+            f"    d = {{x: {value} for x in xs}};\n"
+            "    return len(d);\n"
+            "}\n"
+        );
+        seen = fmt_errors(prog) + log;
+        assert refusal in seen , f"{label}: expected the '{refusal}' refusal, got: {seen}";
+        assert "native emitter error" not in seen , f"{label}: emitter crash leaked: {seen}";
+    }
+}
+
 # Positive control: with the libc `open(path, flags) -> i32` extern in scope
 # (the real native-build case, where cef_dispatch.jac declares it), the call
 # resolves to the POSIX extern rather than the file-open builtin — no crash and

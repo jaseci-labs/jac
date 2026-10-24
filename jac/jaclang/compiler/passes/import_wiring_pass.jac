@@ -1,50 +1,4 @@
 import os;
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, PassContract }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    EmptyToken,
-    ImplDef,
-    GraphImport,
-    Import,
-    ImportRule,
-    ImportWire,
-    Module,
-    ModuleItem,
-    ModulePath,
-    ModulePattern,
-    String,
-    UniNode
-}
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.driver.wiring {
-    RuleRec,
-    WireBinding,
-    WireRec,
-    WiringSpec,
-    pattern_text,
-    scope_owners,
-    is_arch_file,
-    scope_path_of,
-    wiring_for_path
-}
-import from jaclang.project.source { pascal_to_snake }
-import from jaclang.compiler.passes.annex_weave { import_form }
-import from jaclang.compiler.frontend.diagnostics {
-    E1141,
-    E1142,
-    E1143,
-    E1144,
-    E2088,
-    E2089,
-    E2090,
-    E2091,
-    E2092,
-    E2093,
-    E2094,
-    W2083,
-    W2084
-}
 
 walker ImportWiringPass(CompilerPass) {
     static has contract: PassContract = PassContract(requires=(AnalysisFact.SYM_OF, ));
@@ -53,13 +7,18 @@ walker ImportWiringPass(CompilerPass) {
     def _check_arch_module(mod: Module) -> None;
     def _check_scope(spec: WiringSpec, block: GraphImport, seen: set[int]) -> None;
     def _check_wire(spec: WiringSpec, wire: ImportWire) -> None;
-    def _check_rule_liveness(spec: WiringSpec, rule: ImportRule) -> None;
+    def _check_target(
+        spec: WiringSpec, provider: str, provider_ok: bool, target: WireTarget
+    ) -> None;
+
+    def _check_rule_patterns(spec: WiringSpec, rule: ImportRule) -> None;
     def _check_edge(
         spec: WiringSpec,
         provider: str,
         consumer: str,
         names: (list[tuple[str, UniNode]] | None),
-        at: UniNode
+        at: UniNode,
+        local: bool
     ) -> None;
 
     def _check_module(mod: Module, spec: WiringSpec) -> None;
@@ -67,15 +26,37 @@ walker ImportWiringPass(CompilerPass) {
         spec: WiringSpec,
         imp: Import,
         consumer: str,
-        provided: dict[tuple[str, str, str, str], WireRec],
-        enforce: bool,
-        nested: bool = False,
-        scope: (list[str] | None) = None
+        scope: (list[str] | None),
+        declared: set[tuple[str, tuple[str, str, str, str]]]
     ) -> None;
 
-    def _emit_nested(
-        binding: WireBinding, at: UniNode, consumer: str, scope: (list[str] | None)
-    ) -> None;
+    static def _written_import_fix(
+        spec: WiringSpec,
+        binding: WireBinding,
+        consumer: str,
+        held: (WireRec | None),
+        positional: bool
+    ) -> str;
 
     static def _rule_names(rules: list[RuleRec]) -> str;
 }
+
+obj UnusedBinding {
+    has consumer: str,
+        wire: WireRec,
+        binding: WireBinding,
+        at: UniNode;
+}
+
+obj ScopeReads {
+    has mod: Module,
+        owners: (dict[str, list[(Ability | ImplDef)]] | None) = None,
+        read: dict[str, set[str]] = {};
+
+    def names(scope: str) -> set[str];
+}
+
+def is_effect_binding(binding: WireBinding) -> bool;
+def report_unused_wires(reporter: CompilerPass, mod: Module) -> None;
+def unused_wire_bindings(mod: Module) -> list[UnusedBinding];
+def names_read_in(body: UniNode, mod: Module) -> set[str];

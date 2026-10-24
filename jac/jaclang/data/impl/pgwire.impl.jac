@@ -10,7 +10,7 @@ impl _encode_param(v: any) -> (bytes | None) {
         return b'true' if v else b'false';
     }
     if isinstance(v, bytes) {
-        return v;
+        return ('\\x' + v.hex()).encode('ascii');
     }
     if isinstance(v, (list, tuple, set)) {
         return _array_literal(v).encode('utf-8');
@@ -68,10 +68,17 @@ impl _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ..
     n = len(sql);
     in_squote = False;
     in_dquote = False;
+    escape_squote = False;
+    continuation = False;
     while i < n {
         ch = sql[i];
         if in_squote {
             out.append(ch);
+            if escape_squote and ch == '\\' and i + 1 < n {
+                out.append(sql[i + 1]);
+                i += 2;
+                continue;
+            }
             if ch == "'" {
                 if i + 1 < n and sql[i + 1] == "'" {
                     out.append("'");
@@ -91,11 +98,89 @@ impl _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ..
             i += 1;
             continue;
         }
+        if sql.startswith('--', i) {
+            j = i + 2;
+            while j < n and sql[j] not in ('\n', '\r') {
+                j += 1;
+            }
+            out.append(sql[i:j]);
+            i = j;
+            continue;
+        }
+        if sql.startswith('/*', i) {
+            j = i + 2;
+            depth = 1;
+            while j < n and depth {
+                if sql.startswith('/*', j) {
+                    depth += 1;
+                    j += 2;
+                } elif sql.startswith('*/', j) {
+                    depth -= 1;
+                    j += 2;
+                } else {
+                    if sql[j] in ('\n', '\r') {
+                        continuation = True;
+                    }
+                    j += 1;
+                }
+            }
+            out.append(sql[i:j]);
+            i = j;
+            continue;
+        }
         if ch == "'" {
             in_squote = True;
+            escape_squote = (escape_squote and continuation)
+                or (
+                    i > 0
+                    and sql[i - 1] in ('E', 'e')
+                    and (
+                        i < 2
+                        or not (
+                            sql[i - 2].isalnum()
+                            or sql[i - 2] in ('_', '$')
+                            or ord(sql[i - 2]) >= 128
+                        )
+                    )
+                );
+            continuation = False;
             out.append(ch);
             i += 1;
             continue;
+        }
+        if ch.isspace() {
+            if ch in ('\n', '\r') {
+                continuation = True;
+            }
+        } else {
+            escape_squote = False;
+            continuation = False;
+        }
+        if ch == '$'
+            and (
+                i == 0
+                or not (
+                    sql[i - 1].isalnum()
+                    or sql[i - 1] in ('_', '$')
+                    or ord(sql[i - 1]) >= 128
+                )
+            ) {
+            j = i + 1;
+            if j < n and (sql[j].isalpha() or sql[j] == '_' or ord(sql[j]) >= 128) {
+                j += 1;
+                while j < n
+                    and (sql[j].isalnum() or sql[j] == '_' or ord(sql[j]) >= 128) {
+                    j += 1;
+                }
+            }
+            if j < n and sql[j] == '$' {
+                delimiter = sql[i:j + 1];
+                end = sql.find(delimiter, j + 1);
+                end = n if end < 0 else end + len(delimiter);
+                out.append(sql[i:end]);
+                i = end;
+                continue;
+            }
         }
         if ch == '"' {
             in_dquote = True;
@@ -132,54 +217,10 @@ impl _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ..
 
 def _scram_proofs(
     password: str, server_first: str, client_first_bare: str
-) -> tuple[str, str, str] {
-    fields: dict[str, str] = {};
-    for part in server_first.split(',') {
-        if '=' in part {
-            (k, v) = part.split('=', 1);
-            fields[k] = v;
-        }
-    }
-    server_nonce = fields.get('r', '');
-    salt = base64.b64decode(fields.get('s', ''));
-    iterations = int(fields.get('i', '4096'));
-    salted = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations);
-    client_key = hmac.new(salted, b'Client Key', hashlib.sha256).digest();
-    stored_key = hashlib.sha256(client_key).digest();
-    client_final_wo = f"c=biws,r={server_nonce}";
-    auth_message = (
-        client_first_bare + ',' + server_first + ',' + client_final_wo
-    ).encode(
-        'utf-8'
-    );
-    client_sig = hmac.new(stored_key, auth_message, hashlib.sha256).digest();
-    proof = bytes((a ^ b) for (a, b) in zip(client_key, client_sig, strict=True));
-    server_key = hmac.new(salted, b'Server Key', hashlib.sha256).digest();
-    server_sig = hmac.new(server_key, auth_message, hashlib.sha256).digest();
-    return (
-        client_final_wo,
-        base64.b64encode(proof).decode('ascii'),
-        base64.b64encode(server_sig).decode('ascii')
-    );
-}
+) -> tuple[str, str, str];
 
 
-def _parse_error_fields(payload: bytes) -> dict[str, str] {
-    fields: dict[str, str] = {};
-    i = 0;
-    while i < len(payload) {
-        code = payload[i:i + 1];
-        if code == b'\x00' {
-            break;
-        }
-        end = payload.index(b'\x00', i + 1);
-        fields[code.decode('ascii')] = payload[i + 1:end].decode(
-            'utf-8', errors='replace'
-        );
-        i = end + 1;
-    }
-    return fields;
-}
+def _parse_error_fields(payload: bytes) -> dict[str, str];
 
 
 impl PgWireConnection.postinit -> None {
@@ -319,9 +360,7 @@ impl PgWireConnection._scram_auth(payload: bytes) -> None {
 }
 
 
-def _frame(msg_type: str, payload: bytes) -> bytes {
-    return msg_type.encode('ascii') + struct.pack(_INT32, len(payload) + 4) + payload;
-}
+def _frame(msg_type: str, payload: bytes) -> bytes;
 
 
 impl PgWireConnection._send(msg_type: str, payload: bytes) -> None {
@@ -577,4 +616,60 @@ impl PgWireConnection.close -> None {
         sock: any = self._sock;
         sock.close();
     } except Exception {}
+}
+
+impl _scram_proofs(
+    password: str, server_first: str, client_first_bare: str
+) -> tuple[str, str, str] {
+    fields: dict[str, str] = {};
+    for part in server_first.split(',') {
+        if '=' in part {
+            (k, v) = part.split('=', 1);
+            fields[k] = v;
+        }
+    }
+    server_nonce = fields.get('r', '');
+    salt = base64.b64decode(fields.get('s', ''));
+    iterations = int(fields.get('i', '4096'));
+    salted = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations);
+    client_key = hmac.new(salted, b'Client Key', hashlib.sha256).digest();
+    stored_key = hashlib.sha256(client_key).digest();
+    client_final_wo = f"c=biws,r={server_nonce}";
+    auth_message = (
+        client_first_bare + ',' + server_first + ',' + client_final_wo
+    ).encode(
+        'utf-8'
+    );
+    client_sig = hmac.new(stored_key, auth_message, hashlib.sha256).digest();
+    proof = bytes((a ^ b) for (a, b) in zip(client_key, client_sig, strict=True));
+    server_key = hmac.new(salted, b'Server Key', hashlib.sha256).digest();
+    server_sig = hmac.new(server_key, auth_message, hashlib.sha256).digest();
+    return (
+        client_final_wo,
+        base64.b64encode(proof).decode('ascii'),
+        base64.b64encode(server_sig).decode('ascii')
+    );
+}
+
+
+impl _parse_error_fields(payload: bytes) -> dict[str, str] {
+    fields: dict[str, str] = {};
+    i = 0;
+    while i < len(payload) {
+        code = payload[i:i + 1];
+        if code == b'\x00' {
+            break;
+        }
+        end = payload.index(b'\x00', i + 1);
+        fields[code.decode('ascii')] = payload[i + 1:end].decode(
+            'utf-8', errors='replace'
+        );
+        i = end + 1;
+    }
+    return fields;
+}
+
+
+impl _frame(msg_type: str, payload: bytes) -> bytes {
+    return msg_type.encode('ascii') + struct.pack(_INT32, len(payload) + 4) + payload;
 }

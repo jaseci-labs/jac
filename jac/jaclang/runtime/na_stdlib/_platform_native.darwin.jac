@@ -8,11 +8,37 @@ import from c { def fread(buffer: bytes, size: u64, count: u64, stream: int) -> 
 
 glob _PLAT_UTS: int = malloc(1280);
 
-def:pub plat_uname_ok -> bool {
+def:pub plat_uname_ok -> bool;
+
+def _uts_str(offset: int) -> str;
+
+def:pub plat_sysname -> str;
+
+def:pub plat_nodename -> str;
+
+def:pub plat_release -> str;
+
+def:pub plat_version -> str;
+
+def:pub plat_machine -> str;
+
+def:pub plat_uname_p -> str;
+
+def:pub plat_libc_name -> str;
+
+def:pub plat_libc_version -> str;
+
+def:pub plat_arch_bits -> str;
+
+def:pub plat_arch_linkage -> str;
+
+def:pub plat_macos_release -> str;
+
+impl plat_uname_ok -> bool {
     return uname(_PLAT_UTS) == 0;
 }
 
-def _uts_str(offset: int) -> str {
+impl _uts_str(offset: int) -> str {
     address = _PLAT_UTS + offset;
     length = strlen(address);
     copied = b"\x00" * int(length);
@@ -20,27 +46,27 @@ def _uts_str(offset: int) -> str {
     return copied.decode();
 }
 
-def:pub plat_sysname -> str {
+impl plat_sysname -> str {
     return _uts_str(0);
 }
 
-def:pub plat_nodename -> str {
+impl plat_nodename -> str {
     return _uts_str(256);
 }
 
-def:pub plat_release -> str {
+impl plat_release -> str {
     return _uts_str(512);
 }
 
-def:pub plat_version -> str {
+impl plat_version -> str {
     return _uts_str(768);
 }
 
-def:pub plat_machine -> str {
+impl plat_machine -> str {
     return _uts_str(1024);
 }
 
-def:pub plat_uname_p -> str {
+impl plat_uname_p -> str {
     stream = popen("uname -p", "r");
     if stream == 0 {
         return "";
@@ -58,23 +84,23 @@ def:pub plat_uname_p -> str {
     return out;
 }
 
-def:pub plat_libc_name -> str {
+impl plat_libc_name -> str {
     return "";
 }
 
-def:pub plat_libc_version -> str {
+impl plat_libc_version -> str {
     return "";
 }
 
-def:pub plat_arch_bits -> str {
+impl plat_arch_bits -> str {
     return "64bit";
 }
 
-def:pub plat_arch_linkage -> str {
+impl plat_arch_linkage -> str {
     return "";
 }
 
-def:pub plat_macos_release -> str {
+impl plat_macos_release -> str {
     stream = popen("sw_vers -productVersion", "r");
     if stream == 0 {
         return "";

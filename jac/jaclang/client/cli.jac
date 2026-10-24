@@ -34,7 +34,41 @@ comptime SPEC_SETUP: CommandSpec = CommandSpec(
          handler_name=ct_name(setup)
      );
 
-def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
+def setup(target: str = "", toolchain: str = "", platform: str = "") -> int;
+
+def run_client_setup(app: AppConfig) -> int;
+
+def _place_bundle(bundle_path: Path, out_dir: Path) -> Path;
+
+def run_client_build(
+    app: AppConfig,
+    platform: str | None,
+    entry_override: str = "",
+    output: str = "",
+    kind: str = ""
+) -> int;
+
+def run_client_start(
+    app: AppConfig,
+    host: str,
+    platform: str,
+    port: int,
+    api_port: int,
+    dev: bool,
+    no_client: bool
+) -> int | None;
+
+def get_config -> JacConfig | None;
+
+def _npm_context -> tuple[JacConfig, EcosystemProvider] | None;
+
+def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int;
+
+def run_npm_add_global(packages: list[str], dev: bool) -> int;
+
+def run_npm_remove(packages: list[str], dev: bool) -> int;
+
+impl setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
     if toolchain {
         import from jaclang.toolchains.manager { setup_toolchain }
         return setup_toolchain(toolchain);
@@ -80,7 +114,7 @@ def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
     return run_client_setup(app);
 }
 
-def run_client_setup(app: AppConfig) -> int {
+impl run_client_setup(app: AppConfig) -> int {
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -115,7 +149,7 @@ def run_client_setup(app: AppConfig) -> int {
     }
 }
 
-def _place_bundle(bundle_path: Path, out_dir: Path) -> Path {
+impl _place_bundle(bundle_path: Path, out_dir: Path) -> Path {
     import shutil;
     out_dir.mkdir(parents=True, exist_ok=True);
     if bundle_path.is_dir() {
@@ -127,7 +161,7 @@ def _place_bundle(bundle_path: Path, out_dir: Path) -> Path {
     return dest;
 }
 
-def run_client_build(
+impl run_client_build(
     app: AppConfig,
     platform: str | None,
     entry_override: str = "",
@@ -186,7 +220,7 @@ def run_client_build(
     }
 }
 
-def run_client_start(
+impl run_client_start(
     app: AppConfig,
     host: str,
     platform: str,
@@ -264,11 +298,11 @@ def run_client_start(
     }
 }
 
-def get_config -> JacConfig | None {
+impl get_config -> JacConfig | None {
     return _get_config();
 }
 
-def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
+impl _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
     config = get_config();
     if config is None {
         console.error(
@@ -288,7 +322,7 @@ def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
     return (config, provider);
 }
 
-def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int {
+impl run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int {
     if install_global {
         return run_npm_add_global(packages, dev);
     }
@@ -335,7 +369,7 @@ def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) ->
     }
 }
 
-def run_npm_add_global(packages: list[str], dev: bool) -> int {
+impl run_npm_add_global(packages: list[str], dev: bool) -> int {
     if not packages {
         console.error(
             "Provide at least one npm package to install globally.",
@@ -375,7 +409,7 @@ def run_npm_add_global(packages: list[str], dev: bool) -> int {
     return 0;
 }
 
-def run_npm_remove(packages: list[str], dev: bool) -> int {
+impl run_npm_remove(packages: list[str], dev: bool) -> int {
     npm_ctx = _npm_context();
     if npm_ctx is None {
         return 1;

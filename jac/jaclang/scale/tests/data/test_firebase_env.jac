@@ -1,14 +1,5 @@
 import os;
 import from unittest.mock { patch, MagicMock }
-import from jaclang.scale.config.firebase_env {
-    FIREBASE_AUTH_PROJECT_ID_ENV,
-    FIREBASE_PROJECT_ID_ENV,
-    FIRESTORE_PROJECT_ID_ENV,
-    JAC_STORAGE_FIREBASE_PROJECT_ID_ENV,
-    resolve_firebase_project_id
-}
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import from jaclang.scale.storage.factory { StorageFactory }
 
 
 test "resolve_firebase_project_id prefers subsystem env over shared" {

@@ -7,34 +7,6 @@ jaclang.runtime.python.modules.syslog.
 Bound by hand in the module binding (no generic Jac converter):
     syslog.syslog: optional groups
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyMem_Free, PyObject }
-import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
-import from jaclang.runtime.python.bindings.type {
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.arguments {
-    CallSignature,
-    PARSE_KEYWORDS,
-    invoke_stack,
-    unpack_stack
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi { boundary_failure }
-import from jaclang.runtime.python.bindings.converters {
-    argument_label,
-    convert_long,
-    convert_unicode,
-    return_long
-}
-import from jaclang.runtime.python.modules.syslog {
-    LOG_USER,
-    syslog_LOG_MASK_impl,
-    syslog_LOG_UPTO_impl,
-    syslog_closelog_impl,
-    syslog_openlog_impl,
-    syslog_setlogmask_impl
-}
 
 glob:priv syslog_openlog_signature = CallSignature(
          "openlog", ["ident", "logoption", "facility"], 0, 3, 0, parser=PARSE_KEYWORDS

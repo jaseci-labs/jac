@@ -11,18 +11,7 @@ writer needs them; a bundled binary would carry the catalog instead).
 """
 import os;
 import tempfile;
-import from jaclang.compiler.types.stubcat.build { build_catalog }
 import from unittest.mock { patch }
-import from jaclang.artifacts.model { Probe, Source }
-import jaclang.artifacts.router as router;
-import from jaclang.compiler.types.stubcat.locate {
-    StubcatArtifact,
-    jaclang_pkg_dir,
-    reset_catalog_cache,
-    typeshed_stdlib_dir
-}
-import from jaclang.compiler.types.stubcat.reader { StubCatalog, open_catalog_file }
-import from jaclang.compiler.types.types { ClassType, FunctionType, OverloadedType }
 
 glob SMALL_SET: list[str] = [
          "builtins",
