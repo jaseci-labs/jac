@@ -5836,9 +5836,15 @@ graph import compiler {
             get_native_debug_dir
         },
     ]
-    driver.jir --> backends.native.kernel_resolve.KernelArtifact.build {
-        require_exact_compiler_products
-    }
+    driver.jir --> [
+        backends.native.kernel_resolve.KernelArtifact.build {
+            require_exact_compiler_products
+        },
+        backends.native.link_plan.build_link_plan {
+            begin_prepare_memo,
+            end_prepare_memo
+        },
+    ]
     driver.module_analysis ++> [
         frontend.kernel_analyze { ModuleAnalysis },
         frontend.kernel_host { ModuleAnalysis, analyze_module },
