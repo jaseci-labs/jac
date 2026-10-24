@@ -31,7 +31,7 @@ import from io { StringIO }
 import from contextlib { redirect_stderr, redirect_stdout }
 import from unittest.mock { patch }
 
-import from jaclang.cli.commands.analysis { format as fmt_cmd }
+import from jaclang.cli.commands.analysis { format as fmt_cmd, lint as lint_cmd }
 import from jaclang.project { config as config_mod }
 
 glob CLEAN = "def f(x: int) -> int {\n    return x + 1;\n}\n",
@@ -365,5 +365,55 @@ test "lintfix moves separate-impls bodies into the module's impl annex" {
             f"one, got:\n{annex_text!r}"
         );
         assert again == 0 , f"[jobs={jobs}] a second run must find nothing to move";
+    }
+}
+
+test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {
+    broken = "impl Foo.bar -> int {\n    return 1;\n";
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = make_project();
+        (Path(repo) / "jac.toml").write_text(
+            '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+                + '[check.lint]\nselect = ["separate-impls"]\n'
+        );
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            mod = Path(repo) / "mod.jac";
+            annex = Path(repo) / "mod.impl.jac";
+            mod_src = MOD_SRC + "\n" + CLEAN;
+            mod.write_text(mod_src);
+            annex.write_text(broken);
+            other = Path(repo) / "other.jac";
+            other_src = "glob LIMIT: int = 3;\n";
+            other.write_text(other_src);
+            inputs = [str(mod), str(other)];
+            reset_state();
+            stats: dict[str, int] = {};
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                if mode == "lint" {
+                    ret = lint_cmd(inputs, fix=True);
+                } else {
+                    ret = fmt_cmd(
+                        inputs, lintfix=True, jobs=mode[-1], cache_stats=stats
+                    );
+                }
+            }
+            mod_text = mod.read_text();
+            annex_text = annex.read_text();
+            other_text = other.read_text();
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[{mode}] an annex that cannot be formatted fails the run";
+        assert mod_text == mod_src , f"[{mode}] the module keeps its bodies, got:\n"
+        f"{mod_text!r}";
+        assert annex_text == broken , f"[{mode}] the broken annex is left as it was, "
+        f"got:\n{annex_text!r}";
+        assert stats.get("changed", 0) == 0 , f"[{mode}] a module left unchanged is "
+        f"not counted as changed, got {stats!r}";
+        assert other_text == other_src , f"[{mode}] the clean module beside it is "
+        f"untouched, got:\n{other_text!r}";
     }
 }

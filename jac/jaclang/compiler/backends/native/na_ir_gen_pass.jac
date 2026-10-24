@@ -2906,6 +2906,7 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value;
     def _convert_scalar(val: ir.Value, src: ScalarShape, dst: ScalarShape) -> ir.Value;
     def _codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None);
+    def _names_user_symbol(target: uni.UniNode) -> bool;
     def _codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None);
     def _codegen_sized_bound(name: str, attr: str) -> (ir.Value | None);
     def _codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None);
@@ -2948,6 +2949,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_assert_computed(
+        nd: uni.AssertStmt, is_false: ir.Value, where: str
+    ) -> None;
+
     def _exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _unwind_top_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None
