@@ -2277,6 +2277,9 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     back (IEEE division rounds correctly, as reading the text would) yields
     the shortest repr: N's digits with a point k from the end, the k decimals
     written last first and zero-padded on the left. No printf and no strtod.
+    A candidate that does not fit below 1e15 converts 0 instead: `fptoui` of a
+    value past the u64 range is poison, which an `and` with a false test
+    would not stop from reaching the branch.
 
     Otherwise 15 significant digits first: a double has at most one decimal of
     15 digits that reads back as it, so if that rounding does, it is the
@@ -2389,8 +2392,9 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
             fits = b.fcmp_ordered(
                 "<", scaled, ir.Constant(f64, 1e15), name=f"fr.fit{k}"
             );
+            safe = b.select(fits, scaled, ir.Constant(f64, 0.0), name=f"fr.safe{k}");
             n = b.fptoui(
-                b.fadd(scaled, ir.Constant(f64, 0.5), name=f"fr.r{k}"),
+                b.fadd(safe, ir.Constant(f64, 0.5), name=f"fr.r{k}"),
                 i64,
                 name=f"fr.n{k}"
             );

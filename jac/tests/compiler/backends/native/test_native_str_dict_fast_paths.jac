@@ -14,7 +14,9 @@ The fixture prints what the Python backend prints under rc and managed.
 
 import os;
 import re;
-import from tests.support { assert_native_identity, NATIVE_FIXTURES }
+import subprocess;
+import tempfile;
+import from tests.support { assert_native_identity, jac_command, NATIVE_FIXTURES }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -48,4 +50,24 @@ test "strings, numbers and dict counts take their fast paths" {
 
 test "the program prints what the Python backend prints under rc and managed" {
     assert_native_identity(STR_FIXTURE, profiles=["rc", "managed"]);
+}
+
+
+test "a single-probe dict update on unsigned values adds unsigned" {
+    fixture = os.path.join(NATIVE_FIXTURES, "dict_counter_unsigned.jac");
+    with tempfile.TemporaryDirectory() as scratch {
+        binary = os.path.join(scratch, "probe");
+        comp = subprocess.run(
+            jac_command("build", "--native", fixture, "-o", binary),
+            capture_output=True,
+            text=True,
+            timeout=900
+        );
+        assert comp.returncode == 0 , comp.stderr[-1500:];
+        proc = subprocess.run([binary], capture_output=True, text=True, timeout=120);
+    }
+    assert proc.stdout.splitlines()
+        == ["9223372036854775808", "raised OverflowError"] , (
+        proc.stdout + proc.stderr[-800:]
+    );
 }

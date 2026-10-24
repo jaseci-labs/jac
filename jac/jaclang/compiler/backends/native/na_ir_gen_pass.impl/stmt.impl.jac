@@ -2148,6 +2148,7 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
             aug,
             val.right,
             target_type=tgt.type,
+            unsigned=self._is_unsigned_node(val) or self._is_unsigned_node(val.left),
             checked=self._is_sized_node(tgt) or self._is_sized_node(val)
         )
             if rhs is not None
