@@ -59,6 +59,7 @@ glob STRICT_ENV: str = "JAC_TEST_STRICT";
 
 obj NameFilter {
     has expr: str,
+        literal: bool = False,
         tree: any = None;
 
     def postinit -> None;

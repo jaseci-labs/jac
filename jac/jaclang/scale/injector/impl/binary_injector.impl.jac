@@ -60,7 +60,8 @@ impl select_injector(
     project_dir: str,
     dry_run: bool = False,
     access_mode: str = "ReadWriteMany",
-    fleet: any = None
+    fleet: any = None,
+    client_ready: any = None
 ) -> tuple[PvcInjector, str] {
     channel = resolve_dev_channel(project_dir);
     blurbs = {
@@ -90,7 +91,8 @@ impl select_injector(
             channel=channel,
             storage_class=storage_class,
             access_mode=access_mode,
-            _fleet=fleet
+            _fleet=fleet,
+            _client_ready=client_ready
         );
         injector.prepare(app_name, namespace, project_dir);
         console.print(f"Ready: {blurbs[channel]}.");

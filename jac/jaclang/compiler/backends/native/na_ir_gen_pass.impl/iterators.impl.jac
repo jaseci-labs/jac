@@ -230,12 +230,12 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
     i1 = ir.IntType(1);
     state_ptr_type = self.struct_types["StrIterState"].as_pointer();
     if self.str_len_fn is None {
         self._emit_str_len_helpers();
     }
+    self._emit_utf8_helpers();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_str");
     fn.linkage = "private";
@@ -255,22 +255,15 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     );
     idx = b.load(idx_slot, name="sit.idx");
     n = b.call(self.str_len_fn, [s_ptr], name="sit.len");
-    ok = b.icmp_signed("<", idx, n, name="sit.ok");
+    ok = b.icmp_unsigned("<", idx, n, name="sit.ok");
     b.cbranch(ok, cont, stop);
     b.position_at_end(cont);
 
-    char_ptr = b.gep(s_ptr, [idx], name="sit.char.ptr");
-    char_val = b.load(char_ptr, name="sit.char");
-    byte_idx = b.zext(char_val, i64, name="sit.char.idx");
-    cache_gv = self._get_char_cache_gv();
-    ch = b.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="sit.char.cached"
-    );
+    ch = b.call(self.utf8_char_at_fn, [s_ptr, n, idx], name="sit.char");
+    idx_next = b.call(self.utf8_cp_len_at_fn, [s_ptr, n, idx], name="sit.adv");
     out_t = b.bitcast(fn.args[1], i8p.as_pointer(), name="sit.out");
     b.store(ch, out_t);
-    b.store(b.add(idx, ir.Constant(i64, 1), name="sit.idx.next"), idx_slot);
+    b.store(b.add(idx, idx_next, name="sit.idx.next"), idx_slot);
     b.ret(ir.Constant(i1, 1));
     b.position_at_end(stop);
     b.ret(ir.Constant(i1, 0));

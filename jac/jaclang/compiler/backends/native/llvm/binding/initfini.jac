@@ -1,4 +1,3 @@
-import from ctypes { c_uint }
 """
     Initialize the LLVM core (deprecated).
 
@@ -71,26 +70,4 @@ def initialize_native_asmparser -> object {
 
 def shutdown -> object {
     ffi.lib.LLVMPY_Shutdown();
-}
-
-with entry {
-    ffi.lib.LLVMPY_GetVersionInfo.restype = c_uint;
-}
-
-def _version_info -> object {
-    v = [];
-    try {
-        x = ffi.lib.LLVMPY_GetVersionInfo();
-    } except OSError {
-        return (0, 0, 0);
-    }
-    while x {
-        v.append((x & 255));
-        x >>= 8;
-    }
-    return `tuple(reversed(v));
-}
-
-with entry {
-    llvm_version_info = _version_info();
 }

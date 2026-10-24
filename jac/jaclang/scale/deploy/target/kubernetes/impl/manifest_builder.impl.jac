@@ -244,16 +244,27 @@ impl ManifestBuilder._prepare_injector(app_config: AppConfig) -> PvcInjector {
     proj = self.project_dir or app_config.code_folder;
     self.project_dir = proj;
     fleet = self._fleet(app_config);
-    self._build_client_bundle(proj);
-    selection = select_injector(
-        self.k8s_config.bundle_storage_class,
-        k8s_safe_name(self.k8s_config.app_name),
-        self.k8s_config.namespace,
-        proj,
-        dry_run=self.dry_run,
-        access_mode=self.k8s_config.bundle_access_mode,
-        fleet=fleet
-    );
+    (client_wait, client_ready) = self._start_client_build(proj);
+    try {
+        selection = select_injector(
+            self.k8s_config.bundle_storage_class,
+            k8s_safe_name(self.k8s_config.app_name),
+            self.k8s_config.namespace,
+            proj,
+            dry_run=self.dry_run,
+            access_mode=self.k8s_config.bundle_access_mode,
+            fleet=fleet,
+            client_ready=client_wait
+        );
+    } except Exception {
+        if client_wait is not None {
+            client_wait();
+        }
+        raise;
+    }
+    if client_ready is not None {
+        client_ready();
+    }
     injector: PvcInjector = selection[0];
     self._toolchain_object_key = str(selection[1]);
     self._pod_binary_sha256 = str(getattr(injector, "_pod_binary_sha256", ""));
@@ -284,6 +295,44 @@ impl ManifestBuilder._install_app_deps(
         return f"'jac install' exited {result.returncode}:\n{_output_tail(result)}";
     }
     return "";
+}
+
+impl client_build_alongside_seal -> bool {
+    import os;
+    if not os.path.isfile("/proc/meminfo") {
+        return False;
+    }
+    return memory_headroom_bytes()
+        >= _CLIENT_BUILD_ALONGSIDE_SEAL_GIB * 1024 * 1024 * 1024;
+}
+
+impl ManifestBuilder._start_client_build(project_dir: str) -> tuple[any, any] {
+    if self.dry_run or not self._client_entry() or not client_build_alongside_seal() {
+        self._build_client_bundle(project_dir);
+        return (None, None);
+    }
+    import threading;
+    failure: list[BaseException] = [];
+    def build {
+        try {
+            self._build_client_bundle(project_dir);
+        } except BaseException as exc {
+            failure.append(exc);
+        }
+    }
+    worker = threading.Thread(target=build, name="client-bundle", daemon=True);
+    worker.start();
+    console.print("Building the client bundle while the app is sealed.");
+    def join_build {
+        worker.join();
+    }
+    def ready {
+        worker.join();
+        if failure {
+            raise failure[0];
+        }
+    }
+    return (join_build, ready);
 }
 
 impl ManifestBuilder._build_client_bundle(project_dir: str) {
@@ -387,7 +436,7 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
             f"running this deploy ({pinned})."
         );
     }
-    stage_root = _stage_app(base, sanitized_jac_toml(base));
+    stage_root = _stage_app(base, sanitized_jac_toml(base), client_build_sources(base));
     stage = str(stage_root / "app");
     dist_candidates = self._client_dist_candidates(stage, entry_rel);
     try {
@@ -588,10 +637,28 @@ impl ManifestBuilder.generate_manifests(
 
     if getattr(self.k8s_config, "ops_console", False) {
         import from jaclang.scale.deploy.target.kubernetes.ops_rbac { build_ops_rbac }
+        if self._service_account_name() == ops_sa_name(self.k8s_config.app_name) {
+            raise ValueError(
+                f"[scale.kubernetes].service_account_name = "
+                f"'{self._service_account_name()}' is the ServiceAccount the "
+                f"Ops Console Role is bound to, so every pod would run as it "
+                f"and inherit the console's rights. Set service_account_name "
+                f"to another account, or leave it empty."
+            );
+        }
+        if self._service_account_name() and self.logger {
+            self.logger.warning(
+                f"[scale.kubernetes].service_account_name = "
+                f"'{self._service_account_name()}' does not apply to the "
+                f"gateway while ops_console is on: it runs as "
+                f"'{ops_sa_name(self.k8s_config.app_name)}'. Pre-create that "
+                f"ServiceAccount to give the gateway a cloud identity."
+            );
+        }
         bundle["ops_rbac"] = build_ops_rbac(
             self.k8s_config.app_name,
             self.k8s_config.namespace,
-            self._service_account_name(),
+            ops_sa_name(self.k8s_config.app_name),
             bool(getattr(self.k8s_config, "ops_console_mutations", False))
         );
     } elif getattr(self.k8s_config, "ops_console_mutations", False) {
@@ -1107,6 +1174,13 @@ impl ManifestBuilder._owner_labels -> dict[str, str] {
 
 impl ManifestBuilder._service_account_name -> str {
     return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
+}
+
+impl ManifestBuilder._pod_service_account(svc_name: str) -> str {
+    if svc_name == GATEWAY_NAME and getattr(self.k8s_config, "ops_console", False) {
+        return ops_sa_name(self.k8s_config.app_name);
+    }
+    return self._service_account_name();
 }
 
 impl ManifestBuilder._peer_dns_url(peer_name: str) -> str {
@@ -1767,7 +1841,7 @@ impl ManifestBuilder._build_pod_spec(svc_name: str, image: str) -> dict[str, any
             + _EXIT_CUSHION_S
             + self._alb_deregistration_cushion()
     };
-    sa_name = self._service_account_name();
+    sa_name = self._pod_service_account(svc_name);
     if sa_name {
         spec["serviceAccountName"] = sa_name;
     }

@@ -74,7 +74,8 @@ obj PvcInjector(Injector) {
         loader_image: str = "busybox:1.36",
         _object_key: str = "",
         _bundle_bytes: bytes = b"",
-        _fleet: any = None;
+        _fleet: any = None,
+        _client_ready: any = None;
 
     def _seed_artifacts -> list[tuple[str, bytes]];
     def _unpack_bundle_paths -> list[str];

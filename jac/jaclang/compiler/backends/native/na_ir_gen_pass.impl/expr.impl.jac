@@ -2375,6 +2375,27 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
             }
         }
         if then_val.type != else_val.type {
+            if isinstance(else_val.type, ir.LiteralStructType)
+                and isinstance(then_val.type, ir.PointerType)
+                and isinstance(then_val.type.pointee, ir.LiteralStructType)
+                and else_open {
+                self.builder.position_at_end(else_end_bb);
+                else_val = self._box_value_tuple(
+                    self._coerce_tuple_to_struct(else_val, then_val.type.pointee)
+                );
+                else_end_bb = self.builder.block;
+            } elif isinstance(then_val.type, ir.LiteralStructType)
+                and isinstance(else_val.type, ir.PointerType)
+                and isinstance(else_val.type.pointee, ir.LiteralStructType)
+                and then_open {
+                self.builder.position_at_end(then_end_bb);
+                then_val = self._box_value_tuple(
+                    self._coerce_tuple_to_struct(then_val, else_val.type.pointee)
+                );
+                then_end_bb = self.builder.block;
+            }
+        }
+        if then_val.type != else_val.type {
             _uni_ty = self._unify_repr_lowering([then_val.type, else_val.type]);
             if _uni_ty is not None and then_val.type != _uni_ty and then_open {
                 self.builder.position_at_end(then_end_bb);
@@ -3134,7 +3155,14 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                             name="chr.len"
                         );
                         result = self._codegen_string_index(
-                            _ddata, _didx_val, len_val=_dlen
+                            _ddata,
+                            _didx_val,
+                            len_val=_dlen,
+                            root_val=_ddata
+                                if self._nogc_headerless()
+                                else self.builder.extract_value(
+                                    target_val, 0, name="chr.root"
+                                )
                         );
                         return self._finish_borrowed_read(target_val, result);
                     }

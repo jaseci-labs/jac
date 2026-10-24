@@ -38,7 +38,8 @@ def _forward_vite_output(
     ready_event: any,
     sys_module: any,
     output_buffer: list[str],
-    dispatch: any = None
+    dispatch: any = None,
+    closed_event: any = None
 ) -> None;
 
 class ViteBundler {

@@ -62,6 +62,11 @@ def bridged_use_crosses(nm: Name) -> (str | None);
 def binds_module_name(mod: Module, nm: Name) -> bool;
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
 def client_refused_elements(mod: Module) -> dict[int, list[tuple[UniNode, str]]];
+def _runs_split(mod: Module) -> bool;
+def _demote_unreached_imports(
+    mod: Module, tentative: list[ContextAwareNode], prog: JacProgram
+) -> None;
+
 def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
 def uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[int];
 def settle_native_module(
@@ -350,6 +355,18 @@ impl build_native_legality(
         for (site, why) in scan.sites {
             legality.blockers.append(NativeRefusal(kind="module", name=why, site=site));
         }
+        for (blocked_test, why) in scan.tests {
+            legality.refuse_unit(
+                blocked_test,
+                NativeRefusal(
+                    kind="test",
+                    name=why,
+                    site=blocked_test,
+                    help="A test does not decide where its module runs, so this "
+                    "test is placed on the server and the module it tests is not."
+                )
+            );
+        }
         import from jaclang.compiler.native_bindings { import_gaps }
         for elem in mod.elements {
             if isinstance(elem, Import) and not legality.blockers {
@@ -359,6 +376,27 @@ impl build_native_legality(
                     );
                     break;
                 }
+            }
+        }
+        for (dep_test, test_imp, test_dep) in scan.test_dep_imports {
+            if legality.unit_refused(dep_test) {
+                continue;
+            }
+            (test_closure, _test_bridged) = native_closure_blocker(
+                judging, mod_path, [test_dep]
+            );
+            if test_closure {
+                legality.refuse_unit(
+                    dep_test,
+                    NativeRefusal(
+                        kind="test",
+                        name=test_closure,
+                        site=test_imp,
+                        help="A module this test imports cannot be placed native, so "
+                        "the test is placed on the server and the module it tests "
+                        "is not."
+                    )
+                );
             }
         }
         for (imp, dep) in scan.dep_imports {
@@ -635,8 +673,14 @@ impl uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[in
     changed = True;
     while changed {
         changed = False;
-        mixed = any(e.code_context == CodeContext.NATIVE for e in tops.values())
-            and any(e.code_context == CodeContext.SERVER for e in tops.values());
+        runs = [
+            e
+            for e in tops.values()
+            if not isinstance(e, Test)
+        ];
+        mixed = any(e.code_context == CodeContext.NATIVE for e in runs)
+            and any(e.code_context == CodeContext.SERVER for e in runs);
+        split = _runs_split(mod);
         if mixed {
             for (eid, elem) in tops.items() {
                 if eid not in held
@@ -668,7 +712,10 @@ impl uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[in
                     continue;
                 }
                 native_side = elem if caller_native else target;
-                if id(native_side) in held {
+                if id(native_side) in held
+                    or (
+                        isinstance(elem, Test) and native_side is not elem and not split
+                    ) {
                     continue;
                 }
                 _stamp_context_element(native_side, CodeContext.SERVER);
@@ -678,6 +725,45 @@ impl uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[in
         }
     }
     return moved;
+}
+
+impl _demote_unreached_imports(
+    mod: Module, tentative: list[ContextAwareNode], prog: JacProgram
+) -> None {
+    refresh_placement_module(mod, prog);
+    refs = placement_work(prog).refs(mod);
+    reached: set[int] = set();
+    for elem in mod.elements {
+        if isinstance(elem, ContextAwareNode)
+            and elem.code_context == CodeContext.NATIVE
+            and not isinstance(elem, Import) {
+            reached.update(refs.get(id(elem), set()));
+        }
+    }
+    for elem in tentative {
+        if isinstance(elem, Import)
+            and elem.parent is mod
+            and elem.code_context == CodeContext.NATIVE
+            and id(elem) not in reached {
+            elem.code_context = CodeContext.SERVER;
+        }
+    }
+}
+
+impl _runs_split(mod: Module) -> bool {
+    has_native = False;
+    has_server = False;
+    for elem in mod.elements {
+        if not isinstance(elem, ContextAwareNode) or isinstance(elem, Test) {
+            continue;
+        }
+        if elem.code_context == CodeContext.NATIVE {
+            has_native = True;
+        } elif elem.code_context == CodeContext.SERVER {
+            has_server = True;
+        }
+    }
+    return has_native and has_server;
 }
 
 impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
@@ -903,6 +989,17 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
             elem.code_context = CodeContext.SERVER;
         }
     }
+    if mod_path
+        and self.prog.options is not None
+        and self.prog.options.native_required_for(mod_path) {
+        for elem in tentative {
+            if isinstance(elem, Test) and elem.code_context == CodeContext.SERVER {
+                for refusal in legality.unit_refusals(elem) {
+                    self._emit_refusal(refusal, "the module is native-required");
+                }
+            }
+        }
+    }
     if tentative {
         inferred_refused.update(
             uncrossable_native(ir_in, self.prog, set(required.keys()))
@@ -930,21 +1027,28 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     }
     refresh_placement_module(ir_in, self.prog);
     if carries_native and inferred_refused {
-        refs = placement_work(self.prog).refs(ir_in);
-        reached: set[int] = set();
-        for elem in ir_in.elements {
-            if isinstance(elem, ContextAwareNode)
-                and elem.code_context == CodeContext.NATIVE
-                and not isinstance(elem, Import) {
-                reached.update(refs.get(id(elem), set()));
-            }
-        }
-        for elem in tentative {
-            if isinstance(elem, Import)
-                and elem.parent is ir_in
-                and elem.code_context == CodeContext.NATIVE
-                and id(elem) not in reached {
-                elem.code_context = CodeContext.SERVER;
+        _demote_unreached_imports(ir_in, tentative, self.prog);
+        if _runs_split(ir_in) {
+            split_moved = uncrossable_native(ir_in, self.prog, set(required.keys()));
+            if split_moved {
+                inferred_refused.update(split_moved);
+                _demote_unreached_imports(ir_in, tentative, self.prog);
+                still_native = False;
+                for elem in ir_in.elements {
+                    if isinstance(elem, ContextAwareNode)
+                        and elem.code_context == CodeContext.NATIVE
+                        and not isinstance(elem, Import) {
+                        still_native = True;
+                        break;
+                    }
+                }
+                if not still_native {
+                    for elem in tentative {
+                        if elem.code_context == CodeContext.NATIVE {
+                            elem.code_context = CodeContext.SERVER;
+                        }
+                    }
+                }
             }
         }
     }
@@ -954,12 +1058,16 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     }
 
     placed: list[CodeContext] = [];
+    runs: list[CodeContext] = [];
     seen: set[int] = set();
     for elem in ir_in.elements {
         if not isinstance(elem, ContextAwareNode) {
             continue;
         }
         placed.append(elem.code_context);
+        if not isinstance(elem, Test) {
+            runs.append(elem.code_context);
+        }
         need = required.get(id(elem));
         if elem.code_context == CodeContext.NATIVE and id(elem) in native_refused {
             refusals: list[NativeRefusal] = list(legality.module);
@@ -1005,7 +1113,8 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     }
     self._report_unmet(legality, "" if candidate else why);
 
-    uniform = placed[0] if placed and all(ctx == placed[0] for ctx in placed) else None;
+    runs = runs or placed;
+    uniform = runs[0] if runs and all(ctx == runs[0] for ctx in runs) else None;
     ir_in.decided_codespace = uniform.value
         if uniform is not None and uniform != CodeContext.SERVER
         else "";

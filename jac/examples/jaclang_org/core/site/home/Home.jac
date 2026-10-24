@@ -10,18 +10,3 @@ glob HOME_SECTIONS: list[dict[str, any]] = [
      ];
 
 def:pub Home -> JsxElement;
-
-impl Home -> JsxElement {
-    return
-        <>
-            <SectionRail items={HOME_SECTIONS}/>
-            <HomeHero/>
-            <OneLanguage/>
-            <NoGlue/>
-            <InProduction/>
-            <NativeBench/>
-            <AgentNative/>
-            <ReadableTiers/>
-            <HomeClose/>
-        </>;
-}

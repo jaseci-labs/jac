@@ -39,6 +39,13 @@ inputs:
       built from this tree (#10219). Empty builds the kernel as usual.
     required: false
     default: ""
+  native-kernel:
+    description: >
+      Keep the native compiler kernel in a pull request's kit, as the
+      `native:kernel` label does. ci.yml's build-kit sets it when the PR
+      touches a path the kernel is lowered from.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -295,14 +302,15 @@ runs:
       # sourcesKey); main keeps the full key, so the runtime is at most one main
       # build behind.
       # A pull request's kit leaves the native compiler kernel out unless the
-      # PR carries the `native:kernel` label. The seal omits only what
-      # JAC_KIT_OMIT names (artifacts/kit.jac pr_kit_omits), so a build that
-      # does not come through here, such as build-binaries.yml, ships it all.
+      # PR carries the `native:kernel` label or the caller sets native-kernel.
+      # The seal omits only what JAC_KIT_OMIT names (artifacts/kit.jac
+      # pr_kit_omits), so a build that does not come through here, such as
+      # build-binaries.yml, ships it all.
       env:
         PYTHON: ${{ steps.py.outputs.variant }}
         PR_BUILD: ${{ github.event_name == 'pull_request' }}
         KERNEL_DIR: ${{ inputs.kernel-dir }}
-        JAC_KIT_OMIT: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'native:kernel') && 'kernel' || '' }}
+        JAC_KIT_OMIT: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'native:kernel') && inputs.native-kernel != 'true' && 'kernel' || '' }}
       run: |
         PY=(-Dpython="$PYTHON")
         if [ "$PYTHON" = jacpython ]; then PY+=(-Dreuse-python="$PR_BUILD"); fi

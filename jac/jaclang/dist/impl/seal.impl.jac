@@ -86,8 +86,7 @@ impl build_serve_manifest(
         services: list[AppConfig] = [];
         if config is not None {
             selected = config.app_for_path(str(entry_file.resolve()));
-            if selected is not None
-                and kind_has_server(config.resolved_kind(selected)) {
+            if selected is not None {
                 services = service_apps(config, selected);
             }
         }
@@ -104,6 +103,7 @@ impl build_serve_manifest(
             ) for application in [prepared, *prepared.applications]
             for (path, manifest) in application.manifests.items()
         };
+        result.update(serve_manifest_stamp());
         return result;
     } except Exception as e {
         console.error(f"Seal aborted: application preparation failed: {e}");

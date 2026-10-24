@@ -60,13 +60,25 @@ impl CFGBuildPass._exit_wired(nd: UniCFGNode) -> bool {
         return bool(nd.bb_out);
     }
     for succ in nd.bb_out {
-        if isinstance(succ, InnerCompr) {
+        if isinstance(succ, InnerCompr) or self._in_nested_lambda(succ, nd) {
             continue;
         }
         if not isinstance(succ, CfgExpr)
             or succ.find_parent_of_type(UniCFGNode) is not nd {
             return True;
         }
+    }
+    return False;
+}
+
+impl CFGBuildPass._in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool {
+    lam = succ.find_parent_of_type(LambdaExpr);
+    cur: UniNode | None = lam;
+    while cur is not None {
+        if cur is nd {
+            return True;
+        }
+        cur = cur.parent;
     }
     return False;
 }
@@ -704,6 +716,24 @@ impl CFGBuildPass.exit_jsx_slot with JsxSlot exit {
             }
             self._link_sequential(body);
         }
+    }
+}
+
+impl CFGBuildPass.exit_lambda_expr with LambdaExpr exit {
+    if not isinstance(here.body, Sequence) {
+        return;
+    }
+    body = [
+        s
+        for s in here.body
+        if isinstance(s, CodeBlockStmt)
+    ];
+    if body {
+        enclosing = here.find_parent_of_type(CodeBlockStmt);
+        if enclosing is not None {
+            self.link_bbs(enclosing, body[0]);
+        }
+        self._link_sequential(body);
     }
 }
 

@@ -43,13 +43,15 @@ impl platform_slug -> (str | None) {
     }.get(
         platform.machine().lower()
     );
-    system = {'Linux': 'linux', 'Darwin': 'darwin'}.get(platform.system());
+    system = {'Linux': 'linux', 'Darwin': 'darwin', 'Windows': 'windows'}.get(
+        platform.system()
+    );
     return f"{system}-{arch}" if arch and system else None;
 }
 
 impl _bin_of(dist: str) -> (str | None) {
     for candidate in [os.path.join(dist, 'bin'), dist] {
-        if os.path.isfile(os.path.join(candidate, 'postgres')) {
+        if os.path.isfile(os.path.join(candidate, postgres_exe())) {
             return candidate;
         }
     }
@@ -57,7 +59,7 @@ impl _bin_of(dist: str) -> (str | None) {
 }
 
 impl pg_major_of(bin_dir: str) -> (int | None) {
-    postgres = os.path.join(bin_dir, 'postgres');
+    postgres = os.path.join(bin_dir, postgres_exe());
     if not os.path.isfile(postgres) {
         return None;
     }
@@ -93,7 +95,7 @@ impl _cached(major: int) -> (str | None) {
         for name in os.listdir(cache)
         if name.startswith(slug + '-')
             and not name.endswith('.part')
-            and os.path.isfile(os.path.join(cache, name, 'bin', 'postgres'))
+            and os.path.isfile(os.path.join(cache, name, 'bin', postgres_exe()))
     ];
     if not versions {
         return None;
@@ -109,7 +111,7 @@ impl _cached(major: int) -> (str | None) {
 
 impl _system(major: int) -> (str | None) {
     candidates: list[str] = [];
-    exe = shutil.which('postgres');
+    exe = shutil.which(postgres_exe());
     if exe {
         candidates.append(os.path.dirname(os.path.realpath(exe)));
     }
@@ -117,7 +119,7 @@ impl _system(major: int) -> (str | None) {
         if os.path.isdir(base) {
             for name in sorted(os.listdir(base), reverse=True) {
                 cand = os.path.join(base, name, 'bin');
-                if os.path.isfile(os.path.join(cand, 'postgres')) {
+                if os.path.isfile(os.path.join(cand, postgres_exe())) {
                     candidates.append(cand);
                 }
             }
@@ -230,7 +232,7 @@ impl download_dist -> str {
     bin_dir = os.path.join(dist_dir, 'bin');
     os.makedirs(dist_cache_dir(), exist_ok=True);
     with FileLock(Path(dist_cache_dir()) / f".{slug}-{version}.lock") {
-        if not os.path.isfile(os.path.join(bin_dir, 'postgres')) {
+        if not os.path.isfile(os.path.join(bin_dir, postgres_exe())) {
             logger.info(f"fetching embedded postgres {version} ({slug})...");
             _unpack(slug, version, dist_dir);
         }
@@ -239,13 +241,20 @@ impl download_dist -> str {
 }
 
 impl PostgresArtifact.probe_checkout -> Probe {
+    env = _env_dist();
+    if env {
+        found = _bin_of(env);
+        return Probe.hit(Source.CONFIGURED, found, {})
+            if found
+            else Probe.missing(f"JAC_PG_DIST {env!r} has no bin/{postgres_exe()}");
+    }
     configured = _configured_dist();
     if configured {
         found = _bin_of(configured);
         return Probe.hit(Source.CONFIGURED, found, {})
             if found
             else Probe.missing(
-                f"[database] postgres_dist {configured!r} has no bin/postgres"
+                f"[database] postgres_dist {configured!r} has no bin/{postgres_exe()}"
             );
     }
     major = pinned_major();
@@ -266,6 +275,142 @@ impl PostgresArtifact.checkout_path -> str {
 
 impl PostgresArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
     log(f"  postgres {pinned_major()} -> {download_dist()}");
+}
+
+impl _env_dist -> str {
+    """An explicit distribution pointed at by `JAC_PG_DIST`, or ''.
+
+    A sealed desktop app sets this to the distribution vendored into its bundle,
+    which is the only way it resolves when no jac.toml ships alongside it.
+    """;
+    raw = os.environ.get('JAC_PG_DIST', '').strip();
+    return os.path.expanduser(raw) if raw else '';
+}
+
+impl postgres_exe -> str {
+    """The name of the server executable on this platform.""";
+    return 'postgres.exe' if platform.system() == 'Windows' else 'postgres';
+}
+
+impl _dist_root(bin_dir: (str | None)) -> (str | None) {
+    """The distribution root for a bin directory, or None when it is not
+    self-contained. A vendorable distribution carries its shared libraries and
+    its share tree beside the executables (sibling `lib/` and `share/`) -- the
+    layout of every platform archive a fetch unpacks. A system install keeps
+    one of them outside the binary directory (Debian's
+    `/usr/lib/postgresql/<version>` has `lib/` but keeps `share/` under
+    `/usr/share`), so bundling it would ship a tree that cannot run on a
+    clean machine.""";
+    if not bin_dir {
+        return None;
+    }
+    parent = os.path.dirname(bin_dir);
+    if (
+        os.path.isdir(os.path.join(parent, 'lib'))
+        and os.path.isdir(os.path.join(parent, 'share'))
+    ) {
+        return parent;
+    }
+    return None;
+}
+
+impl bundled_dist_dir -> str {
+    """The self-contained distribution root to vendor into a desktop bundle.
+
+    Prefers an explicit `JAC_PG_DIST` or `[database] postgres_dist`, else the
+    cached zonky build, else a fresh download. Only a relocatable distribution
+    can be vendored, so a bare system bin directory is refused rather than
+    copied without the libraries its executables need. A fetch is the last
+    resort and is refused when the project is offline.
+    """;
+    env = _env_dist();
+    if env {
+        vendored = _dist_root(_bin_of(env));
+        if vendored {
+            return vendored;
+        }
+        raise ArtifactUnavailable(
+            f"JAC_PG_DIST {env!r} is not a self-contained postgres distribution "
+            "(no sibling lib/ and share/); point it at a jac-fetched dist or unset it"
+        );
+    }
+    configured = _configured_dist();
+    if configured {
+        vendored = _dist_root(_bin_of(configured));
+        if vendored {
+            return vendored;
+        }
+        raise ArtifactUnavailable(
+            f"[database] postgres_dist {configured!r} is not self-contained (no "
+            "sibling lib/ and share/); a desktop bundle needs a relocatable distribution"
+        );
+    }
+    found = _cached(pinned_major());
+    if found is not None {
+        vendored = _dist_root(found);
+        if vendored {
+            return vendored;
+        }
+    }
+    if offline_mode() {
+        raise ArtifactUnavailable(
+            f"no cached postgres {pinned_major()} distribution to bundle, and "
+            "this project is offline ([network] offline)"
+        );
+    }
+    vendored = _dist_root(download_dist());
+    if vendored is None {
+        raise ArtifactUnavailable(
+            "the fetched postgres distribution is not self-contained (no sibling lib/ and share/)"
+        );
+    }
+    return vendored;
+}
+
+impl cached_dist_dir -> str {
+    """The cached, self-contained distribution root, or '' when none is cached.
+
+    A dev desktop session passes this path to the host without copying the
+    tree, so the host finds the distribution the compiler already fetched in
+    the shared machine cache instead of re-fetching it into a per-app cache.
+    An explicit `JAC_PG_DIST` or `[database] postgres_dist` is honored first,
+    with `probe_checkout`'s precedence: the dev host must run the
+    distribution the developer selected, not whichever version the shared
+    cache holds, and the returned path would otherwise overwrite that
+    selection in the host's environment. A selection that is unusable for a
+    dev host returns '' rather than a cache substitute; the host's own probe
+    then reports the named distribution as missing.""";
+    for chosen in [_env_dist(), _configured_dist()] {
+        if chosen {
+            bin_dir = _bin_of(chosen);
+            vendored = _dist_root(bin_dir) if bin_dir else None;
+            return vendored or '';
+        }
+    }
+    found = _cached(pinned_major());
+    return (_dist_root(found) or '') if found is not None else '';
+}
+
+impl PostgresArtifact.build_blocker -> str {
+    """The reason a set distribution override blocks a fetch.
+
+    An override that is set but invalid cannot be fixed by fetching: the
+    provisioner would download a distribution the later check then ignores.
+    Refuse before any network work, with `probe_checkout`'s precedence (a
+    set `JAC_PG_DIST` hides a configured path).
+    """;
+    env = _env_dist();
+    if env {
+        if _bin_of(env) is None {
+            return f"JAC_PG_DIST {env!r} has no bin/{postgres_exe()}";
+        }
+        return "";
+    }
+    configured = _configured_dist();
+    if configured and _bin_of(configured) is None {
+        return f"[database] postgres_dist {configured!r} has no bin/{postgres_exe()}";
+    }
+    return "";
 }
 
 impl postgres_bin_dir -> str {

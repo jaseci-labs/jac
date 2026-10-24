@@ -355,7 +355,6 @@ impl _check(program: any, before: any) {
 impl _prepare_sealed(
     `entry: str, program: any, image_root: str, entries: list[str]
 ) -> PreparedApplication {
-    import json;
     bundle_dir = Path(image_root) / '_precompiled';
     image = image_for_bundle_dir(bundle_dir) or register_image(bundle_dir);
     if image is None {
@@ -363,14 +362,7 @@ impl _prepare_sealed(
             f'Sealed application has no artifact manifest: {image_root}'
         );
     }
-    serve_manifest = Path(image_root) / SERVE_MANIFEST_REL;
-    if not serve_manifest.is_file() {
-        raise RuntimeError(
-            f'Sealed application has no serving manifest: {serve_manifest}; '
-            'rebuild the bundle so the seal step writes it'
-        );
-    }
-    manifest = json.loads(serve_manifest.read_text());
+    manifest = read_serve_manifest(image_root);
     manifest['root'] = image_root;
     recorded: dict[str, set[str]] = {
         os.path.realpath(os.path.join(image_root, source)): {
@@ -636,6 +628,7 @@ impl _prepare(
     dev: any,
     console: any
 ) -> PreparedApplication {
+    program.forget_failed_modules();
     inputs: dict[str, str] = {};
     selfhost = program._get_compiler().selfhost;
     def capture(path: str) {

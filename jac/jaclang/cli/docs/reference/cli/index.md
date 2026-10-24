@@ -522,8 +522,8 @@ jac test [-h] [-t TEST_NAME] [-f FILTER] [-x] [-m MAXFAIL] [-d DIRECTORY] [-v] [
 | Option | Description | Default |
 |--------|-------------|---------|
 | `target` | An app name from `[apps]`, or a test file or directory. An app target runs that app's tests with `[test]` taken from the app's effective config and `directories` resolved against the app root | (default app / project) |
-| `-t, --test_name` | Specific test name | None |
-| `-f, --filter` | Filter tests by pattern | None |
+| `-t, --test_name` | Run the tests whose name contains every word given, case-insensitively. Words match literally, so `and`, `or` and `not` are ordinary words here: `-t "loads and reports"` selects `test "native command loads and reports status"` | None |
+| `-f, --filter` | Boolean expression over name words: `and`, `or`, `not` and parentheses, e.g. `-f "auth and not slow"` | None |
 | `-x, --xit` | Exit on first failure | `False` |
 | `-m, --maxfail` | Max failures before stop | None |
 | `-d, --directory` | Test directory | None |
@@ -822,7 +822,7 @@ Outputs are printed raw so they pipe cleanly; JSON-valued results (`eval`, `get`
 
 **Sessions and persistence:**
 
-A launched browser stays alive between CLI calls -- each invocation reconnects to the running Chrome recorded under `~/.cache/jacbrowser/`. Use `-s` to run multiple isolated browsers side by side. Element refs from `snapshot` (the `@e1` handles) persist across calls, so you can snapshot once and act on refs in later commands.
+A launched browser stays alive between CLI calls -- each invocation reconnects to the running Chrome recorded under `~/.cache/jacbrowser/`. Use `-s` to run multiple isolated browsers side by side. Each session keeps its Chrome profile (cookies, `localStorage`, auth tokens) in `~/.cache/jacbrowser/profile-<session>`, and that profile survives `close`: reusing a session name brings back its old storage, including a token from whatever app last ran on that port. Start signed-out or first-visit checks under a session name you have not used before. Element refs from `snapshot` (the `@e1` handles) persist across calls, so you can snapshot once and act on refs in later commands.
 
 **Refs vs. selectors:**
 
@@ -1661,6 +1661,7 @@ Every bucket has a **retention policy**:
 | `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
+| `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
 | `toolchains-downloads` | verified toolchain archives | unused 14 days |
 | `toolchains-installed`, `toolchains-build` | installed toolchains and builds | unused 90 days |
 | `models` | byLLM model weights | pinned: never collected, `purge` removes it |

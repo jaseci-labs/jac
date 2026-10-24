@@ -1,3 +1,5 @@
+def _copy_if_changed(source: Path, destination: Path);
+
 impl AssetProcessor.copy_custom_asset_types(
     self: AssetProcessor, src_dir: Path, dest_dir: Path, preserve_structure: bool = True
 ) -> None {
@@ -24,7 +26,7 @@ impl AssetProcessor.copy_custom_asset_types(
                 }
                 dest_file.parent.mkdir(parents=True, exist_ok=True);
                 try {
-                    shutil.copy2(item, dest_file);
+                    _copy_if_changed(item, dest_file);
                 } except (OSError, shutil.Error) as e {
                     console.warning(
                         f"Failed to copy custom asset '{item}' to '{dest_file}': {e}"
@@ -69,7 +71,7 @@ impl AssetProcessor.copy_assets(
                 }
                 dest_file.parent.mkdir(parents=True, exist_ok=True);
                 try {
-                    shutil.copy2(item, dest_file);
+                    _copy_if_changed(item, dest_file);
                 } except (OSError, shutil.Error) as e {
                     console.warning(
                         f"Failed to copy asset '{item}' to '{dest_file}': {e}"
@@ -81,4 +83,12 @@ impl AssetProcessor.copy_assets(
         }
     }
     copy_recursive(src_dir, dest_dir);
+}
+
+impl _copy_if_changed(source: Path, destination: Path) {
+    import filecmp;
+    if destination.is_file() and filecmp.cmp(source, destination, shallow=False) {
+        return;
+    }
+    shutil.copy2(source, destination);
 }

@@ -81,6 +81,7 @@ obj KernelArtifact(Artifact) {
     override def probe_kit -> Probe;
     override def checkout_path -> str;
     def spec -> TargetSpec;
+    def for_host -> bool;
     override def build(log: Callable[[str], None], force: bool, exact: bool);
 }
 

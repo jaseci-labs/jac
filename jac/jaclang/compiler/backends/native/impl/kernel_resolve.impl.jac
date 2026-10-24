@@ -277,6 +277,9 @@ impl KernelArtifact.unavailable_reason -> str {
 }
 
 impl KernelArtifact.probe_sealed -> (Probe | None) {
+    if not self.for_host() {
+        return None;
+    }
     sealed = _from_sealed_image();
     if sealed is None {
         return None;
@@ -292,6 +295,9 @@ impl KernelArtifact.probe_checkout -> Probe {
 }
 
 impl KernelArtifact.probe_kit -> Probe {
+    if not self.for_host() {
+        return Probe.missing("a kit carries only its own target's kernel");
+    }
     found = _bundled_kernel();
     if found is None {
         return Probe.missing("this process runs on no kit that carries one");
@@ -306,6 +312,10 @@ impl KernelArtifact.checkout_path -> str {
 
 impl KernelArtifact.spec -> TargetSpec {
     return target_spec(self.variant) if self.variant else host_target_spec();
+}
+
+impl KernelArtifact.for_host -> bool {
+    return self.spec().osarch == host_target_spec().osarch;
 }
 
 impl KernelArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {

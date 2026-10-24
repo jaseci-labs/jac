@@ -60,6 +60,8 @@ def stage_program(
     dist_dir: (Path | None)
 ) -> dict[str, str];
 
+def stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str;
+
 impl _jaclang_src_roots -> list[Path] {
     roots: list[Path] = [];
     jac_src = os.environ.get("JAC_DESKTOP_JAC_SRC");
@@ -186,6 +188,34 @@ impl _stage_fused_runtime(out_dir: Path) {
         }
     }
 }
+
+impl stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str {
+    """Vendor the self-contained Postgres distribution for an embedded app.
+
+    Returns the app-relative path of the vendored tree, which the host config
+    carries so `host_boot` can point `JAC_PG_DIST` at it and start with no
+    network. A remote-backend app needs no local database and vendors nothing.
+    Only a relocatable distribution is accepted (`bundled_dist_dir` refuses a
+    bare system bin directory), so the bundled tree runs from any machine.
+
+    With `vendor` off (a dev session) nothing is copied: the returned path
+    points at the shared machine cache, which the compiler already populated,
+    so the host finds that distribution instead of a fresh per-app cache.
+    """;
+    if backend != "embedded" {
+        return "";
+    }
+    import from jaclang.data.pg_dist { bundled_dist_dir, cached_dist_dir }
+    if not vendor {
+        return cached_dist_dir();
+    }
+    src = Path(bundled_dist_dir());
+    dst = resources / "pgdist";
+    console.print("  Bundling the embedded postgres distribution…", style="muted");
+    shutil.copytree(src, dst, dirs_exist_ok=True);
+    return "pgdist";
+}
+
 
 impl _bundle_runtime(host_binary: Path) {
     jac_bin = os.path.realpath(os.sys.executable);
@@ -318,23 +348,27 @@ impl serving_app_for(config: any, entry_file: Path, backend: str) -> str {
         return "";
     }
     selected_app = config.app_for_path(str(entry_file.resolve()));
+    if selected_app is not None {
+        return selected_app.name;
+    }
     if backend != "embedded" {
-        return selected_app.name if selected_app is not None else "";
+        return "";
     }
     try {
         chosen = config.resolve_app("");
     } except ValueError {
         chosen = None;
     }
-    if chosen is not None and chosen.has_server {
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         return chosen.name;
     }
-    for app in config.serving_apps() {
+    for app in serving {
         if app.kind == "web-app" {
             return app.name;
         }
     }
-    return selected_app.name if selected_app is not None else "";
+    return "";
 }
 
 impl stage_program(
@@ -373,4 +407,53 @@ impl stage_program(
     );
     build_jab(config, image_dir / "app.jab", app=app, bake_client=False);
     return {"jab": "app.jab"};
+}
+
+def desktop_storage_identifier(
+    identifier: str, project_dir: Path, entry_file: Path, backend: str
+) -> str;
+
+impl desktop_storage_identifier(
+    identifier: str, project_dir: Path, entry_file: Path, backend: str
+) -> str {
+    """Suffix the storage identity with the legacy selected workspace app.
+
+    The `[desktop]` identifier is a project-wide default. A workspace may serve
+    several apps, so each app needs its own data directory. This helper keeps
+    the pre-existing selection order for storage identity: changing which app
+    a release seals must not move an existing install to a new, empty store.""";
+    if not identifier {
+        return identifier;
+    }
+    import from jaclang.project.config { get_config_for_dir }
+    config = get_config_for_dir(str(project_dir));
+    serving = storage_app_for(config, entry_file, backend);
+    return f"{identifier}.{serving}" if serving else identifier;
+}
+
+def storage_app_for(config: any, entry_file: Path, backend: str) -> str;
+
+impl storage_app_for(config: any, entry_file: Path, backend: str) -> str {
+    if config is None or not config.is_workspace or not config.apps {
+        return "";
+    }
+    selected_app = config.app_for_path(str(entry_file.resolve()));
+    if backend != "embedded" {
+        return selected_app.name if selected_app is not None else "";
+    }
+    try {
+        chosen = config.resolve_app("");
+    } except ValueError {
+        chosen = None;
+    }
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
+        return chosen.name;
+    }
+    for app in serving {
+        if app.kind == "web-app" {
+            return app.name;
+        }
+    }
+    return selected_app.name if selected_app is not None else "";
 }

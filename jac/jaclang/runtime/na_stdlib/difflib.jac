@@ -1,9 +1,6 @@
 def _zeros(n: int) -> list[int];
 
 
-def _str_gt(a: str, b: str) -> bool;
-
-
 def _popular_flags(b: str, autojunk: bool) -> list[int];
 
 

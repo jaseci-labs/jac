@@ -37,12 +37,16 @@ impl toc_of(text: str) -> list[TocEntry] {
         if ln.strip().startswith("```") {
             fenced = not fenced;
         } elif not fenced {
-            if ln.startswith("## ") {
-                t = ln[3:].strip();
-                toc.append(TocEntry(level=2, text=t, anchor=slugify(t)));
-            } elif ln.startswith("### ") {
-                t = ln[4:].strip();
-                toc.append(TocEntry(level=3, text=t, anchor=slugify(t)));
+            level = 2 if ln.startswith("## ") else (3 if ln.startswith("### ") else 0);
+            if level {
+                t = ln[level + 1:].strip();
+                anchor = "";
+                m = re.search(r"\s*\{#([A-Za-z0-9_\-]+)\}\s*$", t);
+                if m {
+                    anchor = m.group(1) as str;
+                    t = t[:m.start()].rstrip();
+                }
+                toc.append(TocEntry(level=level, text=t, anchor=anchor or slugify(t)));
             }
         }
     }

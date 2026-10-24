@@ -491,14 +491,417 @@ test "the macOS bundle metadata names the app for Finder and the Dock" {
 }
 
 
-test "macOS app state lives under Application Support" {
+test "desktop app state lives under a per-user, per-app data dir" {
+    import os;
+    import from unittest.mock { patch }
     import from jaclang.client.targets.desktop.native.host_boot { default_data_dir }
-    mac = default_data_dir(
-        "Darwin", "org.example.notes", "Notes", "/apps/Notes.app/Contents/Resources"
-    );
+
+    mac = default_data_dir("Darwin", "org.example.notes", "Notes");
     assert mac.endswith("/Library/Application Support/org.example.notes");
-    unnamed = default_data_dir("Darwin", "", "Notes", "/x");
+    unnamed = default_data_dir("Darwin", "", "Notes");
     assert unnamed.endswith("/Library/Application Support/Notes");
-    assert default_data_dir("Linux", "org.example.notes", "Notes", "/apps/notes")
-        == "/apps/notes";
+
+    with patch.dict(os.environ, {"XDG_DATA_HOME": "/xdg"}) {
+        assert default_data_dir("Linux", "org.example.notes", "Notes")
+            == "/xdg/org.example.notes";
+        assert default_data_dir("Linux", "", "Notes") == "/xdg/Notes";
+        assert default_data_dir("Linux", "org.example.other", "Notes")
+            != default_data_dir("Linux", "org.example.notes", "Notes");
+    }
+    with patch.dict(os.environ, {"LOCALAPPDATA": "/win/Local"}) {
+        assert default_data_dir("Windows", "org.example.notes", "Notes")
+            == os.path.join("/win/Local", "org.example.notes");
+    }
+}
+
+
+test "the embedded store env scopes the cluster and points at the bundle" {
+    import os;
+    import from jaclang.client.targets.desktop.native.host_boot { embedded_store_env }
+    env = embedded_store_env(
+        "/apps/Notes.app/Contents/Resources", "/xdg/org.example.notes", "pgdist"
+    );
+    assert env["JAC_PG_HOME"] == "/xdg/org.example.notes";
+    assert env["JAC_PG_DIST"]
+        == os.path.join("/apps/Notes.app/Contents/Resources", "pgdist");
+    remote = embedded_store_env("/apps/x", "/xdg/org.example.notes", "");
+    assert "JAC_PG_DIST" not in remote;
+}
+
+
+test "the embedded stop path is the shared Postgres cluster dir" {
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _embedded_cluster_dir
+    }
+    import from jaclang.server.session { shared_pg_data_dir }
+    with patch.dict(os.environ, {"JAC_PG_HOME": "/xdg/org.example.notes"}) {
+        assert _embedded_cluster_dir("/xdg/org.example.notes") == shared_pg_data_dir();
+    }
+}
+
+
+test "a remote-backend app vendors no postgres distribution" {
+    import from pathlib { Path }
+    import from jaclang.client.targets.desktop.desktop_build { stage_postgres }
+    assert stage_postgres(Path("/tmp/nowhere"), "https://api.example.com") == "";
+}
+
+
+test "a dev build points the host at the shared cached distribution" {
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.desktop_build { stage_postgres }
+    cached = "/home/jac/.cache/jac/pg/dist/linux-amd64-19";
+    with patch("jaclang.data.pg_dist.cached_dist_dir", return_value=cached) {
+        assert stage_postgres(Path("/tmp/nowhere"), "embedded", vendor=False) == cached;
+    }
+    with patch("jaclang.data.pg_dist.cached_dist_dir", return_value="") {
+        assert stage_postgres(Path("/tmp/nowhere"), "embedded", vendor=False) == "";
+    }
+}
+
+
+test "the embedded store stops only when the last instance leaves" {
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _EMBEDDED_LOCKS,
+        _EMBEDDED_STOPPED,
+        _embedded_cluster_dir,
+        _join_embedded_store,
+        _stop_embedded_store
+    }
+    with TemporaryDirectory() as tmp {
+        calls: list[str] = [];
+        def _record(home: str) {
+            calls.append(home);
+        }
+        with patch("jaclang.data.pgembed.stop_cluster", side_effect=_record) {
+            _EMBEDDED_STOPPED.discard(tmp);
+            _join_embedded_store(tmp);
+            # Leaving once stops the cluster; a second leave (the shutdown hook
+            # and the atexit backstop) is a no-op, not a second stop.
+            _stop_embedded_store(tmp);
+            _stop_embedded_store(tmp);
+            assert calls == [_embedded_cluster_dir(tmp)] , calls;
+            assert tmp not in _EMBEDDED_LOCKS;
+        }
+    }
+}
+
+
+test "a peer instance keeps the cluster alive on leave" {
+    import fcntl;
+    import os;
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _embedded_user_lock_path,
+        _holds_last_embedded_user
+    }
+    with TemporaryDirectory() as tmp {
+        path = _embedded_user_lock_path(tmp);
+        os.makedirs(os.path.dirname(path), exist_ok=True);
+        mine = open(path, "a");
+        peer = open(path, "a");
+        fcntl.flock(mine.fileno(), fcntl.LOCK_SH);
+        fcntl.flock(peer.fileno(), fcntl.LOCK_SH);
+        # Two instances hold the lock, so neither is the last user and neither
+        # may stop the shared cluster.
+        assert not _holds_last_embedded_user(mine);
+        peer.close();
+        # The peer is gone; the survivor is now the last user.
+        assert _holds_last_embedded_user(mine);
+        mine.close();
+    }
+}
+
+
+test "an upgrade migrates state stored beside the app image" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _migrate_legacy_data_dir
+    }
+    with TemporaryDirectory() as tmp {
+        app_dir = Path(tmp) / "app";
+        legacy = app_dir / ".jac" / "desktop";
+        legacy.mkdir(parents=True);
+        (legacy / "session.json").write_text("{}");
+        data_dir = str(Path(tmp) / "xdg" / "org.example.notes");
+        _migrate_legacy_data_dir(data_dir, str(app_dir));
+        migrated = Path(data_dir) / ".jac" / "desktop" / "session.json";
+        assert migrated.is_file() , "legacy state must carry forward";
+        # A populated new dir is never clobbered by a second migration.
+        migrated.write_text('{"kept": true}');
+        _migrate_legacy_data_dir(data_dir, str(app_dir));
+        assert migrated.read_text() == '{"kept": true}';
+        # Same old and new dir (macOS, Windows): nothing to do.
+        _migrate_legacy_data_dir(str(app_dir), str(app_dir));
+        assert migrated.is_file();
+    }
+}
+
+
+test "booting an embedded host restores the process env" {
+    import os;
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _enter_embedded_env,
+        _leave_embedded_env
+    }
+    os.environ.pop("JAC_PG_HOME", None);
+    os.environ.pop("JAC_PG_DIST", None);
+    try {
+        _enter_embedded_env(
+            {"JAC_PG_HOME": "/tmp/app-data", "JAC_PG_DIST": "/tmp/app-pg"}
+        );
+        assert os.environ["JAC_PG_HOME"] == "/tmp/app-data";
+        _leave_embedded_env();
+        assert "JAC_PG_HOME" not in os.environ;
+        assert "JAC_PG_DIST" not in os.environ;
+        os.environ["JAC_PG_HOME"] = "/tmp/prior";
+        _enter_embedded_env({"JAC_PG_HOME": "/tmp/next"});
+        assert os.environ["JAC_PG_HOME"] == "/tmp/next";
+        _leave_embedded_env();
+        assert os.environ["JAC_PG_HOME"] == "/tmp/prior";
+    } finally {
+        os.environ.pop("JAC_PG_HOME", None);
+        os.environ.pop("JAC_PG_DIST", None);
+    }
+}
+
+test "a failed migration leaves nothing behind and stops the boot" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _migrate_legacy_data_dir
+    }
+    with TemporaryDirectory() as tmp {
+        app_dir = Path(tmp) / "app";
+        legacy = app_dir / ".jac" / "desktop";
+        legacy.mkdir(parents=True);
+        (legacy / "session.json").write_text("{}");
+        data_dir = str(Path(tmp) / "xdg" / "org.example.notes");
+        current = Path(data_dir) / ".jac" / "desktop";
+        def out_of_space(src: str, dst: str, **kwargs: any) {
+            raise OSError("no space left on device");
+        }
+        failed: (RuntimeError | None) = None;
+        with patch("shutil.copytree", out_of_space) {
+            try {
+                _migrate_legacy_data_dir(data_dir, str(app_dir));
+            } except RuntimeError as e {
+                failed = e;
+            }
+        }
+        assert failed is not None , "a failed migration must stop the boot";
+        assert not current.exists() , "no partial state may be published";
+        leftovers = list((Path(data_dir) / ".jac").glob("desktop.migrating*"));
+        assert not leftovers , f"staging must be cleaned, found {leftovers}";
+        assert (legacy / "session.json").is_file() , "legacy stays readable";
+        _migrate_legacy_data_dir(data_dir, str(app_dir));
+        assert (current / "session.json").is_file() , "the next boot retries";
+    }
+}
+
+test "a workspace app scopes its storage identity to the served app" {
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.desktop_build {
+        desktop_storage_identifier
+    }
+    entry_file = Path("/ws/app/main.jac");
+    with patch("jaclang.project.config.get_config_for_dir", return_value=None), patch(
+        "jaclang.client.targets.desktop.desktop_build.storage_app_for",
+        return_value="notes"
+    ) {
+        assert desktop_storage_identifier(
+            "org.example.notes", Path("/ws"), entry_file, "embedded"
+        )
+            == "org.example.notes.notes";
+    }
+    with patch("jaclang.project.config.get_config_for_dir", return_value=None), patch(
+        "jaclang.client.targets.desktop.desktop_build.storage_app_for", return_value=""
+    ) {
+        assert desktop_storage_identifier(
+            "org.example.notes", Path("/ws"), entry_file, "embedded"
+        )
+            == "org.example.notes";
+    }
+}
+
+test "leaving while a peer holds the cluster still restores the env" {
+    import fcntl;
+    import os;
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _EMBEDDED_LOCKS,
+        _EMBEDDED_STOPPED,
+        _embedded_user_lock_path,
+        _enter_embedded_env,
+        _join_embedded_store,
+        _stop_embedded_store
+    }
+    os.environ.pop("JAC_PG_HOME", None);
+    with TemporaryDirectory() as tmp {
+        path = _embedded_user_lock_path(tmp);
+        os.makedirs(os.path.dirname(path), exist_ok=True);
+        peer = open(path, "a");
+        fcntl.flock(peer.fileno(), fcntl.LOCK_SH);
+        calls: list[str] = [];
+        def _record(home: str) {
+            calls.append(home);
+        }
+        try {
+            with patch("jaclang.data.pgembed.stop_cluster", side_effect=_record) {
+                _EMBEDDED_STOPPED.discard(tmp);
+                _enter_embedded_env({"JAC_PG_HOME": tmp});
+                _join_embedded_store(tmp);
+                _stop_embedded_store(tmp);
+                # The peer keeps the cluster alive...
+                assert calls == [] , calls;
+                # ...but this host hands the process environment back, so
+                # later work here cannot reach the peer's storage.
+                assert "JAC_PG_HOME" not in os.environ;
+            }
+        } finally {
+            peer.close();
+            os.environ.pop("JAC_PG_HOME", None);
+            _EMBEDDED_LOCKS.pop(tmp, None);
+            _EMBEDDED_STOPPED.discard(tmp);
+        }
+    }
+}
+
+test "a rebooted embedded host cleans up on its second leave" {
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _EMBEDDED_LOCKS,
+        _EMBEDDED_STOPPED,
+        _embedded_cluster_dir,
+        _join_embedded_store,
+        _stop_embedded_store
+    }
+    with TemporaryDirectory() as tmp {
+        calls: list[str] = [];
+        def _record(home: str) {
+            calls.append(home);
+        }
+        with patch("jaclang.data.pgembed.stop_cluster", side_effect=_record) {
+            _EMBEDDED_STOPPED.discard(tmp);
+            # First lifetime: join, leave. Second lifetime: join, leave --
+            # the stop recorded by the first must not swallow the second.
+            _join_embedded_store(tmp);
+            _stop_embedded_store(tmp);
+            _join_embedded_store(tmp);
+            _stop_embedded_store(tmp);
+            cluster = _embedded_cluster_dir(tmp);
+            assert calls == [cluster, cluster] , calls;
+            assert tmp not in _EMBEDDED_LOCKS;
+        }
+    }
+}
+
+test "the last embedded user holds the exclusive lock through cluster stop" {
+    import fcntl;
+    import os;
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _EMBEDDED_LOCKS,
+        _EMBEDDED_STOPPED,
+        _embedded_user_lock_path,
+        _join_embedded_store,
+        _stop_embedded_store
+    }
+    with TemporaryDirectory() as tmp {
+        path = _embedded_user_lock_path(tmp);
+        attempts: list[bool] = [];
+        def _probe_during_stop(home: str) {
+            probe = open(path, "a");
+            acquired = False;
+            try {
+                fcntl.flock(probe.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB);
+                acquired = True;
+            } except BlockingIOError {
+                acquired = False;
+            } finally {
+                probe.close();
+            }
+            attempts.append(acquired);
+        }
+        with patch(
+            "jaclang.data.pgembed.stop_cluster", side_effect=_probe_during_stop
+        ) {
+            _EMBEDDED_STOPPED.discard(tmp);
+            _join_embedded_store(tmp);
+            _stop_embedded_store(tmp);
+            assert attempts == [False] , "new instances must wait until the old cluster stops";
+            assert tmp not in _EMBEDDED_LOCKS;
+            _EMBEDDED_STOPPED.discard(tmp);
+        }
+    }
+}
+
+test "a failed embedded boot releases its store lock" {
+    import json;
+    import os;
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import jaclang.client.targets.desktop.native.host_boot as host_boot;
+    with TemporaryDirectory() as data_dir {
+        prior_home = os.environ.get("JAC_PG_HOME");
+        prior_dist = os.environ.get("JAC_PG_DIST");
+        prior_data = os.environ.get("JAC_DATA_PATH");
+        os.environ["JAC_DATA_PATH"] = data_dir;
+        os.environ["JAC_PG_HOME"] = "/prior/pg-home";
+        os.environ["JAC_PG_DIST"] = "/prior/pg-dist";
+        host_boot._EMBEDDED_STOPPED.discard(data_dir);
+        failed = False;
+        try {
+            with patch.object(
+                host_boot, "_apply_extra_deps", side_effect=RuntimeError("boot failed")
+            ) {
+                with patch("jaclang.data.pgembed.stop_cluster"), patch(
+                    "atexit.register"
+                ) {
+                    try {
+                        host_boot.boot(json.dumps({"backend": "embedded"}));
+                    } except RuntimeError as e {
+                        failed = True;
+                        assert "boot failed" in str(e);
+                    }
+                }
+            }
+            assert failed , "the injected boot failure must propagate";
+            assert data_dir not in host_boot._EMBEDDED_LOCKS , "failed boot must release its lock";
+            assert os.environ["JAC_PG_HOME"] == "/prior/pg-home";
+            assert os.environ["JAC_PG_DIST"] == "/prior/pg-dist";
+        } finally {
+            handle = host_boot._EMBEDDED_LOCKS.pop(data_dir, None);
+            if handle is not None {
+                handle.close();
+            }
+            host_boot._EMBEDDED_STOPPED.discard(data_dir);
+            if prior_data is None {
+                os.environ.pop("JAC_DATA_PATH", None);
+            } else {
+                os.environ["JAC_DATA_PATH"] = prior_data;
+            }
+            if prior_home is None {
+                os.environ.pop("JAC_PG_HOME", None);
+            } else {
+                os.environ["JAC_PG_HOME"] = prior_home;
+            }
+            if prior_dist is None {
+                os.environ.pop("JAC_PG_DIST", None);
+            } else {
+                os.environ["JAC_PG_DIST"] = prior_dist;
+            }
+        }
+    }
 }

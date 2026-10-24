@@ -585,6 +585,7 @@ impl serve(
         }
         def _announce_ready(actual_port: int) {
             primary_port = actual_port;
+            client_error = '';
             if dev and not no_client {
                 free_vite_port = _find_free_port(
                     vite_port, skip_port=actual_port, strict=port_pinned
@@ -600,13 +601,13 @@ impl serve(
                 } except Exception as e {
                     console.warning(f"Could not read declared API paths: {e}");
                 }
-                (started_vite, bound_port) = _start_vite_dev_server(
+                (started_vite, bound_port, client_error) = _start_vite_dev_server(
                     base, free_vite_port, actual_port, declared_paths, claimed_paths
                 );
                 if started_vite {
                     vite_holder.append(started_vite);
+                    primary_port = bound_port;
                 }
-                primary_port = bound_port;
             }
             _print_startup_message(
                 dev=dev,
@@ -614,7 +615,8 @@ impl serve(
                 primary_port=primary_port,
                 api_port=actual_port,
                 base_path=base,
-                watch_paths=watch_paths
+                watch_paths=watch_paths,
+                client_error=client_error
             );
         }
         try {
@@ -678,7 +680,8 @@ def _print_startup_message(
     primary_port: int,
     api_port: int,
     base_path: str = '.',
-    watch_paths: (list[str] | None) = None
+    watch_paths: (list[str] | None) = None,
+    client_error: str = ''
 );
 
 def _find_free_port(start: int, skip_port: int = 0, strict: bool = False) -> int;
@@ -689,7 +692,7 @@ def _start_vite_dev_server(
     api_port: int,
     api_paths: (list[str] | None) = None,
     client_paths: (list[str] | None) = None
-) -> any;
+) -> tuple[any, int, str];
 
 impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     if len(sys.argv) > 1 and sys.argv[1] == "debug" {
@@ -1862,7 +1865,8 @@ impl _print_startup_message(
     primary_port: int,
     api_port: int,
     base_path: str = '.',
-    watch_paths: (list[str] | None) = None
+    watch_paths: (list[str] | None) = None,
+    client_error: str = ''
 ) {
     import from importlib.metadata { version as pkg_version }
 
@@ -1885,7 +1889,7 @@ impl _print_startup_message(
 
     console.print();
 
-    if dev and not no_client {
+    if dev and not no_client and not client_error {
         console.print("  Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
@@ -1899,8 +1903,11 @@ impl _print_startup_message(
         } else {
             console.print("  Watching for changes", style="info");
         }
-    } elif dev and no_client {
+    } elif dev {
         console.print("  Server ready (API only)", style="bold green");
+        if client_error {
+            console.error(f"  The client dev server is not running: {client_error}");
+        }
         console.print();
         file_count = sum(_count_jac_files(p) for p in (watch_paths or [base_path]));
         if file_count > 0 {
@@ -1937,7 +1944,7 @@ impl _start_vite_dev_server(
     api_port: int,
     api_paths: (list[str] | None) = None,
     client_paths: (list[str] | None) = None
-) -> any {
+) -> tuple[any, int, str] {
     import from pathlib { Path }
 
     try {
@@ -1971,13 +1978,13 @@ impl _start_vite_dev_server(
         }
 
         process = bundler.start_dev_server(vite_port, suppress_initial_output=True);
-        return (process, bundler.dev_server_port or vite_port);
+        return (process, bundler.dev_server_port or vite_port, '');
     } except ImportError as e {
         console.warning(f"client bundler unavailable, skipping Vite dev server: {e}");
-        return (None, vite_port);
+        return (None, vite_port, f"the client bundler is unavailable: {e}");
     } except Exception as e {
         console.warning(f"Could not start Vite dev server: {e}");
-        return (None, vite_port);
+        return (None, vite_port, str(e));
     }
 }
 

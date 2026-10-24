@@ -15,3 +15,5 @@ impl initial_of(name: str) -> str {
 impl count_label(count: int, one: str, many: str) -> str {
     return str(count) + " " + (one if count == 1 else many);
 }
+
+def:pub text_segments(text: str) -> list[dict[str, str]];

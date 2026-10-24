@@ -1,3 +1,4 @@
+import asyncio;
 import from contextvars { ContextVar }
 
 import from logging { getLogger }
@@ -43,6 +44,7 @@ obj ExecutionContext {
     def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;
     def close -> None;
+    async def aclose -> None;
     async def bind_stream(value: any) -> any;
     def on_commit(callback: Callable) -> None;
     def run_pending_effects -> None;

@@ -21,7 +21,8 @@ obj _JsonStyle {
 
 
 obj _JsonParser {
-    has src: str,
+    has buf: bytes,
+        n: int,
         pos: int = 0;
 
     def _cc -> int;
@@ -29,6 +30,7 @@ obj _JsonParser {
     def _parse_value -> any;
     def _parse_string -> str;
     def _hex4 -> int;
+    def _hex4_pair -> int;
     def _parse_number -> any;
     def _parse_array -> any;
     def _parse_object -> any;
@@ -42,6 +44,9 @@ def _hex_digit(v: int) -> str;
 
 
 def _hex4_str(n: int) -> str;
+
+
+def _dump_plain(ch: int, ensure_ascii: bool) -> bool;
 
 
 def _dump_str(s: str, ensure_ascii: bool) -> str;

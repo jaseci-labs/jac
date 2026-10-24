@@ -5,7 +5,11 @@ import from pathlib { Path }
 import from typing { Optional }
 
 def _assemble_native_host(
-    entry_file: Path, project_dir: Path, output_dir: Path, dist_dir: Optional[Path]
+    entry_file: Path,
+    project_dir: Path,
+    output_dir: Path,
+    dist_dir: Optional[Path],
+    vendor: bool = True
 ) -> Path;
 
 def webview_build(
@@ -23,7 +27,11 @@ def webview_dev(
 );
 
 impl _assemble_native_host(
-    entry_file: Path, project_dir: Path, output_dir: Path, dist_dir: Optional[Path]
+    entry_file: Path,
+    project_dir: Path,
+    output_dir: Path,
+    dist_dir: Optional[Path],
+    vendor: bool = True
 ) -> Path {
     cfg = get_desktop_config(project_dir);
     cfg.validate();
@@ -54,6 +62,7 @@ impl _assemble_native_host(
     program = stage_program(
         entry_file, project_dir, layout.resources, backend, dist_dir
     );
+    pg_dist = stage_postgres(layout.resources, backend, vendor);
 
     _stage_fused_runtime(output_dir);
     host_src = _generate_host_source(
@@ -67,7 +76,10 @@ impl _assemble_native_host(
         dispatch.max_queue,
         dispatch.debug,
         plugin_configs,
-        identifier=ident.identifier
+        identifier=desktop_storage_identifier(
+            ident.identifier, project_dir, entry_file, backend
+        ),
+        pg_dist=pg_dist
     );
     (output_dir / "host.jac").write_text(host_src);
 
@@ -181,7 +193,9 @@ impl webview_dev(
     try {
         console.print("  Building native host (once for dev session)…", style="muted");
 
-        binary = _assemble_native_host(entry_file, project_dir, out_dir, None);
+        binary = _assemble_native_host(
+            entry_file, project_dir, out_dir, None, vendor=False
+        );
 
         env = desktop_app_runtime_env();
         env["JAC_DESKTOP_DEV_PORT"] = str(vite_port);

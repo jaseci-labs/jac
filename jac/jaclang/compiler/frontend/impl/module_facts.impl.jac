@@ -150,6 +150,20 @@ impl ModuleFacts.iter_context_stmts(
     return result;
 }
 
+impl ModuleFacts.is_test_code(nd: UniNode) -> bool {
+    return isinstance(nd.top_element, Test);
+}
+
+impl ModuleFacts.iter_placement_stmts(module: Module) -> list[UniNode] {
+    weighed: list[UniNode] = [];
+    for stmt in module.body {
+        if not ModuleFacts.is_test_code(stmt) {
+            weighed.append(stmt);
+        }
+    }
+    return weighed;
+}
+
 impl ModuleFacts.iter_module_imports(
     module: Module, ctx: (CodeContext | None) = None
 ) -> list[Import] {

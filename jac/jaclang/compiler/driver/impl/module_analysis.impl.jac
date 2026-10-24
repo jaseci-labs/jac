@@ -147,7 +147,11 @@ impl admits_boundaries(task: ModuleAnalysis) -> bool {
 }
 
 impl run_boundaries(task: ModuleAnalysis) {
-    task.require(CompilationProduct.BOUNDARIES);
+    options = task.options;
+    native = options.aot_mode and options.default_codespace == "native";
+    task.require(
+        CompilationProduct.BOUNDARIES, ProductRequest(endpoint_effects=not native)
+    );
 }
 
 impl run_plan(task: ModuleAnalysis, steps: tuple[PlanStep, ...]) {
