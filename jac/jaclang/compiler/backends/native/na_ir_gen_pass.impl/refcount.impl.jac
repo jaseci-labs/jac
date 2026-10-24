@@ -614,9 +614,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         if self._rc_debug_codegen {
             b.branch(unbuf_hdr);
         } else {
-            # (the push recorded the root's slot in the low half of its
-            # alloc-id word: clear that slot, O(1). The search below is only
-            # a fallback should the recorded slot not hold this object)
             unbuf_direct = release_fn.append_basic_block("unbuf.direct");
             (_ud_csp, _ud_cb) = self._emit_rc_color_load(b, release_fn.args[0]);
             _ud_idx = b.and_(
