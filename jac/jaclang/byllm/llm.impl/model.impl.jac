@@ -96,6 +96,7 @@ impl Model.invoke(mt_run: MTRuntime) -> any {
     import time;
     import types as _types_mod;
 
+    self._call_deadline(mt_run);
     _parent = _current_invocation_id.get(None);
     _invocation_id = str(uuid.uuid4());
     setattr(mt_run, "_parent_invocation_id", _parent);
@@ -143,6 +144,7 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
     import time;
     import types as _types_mod;
 
+    self._call_deadline(mt_run);
     logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
     no_tools = len(mt_run.tools) == 0;
     handled_directly = (no_tools and not logging_stream)
@@ -256,7 +258,9 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
             );
         } elif self.proxy {
             require_optional("openai", "llm");
-            client: any = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
+            client: any = OpenAI(
+                base_url=self.api_base, api_key=self.api_key or None, max_retries=0
+            );
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
@@ -293,7 +297,9 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     try {
         if self.proxy {
             require_optional("openai", "llm");
-            client: any = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
+            client: any = OpenAI(
+                base_url=self.api_base, api_key=self.api_key or None, max_retries=0
+            );
             response = client.chat.completions.create(stream=True, **params);
         } else {
             require_optional("litellm", "llm");
@@ -301,21 +307,12 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
                 stream=True,
                 api_key=self.api_key or None,
                 api_base=self.api_base or None,
+                num_retries=0,
                 **params
             );
         }
-    } except litellm.exceptions.AuthenticationError as e {
-        raise AuthenticationError(str(e));
-    } except openai.AuthenticationError as e {
-        raise AuthenticationError(str(e));
-    } except litellm.exceptions.RateLimitError as e {
-        raise RateLimitError(str(e));
-    } except openai.RateLimitError as e {
-        raise RateLimitError(str(e));
-    } except litellm.exceptions.NotFoundError as e {
-        raise ModelNotFoundError(str(e));
-    } except openai.NotFoundError as e {
-        raise ModelNotFoundError(str(e));
+    } except Exception as e {
+        self._raise_mapped_provider_error(e);
     }
     return response;
 }
@@ -352,7 +349,7 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
             require_optional("openai", "llm");
             if not self._async_proxy_client {
                 self._async_proxy_client = AsyncOpenAI(
-                    base_url=self.api_base, api_key=self.api_key or None
+                    base_url=self.api_base, api_key=self.api_key or None, max_retries=0
                 );
             }
             async_client = self._async_proxy_client;
@@ -405,7 +402,7 @@ impl Model.model_call_with_stream_async(
             require_optional("openai", "llm");
             if not self._async_proxy_client {
                 self._async_proxy_client = AsyncOpenAI(
-                    base_url=self.api_base, api_key=self.api_key or None
+                    base_url=self.api_base, api_key=self.api_key or None, max_retries=0
                 );
             }
             async_client = self._async_proxy_client;
@@ -419,6 +416,7 @@ impl Model.model_call_with_stream_async(
                 stream=True,
                 api_key=self.api_key or None,
                 api_base=self.api_base or None,
+                num_retries=0,
                 **params
             );
         }
