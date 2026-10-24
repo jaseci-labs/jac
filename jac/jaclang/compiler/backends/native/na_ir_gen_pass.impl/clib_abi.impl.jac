@@ -593,7 +593,7 @@ impl NaIRGenPass._c_entry_tail_or_escape(
     if not self._thunk_tail_callable(c_entry, jac_fn) {
         return False;
     }
-    if self._direct_c_entries() {
+    if self._direct_c_entry(c_entry) {
         self._thunk_tail_call(c_entry, jac_fn);
         return True;
     }

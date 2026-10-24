@@ -59,7 +59,7 @@ test "a tail call to a C function returning a pointer takes the caller's prototy
         in text , text;
 }
 
-test "a runtime build's C entries jump straight in and its views are unchecked" {
+test "a runtime build's handlers jump straight in and its views are unchecked" {
     options = CompileOptions(
         aot_mode=True,
         default_codespace="native",
@@ -74,9 +74,14 @@ test "a runtime build's C entries jump straight in and its views are unchecked" 
         native_direct_c_entries=True
     );
     text = str(
-        compile_native_ir("clib_preserve_none.jac", options=options).gen.llvm_ir
+        compile_native_ir("clib_preserve_none_mixed.jac", options=options).gen.llvm_ir
     );
-    assert "centry.region.open" not in text , text;
+    handler = text[text.index('define preserve_nonecc i64 @"pn_hop"('):];
+    handler = handler[:handler.index("\n}\n")];
+    assert "centry.region.open" not in handler , handler;
+    plain = text[text.index('define i64 @"plain_entry"('):];
+    plain = plain[:plain.index("\n}\n")];
+    # A C entry outside the handler convention still escapes an open region.
+    assert "centry.region.open" in plain , plain;
     assert "c.view.null" not in text , text;
-    assert 'define preserve_nonecc i64 @"pn_count"(' in text , text;
 }

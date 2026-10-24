@@ -16,10 +16,18 @@ impl NaIRGenPass._unchecked_views_on -> bool {
     return opts is not None and bool(opts.native_unchecked_views);
 }
 
-impl NaIRGenPass._direct_c_entries -> bool {
+impl NaIRGenPass._direct_c_entry(fn: ir.Function) -> bool {
+    """Whether C entry `fn` jumps straight into its body, without escaping a
+    region the caller may have open: always in the kernel, and for the
+    preserve_none handlers of a runtime build (native_direct_c_entries), which
+    only other handlers enter and which allocate nothing Jac manages.""";
+    if self._is_kernel_unit() {
+        return True;
+    }
     opts = self.prog.options;
-    return self._is_kernel_unit()
-        or (opts is not None and bool(opts.native_direct_c_entries));
+    return opts is not None
+        and bool(opts.native_direct_c_entries)
+        and (fn.calling_convention or "") == "preserve_nonecc";
 }
 
 impl NaIRGenPass._na_debug_on -> bool {
