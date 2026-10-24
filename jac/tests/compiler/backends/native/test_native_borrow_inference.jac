@@ -39,7 +39,9 @@ test "locals that only borrow emit no retain" {
     for gc_mode in ["cycles", "rc"] {
         text = fixture_ir(gc_mode);
         for name in ["keep_elem", "keep_loop", "keep_field"] {
-            assert retains_in(text, name) == 0 , f"{gc_mode} {name}: {retains_in(text, name)} retains";
+            assert retains_in(text, name) == 0 , f"{gc_mode} {name}: {retains_in(
+                text, name
+            )} retains";
         }
     }
 }
