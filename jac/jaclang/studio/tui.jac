@@ -5003,24 +5003,24 @@ impl start_review(app: Studio, req: dict[str, any]) -> None {
         return bool(req.get("cancelled"));
     }
     def work {
-        while True {
+        again = True;
+        dropped = False;
+        while again {
             try {
                 req["review"] = gate.review(path, content, cancelled);
             } except Exception as e {
                 req["error"] = str(e);
             }
             with REVIEW_LOCK {
-                if req.get("cancelled") {
-                    gate.unstage_if(path, content);
+                dropped = bool(req.get("cancelled"));
+                again = not dropped and bool(req.pop("recheck", False));
+                if not again {
                     req["done"] = True;
-                    break;
                 }
-                if req.pop("recheck", False) {
-                    continue;
-                }
-                req["done"] = True;
-                break;
             }
+        }
+        if dropped {
+            gate.unstage_if(path, content);
         }
         app.dirty = True;
     }
