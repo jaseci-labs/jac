@@ -54,8 +54,30 @@ def run -> list[str] {
     return out;
 }
 
+glob seen: list[int] = [];
+
+def record(v: int) -> int {
+    seen.append(v);
+    return v % 3;
+}
+
+def counted -> list[str] {
+    out: list[str] = [];
+    xs = [5, 3, 9, 1, 7, 2];
+    seen.clear();
+    ys = sorted(xs, key=record);
+    out.append(f"sorted calls {seen} -> {ys}");
+    seen.clear();
+    xs.sort(key=record, reverse=True);
+    out.append(f"sort calls {seen} -> {xs}");
+    return out;
+}
+
 with entry {
     for line in run() {
+        print(line);
+    }
+    for line in counted() {
         print(line);
     }
 }

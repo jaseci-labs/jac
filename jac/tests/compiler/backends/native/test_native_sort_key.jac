@@ -39,10 +39,20 @@ test "a key sort computes each key once and merge-sorts positions" {
     run = body_of(fixture_ir(SORT_FIXTURE), ".run");
     assert "ksort.merge.compare" in run;
     assert "sort.inner.body" not in run , "the bubble sort is back";
+    assert "ksort.alloc.fail" in run and "ksort.copy.failed" in run , (
+        "a failed workspace allocation no longer frees what it holds"
+    );
 }
 
 test "the program prints what the Python backend prints under rc and managed" {
-    assert_native_identity(SORT_FIXTURE, profiles=["rc", "managed"]);
+    out = assert_native_identity(SORT_FIXTURE, profiles=["rc", "managed"]);
+    lines = out.splitlines();
+    assert "sorted calls [5, 3, 9, 1, 7, 2] -> [3, 9, 1, 7, 5, 2]" in lines , (
+        "sorted(key=) must call the key once per element, in element order: " + out
+    );
+    assert "sort calls [5, 3, 9, 1, 7, 2] -> [5, 2, 1, 7, 3, 9]" in lines , (
+        "list.sort(key=) must call the key once per element, in element order: " + out
+    );
 }
 
 test "a key sort releases the keys it was handed" {

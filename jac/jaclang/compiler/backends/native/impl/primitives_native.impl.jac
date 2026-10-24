@@ -3259,6 +3259,11 @@ impl NativeListEmitter._emit_key_sort(
     sorted positions, through a copy of the data. A key the call returns is
     owned, as a call expression's result is, and keys handed over owned are
     released once the order is known.
+
+    A workspace allocation that fails raises MemoryError without leaking:
+    the first two buffers are freed together, and a failed copy buffer skips
+    the rearrangement (the list stays as it was), releases the keys and frees
+    the workspace before it raises.
     """;
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
@@ -3316,6 +3321,7 @@ impl NativeListEmitter._emit_key_sort(
     output_slot = p._entry_alloca(i64, "ksort.output");
     source_slot = p._entry_alloca(i64.as_pointer(), "ksort.source");
     target_slot = p._entry_alloca(i64.as_pointer(), "ksort.target");
+    failed_slot = p._entry_alloca(ir.IntType(1), "ksort.failed");
     b.cbranch(b.icmp_unsigned("<=", length, one), done, allocate);
 
     b.position_at_start(allocate);
@@ -3334,14 +3340,26 @@ impl NativeListEmitter._emit_key_sort(
     perm_raw = b.call(
         malloc, [b.mul(length, ir.Constant(i64, 16))], name="ksort.perm.raw"
     );
-    p._emit_runtime_raise(
+    alloc_fail = fn.append_basic_block("ksort.alloc.fail");
+    alloc_ok = fn.append_basic_block("ksort.alloc.ok");
+    b.cbranch(
         b.or_(
             b.icmp_unsigned("==", keys_raw, ir.Constant(i8p, None)),
-            b.icmp_unsigned("==", perm_raw, ir.Constant(i8p, None))
+            b.icmp_unsigned("==", perm_raw, ir.Constant(i8p, None)),
+            name="ksort.alloc.failed"
         ),
-        "MemoryError",
-        "cannot allocate sort workspace"
+        alloc_fail,
+        alloc_ok
     );
+    b.position_at_start(alloc_fail);
+    b.call(free, [keys_raw]);
+    b.call(free, [perm_raw]);
+    p._emit_runtime_raise(
+        ir.Constant(ir.IntType(1), 1), "MemoryError", "cannot allocate sort workspace"
+    );
+    b.branch(alloc_ok);
+    b.position_at_start(alloc_ok);
+    b.store(ir.Constant(ir.IntType(1), 0), failed_slot);
     keys = b.bitcast(keys_raw, key_type.as_pointer(), name="ksort.keys");
     first = b.bitcast(perm_raw, i64.as_pointer(), name="ksort.perm");
     second = b.gep(first, [length], name="ksort.perm.second");
@@ -3460,11 +3478,13 @@ impl NativeListEmitter._emit_key_sort(
     data = b.bitcast(data, data_type, name="ksort.data.typed");
     nbytes = b.mul(length, ir.Constant(i64, itemsize));
     copy_raw = b.call(malloc, [nbytes], name="ksort.copy.raw");
-    p._emit_runtime_raise(
-        b.icmp_unsigned("==", copy_raw, ir.Constant(i8p, None)),
-        "MemoryError",
-        "cannot allocate sort workspace"
+    copy_failed = b.icmp_unsigned(
+        "==", copy_raw, ir.Constant(i8p, None), name="ksort.copy.failed"
     );
+    b.store(copy_failed, failed_slot);
+    copy_ok = fn.append_basic_block("ksort.copy.ok");
+    b.cbranch(copy_failed, drop_keys, copy_ok);
+    b.position_at_start(copy_ok);
     b.call(memcpy, [copy_raw, b.bitcast(data, i8p), nbytes]);
     copy = b.bitcast(copy_raw, data_type, name="ksort.copy");
     order = b.load(source_slot, name="ksort.order");
@@ -3499,6 +3519,11 @@ impl NativeListEmitter._emit_key_sort(
     b.position_at_start(finish);
     b.call(free, [keys_raw]);
     b.call(free, [perm_raw]);
+    p._emit_runtime_raise(
+        b.load(failed_slot, name="ksort.failed.now"),
+        "MemoryError",
+        "cannot allocate sort workspace"
+    );
     b.branch(done);
     b.position_at_start(done);
     return ir.Constant(i64, 0);
