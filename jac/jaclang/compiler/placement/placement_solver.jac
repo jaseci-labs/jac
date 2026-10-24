@@ -1,3 +1,5 @@
+import hashlib;
+import json;
 import os;
 
 
@@ -23,6 +25,12 @@ def refresh_placement_module(module: uni.Module, prog: JacProgram);
 def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None);
+
+def _native_scan_store(path: str, files: list[str], hold_exempt: bool) -> str;
+
+def _read_native_scan(store: str) -> (NativeDepScan | None);
+
+def _write_native_scan(store: str, reason: str, deps: list[str]);
 
 def _native_deps_ok(
     root_path: str, root_deps: list[str], hold_exempt: bool = False

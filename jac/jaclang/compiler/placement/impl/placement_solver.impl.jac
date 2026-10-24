@@ -37,6 +37,14 @@ impl _native_dep_scan(
     if cached is not None and cached.fresh == fresh {
         return (cached.reason, cached.deps);
     }
+    store = _native_scan_store(path, stamped, hold_exempt);
+    held = _read_native_scan(store);
+    if held is not None {
+        _na_scan_memo[memo_key] = NativeDepScan(
+            fresh=fresh, reason=held.reason, deps=held.deps
+        );
+        return (held.reason, held.deps);
+    }
     sv_reason = '';
     deps: list[str] = [];
     base_dir = os.path.dirname(os.path.abspath(path)) or '.';
@@ -72,7 +80,73 @@ impl _native_dep_scan(
         deps = [];
     }
     _na_scan_memo[memo_key] = NativeDepScan(fresh=fresh, reason=sv_reason, deps=deps);
+    _write_native_scan(store, sv_reason, deps);
     return (sv_reason, deps);
+}
+
+impl _native_scan_store(path: str, files: list[str], hold_exempt: bool) -> str {
+    h = hashlib.sha256();
+    h.update(str(int(hold_exempt)).encode());
+    try {
+        h.update(b"\0");
+        h.update(module_env_fingerprint(path).encode());
+        for f in files {
+            h.update(b"\0");
+            h.update(os.path.realpath(f).encode());
+            h.update(b"\0");
+            h.update(compute_content_sha256(f).encode());
+        }
+    } except Exception {
+        return "";
+    }
+    key = h.hexdigest();
+    return os.path.join(
+        str(get_jir_cache_dir()), "nativescan", compiler_generation(), key[:2], key
+    );
+}
+
+impl _read_native_scan(store: str) -> (NativeDepScan | None) {
+    if not store {
+        return None;
+    }
+    raw: any = None;
+    try {
+        with open(store, "r", encoding="utf-8") as handle {
+            raw = json.load(handle);
+        }
+    } except Exception {
+        return None;
+    }
+    if not isinstance(raw, dict) {
+        return None;
+    }
+    reason = raw.get("reason");
+    deps = raw.get("deps");
+    if not isinstance(reason, str) or not isinstance(deps, list) {
+        return None;
+    }
+    out: list[str] = [];
+    for dep in deps {
+        if not isinstance(dep, str) {
+            return None;
+        }
+        out.append(dep);
+    }
+    return NativeDepScan(fresh=[], reason=reason, deps=out);
+}
+
+impl _write_native_scan(store: str, reason: str, deps: list[str]) {
+    if not store {
+        return;
+    }
+    try {
+        os.makedirs(os.path.dirname(store), exist_ok=True);
+        scratch = f"{store}.{os.getpid()}.tmp";
+        with open(scratch, "w", encoding="utf-8") as handle {
+            json.dump({"reason": reason, "deps": list(deps)}, handle);
+        }
+        os.replace(scratch, store);
+    } except OSError {}
 }
 
 impl _native_deps_ok(

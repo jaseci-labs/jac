@@ -1,0 +1,1 @@
+- A native build reads each dependency's native-blocker scan from the JIR cache instead of parsing every unchanged module in the import closure again to judge an importer; an edit to a module or its annexes still rescans it.
