@@ -41,9 +41,10 @@ The mobUI guard covers only this app's modules -- your HTML-based `web` app next
 ```bash
 # Android tools are provisioned automatically; iOS requires macOS + Xcode.
 jac create --app mobile --kind mobile             # writes the table above
-jac run --dev mobile                             # Metro Fast Refresh on device/emulator (first run scaffolds .jac/mobile-rn/)
+jac run mobile                                   # scan the QR code with Expo Go; Fast Refresh (first run scaffolds .jac/mobile-rn/)
+jac run --tunnel mobile                          # the same when the phone can't reach this machine
 jac setup mobile                                 # optional: provision the Expo scaffold ahead of time
-jac run --dev --platform web mobile              # the same screens in a browser via react-native-web
+jac run --platform web mobile                    # the same screens in a browser via react-native-web
 jac build mobile --platform android              # → APK (iOS: .app via xcodebuild, .ipa via EAS)
 jac build mobile --platform web                  # → the browser bundle
 ```

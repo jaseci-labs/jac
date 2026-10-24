@@ -4300,7 +4300,9 @@ impl NaIRGenPass._codegen_sized_builtin_call(
         }
         return None;
     }
-    if func_name is None or func_name in self.local_vars {
+    if func_name is None
+        or func_name in self.local_vars
+        or self._names_user_symbol(nd.target) {
         return None;
     }
     if JAC_TYPE_REGISTRY.is_sized(func_name) {
@@ -4310,6 +4312,14 @@ impl NaIRGenPass._codegen_sized_builtin_call(
         return self._codegen_wrapping(nd, func_name);
     }
     return None;
+}
+
+impl NaIRGenPass._names_user_symbol(target: uni.UniNode) -> bool {
+    if not isinstance(target, uni.Name) or target.sym is None {
+        return False;
+    }
+    scope = target.sym.parent_tab;
+    return not (isinstance(scope, uni.Module) and scope.stub_only);
 }
 
 impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {

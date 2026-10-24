@@ -758,6 +758,22 @@ exact = false               # true: never reuse an earlier compiler's products
 pod_binary = "../jac/zig-out/bin/jac"  # ship this jac to scale pods (channel local)
 ```
 
+`jaclang_source` is how a project runs jac from a source checkout, for example
+one vendored as a git submodule. There is no environment variable for it.
+
+- The path is relative to this `jac.toml` and names the directory that
+  *contains* `jaclang/` (in a jac clone, its `jac/` directory).
+- Only the nearest `jac.toml` is read: a subdirectory with its own `jac.toml`
+  needs its own `[dev]` table.
+- The checkout needs its typeshed stubs (`zig build fetch-typeshed` in that
+  checkout). Without them jac prints `ignoring the dev compiler source ...` and
+  the bundled compiler serves the run.
+- The choice is made once per process tree: child processes run the same
+  compiler, even when they start in another directory.
+
+When the source is in use, every command prints
+`[dev] jac dev mode - using compiler source at <path>`.
+
 ### [network]
 
 ```toml

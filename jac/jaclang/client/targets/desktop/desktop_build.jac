@@ -348,23 +348,27 @@ impl serving_app_for(config: any, entry_file: Path, backend: str) -> str {
         return "";
     }
     selected_app = config.app_for_path(str(entry_file.resolve()));
+    if selected_app is not None {
+        return selected_app.name;
+    }
     if backend != "embedded" {
-        return selected_app.name if selected_app is not None else "";
+        return "";
     }
     try {
         chosen = config.resolve_app("");
     } except ValueError {
         chosen = None;
     }
-    if chosen is not None and chosen.has_server {
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         return chosen.name;
     }
-    for app in config.serving_apps() {
+    for app in serving {
         if app.kind == "web-app" {
             return app.name;
         }
     }
-    return selected_app.name if selected_app is not None else "";
+    return "";
 }
 
 impl stage_program(
@@ -412,19 +416,44 @@ def desktop_storage_identifier(
 impl desktop_storage_identifier(
     identifier: str, project_dir: Path, entry_file: Path, backend: str
 ) -> str {
-    """Suffix the storage identity with the app a workspace entry serves.
+    """Suffix the storage identity with the legacy selected workspace app.
 
-    The `[desktop]` identifier is a project-wide default, but one workspace
-    can serve several apps, and a shared data dir would let them read and
-    overwrite each other's graph, session, and embedded cluster. When the
-    entry resolves to a named serving app, that name joins the identifier so
-    every served app keeps its own storage; a project without distinct apps
-    keeps the plain identifier, so existing installs see no change.""";
+    The `[desktop]` identifier is a project-wide default. A workspace may serve
+    several apps, so each app needs its own data directory. This helper keeps
+    the pre-existing selection order for storage identity: changing which app
+    a release seals must not move an existing install to a new, empty store.""";
     if not identifier {
         return identifier;
     }
     import from jaclang.project.config { get_config_for_dir }
     config = get_config_for_dir(str(project_dir));
-    serving = serving_app_for(config, entry_file, backend);
+    serving = storage_app_for(config, entry_file, backend);
     return f"{identifier}.{serving}" if serving else identifier;
+}
+
+def storage_app_for(config: any, entry_file: Path, backend: str) -> str;
+
+impl storage_app_for(config: any, entry_file: Path, backend: str) -> str {
+    if config is None or not config.is_workspace or not config.apps {
+        return "";
+    }
+    selected_app = config.app_for_path(str(entry_file.resolve()));
+    if backend != "embedded" {
+        return selected_app.name if selected_app is not None else "";
+    }
+    try {
+        chosen = config.resolve_app("");
+    } except ValueError {
+        chosen = None;
+    }
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
+        return chosen.name;
+    }
+    for app in serving {
+        if app.kind == "web-app" {
+            return app.name;
+        }
+    }
+    return selected_app.name if selected_app is not None else "";
 }
