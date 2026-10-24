@@ -31,7 +31,7 @@ import from io { StringIO }
 import from contextlib { redirect_stderr, redirect_stdout }
 import from unittest.mock { patch }
 
-import from jaclang.cli.commands.analysis { format as fmt_cmd }
+import from jaclang.cli.commands.analysis { format as fmt_cmd, lint as lint_cmd }
 import from jaclang.project { config as config_mod }
 
 glob CLEAN = "def f(x: int) -> int {\n    return x + 1;\n}\n",
@@ -276,4 +276,144 @@ test "lintfix fails when a discovered annex cannot be written" {
     "formatted";
     assert stats.get("changed") == 0 , f"a module whose annex failed to write must not "
     f"count as changed, got {stats!r}";
+}
+
+test "lintfix moves separate-impls bodies into the module's impl annex" {
+    for jobs in ("0", "2") {
+        repo = make_project();
+        (Path(repo) / "jac.toml").write_text(
+            '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+                + '[check.lint]\nselect = ["separate-impls"]\n'
+        );
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            fresh = Path(repo) / "fresh.jac";
+            fresh.write_text(CLEAN);
+            mod = Path(repo) / "mod.jac";
+            annex = Path(repo) / "mod.impl.jac";
+            mod.write_text(
+                MOD_SRC + "\ndef g(x: int) -> int {\n    return x * 2;\n}\n"
+            );
+            annex.write_text(ANNEX_SRC);
+            variant = Path(repo) / "fresh.native.jac";
+            variant.write_text(CLEAN);
+            blocked = Path(repo) / "blocked.jac";
+            blocked.write_text(CLEAN);
+            stuck = Path(repo) / "stuck.jac";
+            stuck.write_text(CLEAN);
+            wide = Path(repo) / "wide.jac";
+            wide.write_text(
+                MOD_SRC + "\ndef h(x: int) -> int {\n    return x - 1;\n}\n"
+            );
+            (Path(repo) / "wide.impl.jac").write_bytes(ANNEX_SRC.encode("utf-16"));
+            files = [
+                "fresh.jac",
+                str(mod),
+                str(annex),
+                str(variant),
+                str(blocked),
+                str(stuck),
+                str(wide)
+            ];
+            reset_state();
+            with deny_writes(
+                [str(Path(repo) / "impl" / "blocked.impl.jac"), str(stuck)]
+            ) {
+                ret = fmt_cmd(files, lintfix=True, jobs=jobs);
+            }
+            stuck_annex_left = (Path(repo) / "impl" / "stuck.impl.jac").exists();
+            wide_annex = (Path(repo) / "wide.impl.jac").read_bytes();
+            fresh_text = fresh.read_text();
+            fresh_annex = (Path(repo) / "impl" / "fresh.impl.jac").read_text();
+            mod_text = mod.read_text();
+            annex_text = annex.read_text();
+            variant_annex = (
+                Path(repo) / "fresh.native.impl" / "fresh.native.impl.jac"
+            ).read_text();
+            blocked_text = blocked.read_text();
+            files.remove(str(blocked));
+            files.remove(str(stuck));
+            reset_state();
+            again = fmt_cmd(files, lintfix=True, check=True, jobs=jobs);
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[jobs={jobs}] the unwritable annex must fail the run";
+        assert blocked_text == CLEAN , f"[jobs={jobs}] a module whose annex cannot be "
+        f"written keeps its bodies, got:\n{blocked_text!r}";
+        assert b"impl h(" in wide_annex and b"bar" in wide_annex , (
+            f"[jobs={jobs}] a UTF-16 annex is fixed like any other, got {wide_annex!r}"
+        );
+        assert not stuck_annex_left , f"[jobs={jobs}] an annex written for a module "
+        "that then fails to save is rolled back";
+        assert "return x + 1" in variant_annex , (
+            f"[jobs={jobs}] a platform variant gets its own annex folder, so the "
+            "portable module does not claim its bodies"
+        );
+        assert fresh_text == "def f(x: int) -> int;\n" , f"[jobs={jobs}] the module "
+        f"keeps only the declaration, got:\n{fresh_text!r}";
+        assert fresh_annex == "impl f(x: int) -> int {\n    return x + 1;\n}\n" , (
+            f"[jobs={jobs}] a module with no annex gets one in impl/, got:\n{fresh_annex!r}"
+        );
+        assert "def g(x: int) -> int;" in mod_text and "return x * 2" not in mod_text , (
+            f"[jobs={jobs}] the body leaves the module, got:\n{mod_text!r}"
+        );
+        assert annex_text.index("impl Foo.bar") < annex_text.index("impl g(") , (
+            f"[jobs={jobs}] an existing annex keeps its impls and gains the moved "
+            f"one, got:\n{annex_text!r}"
+        );
+        assert again == 0 , f"[jobs={jobs}] a second run must find nothing to move";
+    }
+}
+
+test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {
+    broken = "impl Foo.bar -> int {\n    return 1;\n";
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = make_project();
+        (Path(repo) / "jac.toml").write_text(
+            '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+                + '[check.lint]\nselect = ["separate-impls"]\n'
+        );
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            mod = Path(repo) / "mod.jac";
+            annex = Path(repo) / "mod.impl.jac";
+            mod_src = MOD_SRC + "\n" + CLEAN;
+            mod.write_text(mod_src);
+            annex.write_text(broken);
+            other = Path(repo) / "other.jac";
+            other_src = "glob LIMIT: int = 3;\n";
+            other.write_text(other_src);
+            inputs = [str(mod), str(other)];
+            reset_state();
+            stats: dict[str, int] = {};
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                if mode == "lint" {
+                    ret = lint_cmd(inputs, fix=True);
+                } else {
+                    ret = fmt_cmd(
+                        inputs, lintfix=True, jobs=mode[-1], cache_stats=stats
+                    );
+                }
+            }
+            mod_text = mod.read_text();
+            annex_text = annex.read_text();
+            other_text = other.read_text();
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[{mode}] an annex that cannot be formatted fails the run";
+        assert mod_text == mod_src , f"[{mode}] the module keeps its bodies, got:\n"
+        f"{mod_text!r}";
+        assert annex_text == broken , f"[{mode}] the broken annex is left as it was, "
+        f"got:\n{annex_text!r}";
+        assert stats.get("changed", 0) == 0 , f"[{mode}] a module left unchanged is "
+        f"not counted as changed, got {stats!r}";
+        assert other_text == other_src , f"[{mode}] the clean module beside it is "
+        f"untouched, got:\n{other_text!r}";
+    }
 }

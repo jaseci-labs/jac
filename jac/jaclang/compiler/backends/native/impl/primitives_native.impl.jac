@@ -7551,7 +7551,7 @@ impl _str_cp_region(
     zero = ir.Constant(i64, 0);
     blen = p._call_str_len(b, target, name="rg.blen");
     ascii = p._call_str_isascii(b, target, target, blen, name="rg.isa");
-    cplen = p._call_utf8_cplen(b, target, blen, ascii, name="rg.cplen");
+    cplen = p._call_utf8_cplen(b, target, blen, ascii, name="rg.cplen", base=target);
     lo = p._emit_wrap_clamp(
         b, bounds[0], cplen, zero, ir.Constant(i64, 0x7FFFFFFFFFFFFFFF), name="rg.lo"
     )
@@ -7562,8 +7562,12 @@ impl _str_cp_region(
         else cplen;
     inverted = b.icmp_signed(">", lo, hi, name="rg.inv");
     lo_safe = b.select(inverted, hi, lo, name="rg.lo.safe");
-    lo_off = p._call_utf8_cp_off(b, target, blen, lo_safe, ascii, name="rg.lo.off");
-    hi_off = p._call_utf8_cp_off(b, target, blen, hi, ascii, name="rg.hi.off");
+    lo_off = p._call_utf8_cp_off(
+        b, target, blen, lo_safe, ascii, name="rg.lo.off", base=target
+    );
+    hi_off = p._call_utf8_cp_off(
+        b, target, blen, hi, ascii, name="rg.hi.off", base=target
+    );
     return (blen, ascii, lo, hi, lo_off, hi_off, inverted);
 }
 
@@ -7621,8 +7625,14 @@ impl _emit_str_search(
         return b.select(empty, slots, found, name="ss.count");
     }
     hit = b.icmp_signed(">=", found, zero, name="ss.hit");
-    cp_pos = p._call_utf8_cplen(
-        b, target, b.select(hit, found, zero, name="ss.safe"), ascii, name="ss.cppos"
+    cp_pos = p._call_utf8_cp_count(
+        b,
+        target,
+        blen,
+        b.select(hit, found, zero, name="ss.safe"),
+        ascii,
+        name="ss.cppos",
+        base=target
     );
     if missing {
         p._emit_runtime_raise(b.not_(hit, name="ss.miss"), "ValueError", missing);

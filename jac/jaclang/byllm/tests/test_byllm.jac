@@ -570,6 +570,49 @@ import from jaclang.byllm.exceptions {
 }
 
 
+"""Some models reject a forced tool choice, which is how litellm implements
+`response_format` on providers without native structured output. The call is
+repeated without the forced output (the schema hint stays in the prompt and
+byLLM still validates the reply), and the model is remembered so later calls
+skip the doomed attempt."""
+test "a model that rejects forced tool choice is asked again without it" {
+    model_name = "anthropic/claude-forced-tool-test";
+    seen: list[dict[str, any]] = [];
+    rejection = Exception(
+        'AnthropicException - tool_choice: type "tool" and "any" are not supported for this model.'
+    );
+
+    def fake_completion(**kwargs: any) -> any {
+        seen.append(dict(kwargs));
+        if "response_format" in kwargs {
+            raise rejection;
+        }
+        return {
+            "choices": [{"message": {"role": "assistant", "content": "{\"ok\": true}"}}]
+        };
+    }
+    model = Model(model_name=model_name);
+    params = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": "hi"}],
+        "response_format": {"type": "json_schema"},
+        "tool_choice": {"type": "function", "function": {"name": "x"}}
+    };
+    with unittest.mock.patch("litellm.completion", side_effect=fake_completion) {
+        model.model_call_no_stream(dict(params));
+        model.model_call_no_stream(dict(params));
+    }
+    assert len(seen) == 3 , f"one rejected attempt, then two without forced output: {len(
+        seen
+    )}";
+    assert "response_format" in seen[0];
+    for later in seen[1:] {
+        assert "response_format" not in later;
+        assert later["tool_choice"] == "auto";
+    }
+}
+
+
 test "provider errors map to byllm exceptions and log at ERROR regardless of debug" {
     # Rows carry byllm's classes; litellm's AuthenticationError and RateLimitError
     # share those names, so matching by name would let an unmapped error through.

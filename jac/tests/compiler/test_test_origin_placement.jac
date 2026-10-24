@@ -13,11 +13,13 @@ imports) is still the module's own code and is still weighed.
 
 import os;
 import shutil;
+import subprocess;
 import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from tests.support { jac_command }
 import from jaclang.compiler.placement.placement {
     _element_reqs,
     module_anchor_reasons,
@@ -246,6 +248,44 @@ test "a native-required module still reports a test that cannot be native" {
         assert any("calc.test.jac" in m and "root" in m for m in msgs) , (
             f"a native-required test was moved off native silently: {msgs}"
         );
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "a server-placed test reads the module's globals and calls its functions" {
+    d = _proj(
+        "import math;\n"
+            + "glob LIMITS: dict[str, int] = {\"a\": 1};\n"
+            + "def add(a: int, b: int) -> int { return a + b; }\n",
+        "test \"server test reaches native code\" {\n"
+            + "    import jaclang;\n"
+            + "    assert jaclang is not None;\n"
+            + "    assert LIMITS[\"a\"] == 1;\n"
+            + "    assert add(2, 3) == 5;\n"
+            + "    assert math.floor(2.5) == 2;\n"
+            + "}\n"
+    );
+    try {
+        prog = JacProgram();
+        mod = prog.compile(
+            os.path.join(d, "calc.jac"), options=CompileOptions(no_ir_cache=True)
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        assert _tests_of(mod)[0].code_context == uni.CodeContext.SERVER;
+        assert _named(mod, "add").code_context == uni.CodeContext.NATIVE , (
+            "a native function a server test calls stays native and is bridged"
+        );
+        proc = subprocess.run(
+            jac_command("test", "calc.jac"),
+            cwd=d,
+            capture_output=True,
+            text=True,
+            timeout=900
+        );
+        assert proc.returncode == 0 , f"exit {proc.returncode}\n{proc.stdout}\n{proc.stderr}";
+        assert "1 passed" in proc.stdout , proc.stdout;
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }

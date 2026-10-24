@@ -67,8 +67,10 @@ obj Memory {
     def unit_enter(key: (str | None) = None);
     def unit_exit;
     def unit_depth -> int;
+    def take_ro_retry -> str | None;
     def read_scope_enter;
     def read_scope_exit;
     def run_request(body: Callable) -> any;
     def close;
+    async def aclose;
 }

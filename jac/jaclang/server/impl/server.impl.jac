@@ -386,6 +386,32 @@ impl ModuleIntrospector.scheduled_members -> list[tuple[str, any, bool]] {
     return found;
 }
 
+impl ModuleIntrospector.scheduled_targets -> list[tuple[str, any, ScheduleSpec, bool]] {
+    found: list[tuple[str, any, ScheduleSpec, bool]] = [];
+    seen: set[str] = set();
+    for (name, member, is_walker) in self.scheduled_members() {
+        spec = member?.schedule_spec;
+        if isinstance(spec, ScheduleSpec) {
+            seen.add(name);
+            found.append((name, member, spec, is_walker));
+        }
+    }
+    for kind in ('walker', 'function') {
+        for rec in self.served(kind) {
+            if rec.name in seen or not self.is_scheduled(rec.name) {
+                continue;
+            }
+            member = self.target(rec.name);
+            spec = member?.schedule_spec;
+            if isinstance(spec, ScheduleSpec) {
+                seen.add(rec.name);
+                found.append((rec.name, member, spec, kind == 'walker'));
+            }
+        }
+    }
+    return found;
+}
+
 
 impl ModuleIntrospector._reset_targets -> None {
     self._functions = {};
@@ -1213,25 +1239,26 @@ impl JacAPIServer._ensure_internal_users -> None {
 }
 
 impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
-    found: list[tuple[str, any, bool]] = [];
-    seen: set[str] = set();
-    for (name, member, is_walker) in self.introspector.scheduled_members() {
-        spec = member?.schedule_spec;
-        if isinstance(spec, ScheduleSpec) {
-            seen.add(name);
-            found.append((name, spec, is_walker));
-        }
+    return [
+        (name, spec, is_walker)
+        for (name, _member, spec, is_walker) in self.introspector.scheduled_targets()
+    ];
+}
+
+impl JacAPIServer._colocated_scheduled_targets -> list[
+    tuple[str, str, any, ScheduleSpec, bool]
+] {
+    found: list[tuple[str, str, any, ScheduleSpec, bool]] = [];
+    if self.is_sv_sibling {
+        return found;
     }
-    for kind in ('walker', 'function') {
-        for rec in self.introspector.served(kind) {
-            if rec.name in seen or not self.introspector.is_scheduled(rec.name) {
-                continue;
-            }
-            spec = self.introspector.target(rec.name)?.schedule_spec;
-            if isinstance(spec, ScheduleSpec) {
-                seen.add(rec.name);
-                found.append((rec.name, spec, kind == 'walker'));
-            }
+    for (app, module) in sorted(colocated_providers().items()) {
+        intro = provider_introspector(self, app, module);
+        if intro is None {
+            continue;
+        }
+        for (name, member, spec, is_walker) in intro.scheduled_targets() {
+            found.append((app, name, member, spec, is_walker));
         }
     }
     return found;
@@ -1255,9 +1282,15 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 }
             }
             if name not in registry {
+                resolved = intro.target(name);
+                if resolved is not None and isinstance(resolved, type) == is_walker {
+                    registry[name] = resolved;
+                }
+            }
+            if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            with _self.request_scope() {
+            async with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
@@ -1286,6 +1319,42 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             continue;
         }
         self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
+    }
+    def _make_member_target(
+        label: str, member: any, is_walker: bool
+    ) -> Callable[[], None] {
+        async def _run_member -> any {
+            with _self.request_scope() {
+                if is_walker {
+                    return await _self.execution_manager.spawn_walker(
+                        member, {}, SYSTEM_USER
+                    );
+                }
+                return await _self.execution_manager.execute_function(
+                    member, {}, SYSTEM_USER
+                );
+            }
+        }
+        def member_target {
+            outcome = asyncio.run(_run_member());
+            if (
+                isinstance(outcome, dict)
+                and 'error' in outcome
+                and outcome.get('error_code') != 'execution_error'
+            ) {
+                logger.error(f"scheduled {label} failed: {outcome.get('error')}");
+            }
+        }
+        return member_target;
+    }
+    for (app, name, member, spec, is_walker) in self._colocated_scheduled_targets() {
+        if spec.trigger == ScheduleTrigger.DYNAMIC {
+            continue;
+        }
+        label = f"{app}.{name}";
+        self.scheduler.register(
+            label, _make_member_target(label, member, is_walker), spec, is_walker
+        );
     }
     if self.scheduler.has_pending() {
         logger.info(
@@ -1833,6 +1902,7 @@ impl _run_function_with_occ(
                 return await ctx.bind_stream(outcome) if streaming else outcome;
             } except ReadOnlyRetry as rr {
                 settled = False;
+                ctx.mem.take_ro_retry();
                 if ctx.mem.unit_depth() == 0 {
                     ctx.mem.unit_enter(unit_key);
                 }

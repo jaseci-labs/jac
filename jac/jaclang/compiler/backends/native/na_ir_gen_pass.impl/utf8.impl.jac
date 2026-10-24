@@ -2,6 +2,10 @@ def _u8_is_cont(b: ir.IRBuilder, byte: ir.Value, name: str) -> ir.Value;
 
 def _u8_is_start(b: ir.IRBuilder, s: ir.Value, i: ir.Value, name: str) -> ir.Value;
 
+def _u8_store_cursor(
+    b: ir.IRBuilder, slot: ir.Value, values: list[ir.Value], name: str
+) -> None;
+
 impl NaIRGenPass._emit_utf8_helpers -> None {
     if self.utf8_cplen_fn is not None {
         return;
@@ -56,75 +60,62 @@ impl NaIRGenPass._emit_utf8_helpers -> None {
     b.ret(l_w);
     self.utf8_cp_len_at_fn = lat_fn;
 
-    cplen_fn = self._define_function(
-        "__jac_utf8_cplen", ir.FunctionType(i64, [i8p, i64, i1])
+    starts_fn = self._define_function(
+        "__jac_utf8_starts", ir.FunctionType(i64, [i8p, i64, i64])
     );
-    cplen_fn.linkage = "private";
-    (c_s, c_n, c_ascii) = (cplen_fn.args[0], cplen_fn.args[1], cplen_fn.args[2]);
-    _c_entry = cplen_fn.append_basic_block("entry");
-    _c_fast = cplen_fn.append_basic_block("ascii");
-    _c_chk = cplen_fn.append_basic_block("chk");
-    _c_body = cplen_fn.append_basic_block("body");
-    _c_done = cplen_fn.append_basic_block("done");
+    starts_fn.linkage = "private";
+    (c_s, c_lo, c_hi) = (starts_fn.args[0], starts_fn.args[1], starts_fn.args[2]);
+    _c_entry = starts_fn.append_basic_block("entry");
+    _c_chk = starts_fn.append_basic_block("chk");
+    _c_body = starts_fn.append_basic_block("body");
+    _c_done = starts_fn.append_basic_block("done");
     b = ir.IRBuilder(_c_entry);
-    b.cbranch(c_ascii, _c_fast, _c_chk);
-    b = ir.IRBuilder(_c_fast);
-    b.ret(c_n);
+    b.branch(_c_chk);
     b = ir.IRBuilder(_c_chk);
-    c_i = b.phi(i64, name="u8cp.i");
-    c_i.add_incoming(zero, _c_entry);
-    c_c = b.phi(i64, name="u8cp.c");
+    c_i = b.phi(i64, name="u8st.i");
+    c_i.add_incoming(c_lo, _c_entry);
+    c_c = b.phi(i64, name="u8st.c");
     c_c.add_incoming(zero, _c_entry);
-    b.cbranch(b.icmp_signed("<", c_i, c_n, name="u8cp.go"), _c_body, _c_done);
+    b.cbranch(b.icmp_signed("<", c_i, c_hi, name="u8st.go"), _c_body, _c_done);
     b = ir.IRBuilder(_c_body);
-    c_st = _u8_is_start(b, c_s, c_i, "u8cp.start");
+    c_st = _u8_is_start(b, c_s, c_i, "u8st.start");
     c_c.add_incoming(
-        b.add(c_c, b.zext(c_st, i64, name="u8cp.inc"), name="u8cp.c1"), _c_body
+        b.add(c_c, b.zext(c_st, i64, name="u8st.inc"), name="u8st.c1"), _c_body
     );
-    c_i.add_incoming(b.add(c_i, one, name="u8cp.i1"), _c_body);
+    c_i.add_incoming(b.add(c_i, one, name="u8st.i1"), _c_body);
     b.branch(_c_chk);
     b = ir.IRBuilder(_c_done);
     b.ret(c_c);
-    self.utf8_cplen_fn = cplen_fn;
 
-    off_fn = self._define_function(
-        "__jac_utf8_cp_off", ir.FunctionType(i64, [i8p, i64, i64, i1])
+    seek_fn = self._define_function(
+        "__jac_utf8_seek", ir.FunctionType(i64, [i8p, i64, i64, i64, i64])
     );
-    off_fn.linkage = "private";
-    (o_s, o_n, o_k, o_ascii) = (
-        off_fn.args[0],
-        off_fn.args[1],
-        off_fn.args[2],
-        off_fn.args[3]
+    seek_fn.linkage = "private";
+    (o_s, o_n, o_k0, o_off0, o_k) = (
+        seek_fn.args[0],
+        seek_fn.args[1],
+        seek_fn.args[2],
+        seek_fn.args[3],
+        seek_fn.args[4]
     );
-    _o_entry = off_fn.append_basic_block("entry");
-    _o_fast = off_fn.append_basic_block("ascii");
-    _o_chk = off_fn.append_basic_block("chk");
-    _o_body = off_fn.append_basic_block("body");
-    _o_found = off_fn.append_basic_block("found");
-    _o_cont = off_fn.append_basic_block("cont");
-    _o_done = off_fn.append_basic_block("done");
+    _o_entry = seek_fn.append_basic_block("entry");
+    _o_chk = seek_fn.append_basic_block("chk");
+    _o_body = seek_fn.append_basic_block("body");
+    _o_found = seek_fn.append_basic_block("found");
+    _o_cont = seek_fn.append_basic_block("cont");
+    _o_done = seek_fn.append_basic_block("done");
     b = ir.IRBuilder(_o_entry);
-    o_kp = b.select(
-        b.icmp_signed("<", o_k, zero, name="u8of.kneg"), zero, o_k, name="u8of.kpos"
-    );
-    b.cbranch(o_ascii, _o_fast, _o_chk);
-    b = ir.IRBuilder(_o_fast);
-    b.ret(
-        b.select(
-            b.icmp_signed("<", o_kp, o_n, name="u8of.klt"), o_kp, o_n, name="u8of.kmin"
-        )
-    );
+    b.branch(_o_chk);
     b = ir.IRBuilder(_o_chk);
-    o_i = b.phi(i64, name="u8of.i");
-    o_i.add_incoming(zero, _o_entry);
-    o_c = b.phi(i64, name="u8of.c");
-    o_c.add_incoming(zero, _o_entry);
-    b.cbranch(b.icmp_signed("<", o_i, o_n, name="u8of.go"), _o_body, _o_done);
+    o_i = b.phi(i64, name="u8sk.i");
+    o_i.add_incoming(o_off0, _o_entry);
+    o_c = b.phi(i64, name="u8sk.c");
+    o_c.add_incoming(o_k0, _o_entry);
+    b.cbranch(b.icmp_signed("<", o_i, o_n, name="u8sk.go"), _o_body, _o_done);
     b = ir.IRBuilder(_o_body);
-    o_st = _u8_is_start(b, o_s, o_i, "u8of.start");
+    o_st = _u8_is_start(b, o_s, o_i, "u8sk.start");
     b.cbranch(
-        b.and_(o_st, b.icmp_signed("==", o_c, o_kp, name="u8of.eq"), name="u8of.hit"),
+        b.and_(o_st, b.icmp_signed("==", o_c, o_k, name="u8sk.eq"), name="u8sk.hit"),
         _o_found,
         _o_cont
     );
@@ -132,13 +123,12 @@ impl NaIRGenPass._emit_utf8_helpers -> None {
     b.ret(o_i);
     b = ir.IRBuilder(_o_cont);
     o_c.add_incoming(
-        b.add(o_c, b.zext(o_st, i64, name="u8of.inc"), name="u8of.c1"), _o_cont
+        b.add(o_c, b.zext(o_st, i64, name="u8sk.inc"), name="u8sk.c1"), _o_cont
     );
-    o_i.add_incoming(b.add(o_i, one, name="u8of.i1"), _o_cont);
+    o_i.add_incoming(b.add(o_i, one, name="u8sk.i1"), _o_cont);
     b.branch(_o_chk);
     b = ir.IRBuilder(_o_done);
     b.ret(o_n);
-    self.utf8_cp_off_fn = off_fn;
 
     prev_fn = self._define_function(
         "__jac_utf8_prev", ir.FunctionType(i64, [i8p, i64])
@@ -174,6 +164,307 @@ impl NaIRGenPass._emit_utf8_helpers -> None {
     b = ir.IRBuilder(_p_done);
     b.ret(p_p);
     self.utf8_prev_fn = prev_fn;
+
+    back_fn = self._define_function(
+        "__jac_utf8_seek_back", ir.FunctionType(i64, [i8p, i64, i64, i64])
+    );
+    back_fn.linkage = "private";
+    (r_s, r_k0, r_off0, r_k) = (
+        back_fn.args[0],
+        back_fn.args[1],
+        back_fn.args[2],
+        back_fn.args[3]
+    );
+    _r_entry = back_fn.append_basic_block("entry");
+    _r_chk = back_fn.append_basic_block("chk");
+    _r_step = back_fn.append_basic_block("step");
+    _r_done = back_fn.append_basic_block("done");
+    b = ir.IRBuilder(_r_entry);
+    b.branch(_r_chk);
+    b = ir.IRBuilder(_r_chk);
+    r_p = b.phi(i64, name="u8sb.p");
+    r_p.add_incoming(r_off0, _r_entry);
+    r_c = b.phi(i64, name="u8sb.c");
+    r_c.add_incoming(r_k0, _r_entry);
+    b.cbranch(
+        b.and_(
+            b.icmp_signed(">", r_c, r_k, name="u8sb.more"),
+            b.icmp_signed(">", r_p, zero, name="u8sb.room"),
+            name="u8sb.go"
+        ),
+        _r_step,
+        _r_done
+    );
+    b = ir.IRBuilder(_r_step);
+    r_p.add_incoming(b.call(prev_fn, [r_s, r_p], name="u8sb.p1"), _r_step);
+    r_c.add_incoming(b.sub(r_c, one, name="u8sb.c1"), _r_step);
+    b.branch(_r_chk);
+    b = ir.IRBuilder(_r_done);
+    b.ret(r_p);
+
+    cur_fn = None if self._nogc_headerless() else self._utf8_cursor_fn();
+    (f_total, f_k, f_off) = (
+        ir.Constant(i64, UTF8_CURSOR_TOTAL),
+        ir.Constant(i64, UTF8_CURSOR_K),
+        ir.Constant(i64, UTF8_CURSOR_OFF)
+    );
+
+    cplen_fn = self._define_function(
+        "__jac_utf8_cplen", ir.FunctionType(i64, [i8p, i8p, i64, i1])
+    );
+    cplen_fn.linkage = "private";
+    (l_base, l_s, l_n, l_ascii) = (
+        cplen_fn.args[0],
+        cplen_fn.args[1],
+        cplen_fn.args[2],
+        cplen_fn.args[3]
+    );
+    _l_entry = cplen_fn.append_basic_block("entry");
+    _l_fast = cplen_fn.append_basic_block("ascii");
+    _l_plain = cplen_fn.append_basic_block("plain");
+    b = ir.IRBuilder(_l_fast);
+    b.ret(l_n);
+    b = ir.IRBuilder(_l_plain);
+    b.ret(b.call(starts_fn, [l_s, zero, l_n], name="u8cp.scan"));
+    b = ir.IRBuilder(_l_entry);
+    if cur_fn is None {
+        b.cbranch(l_ascii, _l_fast, _l_plain);
+    } else {
+        _l_look = cplen_fn.append_basic_block("look");
+        _l_cached = cplen_fn.append_basic_block("cached");
+        _l_known = cplen_fn.append_basic_block("known");
+        _l_count = cplen_fn.append_basic_block("count");
+        b.cbranch(l_ascii, _l_fast, _l_look);
+        b = ir.IRBuilder(_l_look);
+        l_cur = b.call(cur_fn, [l_base, l_s, l_n], name="u8cp.cur");
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", l_cur, ir.Constant(l_cur.type, None), name="u8cp.nocur"
+            ),
+            _l_plain,
+            _l_cached
+        );
+        b = ir.IRBuilder(_l_cached);
+        l_total = b.load(b.gep(l_cur, [f_total], name="u8cp.tp"), name="u8cp.total");
+        b.cbranch(
+            b.icmp_signed(">=", l_total, zero, name="u8cp.has"), _l_known, _l_count
+        );
+        b = ir.IRBuilder(_l_known);
+        b.ret(l_total);
+        b = ir.IRBuilder(_l_count);
+        l_at = b.load(b.gep(l_cur, [f_off], name="u8cp.op"), name="u8cp.off");
+        l_sum = b.add(
+            b.load(b.gep(l_cur, [f_k], name="u8cp.kp"), name="u8cp.k"),
+            b.call(starts_fn, [l_s, l_at, l_n], name="u8cp.rest"),
+            name="u8cp.sum"
+        );
+        b.store(l_sum, b.gep(l_cur, [f_total], name="u8cp.tset"));
+        b.ret(l_sum);
+    }
+    self.utf8_cplen_fn = cplen_fn;
+
+    off_fn = self._define_function(
+        "__jac_utf8_cp_off", ir.FunctionType(i64, [i8p, i8p, i64, i64, i1])
+    );
+    off_fn.linkage = "private";
+    (o_base, o_s, o_n, o_k, o_ascii) = (
+        off_fn.args[0],
+        off_fn.args[1],
+        off_fn.args[2],
+        off_fn.args[3],
+        off_fn.args[4]
+    );
+    _o_entry = off_fn.append_basic_block("entry");
+    _o_fast = off_fn.append_basic_block("ascii");
+    _o_plain = off_fn.append_basic_block("plain");
+    b = ir.IRBuilder(_o_entry);
+    o_kp = b.select(
+        b.icmp_signed("<", o_k, zero, name="u8of.kneg"), zero, o_k, name="u8of.kpos"
+    );
+    b = ir.IRBuilder(_o_fast);
+    b.ret(
+        b.select(
+            b.icmp_signed("<", o_kp, o_n, name="u8of.klt"), o_kp, o_n, name="u8of.kmin"
+        )
+    );
+    b = ir.IRBuilder(_o_plain);
+    b.ret(b.call(seek_fn, [o_s, o_n, zero, zero, o_kp], name="u8of.scan"));
+    b = ir.IRBuilder(_o_entry);
+    if cur_fn is None {
+        b.cbranch(o_ascii, _o_fast, _o_plain);
+    } else {
+        _o_look = off_fn.append_basic_block("look");
+        _o_cached = off_fn.append_basic_block("cached");
+        _o_end = off_fn.append_basic_block("end");
+        _o_pick = off_fn.append_basic_block("pick");
+        _o_back = off_fn.append_basic_block("back");
+        _o_fwd = off_fn.append_basic_block("fwd");
+        _o_join = off_fn.append_basic_block("join");
+        _o_save = off_fn.append_basic_block("save");
+        _o_out = off_fn.append_basic_block("out");
+        b.cbranch(o_ascii, _o_fast, _o_look);
+        b = ir.IRBuilder(_o_look);
+        o_cur = b.call(cur_fn, [o_base, o_s, o_n], name="u8of.cur");
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", o_cur, ir.Constant(o_cur.type, None), name="u8of.nocur"
+            ),
+            _o_plain,
+            _o_cached
+        );
+        b = ir.IRBuilder(_o_cached);
+        o_total = b.load(b.gep(o_cur, [f_total], name="u8of.tp"), name="u8of.total");
+        o_ck = b.load(b.gep(o_cur, [f_k], name="u8of.kp"), name="u8of.ck");
+        o_co = b.load(b.gep(o_cur, [f_off], name="u8of.op"), name="u8of.co");
+        o_known = b.icmp_signed(">=", o_total, zero, name="u8of.known");
+        b.cbranch(
+            b.and_(
+                o_known,
+                b.icmp_signed(">=", o_kp, o_total, name="u8of.past"),
+                name="u8of.atend"
+            ),
+            _o_end,
+            _o_pick
+        );
+        b = ir.IRBuilder(_o_end);
+        b.ret(o_n);
+        b = ir.IRBuilder(_o_pick);
+        (o_ak, o_ao, o_backward) = self._utf8_pick_anchor(
+            b, o_kp, (o_ck, o_total), (o_ck, o_co), (o_total, o_n), o_known, "u8of"
+        );
+        b.cbranch(o_backward, _o_back, _o_fwd);
+        b = ir.IRBuilder(_o_back);
+        o_rb = b.call(back_fn, [o_s, o_ak, o_ao, o_kp], name="u8of.rb");
+        b.branch(_o_join);
+        b = ir.IRBuilder(_o_fwd);
+        o_rf = b.call(seek_fn, [o_s, o_n, o_ak, o_ao, o_kp], name="u8of.rf");
+        b.branch(_o_join);
+        b = ir.IRBuilder(_o_join);
+        o_r = b.phi(i64, name="u8of.r");
+        o_r.add_incoming(o_rb, _o_back);
+        o_r.add_incoming(o_rf, _o_fwd);
+        b.cbranch(
+            b.and_(
+                b.icmp_signed(">", o_r, zero, name="u8of.r.pos"),
+                b.icmp_signed("<", o_r, o_n, name="u8of.r.in"),
+                name="u8of.r.mid"
+            ),
+            _o_save,
+            _o_out
+        );
+        b = ir.IRBuilder(_o_save);
+        b.store(o_kp, b.gep(o_cur, [f_k], name="u8of.kset"));
+        b.store(o_r, b.gep(o_cur, [f_off], name="u8of.oset"));
+        b.branch(_o_out);
+        b = ir.IRBuilder(_o_out);
+        b.ret(o_r);
+    }
+    self.utf8_cp_off_fn = off_fn;
+
+    cnt_fn = self._define_function(
+        "__jac_utf8_cp_count", ir.FunctionType(i64, [i8p, i8p, i64, i64, i1])
+    );
+    cnt_fn.linkage = "private";
+    (q_base, q_s, q_n, q_upto, q_ascii) = (
+        cnt_fn.args[0],
+        cnt_fn.args[1],
+        cnt_fn.args[2],
+        cnt_fn.args[3],
+        cnt_fn.args[4]
+    );
+    _q_entry = cnt_fn.append_basic_block("entry");
+    _q_fast = cnt_fn.append_basic_block("ascii");
+    _q_plain = cnt_fn.append_basic_block("plain");
+    b = ir.IRBuilder(_q_entry);
+    q_lo = b.select(
+        b.icmp_signed("<", q_upto, zero, name="u8cn.neg"), zero, q_upto, name="u8cn.lo"
+    );
+    q_u = b.select(
+        b.icmp_signed(">", q_lo, q_n, name="u8cn.over"), q_n, q_lo, name="u8cn.u"
+    );
+    b = ir.IRBuilder(_q_fast);
+    b.ret(q_u);
+    b = ir.IRBuilder(_q_plain);
+    b.ret(b.call(starts_fn, [q_s, zero, q_u], name="u8cn.scan"));
+    b = ir.IRBuilder(_q_entry);
+    if cur_fn is None {
+        b.cbranch(q_ascii, _q_fast, _q_plain);
+    } else {
+        _q_look = cnt_fn.append_basic_block("look");
+        _q_cached = cnt_fn.append_basic_block("cached");
+        _q_end = cnt_fn.append_basic_block("end");
+        _q_pick = cnt_fn.append_basic_block("pick");
+        _q_back = cnt_fn.append_basic_block("back");
+        _q_fwd = cnt_fn.append_basic_block("fwd");
+        _q_join = cnt_fn.append_basic_block("join");
+        _q_save = cnt_fn.append_basic_block("save");
+        _q_out = cnt_fn.append_basic_block("out");
+        b.cbranch(q_ascii, _q_fast, _q_look);
+        b = ir.IRBuilder(_q_look);
+        q_cur = b.call(cur_fn, [q_base, q_s, q_n], name="u8cn.cur");
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", q_cur, ir.Constant(q_cur.type, None), name="u8cn.nocur"
+            ),
+            _q_plain,
+            _q_cached
+        );
+        b = ir.IRBuilder(_q_cached);
+        q_total = b.load(b.gep(q_cur, [f_total], name="u8cn.tp"), name="u8cn.total");
+        q_ck = b.load(b.gep(q_cur, [f_k], name="u8cn.kp"), name="u8cn.ck");
+        q_co = b.load(b.gep(q_cur, [f_off], name="u8cn.op"), name="u8cn.co");
+        q_known = b.icmp_signed(">=", q_total, zero, name="u8cn.known");
+        b.cbranch(
+            b.and_(
+                q_known,
+                b.icmp_signed("==", q_u, q_n, name="u8cn.whole"),
+                name="u8cn.atend"
+            ),
+            _q_end,
+            _q_pick
+        );
+        b = ir.IRBuilder(_q_end);
+        b.ret(q_total);
+        b = ir.IRBuilder(_q_pick);
+        (q_ak, q_ao, q_backward) = self._utf8_pick_anchor(
+            b, q_u, (q_co, q_n), (q_ck, q_co), (q_total, q_n), q_known, "u8cn"
+        );
+        b.cbranch(q_backward, _q_back, _q_fwd);
+        b = ir.IRBuilder(_q_back);
+        q_rb = b.sub(
+            q_ak,
+            b.call(starts_fn, [q_s, q_u, q_ao], name="u8cn.span.b"),
+            name="u8cn.rb"
+        );
+        b.branch(_q_join);
+        b = ir.IRBuilder(_q_fwd);
+        q_rf = b.add(
+            q_ak,
+            b.call(starts_fn, [q_s, q_ao, q_u], name="u8cn.span.f"),
+            name="u8cn.rf"
+        );
+        b.branch(_q_join);
+        b = ir.IRBuilder(_q_join);
+        q_r = b.phi(i64, name="u8cn.r");
+        q_r.add_incoming(q_rb, _q_back);
+        q_r.add_incoming(q_rf, _q_fwd);
+        b.cbranch(
+            b.and_(
+                b.icmp_signed(">", q_u, zero, name="u8cn.u.pos"),
+                b.icmp_signed("<", q_u, q_n, name="u8cn.u.in"),
+                name="u8cn.u.mid"
+            ),
+            _q_save,
+            _q_out
+        );
+        b = ir.IRBuilder(_q_save);
+        b.store(q_r, b.gep(q_cur, [f_k], name="u8cn.kset"));
+        b.store(q_u, b.gep(q_cur, [f_off], name="u8cn.oset"));
+        b.branch(_q_out);
+        b = ir.IRBuilder(_q_out);
+        b.ret(q_r);
+    }
+    self.utf8_cp_count_fn = cnt_fn;
 
     adv_fn = self._define_function(
         "__jac_utf8_advance", ir.FunctionType(i64, [i8p, i64, i64, i64, i1])
@@ -605,11 +896,16 @@ impl NaIRGenPass._call_utf8_cplen(
     ptr: ir.Value,
     nbytes: ir.Value,
     ascii: ir.Value,
-    name: str = "u8.cplen"
+    name: str = "u8.cplen",
+    base: (ir.Value | None) = None
 ) -> ir.Value {
     self._emit_utf8_helpers();
     nbytes = self._coerce_type(nbytes, ir.IntType(64));
-    return b.call(self.utf8_cplen_fn, [ptr, nbytes, ascii], name=name);
+    return b.call(
+        self.utf8_cplen_fn,
+        [self._utf8_base_arg(b, base), ptr, nbytes, ascii],
+        name=name
+    );
 }
 
 impl NaIRGenPass._call_utf8_cp_off(
@@ -618,12 +914,49 @@ impl NaIRGenPass._call_utf8_cp_off(
     nbytes: ir.Value,
     cp_index: ir.Value,
     ascii: ir.Value,
-    name: str = "u8.cpoff"
+    name: str = "u8.cpoff",
+    base: (ir.Value | None) = None
 ) -> ir.Value {
     self._emit_utf8_helpers();
     nbytes = self._coerce_type(nbytes, ir.IntType(64));
     cp_index = self._coerce_type(cp_index, ir.IntType(64));
-    return b.call(self.utf8_cp_off_fn, [ptr, nbytes, cp_index, ascii], name=name);
+    return b.call(
+        self.utf8_cp_off_fn,
+        [self._utf8_base_arg(b, base), ptr, nbytes, cp_index, ascii],
+        name=name
+    );
+}
+
+impl NaIRGenPass._call_utf8_cp_count(
+    b: ir.IRBuilder,
+    ptr: ir.Value,
+    nbytes: ir.Value,
+    upto: ir.Value,
+    ascii: ir.Value,
+    name: str = "u8.cpcount",
+    base: (ir.Value | None) = None
+) -> ir.Value {
+    self._emit_utf8_helpers();
+    i64 = ir.IntType(64);
+    return b.call(
+        self.utf8_cp_count_fn,
+        [
+            self._utf8_base_arg(b, base),
+            ptr,
+            self._coerce_type(nbytes, i64),
+            self._coerce_type(upto, i64),
+            ascii
+        ],
+        name=name
+    );
+}
+
+impl NaIRGenPass._utf8_base_arg(b: ir.IRBuilder, base: (ir.Value | None)) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    if base is None or self._nogc_headerless() {
+        return ir.Constant(i8p, None);
+    }
+    return base if base.type == i8p else b.bitcast(base, i8p, name="u8.base");
 }
 
 impl NaIRGenPass._call_utf8_cp_len_at(
@@ -801,4 +1134,424 @@ impl NaIRGenPass._emit_u8_lone_ascii(
         ),
         name=name
     );
+}
+
+impl NaIRGenPass._utf8_cursor_state -> tuple[
+    ir.Function,
+    ir.Function,
+    ir.GlobalVariable
+] {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    if "__jac_utf8_tls_get" not in self.extern_funcs {
+        drop_fn = ir.Function(
+            self.llvm_module,
+            ir.FunctionType(ir.VoidType(), [i8p]),
+            name="__jac_utf8_tls_free"
+        );
+        drop_fn.linkage = "linkonce_odr";
+        db = ir.IRBuilder(drop_fn.append_basic_block("entry"));
+        db.call(
+            self._get_or_declare_extern("free", ir.VoidType(), [i8p]), [drop_fn.args[0]]
+        );
+        db.ret_void();
+        self._emit_tls_slot(
+            "__jac_utf8_tls", "__jac_utf8_tls_get", "__jac_utf8_tls_set", drop_fn
+        );
+    }
+    existing = self.llvm_module.globals.get("__jac_utf8_epoch");
+    if isinstance(existing, ir.GlobalVariable) {
+        epoch = existing;
+    } else {
+        epoch = ir.GlobalVariable(self.llvm_module, i64, name="__jac_utf8_epoch");
+        epoch.linkage = "weak";
+        epoch.initializer = ir.Constant(i64, 0);
+        epoch.align = 8;
+    }
+    return (
+        self.extern_funcs["__jac_utf8_tls_get"],
+        self.extern_funcs["__jac_utf8_tls_set"],
+        epoch
+    );
+}
+
+impl NaIRGenPass._utf8_cursor_keyed(b: ir.IRBuilder, base: ir.Value) -> ir.Value {
+    i64 = ir.IntType(64);
+    i64p = i64.as_pointer();
+    fn = b.function;
+    heap_bb = fn.append_basic_block("u8k.heap");
+    tag_bb = fn.append_basic_block("u8k.tag");
+    done_bb = fn.append_basic_block("u8k.done");
+    start_bb = b.block;
+    rc = b.load(
+        b.bitcast(
+            b.gep(base, [ir.Constant(i64, HDR_RC_OFF)], name="u8k.rc.slot"),
+            i64p,
+            name="u8k.rc.p"
+        ),
+        name="u8k.rc"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", rc, ir.Constant(i64, RC_SENTINEL), name="u8k.static"),
+        done_bb,
+        heap_bb
+    );
+    b.position_at_end(heap_bb);
+    b.cbranch(self._emit_magic_check(b, base, name_prefix="u8k.mc"), tag_bb, done_bb);
+    b.position_at_end(tag_bb);
+    keyed = self._utf8_cursor_tag_keyed(
+        b,
+        b.load(
+            b.bitcast(
+                b.gep(base, [ir.Constant(i64, HDR_DTOR_OFF)], name="u8k.dt.slot"),
+                i64p,
+                name="u8k.dt.p"
+            ),
+            name="u8k.dv"
+        ),
+        "u8k"
+    );
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    res = b.phi(ir.IntType(1), name="u8k.ok");
+    res.add_incoming(ir.Constant(ir.IntType(1), 0), start_bb);
+    res.add_incoming(ir.Constant(ir.IntType(1), 0), heap_bb);
+    res.add_incoming(keyed, tag_bb);
+    return res;
+}
+
+impl NaIRGenPass._utf8_cursor_tag_keyed(
+    b: ir.IRBuilder, tag: ir.Value, name: str
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    return b.and_(
+        b.icmp_unsigned(
+            "==",
+            b.and_(
+                tag,
+                ir.Constant(i64, STR_LEN_TAG_BIT | STR_ASCII_TAG_BIT),
+                name=f"{name}.bits"
+            ),
+            ir.Constant(i64, STR_LEN_TAG_BIT),
+            name=f"{name}.wide"
+        ),
+        b.icmp_unsigned(
+            ">=",
+            b.lshr(
+                b.and_(tag, ir.Constant(i64, STR_LEN_PAYLOAD_MASK), name=f"{name}.pay"),
+                ir.Constant(i64, STR_LEN_TAG_SHIFT),
+                name=f"{name}.len"
+            ),
+            ir.Constant(i64, UTF8_CURSOR_MIN_BYTES),
+            name=f"{name}.long"
+        ),
+        name=f"{name}.keyed"
+    );
+}
+
+impl NaIRGenPass._utf8_cursor_fn -> ir.Function {
+    if "__jac_utf8_cursor" in self.extern_funcs {
+        return self.extern_funcs["__jac_utf8_cursor"];
+    }
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i64p = i64.as_pointer();
+    zero = ir.Constant(i64, 0);
+    (get_fn, set_fn, epoch) = self._utf8_cursor_state();
+    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    memset_fn = self._get_or_declare_extern("memset", i8p, [i8p, i32, i64]);
+    block_bytes = ir.Constant(i64, 8 * (1 + UTF8_CURSOR_WAYS * UTF8_CURSOR_WORDS));
+    fn = self._define_function(
+        "__jac_utf8_cursor", ir.FunctionType(i64p, [i8p, i8p, i64])
+    );
+    fn.linkage = "private";
+    self.extern_funcs["__jac_utf8_cursor"] = fn;
+    (base, s, n) = (fn.args[0], fn.args[1], fn.args[2]);
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    none_bb = fn.append_basic_block("none");
+    probe_bb = fn.append_basic_block("probe");
+    tls_bb = fn.append_basic_block("tls");
+    make_bb = fn.append_basic_block("make");
+    init_bb = fn.append_basic_block("init");
+    have_bb = fn.append_basic_block("have");
+    b.cbranch(
+        b.or_(
+            b.icmp_unsigned("==", base, ir.Constant(i8p, None), name="u8c.null"),
+            b.icmp_signed(
+                "<", n, ir.Constant(i64, UTF8_CURSOR_MIN_BYTES), name="u8c.short"
+            ),
+            name="u8c.skip"
+        ),
+        none_bb,
+        probe_bb
+    );
+    b.position_at_end(none_bb);
+    b.ret(ir.Constant(i64p, None));
+    b.position_at_end(probe_bb);
+    b.cbranch(self._utf8_cursor_keyed(b, base), tls_bb, none_bb);
+    b.position_at_end(tls_bb);
+    held = b.call(get_fn, [], name="u8c.held");
+    b.cbranch(b.icmp_unsigned("==", held, zero, name="u8c.fresh"), make_bb, have_bb);
+    b.position_at_end(make_bb);
+    made = b.call(malloc_fn, [block_bytes], name="u8c.made");
+    b.cbranch(
+        b.icmp_unsigned("==", made, ir.Constant(i8p, None), name="u8c.oom"),
+        none_bb,
+        init_bb
+    );
+    b.position_at_end(init_bb);
+    b.call(memset_fn, [made, ir.Constant(i32, 0), block_bytes]);
+    made_i = b.ptrtoint(made, i64, name="u8c.made.i");
+    b.call(set_fn, [made_i]);
+    b.branch(have_bb);
+    b.position_at_end(have_bb);
+    blk_i = b.phi(i64, name="u8c.blk.i");
+    blk_i.add_incoming(held, tls_bb);
+    blk_i.add_incoming(made_i, init_bb);
+    blk = b.inttoptr(blk_i, i64p, name="u8c.blk");
+    now = b.load_atomic(epoch, "acquire", 8, name="u8c.epoch");
+    tick = b.add(b.load(blk, name="u8c.clock"), ir.Constant(i64, 1), name="u8c.tick");
+    b.store(tick, blk);
+    base_i = b.ptrtoint(base, i64, name="u8c.base.i");
+    s_i = b.ptrtoint(s, i64, name="u8c.s.i");
+    fresh = [base_i, s_i, n, now, ir.Constant(i64, -1), zero, zero, tick];
+    used_at = ir.Constant(i64, UTF8_CURSOR_USED);
+    oldest_way: ir.Value = zero;
+    oldest_use: ir.Value = zero;
+    for way in range(UTF8_CURSOR_WAYS) {
+        slot = b.gep(
+            blk, [ir.Constant(i64, 1 + way * UTF8_CURSOR_WORDS)], name=f"u8c.e{way}"
+        );
+        held_key = [
+            b.load(
+                b.gep(slot, [ir.Constant(i64, idx)], name=f"u8c.e{way}.p{idx}"),
+                name=f"u8c.e{way}.f{idx}"
+            ) for idx in [UTF8_CURSOR_BASE, UTF8_CURSOR_DATA, UTF8_CURSOR_LEN]
+        ];
+        same = b.and_(
+            b.and_(
+                b.icmp_unsigned("==", held_key[0], base_i, name=f"u8c.e{way}.sb"),
+                b.icmp_unsigned("==", held_key[1], s_i, name=f"u8c.e{way}.sd"),
+                name=f"u8c.e{way}.bd"
+            ),
+            b.icmp_signed("==", held_key[2], n, name=f"u8c.e{way}.sn"),
+            name=f"u8c.e{way}.same"
+        );
+        used = b.load(
+            b.gep(slot, [used_at], name=f"u8c.e{way}.up"), name=f"u8c.e{way}.u"
+        );
+        if way == 0 {
+            oldest_use = used;
+        } else {
+            older = b.icmp_unsigned("<", used, oldest_use, name=f"u8c.e{way}.older");
+            oldest_way = b.select(
+                older, ir.Constant(i64, way), oldest_way, name=f"u8c.e{way}.lru"
+            );
+            oldest_use = b.select(older, used, oldest_use, name=f"u8c.e{way}.lru.u");
+        }
+        hit_bb = fn.append_basic_block(f"hit{way}");
+        stale_bb = fn.append_basic_block(f"stale{way}");
+        live_bb = fn.append_basic_block(f"live{way}");
+        next_bb = fn.append_basic_block(f"next{way}");
+        b.cbranch(same, hit_bb, next_bb);
+        b.position_at_end(hit_bb);
+        b.cbranch(
+            b.icmp_signed(
+                "==",
+                b.load(
+                    b.gep(
+                        slot,
+                        [ir.Constant(i64, UTF8_CURSOR_EPOCH)],
+                        name=f"u8c.e{way}.ep"
+                    ),
+                    name=f"u8c.e{way}.e"
+                ),
+                now,
+                name=f"u8c.e{way}.cur"
+            ),
+            live_bb,
+            stale_bb
+        );
+        b.position_at_end(live_bb);
+        b.store(tick, b.gep(slot, [used_at], name=f"u8c.e{way}.touch"));
+        b.ret(slot);
+        b.position_at_end(stale_bb);
+        _u8_store_cursor(b, slot, fresh, f"u8c.r{way}");
+        b.ret(slot);
+        b.position_at_end(next_bb);
+    }
+    victim = b.gep(
+        blk,
+        [
+            b.add(
+                b.mul(
+                    oldest_way, ir.Constant(i64, UTF8_CURSOR_WORDS), name="u8c.way.at"
+                ),
+                ir.Constant(i64, 1),
+                name="u8c.way.word"
+            )
+        ],
+        name="u8c.victim"
+    );
+    _u8_store_cursor(b, victim, fresh, "u8c.new");
+    b.ret(victim);
+    return fn;
+}
+
+impl NaIRGenPass._utf8_forget_fn -> ir.Function {
+    if "__jac_utf8_forget" in self.extern_funcs {
+        return self.extern_funcs["__jac_utf8_forget"];
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    i64p = i64.as_pointer();
+    zero = ir.Constant(i64, 0);
+    (get_fn, _, epoch) = self._utf8_cursor_state();
+    fn = self._define_function(
+        "__jac_utf8_forget", ir.FunctionType(ir.VoidType(), [i8p])
+    );
+    fn.linkage = "private";
+    fn.attributes.add("noinline");
+    self.extern_funcs["__jac_utf8_forget"] = fn;
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    patch_bb = fn.append_basic_block("patch");
+    done_bb = fn.append_basic_block("done");
+    before = b.atomic_rmw(
+        "add", epoch, ir.Constant(i64, 1), ordering="seq_cst", name="u8f.before"
+    );
+    held = b.call(get_fn, [], name="u8f.held");
+    b.cbranch(b.icmp_unsigned("==", held, zero, name="u8f.none"), done_bb, patch_bb);
+    b.position_at_end(patch_bb);
+    blk = b.inttoptr(held, i64p, name="u8f.blk");
+    gone = b.ptrtoint(fn.args[0], i64, name="u8f.gone");
+    after = b.add(before, ir.Constant(i64, 1), name="u8f.after");
+    for way in range(UTF8_CURSOR_WAYS) {
+        at = 1 + way * UTF8_CURSOR_WORDS;
+        base_p = b.gep(
+            blk, [ir.Constant(i64, at + UTF8_CURSOR_BASE)], name=f"u8f.e{way}.bp"
+        );
+        epoch_p = b.gep(
+            blk, [ir.Constant(i64, at + UTF8_CURSOR_EPOCH)], name=f"u8f.e{way}.ep"
+        );
+        held_base = b.load(base_p, name=f"u8f.e{way}.b");
+        held_epoch = b.load(epoch_p, name=f"u8f.e{way}.e");
+        mine = b.icmp_unsigned("==", held_base, gone, name=f"u8f.e{way}.mine");
+        b.store(b.select(mine, zero, held_base, name=f"u8f.e{way}.b1"), base_p);
+        used_p = b.gep(
+            blk, [ir.Constant(i64, at + UTF8_CURSOR_USED)], name=f"u8f.e{way}.up"
+        );
+        b.store(
+            b.select(
+                mine, zero, b.load(used_p, name=f"u8f.e{way}.u"), name=f"u8f.e{way}.u1"
+            ),
+            used_p
+        );
+        b.store(
+            b.select(
+                b.and_(
+                    b.not_(mine, name=f"u8f.e{way}.other"),
+                    b.icmp_signed("==", held_epoch, before, name=f"u8f.e{way}.last"),
+                    name=f"u8f.e{way}.keep"
+                ),
+                after,
+                held_epoch,
+                name=f"u8f.e{way}.e1"
+            ),
+            epoch_p
+        );
+    }
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    b.ret_void();
+    return fn;
+}
+
+impl NaIRGenPass._utf8_forget_on_free(b: ir.IRBuilder, ptr: ir.Value) -> ir.IRBuilder {
+    i64 = ir.IntType(64);
+    fn = b.function;
+    tell_bb = fn.append_basic_block("u8f.tell");
+    cont_bb = fn.append_basic_block("u8f.cont");
+    tag = b.load(
+        b.bitcast(
+            b.gep(ptr, [ir.Constant(i64, HDR_DTOR_OFF)], name="u8f.dt.slot"),
+            i64.as_pointer(),
+            name="u8f.dt.p"
+        ),
+        name="u8f.dv"
+    );
+    b.cbranch(self._utf8_cursor_tag_keyed(b, tag, "u8f"), tell_bb, cont_bb);
+    b.position_at_end(tell_bb);
+    b.call(self._utf8_forget_fn(), [ptr]);
+    b.branch(cont_bb);
+    b.position_at_end(cont_bb);
+    return b;
+}
+
+impl NaIRGenPass._utf8_pick_anchor(
+    b: ir.IRBuilder,
+    want: ir.Value,
+    spots: tuple[ir.Value, ir.Value],
+    cursor: tuple[ir.Value, ir.Value],
+    tail: tuple[ir.Value, ir.Value],
+    known: ir.Value,
+    name: str
+) -> tuple[ir.Value, ir.Value, ir.Value] {
+    (at_cur, at_end) = spots;
+    (cur_k, cur_off) = cursor;
+    (total, n) = tail;
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    ahead = b.icmp_signed(">=", want, at_cur, name=f"{name}.ahead");
+    d_cur = b.select(
+        ahead,
+        b.sub(want, at_cur, name=f"{name}.d.fwd"),
+        b.sub(at_cur, want, name=f"{name}.d.back"),
+        name=f"{name}.d.cur"
+    );
+    d_end = b.select(
+        known,
+        b.sub(at_end, want, name=f"{name}.d.tail"),
+        ir.Constant(i64, 0x7FFFFFFFFFFFFFFF),
+        name=f"{name}.d.end"
+    );
+    use_cur = b.and_(
+        b.icmp_signed("<=", d_cur, want, name=f"{name}.c.near"),
+        b.icmp_signed("<=", d_cur, d_end, name=f"{name}.c.nearer"),
+        name=f"{name}.use.cur"
+    );
+    use_end = b.and_(
+        b.not_(use_cur, name=f"{name}.not.cur"),
+        b.icmp_signed("<", d_end, want, name=f"{name}.e.near"),
+        name=f"{name}.use.end"
+    );
+    return (
+        b.select(
+            use_cur,
+            cur_k,
+            b.select(use_end, total, zero, name=f"{name}.k.far"),
+            name=f"{name}.ak"
+        ),
+        b.select(
+            use_cur,
+            cur_off,
+            b.select(use_end, n, zero, name=f"{name}.o.far"),
+            name=f"{name}.ao"
+        ),
+        b.select(
+            use_cur, b.not_(ahead, name=f"{name}.behind"), use_end, name=f"{name}.back"
+        )
+    );
+}
+
+impl _u8_store_cursor(
+    b: ir.IRBuilder, slot: ir.Value, values: list[ir.Value], name: str
+) -> None {
+    for (idx, value) in enumerate(values) {
+        b.store(
+            value,
+            b.gep(slot, [ir.Constant(ir.IntType(64), idx)], name=f"{name}.w{idx}")
+        );
+    }
 }

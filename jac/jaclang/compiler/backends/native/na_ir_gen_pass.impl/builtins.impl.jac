@@ -977,8 +977,14 @@ impl NaIRGenPass._codegen_string_index(
     pos_bb = func.append_basic_block(name="char.pos");
     b.cbranch(ascii, fast_bb, slow_bb);
     b.position_at_end(slow_bb);
+    _cursor_base = target_val if root_val is None else root_val;
     cplen = self._call_utf8_cplen(
-        b, target_val, len_val, ir.Constant(ir.IntType(1), 0), name="char.cplen"
+        b,
+        target_val,
+        len_val,
+        ir.Constant(ir.IntType(1), 0),
+        name="char.cplen",
+        base=_cursor_base
     );
     b.branch(pos_bb);
     b.position_at_end(fast_bb);
@@ -1008,7 +1014,8 @@ impl NaIRGenPass._codegen_string_index(
         len_val,
         index_val,
         ir.Constant(ir.IntType(1), 0),
-        name="char.off.cp"
+        name="char.off.cp",
+        base=_cursor_base
     );
     b.branch(off_bb);
     b.position_at_end(off_bb);
@@ -1177,7 +1184,7 @@ impl NaIRGenPass._codegen_string_slice(
         self.builder, _root, _data, src_blen, name="ss.isa"
     );
     src_len = self._call_utf8_cplen(
-        self.builder, _data, src_blen, _ascii, name="ss.cplen"
+        self.builder, _data, src_blen, _ascii, name="ss.cplen", base=_root
     );
     bounds = self._emit_norm_slice_bounds(slice_node, src_len);
     if bounds is None {
@@ -1198,10 +1205,22 @@ impl NaIRGenPass._codegen_string_slice(
         );
     if _view_ok {
         _bstart = self._call_utf8_cp_off(
-            self.builder, _data, src_blen, start_val, _ascii, name="s.view.bstart"
+            self.builder,
+            _data,
+            src_blen,
+            start_val,
+            _ascii,
+            name="s.view.bstart",
+            base=_root
         );
         _bstop = self._call_utf8_cp_off(
-            self.builder, _data, src_blen, stop_val, _ascii, name="s.view.bstop"
+            self.builder,
+            _data,
+            src_blen,
+            stop_val,
+            _ascii,
+            name="s.view.bstop",
+            base=_root
         );
         _v_raw = self.builder.sub(_bstop, _bstart, name="s.view.raw");
         _v_len = self.builder.select(
@@ -1276,13 +1295,17 @@ impl NaIRGenPass._codegen_string_slice(
     bstart = b.select(
         b.icmp_signed("<", start_val, zero, name="ss.bs.neg"),
         ir.Constant(i64, -1),
-        self._call_utf8_cp_off(b, _data, src_blen, start_val, _ascii, name="ss.bstart"),
+        self._call_utf8_cp_off(
+            b, _data, src_blen, start_val, _ascii, name="ss.bstart", base=_root
+        ),
         name="ss.bstart.c"
     );
     bstop = b.select(
         b.icmp_signed("<", stop_val, zero, name="ss.be.neg"),
         ir.Constant(i64, -1),
-        self._call_utf8_cp_off(b, _data, src_blen, stop_val, _ascii, name="ss.bstop"),
+        self._call_utf8_cp_off(
+            b, _data, src_blen, stop_val, _ascii, name="ss.bstop", base=_root
+        ),
         name="ss.bstop.c"
     );
     i8p = ir.IntType(8).as_pointer();

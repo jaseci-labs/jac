@@ -155,6 +155,13 @@ impl EsastGenPass.exit_import with uni.Import exit {
                         jac_node=item
                     )
                 );
+                if resolved_path.endswith(".jac") {
+                    self.client_manifest.forwards[local.name] = [
+                        js_import_path,
+                        resolved_path,
+                        imported.name
+                    ];
+                }
             } elif isinstance(item.name, uni.Token) {
                 if (item.name.value == 'default') {
                     if not item.alias {

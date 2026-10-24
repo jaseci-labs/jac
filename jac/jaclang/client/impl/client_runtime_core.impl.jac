@@ -315,6 +315,18 @@ impl jacSignup(
     if profile != None {
         body["profile"] = profile;
     }
+    registration = policy["registration"] if policy else None;
+    if registration and registration["challenge"] {
+        proof = await __solveRegistrationChallenge(base_url);
+        if proof["error"] {
+            return SignupResult(
+                success=False, error=proof["error"], status=int(proof["status"])
+            );
+        }
+        if proof["challenge"] {
+            body["challenge"] = proof["challenge"];
+        }
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
