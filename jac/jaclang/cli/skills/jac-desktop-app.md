@@ -37,6 +37,7 @@ name = "my-app"                  # binary name
 identifier = "com.example.myapp"
 version = "1.0.0"
 engine = "native"                # "native" (OS webview, default) or "cef" (bundled Chromium)
+backend = "embedded"             # the server runs in-process (default), or a URL the app talks to
 
 [desktop.window]
 title = "My App"
@@ -46,6 +47,28 @@ min_width = 800
 min_height = 600
 resizable = true
 ```
+
+## Letting the user pick the backend - `[desktop] backends`
+
+One binary can run locally or against a server, chosen by the user at run time. List the choices instead of setting `backend` (set one or the other):
+
+```toml
+[desktop]
+backends = { local = "embedded", web = "https://my-app.example" }   # >= 2 entries, "embedded" at most once
+default_backend = "ask"     # or a name; "ask" leaves the first choice to the UI
+```
+
+The build ships every listed backend (sealed image + Postgres if one is embedded; no API base baked in). At launch the host boots only the saved choice (`<data dir>/.jac/desktop/backend.json`, else `default_backend`); with `"ask"` and nothing saved it serves just the bundle, so the UI must show a picker. The bundle learns the choice from `/__jac/backend.js`, which the build puts first in `<head>`. Tokens and broker sessions are kept per backend. Read and change it with `backend` from `@jac/desktop`:
+
+```jac
+import from "@jac/desktop" { backend }
+
+backend.choices();          # [{"name", "kind": "embedded"|"remote", "url"}], [] in a single-backend app
+backend.current();          # the running entry, or None before a choice
+await backend.use("web");   # save + relaunch into it; False if it is already running
+```
+
+A remote backend must accept the app's loopback origin (CORS), as with a single remote `backend`.
 
 ## OS capabilities - the `@jac/desktop` plugins (IPC)
 

@@ -416,3 +416,81 @@ test "desktop release colocates services without an unrelated web app" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+def _choice_config(
+    app_dir: str, program: dict[str, any], default_backend: str = "ask"
+) -> str {
+    cfg = json.loads(_config(app_dir, program));
+    cfg["backends"] = {"local": "embedded", "web": "https://web.example"};
+    cfg["default_backend"] = default_backend;
+    return json.dumps(cfg);
+}
+
+
+test "a backend choice boots only the backend the user picked" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    ctx: any = None;
+    try {
+        app_dir = _app_dir(tmp);
+        data = os.path.join(tmp, "data");
+        os.environ["JAC_DATA_PATH"] = data;
+        program = {"entry": os.path.join(proj, "main.jac")};
+
+        ctx = host_boot.boot(_choice_config(app_dir, program));
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert code == 200 and '"active": ""' in body , (code, body);
+        (code, body) = _post(f"{origin}/walker/greet", {"name": "x"});
+        assert code in (404, 405) , ("nothing is served before a choice", code, body);
+        assert not ctx.wants_relaunch();
+        (code, body) = _post(f"{origin}/__jac/backend", {"name": "local"});
+        assert code == 200 and json.loads(body)["relaunch"] == True , (code, body);
+        assert ctx.wants_relaunch();
+        ctx.shutdown();
+        ctx = None;
+
+        ctx = host_boot.boot(_choice_config(app_dir, program));
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert '"active": "local"' in body
+            and "__JAC_API_BASE_URL__" not in body , body;
+        (code, body) = _post(f"{origin}/walker/greet", {"name": "local"});
+        assert code == 200 and "hello local" in body , (code, body);
+        (code, body) = _post(f"{origin}/__jac/session", {"token": "tok-local"});
+        assert code == 200 , (code, body);
+        assert os.path.isfile(
+            os.path.join(data, ".jac", "desktop", "session.local.json")
+        ) , "each backend keeps its own session";
+        (code, body) = _post(f"{origin}/__jac/backend", {"name": "web"});
+        assert json.loads(body)["relaunch"] == True , body;
+        ctx.shutdown();
+        ctx = None;
+
+        import jaclang.compiler.driver.application as application;
+        with patch.object(
+            application,
+            "prepare_application",
+            side_effect=AssertionError("the web backend must not prepare local code")
+        ) {
+            ctx = host_boot.boot(_choice_config(app_dir, program));
+        }
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert '"active": "web"' in body , body;
+        assert 'window.__JAC_API_BASE_URL__="https://web.example";' in body , body;
+        (code, body) = _get(f"{origin}/__jac/session");
+        assert json.loads(body)["token"] == "" , "the web backend does not see the local token";
+        (code, body) = _post(f"{origin}/walker/greet", {"name": "x"});
+        assert code in (404, 405) , (code, body);
+    } finally {
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

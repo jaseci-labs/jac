@@ -4966,7 +4966,8 @@ graph import client {
             | targets.desktop.webview_shell._assemble_native_host {
             get_desktop_config
         },
-        targets.desktop.desktop_target.DesktopTarget.engine { get_desktop_config },
+        targets.desktop.desktop_target.DesktopTarget.engine
+            | targets.desktop.webview_shell.webview_dev { get_desktop_config },
         targets.desktop.macos_bundle { DesktopIdentity },
     ]
     desktop_plugin_config ++> desktop_config._validate_plugin_keys {
@@ -5226,6 +5227,7 @@ graph import client.targets.desktop {
             build_cef_dispatch,
             build_cef_subprocess,
             desktop_storage_identifier,
+            inject_backend_script,
             stage_postgres,
             stage_program
         },
@@ -5237,6 +5239,7 @@ graph import client.targets.desktop {
             _jac_subprocess_env,
             _stage_fused_runtime,
             desktop_storage_identifier,
+            inject_backend_script,
             stage_postgres,
             stage_program
         },
@@ -5250,7 +5253,11 @@ graph import client.targets.desktop {
 }
 
 graph import client.targets.desktop.native {
-    broker_extension ++> host_boot.serve_program { DesktopBrokerExtension }
+    backend_choice ++> [
+        broker_extension { BackendChoice },
+        host_boot.boot { ASK, BackendChoice },
+    ]
+    broker_extension ++> host_boot.boot { DesktopBrokerExtension }
     oauth_broker ++> [
         broker_extension {
             CLOSE_PAGE,

@@ -544,23 +544,31 @@ impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") ->
     return True;
 }
 
+impl __storageKey(key: str) -> str {
+    info: any = globalThis.__JAC_BACKEND__;
+    if info and info["active"] {
+        return f"{key}@{info['active']}";
+    }
+    return key;
+}
+
 impl __getLocalStorage(key: str) -> str {
     if not globalThis.localStorage {
         return "";
     }
-    value = localStorage.getItem(key);
+    value = localStorage.getItem(__storageKey(key));
     return value if value is not None else "";
 }
 
 impl __setLocalStorage(key: str, value: str) -> None {
     if globalThis.localStorage {
-        localStorage.setItem(key, value);
+        localStorage.setItem(__storageKey(key), value);
     }
 }
 
 impl __removeLocalStorage(key: str) -> None {
     if globalThis.localStorage {
-        localStorage.removeItem(key);
+        localStorage.removeItem(__storageKey(key));
     }
 }
 
