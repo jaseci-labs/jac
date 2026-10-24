@@ -68,3 +68,52 @@ test "an f-string releases a string a call made for one of its pieces" {
     assert out == "39000000" , out;
     assert 0 <= rss < 40 , f"peak RSS {rss} MB";
 }
+
+test "optional, !r and formatted string pieces are released once" {
+    fixture = str(
+        Path(__file__).resolve().parent / "fixtures" / "fstring_piece_release_leaks.jac"
+    );
+    for memory in ["rc", "managed"] {
+        with tempfile.TemporaryDirectory() as scratch {
+            binary = os.path.join(scratch, "probe");
+            comp = subprocess.run(
+                jac_command(
+                    "build",
+                    "--native",
+                    fixture,
+                    "--memory",
+                    memory,
+                    "--debug",
+                    "-o",
+                    binary
+                ),
+                capture_output=True,
+                text=True,
+                timeout=900
+            );
+            assert comp.returncode == 0 , comp.stderr[-1500:];
+            proc = subprocess.run(
+                [binary], capture_output=True, text=True, timeout=120
+            );
+            assert proc.returncode == 0 , proc.stderr[-800:];
+        }
+        out = proc.stdout + proc.stderr;
+        assert "DOUBLE-FREE" not in out , f"{memory}: a piece was released twice: {out[:600]}";
+        lines = [
+            line
+            for line in proc.stdout.splitlines()
+            if not line.startswith("RC ")
+        ];
+        assert lines[0]
+            == "120 ello world [ello world] <'ello world'> | HELLO WORLD|" , (
+            f"{memory}: {proc.stdout[:400]}"
+        );
+        assert "RC LIVE OBJECTS at exit" in proc.stdout , proc.stdout[-400:];
+        leaks = [
+            line
+            for line in proc.stdout.splitlines()
+            if "<- LEAK" in line
+        ];
+        assert not leaks , f"{memory}: {leaks[:5]}";
+    }
+}
