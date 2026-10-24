@@ -24664,7 +24664,6 @@ graph import runtime.python {
             Py_TPFLAGS_BASE_EXC_SUBCLASS,
             Py_TPFLAGS_TYPE_SUBCLASS,
             RESUME,
-            RESUME_CHECK,
             _PY_EVAL_EVENTS_MASK,
             _PyErr_StackItem_EXC_VALUE
         },

@@ -142,6 +142,8 @@ def _MAYBE_INSTRUMENT(tstate: ptr, frame: ptr[u8]) -> i32;
 
 def _QUICKEN_RESUME(tstate: ptr, this_instr: ptr[u16]);
 
+glob CONTROL_OPCODE_RESUME_CHECK: Final[i32] = 196;
+
 def RESUME_CHECK(tstate: ptr, frame: ptr[u8]) -> bool;
 
 import from c {
@@ -860,7 +862,7 @@ impl _MAYBE_INSTRUMENT(tstate: ptr, frame: ptr[u8]) -> i32 {
 impl _QUICKEN_RESUME(tstate: ptr, this_instr: ptr[u16]) {
     tracing = ptr[i32](ptr[u8](tstate) + PyThreadState_TRACING).view(1)[0];
     if tracing == 0 and control_opcode(this_instr) == RESUME {
-        control_set_opcode(this_instr, RESUME_CHECK);
+        control_set_opcode(this_instr, CONTROL_OPCODE_RESUME_CHECK);
     }
 }
 
