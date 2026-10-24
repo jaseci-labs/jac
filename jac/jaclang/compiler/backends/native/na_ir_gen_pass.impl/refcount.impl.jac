@@ -611,10 +611,46 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         b = ir.IRBuilder(unbuf_pre);
         _ub_buf = b.load(self.rc_roots_buf_gv, name="ub.buf");
         _ub_count = b.load(self.rc_roots_count_gv, name="ub.count");
-        b.branch(unbuf_hdr);
+        if self._rc_debug_codegen {
+            b.branch(unbuf_hdr);
+        } else {
+            unbuf_direct = release_fn.append_basic_block("unbuf.direct");
+            (_ud_csp, _ud_cb) = self._emit_rc_color_load(b, release_fn.args[0]);
+            _ud_idx = b.and_(
+                b.load(_ud_csp, name="ud.word"),
+                ir.Constant(i64, 4294967295),
+                name="ud.idx"
+            );
+            b.cbranch(
+                b.icmp_unsigned("<", _ud_idx, _ub_count, name="ud.inrange"),
+                unbuf_direct,
+                unbuf_hdr
+            );
+            b = ir.IRBuilder(unbuf_direct);
+            _ud_pp = b.bitcast(
+                b.gep(
+                    _ub_buf,
+                    [b.mul(_ud_idx, ir.Constant(i64, 8), name="ud.off")],
+                    name="ud.slot"
+                ),
+                i8_ptr.as_pointer(),
+                name="ud.pp"
+            );
+            _ud_hit = b.icmp_unsigned(
+                "==", b.load(_ud_pp, name="ud.obj"), release_fn.args[0], name="ud.match"
+            );
+            unbuf_direct_hit = release_fn.append_basic_block("unbuf.direct.hit");
+            b.cbranch(_ud_hit, unbuf_direct_hit, unbuf_hdr);
+            b = ir.IRBuilder(unbuf_direct_hit);
+            b.store(ir.Constant(i8_ptr, None), _ud_pp);
+            b.branch(unbuf_clear);
+        }
         b = ir.IRBuilder(unbuf_hdr);
         _ub_i = b.phi(i64, name="ub.i");
         _ub_i.add_incoming(_ub_count, unbuf_pre);
+        if not self._rc_debug_codegen {
+            _ub_i.add_incoming(_ub_count, unbuf_direct);
+        }
         b.cbranch(
             b.icmp_unsigned("==", _ub_i, ir.Constant(i64, 0), name="ub.end"),
             unbuf_clear,

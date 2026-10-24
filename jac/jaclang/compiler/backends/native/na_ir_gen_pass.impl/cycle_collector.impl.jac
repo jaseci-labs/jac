@@ -1,4 +1,12 @@
 impl NaIRGenPass._emit_rc_roots_globals -> None {
+    """The cycle collector's root buffer: its globals and `__rc_push_root`.
+
+    A release build records each root's buffer slot in the low half of its
+    alloc-id word, which only debug builds read otherwise. Freeing a buffered
+    object (in `__rc_release_impl`) reads that slot and clears it directly,
+    in constant time, instead of searching the buffer; the backward search
+    stays only as a fallback when the recorded slot does not hold the object.
+    """;
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i8_ptr_ptr = i8_ptr.as_pointer();
@@ -141,6 +149,18 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     _buf = b.load(roots_buf_gv, name="buf");
     _slot = b.gep(_buf, [b.mul(_cnt2, ir.Constant(i64, 8), name="soff")], name="slot");
     b.store(push_fn.args[0], b.bitcast(_slot, i8_ptr_ptr, name="slotpp"));
+    if not self._rc_debug_codegen {
+        (_pr_csp, _pr_cb) = self._emit_rc_color_load(b, push_fn.args[0]);
+        _pr_word = b.load(_pr_csp, name="aid.word");
+        b.store(
+            b.or_(
+                b.and_(_pr_word, ir.Constant(i64, ~4294967295), name="aid.hi"),
+                b.and_(_cnt2, ir.Constant(i64, 4294967295), name="slot.idx"),
+                name="aid.slot"
+            ),
+            _pr_csp
+        );
+    }
     _cnt3 = b.add(_cnt2, ir.Constant(i64, 1), name="cnt3");
     b.store(_cnt3, roots_count_gv);
     b.cbranch(
