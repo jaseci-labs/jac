@@ -1,20 +1,8 @@
-"""The _hashlib module: OpenSSL's hash algorithms, HMAC and key derivation.
-
-Derived from CPython 3.14.6 Modules/_hashopenssl.c; see ../LICENSE.cpython.
-OpenSSL itself stays C: the vendored libcrypto the registry links for
-_hashlib. A HASH (or HASHXOF) object keeps its EVP_MD_CTX, and an HMAC object
-its HMAC_CTX, as native state; the lock of both is the HashLock the HACL*
-hash modules share (hashlib.h's use_mutex and mutex). The fetched EVP_MDs are
-cached in the module's native state, as the C module's hash table caches
-them per interpreter.
-"""
-
 glob HASH_token = ClassToken(),
      HMAC_token = ClassToken();
 
 glob MUNCH_SIZE: i64 = 2147483647,
      INT_MAX: i64 = 2147483647,
-     # The module state's references, by index.
      STATE_EVP_TYPE: int = 0,
      STATE_EVPXOF_TYPE: int = 1,
      STATE_HMAC_TYPE: int = 2,
@@ -22,20 +10,307 @@ glob MUNCH_SIZE: i64 = 2147483647,
      STATE_UNSUPPORTED_DIGESTMOD_ERROR: int = 4,
      STATE_COUNT: int = 5;
 
-# enum Py_hash_type: what a digest is fetched for.
 glob PY_HT_EVP: int = 0,
      PY_HT_EVP_NOSECURITY: int = 1,
      PY_HT_MAC: int = 2,
      PY_HT_PBKDF2: int = 3;
 
-# The EVP_MD_fetch() property query of usedforsecurity=False digests.
 glob:priv NON_FIPS_PROPERTIES: ptr[u8] = c_string_copy("-fips");
 
-# ---------------------------------------------------------------------------
-# The hash alias map: py_hashes. Python's preferred name, its alias, the
-# OpenSSL name and NID of every digest the headers define.
+def:priv hash_entries -> list[tuple[str, str, str, i64]];
 
-def:priv hash_entries -> list[tuple[str, str, str, i64]] {
+glob:priv PY_HASHES: list[tuple[str, str, str, i64]] = hash_entries();
+
+obj HashEntry {
+    has py_name: str,
+        ossl_name: str,
+        ossl_nid: i64,
+        evp: ptr = ptr(),
+        evp_nosecurity: ptr = ptr();
+
+    def release;
+}
+
+obj HashlibState(NativeState) {
+    has table: dict[str, HashEntry] = {},
+        entries: list[HashEntry] = [];
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def hashlib_state_new -> HashlibState;
+
+def:priv hashlib_state(module: ptr[PyObject]) -> HashlibState | None;
+
+def state_ref(module: ptr[PyObject], index: int) -> ptr[PyObject];
+
+def:priv set_ssl_exception_from_errcode(exc: ptr[PyObject], errcode: u64);
+
+def:priv raise_ssl_error(exc: ptr[PyObject], fallback: str);
+
+def:priv notify_ssl_error_occurred;
+
+def:priv py_digest_name(md: ptr) -> ptr[PyObject];
+
+def:priv py_digest_by_name(module: ptr[PyObject], name: str, py_ht: int) -> ptr;
+
+def:priv py_digest_by_digestmod(
+    module: ptr[PyObject], digestmod: ptr[PyObject], py_ht: int
+) -> ptr;
+
+obj EVPState(NativeState) {
+    has lock: HashLock,
+        ctx: ptr = ptr();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def:priv evp_of(instance: ptr[PyObject]) -> EVPState | None;
+
+def:priv new_evp_object(type: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv evp_hash(ctx: ptr, address: ptr, size: i64) -> bool;
+
+def:priv locked_evp_copy(target: ptr, state: EVPState) -> bool;
+
+def EVP_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv evp_final(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject];
+
+def EVP_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def EVP_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def EVP_update_impl(receiver: ptr[PyObject], obj_: ptr[PyObject]) -> ptr[PyObject];
+
+def evp_block_size(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def evp_digest_size(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def evp_name(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def evp_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv evpxof_final(
+    receiver: ptr[PyObject], length: i64, as_hex: bool
+) -> ptr[PyObject];
+
+def EVPXOF_digest_impl(receiver: ptr[PyObject], length: i64) -> ptr[PyObject];
+
+def EVPXOF_hexdigest_impl(receiver: ptr[PyObject], length: i64) -> ptr[PyObject];
+
+def:priv new_hash(
+    module: ptr[PyObject],
+    digestname: str,
+    data_obj: ptr[PyObject],
+    usedforsecurity: bool
+) -> ptr[PyObject];
+
+def:priv call_hashlib_new(
+    module: ptr[PyObject],
+    name: str,
+    data: ptr[PyObject],
+    string: ptr[PyObject],
+    usedforsecurity: bool
+) -> ptr[PyObject];
+
+def _hashlib_new_impl(
+    module: ptr[PyObject],
+    name: str,
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_md5_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha1_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha224_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha256_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha384_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha512_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha3_224_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha3_256_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha3_384_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_sha3_512_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_shake_128_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_openssl_shake_256_impl(
+    module: ptr[PyObject],
+    data: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pbkdf2_hmac_impl(
+    module: ptr[PyObject],
+    hash_name: str,
+    password: BufferArgument,
+    salt: BufferArgument,
+    iterations: i64,
+    dklen_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hashlib_scrypt_impl(
+    module: ptr[PyObject],
+    password: BufferArgument,
+    salt: BufferArgument,
+    n: u64,
+    r: u64,
+    p: u64,
+    maxmem: i64,
+    dklen: i64
+) -> ptr[PyObject];
+
+def _hashlib_hmac_singleshot_impl(
+    module: ptr[PyObject],
+    key: BufferArgument,
+    msg: BufferArgument,
+    digest: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj HMACState(NativeState) {
+    has lock: HashLock,
+        ctx: ptr = ptr();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def:priv hmac_of(instance: ptr[PyObject]) -> HMACState | None;
+
+def:priv hmac_update(state: HMACState, obj_: ptr[PyObject]) -> bool;
+
+def _hashlib_hmac_new_impl(
+    module: ptr[PyObject],
+    key: BufferArgument,
+    msg_obj: ptr[PyObject],
+    digestmod: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv locked_hmac_copy(target: ptr, state: HMACState) -> bool;
+
+def:priv hmac_md(state: HMACState) -> ptr;
+
+def:priv hmac_digest_size(state: HMACState) -> i64;
+
+def _hashlib_HMAC_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _hashlib_HMAC_update_impl(
+    receiver: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv hmac_final(state: HMACState, as_hex: bool) -> ptr[PyObject];
+
+def _hashlib_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _hashlib_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def hmac_get_digest_size(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def hmac_get_block_size(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def hmac_get_name(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def _hashlib_get_fips_mode_impl(module: ptr[PyObject]) -> i32;
+
+def _hashlib_compare_digest_impl(
+    module: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj NameMapperState {
+    has names: ptr[PyObject] = NULL,
+        error: bool = False;
+}
+
+glob:priv name_mapper_state = NameMapperState();
+
+def:priv openssl_hash_name_mapper(md: ptr, argument: ptr);
+
+def hashlib_md_meth_names(module: ptr[PyObject]) -> bool;
+
+def hashlib_init_constructors(
+    module: ptr[PyObject], methods: list[MethodDefinition]
+) -> ptr[PyObject];
+
+def hashlib_exception -> ptr[PyObject];
+
+def dict_proxy(mapping: ptr[PyObject]) -> ptr[PyObject];
+
+def add_object(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool;
+
+impl hash_entries -> list[tuple[str, str, str, i64]] {
     candidates: list[tuple[str, str, str, i64, str]] = [
         ("md5", "MD5", SN_md5, NID_md5, "NID_md5"),
         ("sha1", "SHA1", SN_sha1, NID_sha1, "NID_sha1"),
@@ -63,53 +338,34 @@ def:priv hash_entries -> list[tuple[str, str, str, i64]] {
     return entries;
 }
 
-glob:priv PY_HASHES: list[tuple[str, str, str, i64]] = hash_entries();
-
-"""A py_hashentry_t: the digests fetched for one hash_entry, shared by its name
-and alias."""
-obj HashEntry {
-    has py_name: str,
-        ossl_name: str,
-        ossl_nid: i64,
-        evp: ptr = ptr(),
-        evp_nosecurity: ptr = ptr();
-
-    def release {
-        if self.evp {
-            EVP_MD_free(self.evp);
-            self.evp = ptr();
-        }
-        if self.evp_nosecurity {
-            EVP_MD_free(self.evp_nosecurity);
-            self.evp_nosecurity = ptr();
-        }
+impl HashEntry.release {
+    if self.evp {
+        EVP_MD_free(self.evp);
+        self.evp = ptr();
+    }
+    if self.evp_nosecurity {
+        EVP_MD_free(self.evp_nosecurity);
+        self.evp_nosecurity = ptr();
     }
 }
 
-"""The module state that is not a reference: the hash table."""
-obj HashlibState(NativeState) {
-    has table: dict[str, HashEntry] = {},
-        entries: list[HashEntry] = [];
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {
-        for hash_entry in self.entries {
-            hash_entry.release();
-        }
-        self.entries = [];
-        self.table = {};
-    }
-
-    def drop {
-        self.clear();
-    }
+impl HashlibState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-"""py_hashentry_table_new()."""
-def hashlib_state_new -> HashlibState {
+impl HashlibState.clear {
+    for hash_entry in self.entries {
+        hash_entry.release();
+    }
+    self.entries = [];
+    self.table = {};
+}
+
+impl HashlibState.drop {
+    self.clear();
+}
+
+impl hashlib_state_new -> HashlibState {
     state = HashlibState();
     for (py_name, alias, ossl_name, nid) in PY_HASHES {
         hash_entry = HashEntry(py_name=py_name, ossl_name=ossl_name, ossl_nid=nid);
@@ -122,7 +378,7 @@ def hashlib_state_new -> HashlibState {
     return state;
 }
 
-def:priv hashlib_state(module: ptr[PyObject]) -> HashlibState | None {
+impl hashlib_state(module: ptr[PyObject]) -> HashlibState | None {
     if jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
         if isinstance(state, HashlibState) {
@@ -132,15 +388,11 @@ def:priv hashlib_state(module: ptr[PyObject]) -> HashlibState | None {
     return None;
 }
 
-def state_ref(module: ptr[PyObject], index: int) -> ptr[PyObject] {
+impl state_ref(module: ptr[PyObject], index: int) -> ptr[PyObject] {
     return jacpy_binding_state_get(module, i64(index));
 }
 
-# ---------------------------------------------------------------------------
-# Errors.
-
-"""set_ssl_exception_from_errcode()."""
-def:priv set_ssl_exception_from_errcode(exc: ptr[PyObject], errcode: u64) {
+impl set_ssl_exception_from_errcode(exc: ptr[PyObject], errcode: u64) {
     lib = ERR_lib_error_string(errcode);
     func = ERR_func_error_string(errcode);
     reason = ERR_reason_error_string(errcode);
@@ -153,8 +405,7 @@ def:priv set_ssl_exception_from_errcode(exc: ptr[PyObject], errcode: u64) {
     }
 }
 
-"""raise_ssl_error(): the last OpenSSL error as `exc`, else `fallback`."""
-def:priv raise_ssl_error(exc: ptr[PyObject], fallback: str) {
+impl raise_ssl_error(exc: ptr[PyObject], fallback: str) {
     errcode = ERR_peek_last_error();
     if errcode {
         ERR_clear_error();
@@ -164,20 +415,15 @@ def:priv raise_ssl_error(exc: ptr[PyObject], fallback: str) {
     }
 }
 
-"""notify_ssl_error_occurred()."""
-def:priv notify_ssl_error_occurred {
+impl notify_ssl_error_occurred {
     raise_ssl_error(PyExc_ValueError, "no reason supplied");
 }
 
-# ---------------------------------------------------------------------------
-# Digests.
-
-"""py_digest_name(): the Python name of a digest, else OpenSSL's long name."""
-def:priv py_digest_name(md: ptr) -> ptr[PyObject] {
+impl py_digest_name(md: ptr) -> ptr[PyObject] {
     nid = i64(EVP_MD_get_type(md));
     for (py_name, _, _, ossl_nid) in PY_HASHES {
         if ossl_nid == nid {
-            return PyUnicode_FromString(py_name);
+            return jacpy_unicode_from_text(py_name);
         }
     }
     name = OBJ_nid2ln(i32(nid));
@@ -187,9 +433,7 @@ def:priv py_digest_name(md: ptr) -> ptr[PyObject] {
     return c_string_text(name);
 }
 
-"""py_digest_by_name(): a new reference to the EVP_MD `name` names for
-`py_ht`, or NULL with UnsupportedDigestmodError (or OpenSSL's error) set."""
-def:priv py_digest_by_name(module: ptr[PyObject], name: str, py_ht: int) -> ptr {
+impl py_digest_by_name(module: ptr[PyObject], name: str, py_ht: int) -> ptr {
     digest = ptr();
     state = hashlib_state(module);
     hash_entry = state.table.get(name) if state is not None else None;
@@ -212,7 +456,6 @@ def:priv py_digest_by_name(module: ptr[PyObject], name: str, py_ht: int) -> ptr 
             EVP_MD_up_ref(digest);
         }
     } else {
-        # Fall back for looking up an unindexed OpenSSL specific name.
         digest = EVP_MD_fetch(ptr(), name, properties);
     }
     if not digest {
@@ -225,9 +468,7 @@ def:priv py_digest_by_name(module: ptr[PyObject], name: str, py_ht: int) -> ptr 
     return digest;
 }
 
-"""py_digest_by_digestmod(): the digest a digestmod names, a string or one of
-the module's openssl_* constructors."""
-def:priv py_digest_by_digestmod(
+impl py_digest_by_digestmod(
     module: ptr[PyObject], digestmod: ptr[PyObject], py_ht: int
 ) -> ptr {
     name_obj = NULL;
@@ -254,27 +495,19 @@ def:priv py_digest_by_digestmod(
     return py_digest_by_name(module, text_value(name_obj), py_ht);
 }
 
-# ---------------------------------------------------------------------------
-# HASH and HASHXOF objects.
+impl EVPState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
 
-"""An EVPobject's state: its message digest context and lock."""
-obj EVPState(NativeState) {
-    has lock: HashLock,
-        ctx: ptr = ptr();
+impl EVPState.clear {}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
-    def drop {
-        if self.ctx {
-            EVP_MD_CTX_free(self.ctx);
-        }
+impl EVPState.drop {
+    if self.ctx {
+        EVP_MD_CTX_free(self.ctx);
     }
 }
 
-def:priv evp_of(instance: ptr[PyObject]) -> EVPState | None {
+impl evp_of(instance: ptr[PyObject]) -> EVPState | None {
     state = hash_state_of(instance, HASH_token);
     if isinstance(state, EVPState) {
         return state;
@@ -282,8 +515,7 @@ def:priv evp_of(instance: ptr[PyObject]) -> EVPState | None {
     return None;
 }
 
-"""newEVPobject(): a HASH or HASHXOF of `type` with a fresh context."""
-def:priv new_evp_object(type: ptr[PyObject]) -> ptr[PyObject] {
+impl new_evp_object(type: ptr[PyObject]) -> ptr[PyObject] {
     ctx = EVP_MD_CTX_new();
     if not ctx {
         PyErr_NoMemory();
@@ -292,9 +524,7 @@ def:priv new_evp_object(type: ptr[PyObject]) -> ptr[PyObject] {
     return hash_object_new(type, HASH_token, EVPState(lock=HashLock(), ctx=ctx));
 }
 
-"""EVP_hash(): feed `size` bytes to the context in INT_MAX chunks; False when
-OpenSSL fails. It may run with the GIL released, so the caller reports it."""
-def:priv evp_hash(ctx: ptr, address: ptr, size: i64) -> bool {
+impl evp_hash(ctx: ptr, address: ptr, size: i64) -> bool {
     remaining = size;
     cursor = address;
     while 0 < remaining {
@@ -308,15 +538,14 @@ def:priv evp_hash(ctx: ptr, address: ptr, size: i64) -> bool {
     return True;
 }
 
-"""locked_EVP_MD_CTX_copy()."""
-def:priv locked_evp_copy(target: ptr, state: EVPState) -> bool {
+impl locked_evp_copy(target: ptr, state: EVPState) -> bool {
     state.lock.enter();
     result = EVP_MD_CTX_copy(target, state.ctx);
     state.lock.leave();
     return result != 0;
 }
 
-def EVP_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl EVP_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = evp_of(receiver);
     if state is None {
         return NULL;
@@ -334,8 +563,7 @@ def EVP_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return copy;
 }
 
-"""EVP_digest_impl() and EVP_hexdigest_impl()."""
-def:priv evp_final(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
+impl evp_final(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
     state = evp_of(receiver);
     if state is None {
         return NULL;
@@ -372,15 +600,15 @@ def:priv evp_final(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
     return result;
 }
 
-def EVP_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl EVP_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return evp_final(receiver, False);
 }
 
-def EVP_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl EVP_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return evp_final(receiver, True);
 }
 
-def EVP_update_impl(receiver: ptr[PyObject], obj_: ptr[PyObject]) -> ptr[PyObject] {
+impl EVP_update_impl(receiver: ptr[PyObject], obj_: ptr[PyObject]) -> ptr[PyObject] {
     state = evp_of(receiver);
     if state is None {
         return NULL;
@@ -417,8 +645,7 @@ def EVP_update_impl(receiver: ptr[PyObject], obj_: ptr[PyObject]) -> ptr[PyObjec
     return Py_NewRef(borrowed_none());
 }
 
-"""EVP_get_block_size()."""
-def evp_block_size(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl evp_block_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = evp_of(instance);
     if state is None {
         return NULL;
@@ -426,8 +653,7 @@ def evp_block_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(EVP_MD_get_block_size(EVP_MD_CTX_get0_md(state.ctx))));
 }
 
-"""EVP_get_digest_size()."""
-def evp_digest_size(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl evp_digest_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = evp_of(instance);
     if state is None {
         return NULL;
@@ -435,8 +661,7 @@ def evp_digest_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(EVP_MD_CTX_get_size_ex(state.ctx)));
 }
 
-"""EVP_get_name()."""
-def evp_name(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl evp_name(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = evp_of(instance);
     if state is None {
         return NULL;
@@ -449,8 +674,7 @@ def evp_name(instance: ptr[PyObject]) -> ptr[PyObject] {
     return py_digest_name(md);
 }
 
-"""EVP_repr()."""
-def evp_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl evp_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     name = evp_name(instance);
     if not name {
         return NULL;
@@ -460,10 +684,7 @@ def evp_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""EVPXOF_digest_impl() and EVPXOF_hexdigest_impl()."""
-def:priv evpxof_final(
-    receiver: ptr[PyObject], length: i64, as_hex: bool
-) -> ptr[PyObject] {
+impl evpxof_final(receiver: ptr[PyObject], length: i64, as_hex: bool) -> ptr[PyObject] {
     state = evp_of(receiver);
     if state is None {
         return NULL;
@@ -512,16 +733,15 @@ def:priv evpxof_final(
     return retval;
 }
 
-def EVPXOF_digest_impl(receiver: ptr[PyObject], length: i64) -> ptr[PyObject] {
+impl EVPXOF_digest_impl(receiver: ptr[PyObject], length: i64) -> ptr[PyObject] {
     return evpxof_final(receiver, length, False);
 }
 
-def EVPXOF_hexdigest_impl(receiver: ptr[PyObject], length: i64) -> ptr[PyObject] {
+impl EVPXOF_hexdigest_impl(receiver: ptr[PyObject], length: i64) -> ptr[PyObject] {
     return evpxof_final(receiver, length, True);
 }
 
-"""_hashlib_HASH(): a new HASH or HASHXOF of `digestname`, fed `data_obj`."""
-def:priv new_hash(
+impl new_hash(
     module: ptr[PyObject],
     digestname: str,
     data_obj: ptr[PyObject],
@@ -559,7 +779,6 @@ def:priv new_hash(
             size = view.size();
             result = False;
             if size >= HASHLIB_GIL_MINSIZE {
-                # The object is not shared yet, so no lock is taken.
                 ctx = state.ctx;
                 thread = PyEval_SaveThread();
                 result = evp_hash(ctx, address, size);
@@ -581,8 +800,7 @@ def:priv new_hash(
     return instance;
 }
 
-"""CALL_HASHLIB_NEW."""
-def:priv call_hashlib_new(
+impl call_hashlib_new(
     module: ptr[PyObject],
     name: str,
     data: ptr[PyObject],
@@ -596,7 +814,7 @@ def:priv call_hashlib_new(
     return new_hash(module, name, data_obj, usedforsecurity);
 }
 
-def _hashlib_new_impl(
+impl _hashlib_new_impl(
     module: ptr[PyObject],
     name: str,
     data: ptr[PyObject],
@@ -606,7 +824,7 @@ def _hashlib_new_impl(
     return call_hashlib_new(module, name, data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_md5_impl(
+impl _hashlib_openssl_md5_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -615,7 +833,7 @@ def _hashlib_openssl_md5_impl(
     return call_hashlib_new(module, "md5", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha1_impl(
+impl _hashlib_openssl_sha1_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -624,7 +842,7 @@ def _hashlib_openssl_sha1_impl(
     return call_hashlib_new(module, "sha1", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha224_impl(
+impl _hashlib_openssl_sha224_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -633,7 +851,7 @@ def _hashlib_openssl_sha224_impl(
     return call_hashlib_new(module, "sha224", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha256_impl(
+impl _hashlib_openssl_sha256_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -642,7 +860,7 @@ def _hashlib_openssl_sha256_impl(
     return call_hashlib_new(module, "sha256", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha384_impl(
+impl _hashlib_openssl_sha384_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -651,7 +869,7 @@ def _hashlib_openssl_sha384_impl(
     return call_hashlib_new(module, "sha384", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha512_impl(
+impl _hashlib_openssl_sha512_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -660,7 +878,7 @@ def _hashlib_openssl_sha512_impl(
     return call_hashlib_new(module, "sha512", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha3_224_impl(
+impl _hashlib_openssl_sha3_224_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -669,7 +887,7 @@ def _hashlib_openssl_sha3_224_impl(
     return call_hashlib_new(module, "sha3_224", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha3_256_impl(
+impl _hashlib_openssl_sha3_256_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -678,7 +896,7 @@ def _hashlib_openssl_sha3_256_impl(
     return call_hashlib_new(module, "sha3_256", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha3_384_impl(
+impl _hashlib_openssl_sha3_384_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -687,7 +905,7 @@ def _hashlib_openssl_sha3_384_impl(
     return call_hashlib_new(module, "sha3_384", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_sha3_512_impl(
+impl _hashlib_openssl_sha3_512_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -696,7 +914,7 @@ def _hashlib_openssl_sha3_512_impl(
     return call_hashlib_new(module, "sha3_512", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_shake_128_impl(
+impl _hashlib_openssl_shake_128_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -705,7 +923,7 @@ def _hashlib_openssl_shake_128_impl(
     return call_hashlib_new(module, "shake_128", data, string, usedforsecurity);
 }
 
-def _hashlib_openssl_shake_256_impl(
+impl _hashlib_openssl_shake_256_impl(
     module: ptr[PyObject],
     data: ptr[PyObject],
     usedforsecurity: bool,
@@ -714,10 +932,7 @@ def _hashlib_openssl_shake_256_impl(
     return call_hashlib_new(module, "shake_256", data, string, usedforsecurity);
 }
 
-# ---------------------------------------------------------------------------
-# Key derivation.
-
-def pbkdf2_hmac_impl(
+impl pbkdf2_hmac_impl(
     module: ptr[PyObject],
     hash_name: str,
     password: BufferArgument,
@@ -756,7 +971,6 @@ def pbkdf2_hmac_impl(
             object_error(PyExc_ValueError, "key length must be greater than 0.");
             failed = True;
         } elif dklen > INT_MAX {
-            # INT_MAX is always smaller than dkLen max (2^32 - 1) * hLen.
             object_error(PyExc_OverflowError, "key length is too great.");
             failed = True;
         }
@@ -792,7 +1006,7 @@ def pbkdf2_hmac_impl(
     return key_obj;
 }
 
-def _hashlib_scrypt_impl(
+impl _hashlib_scrypt_impl(
     module: ptr[PyObject],
     password: BufferArgument,
     salt: BufferArgument,
@@ -815,8 +1029,6 @@ def _hashlib_scrypt_impl(
         return NULL;
     }
     if maxmem < 0 or maxmem > INT_MAX {
-        # OpenSSL 1.1.0 restricts maxmem to 32 MiB. It may change in the
-        # future. The maxmem constant is private to OpenSSL.
         object_error(
             PyExc_ValueError, f"maxmem must be positive and smaller than {INT_MAX}"
         );
@@ -828,7 +1040,7 @@ def _hashlib_scrypt_impl(
         );
         return NULL;
     }
-    # Let OpenSSL validate the rest.
+
     retval = EVP_PBE_scrypt(
         ptr(), u64(0), ptr(), u64(0), n, r, p, u64(maxmem), ptr(), u64(0)
     );
@@ -869,11 +1081,7 @@ def _hashlib_scrypt_impl(
     return key_obj;
 }
 
-# ---------------------------------------------------------------------------
-# HMAC.
-
-"""hmac_digest(): a single-shot HMAC."""
-def _hashlib_hmac_singleshot_impl(
+impl _hashlib_hmac_singleshot_impl(
     module: ptr[PyObject],
     key: BufferArgument,
     msg: BufferArgument,
@@ -918,24 +1126,19 @@ def _hashlib_hmac_singleshot_impl(
     return output;
 }
 
-"""An HMACobject's state: its HMAC context and lock."""
-obj HMACState(NativeState) {
-    has lock: HashLock,
-        ctx: ptr = ptr();
+impl HMACState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
+impl HMACState.clear {}
 
-    def clear {}
-    def drop {
-        if self.ctx {
-            HMAC_CTX_free(self.ctx);
-        }
+impl HMACState.drop {
+    if self.ctx {
+        HMAC_CTX_free(self.ctx);
     }
 }
 
-def:priv hmac_of(instance: ptr[PyObject]) -> HMACState | None {
+impl hmac_of(instance: ptr[PyObject]) -> HMACState | None {
     state = hash_state_of(instance, HMAC_token);
     if isinstance(state, HMACState) {
         return state;
@@ -943,8 +1146,7 @@ def:priv hmac_of(instance: ptr[PyObject]) -> HMACState | None {
     return None;
 }
 
-"""_hmac_update(): False with the error set."""
-def:priv hmac_update(state: HMACState, obj_: ptr[PyObject]) -> bool {
+impl hmac_update(state: HMACState, obj_: ptr[PyObject]) -> bool {
     view = hash_buffer(obj_);
     if view is None {
         return False;
@@ -977,7 +1179,7 @@ def:priv hmac_update(state: HMACState, obj_: ptr[PyObject]) -> bool {
     return True;
 }
 
-def _hashlib_hmac_new_impl(
+impl _hashlib_hmac_new_impl(
     module: ptr[PyObject],
     key: BufferArgument,
     msg_obj: ptr[PyObject],
@@ -1020,16 +1222,14 @@ def _hashlib_hmac_new_impl(
     return instance;
 }
 
-"""locked_HMAC_CTX_copy()."""
-def:priv locked_hmac_copy(target: ptr, state: HMACState) -> bool {
+impl locked_hmac_copy(target: ptr, state: HMACState) -> bool {
     state.lock.enter();
     result = HMAC_CTX_copy(target, state.ctx);
     state.lock.leave();
     return result != 0;
 }
 
-"""_hashlib_hmac_get_md()."""
-def:priv hmac_md(state: HMACState) -> ptr {
+impl hmac_md(state: HMACState) -> ptr {
     md = HMAC_CTX_get_md(state.ctx);
     if not md {
         raise_ssl_error(PyExc_ValueError, "missing EVP_MD for HMAC context");
@@ -1037,8 +1237,7 @@ def:priv hmac_md(state: HMACState) -> ptr {
     return md;
 }
 
-"""_hashlib_hmac_digest_size(): 0 with the error set on failure."""
-def:priv hmac_digest_size(state: HMACState) -> i64 {
+impl hmac_digest_size(state: HMACState) -> i64 {
     md = hmac_md(state);
     if not md {
         return 0;
@@ -1050,7 +1249,7 @@ def:priv hmac_digest_size(state: HMACState) -> i64 {
     return digest_size;
 }
 
-def _hashlib_HMAC_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hashlib_HMAC_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -1069,7 +1268,7 @@ def _hashlib_HMAC_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def _hashlib_HMAC_update_impl(
+impl _hashlib_HMAC_update_impl(
     receiver: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = hmac_of(receiver);
@@ -1079,8 +1278,7 @@ def _hashlib_HMAC_update_impl(
     return Py_NewRef(borrowed_none());
 }
 
-"""_hmac_digest() into a new buffer of the digest size: NULL with the error set."""
-def:priv hmac_final(state: HMACState, as_hex: bool) -> ptr[PyObject] {
+impl hmac_final(state: HMACState, as_hex: bool) -> ptr[PyObject] {
     digest_size = hmac_digest_size(state);
     if digest_size == 0 {
         return NULL;
@@ -1117,7 +1315,7 @@ def:priv hmac_final(state: HMACState, as_hex: bool) -> ptr[PyObject] {
     return result;
 }
 
-def _hashlib_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hashlib_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -1125,7 +1323,7 @@ def _hashlib_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return hmac_final(state, False);
 }
 
-def _hashlib_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hashlib_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -1133,8 +1331,7 @@ def _hashlib_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return hmac_final(state, True);
 }
 
-"""_hashlib_hmac_get_digest_size()."""
-def hmac_get_digest_size(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl hmac_get_digest_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(instance);
     if state is None {
         return NULL;
@@ -1143,8 +1340,7 @@ def hmac_get_digest_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     return NULL if digest_size == 0 else PyLong_FromLong(digest_size);
 }
 
-"""_hashlib_hmac_get_block_size()."""
-def hmac_get_block_size(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl hmac_get_block_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(instance);
     if state is None {
         return NULL;
@@ -1153,8 +1349,7 @@ def hmac_get_block_size(instance: ptr[PyObject]) -> ptr[PyObject] {
     return NULL if not md else PyLong_FromLong(i64(EVP_MD_get_block_size(md)));
 }
 
-"""_hashlib_hmac_get_name()."""
-def hmac_get_name(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl hmac_get_name(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(instance);
     if state is None {
         return NULL;
@@ -1172,8 +1367,7 @@ def hmac_get_name(instance: ptr[PyObject]) -> ptr[PyObject] {
     return name;
 }
 
-"""_hmac_repr()."""
-def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(instance);
     if state is None {
         return NULL;
@@ -1191,35 +1385,17 @@ def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Module functions.
-
-def _hashlib_get_fips_mode_impl(module: ptr[PyObject]) -> i32 {
+impl _hashlib_get_fips_mode_impl(module: ptr[PyObject]) -> i32 {
     return EVP_default_properties_is_fips_enabled(ptr());
 }
 
-def _hashlib_compare_digest_impl(
+impl _hashlib_compare_digest_impl(
     module: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject]
 ) -> ptr[PyObject] {
     return compare_digest(a, b);
 }
 
-# ---------------------------------------------------------------------------
-# Module initialization.
-
-"""_InternalNameMapperState: the set _openssl_hash_name_mapper() fills and
-whether it failed. OpenSSL calls the mapper synchronously from
-hashlib_md_meth_names(), so one record serves every call."""
-obj NameMapperState {
-    has names: ptr[PyObject] = NULL,
-        error: bool = False;
-}
-
-glob:priv name_mapper_state = NameMapperState();
-
-"""_openssl_hash_name_mapper()."""
-def:priv openssl_hash_name_mapper(md: ptr, argument: ptr) {
-    # Ignore all undefined providers.
+impl openssl_hash_name_mapper(md: ptr, argument: ptr) {
     if not md or i64(EVP_MD_get_type(md)) == NID_undef {
         return;
     }
@@ -1234,9 +1410,7 @@ def:priv openssl_hash_name_mapper(md: ptr, argument: ptr) {
     }
 }
 
-"""hashlib_md_meth_names(): openssl_md_meth_names, every digest the default
-context's providers offer."""
-def hashlib_md_meth_names(module: ptr[PyObject]) -> bool {
+impl hashlib_md_meth_names(module: ptr[PyObject]) -> bool {
     names = PyFrozenSet_New(NULL);
     if not names {
         return False;
@@ -1252,8 +1426,7 @@ def hashlib_md_meth_names(module: ptr[PyObject]) -> bool {
     return PyModule_Add(module, "openssl_md_meth_names", names) == 0;
 }
 
-"""hashlib_init_constructors(): _constructors, {openssl_sha256: "sha256", ...}."""
-def hashlib_init_constructors(
+impl hashlib_init_constructors(
     module: ptr[PyObject], methods: list[MethodDefinition]
 ) -> ptr[PyObject] {
     constructs = PyDict_New();
@@ -1264,12 +1437,12 @@ def hashlib_init_constructors(
         if not method.name.startswith("openssl_") {
             continue;
         }
-        name_obj = PyUnicode_FromString(method.name[8:]);
+        name_obj = jacpy_unicode_from_text(method.name[8:]);
         if not name_obj {
             jacpy_release(constructs);
             return NULL;
         }
-        func = PyObject_GetAttrString(module, method.name);
+        func = jacpy_object_getattr_text(module, method.name);
         if not func {
             jacpy_release(name_obj);
             jacpy_release(constructs);
@@ -1286,17 +1459,16 @@ def hashlib_init_constructors(
     return constructs;
 }
 
-"""hashlib_exception(): UnsupportedDigestmodError."""
-def hashlib_exception -> ptr[PyObject] {
+impl hashlib_exception -> ptr[PyObject] {
     return PyErr_NewException(
         "_hashlib.UnsupportedDigestmodError", PyExc_ValueError, NULL
     );
 }
 
-def dict_proxy(mapping: ptr[PyObject]) -> ptr[PyObject] {
+impl dict_proxy(mapping: ptr[PyObject]) -> ptr[PyObject] {
     return PyDictProxy_New(mapping);
 }
 
-def add_object(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
+impl add_object(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
     return PyModule_AddObjectRef(module, name, value) == 0;
 }

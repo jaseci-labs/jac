@@ -28,6 +28,7 @@ _operator       test.test_operator,test.test_hmac      -lcrypto
 _queue          test.test_queue
 _json           test.test_json
 _csv            test.test_csv
+_remote_debugging
 _struct         test.test_struct
 cmath           test.test_cmath
 math            test.test_math

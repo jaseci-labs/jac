@@ -1,14 +1,3 @@
-"""Waiting for I/O readiness: select(), poll(), epoll and kqueue.
-
-Derived from CPython 3.14.6 Modules/selectmodule.c; see ../LICENSE.cpython.
-The system calls and their records come from select_platform.<os>.jac (epoll
-on Linux, kqueue on macOS) and the constants from select_constants.<os>.jac.
-fd_set is addressed as FD_SETSIZE bits in memory order, which is the layout
-of every little-endian target. No supported target has Solaris'
-<sys/devpoll.h>: the devpoll implementations the clinic glue names report
-that and the module never publishes them.
-"""
-
 import from c { def close(fd: i32) -> i32;  def pipe(fds: ptr[i32]) -> i32;  }
 
 glob:priv INT_MAX: int = 2147483647,
@@ -18,15 +7,12 @@ glob:priv INT_MAX: int = 2147483647,
      ROUND_TIMEOUT: i32 = 3,
      POLLFD_SIZE: int = 8,
      TIMESPEC_SIZE: int = 16,
-     # Py_ASNATIVEBYTES_NATIVE_ENDIAN | UNSIGNED_BUFFER | REJECT_NEGATIVE | ALLOW_INDEX
      IDENT_BYTES_FLAGS: i32 = i32(3 | 4 | 8 | 16),
-     # Module state slots of the object types.
      POLL_TYPE: int = 0,
      EPOLL_TYPE: int = 1,
      KEVENT_TYPE: int = 2,
      KQUEUE_TYPE: int = 3;
 
-# Handles the binding fills in: the module definition and each type's.
 obj DefinitionHandle {
     has handle: ptr = ptr();
 }
@@ -37,29 +23,240 @@ glob module_definition = DefinitionHandle(),
      kevent_token = ClassToken(),
      kqueue_token = ClassToken();
 
-# _selectstate: the interned "close" and the open kqueue objects, borrowed,
-# that a fork invalidates.
 obj SelectState(NativeState) {
     has close: ptr[PyObject] = NULL,
         open_queues: list[ptr[PyObject]] = [],
         tracking_initialized: bool = False;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.close, visitor, context);
-    }
-
-    def clear {
-        previous = self.close;
-        self.close = NULL;
-        jacpy_release(previous);
-    }
-
-    def drop {
-        self.clear();
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
 }
 
-def select_state(module: ptr[PyObject]) -> (SelectState | None) {
+def select_state(module: ptr[PyObject]) -> (SelectState | None);
+
+def:priv module_of(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv os_error -> ptr[PyObject];
+
+def:priv errno_error(code: i64) -> ptr[PyObject];
+
+def:priv type_error_matches -> bool;
+
+obj DescriptorList {
+    has objects: list[ptr[PyObject]] = [],
+        fds: list[int] = [];
+
+    def reap;
+    def drop;
+}
+
+def:priv seq2set(seq: ptr[PyObject], bits: ptr[u8], entries: DescriptorList) -> int;
+
+def:priv set2list(bits: ptr[u8], entries: DescriptorList) -> ptr[PyObject];
+
+def select_select_impl(
+    module: ptr[PyObject],
+    rlist: ptr[PyObject],
+    wlist: ptr[PyObject],
+    xlist: ptr[PyObject],
+    timeout_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj PollState(NativeState) {
+    has dict: ptr[PyObject] = NULL,
+        ufd_uptodate: bool = False,
+        ufd_len: int = 0,
+        ufds: ptr[pollfd] = ptr[pollfd](),
+        poll_running: bool = False;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def:priv poll_of(instance: ptr[PyObject]) -> (PollState | None);
+
+def:priv update_ufd_array(state: PollState) -> bool;
+
+def select_poll_register_impl(
+    receiver: ptr[PyObject], fd: i32, eventmask: u16
+) -> ptr[PyObject];
+
+def select_poll_modify_impl(
+    receiver: ptr[PyObject], fd: i32, eventmask: u16
+) -> ptr[PyObject];
+
+def select_poll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def:priv milliseconds_in_range(ms: i64) -> bool;
+
+def select_poll_poll_impl(
+    receiver: ptr[PyObject], timeout_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv pair_of(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject];
+
+def select_poll_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def have_broken_poll -> bool;
+
+def:priv devpoll_unavailable -> ptr[PyObject];
+
+def select_devpoll_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def select_devpoll_register_impl(
+    receiver: ptr[PyObject], fd: i32, eventmask: u16
+) -> ptr[PyObject];
+
+def select_devpoll_modify_impl(
+    receiver: ptr[PyObject], fd: i32, eventmask: u16
+) -> ptr[PyObject];
+
+def select_devpoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def select_devpoll_poll_impl(
+    receiver: ptr[PyObject], timeout_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def select_devpoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def select_devpoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+obj EpollState(NativeState) {
+    has epfd: i32 = -1;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def epoll_of(instance: ptr[PyObject]) -> (EpollState | None);
+
+def:priv epoll_closed -> ptr[PyObject];
+
+def epoll_internal_close(state: EpollState) -> i64;
+
+def:priv new_epoll(type: ptr[PyObject], sizehint: int, fd: i32) -> ptr[PyObject];
+
+def select_epoll_impl(type: ptr[PyObject], sizehint: i32, flags: i32) -> ptr[PyObject];
+
+def select_epoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def epoll_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def select_epoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def select_epoll_fromfd_impl(type: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def:priv epoll_internal_ctl(epfd: i32, op: i64, fd: i32, events: u32) -> ptr[PyObject];
+
+def select_epoll_register_impl(
+    receiver: ptr[PyObject], fd: i32, eventmask: u32
+) -> ptr[PyObject];
+
+def select_epoll_modify_impl(
+    receiver: ptr[PyObject], fd: i32, eventmask: u32
+) -> ptr[PyObject];
+
+def select_epoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def select_epoll_poll_impl(
+    receiver: ptr[PyObject], timeout_obj: ptr[PyObject], maxevents: i32
+) -> ptr[PyObject];
+
+def select_epoll___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def select_epoll___exit___impl(
+    receiver: ptr[PyObject],
+    exc_type: ptr[PyObject],
+    exc_value: ptr[PyObject],
+    exc_tb: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj KeventState(NativeState) {
+    has record: ptr[kevent_record] = ptr[kevent_record]();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def kevent_of(instance: ptr[PyObject]) -> (KeventState | None);
+
+def new_kevent(type: ptr[PyObject], event: kevent_record | None) -> ptr[PyObject];
+
+def kqueue_event_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def kqueue_event_init(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32;
+
+def:priv lowercase_hex(value: u64) -> str;
+
+def kqueue_event_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def kqueue_event_richcompare(
+    lhs: ptr[PyObject], rhs: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+obj KqueueState(NativeState) {
+    has kqfd: i32 = -1;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def kqueue_of(instance: ptr[PyObject]) -> (KqueueState | None);
+
+def:priv kqueue_closed -> ptr[PyObject];
+
+def kqueue_tracking_after_fork(
+    module: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState);
+
+def:priv kqueue_tracking_remove(instance: ptr[PyObject]);
+
+def kqueue_internal_close(instance: ptr[PyObject], state: KqueueState) -> i64;
+
+def kqueue_finalize(instance: ptr[PyObject]);
+
+def:priv new_kqueue(type: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def select_kqueue_impl(type: ptr[PyObject]) -> ptr[PyObject];
+
+def select_kqueue_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def kqueue_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def select_kqueue_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def select_kqueue_fromfd_impl(type: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def select_kqueue_control_impl(
+    receiver: ptr[PyObject],
+    changelist: ptr[PyObject],
+    maxevents: i32,
+    otimeout: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl SelectState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.close, visitor, context);
+}
+
+impl SelectState.clear {
+    previous = self.close;
+    self.close = NULL;
+    jacpy_release(previous);
+}
+
+impl SelectState.drop {
+    self.clear();
+}
+
+impl select_state(module: ptr[PyObject]) -> (SelectState | None) {
     if jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
         if isinstance(state, SelectState) {
@@ -70,57 +267,45 @@ def select_state(module: ptr[PyObject]) -> (SelectState | None) {
     return None;
 }
 
-# The select module an object's type belongs to, borrowed.
-def:priv module_of(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl module_of(instance: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_owner(Py_TYPE(instance), module_definition.handle);
 }
 
-def:priv os_error -> ptr[PyObject] {
+impl os_error -> ptr[PyObject] {
     PyErr_SetFromErrno(PyExc_OSError);
     return NULL;
 }
 
-def:priv errno_error(code: i64) -> ptr[PyObject] {
+impl errno_error(code: i64) -> ptr[PyObject] {
     jacpy_set_errno(code);
     return os_error();
 }
 
-def:priv type_error_matches -> bool {
+impl type_error_matches -> bool {
     return PyErr_ExceptionMatches(PyExc_TypeError) != 0;
 }
 
-# ---------------------------------------------------------------- select()
-
-# The objects of one select() argument with their descriptors: seq2set()'s
-# pylist, which owns each object until set2list() hands it on.
-obj DescriptorList {
-    has objects: list[ptr[PyObject]] = [],
-        fds: list[int] = [];
-
-    def reap {
-        held = self.objects;
-        self.objects = [];
-        self.fds = [];
-        for value in held {
-            jacpy_release(value);
-        }
-    }
-
-    def drop {
-        self.reap();
+impl DescriptorList.reap {
+    held = self.objects;
+    self.objects = [];
+    self.fds = [];
+    for value in held {
+        jacpy_release(value);
     }
 }
 
-# seq2set(): mark each descriptor of `seq` in the fd_set at `bits`; the
-# highest descriptor plus one, or -1 with the exception set.
-def:priv seq2set(seq: ptr[PyObject], bits: ptr[u8], entries: DescriptorList) -> int {
-    fast = PySequence_Fast(seq, "arguments 1-3 must be sequences");
+impl DescriptorList.drop {
+    self.reap();
+}
+
+impl seq2set(seq: ptr[PyObject], bits: ptr[u8], entries: DescriptorList) -> int {
+    fast = PySequence_Fast(seq, ptr[u8]("arguments 1-3 must be sequences"));
     if not fast {
         return -1;
     }
     set_bits = bits.view(int(FD_SETSIZE) // 8);
     highest = -1;
-    # The size is read on every step: fileno() may shrink a list argument.
+
     i = 0;
     while i < int(jacpy_fast_size(fast)) {
         o = jacpy_fast_item(fast, i64(i));
@@ -154,9 +339,7 @@ def:priv seq2set(seq: ptr[PyObject], bits: ptr[u8], entries: DescriptorList) -> 
     return highest + 1;
 }
 
-# set2list(): the objects whose descriptors select() left set, taking them
-# over from `entries`.
-def:priv set2list(bits: ptr[u8], entries: DescriptorList) -> ptr[PyObject] {
+impl set2list(bits: ptr[u8], entries: DescriptorList) -> ptr[PyObject] {
     set_bits = bits.view(int(FD_SETSIZE) // 8);
     ready: list[int] = [];
     for j in range(len(entries.fds)) {
@@ -180,7 +363,7 @@ def:priv set2list(bits: ptr[u8], entries: DescriptorList) -> ptr[PyObject] {
     return result;
 }
 
-def select_select_impl(
+impl select_select_impl(
     module: ptr[PyObject],
     rlist: ptr[PyObject],
     wlist: ptr[PyObject],
@@ -206,7 +389,7 @@ def select_select_impl(
         }
     }
     set_size = int(FD_SETSIZE) // 8;
-    # Three fd_sets followed by the struct timeval select() may update.
+
     memory = PyMem_Calloc(1, u64(3 * set_size + 16));
     if not memory {
         return PyErr_NoMemory();
@@ -252,7 +435,6 @@ def select_select_impl(
             if has_timeout {
                 timeout = _PyDeadline_Get(deadline);
                 if timeout < 0 {
-                    # bpo-35310: the sets are unmodified; clear them explicitly.
                     for k in range(3 * set_size) {
                         input.view(3 * set_size)[k] = u8(0);
                     }
@@ -286,29 +468,18 @@ def select_select_impl(
     return result;
 }
 
-# ------------------------------------------------------------------ poll()
-
-# pollObject: registered descriptors in a dict, mirrored into an array of
-# struct pollfd whenever the dict changed since the last poll().
-obj PollState(NativeState) {
-    has dict: ptr[PyObject] = NULL,
-        ufd_uptodate: bool = False,
-        ufd_len: int = 0,
-        ufds: ptr[pollfd] = ptr[pollfd](),
-        poll_running: bool = False;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
-    def drop {
-        PyMem_Free(ptr(self.ufds));
-        jacpy_release(self.dict);
-    }
+impl PollState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-def:priv poll_of(instance: ptr[PyObject]) -> (PollState | None) {
+impl PollState.clear {}
+
+impl PollState.drop {
+    PyMem_Free(ptr(self.ufds));
+    jacpy_release(self.dict);
+}
+
+impl poll_of(instance: ptr[PyObject]) -> (PollState | None) {
     if jacpy_binding_native_present(instance, poll_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, poll_token.handle);
         if isinstance(state, PollState) {
@@ -319,8 +490,7 @@ def:priv poll_of(instance: ptr[PyObject]) -> (PollState | None) {
     return None;
 }
 
-# update_ufd_array(): rebuild the pollfd array from the dict.
-def:priv update_ufd_array(state: PollState) -> bool {
+impl update_ufd_array(state: PollState) -> bool {
     count = int(jacpy_dict_size(state.dict));
     grown = PyMem_Realloc(ptr(state.ufds), u64(count * POLLFD_SIZE));
     if not grown {
@@ -343,7 +513,7 @@ def:priv update_ufd_array(state: PollState) -> bool {
     return True;
 }
 
-def select_poll_register_impl(
+impl select_poll_register_impl(
     receiver: ptr[PyObject], fd: i32, eventmask: u16
 ) -> ptr[PyObject] {
     state = poll_of(receiver);
@@ -369,7 +539,7 @@ def select_poll_register_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def select_poll_modify_impl(
+impl select_poll_modify_impl(
     receiver: ptr[PyObject], fd: i32, eventmask: u16
 ) -> ptr[PyObject] {
     state = poll_of(receiver);
@@ -404,7 +574,7 @@ def select_poll_modify_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def select_poll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl select_poll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     state = poll_of(receiver);
     if state is None {
         return NULL;
@@ -413,7 +583,7 @@ def select_poll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObjec
     if not key {
         return NULL;
     }
-    # An unregistered descriptor raises PyDict_DelItem's KeyError.
+
     status = PyDict_DelItem(state.dict, key);
     jacpy_release(key);
     if status == -1 {
@@ -423,8 +593,7 @@ def select_poll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObjec
     return Py_NewRef(borrowed_none());
 }
 
-# A timeout in milliseconds for poll() or epoll_wait(), or None.
-def:priv milliseconds_in_range(ms: i64) -> bool {
+impl milliseconds_in_range(ms: i64) -> bool {
     if ms < INT_MIN or ms > INT_MAX {
         object_error(PyExc_OverflowError, "timeout is too large");
         return False;
@@ -432,7 +601,7 @@ def:priv milliseconds_in_range(ms: i64) -> bool {
     return True;
 }
 
-def select_poll_poll_impl(
+impl select_poll_poll_impl(
     receiver: ptr[PyObject], timeout_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = poll_of(receiver);
@@ -458,7 +627,7 @@ def select_poll_poll_impl(
             deadline = _PyDeadline_Init(timeout);
         }
     }
-    # A negative timeout must be exactly -1 (no target defines INFTIM).
+
     if ms < 0 {
         ms = -1;
     }
@@ -510,7 +679,7 @@ def select_poll_poll_impl(
             i += 1;
         }
         record = (state.ufds + i).view(1)[0];
-        # The & 0xffff keeps a 16-bit POLLNVAL of 0x8000 positive.
+
         value = pair_of(
             PyLong_FromLong(i64(record.fd)),
             PyLong_FromLong(i64(record.revents) & 0xFFFF)
@@ -525,8 +694,7 @@ def select_poll_poll_impl(
     return result_list;
 }
 
-# A 2-tuple taking over two new references; NULL if either is NULL.
-def:priv pair_of(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject] {
+impl pair_of(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject] {
     if not first or not second {
         jacpy_release(first);
         jacpy_release(second);
@@ -543,8 +711,7 @@ def:priv pair_of(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# newPollObject()
-def select_poll_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl select_poll_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(jacpy_binding_state_get(module, POLL_TYPE));
     if not instance {
         return NULL;
@@ -558,9 +725,7 @@ def select_poll_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return instance;
 }
 
-# select_have_broken_poll(): whether poll() fails, rather than reporting
-# POLLNVAL, for a descriptor that is not open.
-def have_broken_poll -> bool {
+impl have_broken_poll -> bool {
     memory = PyMem_Calloc(1, u64(2 * 4 + POLLFD_SIZE));
     if not memory {
         return True;
@@ -583,60 +748,52 @@ def have_broken_poll -> bool {
     return broken;
 }
 
-# ----------------------------------------------------------------- devpoll
-
-def:priv devpoll_unavailable -> ptr[PyObject] {
+impl devpoll_unavailable -> ptr[PyObject] {
     object_error(PyExc_OSError, "/dev/poll is not available on this platform");
     return NULL;
 }
 
-def select_devpoll_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl select_devpoll_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-def select_devpoll_register_impl(
+impl select_devpoll_register_impl(
     receiver: ptr[PyObject], fd: i32, eventmask: u16
 ) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-def select_devpoll_modify_impl(
+impl select_devpoll_modify_impl(
     receiver: ptr[PyObject], fd: i32, eventmask: u16
 ) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-def select_devpoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl select_devpoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-def select_devpoll_poll_impl(
+impl select_devpoll_poll_impl(
     receiver: ptr[PyObject], timeout_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-def select_devpoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_devpoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-def select_devpoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_devpoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return devpoll_unavailable();
 }
 
-# ------------------------------------------------------------------- epoll
-
-obj EpollState(NativeState) {
-    has epfd: i32 = -1;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+impl EpollState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-def epoll_of(instance: ptr[PyObject]) -> (EpollState | None) {
+impl EpollState.clear {}
+
+impl epoll_of(instance: ptr[PyObject]) -> (EpollState | None) {
     if jacpy_binding_native_present(instance, epoll_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, epoll_token.handle);
         if isinstance(state, EpollState) {
@@ -647,13 +804,12 @@ def epoll_of(instance: ptr[PyObject]) -> (EpollState | None) {
     return None;
 }
 
-def:priv epoll_closed -> ptr[PyObject] {
+impl epoll_closed -> ptr[PyObject] {
     object_error(PyExc_ValueError, "I/O operation on closed epoll object");
     return NULL;
 }
 
-# pyepoll_internal_close(): the errno of a failed close(), else 0.
-def epoll_internal_close(state: EpollState) -> i64 {
+impl epoll_internal_close(state: EpollState) -> i64 {
     save_errno: i64 = 0;
     if state.epfd >= 0 {
         epfd = state.epfd;
@@ -667,8 +823,7 @@ def epoll_internal_close(state: EpollState) -> i64 {
     return save_errno;
 }
 
-# newPyEpoll_Object(): a new epoll descriptor when `fd` is -1.
-def:priv new_epoll(type: ptr[PyObject], sizehint: int, fd: i32) -> ptr[PyObject] {
+impl new_epoll(type: ptr[PyObject], sizehint: int, fd: i32) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
     if not instance {
         return NULL;
@@ -694,7 +849,9 @@ def:priv new_epoll(type: ptr[PyObject], sizehint: int, fd: i32) -> ptr[PyObject]
     return instance;
 }
 
-def select_epoll_impl(type: ptr[PyObject], sizehint: i32, flags: i32) -> ptr[PyObject] {
+impl select_epoll_impl(
+    type: ptr[PyObject], sizehint: i32, flags: i32
+) -> ptr[PyObject] {
     hint = int(sizehint);
     if hint == -1 {
         hint = int(FD_SETSIZE) - 1;
@@ -709,13 +866,12 @@ def select_epoll_impl(type: ptr[PyObject], sizehint: i32, flags: i32) -> ptr[PyO
     return new_epoll(type, hint, i32(-1));
 }
 
-def select_epoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_epoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = epoll_of(receiver);
     if state is None {
         return NULL;
     }
-    # CPython tests the saved errno for being negative, which it never is,
-    # so a failed close() is not reported.
+
     save_errno = epoll_internal_close(state);
     jacpy_set_errno(save_errno);
     if save_errno < 0 {
@@ -724,7 +880,7 @@ def select_epoll_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def epoll_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl epoll_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = epoll_of(instance);
     if state is None {
         return NULL;
@@ -732,7 +888,7 @@ def epoll_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return Py_NewRef(borrowed_true() if state.epfd < 0 else borrowed_false());
 }
 
-def select_epoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_epoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = epoll_of(receiver);
     if state is None {
         return NULL;
@@ -743,13 +899,11 @@ def select_epoll_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(state.epfd));
 }
 
-def select_epoll_fromfd_impl(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl select_epoll_fromfd_impl(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return new_epoll(type, int(FD_SETSIZE) - 1, fd);
 }
 
-# pyepoll_internal_ctl(): epoll_ctl() with a struct epoll_event whose data
-# member holds the descriptor.
-def:priv epoll_internal_ctl(epfd: i32, op: i64, fd: i32, events: u32) -> ptr[PyObject] {
+impl epoll_internal_ctl(epfd: i32, op: i64, fd: i32, events: u32) -> ptr[PyObject] {
     if epfd < 0 {
         return epoll_closed();
     }
@@ -765,7 +919,6 @@ def:priv epoll_internal_ctl(epfd: i32, op: i64, fd: i32, events: u32) -> ptr[PyO
         result = epoll_ctl(epfd, i32(op), fd, event);
         PyEval_RestoreThread(thread);
     } elif op == EPOLL_CTL_DEL {
-        # Kernels before 2.6.9 required a non-NULL event for EPOLL_CTL_DEL.
         thread = PyEval_SaveThread();
         result = epoll_ctl(epfd, i32(op), fd, event);
         PyEval_RestoreThread(thread);
@@ -779,7 +932,7 @@ def:priv epoll_internal_ctl(epfd: i32, op: i64, fd: i32, events: u32) -> ptr[PyO
     return Py_NewRef(borrowed_none());
 }
 
-def select_epoll_register_impl(
+impl select_epoll_register_impl(
     receiver: ptr[PyObject], fd: i32, eventmask: u32
 ) -> ptr[PyObject] {
     state = epoll_of(receiver);
@@ -789,7 +942,7 @@ def select_epoll_register_impl(
     return epoll_internal_ctl(state.epfd, EPOLL_CTL_ADD, fd, eventmask);
 }
 
-def select_epoll_modify_impl(
+impl select_epoll_modify_impl(
     receiver: ptr[PyObject], fd: i32, eventmask: u32
 ) -> ptr[PyObject] {
     state = epoll_of(receiver);
@@ -799,7 +952,7 @@ def select_epoll_modify_impl(
     return epoll_internal_ctl(state.epfd, EPOLL_CTL_MOD, fd, eventmask);
 }
 
-def select_epoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl select_epoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     state = epoll_of(receiver);
     if state is None {
         return NULL;
@@ -807,7 +960,7 @@ def select_epoll_unregister_impl(receiver: ptr[PyObject], fd: i32) -> ptr[PyObje
     return epoll_internal_ctl(state.epfd, EPOLL_CTL_DEL, fd, u32(0));
 }
 
-def select_epoll_poll_impl(
+impl select_epoll_poll_impl(
     receiver: ptr[PyObject], timeout_obj: ptr[PyObject], maxevents: i32
 ) -> ptr[PyObject] {
     state = epoll_of(receiver);
@@ -821,8 +974,6 @@ def select_epoll_poll_impl(
     ms: i64 = -1;
     deadline: i64 = 0;
     if timeout_obj != Py_None {
-        # epoll_wait() has millisecond resolution; round up so the wait is
-        # at least the timeout.
         if _PyTime_FromSecondsObject(&mut timeout, timeout_obj, ROUND_TIMEOUT) < 0 {
             if type_error_matches() {
                 object_error(PyExc_TypeError, "timeout must be an integer or None");
@@ -902,7 +1053,7 @@ def select_epoll_poll_impl(
     return elist;
 }
 
-def select_epoll___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_epoll___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = epoll_of(receiver);
     if state is None {
         return NULL;
@@ -913,7 +1064,7 @@ def select_epoll___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(receiver);
 }
 
-def select_epoll___exit___impl(
+impl select_epoll___exit___impl(
     receiver: ptr[PyObject],
     exc_type: ptr[PyObject],
     exc_value: ptr[PyObject],
@@ -932,21 +1083,13 @@ def select_epoll___exit___impl(
     return result;
 }
 
-# ------------------------------------------------------------------ kevent
-
-# kqueue_event_Object: its struct kevent is the instance's field record,
-# which the type publishes as member descriptors (KEVENT_MEMBERS).
-obj KeventState(NativeState) {
-    has record: ptr[kevent_record] = ptr[kevent_record]();
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+impl KeventState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-def kevent_of(instance: ptr[PyObject]) -> (KeventState | None) {
+impl KeventState.clear {}
+
+impl kevent_of(instance: ptr[PyObject]) -> (KeventState | None) {
     if jacpy_binding_native_present(instance, kevent_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, kevent_token.handle);
         if isinstance(state, KeventState) {
@@ -957,8 +1100,7 @@ def kevent_of(instance: ptr[PyObject]) -> (KeventState | None) {
     return None;
 }
 
-# A kevent object holding a copy of `event`, or a zeroed one.
-def new_kevent(type: ptr[PyObject], event: kevent_record | None) -> ptr[PyObject] {
+impl new_kevent(type: ptr[PyObject], event: kevent_record | None) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
     if not instance {
         return NULL;
@@ -976,16 +1118,13 @@ def new_kevent(type: ptr[PyObject], event: kevent_record | None) -> ptr[PyObject
     return instance;
 }
 
-# tp_new: PyType_GenericNew's zeroed event.
-def kqueue_event_new(
+impl kqueue_event_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return new_kevent(type, None);
 }
 
-# kqueue_event_init(): kevent(ident, filter=KQ_FILTER_READ, flags=KQ_EV_ADD,
-# fflags=0, data=0, udata=0).
-def kqueue_event_init(
+impl kqueue_event_init(
     instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
     state = kevent_of(instance);
@@ -1048,7 +1187,7 @@ def kqueue_event_init(
     return i32(0);
 }
 
-def:priv lowercase_hex(value: u64) -> str {
+impl lowercase_hex(value: u64) -> str {
     digits = "0123456789abcdef";
     if value == u64(0) {
         return "0";
@@ -1062,13 +1201,13 @@ def:priv lowercase_hex(value: u64) -> str {
     return text;
 }
 
-def kqueue_event_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl kqueue_event_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = kevent_of(instance);
     if state is None {
         return NULL;
     }
     e = state.record.view(1)[0];
-    return PyUnicode_FromString(
+    return jacpy_unicode_from_text(
         f"<select.kevent ident={e.ident} filter={e.filter} flags=0x{lowercase_hex(
             u64(e.flags)
         )} fflags=0x{lowercase_hex(u64(e.fflags))} data=0x{lowercase_hex(
@@ -1077,8 +1216,7 @@ def kqueue_event_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-# kqueue_event_richcompare(): field by field, udata as a signed intptr_t.
-def kqueue_event_richcompare(
+impl kqueue_event_richcompare(
     lhs: ptr[PyObject], rhs: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if jacpy_binding_matches(rhs, kevent_token.handle) == 0 {
@@ -1120,19 +1258,13 @@ def kqueue_event_richcompare(
     return Py_NewRef(borrowed_true() if outcome else borrowed_false());
 }
 
-# ------------------------------------------------------------------ kqueue
-
-obj KqueueState(NativeState) {
-    has kqfd: i32 = -1;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+impl KqueueState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-def kqueue_of(instance: ptr[PyObject]) -> (KqueueState | None) {
+impl KqueueState.clear {}
+
+impl kqueue_of(instance: ptr[PyObject]) -> (KqueueState | None) {
     if jacpy_binding_native_present(instance, kqueue_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, kqueue_token.handle);
         if isinstance(state, KqueueState) {
@@ -1143,14 +1275,12 @@ def kqueue_of(instance: ptr[PyObject]) -> (KqueueState | None) {
     return None;
 }
 
-def:priv kqueue_closed -> ptr[PyObject] {
+impl kqueue_closed -> ptr[PyObject] {
     object_error(PyExc_ValueError, "I/O operation on closed kqueue object");
     return NULL;
 }
 
-# kqueue_tracking_after_fork(): a forked child inherits no kqueue, so every
-# open kqueue object forgets its descriptor.
-def kqueue_tracking_after_fork(
+impl kqueue_tracking_after_fork(
     module: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     module_state = select_state(module);
@@ -1168,9 +1298,7 @@ def kqueue_tracking_after_fork(
     return Py_NewRef(borrowed_none());
 }
 
-# kqueue_tracking_init(): register the after-fork hook once per module; a
-# failure is reported as a RuntimeWarning.
-def:priv kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState) {
+impl kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState) {
     register_at_fork = PyImport_ImportModuleAttrString("posix", "register_at_fork");
     if register_at_fork {
         callback = builtin_function(
@@ -1186,7 +1314,7 @@ def:priv kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState) 
             arguments = PyTuple_New(0);
             keywords = PyDict_New();
             if arguments and keywords {
-                name = PyUnicode_FromString("after_in_child");
+                name = PyUnicode_FromString(ptr[u8]("after_in_child"));
                 if name {
                     if PyDict_SetItem(keywords, name, callback) == 0 {
                         jacpy_release(
@@ -1224,7 +1352,7 @@ def:priv kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState) 
     module_state.tracking_initialized = True;
 }
 
-def:priv kqueue_tracking_remove(instance: ptr[PyObject]) {
+impl kqueue_tracking_remove(instance: ptr[PyObject]) {
     module_state = select_state(module_of(instance));
     if module_state is None {
         return;
@@ -1237,8 +1365,7 @@ def:priv kqueue_tracking_remove(instance: ptr[PyObject]) {
     }
 }
 
-# kqueue_queue_internal_close(): the errno of a failed close(), else 0.
-def kqueue_internal_close(instance: ptr[PyObject], state: KqueueState) -> i64 {
+impl kqueue_internal_close(instance: ptr[PyObject], state: KqueueState) -> i64 {
     save_errno: i64 = 0;
     if state.kqfd >= 0 {
         kqfd = state.kqfd;
@@ -1253,8 +1380,7 @@ def kqueue_internal_close(instance: ptr[PyObject], state: KqueueState) -> i64 {
     return save_errno;
 }
 
-# kqueue_queue_finalize(): close the descriptor, keeping any pending exception.
-def kqueue_finalize(instance: ptr[PyObject]) {
+impl kqueue_finalize(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, kqueue_token.handle) == 0 {
         return;
     }
@@ -1266,8 +1392,7 @@ def kqueue_finalize(instance: ptr[PyObject]) {
     PyErr_SetRaisedException(error);
 }
 
-# newKqueue_Object(): a new kqueue when `fd` is -1, tracked until closed.
-def:priv new_kqueue(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl new_kqueue(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
     if not instance {
         return NULL;
@@ -1309,16 +1434,16 @@ def:priv new_kqueue(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return instance;
 }
 
-def select_kqueue_impl(type: ptr[PyObject]) -> ptr[PyObject] {
+impl select_kqueue_impl(type: ptr[PyObject]) -> ptr[PyObject] {
     return new_kqueue(type, i32(-1));
 }
 
-def select_kqueue_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_kqueue_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = kqueue_of(receiver);
     if state is None {
         return NULL;
     }
-    # As for epoll, CPython tests the saved errno for being negative.
+
     save_errno = kqueue_internal_close(receiver, state);
     jacpy_set_errno(save_errno);
     if save_errno < 0 {
@@ -1327,7 +1452,7 @@ def select_kqueue_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def kqueue_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl kqueue_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = kqueue_of(instance);
     if state is None {
         return NULL;
@@ -1335,7 +1460,7 @@ def kqueue_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return Py_NewRef(borrowed_true() if state.kqfd < 0 else borrowed_false());
 }
 
-def select_kqueue_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl select_kqueue_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = kqueue_of(receiver);
     if state is None {
         return NULL;
@@ -1346,11 +1471,11 @@ def select_kqueue_fileno_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(state.kqfd));
 }
 
-def select_kqueue_fromfd_impl(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl select_kqueue_fromfd_impl(type: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return new_kqueue(type, fd);
 }
 
-def select_kqueue_control_impl(
+impl select_kqueue_control_impl(
     receiver: ptr[PyObject],
     changelist: ptr[PyObject],
     maxevents: i32,
@@ -1397,7 +1522,7 @@ def select_kqueue_control_impl(
     nchanges = 0;
     changes = ptr[kevent_record]();
     if changelist != Py_None {
-        seq = PySequence_Fast(changelist, "changelist is not iterable");
+        seq = PySequence_Fast(changelist, ptr[u8]("changelist is not iterable"));
         if not seq {
             return NULL;
         }
@@ -1442,7 +1567,7 @@ def select_kqueue_control_impl(
             return PyErr_NoMemory();
         }
     }
-    # The timespec kevent() reads, in memory the call can see.
+
     spec_memory = PyMem_Calloc(1, u64(TIMESPEC_SIZE));
     if not spec_memory {
         PyMem_Free(ptr(changes));

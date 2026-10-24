@@ -1,10 +1,3 @@
-"""Retained CPython object operations for native Jac module implementations.
-
-Handles borrow their arguments. Object-producing operations return a new
-reference (zero on error), released with jacpy_release or returned to Python.
-All calls require the interpreter lock; exceptions remain in CPython's thread
-state. No Python implementation of a replaced module is invoked here.
-"""
 enum builtin_kind {
     NONE = 0,
     BOOL = 1,
@@ -26,8 +19,10 @@ enum builtin_kind {
 
 import from jaclang.runtime.python.cpython_api {
     PyUnicode_DecodeUTF8Stateful,
+    jacpy_unicode_intern_text,
     jacpy_bytes_copy_to,
     jacpy_bytes_from_memory,
+    jacpy_bytes_from_payload,
     jacpy_bytes_length,
     jacpy_qualified_type_name,
     jacpy_release,
@@ -42,8 +37,9 @@ import from jaclang.runtime.python.cpython_api {
     Py_TYPE,
     PyBool_Type,
     PyByteArray_Type,
-    PyBytes_FromStringAndSize,
     PyBytes_Type,
+    PyDict_GetItemRef,
+    PyDict_SetItem,
     PyDict_Type,
     PyErr_GetRaisedException,
     PyErr_SetRaisedException,
@@ -72,7 +68,6 @@ import from c {
     ) -> i64;
 }
 
-# The exact type of each builtin_kind, in value order; NONE is NoneType.
 glob:priv BUILTIN_TYPES: list[ptr[PyObject]] = [
          addressof(_PyNone_Type),
          addressof(PyBool_Type),
@@ -91,9 +86,76 @@ glob:priv BUILTIN_TYPES: list[ptr[PyObject]] = [
          addressof(PyPickleBuffer_Type)
      ];
 
-"""The builtin_kind value of a value's exact type; OTHER for a subclass or any
-other type."""
-def builtin_kind_of(value: ptr[PyObject]) -> int {
+def builtin_kind_of(value: ptr[PyObject]) -> int;
+
+def builtin_type(kind: builtin_kind) -> ptr[PyObject];
+
+def object_error(kind: ptr[PyObject], message: str);
+
+def c_int(value: int) -> i32;
+
+def c_size(value: i64) -> u64;
+
+def memory_byte(address: ptr, offset: i64) -> i64;
+
+def memory_set(address: ptr, offset: i64, value: i64);
+
+def read_buffer(handle: ptr[PyObject]) -> bytes;
+
+def write_buffer(data: bytes) -> ptr[PyObject];
+
+obj module_failure(Exception) {
+    has message: str;
+}
+
+obj boundary_failure(Exception) {}
+
+def raise_boundary_failure;
+
+def required(handle: ptr[PyObject]) -> ptr[PyObject];
+
+def text_object(value: str) -> ptr[PyObject];
+
+def text_value(value: ptr[PyObject]) -> str;
+
+def repr_value(value: ptr[PyObject]) -> str;
+
+def pair(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject];
+
+def checked(status: i64);
+
+def object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject];
+
+def audit_event(event: str, values: list[ptr[PyObject]]) -> bool;
+
+def type_name(value: ptr[PyObject], qualified: bool = False) -> str;
+
+def serialization_note(
+    value: ptr[PyObject], key: ptr[PyObject], index: int, kind: int, detail: str = ""
+);
+
+def dict_set_text(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> i32;
+
+def dict_get_text(dict_: ptr[PyObject], key: str) -> tuple[i32, ptr[PyObject]];
+
+def new_writer -> ptr[PyUnicodeWriter];
+
+def c_string_length(address: ptr[u8], limit: int = -1) -> int;
+
+def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject];
+
+def c_text(address: ptr, size: i64) -> ptr[PyObject];
+
+def c_string_copy(text: str) -> ptr[u8];
+
+obj StaticText {
+    has text: str,
+        address: ptr[u8] = ptr[u8]();
+
+    def get -> ptr[u8];
+}
+
+impl builtin_kind_of(value: ptr[PyObject]) -> int {
     exact = Py_TYPE(value);
     for kind in range(len(BUILTIN_TYPES)) {
         if BUILTIN_TYPES[kind] == exact {
@@ -103,20 +165,15 @@ def builtin_kind_of(value: ptr[PyObject]) -> int {
     return builtin_kind.OTHER.value;
 }
 
-"""The exact type of a builtin_kind other than OTHER, as a new reference."""
-def builtin_type(kind: builtin_kind) -> ptr[PyObject] {
+impl builtin_type(kind: builtin_kind) -> ptr[PyObject] {
     return Py_NewRef(BUILTIN_TYPES[kind.value]);
 }
 
-# Raise `kind` (an exception type such as PyExc_ValueError) with a text message.
-def object_error(kind: ptr[PyObject], message: str) {
+impl object_error(kind: ptr[PyObject], message: str) {
     jacpy_set_exception(kind, message, i64(len(message.encode("utf-8"))));
 }
 
-# `value` converted to a C int as a C cast does: its low 32 bits, read as a
-# signed number. A Jac narrowing `i32(value)` traps on an out-of-range value
-# instead; ports use this where the C code they replace truncates.
-def c_int(value: int) -> i32 {
+impl c_int(value: int) -> i32 {
     bits = value & 0xFFFFFFFF;
     if bits >= 0x80000000 {
         bits -= 0x100000000;
@@ -124,57 +181,50 @@ def c_int(value: int) -> i32 {
     return i32(bits);
 }
 
-# `value` converted to a C size_t as a C cast does: a negative value wraps to
-# its two's complement (-1 is SIZE_MAX), where a Jac `u64(value)` traps.
-def c_size(value: i64) -> u64 {
+impl c_size(value: i64) -> u64 {
     if value >= 0 {
         return u64(value);
     }
     return ~u64(-(value + 1));
 }
 
-# The byte at `address + offset` of C memory.
-def memory_byte(address: ptr, offset: i64) -> i64 {
+impl memory_byte(address: ptr, offset: i64) -> i64 {
     return i64(ptr[u8](int(address) + int(offset)).view(1)[0]);
 }
 
-# Store the low byte of `value` at `address + offset` of C memory.
-def memory_set(address: ptr, offset: i64, value: i64) {
+impl memory_set(address: ptr, offset: i64, value: i64) {
     ptr[u8](int(address) + int(offset)).view(1)[0] = u8(value & 255);
 }
 
-# The payload of a retained bytes-like value, copied into Jac storage.
-def read_buffer(handle: ptr[PyObject]) -> bytes {
+impl read_buffer(handle: ptr[PyObject]) -> bytes {
     size = jacpy_bytes_length(handle);
     data = b"\x00" * int(size);
     jacpy_bytes_copy_to(handle, data, size);
     return data;
 }
 
-def write_buffer(data: bytes) -> ptr[PyObject] {
-    return PyBytes_FromStringAndSize(data, i64(len(data)));
+impl write_buffer(data: bytes) -> ptr[PyObject] {
+    return jacpy_bytes_from_payload(data, i64(len(data)));
 }
 
-obj module_failure(Exception) {
-    has message: str;
+impl raise_boundary_failure {
+    raise boundary_failure();
 }
 
-obj boundary_failure(Exception) {}
-
-def required(handle: ptr[PyObject]) -> ptr[PyObject] {
+impl required(handle: ptr[PyObject]) -> ptr[PyObject] {
     if handle == 0 {
-        raise boundary_failure();
+        raise_boundary_failure();
     }
     return handle;
 }
 
-def text_object(value: str) -> ptr[PyObject] {
+impl text_object(value: str) -> ptr[PyObject] {
     return required(
         jacpy_text(value, i64(len(value.encode("utf-8", "surrogatepass"))))
     );
 }
 
-def text_value(value: ptr[PyObject]) -> str {
+impl text_value(value: ptr[PyObject]) -> str {
     buffer = required(jacpy_utf8(value));
     try {
         return read_buffer(buffer).decode("utf-8", "surrogatepass");
@@ -183,7 +233,7 @@ def text_value(value: ptr[PyObject]) -> str {
     }
 }
 
-def repr_value(value: ptr[PyObject]) -> str {
+impl repr_value(value: ptr[PyObject]) -> str {
     result = required(PyObject_Repr(value));
     try {
         return text_value(result);
@@ -192,22 +242,20 @@ def repr_value(value: ptr[PyObject]) -> str {
     }
 }
 
-# Both inputs are borrowed; the returned tuple owns its references.
-def pair(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject] {
+impl pair(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject] {
     result = required(PyTuple_New(2));
     jacpy_tuple_set_owned(result, 0, Py_NewRef(first));
     jacpy_tuple_set_owned(result, 1, Py_NewRef(second));
     return result;
 }
 
-def checked(status: i64) {
+impl checked(status: i64) {
     if status < 0 {
-        raise boundary_failure();
+        raise_boundary_failure();
     }
 }
 
-# Entries are borrowed; each successful result owns all its element references.
-def object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
+impl object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
     result = required(PyTuple_New(i64(len(values))));
     for i in range(len(values)) {
         jacpy_tuple_set_owned(result, i64(i), Py_NewRef(values[i]));
@@ -215,9 +263,7 @@ def object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
     return result;
 }
 
-# PySys_Audit(event, format, ...): the argument values are owned and released
-# here. False with the exception set when a value is missing or a hook raises.
-def audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
+impl audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
     complete = True;
     for value in values {
         if not value {
@@ -241,7 +287,7 @@ def audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
     return status >= 0;
 }
 
-def type_name(value: ptr[PyObject], qualified: bool = False) -> str {
+impl type_name(value: ptr[PyObject], qualified: bool = False) -> str {
     name = required(
         jacpy_qualified_type_name(value) if qualified else jacpy_type_name(value)
     );
@@ -252,8 +298,7 @@ def type_name(value: ptr[PyObject], qualified: bool = False) -> str {
     }
 }
 
-# Preserve the original exception if formatting a diagnostic invokes user code.
-def serialization_note(
+impl serialization_note(
     value: ptr[PyObject], key: ptr[PyObject], index: int, kind: int, detail: str = ""
 ) {
     error = PyErr_GetRaisedException();
@@ -280,8 +325,28 @@ def serialization_note(
     }
 }
 
-# A fresh PyUnicodeWriter, or boundary_failure with the error set.
-def new_writer -> ptr[PyUnicodeWriter] {
+impl dict_set_text(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> i32 {
+    key_object = jacpy_unicode_intern_text(key);
+    if not key_object {
+        return i32(-1);
+    }
+    status = PyDict_SetItem(dict_, key_object, value);
+    jacpy_release(key_object);
+    return status;
+}
+
+impl dict_get_text(dict_: ptr[PyObject], key: str) -> tuple[i32, ptr[PyObject]] {
+    value: ptr[PyObject] = ptr[PyObject]();
+    key_object = jacpy_unicode_intern_text(key);
+    if not key_object {
+        return (i32(-1), value);
+    }
+    status = PyDict_GetItemRef(dict_, key_object, &mut value);
+    jacpy_release(key_object);
+    return (status, value);
+}
+
+impl new_writer -> ptr[PyUnicodeWriter] {
     writer = jacpy_writer_new();
     if not writer {
         raise boundary_failure();
@@ -289,9 +354,7 @@ def new_writer -> ptr[PyUnicodeWriter] {
     return writer;
 }
 
-# The length of a NUL-terminated C string, reading at most `limit` bytes
-# when `limit` is not negative (strnlen()).
-def c_string_length(address: ptr[u8], limit: int = -1) -> int {
+impl c_string_length(address: ptr[u8], limit: int = -1) -> int {
     length = 0;
     while limit < 0 or length < limit {
         if (address + length).view(1)[0] == 0 {
@@ -302,9 +365,7 @@ def c_string_length(address: ptr[u8], limit: int = -1) -> int {
     return length;
 }
 
-# A C string as a new str decoded as strict UTF-8, as PyUnicode_FromString()
-# does; `limit` caps the bytes read, as strncpy() into a fixed buffer would.
-def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
+impl c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
     payload = jacpy_bytes_from_memory(
         ptr(address), i64(c_string_length(address, limit))
     );
@@ -316,15 +377,11 @@ def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
     return text;
 }
 
-# `size` bytes at `address` as a new str decoded as strict UTF-8, as
-# PyUnicode_FromStringAndSize() does.
-def c_text(address: ptr, size: i64) -> ptr[PyObject] {
+impl c_text(address: ptr, size: i64) -> ptr[PyObject] {
     return PyUnicode_DecodeUTF8Stateful(address, size, ptr[u8](), None);
 }
 
-# A NUL-terminated UTF-8 copy of `text` in raw memory the caller keeps (as a
-# static C string would be); NULL when allocation fails.
-def c_string_copy(text: str) -> ptr[u8] {
+impl c_string_copy(text: str) -> ptr[u8] {
     encoded = text.encode("utf-8");
     size = len(encoded);
     memory = ptr[u8](PyMem_RawMalloc(u64(size + 1)));
@@ -339,18 +396,9 @@ def c_string_copy(text: str) -> ptr[u8] {
     return memory;
 }
 
-# A C string made once and kept for the process, as a string literal is in C:
-# for C APIs that keep the pointer (a capsule name) or take a C string where
-# a Jac str would be a temporary.
-obj StaticText {
-    has text: str,
-        address: ptr[u8] = ptr[u8]();
-
-    # The C string; NULL when allocation fails.
-    def get -> ptr[u8] {
-        if not self.address {
-            self.address = c_string_copy(self.text);
-        }
-        return self.address;
+impl StaticText.get -> ptr[u8] {
+    if not self.address {
+        self.address = c_string_copy(self.text);
     }
+    return self.address;
 }

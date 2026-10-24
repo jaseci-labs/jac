@@ -1,28 +1,9 @@
-"""The complex type: Objects/complexobject.c in native Jac.
-
-`PyComplex_Type` is C data Jac defines under its C name, and the complex C
-API (`PyComplex_FromCComplex`, `PyComplex_FromDoubles`,
-`PyComplex_AsCComplex`, `PyComplex_RealAsDouble`, `PyComplex_ImagAsDouble`)
-and the arithmetic the interpreter and cmath share (`_Py_c_sum`,
-`_Py_c_quot`, `_Py_c_pow`, `_Py_c_abs`, ...) are C functions under theirs,
-taking and returning `Py_complex` by value as C does. The object layout,
-`PyComplexObject`, comes from layouts.jac. Inside the port a complex value is
-a pair of f64s and a libm status (0, EDOM or ERANGE) travels with it instead
-of errno; the exported functions set errno as C does. The arithmetic helpers
-(`cplx_prod`, `cplx_quot`, ...) are C definitions whose
-callers lend `&mut` locals for the result pair, so no operation allocates. `__new__` parses its
-arguments as Objects/clinic/complexobject.c.h does. See ../LICENSE.cpython.
-"""
-
-# The libm status a complex operation reports in place of errno.
 glob:priv OK: i64 = 0,
      DOMAIN: i64 = 1,
      RANGE: i64 = 2;
 
 import from c {
-    # Where PyOS_string_to_double stopped reading (its char **endptr).
     glob:priv parse_end: ptr[u8] = ptr[u8](),
-         # &_Py_ID(__complex__), interned on first use.
          complex_key: ptr[PyObject] = ptr[PyObject](),
          complex_methods: list[PyMethodDef] = [
              PyMethodDef(
@@ -132,62 +113,23 @@ glob:priv complex_new_signature = CallSignature(
          "complex", ["real", "imag"], 0, 2, 0, parser=PARSE_KEYWORDS
      );
 
-# ---------------------------------------------------------------- objects
-def complex_of(op: ptr[PyObject]) -> ptr[PyComplexObject] {
-    return ptr[PyComplexObject](op);
-}
+def complex_of(op: ptr[PyObject]) -> ptr[PyComplexObject];
 
-def real_of(op: ptr[PyObject]) -> f64 {
-    return complex_of(op).view(1)[0].cval.real;
-}
+def real_of(op: ptr[PyObject]) -> f64;
 
-def imag_of(op: ptr[PyObject]) -> f64 {
-    return complex_of(op).view(1)[0].cval.imag;
-}
+def imag_of(op: ptr[PyObject]) -> f64;
 
-"""PyComplex_Check."""
-def complex_check(op: ptr[PyObject]) -> bool {
-    return object_type_check(op, addressof(PyComplex_Type));
-}
+def complex_check(op: ptr[PyObject]) -> bool;
 
-"""PyComplex_CheckExact."""
-def complex_check_exact(op: ptr[PyObject]) -> bool {
-    return object_is_type(op, addressof(PyComplex_Type));
-}
+def complex_check_exact(op: ptr[PyObject]) -> bool;
 
-"""A new exact complex (PyComplex_FromCComplex, inlining PyObject_New)."""
-def new_complex(real: f64, imag: f64) -> ptr[PyObject] {
-    op = ptr[PyObject](PyObject_Malloc(u64(PyComplexObject_SIZE)));
-    if not op {
-        return PyErr_NoMemory();
-    }
-    PyObject_Init(op, ptr[PyObject](addressof(PyComplex_Type)));
-    complex_of(op).view(1)[0].cval.real = real;
-    complex_of(op).view(1)[0].cval.imag = imag;
-    return op;
-}
+def new_complex(real: f64, imag: f64) -> ptr[PyObject];
 
 def complex_subtype_from_doubles(
     type: ptr[PyTypeObject], real: f64, imag: f64
-) -> ptr[PyObject] {
-    op = type.view(1)[0].tp_alloc(type, 0);
-    if op {
-        complex_of(op).view(1)[0].cval.real = real;
-        complex_of(op).view(1)[0].cval.imag = imag;
-    }
-    return op;
-}
+) -> ptr[PyObject];
 
-def py_bool(value: bool) -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_TrueStruct))
-        if value
-        else ptr[PyObject](addressof(_Py_FalseStruct));
-}
-
-# ---------------------------------------------------------------- arithmetic
-# Elementary operations on complex numbers. A result pair is written through
-# `rr` / `ri`, which callers lend with `&mut`, and a libm status is returned,
-# so no operation allocates.
+def py_bool(value: bool) -> ptr[PyObject];
 
 import from c {
     def cplx_prod(a: f64, b: f64, c: f64, d: f64, rr: ptr[f64], ri: ptr[f64]) {
@@ -197,13 +139,10 @@ import from c {
         bc = b * c;
         real = ac - bd;
         imag = ad + bc;
-        # Recover infinities that computed as nan+nanj. See e.g. the C11,
-        # Annex G.5.1, routine _Cmultd().
+
         if isnan(real) and isnan(imag) {
             recalc = False;
             if isinf(a) or isinf(b) {
-                # z is infinite: "box" the infinity and change nans in the
-                # other factor to 0.
                 a = copysign(1.0 if isinf(a) else 0.0, a);
                 b = copysign(1.0 if isinf(b) else 0.0, b);
                 if isnan(c) {
@@ -215,8 +154,6 @@ import from c {
                 recalc = True;
             }
             if isinf(c) or isinf(d) {
-                # w is infinite: "box" the infinity and change nans in the
-                # other factor to 0.
                 c = copysign(1.0 if isinf(c) else 0.0, c);
                 d = copysign(1.0 if isinf(d) else 0.0, d);
                 if isnan(a) {
@@ -228,7 +165,6 @@ import from c {
                 recalc = True;
             }
             if not recalc and (isinf(ac) or isinf(bd) or isinf(ad) or isinf(bc)) {
-                # Recover infinities from overflow by changing nans to 0
                 if isnan(a) {
                     a = copysign(0.0, a);
                 }
@@ -250,11 +186,7 @@ import from c {
         }
         rr.view(1)[0] = real;
         ri.view(1)[0] = imag;
-    }
-    # Smith's algorithm (CACM Algorithm 116): divide the numerator and
-    # denominator by whichever of b's parts has the larger magnitude. The
-    # status is DOMAIN for a zero divisor.
-    def cplx_quot(
+    }  def cplx_quot(
         ar: f64, ai: f64, br: f64, bi: f64, rr: ptr[f64], ri: ptr[f64]
     ) -> i64 {
         abs_breal = -br if br < 0 else br;
@@ -263,7 +195,6 @@ import from c {
         imag = 0.0;
         status = OK;
         if abs_breal >= abs_bimag {
-            # divide tops and bottom by b.real
             if abs_breal == 0.0 {
                 status = DOMAIN;
             } else {
@@ -273,18 +204,15 @@ import from c {
                 imag = (ai - ar * ratio) / denom;
             }
         } elif abs_bimag >= abs_breal {
-            # divide tops and bottom by b.imag
             ratio = br / bi;
             denom = br * ratio + bi;
             real = (ar * ratio + ai) / denom;
             imag = (ai * ratio - ar) / denom;
         } else {
-            # At least one of b.real or b.imag is a NaN
             real = nan;
             imag = nan;
         }
-        # Recover infinities and zeros that computed as nan+nanj. See e.g.
-        # the C11, Annex G.5.2, routine _Cdivd().
+
         if isnan(real) and isnan(imag) {
             if (isinf(ar) or isinf(ai)) and isfinite(br) and isfinite(bi) {
                 x = copysign(1.0 if isinf(ar) else 0.0, ar);
@@ -303,9 +231,7 @@ import from c {
         rr.view(1)[0] = real;
         ri.view(1)[0] = imag;
         return status;
-    }
-    # a / b for a real a.
-    def cplx_rc_quot(a: f64, br: f64, bi: f64, rr: ptr[f64], ri: ptr[f64]) -> i64 {
+    }  def cplx_rc_quot(a: f64, br: f64, bi: f64, rr: ptr[f64], ri: ptr[f64]) -> i64 {
         abs_breal = -br if br < 0 else br;
         abs_bimag = -bi if bi < 0 else bi;
         real = 0.0;
@@ -341,9 +267,7 @@ import from c {
         rr.view(1)[0] = real;
         ri.view(1)[0] = imag;
         return status;
-    }
-    # a / b for a real b.
-    def cplx_cr_quot(ar: f64, ai: f64, b: f64, rr: ptr[f64], ri: ptr[f64]) -> i64 {
+    }  def cplx_cr_quot(ar: f64, ai: f64, b: f64, rr: ptr[f64], ri: ptr[f64]) -> i64 {
         if b != 0.0 {
             rr.view(1)[0] = ar / b;
             ri.view(1)[0] = ai / b;
@@ -381,9 +305,7 @@ import from c {
         rr.view(1)[0] = real;
         ri.view(1)[0] = imag;
         return adjust_erange2(real, imag, status);
-    }
-    # x ** n for a non-negative integer n, by repeated squaring.
-    def cplx_powu(xr: f64, xi: f64, n: i64, rr: ptr[f64], ri: ptr[f64]) {
+    }  def cplx_powu(xr: f64, xi: f64, n: i64, rr: ptr[f64], ri: ptr[f64]) {
         real = 1.0;
         imag = 0.0;
         pr = xr;
@@ -407,21 +329,16 @@ import from c {
         ui = 0.0;
         cplx_powu(xr, xi, -n, &mut ur, &mut ui);
         return cplx_quot(1.0, 0.0, ur, ui, rr, ri);
-    }
-    # |z|; the status is RANGE on overflow.
-    def cplx_abs(zr: f64, zi: f64, status: ptr[i64]) -> f64 {
+    }  def cplx_abs(zr: f64, zi: f64, status: ptr[i64]) -> f64 {
         status.view(1)[0] = OK;
         if not isfinite(zr) or not isfinite(zi) {
-            # C99 rules: if either the real or the imaginary part is an
-            # infinity, return infinity, even if the other part is a NaN.
             if isinf(zr) {
                 return fabs(zr);
             }
             if isinf(zi) {
                 return fabs(zi);
             }
-            # either the real or imaginary part is a NaN, and neither is
-            # infinite. Result should be NaN.
+
             return nan;
         }
         result = hypot(zr, zi);
@@ -432,20 +349,9 @@ import from c {
     }
 }
 
-# _Py_ADJUST_ERANGE2: an infinite result is an overflow (RANGE) unless the
-# status already says otherwise, and a finite one clears a RANGE that libm's
-# underflow may have set.
-def adjust_erange2(x: f64, y: f64, status: i64) -> i64 {
-    if isinf(x) or isinf(y) {
-        return RANGE if status == OK else status;
-    }
-    return OK if status == RANGE else status;
-}
+def adjust_erange2(x: f64, y: f64, status: i64) -> i64;
 
-# errno as C leaves it after a complex operation with this status.
-def set_status_errno(status: i64) {
-    jacpy_set_errno(EDOM if status == DOMAIN else (ERANGE if status == RANGE else 0));
-}
+def set_status_errno(status: i64);
 
 import from c {
     def _Py_c_sum(a: Py_complex, b: Py_complex) -> Py_complex {
@@ -483,9 +389,7 @@ import from c {
             jacpy_set_errno(EDOM);
         }
         return Py_complex(real=rr, imag=ri);
-    }
-    # An equivalent of _Py_c_quot() when the first argument is real.
-    def _Py_rc_quot(a: f64, b: Py_complex) -> Py_complex {
+    }  def _Py_rc_quot(a: f64, b: Py_complex) -> Py_complex {
         rr = 0.0;
         ri = 0.0;
         status = cplx_rc_quot(a, b.real, b.imag, &mut rr, &mut ri);
@@ -501,9 +405,7 @@ import from c {
             set_status_errno(status);
         }
         return Py_complex(real=rr, imag=ri);
-    }
-    # Sets errno = ERANGE on overflow; otherwise errno = 0.
-    def _Py_c_abs(z: Py_complex) -> f64 {
+    }  def _Py_c_abs(z: Py_complex) -> f64 {
         status = OK;
         result = cplx_abs(z.real, z.imag, &mut status);
         if not isnan(result) {
@@ -550,18 +452,15 @@ import from c {
         imag = 0.0;
         cplx_value(op, &mut real, &mut imag);
         return Py_complex(real=real, imag=imag);
-    }
-    # PyComplex_AsCComplex into `rr` / `ri`: the value of a complex, of its
-    # __complex__, or of its float value; (-1.0, 0.0) with the error set.
-    def cplx_value(op: ptr[PyObject], rr: ptr[f64], ri: ptr[f64]) {
+    }  def cplx_value(op: ptr[PyObject], rr: ptr[f64], ri: ptr[f64]) {
         ri.view(1)[0] = 0.0;
-        # If op is already of type PyComplex_Type, return its value
+
         if complex_check(op) {
             rr.view(1)[0] = real_of(op);
             ri.view(1)[0] = imag_of(op);
             return;
         }
-        # If not, use op's __complex__ method, if it exists
+
         newop = try_complex_special_method(op);
         if newop {
             rr.view(1)[0] = real_of(newop);
@@ -573,13 +472,9 @@ import from c {
             rr.view(1)[0] = -1.0;
             return;
         }
-        # If neither of the above works, interpret op as a float giving the
-        # real part of the result, and fill in the imaginary part as 0.
+
         rr.view(1)[0] = PyFloat_AsDouble(op);
-    }
-    # The value of a float or int operand into `value`: 1, or 0 when the
-    # operand is neither (NotImplemented), or -1 with the error set.
-    def cplx_real_value(op: ptr[PyObject], value: ptr[f64]) -> i32 {
+    }  def cplx_real_value(op: ptr[PyObject], value: ptr[f64]) -> i32 {
         if jacpy_is_float(op) != 0 {
             value.view(1)[0] = ptr[PyFloatObject](op).view(1)[0].ob_fval;
             return i32(1);
@@ -593,10 +488,7 @@ import from c {
             return i32(1);
         }
         return i32(0);
-    }
-    # TO_COMPLEX: the value of a complex or real operand, with the status
-    # cplx_real_value gives.
-    def cplx_operand(op: ptr[PyObject], rr: ptr[f64], ri: ptr[f64]) -> i32 {
+    }  def cplx_operand(op: ptr[PyObject], rr: ptr[f64], ri: ptr[f64]) -> i32 {
         if complex_check(op) {
             rr.view(1)[0] = real_of(op);
             ri.view(1)[0] = imag_of(op);
@@ -607,16 +499,145 @@ import from c {
     }
 }
 
-# The object a binary operation returns for an operand that is not a number
-# (cplx_real_value's status): NotImplemented, or NULL with the
-# error set.
-def operand_failure(status: i32) -> ptr[PyObject] {
+def operand_failure(status: i32) -> ptr[PyObject];
+
+def try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_hash(op: ptr[PyObject]) -> i64;
+
+glob:priv ADD: int = 0,
+     SUB: int = 1,
+     MUL: int = 2,
+     DIV: int = 3;
+
+def complex_binop(v: ptr[PyObject], w: ptr[PyObject], operation: int) -> ptr[PyObject];
+
+def complex_add(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_sub(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_mul(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_div(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_pow(v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_neg(op: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_pos(op: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_abs(op: ptr[PyObject]) -> ptr[PyObject];
+
+def complex_bool(op: ptr[PyObject]) -> i32;
+
+def complex_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject];
+
+def complex_conjugate(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def complex___getnewargs__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def complex___format__(op: ptr[PyObject], format_spec: ptr[PyObject]) -> ptr[PyObject];
+
+def complex___complex__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def is_space(c: u8) -> bool;
+
+def complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObject];
+
+def read_double(s: ptr[u8]) -> tuple[f64, ptr[u8], bool];
+
+def complex_subtype_from_string(
+    type: ptr[PyTypeObject], v: ptr[PyObject]
+) -> ptr[PyObject];
+
+def actual_complex_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def is_real_number(op: ptr[PyObject]) -> bool;
+
+def complex_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def complex_new_bound(args: BoundArguments) -> ptr[PyObject];
+
+def complex_new_impl(
+    type: ptr[PyTypeObject], r: ptr[PyObject], i: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zero_object -> ptr[PyObject];
+
+def complex_from_number(cls: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject];
+
+impl complex_of(op: ptr[PyObject]) -> ptr[PyComplexObject] {
+    return ptr[PyComplexObject](op);
+}
+
+impl real_of(op: ptr[PyObject]) -> f64 {
+    return complex_of(op).view(1)[0].cval.real;
+}
+
+impl imag_of(op: ptr[PyObject]) -> f64 {
+    return complex_of(op).view(1)[0].cval.imag;
+}
+
+impl complex_check(op: ptr[PyObject]) -> bool {
+    return object_type_check(op, addressof(PyComplex_Type));
+}
+
+impl complex_check_exact(op: ptr[PyObject]) -> bool {
+    return object_is_type(op, addressof(PyComplex_Type));
+}
+
+impl new_complex(real: f64, imag: f64) -> ptr[PyObject] {
+    op = ptr[PyObject](PyObject_Malloc(u64(PyComplexObject_SIZE)));
+    if not op {
+        return PyErr_NoMemory();
+    }
+    PyObject_Init(op, ptr[PyObject](addressof(PyComplex_Type)));
+    complex_of(op).view(1)[0].cval.real = real;
+    complex_of(op).view(1)[0].cval.imag = imag;
+    return op;
+}
+
+impl complex_subtype_from_doubles(
+    type: ptr[PyTypeObject], real: f64, imag: f64
+) -> ptr[PyObject] {
+    op = type.view(1)[0].tp_alloc(type, 0);
+    if op {
+        complex_of(op).view(1)[0].cval.real = real;
+        complex_of(op).view(1)[0].cval.imag = imag;
+    }
+    return op;
+}
+
+impl py_bool(value: bool) -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_TrueStruct))
+        if value
+        else ptr[PyObject](addressof(_Py_FalseStruct));
+}
+
+impl adjust_erange2(x: f64, y: f64, status: i64) -> i64 {
+    if isinf(x) or isinf(y) {
+        return RANGE if status == OK else status;
+    }
+    return OK if status == RANGE else status;
+}
+
+impl set_status_errno(status: i64) {
+    jacpy_set_errno(EDOM if status == DOMAIN else (ERANGE if status == RANGE else 0));
+}
+
+impl operand_failure(status: i32) -> ptr[PyObject] {
     return Py_NewRef(Py_NotImplemented) if status == 0 else NULL;
 }
 
-def try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject] {
+impl try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject] {
     if not complex_key {
-        complex_key = PyUnicode_InternFromString("__complex__");
+        complex_key = PyUnicode_InternFromString(ptr[u8]("__complex__"));
         if not complex_key {
             return NULL;
         }
@@ -638,7 +659,7 @@ def try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject] {
         jacpy_release(res);
         return NULL;
     }
-    # Issue #29894: warn if 'res' not of exact type complex.
+
     if PyErr_WarnFormat(
         PyExc_DeprecationWarning,
         1,
@@ -652,15 +673,13 @@ def try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject] {
     return res;
 }
 
-def complex_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     real = real_of(op);
     imag = imag_of(op);
     result = NULL;
     pre = ptr[u8]();
     im = ptr[u8]();
     if real == 0.0 and copysign(1.0, real) == 1.0 {
-        # Real part is +0: just output the imaginary part and do not include
-        # parens.
         im = PyOS_double_to_string(imag, i8(114), 0, 0, None);
         if not im {
             PyErr_NoMemory();
@@ -670,8 +689,6 @@ def complex_repr(op: ptr[PyObject]) -> ptr[PyObject] {
             );
         }
     } else {
-        # Format imaginary part with sign, real part without. Include parens
-        # in the result.
         pre = PyOS_double_to_string(real, i8(114), 0, 0, None);
         if not pre {
             PyErr_NoMemory();
@@ -691,7 +708,7 @@ def complex_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def complex_hash(op: ptr[PyObject]) -> i64 {
+impl complex_hash(op: ptr[PyObject]) -> i64 {
     hashreal = u64.wrap(_Py_HashDouble(op, real_of(op)));
     if hashreal == u64.MAX {
         return -1;
@@ -700,10 +717,7 @@ def complex_hash(op: ptr[PyObject]) -> i64 {
     if hashimag == u64.MAX {
         return -1;
     }
-    # If the imaginary part is 0, hashimag is 0 now, so the following returns
-    # hashreal unchanged. This is important because numbers of different
-    # types that compare equal must have the same hash value, so that
-    # hash(x + 0*j) must equal hash(x).
+
     combined = wrapping_add(hashreal, wrapping_mul(PyHASH_IMAG, hashimag));
     if combined == u64.MAX {
         combined = u64.MAX - u64(1);
@@ -711,19 +725,9 @@ def complex_hash(op: ptr[PyObject]) -> i64 {
     return i64.wrap(combined);
 }
 
-# A real operand (float or int) as a double. On failure the object to return
-# instead: NULL with the error set, or NotImplemented for any other type.
-# Complex arithmetic combines a pure-real (float or int) value and a complex
-# value directly, without first coercing the real value to a complex value,
-# as C11's Annex G, sections G.5.1 and G.5.2 do:
-#     complex(a, b) + complex(c, d) = complex(a + c, b + d)
-#     float(a) + complex(b, c) = complex(a + b, c)
-glob:priv ADD: int = 0,
-     SUB: int = 1,
-     MUL: int = 2,
-     DIV: int = 3;
-
-def complex_binop(v: ptr[PyObject], w: ptr[PyObject], operation: int) -> ptr[PyObject] {
+impl complex_binop(
+    v: ptr[PyObject], w: ptr[PyObject], operation: int
+) -> ptr[PyObject] {
     rr = 0.0;
     ri = 0.0;
     status = OK;
@@ -793,23 +797,25 @@ def complex_binop(v: ptr[PyObject], w: ptr[PyObject], operation: int) -> ptr[PyO
     return new_complex(rr, ri);
 }
 
-def complex_add(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_add(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     return complex_binop(v, w, ADD);
 }
 
-def complex_sub(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_sub(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     return complex_binop(v, w, SUB);
 }
 
-def complex_mul(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_mul(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     return complex_binop(v, w, MUL);
 }
 
-def complex_div(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_div(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     return complex_binop(v, w, DIV);
 }
 
-def complex_pow(v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_pow(
+    v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]
+) -> ptr[PyObject] {
     ar = 0.0;
     ai = 0.0;
     found = cplx_operand(v, &mut ar, &mut ai);
@@ -829,8 +835,7 @@ def complex_pow(v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]) -> ptr[PyO
     rr = 0.0;
     ri = 0.0;
     status = OK;
-    # Check whether the exponent has a small integer value, and if so use a
-    # faster and more accurate algorithm.
+
     if bi == 0.0 and br == floor(br) and fabs(br) <= 100.0 {
         status = cplx_powi(ar, ai, i64(br), &mut rr, &mut ri);
         status = adjust_erange2(rr, ri, status);
@@ -847,18 +852,18 @@ def complex_pow(v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]) -> ptr[PyO
     return new_complex(rr, ri);
 }
 
-def complex_neg(op: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_neg(op: ptr[PyObject]) -> ptr[PyObject] {
     return new_complex(-real_of(op), -imag_of(op));
 }
 
-def complex_pos(op: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_pos(op: ptr[PyObject]) -> ptr[PyObject] {
     if complex_check_exact(op) {
         return Py_NewRef(op);
     }
     return new_complex(real_of(op), imag_of(op));
 }
 
-def complex_abs(op: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_abs(op: ptr[PyObject]) -> ptr[PyObject] {
     status = OK;
     result = cplx_abs(real_of(op), imag_of(op), &mut status);
     if status == RANGE {
@@ -868,11 +873,11 @@ def complex_abs(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyFloat_FromDouble(result);
 }
 
-def complex_bool(op: ptr[PyObject]) -> i32 {
+impl complex_bool(op: ptr[PyObject]) -> i32 {
     return i32(real_of(op) != 0.0 or imag_of(op) != 0.0);
 }
 
-def complex_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject] {
+impl complex_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject] {
     if op != Py_EQ and op != Py_NE {
         return Py_NewRef(Py_NotImplemented);
     }
@@ -884,8 +889,6 @@ def complex_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyOb
     }
     equal = False;
     if jacpy_is_long(w) != 0 {
-        # Check for 0.0 imaginary part first to avoid the rich comparison
-        # when possible.
         if ii == 0.0 {
             j = PyFloat_FromDouble(ir);
             if not j {
@@ -905,15 +908,19 @@ def complex_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyOb
     return py_bool(equal == (op == Py_EQ));
 }
 
-def complex_conjugate(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_conjugate(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return new_complex(real_of(op), -imag_of(op));
 }
 
-def complex___getnewargs__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl complex___getnewargs__(
+    op: ptr[PyObject], _unused: ptr[PyObject]
+) -> ptr[PyObject] {
     return Py_BuildValue("(dd)", real_of(op), imag_of(op));
 }
 
-def complex___format__(op: ptr[PyObject], format_spec: ptr[PyObject]) -> ptr[PyObject] {
+impl complex___format__(
+    op: ptr[PyObject], format_spec: ptr[PyObject]
+) -> ptr[PyObject] {
     if jacpy_is_unicode(format_spec) == 0 {
         _PyArg_BadArgument("__format__", "argument", "str", format_spec);
         return NULL;
@@ -936,74 +943,51 @@ def complex___format__(op: ptr[PyObject], format_spec: ptr[PyObject]) -> ptr[PyO
     return PyUnicodeWriter_Finish(writer);
 }
 
-def complex___complex__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl complex___complex__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     if complex_check_exact(op) {
         return Py_NewRef(op);
     }
     return new_complex(real_of(op), imag_of(op));
 }
 
-# ---------------------------------------------------------------- parsing
-"""Py_ISSPACE for the ASCII text _PyUnicode_TransformDecimalAndSpaceToASCII
-produces."""
-def is_space(c: u8) -> bool {
+impl is_space(c: u8) -> bool {
     return c == 32 or (c >= 9 and c <= 13);
 }
 
-# The inner parser _Py_string_to_number_with_underscores calls with the text
-# (underscores removed).
-def complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObject] {
+impl complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObject] {
     x = 0.0;
     y = 0.0;
     start = s;
-    # position on first nonblank
+
     while is_space(s.view(1)[0]) {
         s += 1;
     }
     got_bracket = False;
     if s.view(1)[0] == 40 {
-        # Skip over possible bracket from repr().
         got_bracket = True;
         s += 1;
         while is_space(s.view(1)[0]) {
             s += 1;
         }
     }
-    # A valid complex string usually takes one of the three forms:
-    #     <float>                  - real part only
-    #     <float>j                 - imaginary part only
-    #     <float><signed-float>j   - real and imaginary parts
-    # where <float> is any numeric string that's accepted by the float
-    # constructor (including 'nan', 'inf', 'infinity', etc.), and
-    # <signed-float> is any string of the form <float> whose first character
-    # is '+' or '-'. For backwards compatibility, the extra forms
-    #     <float><sign>j
-    #     <sign>j
-    #     j
-    # are also accepted.
 
-    # first look for forms starting with <float>
     (z, end, failed) = read_double(s);
     if failed {
         return NULL;
     }
     malformed = False;
     if end != s {
-        # all 4 forms starting with <float> land here
         s = end;
         c = s.view(1)[0];
         if c == 43 or c == 45 {
-            # <float><signed-float>j | <float><sign>j
             x = z;
             (y, end, failed) = read_double(s);
             if failed {
                 return NULL;
             }
             if end != s {
-                # <float><signed-float>j
                 s = end;
             } else {
-                # <float><sign>j
                 y = 1.0 if s.view(1)[0] == 43 else -1.0;
                 s += 1;
             }
@@ -1013,22 +997,17 @@ def complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObjec
                 s += 1;
             }
         } elif c == 106 or c == 74 {
-            # <float>j
             s += 1;
             y = z;
         } else {
-            # <float>
             x = z;
         }
     } else {
-        # not starting with <float>; must be <sign>j or j
         c = s.view(1)[0];
         if c == 43 or c == 45 {
-            # <sign>j
             y = 1.0 if c == 43 else -1.0;
             s += 1;
         } else {
-            # j
             y = 1.0;
         }
         if not (s.view(1)[0] == 106 or s.view(1)[0] == 74) {
@@ -1038,13 +1017,10 @@ def complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObjec
         }
     }
     if not malformed {
-        # trailing whitespace and closing bracket
         while is_space(s.view(1)[0]) {
             s += 1;
         }
         if got_bracket {
-            # if there was an opening parenthesis, then the corresponding
-            # closing parenthesis should be right here
             if s.view(1)[0] != 41 {
                 malformed = True;
             } else {
@@ -1055,7 +1031,7 @@ def complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObjec
             }
         }
     }
-    # we should now be at the end of the string
+
     if malformed or s - start != length {
         PyErr_SetString(PyExc_ValueError, "complex() arg is a malformed string");
         return NULL;
@@ -1063,10 +1039,7 @@ def complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObjec
     return complex_subtype_from_doubles(ptr[PyTypeObject](type), x, y);
 }
 
-# PyOS_string_to_double at `s`: the value, where it stopped (at `s` when no
-# number is there, whose ValueError is cleared), and whether another error
-# occurred.
-def read_double(s: ptr[u8]) -> tuple[f64, ptr[u8], bool] {
+impl read_double(s: ptr[u8]) -> tuple[f64, ptr[u8], bool] {
     end_slot = addressof(parse_end);
     value = PyOS_string_to_double(s, ptr(end_slot), NULL);
     end = end_slot.view(1)[0];
@@ -1080,7 +1053,7 @@ def read_double(s: ptr[u8]) -> tuple[f64, ptr[u8], bool] {
     return (value, end, False);
 }
 
-def complex_subtype_from_string(
+impl complex_subtype_from_string(
     type: ptr[PyTypeObject], v: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_unicode(v) == 0 {
@@ -1095,7 +1068,7 @@ def complex_subtype_from_string(
     if not s_buffer {
         return NULL;
     }
-    # Simply get a pointer to existing ASCII characters.
+
     length = i64(0);
     s = PyUnicode_AsUTF8AndSize(s_buffer, &mut length);
     result = _Py_string_to_number_with_underscores(
@@ -1105,12 +1078,7 @@ def complex_subtype_from_string(
     return result;
 }
 
-# The constructor accepts a string only as a positional argument, not as by
-# the 'real' keyword, which Argument Clinic cannot distinguish. So
-# actual_complex_new() handles no arguments and one positional argument, and
-# calls complex_new(), implemented with Argument Clinic, to handle the 'real'
-# and 'imag' arguments.
-def actual_complex_new(
+impl actual_complex_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     nargs = object_size(args);
@@ -1121,9 +1089,8 @@ def actual_complex_new(
         return complex_subtype_from_doubles(type, 0.0, 0.0);
     }
     arg = tuple_get_item(args, 0);
-    # Special-case for a single argument when type(arg) is complex.
+
     if complex_check_exact(arg) and type == addressof(PyComplex_Type) {
-        # A complex subclass cannot safely be returned as-is.
         return Py_NewRef(arg);
     }
     if jacpy_is_unicode(arg) != 0 {
@@ -1139,13 +1106,9 @@ def actual_complex_new(
         return NULL;
     }
     if complex_check(arg) {
-        # A complex subtype keeps only its real & imag parts, and the result
-        # is (properly) of the builtin complex type.
         return complex_subtype_from_doubles(type, real_of(arg), imag_of(arg));
     }
     if is_real_number(arg) {
-        # The argument really is entirely real, and contributes nothing in
-        # the imaginary direction. Just treat it as a double.
         r = PyFloat_AsDouble(arg);
         if r != -1.0 or not PyErr_Occurred() {
             return complex_subtype_from_doubles(type, r, 0.0);
@@ -1158,19 +1121,15 @@ def actual_complex_new(
     return NULL;
 }
 
-"""Whether the type of `op` has nb_float or nb_index."""
-def is_real_number(op: ptr[PyObject]) -> bool {
+impl is_real_number(op: ptr[PyObject]) -> bool {
     nb = object_type(op).view(1)[0].tp_as_number;
     return bool(nb)
         and (int(nb.view(1)[0].nb_float) != 0 or int(nb.view(1)[0].nb_index) != 0);
 }
 
-# complex.__new__(real=0, imag=0), as Argument Clinic parses it.
-def complex_new(
+impl complex_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # _PyArg_UnpackKeywords' fast path: positional arguments only, within
-    # range, are the tuple's items.
     if not kwargs {
         nargs = object_size(args);
         if nargs <= 2 {
@@ -1184,13 +1143,13 @@ def complex_new(
     );
 }
 
-def complex_new_bound(args: BoundArguments) -> ptr[PyObject] {
+impl complex_new_bound(args: BoundArguments) -> ptr[PyObject] {
     return complex_new_impl(
         ptr[PyTypeObject](args.context), args.values[0], args.values[1]
     );
 }
 
-def complex_new_impl(
+impl complex_new_impl(
     type: ptr[PyTypeObject], r: ptr[PyObject], i: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not r {
@@ -1198,8 +1157,7 @@ def complex_new_impl(
     }
     orig_r = r;
     own_r = False;
-    # DEPRECATED: The call of try_complex_special_method() for the "real" part
-    # will be dropped after the end of the deprecation period.
+
     tmp = try_complex_special_method(r);
     if tmp {
         r = tmp;
@@ -1229,22 +1187,15 @@ def complex_new_impl(
         }
         return NULL;
     }
-    # If we get this far, then the "real" and "imag" parts should both be
-    # treated as numbers, and the constructor should return a complex number
-    # equal to (real + imag*1j). DEPRECATED: the parts might themselves be
-    # complex numbers, which slightly complicates the code below.
+
     cr_real = 0.0;
     cr_imag = 0.0;
     cr_is_complex = False;
     if complex_check(r) {
-        # A complex subtype keeps only its real & imag parts, and the result
-        # is (properly) of the builtin complex type.
         cr_real = real_of(r);
         cr_imag = imag_of(r);
         cr_is_complex = True;
         if own_r {
-            # r was a newly created complex number, rather than the original
-            # "real" argument.
             jacpy_release(r);
         }
         if not is_real_number(orig_r)
@@ -1258,8 +1209,6 @@ def complex_new_impl(
             return NULL;
         }
     } else {
-        # The "real" part really is entirely real, and contributes nothing in
-        # the imaginary direction. Just treat it as a double.
         value = PyNumber_Float(r);
         if not value {
             return NULL;
@@ -1286,8 +1235,6 @@ def complex_new_impl(
         ci_imag = imag_of(i);
         ci_is_complex = True;
     } else {
-        # The "imag" part really is entirely imaginary, and contributes nothing
-        # in the real direction. Just treat it as a double.
         value = PyNumber_Float(i);
         if not value {
             return NULL;
@@ -1295,9 +1242,7 @@ def complex_new_impl(
         ci_real = PyFloat_AsDouble(value);
         jacpy_release(value);
     }
-    # If the input was in canonical form, then the "real" and "imag" parts are
-    # real numbers, so that ci.imag and cr.imag are zero. We need this
-    # correction in case they were not real numbers.
+
     if ci_is_complex {
         cr_real -= ci_imag;
     }
@@ -1307,14 +1252,13 @@ def complex_new_impl(
     return complex_subtype_from_doubles(type, cr_real, ci_real);
 }
 
-"""The immortal int 0 (_PyLong_GetZero), borrowed."""
-def zero_object -> ptr[PyObject] {
+impl zero_object -> ptr[PyObject] {
     zero = PyLong_FromLong(0);
     jacpy_release(zero);
     return zero;
 }
 
-def complex_from_number(cls: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject] {
+impl complex_from_number(cls: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject] {
     type = ptr[PyTypeObject](cls);
     if complex_check_exact(number) and type == addressof(PyComplex_Type) {
         return Py_NewRef(number);

@@ -1,18 +1,3 @@
-"""zoneinfo.ZoneInfo: IANA time zones from TZif data, as a datetime.tzinfo.
-
-Derived from CPython 3.14.6 Modules/_zoneinfo.c; see ../LICENSE.cpython.
-zoneinfo._common reads a TZif file into Python values; this module derives the
-DST offsets and wall-time transitions from them, parses the POSIX TZ string
-that governs times after the last transition, and answers utcoffset(), dst(),
-tzname() and fromutc() by bisecting those transitions. Datetime fields are read
-through the PyDateTime_DateTime layout, as the datetime.h macros read them.
-The module keeps the timedelta cache, the weak cache and an eight-cached
-strong LRU cache of the ZoneInfo base class; subclasses keep a weak cache in
-their `_weak_cache` attribute.
-"""
-
-# The handle of the module definition, which the binding fills in, so a type
-# finds its module as PyType_GetModuleByDef() does.
 obj DefinitionHandle {
     has handle: ptr = ptr();
 }
@@ -43,27 +28,19 @@ glob:priv EPOCHORDINAL: i64 = 719163,
      ZONEINFO_STRONG_CACHE_MAX_SIZE: int = 8,
      PY_EQ: i32 = 2;
 
-# _ttinfo: the offsets and abbreviation in effect over some span of time.
 obj TTInfo {
     has utcoff: ptr[PyObject] = NULL,
         dstoff: ptr[PyObject] = NULL,
         tzname: ptr[PyObject] = NULL,
         utcoff_seconds: i64 = 0;
 
-    def drop {
-        jacpy_release(self.utcoff);
-        jacpy_release(self.dstoff);
-        jacpy_release(self.tzname);
-    }
+    def drop;
 }
 
-# TransitionRuleType: when, in local standard time, a transition of a POSIX
-# TZ rule happens in a given year.
 obj TransitionRule {
     def year_to_timestamp(year: i64) -> i64 abst;
 }
 
-# Mm.n.d: day `day` (0 = Sunday) of week `week` (5 = the last) of `month`.
 obj CalendarRule(TransitionRule) {
     has month: i64 = 0,
         week: i64 = 0,
@@ -72,35 +49,9 @@ obj CalendarRule(TransitionRule) {
         minute: i64 = 0,
         second: i64 = 0;
 
-    override def year_to_timestamp(year: i64) -> i64 {
-        # Week 1 is the first week in which day `day` appears; week 5 is its
-        # last occurrence, so the first weekday of the month and the number of
-        # days in the month decide it.
-        first_day = (ymd_to_ord(year, self.month, 1) + 6) % 7;
-        days_in_month = DAYS_IN_MONTH[self.month];
-        if self.month == 2 and is_leap_year(year) {
-            days_in_month += 1;
-        }
-        # calendar counts 0 = Monday and POSIX 0 = Sunday, so first_day + 1
-        # is the POSIX weekday; the difference mod 7, plus 1 because month
-        # days count from 1, is the first occurrence.
-        month_day = (self.day - (first_day + 1)) % 7;
-        if month_day < 0 {
-            month_day += 7;
-        }
-        month_day += 1;
-        month_day += (self.week - 1) * 7;
-        # Only week 5 overshoots the month: it means the last occurrence.
-        if month_day > days_in_month {
-            month_day -= 7;
-        }
-        ordinal = ymd_to_ord(year, self.month, month_day) - EPOCHORDINAL;
-        return ordinal * 86400 + self.hour * 3600 + self.minute * 60 + self.second;
-    }
+    override def year_to_timestamp(year: i64) -> i64;
 }
 
-# Jn (julian: 1-based, leap days not counted) or n (0-based, leap days
-# counted): a day of the year.
 obj DayRule(TransitionRule) {
     has julian: bool = False,
         day: i64 = 0,
@@ -108,23 +59,9 @@ obj DayRule(TransitionRule) {
         minute: i64 = 0,
         second: i64 = 0;
 
-    override def year_to_timestamp(year: i64) -> i64 {
-        # Days since 1970-01-01 before January 1st of the year; partial days
-        # are the hour, minute and second.
-        days_before_year = ymd_to_ord(year, 1, 1) - EPOCHORDINAL - 1;
-        # A Julian day skips February 29th: J60 is always March 1st.
-        day = self.day;
-        if self.julian and day >= 59 and is_leap_year(year) {
-            day += 1;
-        }
-        return (days_before_year + day) * 86400
-            + self.hour * 3600
-            + self.minute * 60
-            + self.second;
-    }
+    override def year_to_timestamp(year: i64) -> i64;
 }
 
-# _tzrule: standard and daylight time and the rules switching between them.
 obj TZRule {
     has std: TTInfo = TTInfo(),
         dst: TTInfo = TTInfo(),
@@ -134,18 +71,13 @@ obj TZRule {
         std_only: bool = False;
 }
 
-# StrongCacheNode: one entry of the base class's LRU cache.
 obj StrongCacheNode {
     has key: ptr[PyObject] = NULL,
         zone: ptr[PyObject] = NULL;
 
-    def drop {
-        jacpy_release(self.key);
-        jacpy_release(self.zone);
-    }
+    def drop;
 }
 
-# zoneinfo_state.
 obj ZoneInfoModuleState(NativeState) {
     has zoneinfo_type: ptr[PyObject] = NULL,
         io_open: ptr[PyObject] = NULL,
@@ -157,70 +89,11 @@ obj ZoneInfoModuleState(NativeState) {
         no_ttinfo: TTInfo = TTInfo(),
         datetime_api: ptr[PyDateTime_CAPI] = ptr[PyDateTime_CAPI]();
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        for value in [
-            self.zoneinfo_type,
-            self.io_open,
-            self.tzpath_find_tzfile,
-            self.common_mod,
-            self.timedelta_cache,
-            self.weak_cache
-        ] {
-            status = visit_reference(value, visitor, context);
-            if status != 0 {
-                return status;
-            }
-        }
-        for cached in self.strong_cache {
-            status = visit_reference(cached.key, visitor, context);
-            if status == 0 {
-                status = visit_reference(cached.zone, visitor, context);
-            }
-            if status != 0 {
-                return status;
-            }
-        }
-        for value in [
-            self.no_ttinfo.utcoff,
-            self.no_ttinfo.dstoff,
-            self.no_ttinfo.tzname
-        ] {
-            status = visit_reference(value, visitor, context);
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
-
-    def clear {
-        references = [
-            self.zoneinfo_type,
-            self.io_open,
-            self.tzpath_find_tzfile,
-            self.common_mod,
-            self.timedelta_cache,
-            self.weak_cache
-        ];
-        self.zoneinfo_type = NULL;
-        self.io_open = NULL;
-        self.tzpath_find_tzfile = NULL;
-        self.common_mod = NULL;
-        self.timedelta_cache = NULL;
-        self.weak_cache = NULL;
-        self.strong_cache = [];
-        self.no_ttinfo = TTInfo();
-        for value in references {
-            jacpy_release(value);
-        }
-    }
-
-    def drop {
-        self.clear();
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
 }
 
-# PyZoneInfo_ZoneInfo: the transitions and rules of one zone.
 obj ZoneInfoState(NativeState) {
     has key: ptr[PyObject] = NULL,
         file_repr: ptr[PyObject] = NULL,
@@ -233,25 +106,353 @@ obj ZoneInfoState(NativeState) {
         fixed_offset: bool = False,
         source: i64 = 0;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.key, visitor, context);
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def module_state(module: ptr[PyObject]) -> (ZoneInfoModuleState | None);
+
+def:priv state_by_type(type: ptr[PyObject]) -> (ZoneInfoModuleState | None);
+
+def:priv state_by_class(cls: ptr[PyObject]) -> (ZoneInfoModuleState | None);
+
+def zoneinfo_of(instance: ptr[PyObject]) -> (ZoneInfoState | None);
+
+def:priv before_ttinfo(zone: ZoneInfoState) -> TTInfo;
+
+def:priv datetime_year(dt: ptr[PyObject]) -> i64;
+
+def:priv datetime_fold(dt: ptr[PyObject]) -> i64;
+
+def:priv datetime_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv datetime_type(state: ZoneInfoModuleState) -> ptr[PyObject];
+
+def:priv is_datetime_exact(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool;
+
+def:priv is_datetime(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool;
+
+def:priv zoneinfo_new_instance(
+    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv get_weak_cache(
+    state: ZoneInfoModuleState, type: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo_from_file_impl(
+    type: ptr[PyObject], cls: ptr[PyObject], file_obj: ptr[PyObject], key: ptr[PyObject]
+) -> ptr[PyObject];
+
+def mirror_key(instance: ptr[PyObject], zone: ZoneInfoState);
+
+def zoneinfo_ZoneInfo_no_cache_impl(
+    type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo_clear_cache_impl(
+    type: ptr[PyObject], cls: ptr[PyObject], only_keys: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv ttinfo_method(
+    receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject], field: int
+) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo_utcoffset_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo_dst_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo_tzname_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def zoneinfo_repr(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def zoneinfo_str(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def zoneinfo_ZoneInfo__unpickle_impl(
+    type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject], from_cache: u8
+) -> ptr[PyObject];
+
+def zoneinfo_init_subclass(
+    cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv load_timedelta(state: ZoneInfoModuleState, seconds: i64) -> ptr[PyObject];
+
+def:priv build_ttinfo(
+    state: ZoneInfoModuleState, utcoffset: i64, dstoffset: i64, tzname: ptr[PyObject]
+) -> (TTInfo | None);
+
+def:priv ttinfo_eq(first: TTInfo, second: TTInfo) -> i32;
+
+
+def:priv load_data(
+    state: ZoneInfoModuleState, zone: ZoneInfoState, file_obj: ptr[PyObject]
+) -> bool;
+
+def:priv fill_zone(
+    state: ZoneInfoModuleState, zone: ZoneInfoState, data_tuple: ptr[PyObject]
+) -> bool;
+
+obj RuleTransitions {
+    has start: i64 = 0,
+        end: i64 = 0;
+}
+
+def:priv tzrule_transitions(rule: TZRule, year: i64) -> RuleTransitions;
+
+def:priv find_tzrule_ttinfo(rule: TZRule, ts: i64, fold: i64, year: i64) -> TTInfo;
+
+obj RuleMatch {
+    has tti: TTInfo,
+        fold: bool = False;
+}
+
+def:priv find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMatch;
+
+obj TZCursor {
+    has text: ptr[u8],
+        pos: int = 0;
+
+    def at(offset: int = 0) -> int;
+}
+
+def:priv is_digit(c: int) -> bool;
+
+def:priv is_alpha(c: int) -> bool;
+
+def:priv parse_tz_str(
+    state: ZoneInfoModuleState, tz_str_obj: ptr[PyObject]
+) -> (TZRule | None);
+
+def:priv parse_digits(cursor: TZCursor, least: int, most: int) -> (int | None);
+
+def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject];
+
+def:priv parse_tz_delta(cursor: TZCursor) -> (i64 | None);
+
+obj TransitionTime {
+    has hour: i64 = 0,
+        minute: i64 = 0,
+        second: i64 = 0;
+}
+
+def:priv parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime | None);
+
+def:priv parse_transition_rule(cursor: TZCursor) -> (TransitionRule | None);
+
+def:priv calendarrule_new(
+    month: i64, week: i64, day: i64, hour: i64, minute: i64, second: i64
+) -> (TransitionRule | None);
+
+def:priv dayrule_new(
+    julian: bool, day: i64, hour: i64, minute: i64, second: i64
+) -> (TransitionRule | None);
+
+def:priv build_tzrule(
+    state: ZoneInfoModuleState,
+    std_abbr: ptr[PyObject],
+    dst_abbr: ptr[PyObject],
+    std_offset: i64,
+    dst_offset: i64,
+    start: (TransitionRule | None),
+    end: (TransitionRule | None)
+) -> (TZRule | None);
+
+def:priv utcoff_to_dstoff(
+    trans_idx: list[int], utcoffs: list[i64], dstoffs: list[i64], isdsts: list[bool]
+);
+
+def:priv ts_to_local(
+    trans_idx: list[int], trans_utc: list[i64], utcoff: list[i64]
+) -> list[list[i64]];
+
+def:priv bisect_right(value: i64, values: list[i64]) -> int;
+
+def:priv find_ttinfo(
+    state: ZoneInfoModuleState, zone: ZoneInfoState, dt: ptr[PyObject]
+) -> (TTInfo | None);
+
+def:priv is_leap_year(year: i64) -> bool;
+
+def:priv ymd_to_ord(y: i64, m: i64, d: i64) -> i64;
+
+def:priv int_attribute(dt: ptr[PyObject], name: str) -> (i64 | None);
+
+def:priv local_timestamp(
+    state: ZoneInfoModuleState, dt: ptr[PyObject]
+) -> (i64 | None);
+
+def:priv find_in_strong_cache(
+    state: ZoneInfoModuleState, key: ptr[PyObject]
+) -> (StrongCacheNode | None);
+
+def:priv remove_from_strong_cache(state: ZoneInfoModuleState, cached: StrongCacheNode);
+
+def:priv move_strong_cache_node_to_front(
+    state: ZoneInfoModuleState, cached: StrongCacheNode
+);
+
+def:priv eject_from_strong_cache(
+    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+) -> bool;
+
+def:priv zone_from_strong_cache(
+    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv update_strong_cache(
+    state: ZoneInfoModuleState,
+    type: ptr[PyObject],
+    key: ptr[PyObject],
+    zone: ptr[PyObject]
+);
+
+def:priv clear_strong_cache(state: ZoneInfoModuleState, type: ptr[PyObject]);
+
+def:priv new_weak_cache -> ptr[PyObject];
+
+def datetime_import -> ptr[PyDateTime_CAPI];
+
+def populate_module_state(state: ZoneInfoModuleState) -> bool;
+
+impl TTInfo.drop {
+    jacpy_release(self.utcoff);
+    jacpy_release(self.dstoff);
+    jacpy_release(self.tzname);
+}
+
+impl CalendarRule.year_to_timestamp(year: i64) -> i64 {
+    first_day = (ymd_to_ord(year, self.month, 1) + 6) % 7;
+    days_in_month = DAYS_IN_MONTH[self.month];
+    if self.month == 2 and is_leap_year(year) {
+        days_in_month += 1;
     }
 
-    def clear {
-        key = self.key;
-        file_repr = self.file_repr;
-        self.key = NULL;
-        self.file_repr = NULL;
-        jacpy_release(key);
-        jacpy_release(file_repr);
+    month_day = (self.day - (first_day + 1)) % 7;
+    if month_day < 0 {
+        month_day += 7;
     }
+    month_day += 1;
+    month_day += (self.week - 1) * 7;
 
-    def drop {
-        self.clear();
+    if month_day > days_in_month {
+        month_day -= 7;
+    }
+    ordinal = ymd_to_ord(year, self.month, month_day) - EPOCHORDINAL;
+    return ordinal * 86400 + self.hour * 3600 + self.minute * 60 + self.second;
+}
+
+impl DayRule.year_to_timestamp(year: i64) -> i64 {
+    days_before_year = ymd_to_ord(year, 1, 1) - EPOCHORDINAL - 1;
+
+    day = self.day;
+    if self.julian and day >= 59 and is_leap_year(year) {
+        day += 1;
+    }
+    return (days_before_year + day) * 86400
+        + self.hour * 3600
+        + self.minute * 60
+        + self.second;
+}
+
+impl StrongCacheNode.drop {
+    jacpy_release(self.key);
+    jacpy_release(self.zone);
+}
+
+impl ZoneInfoModuleState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    for value in [
+        self.zoneinfo_type,
+        self.io_open,
+        self.tzpath_find_tzfile,
+        self.common_mod,
+        self.timedelta_cache,
+        self.weak_cache
+    ] {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    for cached in self.strong_cache {
+        status = visit_reference(cached.key, visitor, context);
+        if status == 0 {
+            status = visit_reference(cached.zone, visitor, context);
+        }
+        if status != 0 {
+            return status;
+        }
+    }
+    for value in [
+        self.no_ttinfo.utcoff,
+        self.no_ttinfo.dstoff,
+        self.no_ttinfo.tzname
+    ] {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    return i32(0);
+}
+
+impl ZoneInfoModuleState.clear {
+    references = [
+        self.zoneinfo_type,
+        self.io_open,
+        self.tzpath_find_tzfile,
+        self.common_mod,
+        self.timedelta_cache,
+        self.weak_cache
+    ];
+    self.zoneinfo_type = NULL;
+    self.io_open = NULL;
+    self.tzpath_find_tzfile = NULL;
+    self.common_mod = NULL;
+    self.timedelta_cache = NULL;
+    self.weak_cache = NULL;
+    self.strong_cache = [];
+    self.no_ttinfo = TTInfo();
+    for value in references {
+        jacpy_release(value);
     }
 }
 
-def module_state(module: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
+impl ZoneInfoModuleState.drop {
+    self.clear();
+}
+
+impl ZoneInfoState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.key, visitor, context);
+}
+
+impl ZoneInfoState.clear {
+    key = self.key;
+    file_repr = self.file_repr;
+    self.key = NULL;
+    self.file_repr = NULL;
+    jacpy_release(key);
+    jacpy_release(file_repr);
+}
+
+impl ZoneInfoState.drop {
+    self.clear();
+}
+
+impl module_state(module: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
     if module and jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
         if isinstance(state, ZoneInfoModuleState) {
@@ -264,18 +465,15 @@ def module_state(module: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
     return None;
 }
 
-# zoneinfo_get_state_by_self(): the state of the module that defines `type`
-# or the ZoneInfo class it derives from.
-def:priv state_by_type(type: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
+impl state_by_type(type: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
     return module_state(jacpy_binding_owner(type, module_definition.handle));
 }
 
-# zoneinfo_get_state_by_cls(): the state of the defining class's module.
-def:priv state_by_class(cls: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
+impl state_by_class(cls: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
     return state_by_type(cls);
 }
 
-def zoneinfo_of(instance: ptr[PyObject]) -> (ZoneInfoState | None) {
+impl zoneinfo_of(instance: ptr[PyObject]) -> (ZoneInfoState | None) {
     if jacpy_binding_native_present(instance, ZoneInfo_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZoneInfo_token.handle);
         if isinstance(state, ZoneInfoState) {
@@ -288,8 +486,7 @@ def zoneinfo_of(instance: ptr[PyObject]) -> (ZoneInfoState | None) {
     return None;
 }
 
-# ttinfo_before, which every zone with a transition has.
-def:priv before_ttinfo(zone: ZoneInfoState) -> TTInfo {
+impl before_ttinfo(zone: ZoneInfoState) -> TTInfo {
     before = zone.ttinfo_before;
     if before is None {
         return TTInfo();
@@ -297,34 +494,33 @@ def:priv before_ttinfo(zone: ZoneInfoState) -> TTInfo {
     return before;
 }
 
-# The datetime.h macros, over the PyDateTime_DateTime layout.
-def:priv datetime_year(dt: ptr[PyObject]) -> i64 {
+impl datetime_year(dt: ptr[PyObject]) -> i64 {
     fields = ptr[PyDateTime_DateTime](dt).view(1);
     return (i64(fields[0].data) << 8) | i64(fields[0].data_1);
 }
 
-def:priv datetime_fold(dt: ptr[PyObject]) -> i64 {
+impl datetime_fold(dt: ptr[PyObject]) -> i64 {
     return i64(ptr[PyDateTime_DateTime](dt).view(1)[0].fold);
 }
 
-def:priv datetime_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject] {
     fields = ptr[PyDateTime_DateTime](dt).view(1);
     return fields[0].tzinfo if fields[0].hastzinfo != 0 else Py_None;
 }
 
-def:priv datetime_type(state: ZoneInfoModuleState) -> ptr[PyObject] {
+impl datetime_type(state: ZoneInfoModuleState) -> ptr[PyObject] {
     return ptr[PyObject](state.datetime_api.view(1)[0].DateTimeType);
 }
 
-def:priv is_datetime_exact(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool {
+impl is_datetime_exact(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool {
     return Py_TYPE(value) == datetime_type(state);
 }
 
-def:priv is_datetime(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool {
+impl is_datetime(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool {
     return jacpy_type_check(value, datetime_type(state)) != 0;
 }
 
-def:priv zoneinfo_new_instance(
+impl zoneinfo_new_instance(
     state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
     file_obj = NULL;
@@ -383,16 +579,14 @@ def:priv zoneinfo_new_instance(
     return instance;
 }
 
-def:priv get_weak_cache(
-    state: ZoneInfoModuleState, type: ptr[PyObject]
-) -> ptr[PyObject] {
+impl get_weak_cache(state: ZoneInfoModuleState, type: ptr[PyObject]) -> ptr[PyObject] {
     if type == state.zoneinfo_type {
         return Py_NewRef(state.weak_cache);
     }
-    return PyObject_GetAttrString(type, "_weak_cache");
+    return PyObject_GetAttrString(type, ptr[u8]("_weak_cache"));
 }
 
-def zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
+impl zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
     state = state_by_type(type);
     if state is None {
         return NULL;
@@ -445,7 +639,7 @@ def zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObj
     return instance;
 }
 
-def zoneinfo_ZoneInfo_from_file_impl(
+impl zoneinfo_ZoneInfo_from_file_impl(
     type: ptr[PyObject], cls: ptr[PyObject], file_obj: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
@@ -475,15 +669,13 @@ def zoneinfo_ZoneInfo_from_file_impl(
     return instance;
 }
 
-# ZoneInfo's `key` member (Py_T_OBJECT_EX) reads the record, which holds the
-# state's key borrowed.
-def mirror_key(instance: ptr[PyObject], zone: ZoneInfoState) {
+impl mirror_key(instance: ptr[PyObject], zone: ZoneInfoState) {
     record_set_object(
         jacpy_binding_record(instance, ZoneInfo_token.handle), 0, zone.key
     );
 }
 
-def zoneinfo_ZoneInfo_no_cache_impl(
+impl zoneinfo_ZoneInfo_no_cache_impl(
     type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_by_class(cls);
@@ -500,7 +692,7 @@ def zoneinfo_ZoneInfo_no_cache_impl(
     return out;
 }
 
-def zoneinfo_ZoneInfo_clear_cache_impl(
+impl zoneinfo_ZoneInfo_clear_cache_impl(
     type: ptr[PyObject], cls: ptr[PyObject], only_keys: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_by_class(cls);
@@ -516,7 +708,7 @@ def zoneinfo_ZoneInfo_clear_cache_impl(
         jacpy_release(cleared);
         clear_strong_cache(state, type);
     } else {
-        pop = PyUnicode_FromString("pop");
+        pop = PyUnicode_FromString(ptr[u8]("pop"));
         if not pop {
             jacpy_release(weak_cache);
             return NULL;
@@ -529,7 +721,6 @@ def zoneinfo_ZoneInfo_clear_cache_impl(
         }
         item = PyIter_Next(iterator);
         while item {
-            # Remove from the strong cache, then from the weak cache.
             if not eject_from_strong_cache(state, type, item) {
                 jacpy_release(item);
                 break;
@@ -552,7 +743,7 @@ def zoneinfo_ZoneInfo_clear_cache_impl(
     return Py_NewRef(Py_None);
 }
 
-def:priv ttinfo_method(
+impl ttinfo_method(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject], field: int
 ) -> ptr[PyObject] {
     state = state_by_class(cls);
@@ -570,26 +761,25 @@ def:priv ttinfo_method(
     return Py_NewRef(tti.dstoff) if field == 1 else Py_NewRef(tti.tzname);
 }
 
-def zoneinfo_ZoneInfo_utcoffset_impl(
+impl zoneinfo_ZoneInfo_utcoffset_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject] {
     return ttinfo_method(receiver, cls, dt, 0);
 }
 
-def zoneinfo_ZoneInfo_dst_impl(
+impl zoneinfo_ZoneInfo_dst_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject] {
     return ttinfo_method(receiver, cls, dt, 1);
 }
 
-def zoneinfo_ZoneInfo_tzname_impl(
+impl zoneinfo_ZoneInfo_tzname_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject] {
     return ttinfo_method(receiver, cls, dt, 2);
 }
 
-# fromutc(dt): dt, whose wall time is UTC, as local time in this zone.
-def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     state = state_by_type(Py_TYPE(receiver));
     if state is None {
         return NULL;
@@ -621,9 +811,6 @@ def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject
         );
         tti = found.tti;
         fold = found.fold;
-        # Just after the last listed transition the fold or gap is between
-        # the ttinfo of that transition's predecessor and the one that
-        # applies after it, not between the rule's STD and DST.
         if num_trans {
             tti_prev = before_ttinfo(zone)
                 if num_trans == 1
@@ -642,7 +829,6 @@ def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject
         } else {
             tti = zone.trans_ttinfos[0];
         }
-        # Detect a fold.
         shift = tti_prev.utcoff_seconds - tti.utcoff_seconds;
         if shift > timestamp - zone.trans_list_utc[idx - 1] {
             fold = True;
@@ -656,7 +842,7 @@ def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject
         ptr[PyDateTime_DateTime](shifted).view(1)[0].fold = 1;
         return shifted;
     }
-    replace = PyObject_GetAttrString(shifted, "replace");
+    replace = PyObject_GetAttrString(shifted, ptr[u8]("replace"));
     jacpy_release(shifted);
     if not replace {
         return NULL;
@@ -674,7 +860,7 @@ def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject
     }
     result = NULL;
     one = PyLong_FromLong(1);
-    if one and PyDict_SetItemString(kwargs, "fold", one) == 0 {
+    if one and PyDict_SetItemString(kwargs, ptr[u8]("fold"), one) == 0 {
         result = PyObject_Call(replace, args, kwargs);
     }
     jacpy_release(one);
@@ -684,7 +870,7 @@ def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject
     return result;
 }
 
-def zoneinfo_repr(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl zoneinfo_repr(receiver: ptr[PyObject]) -> ptr[PyObject] {
     zone = zoneinfo_of(receiver);
     if zone is None {
         return NULL;
@@ -695,7 +881,7 @@ def zoneinfo_repr(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat("%T.from_file(%U)", receiver, zone.file_repr);
 }
 
-def zoneinfo_str(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl zoneinfo_str(receiver: ptr[PyObject]) -> ptr[PyObject] {
     zone = zoneinfo_of(receiver);
     if zone is None {
         return NULL;
@@ -706,11 +892,7 @@ def zoneinfo_str(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return zoneinfo_repr(receiver);
 }
 
-# ZoneInfo objects pickle by key and source: by reference to the TZif data
-# they came from, and whether they came through the cache, since from-cache
-# objects hit the unpickling process's cache and no-cache objects bypass it.
-# Objects made by ZoneInfo.from_file cannot be pickled.
-def zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     zone = zoneinfo_of(receiver);
     if zone is None {
         return NULL;
@@ -725,7 +907,7 @@ def zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     from_cache = 1 if zone.source == SOURCE_CACHE else 0;
-    constructor = PyObject_GetAttrString(receiver, "_unpickle");
+    constructor = PyObject_GetAttrString(receiver, ptr[u8]("_unpickle"));
     if not constructor {
         return NULL;
     }
@@ -734,7 +916,7 @@ def zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
     return result;
 }
 
-def zoneinfo_ZoneInfo__unpickle_impl(
+impl zoneinfo_ZoneInfo__unpickle_impl(
     type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject], from_cache: u8
 ) -> ptr[PyObject] {
     if from_cache != 0 {
@@ -747,15 +929,14 @@ def zoneinfo_ZoneInfo__unpickle_impl(
     return zoneinfo_new_instance(state, type, key);
 }
 
-# __init_subclass__: every subclass gets its own weak cache.
-def zoneinfo_init_subclass(
+impl zoneinfo_init_subclass(
     cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     weak_cache = new_weak_cache();
     if not weak_cache {
         return NULL;
     }
-    status = PyObject_SetAttrString(cls, "_weak_cache", weak_cache);
+    status = PyObject_SetAttrString(cls, ptr[u8]("_weak_cache"), weak_cache);
     jacpy_release(weak_cache);
     if status < 0 {
         return NULL;
@@ -763,9 +944,7 @@ def zoneinfo_init_subclass(
     return Py_NewRef(Py_None);
 }
 
-# load_timedelta(): a timedelta of `seconds`, shared through the module's
-# cache, since zones reuse a small set of offsets.
-def:priv load_timedelta(state: ZoneInfoModuleState, seconds: i64) -> ptr[PyObject] {
+impl load_timedelta(state: ZoneInfoModuleState, seconds: i64) -> ptr[PyObject] {
     pyoffset = PyLong_FromLong(seconds);
     if not pyoffset {
         return NULL;
@@ -785,8 +964,7 @@ def:priv load_timedelta(state: ZoneInfoModuleState, seconds: i64) -> ptr[PyObjec
     return result;
 }
 
-# build_ttinfo(); None with the exception set on failure.
-def:priv build_ttinfo(
+impl build_ttinfo(
     state: ZoneInfoModuleState, utcoffset: i64, dstoffset: i64, tzname: ptr[PyObject]
 ) -> (TTInfo | None) {
     tti = TTInfo(utcoff_seconds=utcoffset);
@@ -802,8 +980,7 @@ def:priv build_ttinfo(
     return tti;
 }
 
-# ttinfo_eq(): 1 when equal, 0 when not, -1 with the exception set.
-def:priv ttinfo_eq(first: TTInfo, second: TTInfo) -> i32 {
+impl ttinfo_eq(first: TTInfo, second: TTInfo) -> i32 {
     result = PyObject_RichCompareBool(first.utcoff, second.utcoff, PY_EQ);
     if result < 1 {
         return result;
@@ -816,9 +993,7 @@ def:priv ttinfo_eq(first: TTInfo, second: TTInfo) -> i32 {
 }
 
 
-# load_data(): fill `zone` from the file object through
-# zoneinfo._common.load_data(); False with the exception set on failure.
-def:priv load_data(
+impl load_data(
     state: ZoneInfoModuleState, zone: ZoneInfoState, file_obj: ptr[PyObject]
 ) -> bool {
     data_tuple = PyObject_CallMethod(state.common_mod, "load_data", "O", file_obj);
@@ -830,14 +1005,14 @@ def:priv load_data(
     return ok;
 }
 
-def:priv fill_zone(
+impl fill_zone(
     state: ZoneInfoModuleState, zone: ZoneInfoState, data_tuple: ptr[PyObject]
 ) -> bool {
     if Py_TYPE(data_tuple) != addressof(PyTuple_Type) {
         PyErr_Format(PyExc_TypeError, "Invalid data result type: %R", data_tuple);
         return False;
     }
-    # Unpack the data tuple.
+
     trans_idx_list = PyTuple_GetItem(data_tuple, 0);
     if not trans_idx_list {
         return False;
@@ -870,7 +1045,7 @@ def:priv fill_zone(
     if num_ttinfos < 0 {
         return False;
     }
-    # The transition times and the ttinfo index of each.
+
     trans_list_utc: list[i64] = [];
     trans_idx: list[int] = [];
     for i in range(int(num_transitions)) {
@@ -900,7 +1075,7 @@ def:priv fill_zone(
         }
         trans_idx.append(int(cur_trans_idx));
     }
-    # The UTC offsets and isdst flags, one per ttinfo.
+
     utcoff: list[i64] = [];
     isdst: list[bool] = [];
     for i in range(int(num_ttinfos)) {
@@ -923,11 +1098,11 @@ def:priv fill_zone(
         }
         isdst.append(flag != 0);
     }
-    # Derive dstoff and the wall-time transitions.
+
     dstoff: list[i64] = [0 for _ in range(int(num_ttinfos))];
     utcoff_to_dstoff(trans_idx, utcoff, dstoff, isdst);
     wall = ts_to_local(trans_idx, trans_list_utc, utcoff);
-    # The ttinfos from utcoff, dstoff and abbr.
+
     ttinfos: list[TTInfo] = [];
     for i in range(int(num_ttinfos)) {
         tzname = PyTuple_GetItem(abbr, i64(i));
@@ -943,10 +1118,9 @@ def:priv fill_zone(
     zone.trans_list_utc = trans_list_utc;
     zone.trans_list_wall = wall;
     zone.ttinfos = ttinfos;
-    # The ttinfo each transition switches to.
+
     zone.trans_ttinfos = [ttinfos[index] for index in trans_idx];
-    # ttinfo_before is the first non-DST ttinfo; with only DST ttinfos it is
-    # the first one, and with none there is none.
+
     zone.ttinfo_before = None;
     for i in range(int(num_ttinfos)) {
         if not isdst[i] {
@@ -974,8 +1148,6 @@ def:priv fill_zone(
         if rule is None {
             return False;
         }
-        # The STD-only rule mimics the last ttinfo, which may be a DST one:
-        # then its dstoff is the rule's too.
         truth = PyObject_IsTrue(tti.dstoff);
         if truth != 0 {
             previous = rule.std.dstoff;
@@ -984,11 +1156,7 @@ def:priv fill_zone(
         }
         zone.tzrule_after = rule;
     }
-    # A "fixed offset" zone answers utcoffset(), dst() and tzname() the same
-    # for every datetime. This assumes that a rule that is not STD-only has
-    # transitions that occur, that distinct ttinfos have distinct offsets and
-    # that every ttinfo is used; zones violating those should not be used
-    # with datetime.time, the only thing this affects.
+
     if num_ttinfos > 1 or not zone.tzrule_after.std_only {
         zone.fixed_offset = False;
     } elif num_ttinfos == 0 {
@@ -1003,14 +1171,7 @@ def:priv fill_zone(
     return True;
 }
 
-# The start and end of a TZ rule's DST in the given year, in local standard
-# time.
-obj RuleTransitions {
-    has start: i64 = 0,
-        end: i64 = 0;
-}
-
-def:priv tzrule_transitions(rule: TZRule, year: i64) -> RuleTransitions {
+impl tzrule_transitions(rule: TZRule, year: i64) -> RuleTransitions {
     transitions = RuleTransitions();
     start = rule.start;
     end = rule.end;
@@ -1021,19 +1182,14 @@ def:priv tzrule_transitions(rule: TZRule, year: i64) -> RuleTransitions {
     return transitions;
 }
 
-# find_tzrule_ttinfo(): the ttinfo of a rule at a local timestamp. The year
-# is the datetime's, which the callers already have.
-def:priv find_tzrule_ttinfo(rule: TZRule, ts: i64, fold: i64, year: i64) -> TTInfo {
+impl find_tzrule_ttinfo(rule: TZRule, ts: i64, fold: i64, year: i64) -> TTInfo {
     if rule.std_only {
         return rule.std;
     }
     transitions = tzrule_transitions(rule, year);
     start = transitions.start;
     end = transitions.end;
-    # With fold = 0 the period with the smaller offset runs from the end of
-    # the gap to the end of the fold; with fold = 1 from the start of the gap
-    # to the start of the fold. So the boundaries depend on fold XOR whether
-    # DST is positive.
+
     if fold == (1 if rule.dst_diff >= 0 else 0) {
         end -= rule.dst_diff;
     } else {
@@ -1043,13 +1199,7 @@ def:priv find_tzrule_ttinfo(rule: TZRule, ts: i64, fold: i64, year: i64) -> TTIn
     return rule.dst if isdst else rule.std;
 }
 
-# The ttinfo of a rule at a UTC timestamp and whether it is in a fold.
-obj RuleMatch {
-    has tti: TTInfo,
-        fold: bool = False;
-}
-
-def:priv find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMatch {
+impl find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMatch {
     if rule.std_only {
         return RuleMatch(tti=rule.std, fold=False);
     }
@@ -1057,8 +1207,7 @@ def:priv find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMat
     start = transitions.start - rule.std.utcoff_seconds;
     end = transitions.end - rule.dst.utcoff_seconds;
     isdst = (ts >= start and ts < end) if start < end else (ts < end or ts >= start);
-    # For positive DST the ambiguous period is one dst_diff after the end of
-    # DST; for negative DST, one dst_diff before its start.
+
     ambig_start = end;
     ambig_end = end + rule.dst_diff;
     if rule.dst_diff <= 0 {
@@ -1070,33 +1219,19 @@ def:priv find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMat
     );
 }
 
-# A read position in the NUL-terminated buffer of a TZ string's bytes
-# object; parsing stops at the first NUL, as C's does.
-obj TZCursor {
-    has text: ptr[u8],
-        pos: int = 0;
-
-    def at(offset: int = 0) -> int {
-        return int((self.text + (self.pos + offset)).view(1)[0]);
-    }
+impl TZCursor.at(offset: int = 0) -> int {
+    return int((self.text + (self.pos + offset)).view(1)[0]);
 }
 
-def:priv is_digit(c: int) -> bool {
+impl is_digit(c: int) -> bool {
     return c >= 48 and c <= 57;
 }
 
-def:priv is_alpha(c: int) -> bool {
+impl is_alpha(c: int) -> bool {
     return (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
 }
 
-# parse_tz_str(): a TZ string in the POSIX format
-#
-#   std offset[dst[offset],start[/time],end[/time]]
-#
-# where std and dst are 3 or more characters with no leading colon, digits,
-# commas or signs, and each offset is [+|-]hh[:mm[:ss]]
-# (IEEE Std 1003.1-2018 section 8.3).
-def:priv parse_tz_str(
+impl parse_tz_str(
     state: ZoneInfoModuleState, tz_str_obj: ptr[PyObject]
 ) -> (TZRule | None) {
     tz_str = PyBytes_AsString(tz_str_obj);
@@ -1104,12 +1239,12 @@ def:priv parse_tz_str(
         return None;
     }
     cursor = TZCursor(text=tz_str);
-    # Offsets start at an invalid value (more than 24 hours).
+
     std_offset: i64 = 1 << 20;
     dst_offset: i64 = 1 << 20;
     start: (TransitionRule | None) = None;
     end: (TransitionRule | None) = None;
-    # The `std` abbreviation.
+
     std_abbr = parse_abbr(cursor);
     if not std_abbr {
         if not PyErr_Occurred() {
@@ -1119,15 +1254,13 @@ def:priv parse_tz_str(
     }
     dst_abbr = NULL;
     try {
-        # The STD offset, which is required.
         parsed = parse_tz_delta(cursor);
         if parsed is None {
             PyErr_Format(PyExc_ValueError, "Invalid STD offset in %R", tz_str_obj);
             return None;
         }
         std_offset = parsed;
-        # Without anything after it there is no DST; otherwise the DST
-        # abbreviation and the start and end dates and times follow.
+
         if cursor.at() != 0 {
             dst_abbr = parse_abbr(cursor);
             if not dst_abbr {
@@ -1139,8 +1272,6 @@ def:priv parse_tz_str(
                 return None;
             }
             if cursor.at() == 44 {
-                # If no offset follows dst, the alternative time is one hour
-                # ahead of standard time.
                 dst_offset = std_offset + 3600;
             } else {
                 parsed = parse_tz_delta(cursor);
@@ -1196,8 +1327,7 @@ def:priv parse_tz_str(
     }
 }
 
-# parse_digits(): between `least` and `most` (at most 3) decimal digits.
-def:priv parse_digits(cursor: TZCursor, least: int, most: int) -> (int | None) {
+impl parse_digits(cursor: TZCursor, least: int, most: int) -> (int | None) {
     value = 0;
     for i in range(most) {
         c = cursor.at();
@@ -1210,9 +1340,7 @@ def:priv parse_digits(cursor: TZCursor, least: int, most: int) -> (int | None) {
     return value;
 }
 
-# parse_abbr(): an STD or DST abbreviation, alphabetic, or in the quoted
-# form <...> alphanumeric, '+' and '-'; NULL on failure.
-def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
+impl parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
     start = cursor.pos;
     offset = 0;
     str_start = 0;
@@ -1225,7 +1353,7 @@ def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
             if c == 62 {
                 break;
             }
-            # In the quoted form every character is alphanumeric, '+' or '-'.
+
             if not is_alpha(c) and not is_digit(c) and c != 43 and c != 45 {
                 return NULL;
             }
@@ -1234,7 +1362,6 @@ def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
         str_end = offset;
         offset += 1;
     } else {
-        # In the unquoted form every character is alphabetic.
         while is_alpha(cursor.at(offset)) {
             offset += 1;
         }
@@ -1243,7 +1370,7 @@ def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
             return NULL;
         }
     }
-    # PyUnicode_FromStringAndSize() of the characters: a strict UTF-8 decode.
+
     abbr = PyUnicode_DecodeUTF8Stateful(
         cursor.text + (start + str_start), i64(str_end - str_start), ptr[u8](), None
     );
@@ -1254,11 +1381,7 @@ def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
     return abbr;
 }
 
-# parse_tz_delta(): a UTC offset, hh[:mm[:ss]] with any number of hour
-# digits. POSIX limits the hours to 24; RFC 8536 section 3.3.1 lets the
-# transition times range from -167 to 167. A negative offset is east of the
-# Prime Meridian, a *positive* UTC offset.
-def:priv parse_tz_delta(cursor: TZCursor) -> (i64 | None) {
+impl parse_tz_delta(cursor: TZCursor) -> (i64 | None) {
     time = parse_transition_time(cursor, 0);
     if time is None {
         return None;
@@ -1269,16 +1392,7 @@ def:priv parse_tz_delta(cursor: TZCursor) -> (i64 | None) {
     return -(time.hour * 3600 + time.minute * 60 + time.second);
 }
 
-obj TransitionTime {
-    has hour: i64 = 0,
-        minute: i64 = 0,
-        second: i64 = 0;
-}
-
-# parse_transition_time(): h[h[h]][:mm[:ss]], optionally signed as RFC 8536
-# allows. `hour` is the default before parsing (the minute and second
-# default to 0).
-def:priv parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime | None) {
+impl parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime | None) {
     start = cursor.pos;
     sign = 1;
     if cursor.at() == 45 or cursor.at() == 43 {
@@ -1288,14 +1402,14 @@ def:priv parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime |
         cursor.pos += 1;
     }
     result = TransitionTime(hour=hour);
-    # The hour is 1 to 3 digits.
+
     hours = parse_digits(cursor, 1, 3);
     if hours is None {
         cursor.pos = start;
         return None;
     }
     result.hour = i64(hours * sign);
-    # Minutes and seconds are always ":dd".
+
     if cursor.at() == 58 {
         cursor.pos += 1;
         minutes = parse_digits(cursor, 2, 2);
@@ -1317,10 +1431,7 @@ def:priv parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime |
     return result;
 }
 
-# parse_transition_rule(): one date[/time] of the rule, Jn (Julian day, no
-# leap days), n (0-based day of the year, leap days counted) or Mm.n.d; the
-# time defaults to 02:00.
-def:priv parse_transition_rule(cursor: TZCursor) -> (TransitionRule | None) {
+impl parse_transition_rule(cursor: TZCursor) -> (TransitionRule | None) {
     start = cursor.pos;
     if cursor.at() == 77 {
         cursor.pos += 1;
@@ -1386,10 +1497,7 @@ def:priv parse_transition_rule(cursor: TZCursor) -> (TransitionRule | None) {
     return rule;
 }
 
-# calendarrule_new(), with the POSIX bounds of an Mm.n.d rule: day d
-# (0 <= d <= 6, 0 = Sunday) of week n (1 <= n <= 5, 5 = the last) of month m
-# (1 <= m <= 12).
-def:priv calendarrule_new(
+impl calendarrule_new(
     month: i64, week: i64, day: i64, hour: i64, minute: i64, second: i64
 ) -> (TransitionRule | None) {
     if month < 1 or month > 12 {
@@ -1413,9 +1521,7 @@ def:priv calendarrule_new(
     );
 }
 
-# dayrule_new(): Julian days are 1 <= n <= 365 and 0-based days
-# 0 <= n <= 365.
-def:priv dayrule_new(
+impl dayrule_new(
     julian: bool, day: i64, hour: i64, minute: i64, second: i64
 ) -> (TransitionRule | None) {
     least = 1 if julian else 0;
@@ -1430,9 +1536,7 @@ def:priv dayrule_new(
     return DayRule(julian=julian, day=day, hour=hour, minute=minute, second=second);
 }
 
-# build_tzrule(): without a DST abbreviation the rule is STD-only and
-# dst_offset, start and end are unused.
-def:priv build_tzrule(
+impl build_tzrule(
     state: ZoneInfoModuleState,
     std_abbr: ptr[PyObject],
     dst_abbr: ptr[PyObject],
@@ -1460,11 +1564,7 @@ def:priv build_tzrule(
     return rule;
 }
 
-# utcoff_to_dstoff(): the DST offset of each ttinfo. A TZif ttinfo has only
-# its UTC offset, abbreviation and isdst flag, so the amount of DST is
-# inferred from the transitions around it; one that cannot be inferred is
-# taken as one hour rather than zero, so bool(dt.dst()) matches isdst.
-def:priv utcoff_to_dstoff(
+impl utcoff_to_dstoff(
     trans_idx: list[int], utcoffs: list[i64], dstoffs: list[i64], isdsts: list[bool]
 ) {
     num_transitions = len(trans_idx);
@@ -1477,7 +1577,7 @@ def:priv utcoff_to_dstoff(
         }
         idx = trans_idx[i];
         comp_idx = trans_idx[i - 1];
-        # Only DST offsets that have not been assigned already.
+
         if not isdsts[idx] or dstoffs[idx] != 0 {
             continue;
         }
@@ -1488,8 +1588,7 @@ def:priv utcoff_to_dstoff(
         }
         if dstoff == 0 and idx < num_ttinfos - 1 and i + 1 < num_transitions {
             comp_idx = trans_idx[i + 1];
-            # With the following transition also DST, this one is left for
-            # a later transition to assign.
+
             if isdsts[comp_idx] {
                 continue;
             }
@@ -1509,11 +1608,7 @@ def:priv utcoff_to_dstoff(
     }
 }
 
-# ts_to_local(): each transition in local wall time, the nominal seconds
-# since 1970-01-01T00:00:00 local time (not datetime.timestamp()). A
-# transition is ambiguous in local time, so there are two lists: element 0
-# for fold=0 and element 1 for fold=1.
-def:priv ts_to_local(
+impl ts_to_local(
     trans_idx: list[int], trans_utc: list[i64], utcoff: list[i64]
 ) -> list[list[i64]] {
     num_transitions = len(trans_utc);
@@ -1544,8 +1639,7 @@ def:priv ts_to_local(
     return [fold_0, fold_1];
 }
 
-# _bisect(): bisect_right over a sorted list.
-def:priv bisect_right(value: i64, values: list[i64]) -> int {
+impl bisect_right(value: i64, values: list[i64]) -> int {
     lo = 0;
     hi = len(values);
     while lo < hi {
@@ -1559,9 +1653,7 @@ def:priv bisect_right(value: i64, values: list[i64]) -> int {
     return hi;
 }
 
-# find_ttinfo(): the ttinfo in effect at a local datetime. datetime.time
-# passes None, which only means something for a fixed-offset zone.
-def:priv find_ttinfo(
+impl find_ttinfo(
     state: ZoneInfoModuleState, zone: ZoneInfoState, dt: ptr[PyObject]
 ) -> (TTInfo | None) {
     if dt == Py_None {
@@ -1582,13 +1674,12 @@ def:priv find_ttinfo(
     return zone.trans_ttinfos[bisect_right(ts, local_transitions) - 1];
 }
 
-def:priv is_leap_year(year: i64) -> bool {
+impl is_leap_year(year: i64) -> bool {
     ayear = year & 0xFFFFFFFF;
     return ayear % 4 == 0 and (ayear % 100 != 0 or ayear % 400 == 0);
 }
 
-# ymd_to_ord(): the proleptic Gregorian ordinal of a date.
-def:priv ymd_to_ord(y: i64, m: i64, d: i64) -> i64 {
+impl ymd_to_ord(y: i64, m: i64, d: i64) -> i64 {
     y -= 1;
     days_before_year = y * 365 + y // 4 - y // 100 + y // 400;
     yearday = DAYS_BEFORE_MONTH[m];
@@ -1598,10 +1689,8 @@ def:priv ymd_to_ord(y: i64, m: i64, d: i64) -> i64 {
     return days_before_year + yearday + d;
 }
 
-# A datetime attribute read with PyLong_AsLong() into a C int; None on
-# failure, and, as in C, for -1.
-def:priv int_attribute(dt: ptr[PyObject], name: str) -> (i64 | None) {
-    num = PyObject_GetAttrString(dt, name);
+impl int_attribute(dt: ptr[PyObject], name: str) -> (i64 | None) {
+    num = jacpy_object_getattr_text(dt, name);
     if not num {
         return None;
     }
@@ -1610,11 +1699,7 @@ def:priv int_attribute(dt: ptr[PyObject], name: str) -> (i64 | None) {
     return None if value == -1 else value;
 }
 
-# get_local_timestamp(): the seconds since 1970-01-01 in local time, in the
-# units of the wall-time transitions; None with the exception set.
-def:priv local_timestamp(
-    state: ZoneInfoModuleState, dt: ptr[PyObject]
-) -> (i64 | None) {
+impl local_timestamp(state: ZoneInfoModuleState, dt: ptr[PyObject]) -> (i64 | None) {
     hour: i64 = 0;
     minute: i64 = 0;
     second: i64 = 0;
@@ -1657,14 +1742,7 @@ def:priv local_timestamp(
     return (ordinal - EPOCHORDINAL) * 86400 + (hour * 3600 + minute * 60 + second);
 }
 
-# The strong cache: an LRU list of the base class's most recently used zones,
-# at most ZONEINFO_STRONG_CACHE_MAX_SIZE of them, most recent first. Only the
-# base class has one. A failed node allocation is silent, as the cache never
-# propagates errors.
-
-# find_in_strong_cache(): the node whose key equals `key`; None when there is
-# none or the comparison raised.
-def:priv find_in_strong_cache(
+impl find_in_strong_cache(
     state: ZoneInfoModuleState, key: ptr[PyObject]
 ) -> (StrongCacheNode | None) {
     for cached in list(state.strong_cache) {
@@ -1679,7 +1757,7 @@ def:priv find_in_strong_cache(
     return None;
 }
 
-def:priv remove_from_strong_cache(state: ZoneInfoModuleState, cached: StrongCacheNode) {
+impl remove_from_strong_cache(state: ZoneInfoModuleState, cached: StrongCacheNode) {
     for i in range(len(state.strong_cache)) {
         if state.strong_cache[i] is cached {
             state.strong_cache.pop(i);
@@ -1688,7 +1766,7 @@ def:priv remove_from_strong_cache(state: ZoneInfoModuleState, cached: StrongCach
     }
 }
 
-def:priv move_strong_cache_node_to_front(
+impl move_strong_cache_node_to_front(
     state: ZoneInfoModuleState, cached: StrongCacheNode
 ) {
     if state.strong_cache and state.strong_cache[0] is cached {
@@ -1698,9 +1776,7 @@ def:priv move_strong_cache_node_to_front(
     state.strong_cache.insert(0, cached);
 }
 
-# eject_from_strong_cache(): drop `key` from the base class's strong cache;
-# False with the exception set when a comparison raised.
-def:priv eject_from_strong_cache(
+impl eject_from_strong_cache(
     state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
 ) -> bool {
     if type != state.zoneinfo_type {
@@ -1715,9 +1791,7 @@ def:priv eject_from_strong_cache(
     return True;
 }
 
-# zone_from_strong_cache(): a new reference to the cached zone for `key`,
-# moved to the front; NULL on a miss.
-def:priv zone_from_strong_cache(
+impl zone_from_strong_cache(
     state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
     if type != state.zoneinfo_type {
@@ -1731,9 +1805,7 @@ def:priv zone_from_strong_cache(
     return Py_NewRef(cached.zone);
 }
 
-# update_strong_cache(): after a miss, the new zone goes to the front and
-# entries past the maximum size are dropped.
-def:priv update_strong_cache(
+impl update_strong_cache(
     state: ZoneInfoModuleState,
     type: ptr[PyObject],
     key: ptr[PyObject],
@@ -1749,14 +1821,14 @@ def:priv update_strong_cache(
     }
 }
 
-def:priv clear_strong_cache(state: ZoneInfoModuleState, type: ptr[PyObject]) {
+impl clear_strong_cache(state: ZoneInfoModuleState, type: ptr[PyObject]) {
     if type != state.zoneinfo_type {
         return;
     }
     state.strong_cache = [];
 }
 
-def:priv new_weak_cache -> ptr[PyObject] {
+impl new_weak_cache -> ptr[PyObject] {
     weak_value_dictionary = PyImport_ImportModuleAttrString(
         "weakref", "WeakValueDictionary"
     );
@@ -1768,14 +1840,11 @@ def:priv new_weak_cache -> ptr[PyObject] {
     return weak_cache;
 }
 
-# PyDateTime_IMPORT: the datetime C API capsule, NULL with the exception set.
-def datetime_import -> ptr[PyDateTime_CAPI] {
+impl datetime_import -> ptr[PyDateTime_CAPI] {
     return ptr[PyDateTime_CAPI](PyCapsule_Import(ptr[u8]("datetime.datetime_CAPI"), 0));
 }
 
-# The rest of zoneinfomodule_exec() once the ZoneInfo type exists: the
-# imports, NO_TTINFO and the caches. False with the exception set.
-def populate_module_state(state: ZoneInfoModuleState) -> bool {
+impl populate_module_state(state: ZoneInfoModuleState) -> bool {
     state.tzpath_find_tzfile = PyImport_ImportModuleAttrString(
         "zoneinfo._tzpath", "find_tzfile"
     );

@@ -1,22 +1,3 @@
-"""The deterministic profiler behind cProfile, driven by sys.monitoring.
-
-Derived from CPython 3.14.6 Modules/_lsprof.c and Modules/rotatingtree.c; see
-../LICENSE.cpython. enable() registers the profiler's bound callback methods
-for the call and return events of the PROFILER tool id. Entries are keyed by
-the address of the code object, or of the PyMethodDef of a built-in, and live
-in a rotating tree owned by the profiler state, as does each entry's tree of
-per-caller subentries. Timings are PyTime_t ticks of the default performance
-counter or of the user's timer, scaled when the stats are read.
-
-A rotating tree (Armin Rigo) is a dict-like splay variant. It works best when
-the same small set of keys is looked up over and over and that set evolves
-slowly: a lookup occasionally rotates the found path to move the node towards
-the root. Each tree owns its random bit stream. rotatingtree.c shares one
-stream between every tree of the process behind a mutex; the stream only
-decides when a lookup rebalances, so per-tree streams need no lock and change
-no result.
-"""
-
 obj RotatingNode {
     has key: int = 0,
         left: RotatingNode | None = None,
@@ -28,153 +9,15 @@ obj RotatingTree {
         random_value: int = 1,
         random_stream: int = 0;
 
-    # randombits(): a fast-and-dirty generator, slightly biased towards ones.
-    def randombits(bits: int) -> int {
-        if self.random_stream < (1 << bits) {
-            self.random_value = (self.random_value * 1082527) & 0xFFFFFFFF;
-            self.random_stream = self.random_value;
-        }
-        result = self.random_stream & ((1 << bits) - 1);
-        self.random_stream = self.random_stream >> bits;
-        return result;
-    }
-
-    # RotatingTree_Add(): insert node as a new leaf.
-    def add(item: RotatingNode) {
-        item.left = None;
-        item.right = None;
-        start = self.top;
-        if start is None {
-            self.top = item;
-            return;
-        }
-        at: RotatingNode = start;
-        while True {
-            if item.key < at.key {
-                below = at.left;
-                if below is None {
-                    at.left = item;
-                    return;
-                }
-                at = below;
-            } else {
-                below = at.right;
-                if below is None {
-                    at.right = item;
-                    return;
-                }
-                at = below;
-            }
-        }
-    }
-
-    # Store child in the link a lookup came through: the root when parent is
-    # None, otherwise parent's left or right link.
-    def relink(parent: RotatingNode | None, on_left: bool, child: RotatingNode) {
-        if parent is None {
-            self.top = child;
-        } elif on_left {
-            parent.left = child;
-        } else {
-            parent.right = child;
-        }
-    }
-
-    # RotatingTree_Get(): the node with key, or None. One lookup in eight
-    # rotates each step of its path with probability one half.
-    def get(key: int) -> RotatingNode | None {
-        if self.randombits(3) != 4 {
-            found = self.top;
-            while found is not None {
-                if found.key == key {
-                    return found;
-                }
-                found = found.left if key < found.key else found.right;
-            }
-            return None;
-        }
-        start = self.top;
-        if start is None {
-            return None;
-        }
-        at: RotatingNode = start;
-        parent: RotatingNode | None = None;
-        on_left = False;
-        while True {
-            if at.key == key {
-                return at;
-            }
-            rotate = self.randombits(1) == 0;
-            if key < at.key {
-                following = at.left;
-                if following is None {
-                    return None;
-                }
-                if rotate {
-                    at.left = following.right;
-                    following.right = at;
-                    self.relink(parent, on_left, following);
-                } else {
-                    parent = at;
-                    on_left = True;
-                }
-                at = following;
-            } else {
-                following = at.right;
-                if following is None {
-                    return None;
-                }
-                if rotate {
-                    at.right = following.left;
-                    following.left = at;
-                    self.relink(parent, on_left, following);
-                } else {
-                    parent = at;
-                    on_left = False;
-                }
-                at = following;
-            }
-        }
-    }
-
-    # RotatingTree_Enum(): every node in key order.
-    def nodes -> list[RotatingNode] {
-        result: list[RotatingNode] = [];
-        collect(self.top, result);
-        return result;
-    }
-
-    # Unlink every node without recursion, so dropping a long chain of nodes
-    # cannot exhaust the stack.
-    def clear {
-        pending: list[RotatingNode] = [];
-        if self.top is not None {
-            pending.append(self.top);
-        }
-        self.top = None;
-        while pending {
-            item = pending.pop();
-            if item.left is not None {
-                pending.append(item.left);
-            }
-            if item.right is not None {
-                pending.append(item.right);
-            }
-            item.left = None;
-            item.right = None;
-        }
-    }
+    def randombits(bits: int) -> int;
+    def add(item: RotatingNode);
+    def relink(parent: RotatingNode | None, on_left: bool, child: RotatingNode);
+    def get(key: int) -> RotatingNode | None;
+    def nodes -> list[RotatingNode];
+    def clear;
 }
 
-# In-order walk: recurse into left subtrees, loop down right ones.
-def:priv collect(top: RotatingNode | None, result: list[RotatingNode]) {
-    item = top;
-    while item is not None {
-        collect(item.left, result);
-        result.append(item);
-        item = item.right;
-    }
-}
+def:priv collect(top: RotatingNode | None, result: list[RotatingNode]);
 
 glob Profiler_token = ClassToken();
 
@@ -185,7 +28,6 @@ glob:priv POF_ENABLED: int = 0x001,
      POF_NOMEMORY: int = 0x100,
      PY_MONITORING_PROFILER_ID: int = 2,
      PY_TIME_ROUND_FLOOR: i32 = 0,
-     # sys.monitoring events and the callback method each one calls.
      CALLBACK_TABLE: list[tuple[int, str]] = [
          (0, "_pystart_callback"),
          (1, "_pystart_callback"),
@@ -198,8 +40,6 @@ glob:priv POF_ENABLED: int = 0x001,
          (17, "_creturn_callback")
      ];
 
-# A function or user-defined block. user_obj is the code object or, for a
-# built-in, a descriptive str; the entry owns it until clear_entries().
 obj ProfilerEntry(RotatingNode) {
     has user_obj: ptr[PyObject] = NULL,
         tt: int = 0,
@@ -210,7 +50,6 @@ obj ProfilerEntry(RotatingNode) {
         calls: RotatingTree = RotatingTree();
 }
 
-# A function called from another function: keyed by the callee's key.
 obj ProfilerSubEntry(RotatingNode) {
     has callee: ProfilerEntry | None = None,
         tt: int = 0,
@@ -237,28 +76,291 @@ obj ProfilerState(NativeState) {
         tool_id: int = 0,
         missing: ptr[PyObject] = NULL;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.external_timer, visitor, context);
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def clear {
-        clear_entries(self);
-        timer = self.external_timer;
-        self.external_timer = NULL;
-        jacpy_release(timer);
-        missing = self.missing;
-        self.missing = NULL;
-        jacpy_release(missing);
-    }
+def profiler_of(instance: ptr[PyObject]) -> ProfilerState | None;
 
-    def drop {
-        self.clear();
+def profiler_finalize(instance: ptr[PyObject]);
+
+def:priv call_external_timer(state: ProfilerState) -> int;
+
+def:priv call_timer(state: ProfilerState) -> int;
+
+def:priv is_cfunction(value: ptr[PyObject]) -> bool;
+
+def:priv method_name(function: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv normalize_user_obj(value: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv describe_cfunction(
+    function: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv get_entry(state: ProfilerState, key: int) -> ProfilerEntry | None;
+
+def:priv new_entry(
+    state: ProfilerState, key: int, user_obj: ptr[PyObject]
+) -> ProfilerEntry | None;
+
+def:priv get_sub_entry(
+    caller: ProfilerEntry, record: ProfilerEntry
+) -> ProfilerSubEntry | None;
+
+def:priv new_sub_entry(
+    caller: ProfilerEntry, record: ProfilerEntry
+) -> ProfilerSubEntry;
+
+def:priv clear_entries(state: ProfilerState);
+
+def:priv init_context(
+    state: ProfilerState, context: ProfilerContext, record: ProfilerEntry
+);
+
+def:priv stop(state: ProfilerState, context: ProfilerContext, record: ProfilerEntry);
+
+def:priv ptrace_enter_call(state: ProfilerState, key: int, user_obj: ptr[PyObject]);
+
+def:priv ptrace_leave_call(state: ProfilerState, key: int);
+
+def:priv pending_exception(state: ProfilerState) -> bool;
+
+def:priv flush_unmatched(state: ProfilerState);
+
+def:priv stats_row(type: ptr[PyObject], items: list[ptr[PyObject]]) -> ptr[PyObject];
+
+def:priv stats_for_entry(
+    record: ProfilerEntry, module: ptr[PyObject], factor: f64, result: ptr[PyObject]
+) -> bool;
+
+def _lsprof_Profiler_getstats_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv set_subcalls(state: ProfilerState, value: bool);
+
+def:priv set_builtins(state: ProfilerState, value: bool);
+
+def _lsprof_Profiler__pystart_callback_impl(
+    receiver: ptr[PyObject], code: ptr[PyObject], instruction_offset: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _lsprof_Profiler__pythrow_callback_impl(
+    receiver: ptr[PyObject],
+    code: ptr[PyObject],
+    instruction_offset: ptr[PyObject],
+    exception: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _lsprof_Profiler__pyreturn_callback_impl(
+    receiver: ptr[PyObject],
+    code: ptr[PyObject],
+    instruction_offset: ptr[PyObject],
+    retval: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv get_cfunc_from_callable(
+    callable: ptr[PyObject], self_arg: ptr[PyObject], missing: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _lsprof_Profiler__ccall_callback_impl(
+    receiver: ptr[PyObject],
+    code: ptr[PyObject],
+    instruction_offset: ptr[PyObject],
+    callable_: ptr[PyObject],
+    self_arg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _lsprof_Profiler__creturn_callback_impl(
+    receiver: ptr[PyObject],
+    code: ptr[PyObject],
+    instruction_offset: ptr[PyObject],
+    callable_: ptr[PyObject],
+    self_arg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv register_callbacks(
+    receiver: ptr[PyObject], state: ProfilerState, monitoring: ptr[PyObject]
+) -> bool;
+
+def _lsprof_Profiler_enable_impl(
+    receiver: ptr[PyObject], subcalls: bool, builtins: bool
+) -> ptr[PyObject];
+
+def:priv unregister_callbacks(state: ProfilerState, monitoring: ptr[PyObject]) -> bool;
+
+def _lsprof_Profiler_disable_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _lsprof_Profiler_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def profiler_init_impl(
+    receiver: ptr[PyObject],
+    timer: ptr[PyObject],
+    timeunit: f64,
+    subcalls: bool,
+    builtins: bool
+) -> i32;
+
+impl RotatingTree.randombits(bits: int) -> int {
+    if self.random_stream < (1 << bits) {
+        self.random_value = (self.random_value * 1082527) & 0xFFFFFFFF;
+        self.random_stream = self.random_value;
+    }
+    result = self.random_stream & ((1 << bits) - 1);
+    self.random_stream = self.random_stream >> bits;
+    return result;
+}
+
+impl RotatingTree.add(item: RotatingNode) {
+    item.left = None;
+    item.right = None;
+    start = self.top;
+    if start is None {
+        self.top = item;
+        return;
+    }
+    at: RotatingNode = start;
+    while True {
+        if item.key < at.key {
+            below = at.left;
+            if below is None {
+                at.left = item;
+                return;
+            }
+            at = below;
+        } else {
+            below = at.right;
+            if below is None {
+                at.right = item;
+                return;
+            }
+            at = below;
+        }
     }
 }
 
-# The zeroed ProfilerObject: object.__new__ allocates the instance and its
-# state appears on first use, which __init__ then configures.
-def profiler_of(instance: ptr[PyObject]) -> ProfilerState | None {
+impl RotatingTree.relink(
+    parent: RotatingNode | None, on_left: bool, child: RotatingNode
+) {
+    if parent is None {
+        self.top = child;
+    } elif on_left {
+        parent.left = child;
+    } else {
+        parent.right = child;
+    }
+}
+
+impl RotatingTree.get(key: int) -> RotatingNode | None {
+    if self.randombits(3) != 4 {
+        found = self.top;
+        while found is not None {
+            if found.key == key {
+                return found;
+            }
+            found = found.left if key < found.key else found.right;
+        }
+        return None;
+    }
+    start = self.top;
+    if start is None {
+        return None;
+    }
+    at: RotatingNode = start;
+    parent: RotatingNode | None = None;
+    on_left = False;
+    while True {
+        if at.key == key {
+            return at;
+        }
+        rotate = self.randombits(1) == 0;
+        if key < at.key {
+            following = at.left;
+            if following is None {
+                return None;
+            }
+            if rotate {
+                at.left = following.right;
+                following.right = at;
+                self.relink(parent, on_left, following);
+            } else {
+                parent = at;
+                on_left = True;
+            }
+            at = following;
+        } else {
+            following = at.right;
+            if following is None {
+                return None;
+            }
+            if rotate {
+                at.right = following.left;
+                following.left = at;
+                self.relink(parent, on_left, following);
+            } else {
+                parent = at;
+                on_left = False;
+            }
+            at = following;
+        }
+    }
+}
+
+impl RotatingTree.nodes -> list[RotatingNode] {
+    result: list[RotatingNode] = [];
+    collect(self.top, result);
+    return result;
+}
+
+impl RotatingTree.clear {
+    pending: list[RotatingNode] = [];
+    if self.top is not None {
+        pending.append(self.top);
+    }
+    self.top = None;
+    while pending {
+        item = pending.pop();
+        if item.left is not None {
+            pending.append(item.left);
+        }
+        if item.right is not None {
+            pending.append(item.right);
+        }
+        item.left = None;
+        item.right = None;
+    }
+}
+
+impl collect(top: RotatingNode | None, result: list[RotatingNode]) {
+    item = top;
+    while item is not None {
+        collect(item.left, result);
+        result.append(item);
+        item = item.right;
+    }
+}
+
+impl ProfilerState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.external_timer, visitor, context);
+}
+
+impl ProfilerState.clear {
+    clear_entries(self);
+    timer = self.external_timer;
+    self.external_timer = NULL;
+    jacpy_release(timer);
+    missing = self.missing;
+    self.missing = NULL;
+    jacpy_release(missing);
+}
+
+impl ProfilerState.drop {
+    self.clear();
+}
+
+impl profiler_of(instance: ptr[PyObject]) -> ProfilerState | None {
     if jacpy_binding_native_present(instance, Profiler_token.handle) == 0 {
         fresh = ProfilerState(entries=RotatingTree(), free_contexts=[]);
         if jacpy_binding_native_set(instance, Profiler_token.handle, fresh) < 0 {
@@ -273,8 +375,7 @@ def profiler_of(instance: ptr[PyObject]) -> ProfilerState | None {
     return None;
 }
 
-# profiler_dealloc(), before the payload is disposed.
-def profiler_finalize(instance: ptr[PyObject]) {
+impl profiler_finalize(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, Profiler_token.handle) == 0 {
         return;
     }
@@ -293,11 +394,7 @@ def profiler_finalize(instance: ptr[PyObject]) {
     clear_entries(state);
 }
 
-# CallExternalTimer(): the user's timer as PyTime_t. A failure is reported as
-# unraisable and reads as 0.
-def:priv call_external_timer(state: ProfilerState) -> int {
-    # The timer can run arbitrary code: disable() and clear() refuse to run
-    # while this flag is set.
+impl call_external_timer(state: ProfilerState) -> int {
     state.flags |= POF_EXT_TIMER;
     value = PyObject_CallNoArgs(state.external_timer);
     state.flags &= ~POF_EXT_TIMER;
@@ -310,10 +407,8 @@ def:priv call_external_timer(state: ProfilerState) -> int {
     result: i64 = 0;
     status: i32 = 0;
     if state.external_timer_unit > 0.0 {
-        # An integer count, scaled by the time unit in getstats().
         status = _PyTime_FromLong(&mut result, value);
     } else {
-        # Seconds as a float, held as nanoseconds.
         status = _PyTime_FromSecondsObject(&mut result, value, PY_TIME_ROUND_FLOOR);
     }
     jacpy_release(value);
@@ -326,7 +421,7 @@ def:priv call_external_timer(state: ProfilerState) -> int {
     return int(result);
 }
 
-def:priv call_timer(state: ProfilerState) -> int {
+impl call_timer(state: ProfilerState) -> int {
     if state.external_timer {
         return call_external_timer(state);
     }
@@ -335,20 +430,16 @@ def:priv call_timer(state: ProfilerState) -> int {
     return int(ticks);
 }
 
-def:priv is_cfunction(value: ptr[PyObject]) -> bool {
+impl is_cfunction(value: ptr[PyObject]) -> bool {
     return jacpy_type_check(value, addressof(PyCFunction_Type)) != 0;
 }
 
-# The UTF-8 name of a built-in's PyMethodDef, as %s formats it.
-def:priv method_name(function: ptr[PyObject]) -> ptr[PyObject] {
+impl method_name(function: ptr[PyObject]) -> ptr[PyObject] {
     method: ptr[PyMethodDef] = jacpy_cfunction_method(function);
     return PyUnicode_FromFormat("%s", method.view(1)[0].ml_name);
 }
 
-# normalizeUserObj(): code objects are kept; a built-in function is replaced
-# by a descriptive string, since keeping __self__ of a built-in method alive
-# is not wanted.
-def:priv normalize_user_obj(value: ptr[PyObject]) -> ptr[PyObject] {
+impl normalize_user_obj(value: ptr[PyObject]) -> ptr[PyObject] {
     if not is_cfunction(value) {
         return Py_NewRef(value);
     }
@@ -365,13 +456,10 @@ def:priv normalize_user_obj(value: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
-def:priv describe_cfunction(
-    function: ptr[PyObject], name: ptr[PyObject]
-) -> ptr[PyObject] {
+impl describe_cfunction(function: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     bound = jacpy_cfunction_self(function);
     module = jacpy_cfunction_module(function);
     if not bound {
-        # A built-in function: <module.name>, or <name> for builtins.
         modname = NULL;
         if module {
             if jacpy_is_unicode(module) != 0 {
@@ -385,7 +473,7 @@ def:priv describe_cfunction(
         }
         if modname {
             try {
-                if _PyUnicode_EqualToASCIIString(modname, "builtins") == 0 {
+                if _PyUnicode_EqualToASCIIString(modname, ptr[u8]("builtins")) == 0 {
                     return text_object(f"<{text_value(modname)}.{text_value(name)}>");
                 }
             } finally {
@@ -394,7 +482,7 @@ def:priv describe_cfunction(
         }
         return text_object(f"<{text_value(name)}>");
     }
-    # A built-in method: repr(getattr(type(__self__), __name__)).
+
     found = _PyType_LookupRef(Py_TYPE(bound), name);
     if found {
         shown = PyObject_Repr(found);
@@ -403,7 +491,7 @@ def:priv describe_cfunction(
             return shown;
         }
     }
-    # Otherwise, use __module__.
+
     PyErr_Clear();
     if module and jacpy_is_unicode(module) != 0 {
         described = PyObject_Str(module);
@@ -421,7 +509,7 @@ def:priv describe_cfunction(
     return text_object(f"<built-in method {text_value(name)}>");
 }
 
-def:priv get_entry(state: ProfilerState, key: int) -> ProfilerEntry | None {
+impl get_entry(state: ProfilerState, key: int) -> ProfilerEntry | None {
     item = state.entries.get(key);
     if isinstance(item, ProfilerEntry) {
         return item;
@@ -429,7 +517,7 @@ def:priv get_entry(state: ProfilerState, key: int) -> ProfilerEntry | None {
     return None;
 }
 
-def:priv new_entry(
+impl new_entry(
     state: ProfilerState, key: int, user_obj: ptr[PyObject]
 ) -> ProfilerEntry | None {
     normalized = normalize_user_obj(user_obj);
@@ -443,7 +531,7 @@ def:priv new_entry(
     return record;
 }
 
-def:priv get_sub_entry(
+impl get_sub_entry(
     caller: ProfilerEntry, record: ProfilerEntry
 ) -> ProfilerSubEntry | None {
     item = caller.calls.get(record.key);
@@ -453,18 +541,13 @@ def:priv get_sub_entry(
     return None;
 }
 
-def:priv new_sub_entry(
-    caller: ProfilerEntry, record: ProfilerEntry
-) -> ProfilerSubEntry {
+impl new_sub_entry(caller: ProfilerEntry, record: ProfilerEntry) -> ProfilerSubEntry {
     sub_entry = ProfilerSubEntry(key=record.key, callee=record);
     caller.calls.add(sub_entry);
     return sub_entry;
 }
 
-# clearEntries(): release each entry's user object and drop the trees. A
-# subentry holds its callee, so each entry's subentries go first; that breaks
-# every entry -> subentry -> entry cycle.
-def:priv clear_entries(state: ProfilerState) {
+impl clear_entries(state: ProfilerState) {
     for item in state.entries.nodes() {
         if isinstance(item, ProfilerEntry) {
             for sub_node in item.calls.nodes() {
@@ -479,12 +562,12 @@ def:priv clear_entries(state: ProfilerState) {
         }
     }
     state.entries.clear();
-    # The contexts of calls still in progress and the free list go too.
+
     state.current = None;
     state.free_contexts = [];
 }
 
-def:priv init_context(
+impl init_context(
     state: ProfilerState, context: ProfilerContext, record: ProfilerEntry
 ) {
     context.ctx_entry = record;
@@ -494,7 +577,6 @@ def:priv init_context(
     record.recursion_level += 1;
     previous = context.previous;
     if state.flags & POF_SUBCALLS and previous is not None {
-        # Find or create an entry for me in my caller's entry.
         caller = previous.ctx_entry;
         if caller is not None {
             sub_entry = get_sub_entry(caller, record);
@@ -507,7 +589,7 @@ def:priv init_context(
     context.t0 = call_timer(state);
 }
 
-def:priv stop(state: ProfilerState, context: ProfilerContext, record: ProfilerEntry) {
+impl stop(state: ProfilerState, context: ProfilerContext, record: ProfilerEntry) {
     tt = call_timer(state) - context.t0;
     it = tt - context.subt;
     previous = context.previous;
@@ -541,17 +623,13 @@ def:priv stop(state: ProfilerState, context: ProfilerContext, record: ProfilerEn
     }
 }
 
-# Entering a call to the function identified by key (a code object or a
-# PyMethodDef address). Entering a generator through throw() can arrive with
-# an exception set, which must survive the bookkeeping.
-def:priv ptrace_enter_call(state: ProfilerState, key: int, user_obj: ptr[PyObject]) {
+impl ptrace_enter_call(state: ProfilerState, key: int, user_obj: ptr[PyObject]) {
     exception = PyErr_GetRaisedException();
     record = get_entry(state, key);
     if record is None {
         record = new_entry(state, key, user_obj);
     }
     if record is not None {
-        # Take a context from the free list.
         context = state.free_contexts.pop()
             if state.free_contexts
             else ProfilerContext();
@@ -560,7 +638,7 @@ def:priv ptrace_enter_call(state: ProfilerState, key: int, user_obj: ptr[PyObjec
     PyErr_SetRaisedException(exception);
 }
 
-def:priv ptrace_leave_call(state: ProfilerState, key: int) {
+impl ptrace_leave_call(state: ProfilerState, key: int) {
     context = state.current;
     if context is None {
         return;
@@ -571,13 +649,13 @@ def:priv ptrace_leave_call(state: ProfilerState, key: int) {
     } else {
         state.current = context.previous;
     }
-    # Return the context to the free list.
+
     context.previous = None;
     context.ctx_entry = None;
     state.free_contexts.append(context);
 }
 
-def:priv pending_exception(state: ProfilerState) -> bool {
+impl pending_exception(state: ProfilerState) -> bool {
     if state.flags & POF_NOMEMORY {
         state.flags -= POF_NOMEMORY;
         object_error(PyExc_MemoryError, "memory was exhausted while profiling");
@@ -586,7 +664,7 @@ def:priv pending_exception(state: ProfilerState) -> bool {
     return False;
 }
 
-def:priv flush_unmatched(state: ProfilerState) {
+impl flush_unmatched(state: ProfilerState) {
     while state.current is not None {
         context = state.current;
         record = context.ctx_entry;
@@ -598,9 +676,7 @@ def:priv flush_unmatched(state: ProfilerState) {
     }
 }
 
-# A profiler_entry or profiler_subentry row; the items are new references,
-# consumed even when the row cannot be built.
-def:priv stats_row(type: ptr[PyObject], items: list[ptr[PyObject]]) -> ptr[PyObject] {
+impl stats_row(type: ptr[PyObject], items: list[ptr[PyObject]]) -> ptr[PyObject] {
     row = PyStructSequence_New(type);
     failed = not row;
     for index in range(len(items)) {
@@ -620,7 +696,7 @@ def:priv stats_row(type: ptr[PyObject], items: list[ptr[PyObject]]) -> ptr[PyObj
     return row;
 }
 
-def:priv stats_for_entry(
+impl stats_for_entry(
     record: ProfilerEntry, module: ptr[PyObject], factor: f64, result: ptr[PyObject]
 ) -> bool {
     if record.callcount == 0 {
@@ -679,7 +755,7 @@ def:priv stats_for_entry(
     return status == 0;
 }
 
-def _lsprof_Profiler_getstats_impl(
+impl _lsprof_Profiler_getstats_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = profiler_of(receiver);
@@ -711,7 +787,7 @@ def _lsprof_Profiler_getstats_impl(
     return result;
 }
 
-def:priv set_subcalls(state: ProfilerState, value: bool) {
+impl set_subcalls(state: ProfilerState, value: bool) {
     if value {
         state.flags |= POF_SUBCALLS;
     } else {
@@ -719,7 +795,7 @@ def:priv set_subcalls(state: ProfilerState, value: bool) {
     }
 }
 
-def:priv set_builtins(state: ProfilerState, value: bool) {
+impl set_builtins(state: ProfilerState, value: bool) {
     if value {
         state.flags |= POF_BUILTINS;
     } else {
@@ -727,7 +803,7 @@ def:priv set_builtins(state: ProfilerState, value: bool) {
     }
 }
 
-def _lsprof_Profiler__pystart_callback_impl(
+impl _lsprof_Profiler__pystart_callback_impl(
     receiver: ptr[PyObject], code: ptr[PyObject], instruction_offset: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = profiler_of(receiver);
@@ -738,7 +814,7 @@ def _lsprof_Profiler__pystart_callback_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def _lsprof_Profiler__pythrow_callback_impl(
+impl _lsprof_Profiler__pythrow_callback_impl(
     receiver: ptr[PyObject],
     code: ptr[PyObject],
     instruction_offset: ptr[PyObject],
@@ -752,7 +828,7 @@ def _lsprof_Profiler__pythrow_callback_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def _lsprof_Profiler__pyreturn_callback_impl(
+impl _lsprof_Profiler__pyreturn_callback_impl(
     receiver: ptr[PyObject],
     code: ptr[PyObject],
     instruction_offset: ptr[PyObject],
@@ -766,17 +842,13 @@ def _lsprof_Profiler__pyreturn_callback_impl(
     return Py_NewRef(borrowed_none());
 }
 
-# get_cfunc_from_callable(): the built-in function a C call event reports, as
-# a new reference, or NULL (no exception) when it is not one.
-def:priv get_cfunc_from_callable(
+impl get_cfunc_from_callable(
     callable: ptr[PyObject], self_arg: ptr[PyObject], missing: ptr[PyObject]
 ) -> ptr[PyObject] {
     if is_cfunction(callable) {
         return Py_NewRef(callable);
     }
     if Py_TYPE(callable) == addressof(PyMethodDescr_Type) {
-        # For backwards compatibility a method descriptor is reported as the
-        # built-in method it binds; skip it when there is no argument.
         if self_arg == missing {
             return NULL;
         }
@@ -793,7 +865,7 @@ def:priv get_cfunc_from_callable(
     return NULL;
 }
 
-def _lsprof_Profiler__ccall_callback_impl(
+impl _lsprof_Profiler__ccall_callback_impl(
     receiver: ptr[PyObject],
     code: ptr[PyObject],
     instruction_offset: ptr[PyObject],
@@ -814,7 +886,7 @@ def _lsprof_Profiler__ccall_callback_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def _lsprof_Profiler__creturn_callback_impl(
+impl _lsprof_Profiler__creturn_callback_impl(
     receiver: ptr[PyObject],
     code: ptr[PyObject],
     instruction_offset: ptr[PyObject],
@@ -835,15 +907,13 @@ def _lsprof_Profiler__creturn_callback_impl(
     return Py_NewRef(borrowed_none());
 }
 
-# Register every callback of CALLBACK_TABLE with sys.monitoring and set the
-# events; False with the exception set on failure.
-def:priv register_callbacks(
+impl register_callbacks(
     receiver: ptr[PyObject], state: ProfilerState, monitoring: ptr[PyObject]
 ) -> bool {
     check = call_method(
         monitoring,
         "use_tool_id",
-        [PyLong_FromLong(i64(state.tool_id)), PyUnicode_FromString("cProfile")]
+        [PyLong_FromLong(i64(state.tool_id)), PyUnicode_FromString(ptr[u8]("cProfile"))]
     );
     if not check {
         object_error(PyExc_ValueError, "Another profiling tool is already active");
@@ -852,7 +922,7 @@ def:priv register_callbacks(
     jacpy_release(check);
     all_events = 0;
     for (event, name) in CALLBACK_TABLE {
-        callback = PyObject_GetAttrString(receiver, name);
+        callback = jacpy_object_getattr_text(receiver, name);
         if not callback {
             return False;
         }
@@ -883,7 +953,7 @@ def:priv register_callbacks(
     return True;
 }
 
-def _lsprof_Profiler_enable_impl(
+impl _lsprof_Profiler_enable_impl(
     receiver: ptr[PyObject], subcalls: bool, builtins: bool
 ) -> ptr[PyObject] {
     state = profiler_of(receiver);
@@ -905,8 +975,7 @@ def _lsprof_Profiler_enable_impl(
     return Py_NewRef(borrowed_none());
 }
 
-# Unregister the callbacks, clear the events and free the tool id.
-def:priv unregister_callbacks(state: ProfilerState, monitoring: ptr[PyObject]) -> bool {
+impl unregister_callbacks(state: ProfilerState, monitoring: ptr[PyObject]) -> bool {
     for (event, name) in CALLBACK_TABLE {
         result = call_method(
             monitoring,
@@ -941,7 +1010,7 @@ def:priv unregister_callbacks(state: ProfilerState, monitoring: ptr[PyObject]) -
     return True;
 }
 
-def _lsprof_Profiler_disable_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _lsprof_Profiler_disable_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = profiler_of(receiver);
     if state is None {
         return NULL;
@@ -969,7 +1038,7 @@ def _lsprof_Profiler_disable_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def _lsprof_Profiler_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _lsprof_Profiler_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = profiler_of(receiver);
     if state is None {
         return NULL;
@@ -982,7 +1051,7 @@ def _lsprof_Profiler_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def profiler_init_impl(
+impl profiler_init_impl(
     receiver: ptr[PyObject],
     timer: ptr[PyObject],
     timeunit: f64,
@@ -1004,7 +1073,7 @@ def profiler_init_impl(
     if not monitoring {
         return i32(-1);
     }
-    missing = PyObject_GetAttrString(monitoring, "MISSING");
+    missing = PyObject_GetAttrString(monitoring, ptr[u8]("MISSING"));
     jacpy_release(monitoring);
     if not missing {
         return i32(-1);

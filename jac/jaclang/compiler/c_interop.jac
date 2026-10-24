@@ -64,7 +64,7 @@ def c_lent_arg_elem(arg: (UniNode | None)) -> (TypeBase | None);
 
 def c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None);
 
-def c_lent_param(arg: UniNode) -> (ParamVar | None);
+def c_lent_param(arg: UniNode, allow_borrow: bool = False) -> (ParamVar | None);
 
 glob _SPEC_SCALAR_ALIASES: dict[str, str] = {"int": "i64", "float": "f64"};
 

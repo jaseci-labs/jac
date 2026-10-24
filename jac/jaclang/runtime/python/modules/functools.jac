@@ -1,12 +1,126 @@
-"""Native argument binding, reduction and least-recently-used cache policies.
-
-The object boundary retains Python callbacks and containers, including the
-runtime's ordered dictionary. No Python implementation of these policies runs.
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
-"""
-
-# A two-argument object call owns the callable arguments for the whole callback.
 def:pub jacpy_reduce(
+    function: ptr[PyObject], iterable: ptr[PyObject], initial: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_cmp_key(
+    function: ptr[PyObject], left: ptr[PyObject], right: ptr[PyObject], operation: i64
+) -> ptr[PyObject];
+
+obj partial_state {
+    has function: ptr[PyObject] = NULL,
+        args: ptr[PyObject] = NULL,
+        keywords: ptr[PyObject] = NULL,
+        placeholder: ptr[PyObject] = NULL;
+}
+
+def:pub jacpy_partial_new -> partial_state;
+
+def:pub jacpy_partial_field(state: partial_state, field: i64) -> ptr[PyObject];
+
+def:pub jacpy_partial_clear(state: partial_state);
+
+def:priv merge_args(
+    old: ptr[PyObject], args: ptr[PyObject], placeholder: ptr[PyObject], calling: bool
+) -> ptr[PyObject];
+
+def:priv validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]);
+
+def:pub jacpy_partial_init(
+    state: partial_state,
+    function: ptr[PyObject],
+    args: ptr[PyObject],
+    keywords: ptr[PyObject],
+    old_args: ptr[PyObject],
+    old_kw: ptr[PyObject],
+    placeholder: ptr[PyObject]
+) -> i64;
+
+def:pub jacpy_partial_call(
+    state: partial_state, args: ptr[PyObject], keywords: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_partial_restore(
+    state: partial_state, saved: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_partial_repr(
+    state: partial_state, owner: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj lru_state {
+    has key_factory: Callable[[ptr[PyObject], ptr[PyObject], i64], ptr[PyObject]],
+        function: ptr[PyObject] = NULL,
+        cache: ptr[PyObject] = NULL,
+        marker: ptr[PyObject] = NULL,
+        info_type: ptr[PyObject] = NULL,
+        key_type: ptr[PyObject] = NULL,
+        move: ptr[PyObject] = NULL,
+        pop: ptr[PyObject] = NULL,
+        maximum: i64 = 0,
+        typed: bool = False,
+        hits: i64 = 0,
+        misses: i64 = 0;
+}
+
+def:pub jacpy_lru_field(state: lru_state, field: i64) -> ptr[PyObject];
+
+def:pub jacpy_lru_destroy(state: lru_state);
+
+def:pub jacpy_lru_init(
+    state: lru_state,
+    function: ptr[PyObject],
+    maximum: i64,
+    typed: i64,
+    info_type: ptr[PyObject],
+    key_type: ptr[PyObject],
+    marker: ptr[PyObject]
+) -> i64;
+
+def:priv cache_key(
+    state: lru_state, args: ptr[PyObject], keywords: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_lru_call(
+    state: lru_state, args: ptr[PyObject], keywords: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_lru_clear(state: lru_state) -> i64;
+
+def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject];
+
+obj LruState(NativeState) {
+    has native: lru_state;
+
+    def clear;
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32;
+    def drop;
+}
+
+glob KeyWrapper_token = ClassToken(),
+     _lru_cache_wrapper_token = ClassToken();
+
+def _functools_reduce_impl(
+    module: ptr[PyObject],
+    function: ptr[PyObject],
+    iterable: ptr[PyObject],
+    initial: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _functools_cmp_to_key_impl(
+    module: ptr[PyObject], mycmp: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv lru_of(instance: ptr[PyObject]) -> (LruState | None);
+
+def _functools__lru_cache_wrapper_cache_info_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _functools__lru_cache_wrapper_cache_clear_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl jacpy_reduce(
     function: ptr[PyObject], iterable: ptr[PyObject], initial: ptr[PyObject]
 ) -> ptr[PyObject] {
     iterator = PyObject_GetIter(iterable);
@@ -54,7 +168,7 @@ def:pub jacpy_reduce(
     }
 }
 
-def:pub jacpy_cmp_key(
+impl jacpy_cmp_key(
     function: ptr[PyObject], left: ptr[PyObject], right: ptr[PyObject], operation: i64
 ) -> ptr[PyObject] {
     value: ptr[PyObject] = NULL;
@@ -71,18 +185,11 @@ def:pub jacpy_cmp_key(
     }
 }
 
-obj partial_state {
-    has function: ptr[PyObject] = NULL,
-        args: ptr[PyObject] = NULL,
-        keywords: ptr[PyObject] = NULL,
-        placeholder: ptr[PyObject] = NULL;
-}
-
-def:pub jacpy_partial_new -> partial_state {
+impl jacpy_partial_new -> partial_state {
     return partial_state();
 }
 
-def:pub jacpy_partial_field(state: partial_state, field: i64) -> ptr[PyObject] {
+impl jacpy_partial_field(state: partial_state, field: i64) -> ptr[PyObject] {
     if field == 0 {
         return state.function;
     }
@@ -95,7 +202,7 @@ def:pub jacpy_partial_field(state: partial_state, field: i64) -> ptr[PyObject] {
     return state.placeholder;
 }
 
-def:pub jacpy_partial_clear(state: partial_state) {
+impl jacpy_partial_clear(state: partial_state) {
     fn = state.function;
     args = state.args;
     kw = state.keywords;
@@ -110,9 +217,7 @@ def:pub jacpy_partial_clear(state: partial_state) {
     jacpy_release(ph);
 }
 
-# Produce a fresh tuple, filling holes left-to-right. Construction may preserve
-# holes; invocation must supply every hole, even when it supplies Placeholder.
-def:priv merge_args(
+impl merge_args(
     old: ptr[PyObject], args: ptr[PyObject], placeholder: ptr[PyObject], calling: bool
 ) -> ptr[PyObject] {
     n = PyTuple_Size(args);
@@ -165,7 +270,7 @@ def:priv merge_args(
     }
 }
 
-def:priv validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]) {
+impl validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]) {
     size = PyTuple_Size(args);
     if size > 0 {
         last = required(jacpy_tuple_item(args, size - 1));
@@ -178,7 +283,7 @@ def:priv validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]) {
     }
 }
 
-def:pub jacpy_partial_init(
+impl jacpy_partial_init(
     state: partial_state,
     function: ptr[PyObject],
     args: ptr[PyObject],
@@ -225,7 +330,7 @@ def:pub jacpy_partial_init(
     }
 }
 
-def:pub jacpy_partial_call(
+impl jacpy_partial_call(
     state: partial_state, args: ptr[PyObject], keywords: ptr[PyObject]
 ) -> ptr[PyObject] {
     fn = Py_NewRef(state.function);
@@ -251,9 +356,7 @@ def:pub jacpy_partial_call(
     }
 }
 
-# Return the normalized instance dictionary. Publish all callable fields before
-# releasing their old values, which may invoke arbitrary Python finalizers.
-def:pub jacpy_partial_restore(
+impl jacpy_partial_restore(
     state: partial_state, saved: ptr[PyObject]
 ) -> ptr[PyObject] {
     fn: ptr[PyObject] = NULL;
@@ -316,9 +419,7 @@ def:pub jacpy_partial_restore(
     }
 }
 
-def:pub jacpy_partial_repr(
-    state: partial_state, owner: ptr[PyObject]
-) -> ptr[PyObject] {
+impl jacpy_partial_repr(state: partial_state, owner: ptr[PyObject]) -> ptr[PyObject] {
     entered = Py_ReprEnter(owner);
     if entered < 0 {
         return NULL;
@@ -344,7 +445,6 @@ def:pub jacpy_partial_repr(
         entry_key: ptr[PyObject] = NULL;
         entry_value: ptr[PyObject] = NULL;
         while PyDict_Next(kw, &mut pos, &mut entry_key, &mut entry_value) != 0 {
-            # Prevent key.__str__ from deleting the value.
             key = Py_NewRef(entry_key);
             item = Py_NewRef(entry_value);
             text = required(PyObject_Str(key));
@@ -372,22 +472,7 @@ def:pub jacpy_partial_repr(
     }
 }
 
-obj lru_state {
-    has key_factory: Callable[[ptr[PyObject], ptr[PyObject], i64], ptr[PyObject]],
-        function: ptr[PyObject] = NULL,
-        cache: ptr[PyObject] = NULL,
-        marker: ptr[PyObject] = NULL,
-        info_type: ptr[PyObject] = NULL,
-        key_type: ptr[PyObject] = NULL,
-        move: ptr[PyObject] = NULL,
-        pop: ptr[PyObject] = NULL,
-        maximum: i64 = 0,
-        typed: bool = False,
-        hits: i64 = 0,
-        misses: i64 = 0;
-}
-
-def:pub jacpy_lru_field(state: lru_state, field: i64) -> ptr[PyObject] {
+impl jacpy_lru_field(state: lru_state, field: i64) -> ptr[PyObject] {
     if field == 0 {
         return state.function;
     }
@@ -409,7 +494,7 @@ def:pub jacpy_lru_field(state: lru_state, field: i64) -> ptr[PyObject] {
     return state.pop;
 }
 
-def:pub jacpy_lru_destroy(state: lru_state) {
+impl jacpy_lru_destroy(state: lru_state) {
     fn = state.function;
     cache = state.cache;
     marker = state.marker;
@@ -433,7 +518,7 @@ def:pub jacpy_lru_destroy(state: lru_state) {
     jacpy_release(pop);
 }
 
-def:pub jacpy_lru_init(
+impl jacpy_lru_init(
     state: lru_state,
     function: ptr[PyObject],
     maximum: i64,
@@ -455,8 +540,12 @@ def:pub jacpy_lru_init(
                 else PyDict_New()
         );
         if maximum > 0 {
-            state.move = required(PyObject_GetAttrString(state.cache, "move_to_end"));
-            state.pop = required(PyObject_GetAttrString(state.cache, "popitem"));
+            state.move = required(
+                PyObject_GetAttrString(state.cache, ptr[u8]("move_to_end"))
+            );
+            state.pop = required(
+                PyObject_GetAttrString(state.cache, ptr[u8]("popitem"))
+            );
         }
         return 0;
     } except boundary_failure {
@@ -464,7 +553,7 @@ def:pub jacpy_lru_init(
     }
 }
 
-def:priv cache_key(
+impl cache_key(
     state: lru_state, args: ptr[PyObject], keywords: ptr[PyObject]
 ) -> ptr[PyObject] {
     n = PyTuple_Size(args);
@@ -539,7 +628,7 @@ def:priv cache_key(
     }
 }
 
-def:pub jacpy_lru_call(
+impl jacpy_lru_call(
     state: lru_state, args: ptr[PyObject], keywords: ptr[PyObject]
 ) -> ptr[PyObject] {
     if state.maximum == 0 {
@@ -595,7 +684,7 @@ def:pub jacpy_lru_call(
                 record = required(PyTuple_New(2));
                 checked(jacpy_tuple_set_owned(record, 0, Py_NewRef(wrapped)));
                 checked(jacpy_tuple_set_owned(record, 1, Py_NewRef(value)));
-                # PyDict_SetItem bypasses OrderedDict's ordering slots.
+
                 checked(PyObject_SetItem(state.cache, wrapped, record));
             }
         }
@@ -616,7 +705,7 @@ def:pub jacpy_lru_call(
     }
 }
 
-def:pub jacpy_lru_clear(state: lru_state) -> i64 {
+impl jacpy_lru_clear(state: lru_state) -> i64 {
     state.hits = 0;
     state.misses = 0;
     if state.maximum > 0 {
@@ -624,7 +713,7 @@ def:pub jacpy_lru_clear(state: lru_state) -> i64 {
         args: ptr[PyObject] = NULL;
         result: ptr[PyObject] = NULL;
         try {
-            method = required(PyObject_GetAttrString(state.cache, "clear"));
+            method = required(PyObject_GetAttrString(state.cache, ptr[u8]("clear")));
             args = required(PyTuple_New(0));
             result = required(PyObject_Call(method, args, NULL));
             return 0;
@@ -640,7 +729,7 @@ def:pub jacpy_lru_clear(state: lru_state) -> i64 {
     return 0;
 }
 
-def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
+impl jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
     args: ptr[PyObject] = NULL;
     try {
         args = required(PyTuple_New(4));
@@ -674,38 +763,27 @@ def:pub jacpy_lru_info(state: lru_state) -> ptr[PyObject] {
     }
 }
 
-# The native state of a functools._lru_cache_wrapper instance.
-obj LruState(NativeState) {
-    has native: lru_state;
-
-    def clear {
-        jacpy_lru_destroy(self.native);
-    }
-
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        for i in range(7) {
-            status = visit_reference(
-                jacpy_lru_field(self.native, i64(i)), visitor, context
-            );
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
-
-    def drop {
-        self.clear();
-    }
+impl LruState.clear {
+    jacpy_lru_destroy(self.native);
 }
 
-# The Argument Clinic _impl functions. The binding points the tokens at the
-# KeyWrapper and _lru_cache_wrapper types it creates; KeyWrapper is also the
-# module's state slot 1.
-glob KeyWrapper_token = ClassToken(),
-     _lru_cache_wrapper_token = ClassToken();
+impl LruState.traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    for i in range(7) {
+        status = visit_reference(
+            jacpy_lru_field(self.native, i64(i)), visitor, context
+        );
+        if status != 0 {
+            return status;
+        }
+    }
+    return i32(0);
+}
 
-def _functools_reduce_impl(
+impl LruState.drop {
+    self.clear();
+}
+
+impl _functools_reduce_impl(
     module: ptr[PyObject],
     function: ptr[PyObject],
     iterable: ptr[PyObject],
@@ -714,8 +792,7 @@ def _functools_reduce_impl(
     return jacpy_reduce(function, iterable, initial);
 }
 
-# cmp_to_key(): a KeyWrapper over `mycmp` with no wrapped object yet.
-def _functools_cmp_to_key_impl(
+impl _functools_cmp_to_key_impl(
     module: ptr[PyObject], mycmp: ptr[PyObject]
 ) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(jacpy_binding_state_get(module, 1));
@@ -730,7 +807,7 @@ def _functools_cmp_to_key_impl(
     return instance;
 }
 
-def:priv lru_of(instance: ptr[PyObject]) -> (LruState | None) {
+impl lru_of(instance: ptr[PyObject]) -> (LruState | None) {
     if jacpy_binding_native_present(instance, _lru_cache_wrapper_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, _lru_cache_wrapper_token.handle);
         if isinstance(state, LruState) {
@@ -741,14 +818,14 @@ def:priv lru_of(instance: ptr[PyObject]) -> (LruState | None) {
     return None;
 }
 
-def _functools__lru_cache_wrapper_cache_info_impl(
+impl _functools__lru_cache_wrapper_cache_info_impl(
     instance: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = lru_of(instance);
     return jacpy_lru_info(state.native) if state is not None else NULL;
 }
 
-def _functools__lru_cache_wrapper_cache_clear_impl(
+impl _functools__lru_cache_wrapper_cache_clear_impl(
     instance: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = lru_of(instance);

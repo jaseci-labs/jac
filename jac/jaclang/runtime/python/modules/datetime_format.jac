@@ -1,12 +1,3 @@
-"""String format helpers and time module wrappers of the _datetime module.
-
-Modules/_datetimemodule.c's ctime(), UTC offset and strftime() helpers in
-native Jac. strftime() itself stays time.strftime(): the format is only
-preprocessed here, giving %z, %:z, %Z and %f their datetime meanings and
-padding four-digit years where the C library does not. See
-../LICENSE.cpython.
-"""
-
 import from c {
     def strftime(buffer: ptr[u8], size: u64, format: str, value: &tm) -> u64;
 }
@@ -26,11 +17,62 @@ glob:priv DAY_NAMES: list[str] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun
          "Nov",
          "Dec"
      ],
-     # normalize_century()'s answer, computed once: -1 until then.
      CENTURY_CACHE: list[int] = [-1];
 
-"""ctime() style text of a date or datetime at the given time of day."""
 def format_ctime(
+    date: ptr[PyObject], hours: int, minutes: int, seconds: int
+) -> ptr[PyObject];
+
+def format_utcoffset(
+    sep: str, tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def normalize_century -> bool;
+
+def make_somezreplacement(
+    object: ptr[PyObject], sep: str, tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def make_Zreplacement(
+    object: ptr[PyObject], tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def make_freplacement(object: ptr[PyObject]) -> ptr[PyObject];
+
+def padded_year(
+    ch: int, timetuple: ptr[PyObject], strftime_function: ptr[PyObject]
+) -> ptr[PyObject];
+
+def wrap_strftime(
+    object: ptr[PyObject],
+    format: ptr[PyObject],
+    timetuple: ptr[PyObject],
+    tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj StrftimeReplacements {
+    has z: ptr[PyObject] = NULL,
+        colon_z: ptr[PyObject] = NULL,
+        big_z: ptr[PyObject] = NULL,
+        f: ptr[PyObject] = NULL;
+}
+
+def:priv rewrite_and_format(
+    object: ptr[PyObject],
+    format: ptr[PyObject],
+    timetuple: ptr[PyObject],
+    tzinfoarg: ptr[PyObject],
+    strftime_function: ptr[PyObject],
+    found: StrftimeReplacements
+) -> ptr[PyObject];
+
+def time_time -> ptr[PyObject];
+
+def build_struct_time(
+    y: int, m: int, d: int, hh: int, mm: int, ss: int, dstflag: int
+) -> ptr[PyObject];
+
+impl format_ctime(
     date: ptr[PyObject], hours: int, minutes: int, seconds: int
 ) -> ptr[PyObject] {
     wday = weekday(get_year(date), get_month(date), get_day(date));
@@ -46,10 +88,7 @@ def format_ctime(
     );
 }
 
-"""tzinfo.utcoffset(tzinfoarg) as `sign HH sep MM [sep SS [. UUUUUU]]`, the
-empty string when it is None, or NULL with the error the offset check
-raised."""
-def format_utcoffset(
+impl format_utcoffset(
     sep: str, tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]
 ) -> ptr[PyObject] {
     offset = call_utcoffset(tzinfo, tzinfoarg);
@@ -58,9 +97,9 @@ def format_utcoffset(
     }
     if offset == Py_None {
         jacpy_release(offset);
-        return PyUnicode_FromString("");
+        return PyUnicode_FromString(ptr[u8](""));
     }
-    # Offset is normalized, so it is negative if days < 0
+
     sign = 43;
     if td_days(offset) < 0 {
         sign = 45;
@@ -71,7 +110,7 @@ def format_utcoffset(
         }
         offset = negated;
     }
-    # Offset is not negative here.
+
     microseconds = td_microseconds(offset);
     seconds = td_seconds(offset);
     jacpy_release(offset);
@@ -99,9 +138,7 @@ def format_utcoffset(
     return PyUnicode_FromFormat("%c%02ld%s%02ld", i32(sign), hours, sep, minutes);
 }
 
-"""Whether the C library's strftime() writes a year below 1000 without
-padding it to four digits, so %Y, %G, %F and %C need it done here."""
-def normalize_century -> bool {
+impl normalize_century -> bool {
     if CENTURY_CACHE[0] < 0 {
         year = ptr[u8](PyMem_Malloc(5));
         answer = 0;
@@ -124,24 +161,22 @@ def normalize_century -> bool {
     return CENTURY_CACHE[0] == 1;
 }
 
-"""The %z (sep "") or %:z (sep ":") replacement for `object`."""
-def make_somezreplacement(
+impl make_somezreplacement(
     object: ptr[PyObject], sep: str, tzinfoarg: ptr[PyObject]
 ) -> ptr[PyObject] {
     tzinfo = get_tzinfo_member(object);
     if tzinfo == Py_None or not tzinfo {
-        return PyUnicode_FromString("");
+        return PyUnicode_FromString(ptr[u8](""));
     }
     return format_utcoffset(sep, tzinfo, tzinfoarg);
 }
 
-"""The %Z replacement: the tzinfo's name with its % signs doubled."""
-def make_Zreplacement(
+impl make_Zreplacement(
     object: ptr[PyObject], tzinfoarg: ptr[PyObject]
 ) -> ptr[PyObject] {
     tzinfo = get_tzinfo_member(object);
     if tzinfo == Py_None or not tzinfo {
-        return PyUnicode_FromString("");
+        return PyUnicode_FromString(ptr[u8](""));
     }
     temp = call_tzname(tzinfo, tzinfoarg);
     if not temp {
@@ -149,10 +184,9 @@ def make_Zreplacement(
     }
     if temp == Py_None {
         jacpy_release(temp);
-        return PyUnicode_FromString("");
+        return PyUnicode_FromString(ptr[u8](""));
     }
-    # Since the tzname is getting stuffed into the format, we have to double
-    # any % signs so that strftime doesn't treat them as format codes.
+
     replacement = PyObject_CallMethod(temp, "replace", "ss", "%", "%%");
     jacpy_release(temp);
     if not replacement {
@@ -166,8 +200,7 @@ def make_Zreplacement(
     return replacement;
 }
 
-"""The %f replacement: the microseconds as six digits."""
-def make_freplacement(object: ptr[PyObject]) -> ptr[PyObject] {
+impl make_freplacement(object: ptr[PyObject]) -> ptr[PyObject] {
     microseconds = 0;
     if time_check(object) {
         microseconds = time_get_microsecond(object);
@@ -177,10 +210,7 @@ def make_freplacement(object: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat("%06ld", microseconds);
 }
 
-"""The four-digit year text for a %Y, %G, %F or %C code when the year is
-below 1000: NULL with no error when it needs no padding, NULL with an error
-on failure."""
-def padded_year(
+impl padded_year(
     ch: int, timetuple: ptr[PyObject], strftime_function: ptr[PyObject]
 ) -> ptr[PyObject] {
     item = PySequence_GetItem(timetuple, 0);
@@ -192,8 +222,7 @@ def padded_year(
     if year == -1 and PyErr_Occurred() {
         return NULL;
     }
-    # datetime(1000, 1, 1).strftime('%G') == '1000', so year 1000 for %G can
-    # go on the fast path.
+
     if year >= 1000 {
         return NULL;
     }
@@ -225,10 +254,7 @@ def padded_year(
     return century;
 }
 
-"""strftime() through time.strftime(), with %z, %:z, %Z and %f given their
-datetime meanings by preprocessing the format. tzinfoarg is the argument
-passed to the object's tzinfo methods."""
-def wrap_strftime(
+impl wrap_strftime(
     object: ptr[PyObject],
     format: ptr[PyObject],
     timetuple: ptr[PyObject],
@@ -250,18 +276,7 @@ def wrap_strftime(
     return result;
 }
 
-"""The replacements wrap_strftime() computes at most once each."""
-obj StrftimeReplacements {
-    has z: ptr[PyObject] = NULL,
-        colon_z: ptr[PyObject] = NULL,
-        big_z: ptr[PyObject] = NULL,
-        f: ptr[PyObject] = NULL;
-}
-
-# Scan the format for the escapes, building a new format, and call
-# time.strftime() with it. Since computing the replacements is expensive,
-# don't unless they're actually used.
-def:priv rewrite_and_format(
+impl rewrite_and_format(
     object: ptr[PyObject],
     format: ptr[PyObject],
     timetuple: ptr[PyObject],
@@ -289,10 +304,9 @@ def:priv rewrite_and_format(
         }
         ch = int(PyUnicode_ReadChar(format, i));
         i += 1;
-        # A % has been seen and ch is the character after it.
+
         replacement: ptr[PyObject] = NULL;
         if ch == 122 {
-            # %z -> +HHMM
             if not found.z {
                 found.z = make_somezreplacement(object, "", tzinfoarg);
                 if not found.z {
@@ -302,7 +316,6 @@ def:priv rewrite_and_format(
             }
             replacement = found.z;
         } elif ch == 58 and i < flen and int(PyUnicode_ReadChar(format, i)) == 122 {
-            # %:z -> +HH:MM
             i += 1;
             if not found.colon_z {
                 found.colon_z = make_somezreplacement(object, ":", tzinfoarg);
@@ -313,7 +326,6 @@ def:priv rewrite_and_format(
             }
             replacement = found.colon_z;
         } elif ch == 90 {
-            # format tzname
             if not found.big_z {
                 found.big_z = make_Zreplacement(object, tzinfoarg);
                 if not found.big_z {
@@ -323,7 +335,6 @@ def:priv rewrite_and_format(
             }
             replacement = found.big_z;
         } elif ch == 102 {
-            # format microseconds
             if not found.f {
                 found.f = make_freplacement(object);
                 if not found.f {
@@ -333,7 +344,6 @@ def:priv rewrite_and_format(
             }
             replacement = found.f;
         } elif normalize_century() and (ch == 89 or ch == 71 or ch == 70 or ch == 67) {
-            # 0-pad year with century as necessary
             year = padded_year(ch, timetuple, strftime_function);
             if not year {
                 if PyErr_Occurred() {
@@ -352,7 +362,6 @@ def:priv rewrite_and_format(
             start = i;
             continue;
         } else {
-            # percent followed by something else
             continue;
         }
         if PyUnicodeWriter_WriteSubstring(writer, format, start, end) < 0 {
@@ -384,11 +393,7 @@ def:priv rewrite_and_format(
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Wrap functions from the time module.
-
-"""time.time(), a Python float."""
-def time_time -> ptr[PyObject] {
+impl time_time -> ptr[PyObject] {
     function = PyImport_ImportModuleAttrString("time", "time");
     if not function {
         return NULL;
@@ -398,9 +403,7 @@ def time_time -> ptr[PyObject] {
     return result;
 }
 
-"""A time.struct_time; the weekday and day number are computed from the
-year, month and day."""
-def build_struct_time(
+impl build_struct_time(
     y: int, m: int, d: int, hh: int, mm: int, ss: int, dstflag: int
 ) -> ptr[PyObject] {
     struct_time = PyImport_ImportModuleAttrString("time", "struct_time");

@@ -337,7 +337,7 @@ impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
             continue;
         }
         if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
-            params.append("ptr");
+            params.append(str(ir.IntType(64)));
         } else {
             params.append(str(self._clib_param_type(p)));
         }
@@ -373,6 +373,16 @@ impl NaIRGenPass._declare_clib_definitions -> None {
     }
     for (name, decl) in self._clib_definitions.items() {
         if c_variadic_param(decl.signature) is not None {
+            self.clib_extern_fns.pop(name, None);
+            self.extern_funcs.pop(name, None);
+            existing = self.llvm_module.globals.get(name);
+            if isinstance(existing, ir.Function) and not existing.blocks {
+                self.scope.unbind_function(name);
+                self.llvm_module.globals.pop(name, None);
+                self.llvm_module.scope.release(name);
+            }
+            self.clib_extern_names.discard(name);
+            self._clib_symbol_lib.pop(name, None);
             self._maybe_declare_ability(decl, symbol=name);
             self._record_export(name, name, "function", True);
             if self.module?.gen and name not in self.module.gen._exported_symbols {
@@ -432,9 +442,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
         b = self.builder;
         i32 = ir.IntType(32);
 
-        if _scalar_only
-            and self._c_entry_tail_or_escape(cfunc, jac_fn)
-            and self._is_kernel_unit() {
+        if _scalar_only and self._c_entry_tail_or_escape(cfunc, jac_fn) {
             return;
         }
         saved = self._region_c_entry_escape();
@@ -540,7 +548,8 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
     grows the stack by a frame per step on an unoptimized build and breaks the
     tail-call guarantee. The call goes through the body's address typed with
     the thunk's own prototype, which `musttail` requires, and passes the same
-    registers the body reads.
+    registers the body reads. A void C function whose body is declared
+    without `-> T` returns a word the C caller never reads.
     """;
     cty = cfunc.function_type;
     jty = jac_fn.function_type;
@@ -562,14 +571,20 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
         if c_arg == j_arg {
             continue;
         }
-        if isinstance(c_arg, ir.PointerType) and j_arg == i64 {
+        if isinstance(c_arg, ir.PointerType)
+            and (j_arg == i64 or isinstance(j_arg, ir.PointerType)) {
             continue;
         }
         return False;
     }
     c_ret = cty.return_type;
     j_ret = jty.return_type;
-    return c_ret == j_ret or (isinstance(c_ret, ir.PointerType) and j_ret == i64);
+    return c_ret == j_ret
+        or (
+            isinstance(c_ret, ir.PointerType)
+            and (j_ret == i64 or isinstance(j_ret, ir.PointerType))
+        )
+        or (isinstance(c_ret, ir.VoidType) and j_ret == i64);
 }
 
 impl NaIRGenPass._c_entry_tail_or_escape(
@@ -586,11 +601,53 @@ impl NaIRGenPass._c_entry_tail_or_escape(
     opened = self._region_open_test();
     escape_bb = c_entry.append_basic_block("centry.region.open");
     tail_bb = c_entry.append_basic_block("centry.tail");
-    b.cbranch(opened, escape_bb, tail_bb);
+    b.cbranch(opened, escape_bb, tail_bb).set_weights([1, 2000]);
     b.position_at_end(tail_bb);
     self._thunk_tail_call(c_entry, jac_fn);
     b.position_at_end(escape_bb);
+    self._thunk_tail_call(c_entry, self._c_entry_escape_fn(c_entry, jac_fn));
     return True;
+}
+
+impl NaIRGenPass._c_entry_escape_fn(
+    c_entry: ir.Function, jac_fn: ir.Function
+) -> ir.Function {
+    cty = c_entry.function_type;
+    esc = self._c_entry_escape_shell(c_entry);
+    saved_builder = self._builder;
+    self._builder = ir.IRBuilder(esc.append_basic_block("entry"));
+    try {
+        b = self.builder;
+        depth = b.call(
+            self._region_kernel_fn("__jac_region_escape"), [], name="region.escape"
+        );
+        target = jac_fn
+            if cty == jac_fn.function_type
+            else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
+        result = b.call(target, list(esc.args), name="cdef.call");
+        b.call(self._region_kernel_fn("__jac_region_restore"), [depth]);
+        if isinstance(cty.return_type, ir.VoidType) {
+            b.ret_void();
+        } else {
+            b.ret(result);
+        }
+    } finally {
+        self._builder = saved_builder;
+    }
+    return esc;
+}
+
+impl NaIRGenPass._c_entry_escape_shell(c_entry: ir.Function) -> ir.Function {
+    esc = ir.Function(
+        self.llvm_module,
+        c_entry.function_type,
+        name=self.llvm_module.scope.deduplicate(f"{c_entry.name}.escape")
+    );
+    esc.linkage = "internal";
+    esc.calling_convention = c_entry.calling_convention;
+    esc.attributes.add("noinline");
+    esc.attributes.add("cold");
+    return esc;
 }
 
 impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None {

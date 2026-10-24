@@ -1,67 +1,32 @@
-"""The _zstd module: ZstdDict, ZstdCompressor, ZstdDecompressor, ZstdError and
-the zstd constants, over the generated clinic glue."""
+def:priv dict_dealloc(instance: ptr[PyObject]);
 
-def:priv dict_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, ZstdDict_token.handle);
-}
+def:priv dict_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv dict_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, ZstdDict_token.handle, visitor, context);
-}
+def:priv dict_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv dict_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, ZstdDict_token.handle);
-}
+def:priv dict_id(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv dict_id(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return zstd_dict_id(instance);
-}
-
-# The context is freed before the dictionary it may reference is released.
-def:priv compressor_dealloc(instance: ptr[PyObject]) {
-    release_compressor_context(instance);
-    dispose_payload(instance, ZstdCompressor_token.handle);
-}
+def:priv compressor_dealloc(instance: ptr[PyObject]);
 
 def:priv compressor_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, ZstdCompressor_token.handle, visitor, context);
-}
+) -> i32;
 
-def:priv compressor_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, ZstdCompressor_token.handle);
-}
+def:priv compressor_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv last_mode(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = compressor_of(instance);
-    return PyLong_FromLong(i64(state.last_mode)) if state is not None else NULL;
-}
+def:priv last_mode(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv decompressor_dealloc(instance: ptr[PyObject]) {
-    release_decompressor_context(instance);
-    dispose_payload(instance, ZstdDecompressor_token.handle);
-}
+def:priv decompressor_dealloc(instance: ptr[PyObject]);
 
 def:priv decompressor_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, ZstdDecompressor_token.handle, visitor, context);
-}
+) -> i32;
 
-def:priv decompressor_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, ZstdDecompressor_token.handle);
-}
+def:priv decompressor_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv eof(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = decompressor_of(instance);
-    return PyBool_FromLong(i64(state.eof)) if state is not None else NULL;
-}
+def:priv eof(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv needs_input(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = decompressor_of(instance);
-    return PyBool_FromLong(i64(state.needs_input)) if state is not None else NULL;
-}
+def:priv needs_input(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 glob:priv dict_type = TypeDefinition(
          "compression.zstd.ZstdDict",
@@ -86,7 +51,6 @@ glob:priv dict_type = TypeDefinition(
          ]
              + ZstdDict_getset
      ),
-     # Created mutable: the end directives are set on it before it is frozen.
      compressor_type = TypeDefinition(
          "compression.zstd.ZstdCompressor",
          ZstdCompressor_doc,
@@ -135,18 +99,88 @@ glob:priv dict_type = TypeDefinition(
              + ZstdDecompressor_getset
      );
 
-# ADD_INT_CONST_TO_TYPE
-def:priv set_type_constant(type: ptr[PyObject], name: str, value: i32) -> bool {
+def:priv set_type_constant(type: ptr[PyObject], name: str, value: i32) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_zstd",
+         "Implementation module for Zstandard compression.",
+         module_methods,
+         ModuleHooks(execute=execute),
+         STATE_SLOTS
+     );
+
+def:pub PyInit__zstd -> ptr[PyObject];
+
+impl dict_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, ZstdDict_token.handle);
+}
+
+impl dict_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, ZstdDict_token.handle, visitor, context);
+}
+
+impl dict_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, ZstdDict_token.handle);
+}
+
+impl dict_id(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return zstd_dict_id(instance);
+}
+
+impl compressor_dealloc(instance: ptr[PyObject]) {
+    release_compressor_context(instance);
+    dispose_payload(instance, ZstdCompressor_token.handle);
+}
+
+impl compressor_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, ZstdCompressor_token.handle, visitor, context);
+}
+
+impl compressor_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, ZstdCompressor_token.handle);
+}
+
+impl last_mode(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = compressor_of(instance);
+    return PyLong_FromLong(i64(state.last_mode)) if state is not None else NULL;
+}
+
+impl decompressor_dealloc(instance: ptr[PyObject]) {
+    release_decompressor_context(instance);
+    dispose_payload(instance, ZstdDecompressor_token.handle);
+}
+
+impl decompressor_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, ZstdDecompressor_token.handle, visitor, context);
+}
+
+impl decompressor_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, ZstdDecompressor_token.handle);
+}
+
+impl eof(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = decompressor_of(instance);
+    return PyBool_FromLong(i64(state.eof)) if state is not None else NULL;
+}
+
+impl needs_input(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = decompressor_of(instance);
+    return PyBool_FromLong(i64(state.needs_input)) if state is not None else NULL;
+}
+
+impl set_type_constant(type: ptr[PyObject], name: str, value: i32) -> bool {
     number = PyLong_FromLong(i64(value));
     if not number {
         return False;
     }
-    status = PyObject_SetAttrString(type, name, number);
+    status = jacpy_object_setattr_text(type, name, number);
     jacpy_release(number);
     return status == 0;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     ZstdDict_token.handle = dict_type.handle;
     ZstdCompressor_token.handle = compressor_type.handle;
     ZstdDecompressor_token.handle = decompressor_type.handle;
@@ -184,8 +218,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         ) {
         return i32(-1);
     }
-    # Compression parameters (all also in CP_LIST), the decompression
-    # parameter (in DP_LIST) and the ZSTD_strategy members.
+
     constants = [
         ("ZSTD_c_compressionLevel", ZSTD_c_compressionLevel),
         ("ZSTD_c_windowLog", ZSTD_c_windowLog),
@@ -222,7 +255,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             return i32(-1);
         }
     }
-    # ZSTD_EndDirective members on ZstdCompressor, which is then frozen.
+
     compressor = jacpy_binding_state_get(module, i64(ZSTD_COMPRESSOR_TYPE));
     if not set_type_constant(compressor, "CONTINUE", ZSTD_e_continue)
         or not set_type_constant(compressor, "FLUSH_BLOCK", ZSTD_e_flush)
@@ -233,14 +266,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_zstd",
-         "Implementation module for Zstandard compression.",
-         module_methods,
-         ModuleHooks(execute=execute),
-         STATE_SLOTS
-     );
-
-def:pub PyInit__zstd -> ptr[PyObject] {
+impl PyInit__zstd -> ptr[PyObject] {
     return definition.initialize();
 }

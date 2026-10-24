@@ -1,35 +1,79 @@
-"""Certificates of the native _ssl module: decoding an X509 into the dict
-getpeercert() returns, and the _ssl.Certificate objects.
-
-Derived from CPython 3.14.6 Modules/_ssl.c (_decode_certificate() and its
-helpers), Modules/_ssl/cert.c and Modules/_ssl/misc.c; see
-../LICENSE.cpython.
-"""
-
 glob:priv ERRORS_ERROR: ptr[u8] = ptr[u8]("error"),
      ERRORS_STRICT: ptr[u8] = ptr[u8]("strict");
 
-"""A pointer field of a C struct."""
-def:priv pointer_at(record: ptr, offset: int) -> ptr {
+def:priv pointer_at(record: ptr, offset: int) -> ptr;
+
+def:priv int_at(record: ptr, offset: int) -> int;
+
+def:priv bio_reset(bio: ptr);
+
+def:priv memory_data(bio: ptr) -> tuple[ptr, i64];
+
+def bytes_from_bio(bio: ptr) -> ptr[PyObject];
+
+def unicode_from_bio(bio: ptr, errors: ptr[u8]) -> ptr[PyObject];
+
+def asn1obj2py(module: ptr[PyObject], name: ptr, no_name: bool) -> ptr[PyObject];
+
+def:priv attribute_tuple(
+    module: ptr[PyObject], name: ptr, value: ptr
+) -> ptr[PyObject];
+
+def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject];
+
+def:priv pair_of(label: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv asn1_string_text(value: ptr) -> ptr[PyObject];
+
+def:priv general_name_tuple(
+    module: ptr[PyObject], name: ptr, biobuf: ptr
+) -> ptr[PyObject];
+
+def:priv peer_alt_names(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject];
+
+def:priv aia_uri(certificate: ptr, nid: int) -> ptr[PyObject];
+
+def:priv crl_dp(certificate: ptr) -> ptr[PyObject];
+
+def:priv set_item(target: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool;
+
+def:priv printed_line(
+    module: ptr[PyObject], biobuf: ptr, buf: ptr[u8], lineno: int
+) -> ptr[PyObject];
+
+def decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject];
+
+def certificate_to_der(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject];
+
+def certificate_from_x509(
+    module: ptr[PyObject], cert: ptr, upref: bool
+) -> ptr[PyObject];
+
+def certificates_from_stack(
+    module: ptr[PyObject], stack: ptr, upref: bool
+) -> ptr[PyObject];
+
+def x509name_print(
+    module: ptr[PyObject], name: ptr, indent: int, flags: u64
+) -> ptr[PyObject];
+
+def type_name_address(instance: ptr[PyObject]) -> ptr[u8];
+
+def pem_errors -> ptr[u8];
+
+impl pointer_at(record: ptr, offset: int) -> ptr {
     return ptr[ptr](record + offset).view(1)[0];
 }
 
-"""An int field of a C struct."""
-def:priv int_at(record: ptr, offset: int) -> int {
+impl int_at(record: ptr, offset: int) -> int {
     return int(ptr[i32](record + offset).view(1)[0]);
 }
 
-"""BIO_reset()."""
-def:priv bio_reset(bio: ptr) {
+impl bio_reset(bio: ptr) {
     BIO_ctrl(bio, i32(BIO_CTRL_RESET), 0, ptr());
 }
 
-# ---------------------------------------------------------------------------
-# Modules/_ssl/misc.c
-
-"""BIO_get_mem_data(): the address and size of a memory BIO's data, or
-(NULL, -1) with ValueError set when it is not a memory BIO."""
-def:priv memory_data(bio: ptr) -> tuple[ptr, i64] {
+impl memory_data(bio: ptr) -> tuple[ptr, i64] {
     cell = ptr[ptr](PyMem_Malloc(u64(8)));
     if not cell {
         PyErr_NoMemory();
@@ -46,8 +90,7 @@ def:priv memory_data(bio: ptr) -> tuple[ptr, i64] {
     return (data, size);
 }
 
-"""_PySSL_BytesFromBIO(): BIO_s_mem() to bytes."""
-def bytes_from_bio(bio: ptr) -> ptr[PyObject] {
+impl bytes_from_bio(bio: ptr) -> ptr[PyObject] {
     (data, size) = memory_data(bio);
     if size < 0 {
         return NULL;
@@ -55,9 +98,7 @@ def bytes_from_bio(bio: ptr) -> ptr[PyObject] {
     return jacpy_bytes_from_memory(data, size);
 }
 
-"""_PySSL_UnicodeFromBIO(): BIO_s_mem() to str, decoded as UTF-8 with the
-`errors` handler."""
-def unicode_from_bio(bio: ptr, errors: ptr[u8]) -> ptr[PyObject] {
+impl unicode_from_bio(bio: ptr, errors: ptr[u8]) -> ptr[PyObject] {
     (data, size) = memory_data(bio);
     if size < 0 {
         return NULL;
@@ -65,11 +106,7 @@ def unicode_from_bio(bio: ptr, errors: ptr[u8]) -> ptr[PyObject] {
     return PyUnicode_DecodeUTF8Stateful(data, size, errors, None);
 }
 
-# ---------------------------------------------------------------------------
-# Certificate decoding.
-
-"""_asn1obj2py(): the dotted or long name of an ASN.1 object."""
-def asn1obj2py(module: ptr[PyObject], name: ptr, no_name: bool) -> ptr[PyObject] {
+impl asn1obj2py(module: ptr[PyObject], name: ptr, no_name: bool) -> ptr[PyObject] {
     namebuf = PyMem_Malloc(u64(X509_NAME_MAXLEN));
     if not namebuf {
         return PyErr_NoMemory();
@@ -80,10 +117,10 @@ def asn1obj2py(module: ptr[PyObject], name: ptr, no_name: bool) -> ptr[PyObject]
         set_ssl_error(module, ptr[u8](), 1102);
         return NULL;
     }
-    # The initial buffer is too small for the oid and its terminating NUL.
+
     if buflen > X509_NAME_MAXLEN - 1 {
         PyMem_Free(namebuf);
-        # Make OBJ_obj2txt() calculate the required buflen.
+
         buflen = int(OBJ_obj2txt(ptr(), i32(0), name, i32(no_name)));
         namebuf = PyMem_Malloc(u64(buflen + 1));
         if not namebuf {
@@ -106,10 +143,7 @@ def asn1obj2py(module: ptr[PyObject], name: ptr, no_name: bool) -> ptr[PyObject]
     return name_obj;
 }
 
-"""_create_tuple_for_attribute(): (name, value) of an X509 name entry."""
-def:priv attribute_tuple(
-    module: ptr[PyObject], name: ptr, value: ptr
-) -> ptr[PyObject] {
+impl attribute_tuple(module: ptr[PyObject], name: ptr, value: ptr) -> ptr[PyObject] {
     pyname = asn1obj2py(module, name, False);
     if not pyname {
         set_ssl_error(module, ptr[u8](), 1144);
@@ -131,16 +165,14 @@ def:priv attribute_tuple(
     return pyattr;
 }
 
-"""_create_tuple_for_X509_NAME(): the distinguished name as a tuple of
-relative distinguished names, each a tuple of (name, value) attributes."""
-def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
+impl x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
     entry_count = int(X509_NAME_entry_count(xname));
     rdn_level = -1;
     dn = PyList_New(0);
     if not dn {
         return NULL;
     }
-    # Now create another tuple to hold the top-level RDN.
+
     rdn = PyList_New(0);
     if not rdn {
         jacpy_release(dn);
@@ -148,10 +180,9 @@ def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
     }
     for index_counter in range(entry_count) {
         name_entry = X509_NAME_get_entry(xname, i32(index_counter));
-        # Check to see if we've gotten to a new RDN.
+
         if rdn_level >= 0 {
             if rdn_level != int(X509_NAME_ENTRY_set(name_entry)) {
-                # Yes, new RDN: add the old RDN to the DN.
                 rdnt = PyList_AsTuple(rdn);
                 jacpy_release(rdn);
                 if not rdnt {
@@ -164,7 +195,7 @@ def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
                     jacpy_release(dn);
                     return NULL;
                 }
-                # Create a new RDN.
+
                 rdn = PyList_New(0);
                 if not rdn {
                     jacpy_release(dn);
@@ -173,7 +204,7 @@ def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
             }
         }
         rdn_level = int(X509_NAME_ENTRY_set(name_entry));
-        # Now add this attribute to the current RDN.
+
         attr = attribute_tuple(
             module,
             X509_NAME_ENTRY_get_object(name_entry),
@@ -192,7 +223,7 @@ def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
             return NULL;
         }
     }
-    # Now, there's typically a dangling RDN.
+
     if PyList_Size(rdn) > 0 {
         rdnt = PyList_AsTuple(rdn);
         jacpy_release(rdn);
@@ -209,15 +240,13 @@ def x509_name_tuple(module: ptr[PyObject], xname: ptr) -> ptr[PyObject] {
     } else {
         jacpy_release(rdn);
     }
-    # Convert the list to a tuple.
+
     result = PyList_AsTuple(dn);
     jacpy_release(dn);
     return result;
 }
 
-"""A (label, value) pair of new references; NULL (releasing both) when
-either is missing."""
-def:priv pair_of(label: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+impl pair_of(label: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if not label or not value {
         if label {
             jacpy_release(label);
@@ -238,36 +267,30 @@ def:priv pair_of(label: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""The text of an ASN1_STRING (PyUnicode_FromStringAndSize())."""
-def:priv asn1_string_text(value: ptr) -> ptr[PyObject] {
+impl asn1_string_text(value: ptr) -> ptr[PyObject] {
     return c_text(ASN1_STRING_get0_data(value), i64(ASN1_STRING_length(value)));
 }
 
-"""The rendering of one GENERAL_NAME of a subjectAltName, or NULL with the
-error set."""
-def:priv general_name_tuple(
+impl general_name_tuple(
     module: ptr[PyObject], name: ptr, biobuf: ptr
 ) -> ptr[PyObject] {
     gntype = int_at(name, GENERAL_NAME_TYPE_OFFSET);
     d = pointer_at(name, GENERAL_NAME_D_OFFSET);
     if gntype == GEN_DIRNAME {
-        # DirName is special-cased as a tuple of tuples of attributes.
-        label = PyUnicode_FromString("DirName");
+        label = PyUnicode_FromString(ptr[u8]("DirName"));
         if not label {
             return NULL;
         }
         return pair_of(label, x509_name_tuple(module, d));
     }
     if gntype == GEN_EMAIL or gntype == GEN_DNS or gntype == GEN_URI {
-        # GENERAL_NAME_print() doesn't handle NULL bytes in ASN1_string
-        # correctly, CVE-2013-4238.
         label = NULL;
         if gntype == GEN_EMAIL {
-            label = PyUnicode_FromString("email");
+            label = PyUnicode_FromString(ptr[u8]("email"));
         } elif gntype == GEN_DNS {
-            label = PyUnicode_FromString("DNS");
+            label = PyUnicode_FromString(ptr[u8]("DNS"));
         } else {
-            label = PyUnicode_FromString("URI");
+            label = PyUnicode_FromString(ptr[u8]("URI"));
         }
         if not label {
             return NULL;
@@ -275,7 +298,7 @@ def:priv general_name_tuple(
         return pair_of(label, asn1_string_text(d));
     }
     if gntype == GEN_RID {
-        label = PyUnicode_FromString("Registered ID");
+        label = PyUnicode_FromString(ptr[u8]("Registered ID"));
         if not label {
             return NULL;
         }
@@ -292,7 +315,7 @@ def:priv general_name_tuple(
             set_ssl_error(module, ptr[u8](), 1385);
             return NULL;
         } elif length >= 2048 {
-            value = PyUnicode_FromString("<INVALID>");
+            value = PyUnicode_FromString(ptr[u8]("<INVALID>"));
         } else {
             value = c_text(buf, length);
         }
@@ -300,9 +323,7 @@ def:priv general_name_tuple(
         return pair_of(label, value);
     }
     if gntype == GEN_IPADD {
-        # OpenSSL < 3.0.0 adds a trailing \n to IPv6. 3.0.0 removed the
-        # trailing newline. Remove it in all versions.
-        label = PyUnicode_FromString("IP Address");
+        label = PyUnicode_FromString(ptr[u8]("IP Address"));
         if not label {
             return NULL;
         }
@@ -327,11 +348,11 @@ def:priv general_name_tuple(
                 u32(p[14]) << u32(8) | u32(p[15])
             );
         } else {
-            value = PyUnicode_FromString("<invalid>");
+            value = PyUnicode_FromString(ptr[u8]("<invalid>"));
         }
         return pair_of(label, value);
     }
-    # For everything else, use the OpenSSL print form.
+
     if gntype != GEN_OTHERNAME and gntype != GEN_X400 and gntype != GEN_EDIPARTY {
         if PyErr_WarnFormat(
             PyExc_RuntimeWarning, 1, "Unknown general name type %d", c_int(gntype)
@@ -352,7 +373,7 @@ def:priv general_name_tuple(
         set_ssl_error(module, ptr[u8](), 1465);
         return NULL;
     }
-    # BIO_gets() NUL-terminates what it read; strchr(buf, ':').
+
     colon = -1;
     position = 0;
     characters = buf.view(2048);
@@ -378,13 +399,11 @@ def:priv general_name_tuple(
     return pair_of(label, value);
 }
 
-"""_get_peer_alt_names(): the subjectAltName entries as a tuple, or None
-(a new reference either way)."""
-def:priv peer_alt_names(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
+impl peer_alt_names(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
     if not certificate {
         return Py_NewRef(Py_None);
     }
-    # Get a memory buffer.
+
     biobuf = BIO_new(BIO_s_mem());
     if not biobuf {
         PyErr_SetString(state_ref(module, STATE_SSL_ERROR), "failed to allocate BIO");
@@ -398,7 +417,6 @@ def:priv peer_alt_names(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject
     result = PyList_New(0);
     if result {
         for j in range(int(OPENSSL_sk_num(names))) {
-            # Get a rendering of each name in the set of names.
             t = general_name_tuple(module, OPENSSL_sk_value(names, i32(j)), biobuf);
             if not t {
                 jacpy_release(result);
@@ -424,9 +442,7 @@ def:priv peer_alt_names(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject
     return names_tuple;
 }
 
-"""_get_aia_uri(): the Authority Information Access URIs of method `nid`,
-as a tuple, or None (a new reference either way)."""
-def:priv aia_uri(certificate: ptr, nid: int) -> ptr[PyObject] {
+impl aia_uri(certificate: ptr, nid: int) -> ptr[PyObject] {
     info = X509_get_ext_d2i(certificate, i32(NID_info_access), ptr(), ptr());
     if not info {
         return Py_NewRef(Py_None);
@@ -463,7 +479,7 @@ def:priv aia_uri(certificate: ptr, nid: int) -> ptr[PyObject] {
         }
     }
     AUTHORITY_INFO_ACCESS_free(info);
-    # Convert to a tuple or None.
+
     if PyList_Size(lst) == 0 {
         jacpy_release(lst);
         return Py_NewRef(Py_None);
@@ -473,9 +489,7 @@ def:priv aia_uri(certificate: ptr, nid: int) -> ptr[PyObject] {
     return tup;
 }
 
-"""_get_crl_dp(): the CRL distribution point URIs as a tuple, or None (a new
-reference either way)."""
-def:priv crl_dp(certificate: ptr) -> ptr[PyObject] {
+impl crl_dp(certificate: ptr) -> ptr[PyObject] {
     dps = X509_get_ext_d2i(certificate, i32(NID_crl_distribution_points), ptr(), ptr());
     if not dps {
         return Py_NewRef(Py_None);
@@ -488,7 +502,6 @@ def:priv crl_dp(certificate: ptr) -> ptr[PyObject] {
             dp = OPENSSL_sk_value(dps, i32(i));
             distpoint = pointer_at(dp, DIST_POINT_DISTPOINT_OFFSET);
             if not distpoint {
-                # Ignore an empty DP value, CVE-2019-5010.
                 continue;
             }
             gns = pointer_at(distpoint, DIST_POINT_NAME_NAME_OFFSET);
@@ -515,7 +528,6 @@ def:priv crl_dp(certificate: ptr) -> ptr[PyObject] {
         }
     }
     if not failed {
-        # Convert to a tuple.
         res = PyList_AsTuple(lst) if PyList_Size(lst) > 0 else Py_NewRef(Py_None);
     }
     if lst {
@@ -525,19 +537,16 @@ def:priv crl_dp(certificate: ptr) -> ptr[PyObject] {
     return res;
 }
 
-"""Set dict[key] to a new reference `value`, releasing it; False on failure
-(or when `value` is NULL)."""
-def:priv set_item(target: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool {
+impl set_item(target: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool {
     if not value {
         return False;
     }
-    status = PyDict_SetItemString(target, key, value);
+    status = dict_set_text(target, key, value);
     jacpy_release(value);
     return status >= 0;
 }
 
-"""Print into the memory BIO and read the line back (BIO_gets())."""
-def:priv printed_line(
+impl printed_line(
     module: ptr[PyObject], biobuf: ptr, buf: ptr[u8], lineno: int
 ) -> ptr[PyObject] {
     length = int(BIO_gets(biobuf, buf, i32(2047)));
@@ -548,8 +557,7 @@ def:priv printed_line(
     return c_text(buf, length);
 }
 
-"""_decode_certificate(): the dict getpeercert() and get_info() return."""
-def decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
+impl decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
     retval = PyDict_New();
     if not retval {
         return NULL;
@@ -566,7 +574,7 @@ def decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject]
         jacpy_release(retval);
         return NULL;
     }
-    # Get a memory buffer.
+
     biobuf = BIO_new(BIO_s_mem());
     if not biobuf {
         PyErr_SetString(state_ref(module, STATE_SSL_ERROR), "failed to allocate BIO");
@@ -580,7 +588,7 @@ def decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject]
     }
     if ok {
         bio_reset(biobuf);
-        # Should not exceed 20 octets, 160 bits, so buf is big enough.
+
         i2a_ASN1_INTEGER(biobuf, X509_get_serialNumber(certificate));
         ok = set_item(retval, "serialNumber", printed_line(module, biobuf, buf, 1707));
     }
@@ -597,8 +605,7 @@ def decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject]
     if buf {
         PyMem_Free(buf);
     }
-    # Now look for subjectAltName, then Authority Information Access (OCSP
-    # and caIssuers URIs) and the CRL distribution points.
+
     for (key, kind) in [
         ("subjectAltName", 0),
         ("OCSP", 1),
@@ -634,26 +641,20 @@ def decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject]
     return retval;
 }
 
-"""_certificate_to_der()."""
-def certificate_to_der(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
+impl certificate_to_der(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
     bytes_buf = ptr[u8]();
     length = i64(i2d_X509(certificate, &mut bytes_buf));
     if length < 0 {
         set_ssl_error(module, ptr[u8](), 1823);
         return NULL;
     }
-    # This is actually an immutable bytes sequence.
+
     retval = jacpy_bytes_from_memory(bytes_buf, length);
     openssl_free(bytes_buf);
     return retval;
 }
 
-# ---------------------------------------------------------------------------
-# Modules/_ssl/cert.c
-
-"""newCertificate() of the module's Certificate type; with `upref` the X509
-gains a reference, otherwise the certificate takes over the caller's."""
-def certificate_from_x509(
+impl certificate_from_x509(
     module: ptr[PyObject], cert: ptr, upref: bool
 ) -> ptr[PyObject] {
     type = state_ref(module, STATE_CERTIFICATE_TYPE);
@@ -667,7 +668,6 @@ def certificate_from_x509(
     state = CertificateState(cert=cert);
     if jacpy_binding_native_set(instance, Certificate_token.definition_of(type), state)
         < 0 {
-        # The certificate stays the caller's, as when tp_alloc() fails.
         state.cert = ptr();
         if upref {
             X509_free(cert);
@@ -678,8 +678,7 @@ def certificate_from_x509(
     return instance;
 }
 
-"""_PySSL_CertificateFromX509Stack(): a list of Certificates."""
-def certificates_from_stack(
+impl certificates_from_stack(
     module: ptr[PyObject], stack: ptr, upref: bool
 ) -> ptr[PyObject] {
     length = int(OPENSSL_sk_num(stack));
@@ -698,8 +697,7 @@ def certificates_from_stack(
     return result;
 }
 
-"""_x509name_print(): an X509 name in the given print format."""
-def x509name_print(
+impl x509name_print(
     module: ptr[PyObject], name: ptr, indent: int, flags: u64
 ) -> ptr[PyObject] {
     biobuf = BIO_new(BIO_s_mem());
@@ -717,12 +715,10 @@ def x509name_print(
     return res;
 }
 
-"""The tp_name of an object's type, as C code reads it."""
-def type_name_address(instance: ptr[PyObject]) -> ptr[u8] {
+impl type_name_address(instance: ptr[PyObject]) -> ptr[u8] {
     return ptr[PyTypeObject](Py_TYPE(instance)).view(1)[0].tp_name;
 }
 
-"""The "error" handler name _ssl_Certificate_public_bytes_impl() decodes PEM with."""
-def pem_errors -> ptr[u8] {
+impl pem_errors -> ptr[u8] {
     return ERRORS_ERROR;
 }

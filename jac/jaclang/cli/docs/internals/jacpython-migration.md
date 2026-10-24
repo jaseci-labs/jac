@@ -7,6 +7,41 @@ module is ported, what stays C and why, and the design for the two tiers that
 cannot be ported yet: the object model (`Objects/`) and the evaluator
 (`Python/`).
 
+## Detaching from CPython's C
+
+The end state is a JacPython with no dependence on CPython's C source: no
+CPython C file is compiled into the runtime, no upstream C file is read at
+build time, and the previous JacPython builds the next one. The scope:
+
+| Part | End state |
+|---|---|
+| `Objects/`, `Python/`, `Modules/` C | ported to Jac, tier by tier |
+| allocator (`obmalloc.c` and CPython's mimalloc copy) | ported to Jac |
+| instruction set (`Python/bytecodes.c`, `generated_cases.c.h`) | defined in Jac; no translation of the upstream DSL |
+| Argument Clinic signatures, `Python.asdl`/`Python-ast.c`, grammar and token tables | owned as Jac data; generators stop reading upstream C |
+| `Include/` | generated from the Jac layouts and declarations, so C extensions still compile |
+| configure, `Makefile.pre.in`, makesetup, `Tools/build` | replaced by `build_python.zig` and Jac scripts |
+| the build-only host CPython | replaced by the previous JacPython |
+| remote debugging, perf trampolines, `getaddrinfo`/`getnameinfo` fallbacks | dropped, not ported |
+| HACL\*, OpenSSL, sqlite, expat, libmpdec, libffi, zlib, bzip2, xz, zstd | stay vendored libraries |
+
+A dropped feature's files are `# removed:` entries like a port's. `build.sh`
+configures JacPython without the feature, and `runtime/python/interpreter/`
+defines the entry points the rest of the interpreter still calls, each as the
+C file defines it in that configuration (`perf_trampoline.jac`,
+`remote_debugging.jac`). `interpreter/` is also where ports of `Python/` go;
+`prepare_native.py` links every module in it and in `object_model/`.
+
+The order follows cost. The binding layer's per-call overhead (thread-state
+lookups through `pthread_getspecific`, a `sigsetjmp` per `try`, heap
+allocation on call paths, C API checks that are not inlined) comes down before the hot
+core moves: ported modules run 1.5x (pyperformance geometric mean) to 2.3x
+(the module microbenchmarks) slower than the stock build of the same recipe,
+and `dict`, `str`, `int` and the evaluator would carry that cost into every
+program. The containers, numbers and text, `typeobject.c`, the allocator,
+the evaluator and the runtime services follow, then the generated headers,
+the build system and self-hosting.
+
 ## Porting a module
 
 Four generated files and three lists do the bookkeeping. A port touches only
@@ -44,17 +79,24 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
    plain `def` and `glob` stay importable from other Jac modules.
 4. Run `jac run scripts/jacpython/gen_capi.jac` so every new API call has a
    declaration.
-5. Import `PyInit__foo` in `compiler/backends/py/jacpython/native_api.jac`,
-   add the registry line, comment the C files in `cpython-sources.txt` as
-   `# removed: 0 source lines`, and run `jac run scripts/jacpython_manifest.jac --write`.
+5. Add the registry line and run `jac run scripts/jacpython/gen_inittab.jac`,
+   which adds the module's `PyInit__foo` to the table of built-in modules
+   (`runtime/python/inittab.jac`) and wires it in `archwire.jac`. Comment the
+   C files in `cpython-sources.txt` as `# removed: 0 source lines`, and run
+   `jac run scripts/jacpython_manifest.jac --write`.
 6. `jac check` each new file (from the repository root, so the dev source
    reroute checks with this tree's compiler). A single-file check reports
    native lowering failures (E5092) and native placement errors (E5090) for
    the file itself; `jac check native_api.jac` checks the closure's lowering.
 
-`build.sh` writes the `Setup.local` `*static*` block from the registry and fails
-when `native_api.jac` does not import a listed `PyInit`. `smoke.py` and the CI
-compatibility step read the same registry.
+The table of built-in modules, `_PyImport_Inittab`, is C data in
+`inittab.jac`, so makesetup's `config.c` holds no table. A module's PyInit
+address in it is a real use of the binding, and `prepare_native.py` links the
+table, so every registered module enters `jacpython.o`. `build.sh` writes the
+`Setup.local` `*static*` block from the registry (a registered module's rule
+carries only its linker flags and keeps the C rule from applying) and fails
+when the table lacks a listed `PyInit`. `smoke.py` and the CI compatibility
+step read the same registry.
 
 A module over a library that CPython vendors and builds itself names the
 library's archive as its linker flag: `_md5` lists
@@ -308,7 +350,7 @@ only where Jac cannot express the operation:
 | struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`, `stat`, `fstatat` and `statfs`) | helpers (`jacpy_typing_types` returns the interpreter's typing types); object ports read the fields gen_layouts generates and asserts instead (`interp->gc`, `interp->object_state.freelists`) |
 | CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
 | the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem |
-| vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL, mimalloc) | external dependencies, not CPython | built and linked as before |
+| vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL) | external dependencies, not CPython | built and linked as before |
 
 `object_api.c`, `compiler_runtime.c` and `binding_api.c` hold only these. They
 take and return typed pointers (`PyObject *`, `Py_buffer *`,
@@ -388,8 +430,11 @@ the Jac form, not a C helper:
    defines (`PyBool_FromLong`) are written this way. Its entry (and a
    callback trampoline's) never runs the Jac body inside the caller's open
    region: an inline test of the thread's current region picks between one
-   `musttail` jump into the body (no region open, the common case) and a
-   call bracketed by `__jac_region_escape` / `__jac_region_restore`. A C
+   `musttail` jump into the body (no region open, the common case) and one
+   into a cold `<entry>.escape` function whose call is bracketed by
+   `__jac_region_escape` / `__jac_region_restore`. Under native TLS (JacPython's
+   build) the entry itself makes no call that returns to it, so it saves no
+   registers and has no frame. A C
    symbol has one signature program-wide, so a definition whose name
    another linked module declares differently is `E1158`. C blocks are
    order-independent: a function above a block reads and writes the C data
@@ -466,8 +511,9 @@ layouts.
 
 **Removing the C file.** The port marks the file `# removed:` in
 `cpython-sources.txt`, `compiler-bridge.patch` deletes its object from
-`OBJECT_OBJS` (the build-only host keeps it), and `native_api.jac` imports the
-port so its definitions are in `jacpython.o`. The build's absent-input check
+`OBJECT_OBJS` (the build-only host keeps it), and the port's definitions are
+in `jacpython.o` because `prepare_native.py` links every module under
+`object_model/`. The build's absent-input check
 then proves the C object is gone.
 
 What boolobject needed beyond the layouts:
@@ -573,22 +619,161 @@ so a call into C costs a call ThinLTO cannot remove; emitting it as bitcode
 for the ThinLTO link removes that boundary if Jac's LLVM and Zig's LLVM agree
 on the bitcode version.
 
-Order after the leaf types: containers (`tupleobject.c`, `listobject.c`,
-`setobject.c`, `dictobject.c`), then numbers and text (`floatobject.c`,
-`complexobject.c`, `longobject.c`, `bytesobject.c`, `unicodeobject.c`), and
-`typeobject.c` (12,312 lines) last. `mimalloc` and `obmalloc.c` stay the
-allocator.
+The containers start with `tupleobject.c` (`object_model/tuple.jac`). The
+empty tuple is the runtime's static singleton: its address is `_PyRuntime`
+plus `_PyRuntimeState_TUPLE_EMPTY`, a gen_layouts PLATFORM_CONSTANT, and
+`_PyTuple_Resize` reads the reference tracer at two more such offsets.
+Tuples of up to PyTuple_MAXSAVESIZE items and tuple iterators recycle through
+the interpreter's freelists (`_Py_freelists_TUPLES`, one `_Py_freelist` per
+size). `PyTuple_Pack` is a C variadic definition (`*args: VaList`) whose
+symbol cpython_api.jac also declares; the definition takes the declaration's
+place in the module. A declaration's borrowed parameter (`&mut T`) and a
+definition's pointer parameter are one pointer-sized argument, so the two
+signatures match, and `_PyTuple_Resize(pv: ptr[ptr[PyObject]], ...)` serves
+callers that pass `&mut tuple`.
+
+`listobject.c` (`object_model/list.jac`) and `setobject.c`
+(`object_model/set.jac`) follow. `list.sort` keeps listobject.c's natural
+mergesort with its powersort merge order and galloping, and its key
+compares specialized to exact str of 1-byte characters, compact int, float,
+a common `tp_richcompare`, and non-empty tuples. The specialized compare is
+an integer mode on the merge state rather than a function pointer. The merge
+area and the pending-run stack are allocated on the first merge, so a list
+shorter than 64 items sorts without allocating either. Set's
+`setiterobject` is private to setobject.c and is declared in set.jac. Its
+dummy key and `_PySetDummy_Type` are C data there, and `_PySet_Dummy` stays
+exported for the gdb plugin. Arithmetic that C does in `size_t` (a
+slice step near `sys.maxsize`, probe indices, hash mixing) uses the
+wrapping operations, since an overflowing `i64` traps in Jac. Loops that
+compare keys read a set's table and mask again on every slot, as C does,
+because a compare can resize a set.
+
+`floatobject.c` (`object_model/float.jac`) is the first number type.
+Decimal conversions stay with `Python/dtoa.c` and `Python/pystrtod.c`:
+`round()` with a digit count formats with `_Py_dg_dtoa` and parses the
+rounded digits back with `_Py_dg_strtod`, as floatobject.c does, writing the
+digit string into a byte buffer. Every supported target stores `float` and
+`double` as IEEE 754 in its native byte order, so `PyFloat_Pack2/4/8` and
+`PyFloat_Unpack2/4/8` keep only floatobject.c's IEEE paths, and
+`float.__getformat__` reports the byte order the build targets. A 4-byte
+unpack reads its bits back as a `float` through a scratch glob
+(`f32_slot`). `sys.float_info` is the struct sequence floatobject.c builds.
+
+`dictobject.c` and `odictobject.c` (`object_model/dict.jac`, `odict.jac`)
+keep CPython's compact table: a keys object holds the index table (1, 2, 4
+or 8 byte slots by size) and the entries, general or all-str, and split
+tables share one keys object between the instances of a class while each
+instance (or its inline values) keeps its own values and their insertion
+order. The keys object is read through gen_layouts offsets
+(`PyDictKeysObject_*`), and the empty keys object is an immortal Jac C glob
+with the same header and eight `DKIX_EMPTY` index bytes. The managed-dict
+and inline-values functions `typeobject.c` and `object.c` call are defined
+here. OrderedDict keeps its linked list of nodes and the "fast nodes" table
+indexed like the dict's entries, rebuilt when the dict's keys object
+changes.
+
+`descrobject.c`, `methodobject.c`, `funcobject.c`, `weakrefobject.c`,
+`moduleobject.c`, `typevarobject.c` and `exceptions.c` follow
+(`descr.jac`, `cfunction.jac`, `func.jac`, `weakref.jac`, `module.jac`,
+`typevar.jac`, `exceptions.jac`). Where a header declares a struct through a
+macro member (`PyDescr_COMMON`, `_Py_COMMON_FIELDS` of the function and
+frame-constructor headers), the port reads the fields at gen_layouts
+`offsetof` constants instead of a layout record. `PyModuleDef` stays opaque
+in cpython_api.jac, so its layout is named `ModuleDef`. The exception types
+are generated from exceptions.c's `*ExtendsException` table; the
+Windows-only `winerror` handling is not built. TypeVar, ParamSpec,
+TypeVarTuple, Generic and the constant evaluator are heap types made from
+Jac `PyType_Spec` data at interpreter start, as in C.
+
+The C API functions that take a C string (`PyDict_SetItemString`,
+`PyModule_New`, the `PyUnicode*Error_SetReason` setters, ...) are declared
+with `ptr[u8]` in cpython_api.jac, as their Jac definitions take them, so
+callers pass `ptr[u8]("literal")`. A key computed as a Jac `str` goes
+through `capi.dict_set_text` / `dict_get_text`, which make the key object
+and call `PyDict_SetItem` / `PyDict_GetItemRef`.
+
+`memoryobject.c` (`object_model/memory.jac`) keeps the managed buffer that
+every view of one export shares, and the views' shape and strides in the
+object's trailing array. Items in native formats are packed and unpacked in
+Jac; other formats go through the `struct` module, as in C. The `Py_buffer`
+values C keeps on the stack are heap allocations freed on every path.
+
+`longobject.c` (`object_model/long.jac`) keeps 30-bit digits and the
+`lv_tag` sign and size word. The small ints stay in `_PyRuntime`, read in
+place at the offset gen_layouts records, so the evaluator's header inlines
+(`_PyLong_GetZero`, `LOAD_SMALL_INT`) still see the same objects.
+Multiplication switches to Karatsuba and conversions of very long ints call
+into `_pylong` at the same thresholds as C. Where C uses stack arrays (the
+`pow` window table, `_PyLong_Frexp`'s digits), the port allocates.
+
+`bytes_methods.c` (`object_model/bytes_methods.jac`) carries the
+`_Py_bytes_*` functions and, as `bl_*` helpers over a byte pointer and a
+length, the byte instantiation of `Objects/stringlib` (fastsearch with its
+two-way, Horspool and adaptive paths at C's thresholds, split, partition,
+replace, join, the padding methods). bytes and bytearray share it; the
+stringlib headers stay until `unicodeobject.c`, which includes them, is
+ported.
+
+`bytesobject.c` (`object_model/bytes.jac`) reads the empty and one-byte
+bytes objects in place in `_PyRuntime`, like the small ints, and defines the
+`_PyBytesWriter` API that unicodeobject.c, `_pickle`, `_struct` and the int
+port write through. `PyBytes_FromFormatV` stays C (in object_api.c): a Jac
+definition cannot receive a `va_list`. `PyBytes_FromFormat`, which is
+variadic, is Jac. A Jac `bytes` value reaches `PyBytes_FromStringAndSize`'s
+callers through `jacpy_bytes_from_payload`, since the C definition takes a
+pointer.
+
+`bytearrayobject.c` (`object_model/bytearray.jac`) keeps C's resize
+policy (1.125 overallocation and the `ob_start` offset that makes deleting
+from the front O(1)) and counts buffer exports in `ob_exports`, so a resize
+during an export raises as in C. Its search, split and padding methods run
+on the shared byte stringlib.
+
+`unicodeobject.c` (`object_model/unicode.jac`) builds objects
+byte-identical to C's compact and legacy layouts, reading and writing the
+`state` bit-field through masks, because the evaluator's header inlines and
+C extensions read str objects directly. The empty string, the one-character
+strings and the interned dict live in `_PyRuntime` and the interpreter and
+are used in place. Search on 1-byte strings runs on the byte stringlib;
+2- and 4-byte strings have width-specific copies of fastsearch.
+`unicodectype.c` is `object_model/unicodectype.jac` over
+`unicodetype_db.jac`, which `scripts/jacpython/gen_unicodetype.jac` writes
+from the pinned sources. `PyUnicode_FromFormatV` and its helpers, which
+consume a `va_list`, and the wrapper for the generated static-strings
+initializer stay C in object_api.c. Jac `str` values reach the C-string
+API through `jacpy_unicode_from_text`/`_intern_text`/`_equal_text`.
+
+`object.c` (`object_model/object.jac`) holds attribute lookup, rich
+comparison, hashing, truth, repr/str and the None and NotImplemented
+singletons as C data. `_Py_Dealloc` stays C (in object_api.c): its trashcan
+test reads the machine stack pointer, and it runs on every deallocation.
+The attribute C API takes `ptr[u8]` names; Jac `str` names go through
+`jacpy_object_getattr_text` / `_setattr_text` / `_getoptionalattr_text`.
+compiler-bridge.patch no longer patches object.c: the port's static-type
+table leaves out the symtable and instruction-sequence types itself.
+
+`call.c` and `abstract.c` (`object_model/call.jac`, `abstract.jac`) keep
+C's dispatch order: vectorcall before `tp_call`, the `nb_*` slots read at
+their `PyNumberMethods` offsets with the subtype-first rule. The functions
+that receive or forward a `va_list` (`PyObject_CallFunction`,
+`PyObject_CallMethod` and their variants) stay C in object_api.c; the
+`...ObjArgs` calls are Jac variadic definitions.
+
+Order after these: `typeobject.c` (12,312 lines) last. The allocator (`obmalloc.c` and the mimalloc copy under
+`Objects/mimalloc/`) follows the object model.
 
 ## Evaluator (`Python/`, 132k lines)
 
 The instruction set is defined once, in the DSL of `Python/bytecodes.c`
 (5,549 lines, 359 instruction, op, macro and family definitions);
 `Tools/cases_generator` turns it into `generated_cases.c.h` (12,528 lines).
-The Jac evaluator follows the clinic pattern: a Jac backend for
-`cases_generator` reads the same definitions and emits Jac instruction
-bodies. The bodies are restricted C over macros (`DEOPT_IF`, `ERROR_IF`,
-`PyStackRef_*`), so that backend is a translator for that dialect, not a
-general C translator. Requirements beyond the object model:
+The Jac evaluator owns its instruction definitions: each instruction, op,
+macro and family is Jac, with the stack effects and metadata the generator
+derives (`opcode_meta.jac`, the `_opcode` tables) produced from those
+definitions, so the build reads no upstream C. The bodies are restricted C
+over macros (`DEOPT_IF`, `ERROR_IF`, `PyStackRef_*`); a one-time conversion
+writes them as Jac, after which the Jac definitions are the source.
+Requirements beyond the object model:
 
 - tagged stack references (`_PyStackRef` stores tag bits in the pointer):
   pointer/integer conversion and bit operations (gap 1);

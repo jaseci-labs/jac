@@ -1,12 +1,3 @@
-"""The datetime.tzinfo and datetime.timezone types of the _datetime module.
-
-Modules/_datetimemodule.c's PyDateTime_TZInfo and PyDateTime_TimeZone
-implementations in native Jac. `PyDateTime_TZInfoType`,
-`PyDateTime_TimeZoneType` and the immortal `utc_timezone` (whose offset is
-the immortal zero timedelta) are C data under their C names. See
-../LICENSE.cpython.
-"""
-
 import from c {
     glob PyType_Type: PyTypeObject; glob PyDateTime_TZInfoType: PyTypeObject = PyTypeObject(
              ob_base=PyVarObject(
@@ -43,7 +34,6 @@ import from c {
              tp_base=addressof(PyDateTime_TZInfoType),
              tp_new=timezone_new
          ),
-         # The UTC timezone: timezone(timedelta(0)), immortal.
          utc_timezone: PyDateTime_TimeZone = PyDateTime_TimeZone(
              ob_base=_object(
                  ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
@@ -54,31 +44,70 @@ import from c {
          );
 }
 
-# ---------------------------------------------------------------------------
-# tzinfo: a pure abstract base class, so it does nothing beyond raising
-# NotImplementedError. For reasons having to do with pickling of subclasses,
-# tzinfo objects can be instantiated.
+def tzinfo_nogo(methodname: str) -> ptr[PyObject];
 
-def tzinfo_nogo(methodname: str) -> ptr[PyObject] {
+def tzinfo_tzname(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def tzinfo_utcoffset(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def tzinfo_dst(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def tzinfo_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_offset(op: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_name(op: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def timezone_dealloc(op: ptr[PyObject]);
+
+def timezone_richcompare(
+    self: ptr[PyObject], other: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def timezone_hash(op: ptr[PyObject]) -> i64;
+
+def timezone_check_argument(dt: ptr[PyObject], meth: str) -> int;
+
+def timezone_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_str(op: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_tzname(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_utcoffset(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_dst(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_fromutc(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def timezone_getinitargs(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+impl tzinfo_nogo(methodname: str) -> ptr[PyObject] {
     PyErr_Format(
         PyExc_NotImplementedError, "a tzinfo subclass must implement %s()", methodname
     );
     return NULL;
 }
 
-def tzinfo_tzname(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl tzinfo_tzname(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     return tzinfo_nogo("tzname");
 }
 
-def tzinfo_utcoffset(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl tzinfo_utcoffset(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     return tzinfo_nogo("utcoffset");
 }
 
-def tzinfo_dst(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl tzinfo_dst(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     return tzinfo_nogo("dst");
 }
 
-def tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     if not datetime_check(dt) {
         PyErr_SetString(PyExc_TypeError, "fromutc: argument must be a datetime");
         return NULL;
@@ -140,9 +169,8 @@ def tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""Pickle support, solely so that tzinfo subclasses can use pickling."""
-def tzinfo_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    name = PyUnicode_InternFromString("__getinitargs__");
+impl tzinfo_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    name = PyUnicode_InternFromString(ptr[u8]("__getinitargs__"));
     if not name {
         return NULL;
     }
@@ -170,18 +198,15 @@ def tzinfo_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue("(ONN)", type_of(self), args, state);
 }
 
-# ---------------------------------------------------------------------------
-# timezone.
-
-def timezone_offset(op: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_offset(op: ptr[PyObject]) -> ptr[PyObject] {
     return ptr[PyDateTime_TimeZone](op).view(1)[0].offset;
 }
 
-def timezone_name(op: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_name(op: ptr[PyObject]) -> ptr[PyObject] {
     return ptr[PyDateTime_TimeZone](op).view(1)[0].name;
 }
 
-def timezone_new(
+impl timezone_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -196,7 +221,7 @@ def timezone_new(
     return new_timezone(values[0].object, values[1].object);
 }
 
-def timezone_dealloc(op: ptr[PyObject]) {
+impl timezone_dealloc(op: ptr[PyObject]) {
     record = ptr[PyDateTime_TimeZone](op).view(1);
     offset = record[0].offset;
     record[0].offset = NULL;
@@ -207,7 +232,7 @@ def timezone_dealloc(op: ptr[PyObject]) {
     type_free(op);
 }
 
-def timezone_richcompare(
+impl timezone_richcompare(
     self: ptr[PyObject], other: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if int(op) != Py_EQ and int(op) != Py_NE {
@@ -219,13 +244,11 @@ def timezone_richcompare(
     return delta_richcompare(timezone_offset(self), timezone_offset(other), op);
 }
 
-def timezone_hash(op: ptr[PyObject]) -> i64 {
+impl timezone_hash(op: ptr[PyObject]) -> i64 {
     return delta_hash(timezone_offset(op));
 }
 
-"""Check the argument passed to tzname, utcoffset, or dst: 0, or -1 with
-TypeError."""
-def timezone_check_argument(dt: ptr[PyObject], meth: str) -> int {
+impl timezone_check_argument(dt: ptr[PyObject], meth: str) -> int {
     if dt == Py_None or datetime_check(dt) {
         return 0;
     }
@@ -238,9 +261,7 @@ def timezone_check_argument(dt: ptr[PyObject], meth: str) -> int {
     return -1;
 }
 
-def timezone_repr(op: ptr[PyObject]) -> ptr[PyObject] {
-    # Although timezone is not subclassable, it is convenient to use
-    # Py_TYPE(self)->tp_name here.
+impl timezone_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     type_name = type_name_of(op);
     if op == utc() {
         return PyUnicode_FromFormat("%s.utc", type_name);
@@ -253,7 +274,7 @@ def timezone_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def timezone_str(op: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_str(op: ptr[PyObject]) -> ptr[PyObject] {
     if timezone_name(op) {
         return Py_NewRef(timezone_name(op));
     }
@@ -264,9 +285,9 @@ def timezone_str(op: ptr[PyObject]) -> ptr[PyObject] {
             and td_seconds(offset) == 0
             and td_microseconds(offset) == 0
         ) {
-        return PyUnicode_FromString("UTC");
+        return PyUnicode_FromString(ptr[u8]("UTC"));
     }
-    # Offset is normalized, so it is negative if days < 0
+
     sign = 43;
     if td_days(offset) < 0 {
         sign = 45;
@@ -277,7 +298,7 @@ def timezone_str(op: ptr[PyObject]) -> ptr[PyObject] {
     } else {
         offset = Py_NewRef(offset);
     }
-    # Offset is not negative here.
+
     microseconds = td_microseconds(offset);
     seconds = td_seconds(offset);
     jacpy_release(offset);
@@ -303,28 +324,28 @@ def timezone_str(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat("UTC%c%02ld:%02ld", i32(sign), hours, minutes);
 }
 
-def timezone_tzname(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_tzname(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     if timezone_check_argument(dt, "tzname") == -1 {
         return NULL;
     }
     return timezone_str(op);
 }
 
-def timezone_utcoffset(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_utcoffset(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     if timezone_check_argument(dt, "utcoffset") == -1 {
         return NULL;
     }
     return Py_NewRef(timezone_offset(op));
 }
 
-def timezone_dst(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_dst(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     if timezone_check_argument(dt, "dst") == -1 {
         return NULL;
     }
     return Py_NewRef(Py_None);
 }
 
-def timezone_fromutc(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_fromutc(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not datetime_check(arg) {
         PyErr_SetString(PyExc_TypeError, "fromutc: argument must be a datetime");
         return NULL;
@@ -336,7 +357,7 @@ def timezone_fromutc(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return add_datetime_timedelta(arg, timezone_offset(op), 1);
 }
 
-def timezone_getinitargs(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl timezone_getinitargs(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if not timezone_name(op) {
         return PyTuple_Pack(1, timezone_offset(op));
     }

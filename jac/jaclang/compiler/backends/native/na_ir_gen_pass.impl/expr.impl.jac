@@ -313,7 +313,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name=f"rearm.envp.{k}");
-        sj = self.builder.call(self._exc_setjmp_fn(), [env_i8p], name=f"rearm.sj.{k}");
+        sj = self._emit_exc_arm(self.builder, env_i8p, f"rearm.sj.{k}");
         is_exc = self.builder.icmp_signed(
             "!=", sj, ir.Constant(i32, 0), name=f"rearm.isexc.{k}"
         );
@@ -454,11 +454,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if isinstance(nd.type, SemanticFunctionType) and nd.type.return_type is not None {
         inferred = self._lower_type(nd.type.return_type);
         if inferred is not None {
-            ret_type = inferred;
+            ret_type = self._byvalue_ret_type(inferred);
         }
     }
     if sig is not None and sig.return_type is not None {
-        ret_type = self._resolve_jac_type(sig.return_type);
+        ret_type = self._byvalue_ret_type(self._resolve_jac_type(sig.return_type));
     }
 
     captures: list[tuple[str, ir.Value, ir.Type]] = [];
@@ -2030,6 +2030,22 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     lent = c_lent_arg_elem(nd);
     if lent is not None {
         return self._c_lent_address(nd, lent);
+    }
+
+    if is_borrow_kind(nd.ownership) {
+        borrow_param = c_lent_param(nd, allow_borrow=True);
+        if borrow_param is not None and nd.parent is not None {
+            slot = self._clib_place_ptr(nd);
+            want = self._c_scalar_llvm(c_param_type(nd.parent, borrow_param));
+            if slot is not None
+                and want is not None
+                and isinstance(slot.type, ir.PointerType)
+                and slot.type.pointee == want {
+                return self.builder.ptrtoint(
+                    slot, ir.IntType(64), name="c.lend.borrow"
+                );
+            }
+        }
     }
     operand = self._codegen_expr(nd.operand);
     if operand is None {

@@ -1,12 +1,3 @@
-"""The t-string Template type: Objects/templateobject.c in native Jac.
-
-`_PyTemplate_Type` (string.templatelib.Template) and `_PyTemplateIter_Type`
-are C data Jac defines under their C names, and `_PyTemplate_Build` (which
-the evaluator's BUILD_TEMPLATE calls) and `_PyTemplate_Concat` are C
-functions under theirs. The object layouts come from layouts.jac. See
-../LICENSE.cpython.
-"""
-
 import from c {
     glob _PyTemplateIter_Type: PyTypeObject = PyTypeObject(
              ob_base=PyVarObject(
@@ -96,12 +87,77 @@ import from c {
          );
 }
 
-# ---------------------------------------------------------------- iterator
-def templateiter_of(op: ptr[PyObject]) -> ptr[templateiterobject] {
+def templateiter_of(op: ptr[PyObject]) -> ptr[templateiterobject];
+
+def templateiter_next(op: ptr[PyObject]) -> ptr[PyObject];
+
+def templateiter_dealloc(op: ptr[PyObject]);
+
+def templateiter_clear(op: ptr[PyObject]) -> i32;
+
+def templateiter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def template_of(op: ptr[PyObject]) -> ptr[templateobject];
+
+def template_check_exact(op: ptr[PyObject]) -> bool;
+
+def empty_string -> ptr[PyObject];
+
+def template_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def template_dealloc(op: ptr[PyObject]);
+
+def template_clear(op: ptr[PyObject]) -> i32;
+
+def template_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def template_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def template_iter(op: ptr[PyObject]) -> ptr[PyObject];
+
+def template_strings_concat(
+    left: ptr[PyObject], right: ptr[PyObject]
+) -> ptr[PyObject];
+
+def template_concat_templates(t: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def template_values_get(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def template_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+import from c {
+    def _PyTemplate_Concat(t: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+        if template_check_exact(t) and template_check_exact(other) {
+            return template_concat_templates(t, other);
+        }
+        PyErr_Format(
+            PyExc_TypeError,
+            "can only concatenate string.templatelib.Template (not \"%T\") to string.templatelib.Template",
+            other
+        );
+        return NULL;
+    }  def _PyTemplate_Build(
+        strings: ptr[PyObject], interpolations: ptr[PyObject]
+    ) -> ptr[PyObject] {
+        op = _PyObject_GC_New(ptr[PyObject](addressof(_PyTemplate_Type)));
+        if not op {
+            return NULL;
+        }
+        t = template_of(op);
+        t.view(1)[0].strings = Py_NewRef(strings);
+        t.view(1)[0].interpolations = Py_NewRef(interpolations);
+        object_gc_track(op);
+        return op;
+    }
+}
+
+impl templateiter_of(op: ptr[PyObject]) -> ptr[templateiterobject] {
     return ptr[templateiterobject](op);
 }
 
-def templateiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
+impl templateiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
     it = templateiter_of(op);
     item = NULL;
     if it.view(1)[0].from_strings != 0 {
@@ -123,13 +179,13 @@ def templateiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
     return item;
 }
 
-def templateiter_dealloc(op: ptr[PyObject]) {
+impl templateiter_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     object_type(op).view(1)[0].tp_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
 
-def templateiter_clear(op: ptr[PyObject]) -> i32 {
+impl templateiter_clear(op: ptr[PyObject]) -> i32 {
     it = templateiter_of(op);
     strings = it.view(1)[0].stringsiter;
     it.view(1)[0].stringsiter = NULL;
@@ -140,7 +196,7 @@ def templateiter_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def templateiter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl templateiter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     it = templateiter_of(op);
     status = visit_reference(it.view(1)[0].stringsiter, visitor, arg);
     if status == 0 {
@@ -149,22 +205,19 @@ def templateiter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return status;
 }
 
-# ---------------------------------------------------------------- template
-def template_of(op: ptr[PyObject]) -> ptr[templateobject] {
+impl template_of(op: ptr[PyObject]) -> ptr[templateobject] {
     return ptr[templateobject](op);
 }
 
-"""_PyTemplate_CheckExact."""
-def template_check_exact(op: ptr[PyObject]) -> bool {
+impl template_check_exact(op: ptr[PyObject]) -> bool {
     return object_type(op) == addressof(_PyTemplate_Type);
 }
 
-"""The empty string (_Py_STR(empty)), immortal."""
-def empty_string -> ptr[PyObject] {
+impl empty_string -> ptr[PyObject] {
     return Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
 }
 
-def template_new(
+impl template_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwds {
@@ -225,7 +278,7 @@ def template_new(
                     jacpy_release(interpolations);
                     return NULL;
                 }
-                # Replace laststring with concat
+
                 tuple_set_item(strings, stringsidx - 1, concat);
                 jacpy_release(laststring);
             } else {
@@ -253,13 +306,13 @@ def template_new(
     return template;
 }
 
-def template_dealloc(op: ptr[PyObject]) {
+impl template_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     object_type(op).view(1)[0].tp_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
 
-def template_clear(op: ptr[PyObject]) -> i32 {
+impl template_clear(op: ptr[PyObject]) -> i32 {
     t = template_of(op);
     strings = t.view(1)[0].strings;
     t.view(1)[0].strings = NULL;
@@ -270,7 +323,7 @@ def template_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def template_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl template_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     t = template_of(op);
     status = visit_reference(t.view(1)[0].strings, visitor, arg);
     if status == 0 {
@@ -279,7 +332,7 @@ def template_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return status;
 }
 
-def template_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl template_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     t = template_of(op);
     return PyUnicode_FromFormat(
         "%s(strings=%R, interpolations=%R)",
@@ -289,7 +342,7 @@ def template_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def template_iter(op: ptr[PyObject]) -> ptr[PyObject] {
+impl template_iter(op: ptr[PyObject]) -> ptr[PyObject] {
     t = template_of(op);
     iterator = _PyObject_GC_New(ptr[PyObject](addressof(_PyTemplateIter_Type)));
     if not iterator {
@@ -314,7 +367,7 @@ def template_iter(op: ptr[PyObject]) -> ptr[PyObject] {
     return iterator;
 }
 
-def template_strings_concat(
+impl template_strings_concat(
     left: ptr[PyObject], right: ptr[PyObject]
 ) -> ptr[PyObject] {
     left_stringslen = object_size(left);
@@ -344,7 +397,9 @@ def template_strings_concat(
     return newstrings;
 }
 
-def template_concat_templates(t: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl template_concat_templates(
+    t: ptr[PyObject], other: ptr[PyObject]
+) -> ptr[PyObject] {
     newstrings = template_strings_concat(
         template_of(t).view(1)[0].strings, template_of(other).view(1)[0].strings
     );
@@ -365,7 +420,7 @@ def template_concat_templates(t: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyO
     return newtemplate;
 }
 
-def template_values_get(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl template_values_get(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     interpolations = template_of(op).view(1)[0].interpolations;
     length = object_size(interpolations);
     values = PyTuple_New(length);
@@ -379,12 +434,12 @@ def template_values_get(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return values;
 }
 
-def template_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl template_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     module = PyImport_ImportModule("string.templatelib");
     if not module {
         return NULL;
     }
-    func = PyObject_GetAttrString(module, "_template_unpickle");
+    func = PyObject_GetAttrString(module, ptr[u8]("_template_unpickle"));
     jacpy_release(module);
     if not func {
         return NULL;
@@ -395,30 +450,4 @@ def template_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     );
     jacpy_release(func);
     return result;
-}
-
-import from c {
-    def _PyTemplate_Concat(t: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
-        if template_check_exact(t) and template_check_exact(other) {
-            return template_concat_templates(t, other);
-        }
-        PyErr_Format(
-            PyExc_TypeError,
-            "can only concatenate string.templatelib.Template (not \"%T\") to string.templatelib.Template",
-            other
-        );
-        return NULL;
-    }  def _PyTemplate_Build(
-        strings: ptr[PyObject], interpolations: ptr[PyObject]
-    ) -> ptr[PyObject] {
-        op = _PyObject_GC_New(ptr[PyObject](addressof(_PyTemplate_Type)));
-        if not op {
-            return NULL;
-        }
-        t = template_of(op);
-        t.view(1)[0].strings = Py_NewRef(strings);
-        t.view(1)[0].interpolations = Py_NewRef(interpolations);
-        object_gc_track(op);
-        return op;
-    }
 }

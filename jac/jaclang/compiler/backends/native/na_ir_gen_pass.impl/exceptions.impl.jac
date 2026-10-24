@@ -1,3 +1,5 @@
+glob RAISE_SITE_INLINE_COST: int = 5;
+
 impl NaIRGenPass._get_exception_state_type -> ir.Type {
     if self._exc_state_type is not None {
         return self._exc_state_type;
@@ -28,7 +30,8 @@ impl NaIRGenPass._declare_exception_runtime -> None {
     setjmp_fn = self._get_or_declare_extern(setjmp_name, i32, [i8p]);
     setjmp_fn.attributes.add("returns_twice");
 
-    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), [i8p, i32]);
+    longjmp_args = [i8p] if self._exc_builtin_sjlj() else [i8p, i32];
+    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), longjmp_args);
     longjmp_fn.attributes.add("noreturn");
 
     self._get_or_declare_extern("abort", ir.VoidType(), []);
@@ -53,7 +56,9 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
     writes -- so every frame raises through the matching `_longjmp`. wasm
     keeps the portable names, which its SjLj lowering matches. Windows raises
     through the floor's own pair (win_floor.jac): the UCRT's `longjmp` unwinds
-    through exception tables a Jac image does not carry.
+    through exception tables a Jac image does not carry. With `native_sjlj`
+    an x86-64 frame arms with LLVM's builtin pair instead: the arming is a few
+    stores in the frame (`_emit_exc_arm`), not a call into libc.
     """;
     triple = str(self.llvm_module.triple or "").lower();
     if "wasm" in triple {
@@ -64,7 +69,48 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
             return ("__jac_setjmp", "__jac_longjmp");
         }
     }
+    if self._native_sjlj_on() and triple.startswith("x86_64") {
+        return ("llvm.eh.sjlj.setjmp", "llvm.eh.sjlj.longjmp");
+    }
     return ("_setjmp", "_longjmp");
+}
+
+impl NaIRGenPass._exc_builtin_sjlj -> bool {
+    return self._exc_jmp_symbols()[0] == "llvm.eh.sjlj.setjmp";
+}
+
+impl NaIRGenPass._emit_exc_arm(
+    b: ir.IRBuilder, env: ir.Value, name: str = ""
+) -> ir.Value {
+    """Arm the frame whose jump buffer is `env`; nonzero when a raise lands.
+
+    LLVM's builtin setjmp reads the frame and stack pointers from the buffer's
+    first and third words, which the arming function stores itself. LLVM
+    gives an intrinsic its own declaration attributes, so the call carries
+    `returns_twice` itself: without it the code generator reuses the stack
+    slots a raise lands back on while the guarded body runs. Nor does the
+    intrinsic keep LLVM from inlining the arming function, and an inlined
+    arming escapes the volatile locals `_volatilize_setjmp_locals` gives the
+    function it was emitted in, so the function is kept out of line.
+    """;
+    if self._exc_builtin_sjlj() {
+        b.function.attributes.add("noinline");
+        i8p = ir.IntType(8).as_pointer();
+        i32 = ir.IntType(32);
+        words = b.bitcast(env, i8p.as_pointer());
+        frame = b.call(
+            self._get_or_declare_extern("llvm.frameaddress.p0", i8p, [i32]),
+            [ir.Constant(i32, 0)]
+        );
+        b.store(frame, words);
+        stack = b.call(self._get_or_declare_extern("llvm.stacksave.p0", i8p, []), []);
+        b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
+    }
+    armed = b.call(self._exc_setjmp_fn(), [env], name=name);
+    if self._exc_builtin_sjlj() {
+        armed.attributes.add("returns_twice");
+    }
+    return armed;
 }
 
 impl NaIRGenPass._exc_setjmp_fn -> ir.Function {
@@ -151,6 +197,14 @@ impl NaIRGenPass._emit_exc_pop_helper -> None {
 }
 
 impl NaIRGenPass._emit_exc_raise_helper -> None {
+    """Every checked operation branches to a call of this helper, and LLVM's
+    inliner charges each call site as a full call: its penalty plus one
+    instruction per argument. A small function with a few overflow and null
+    checks then costs more than the inline threshold, so helpers a few loads
+    long stay out of line. A raise site never returns and sits in a block
+    LLVM already treats as cold, so the helper tells the inliner what a site
+    really adds: about one instruction (`call-inline-cost`).
+    """;
     exc_state_type = self._get_exception_state_type();
     exc_state_ptr = exc_state_type.as_pointer();
     i8p = ir.IntType(8).as_pointer();
@@ -158,6 +212,8 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     fnty = ir.FunctionType(ir.VoidType(), [i8p, i32, i8p]);
     func = self._define_function("__jac_exc_raise", fnty);
     func.linkage = "private";
+    func.attributes.add("noreturn");
+    func.attributes.add_string("call-inline-cost", str(RAISE_SITE_INLINE_COST));
     func.args[0].name = "obj";
     func.args[1].name = "type_id";
     func.args[2].name = "msg";
@@ -249,7 +305,12 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="env.i8p");
-    b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
+    if self._exc_builtin_sjlj() {
+        func.attributes.add("noinline");
+        b.call(self._exc_longjmp_fn(), [env_i8p]);
+    } else {
+        b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
+    }
     b.unreachable();
     self._exc_raise_fn = func;
 }
@@ -1342,7 +1403,17 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     fast_ret = func.append_basic_block("fast.ret");
     miss_bb = func.append_basic_block("miss");
     b = ir.IRBuilder(entry_bb);
-    if self.rc_threaded_gv is not None {
+    if self._native_tls_on() {
+        held = b.call(get_fn, [], name="exc.tl");
+        b.cbranch(
+            b.icmp_unsigned("!=", held, ir.Constant(i64, 0), name="exc.tl.set"),
+            fast_bb,
+            miss_bb
+        );
+        b = ir.IRBuilder(fast_bb);
+        b.ret(b.inttoptr(held, context_ptr));
+        func.blocks.remove(fast_ret);
+    } elif self.rc_threaded_gv is not None {
         mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
         b.cbranch(
             b.icmp_unsigned(
@@ -1354,15 +1425,19 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     } else {
         b.branch(miss_bb);
     }
-    b = ir.IRBuilder(fast_bb);
-    main_ctx = b.load(main_gv, name="exc.main");
-    b.cbranch(
-        b.icmp_unsigned("==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"),
-        miss_bb,
-        fast_ret
-    );
-    b = ir.IRBuilder(fast_ret);
-    b.ret(b.bitcast(main_ctx, context_ptr));
+    if not self._native_tls_on() {
+        b = ir.IRBuilder(fast_bb);
+        main_ctx = b.load(main_gv, name="exc.main");
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"
+            ),
+            miss_bb,
+            fast_ret
+        );
+        b = ir.IRBuilder(fast_ret);
+        b.ret(b.bitcast(main_ctx, context_ptr));
+    }
     b = ir.IRBuilder(miss_bb);
     b.ret(b.call(slow_fn, [], name="exc.slow"));
 
@@ -1386,7 +1461,7 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     found.add_incoming(value, slow_entry);
     found.add_incoming(created, create);
     context = b.inttoptr(found, context_ptr);
-    if self.rc_threaded_gv is None {
+    if self.rc_threaded_gv is None or self._native_tls_on() {
         b.ret(context);
         return func;
     }
@@ -2244,7 +2319,7 @@ impl NaIRGenPass._push_exception_handler(
     self._emit_exc_push(self.builder, state);
     self.builder.store(self._region_depth(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
-    result = self.builder.call(self._exc_setjmp_fn(), [self.builder.bitcast(env, i8p)]);
+    result = self._emit_exc_arm(self.builder, self.builder.bitcast(env, i8p));
     self.builder.cbranch(
         self.builder.icmp_signed("!=", result, ir.Constant(i32, 0)), dispatch, body
     );

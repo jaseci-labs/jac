@@ -1,15 +1,6 @@
-"""The _blake2 module: blake2b and blake2s over blake2b's generated methods;
-only their constructors differ."""
+def:priv blake2_dealloc(instance: ptr[PyObject]);
 
-def:priv blake2_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, Blake2_token.definition_of(Py_TYPE(instance)));
-}
-
-def:priv blake2_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, Blake2_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+def:priv blake2_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
 glob:priv PROPERTIES: list[PropertyDefinition] = [
          PropertyDefinition("name", PropertyCallbacks(read=get_name)),
@@ -38,19 +29,52 @@ glob:priv blake2b_type = TypeDefinition(
          PROPERTIES
      );
 
-"""ADD_INT: a constant in the type's own dictionary."""
-def:priv add_type_int(type_dict: ptr[PyObject], name: str, value: i32) -> bool {
+def:priv add_type_int(type_dict: ptr[PyObject], name: str, value: i32) -> bool;
+
+def:priv add_blake2_type(
+    module: ptr[PyObject],
+    slot: int,
+    definition: TypeDefinition,
+    prefix: str,
+    salt: i32,
+    person: i32,
+    key: i32,
+    digest: i32
+) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_blake2",
+         "_blake2b provides BLAKE2b for hashlib\n",
+         [],
+         ModuleHooks(execute=execute),
+         2
+     );
+
+def:pub PyInit__blake2 -> ptr[PyObject];
+
+impl blake2_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, Blake2_token.definition_of(Py_TYPE(instance)));
+}
+
+impl blake2_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, Blake2_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl add_type_int(type_dict: ptr[PyObject], name: str, value: i32) -> bool {
     number = PyLong_FromLong(i64(value));
     if not number {
         return False;
     }
-    result = PyDict_SetItemString(type_dict, name, number);
+    result = dict_set_text(type_dict, name, number);
     jacpy_release(number);
     return result == 0;
 }
 
-"""One type, its size constants and the module's copies of them."""
-def:priv add_blake2_type(
+impl add_blake2_type(
     module: ptr[PyObject],
     slot: int,
     definition: TypeDefinition,
@@ -81,7 +105,7 @@ def:priv add_blake2_type(
             == 0;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     Blake2_token.handle = blake2b_type.handle;
     Blake2_token.share(blake2s_type.handle);
     if PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0
@@ -110,14 +134,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_blake2",
-         "_blake2b provides BLAKE2b for hashlib\n",
-         [],
-         ModuleHooks(execute=execute),
-         2
-     );
-
-def:pub PyInit__blake2 -> ptr[PyObject] {
+impl PyInit__blake2 -> ptr[PyObject] {
     return definition.initialize();
 }

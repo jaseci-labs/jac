@@ -1,10 +1,3 @@
-"""Unix system logger interface.
-
-Derived from CPython 3.14.6 Modules/syslogmodule.c; see ../LICENSE.cpython.
-The logger is process-wide, so the open flag and the ident string it keeps
-alive are process globals, and only the main interpreter may open or close it.
-"""
-
 import from c {
     def openlog(ident: ptr[u8], option: i32, facility: i32);  def closelog;  def setlogmask(
         mask: i32
@@ -14,12 +7,35 @@ import from c {
 glob:priv ident_object: ptr[PyObject] = NULL,
      log_open: bool = False;
 
-def:priv is_main_interpreter -> bool {
+def:priv is_main_interpreter -> bool;
+
+def:priv syslog_get_argv -> ptr[PyObject];
+
+def:priv audit(event: str, values: list[ptr[PyObject]]) -> bool;
+
+def syslog_openlog_impl(
+    module: ptr[PyObject], ident: ptr[PyObject], logopt: i64, facility: i64
+) -> ptr[PyObject];
+
+def syslog_syslog_impl(
+    module: ptr[PyObject], group_left_1: i32, priority: i32, message: str
+) -> ptr[PyObject];
+
+def syslog_closelog_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def syslog_setlogmask_impl(module: ptr[PyObject], maskpri: i64) -> i64;
+
+def syslog_LOG_MASK_impl(module: ptr[PyObject], pri: i64) -> i64;
+
+def syslog_LOG_UPTO_impl(module: ptr[PyObject], pri: i64) -> i64;
+
+def default_priority -> i32;
+
+impl is_main_interpreter -> bool {
     return PyInterpreterState_Get() == PyInterpreterState_Main();
 }
 
-# The script name from sys.argv[0], as openlog()'s default ident.
-def:priv syslog_get_argv -> ptr[PyObject] {
+impl syslog_get_argv -> ptr[PyObject] {
     argv = NULL;
     if _PySys_GetOptionalAttrString("argv", &mut argv) <= 0 {
         return NULL;
@@ -64,7 +80,7 @@ def:priv syslog_get_argv -> ptr[PyObject] {
     return script;
 }
 
-def:priv audit(event: str, values: list[ptr[PyObject]]) -> bool {
+impl audit(event: str, values: list[ptr[PyObject]]) -> bool {
     arguments = object_tuple(values);
     for value in values {
         jacpy_release(value);
@@ -74,7 +90,7 @@ def:priv audit(event: str, values: list[ptr[PyObject]]) -> bool {
     return status >= 0;
 }
 
-def syslog_openlog_impl(
+impl syslog_openlog_impl(
     module: ptr[PyObject], ident: ptr[PyObject], logopt: i64, facility: i64
 ) -> ptr[PyObject] {
     if not is_main_interpreter() {
@@ -113,11 +129,12 @@ def syslog_openlog_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def syslog_syslog_impl(
+impl syslog_syslog_impl(
     module: ptr[PyObject], group_left_1: i32, priority: i32, message: str
 ) -> ptr[PyObject] {
     if not audit(
-        "syslog.syslog", [PyLong_FromLong(i64(priority)), PyUnicode_FromString(message)]
+        "syslog.syslog",
+        [PyLong_FromLong(i64(priority)), jacpy_unicode_from_text(message)]
     ) {
         return NULL;
     }
@@ -135,15 +152,14 @@ def syslog_syslog_impl(
         }
         jacpy_release(opened);
     }
-    # Keep the ident alive while the message is logged: openlog() keeps a
-    # pointer to its UTF-8 buffer rather than a copy.
+
     ident = Py_NewRef(ident_object) if ident_object else NULL;
     syslog(priority, "%s", message);
     jacpy_release(ident);
     return Py_NewRef(borrowed_none());
 }
 
-def syslog_closelog_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl syslog_closelog_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if not is_main_interpreter() {
         object_error(PyExc_RuntimeError, "subinterpreter can't use syslog.closelog()");
         return NULL;
@@ -161,21 +177,21 @@ def syslog_closelog_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def syslog_setlogmask_impl(module: ptr[PyObject], maskpri: i64) -> i64 {
+impl syslog_setlogmask_impl(module: ptr[PyObject], maskpri: i64) -> i64 {
     if not audit("syslog.setlogmask", [PyLong_FromLong(maskpri)]) {
         return -1;
     }
     return i64(setlogmask(i32(maskpri)));
 }
 
-def syslog_LOG_MASK_impl(module: ptr[PyObject], pri: i64) -> i64 {
+impl syslog_LOG_MASK_impl(module: ptr[PyObject], pri: i64) -> i64 {
     return 1 << pri;
 }
 
-def syslog_LOG_UPTO_impl(module: ptr[PyObject], pri: i64) -> i64 {
+impl syslog_LOG_UPTO_impl(module: ptr[PyObject], pri: i64) -> i64 {
     return (1 << (pri + 1)) - 1;
 }
 
-def default_priority -> i32 {
+impl default_priority -> i32 {
     return i32(LOG_INFO);
 }

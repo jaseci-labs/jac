@@ -1,10 +1,3 @@
-"""Opcode metadata for the dis and opcode modules.
-
-Derived from CPython 3.14.6 Modules/_opcode.c; see ../LICENSE.cpython. The
-metadata and stack effects are the native compiler's own tables in
-opcode_meta.jac, so dis and the compiler cannot disagree.
-"""
-
 glob ENABLE_SPECIALIZATION: i64 = 1,
      ENABLE_SPECIALIZATION_FT: i64 = 1;
 
@@ -43,6 +36,42 @@ glob:priv MAX_INTRINSIC_1: int = 11,
 
 def _opcode_stack_effect_impl(
     module: ptr[PyObject], opcode: i32, oparg: ptr[PyObject], jump: ptr[PyObject]
+) -> i32;
+
+def _opcode_is_valid_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_arg_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_const_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_name_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_jump_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_free_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_local_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_has_exc_impl(module: ptr[PyObject], opcode: i32) -> i32;
+
+def _opcode_get_specialization_stats_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv collect(items: list[ptr[PyObject]]) -> ptr[PyObject];
+
+def _opcode_get_nb_ops_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _opcode_get_intrinsic1_descs_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _opcode_get_intrinsic2_descs_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _opcode_get_special_method_names_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _opcode_get_executor_impl(
+    module: ptr[PyObject], code: ptr[PyObject], offset: i32
+) -> ptr[PyObject];
+
+impl _opcode_stack_effect_impl(
+    module: ptr[PyObject], opcode: i32, oparg: ptr[PyObject], jump: ptr[PyObject]
 ) -> i32 {
     argument = 0;
     if oparg != Py_None {
@@ -70,45 +99,43 @@ def _opcode_stack_effect_impl(
     return i32(effect);
 }
 
-def _opcode_is_valid_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_is_valid_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)));
 }
 
-def _opcode_has_arg_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_arg_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and opcode_has_arg(int(opcode)));
 }
 
-def _opcode_has_const_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_const_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and opcode_has_const(int(opcode)));
 }
 
-def _opcode_has_name_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_name_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and opcode_has_name(int(opcode)));
 }
 
-def _opcode_has_jump_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_jump_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and opcode_has_jump(int(opcode)));
 }
 
-def _opcode_has_free_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_free_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and opcode_has_free(int(opcode)));
 }
 
-def _opcode_has_local_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_local_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and opcode_has_local(int(opcode)));
 }
 
-def _opcode_has_exc_impl(module: ptr[PyObject], opcode: i32) -> i32 {
+impl _opcode_has_exc_impl(module: ptr[PyObject], opcode: i32) -> i32 {
     return i32(opcode_is_valid(int(opcode)) and is_block_push_opcode(int(opcode)));
 }
 
-# Py_STATS is off in every release build, so there are no statistics.
-def _opcode_get_specialization_stats_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _opcode_get_specialization_stats_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-# Each append retains its item; release ours, and the partial list on failure.
-def:priv collect(items: list[ptr[PyObject]]) -> ptr[PyObject] {
+impl collect(items: list[ptr[PyObject]]) -> ptr[PyObject] {
     result = PyList_New(0);
     if not result {
         for item in items {
@@ -130,11 +157,11 @@ def:priv collect(items: list[ptr[PyObject]]) -> ptr[PyObject] {
     return result;
 }
 
-def _opcode_get_nb_ops_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _opcode_get_nb_ops_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     pairs: list[ptr[PyObject]] = [];
     for (name, symbol) in NB_OPS {
-        first = PyUnicode_FromString(name);
-        second = PyUnicode_FromString(symbol);
+        first = jacpy_unicode_from_text(name);
+        second = jacpy_unicode_from_text(symbol);
         pairs.append(object_tuple([first, second]) if first and second else NULL);
         jacpy_release(first);
         jacpy_release(second);
@@ -142,24 +169,23 @@ def _opcode_get_nb_ops_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return collect(pairs);
 }
 
-def _opcode_get_intrinsic1_descs_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _opcode_get_intrinsic1_descs_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return collect(
         [_PyCompile_GetUnaryIntrinsicName(i32(i)) for i in range(MAX_INTRINSIC_1 + 1)]
     );
 }
 
-def _opcode_get_intrinsic2_descs_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _opcode_get_intrinsic2_descs_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return collect(
         [_PyCompile_GetBinaryIntrinsicName(i32(i)) for i in range(MAX_INTRINSIC_2 + 1)]
     );
 }
 
-def _opcode_get_special_method_names_impl(module: ptr[PyObject]) -> ptr[PyObject] {
-    return collect([PyUnicode_InternFromString(name) for name in SPECIAL_METHODS]);
+impl _opcode_get_special_method_names_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+    return collect([jacpy_unicode_intern_text(name) for name in SPECIAL_METHODS]);
 }
 
-# Tier-2 executors are not built (Python/optimizer_*.c are pruned).
-def _opcode_get_executor_impl(
+impl _opcode_get_executor_impl(
     module: ptr[PyObject], code: ptr[PyObject], offset: i32
 ) -> ptr[PyObject] {
     if jacpy_is_code(code) == 0 {

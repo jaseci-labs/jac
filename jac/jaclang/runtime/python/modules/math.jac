@@ -1,388 +1,502 @@
-"""Native math algorithms over retained Python numeric values.
+def:priv bits(value: i64) -> int;
 
-Balanced integer products and adaptive-precision square roots avoid linear
-chains of growing intermediate integers. Derived from CPython 3.14.6;
-see ../LICENSE.cpython.
-"""
+def:pub jacpy_math_gcd(arguments: ptr[PyObject], lcm: i64) -> ptr[PyObject];
 
-def:priv bits(value: i64) -> int {
-    n = value;
-    result = 0;
-    while n > 0 {
-        result += 1;
-        n >>= 1;
-    }
-    return result;
+def:priv odd_product(start: i64, stop: i64) -> ptr[PyObject];
+
+def:pub jacpy_math_factorial(argument: ptr[PyObject]) -> ptr[PyObject];
+
+def:pub jacpy_math_isqrt(argument: ptr[PyObject]) -> ptr[PyObject];
+
+import from c {
+    glob:priv reduced_factorial_odd_part: list[u64] = [
+             u64(0x1),
+             u64(0x1),
+             u64(0x1),
+             u64(0x3),
+             u64(0x3),
+             u64(0xf),
+             u64(0x2d),
+             u64(0x13b),
+             u64(0x13b),
+             u64(0xb13),
+             u64(0x375f),
+             u64(0x26115),
+             u64(0x7233f),
+             u64(0x5cca33),
+             u64(0x2898765),
+             u64(0x260eeeeb),
+             u64(0x260eeeeb),
+             u64(0x286fddd9b),
+             u64(0x16beecca73),
+             u64(0x1b02b930689),
+             u64(0x870d9df20ad),
+             u64(0xb141df4dae31),
+             u64(0x79dd498567c1b),
+             u64(0xaf2e19afc5266d),
+             u64(0x20d8a4d0f4f7347),
+             u64(0x335281867ec241ef),
+             u64(0x9b3093d46fdd5923),
+             u64(0x5e1f9767cc5866b1),
+             u64(0x92dd23d6966aced7),
+             u64(0xa30d0f4f0a196e5b),
+             u64(0x8dc3e5a1977d7755),
+             u64(0x2ab8ce915831734b),
+             u64(0x2ab8ce915831734b),
+             u64(0x81d2a0bc5e5fdcab),
+             u64(0x9efcac82445da75b),
+             u64(0xbc8b95cf58cde171),
+             u64(0xa0e8444a1f3cecf9),
+             u64(0x4191deb683ce3ffd),
+             u64(0xddd3878bc84ebfc7),
+             u64(0xcb39a64b83ff3751),
+             u64(0xf8203f7993fc1495),
+             u64(0xbd2a2a78b35f4bdd),
+             u64(0x84757be6b6d13921),
+             u64(0x3fbbcfc0b524988b),
+             u64(0xbd11ed47c8928df9),
+             u64(0x3c26b59e41c2f4c5),
+             u64(0x677a5137e883fdb3),
+             u64(0xff74e943b03b93dd),
+             u64(0xfe5ebbcb10b2bb97),
+             u64(0xb021f1de3235e7e7),
+             u64(0x33509eb2e743a58f),
+             u64(0x390f9da41279fb7d),
+             u64(0xe5cb0154f031c559),
+             u64(0x93074695ba4ddb6d),
+             u64(0x81c471caa636247f),
+             u64(0xe1347289b5a1d749),
+             u64(0x286f21c3f76ce2ff),
+             u64(0xbe84a2173e8ac7),
+             u64(0x1595065ca215b88b),
+             u64(0xf95877595b018809),
+             u64(0x9c2efe3c5516f887),
+             u64(0x373294604679382b),
+             u64(0xaf1ff7a888adcd35),
+             u64(0x18ddf279a2c5800b),
+             u64(0x18ddf279a2c5800b),
+             u64(0x505a90e2542582cb),
+             u64(0x5bacad2cd8d5dc2b),
+             u64(0xfe3152bcbff89f41),
+             u64(0xe1467e88bf829351),
+             u64(0xb8001adb9e31b4d5),
+             u64(0x2803ac06a0cbb91f),
+             u64(0x1904b5d698805799),
+             u64(0xe12a648b5c831461),
+             u64(0x3516abbd6160cfa9),
+             u64(0xac46d25f12fe036d),
+             u64(0x78bfa1da906b00ef),
+             u64(0xf6390338b7f111bd),
+             u64(0xf25f80f538255d9),
+             u64(0x4ec8ca55b8db140f),
+             u64(0x4ff670740b9b30a1),
+             u64(0x8fd032443a07f325),
+             u64(0x80dfe7965c83eeb5),
+             u64(0xa3dc1714d1213afd),
+             u64(0x205b7bbfcdc62007),
+             u64(0xa78126bbe140a093),
+             u64(0x9de1dc61ca7550cf),
+             u64(0x84f0046d01b492c5),
+             u64(0x2d91810b945de0f3),
+             u64(0xf5408b7f6008aa71),
+             u64(0x43707f4863034149),
+             u64(0xdac65fb9679279d5),
+             u64(0xc48406e7d1114eb7),
+             u64(0xa7dc9ed3c88e1271),
+             u64(0xfb25b2efdb9cb30d),
+             u64(0x1bebda0951c4df63),
+             u64(0x5c85e975580ee5bd),
+             u64(0x1591bc60082cb137),
+             u64(0x2c38606318ef25d7),
+             u64(0x76ca72f7c5c63e27),
+             u64(0xf04a75d17baa0915),
+             u64(0x77458175139ae30d),
+             u64(0xe6c1330bc1b9421),
+             u64(0xdf87d2b5797e8293),
+             u64(0xefa5c703e1e68925),
+             u64(0x2b6b1b3278b4f6e1),
+             u64(0xceee27b382394249),
+             u64(0xd74e3829f5dab91d),
+             u64(0xfdb17989c26b5f1f),
+             u64(0xc1b7d18781530845),
+             u64(0x7b4436b2105a8561),
+             u64(0x7ba7c0418372a7d7),
+             u64(0x9dbc5c67feb6c639),
+             u64(0x502686d7f6ff6b8f),
+             u64(0x6101855406be7a1f),
+             u64(0x9956afb5806930e7),
+             u64(0xe1f0ee88af40f7c5),
+             u64(0x984b057bda5c1151),
+             u64(0x9a49819acc13ea05),
+             u64(0x8ef0dead0896ef27),
+             u64(0x71f7826efe292b21),
+             u64(0xad80a480e46986ef),
+             u64(0x1cdc0ebf5e0c6f7),
+             u64(0x6e06f839968f68db),
+             u64(0xdd5943ab56e76139),
+             u64(0xcdcf31bf8604c5e7),
+             u64(0x7e2b4a847054a1cb),
+             u64(0xca75697a4d3d0f5),
+             u64(0x4703f53ac514a98b)
+         ],
+         inverted_factorial_odd_part: list[u64] = [
+             u64(0x1),
+             u64(0x1),
+             u64(0x1),
+             u64(0xaaaaaaaaaaaaaaab),
+             u64(0xaaaaaaaaaaaaaaab),
+             u64(0xeeeeeeeeeeeeeeef),
+             u64(0x4fa4fa4fa4fa4fa5),
+             u64(0x2ff2ff2ff2ff2ff3),
+             u64(0x2ff2ff2ff2ff2ff3),
+             u64(0x938cc70553e3771b),
+             u64(0xb71c27cddd93e49f),
+             u64(0xb38e3229fcdee63d),
+             u64(0xe684bb63544a4cbf),
+             u64(0xc2f684917ca340fb),
+             u64(0xf747c9cba417526d),
+             u64(0xbb26eb51d7bd49c3),
+             u64(0xbb26eb51d7bd49c3),
+             u64(0xb0a7efb985294093),
+             u64(0xbe4b8c69f259eabb),
+             u64(0x6854d17ed6dc4fb9),
+             u64(0xe1aa904c915f4325),
+             u64(0x3b8206df131cead1),
+             u64(0x79c6009fea76fe13),
+             u64(0xd8c5d381633cd365),
+             u64(0x4841f12b21144677),
+             u64(0x4a91ff68200b0d0f),
+             u64(0x8f9513a58c4f9e8b),
+             u64(0x2b3e690621a42251),
+             u64(0x4f520f00e03c04e7),
+             u64(0x2edf84ee600211d3),
+             u64(0xadcaa2764aaacdfd),
+             u64(0x161f4f9033f4fe63),
+             u64(0x161f4f9033f4fe63),
+             u64(0xbada2932ea4d3e03),
+             u64(0xcec189f3efaa30d3),
+             u64(0xf7475bb68330bf91),
+             u64(0x37eb7bf7d5b01549),
+             u64(0x46b35660a4e91555),
+             u64(0xa567c12d81f151f7),
+             u64(0x4c724007bb2071b1),
+             u64(0xf4a0cce58a016bd),
+             u64(0xfa21068e66106475),
+             u64(0x244ab72b5a318ae1),
+             u64(0x366ce67e080d0f23),
+             u64(0xd666fdae5dd2a449),
+             u64(0xd740ddd0acc06a0d),
+             u64(0xb050bbbb28e6f97b),
+             u64(0x70b003fe890a5c75),
+             u64(0xd03aabff83037427),
+             u64(0x13ec4ca72c783bd7),
+             u64(0x90282c06afdbd96f),
+             u64(0x4414ddb9db4a95d5),
+             u64(0xa2c68735ae6832e9),
+             u64(0xbf72d71455676665),
+             u64(0xa8469fab6b759b7f),
+             u64(0xc1e55b56e606caf9),
+             u64(0x40455630fc4a1cff),
+             u64(0x120a7b0046d16f7),
+             u64(0xa7c3553b08faef23),
+             u64(0x9f0bfd1b08d48639),
+             u64(0xa433ffce9a304d37),
+             u64(0xa22ad1d53915c683),
+             u64(0xcb6cbc723ba5dd1d),
+             u64(0x547fb1b8ab9d0ba3),
+             u64(0x547fb1b8ab9d0ba3),
+             u64(0x8f15a826498852e3),
+             u64(0x32e1a03f38880283),
+             u64(0x3de4cce63283f0c1),
+             u64(0x5dfe6667e4da95b1),
+             u64(0xfda6eeeef479e47d),
+             u64(0xf14de991cc7882df),
+             u64(0xe68db79247630ca9),
+             u64(0xa7d6db8207ee8fa1),
+             u64(0x255e1f0fcf034499),
+             u64(0xc9a8990e43dd7e65),
+             u64(0x3279b6f289702e0f),
+             u64(0xe7b5905d9b71b195),
+             u64(0x3025ba41ff0da69),
+             u64(0xb7df3d6d3be55aef),
+             u64(0xf89b212ebff2b361),
+             u64(0xfe856d095996f0ad),
+             u64(0xd6e533e9fdf20f9d),
+             u64(0xf8c0e84a63da3255),
+             u64(0xa677876cd91b4db7),
+             u64(0x7ed4f97780d7d9b),
+             u64(0x90a8705f258db62f),
+             u64(0xa41bbb2be31b1c0d),
+             u64(0x6ec28690b038383b),
+             u64(0xdb860c3bb2edd691),
+             u64(0x838286838a980f9),
+             u64(0x558417a74b36f77d),
+             u64(0x71779afc3646ef07),
+             u64(0x743cda377ccb6e91),
+             u64(0x7fdf9f3fe89153c5),
+             u64(0xdc97d25df49b9a4b),
+             u64(0x76321a778eb37d95),
+             u64(0x7cbb5e27da3bd487),
+             u64(0x9cff4ade1a009de7),
+             u64(0x70eb166d05c15197),
+             u64(0xdcf0460b71d5fe3d),
+             u64(0x5ac1ee5260b6a3c5),
+             u64(0xc922dedfdd78efe1),
+             u64(0xe5d381dc3b8eeb9b),
+             u64(0xd57e5347bafc6aad),
+             u64(0x86939040983acd21),
+             u64(0x395b9d69740a4ff9),
+             u64(0x1467299c8e43d135),
+             u64(0x5fe440fcad975cdf),
+             u64(0xcaa9a39794a6ca8d),
+             u64(0xf61dbd640868dea1),
+             u64(0xac09d98d74843be7),
+             u64(0x2b103b9e1a6b4809),
+             u64(0x2ab92d16960f536f),
+             u64(0x6653323d5e3681df),
+             u64(0xefd48c1c0624e2d7),
+             u64(0xa496fefe04816f0d),
+             u64(0x1754a7b07bbdd7b1),
+             u64(0x23353c829a3852cd),
+             u64(0xbf831261abd59097),
+             u64(0x57a8e656df0618e1),
+             u64(0x16e9206c3100680f),
+             u64(0xadad4c6ee921dac7),
+             u64(0x635f2b3860265353),
+             u64(0xdd6d0059f44b3d09),
+             u64(0xac4dd6b894447dd7),
+             u64(0x42ea183eeaa87be3),
+             u64(0x15612d1550ee5b5d),
+             u64(0x226fa19d656cb623)
+         ],
+         factorial_trailing_zeros: list[u8] = [
+             u8(0),
+             u8(0),
+             u8(1),
+             u8(1),
+             u8(3),
+             u8(3),
+             u8(4),
+             u8(4),
+             u8(7),
+             u8(7),
+             u8(8),
+             u8(8),
+             u8(10),
+             u8(10),
+             u8(11),
+             u8(11),
+             u8(15),
+             u8(15),
+             u8(16),
+             u8(16),
+             u8(18),
+             u8(18),
+             u8(19),
+             u8(19),
+             u8(22),
+             u8(22),
+             u8(23),
+             u8(23),
+             u8(25),
+             u8(25),
+             u8(26),
+             u8(26),
+             u8(31),
+             u8(31),
+             u8(32),
+             u8(32),
+             u8(34),
+             u8(34),
+             u8(35),
+             u8(35),
+             u8(38),
+             u8(38),
+             u8(39),
+             u8(39),
+             u8(41),
+             u8(41),
+             u8(42),
+             u8(42),
+             u8(46),
+             u8(46),
+             u8(47),
+             u8(47),
+             u8(49),
+             u8(49),
+             u8(50),
+             u8(50),
+             u8(53),
+             u8(53),
+             u8(54),
+             u8(54),
+             u8(56),
+             u8(56),
+             u8(57),
+             u8(57),
+             u8(63),
+             u8(63),
+             u8(64),
+             u8(64),
+             u8(66),
+             u8(66),
+             u8(67),
+             u8(67),
+             u8(70),
+             u8(70),
+             u8(71),
+             u8(71),
+             u8(73),
+             u8(73),
+             u8(74),
+             u8(74),
+             u8(78),
+             u8(78),
+             u8(79),
+             u8(79),
+             u8(81),
+             u8(81),
+             u8(82),
+             u8(82),
+             u8(85),
+             u8(85),
+             u8(86),
+             u8(86),
+             u8(88),
+             u8(88),
+             u8(89),
+             u8(89),
+             u8(94),
+             u8(94),
+             u8(95),
+             u8(95),
+             u8(97),
+             u8(97),
+             u8(98),
+             u8(98),
+             u8(101),
+             u8(101),
+             u8(102),
+             u8(102),
+             u8(104),
+             u8(104),
+             u8(105),
+             u8(105),
+             u8(109),
+             u8(109),
+             u8(110),
+             u8(110),
+             u8(112),
+             u8(112),
+             u8(113),
+             u8(113),
+             u8(116),
+             u8(116),
+             u8(117),
+             u8(117),
+             u8(119),
+             u8(119),
+             u8(120),
+             u8(120)
+         ],
+         fast_comb_limits1: list[u8] = [
+             u8(0),
+             u8(0),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(127),
+             u8(116),
+             u8(105),
+             u8(97),
+             u8(91),
+             u8(86),
+             u8(82),
+             u8(78),
+             u8(76),
+             u8(74),
+             u8(72),
+             u8(71),
+             u8(70),
+             u8(69),
+             u8(68),
+             u8(68),
+             u8(67),
+             u8(67),
+             u8(67),
+             u8(67)
+         ],
+         fast_comb_limits2: list[u64] = [
+             u64(0x0),
+             u64(0xffffffffffffffff),
+             u64(0x100000000),
+             u64(0x32cbfe),
+             u64(0x190aa),
+             u64(0x349b),
+             u64(0xe1c),
+             u64(0x5a9),
+             u64(0x2ea),
+             u64(0x1c5),
+             u64(0x134),
+             u64(0xe3),
+             u64(0xb2),
+             u64(0x93)
+         ],
+         fast_perm_limits: list[u64] = [
+             u64(0x0),
+             u64(0xffffffffffffffff),
+             u64(0x100000000),
+             u64(0x285146),
+             u64(0x10001),
+             u64(0x1bdd),
+             u64(0x65b),
+             u64(0x238),
+             u64(0x103),
+             u64(0x8e),
+             u64(0x58),
+             u64(0x3d),
+             u64(0x2d),
+             u64(0x24),
+             u64(0x1e),
+             u64(0x1a),
+             u64(0x18),
+             u64(0x16),
+             u64(0x15),
+             u64(0x14),
+             u64(0x14)
+         ];
 }
 
-def:pub jacpy_math_gcd(arguments: ptr[PyObject], lcm: i64) -> ptr[PyObject] {
-    result: ptr[PyObject] = NULL;
-    try {
-        result = required(PyLong_FromLongLong(1 if lcm != 0 else 0));
-        for i in range(int(PyTuple_Size(arguments))) {
-            argument: ptr[PyObject] = NULL;
-            indexed: ptr[PyObject] = NULL;
-            absolute: ptr[PyObject] = NULL;
-            divisor: ptr[PyObject] = NULL;
-            quotient: ptr[PyObject] = NULL;
-            try {
-                argument = required(jacpy_tuple_item(arguments, i64(i)));
-                indexed = required(PyNumber_Index(argument));
-                absolute = required(PyNumber_Absolute(indexed));
-                divisor = required(_PyLong_GCD(result, absolute));
-                replacement: ptr[PyObject] = NULL;
-                if lcm == 0 {
-                    replacement = Py_NewRef(divisor);
-                } elif jacpy_long_sign(result) == 0 or jacpy_long_sign(absolute) == 0 {
-                    replacement = required(PyLong_FromLongLong(0));
-                } else {
-                    quotient = required(PyNumber_FloorDivide(result, divisor));
-                    replacement = required(PyNumber_Multiply(quotient, absolute));
-                }
-                jacpy_release(result);
-                result = replacement;
-            } finally {
-                jacpy_release(argument);
-                jacpy_release(indexed);
-                jacpy_release(absolute);
-                jacpy_release(divisor);
-                jacpy_release(quotient);
-            }
-        }
-        return Py_NewRef(result);
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        jacpy_release(result);
-    }
-}
+def:priv table_u64(table: ptr[u64], index: u64) -> u64;
 
-def:priv odd_product(start: i64, stop: i64) -> ptr[PyObject] {
-    count = (stop - start) // 2;
-    if count <= 64 and count * i64(bits(stop - 2)) <= 64 {
-        product: u64 = 1;
-        for i in range(int(start), int(stop), 2) {
-            product *= u64(i);
-        }
-        return required(PyLong_FromUnsignedLongLong(product));
-    }
-    middle = (start + count) | i64(1);
-    left: ptr[PyObject] = NULL;
-    right: ptr[PyObject] = NULL;
-    try {
-        left = odd_product(start, middle);
-        right = odd_product(middle, stop);
-        return required(PyNumber_Multiply(left, right));
-    } finally {
-        jacpy_release(left);
-        jacpy_release(right);
-    }
-}
+def:priv table_u8(table: ptr[u8], index: u64) -> u64;
 
-def:pub jacpy_math_factorial(argument: ptr[PyObject]) -> ptr[PyObject] {
-    value: ptr[PyObject] = NULL;
-    inner: ptr[PyObject] = NULL;
-    outer: ptr[PyObject] = NULL;
-    try {
-        value = required(PyNumber_Index(argument));
-        if jacpy_long_sign(value) < 0 {
-            object_error(
-                PyExc_ValueError, "factorial() not defined for negative values"
-            );
-            return NULL;
-        }
-        if _PyLong_NumBits(value) > 63 {
-            object_error(
-                PyExc_OverflowError,
-                "factorial() argument should not exceed 9223372036854775807"
-            );
-            return NULL;
-        }
-        n = PyLong_AsLongLong(value);
-        inner = required(PyLong_FromLongLong(1));
-        outer = Py_NewRef(inner);
-        upper: i64 = 3;
-        for i in range(bits(n) - 2, -1, -1) {
-            v = n >> i64(i);
-            if v <= 2 {
-                continue;
-            }
-            lower = upper;
-            upper = (v + 1) | i64(1);
-            partial = odd_product(lower, upper);
-            try {
-                replacement = required(PyNumber_Multiply(inner, partial));
-                jacpy_release(inner);
-                inner = replacement;
-                replacement = required(PyNumber_Multiply(outer, inner));
-                jacpy_release(outer);
-                outer = replacement;
-            } finally {
-                jacpy_release(partial);
-            }
-        }
-        remaining = n;
-        ones: i64 = 0;
-        while remaining != 0 {
-            ones += remaining & i64(1);
-            remaining >>= i64(1);
-        }
-        return required(jacpy_long_shift(outer, n - ones, 1));
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        jacpy_release(value);
-        jacpy_release(inner);
-        jacpy_release(outer);
-    }
-}
+def:priv perm_comb_small(n: u64, k: u64, combination: bool) -> ptr[PyObject];
 
-def:pub jacpy_math_isqrt(argument: ptr[PyObject]) -> ptr[PyObject] {
-    n: ptr[PyObject] = NULL;
-    approximation: ptr[PyObject] = NULL;
-    square: ptr[PyObject] = NULL;
-    try {
-        n = required(PyNumber_Index(argument));
-        sign = jacpy_long_sign(n);
-        if sign < 0 {
-            object_error(PyExc_ValueError, "isqrt() argument must be nonnegative");
-            return NULL;
-        }
-        if sign == 0 {
-            return required(PyLong_FromLongLong(0));
-        }
-        c = (_PyLong_NumBits(n) - 1) // 2;
-        approximation = required(PyLong_FromLongLong(1));
-        d: i64 = 0;
-        for s in range(bits(c) - 1, -1, -1) {
-            e = d;
-            d = c >> i64(s);
-            shifted: ptr[PyObject] = NULL;
-            quotient: ptr[PyObject] = NULL;
-            prefix: ptr[PyObject] = NULL;
-            try {
-                shifted = required(jacpy_long_shift(n, 2 * c - e - d + 1, 0));
-                quotient = required(PyNumber_FloorDivide(shifted, approximation));
-                prefix = required(jacpy_long_shift(approximation, d - e - 1, 1));
-                replacement = required(PyNumber_Add(prefix, quotient));
-                jacpy_release(approximation);
-                approximation = replacement;
-            } finally {
-                jacpy_release(shifted);
-                jacpy_release(quotient);
-                jacpy_release(prefix);
-            }
-        }
-        square = required(PyNumber_Multiply(approximation, approximation));
-        too_large = PyObject_RichCompareBool(square, n, 4);
-        if too_large < 0 {
-            return NULL;
-        }
-        if too_large != 0 {
-            one = required(PyLong_FromLongLong(1));
-            try {
-                return required(PyNumber_Subtract(approximation, one));
-            } finally {
-                jacpy_release(one);
-            }
-        }
-        return Py_NewRef(approximation);
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        jacpy_release(n);
-        jacpy_release(approximation);
-        jacpy_release(square);
-    }
-}
-
-# Balanced recursive products keep operand sizes similar for long multiplication.
-def:priv perm_comb(n: ptr[PyObject], k: i64, combination: bool) -> ptr[PyObject] {
-    if k == 0 {
-        return required(PyLong_FromLongLong(1));
-    }
-    if k == 1 {
-        return Py_NewRef(n);
-    }
-    middle = k // 2;
-    left: ptr[PyObject] = NULL;
-    right: ptr[PyObject] = NULL;
-    offset: ptr[PyObject] = NULL;
-    remaining: ptr[PyObject] = NULL;
-    product: ptr[PyObject] = NULL;
-    denominator: ptr[PyObject] = NULL;
-    count: ptr[PyObject] = NULL;
-    try {
-        left = perm_comb(n, middle, combination);
-        offset = required(PyLong_FromLongLong(middle));
-        remaining = required(PyNumber_Subtract(n, offset));
-        right = perm_comb(remaining, k - middle, combination);
-        product = required(PyNumber_Multiply(left, right));
-        if not combination {
-            return Py_NewRef(product);
-        }
-        count = required(PyLong_FromLongLong(k));
-        denominator = perm_comb(count, middle, True);
-        return required(PyNumber_FloorDivide(product, denominator));
-    } finally {
-        jacpy_release(left);
-        jacpy_release(right);
-        jacpy_release(offset);
-        jacpy_release(remaining);
-        jacpy_release(product);
-        jacpy_release(denominator);
-        jacpy_release(count);
-    }
-}
+def:priv perm_comb(n: ptr[PyObject], k: i64, combination: bool) -> ptr[PyObject];
 
 def:pub jacpy_math_comb(
     n_arg: ptr[PyObject], k_arg: ptr[PyObject], combination: i64
-) -> ptr[PyObject] {
-    if combination == 0 and (k_arg == 0 or k_arg == Py_None) {
-        return jacpy_math_factorial(n_arg);
-    }
-    n: ptr[PyObject] = NULL;
-    k: ptr[PyObject] = NULL;
-    difference: ptr[PyObject] = NULL;
-    try {
-        n = required(PyNumber_Index(n_arg));
-        k = required(PyNumber_Index(k_arg));
-        if jacpy_long_sign(n) < 0 {
-            object_error(PyExc_ValueError, "n must be a non-negative integer");
-            return NULL;
-        }
-        if jacpy_long_sign(k) < 0 {
-            object_error(PyExc_ValueError, "k must be a non-negative integer");
-            return NULL;
-        }
-        comparison = PyObject_RichCompareBool(k, n, 4);
-        if comparison < 0 {
-            return NULL;
-        }
-        if comparison != 0 {
-            return required(PyLong_FromLongLong(0));
-        }
-        if combination != 0 {
-            difference = required(PyNumber_Subtract(n, k));
-            comparison = PyObject_RichCompareBool(difference, k, 0);
-            if comparison < 0 {
-                return NULL;
-            }
-            if comparison != 0 {
-                jacpy_release(k);
-                k = Py_NewRef(difference);
-            }
-        }
-        if _PyLong_NumBits(k) > 63 {
-            object_error(
-                PyExc_OverflowError,
-                ("min(n - k, k)" if combination != 0 else "k")
-                    + " must not exceed 9223372036854775807"
-            );
-            return NULL;
-        }
-        count = PyLong_AsLongLong(k);
-        if jacpy_error_pending() != 0 {
-            return NULL;
-        }
-        return perm_comb(n, count, combination != 0);
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        jacpy_release(n);
-        jacpy_release(k);
-        jacpy_release(difference);
-    }
-}
+) -> ptr[PyObject];
 
-def:priv input_float(value: ptr[PyObject]) -> float {
-    result = PyFloat_AsDouble(value);
-    if jacpy_error_pending() != 0 {
-        raise boundary_failure();
-    }
-    return result;
-}
+def:priv input_float(value: ptr[PyObject]) -> float;
 
-def:priv float_repr(value: float) -> str {
-    object = required(PyFloat_FromDouble(value));
-    try {
-        return repr_value(object);
-    } finally {
-        jacpy_release(object);
-    }
-}
+def:priv float_repr(value: float) -> str;
 
-def:priv domain(operation: i64, value: float) {
-    message = "math domain error";
-    if operation == 0 or operation == 2 {
-        message = "expected a number in range from -1 up to 1, got "
-            + float_repr(value);
-    } elif operation == 1 {
-        message = "expected argument value not less than 1, got " + float_repr(value);
-    } elif operation == 5 {
-        message = "expected a number between -1 and 1, got " + float_repr(value);
-    } elif operation == 7 or operation == 18 or operation == 21 {
-        message = "expected a finite input, got " + float_repr(value);
-    } elif operation == 15 or operation == 16 {
-        message = "expected a noninteger or positive integer, got " + float_repr(value);
-    } elif operation == 17 {
-        message = "expected argument value > -1, got " + float_repr(value);
-    } elif operation == 20 {
-        message = "expected a nonnegative input, got " + float_repr(value);
-    }
-    object_error(PyExc_ValueError, message);
-}
+def:priv domain(operation: i64, value: float);
 
-def:priv logarithm(value: ptr[PyObject], base: int) -> float {
-    if jacpy_is_long(value) != 0 {
-        if jacpy_long_sign(value) <= 0 {
-            object_error(PyExc_ValueError, "expected a positive input");
-            raise boundary_failure();
-        }
-        x = PyLong_AsDouble(value);
-        if jacpy_error_pending() != 0 {
-            # The conversion to double overflowed, but the log can be computed
-            # anyway: the value is ~= x * 2**e, so its log ~= log(x) + log(2) * e.
-            PyErr_Clear();
-            exponent: i64 = 0;
-            x = _PyLong_Frexp(value, &mut exponent);
-            power = float(exponent);
-            if base == 2 {
-                return log2(x) + power;
-            }
-            if base == 10 {
-                return log10(x) + power * log10(2.0);
-            }
-            return log(x) + power * log(2.0);
-        }
-        if base == 2 {
-            return log2(x);
-        }
-        if base == 10 {
-            return log10(x);
-        }
-        return log(x);
-    }
-    x = input_float(value);
-    if x <= 0.0 {
-        object_error(
-            PyExc_ValueError, "expected a positive input, got " + float_repr(x)
-        );
-        raise boundary_failure();
-    }
-    if base == 2 {
-        return log2(x);
-    }
-    if base == 10 {
-        return log10(x);
-    }
-    return log(x);
-}
+def:priv logarithm(value: ptr[PyObject], base: int) -> float;
 
-# CPython's gamma and lgamma do not use the platform libm, whose tgamma and
-# lgamma differ in accuracy across platforms (gh-70309). They evaluate the
-# Lanczos approximation with N=13 and g=6.024680040776729583740234375 as a
-# rational function, and use the reflection formula for negative arguments.
 glob:priv pi: float = 3.141592653589793238462643383279502884197,
      logpi: float = 1.144729885849400174143427351353058711647,
      lanczos_g: float = 6.024680040776729583740234375,
@@ -443,8 +557,605 @@ glob:priv pi: float = 3.141592653589793238462643383279502884197,
          1124000727777607680000.0
      ];
 
-"""sin(pi*x) for finite x, exact at integers and accurate near them."""
-def:priv m_sinpi(x: float) -> float {
+def:priv m_sinpi(x: float) -> float;
+
+def:priv lanczos_sum(x: float) -> float;
+
+def:priv m_tgamma(x: float) -> tuple[float, int];
+
+def:priv m_lgamma(x: float) -> tuple[float, int];
+
+def:pub jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject];
+
+def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject];
+
+def:pub jacpy_math_binary(
+    operation: i64, a: ptr[PyObject], b: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject];
+
+def:pub jacpy_math_ldexp(
+    value: ptr[PyObject], exponent: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_math_fma(
+    a: ptr[PyObject], b: ptr[PyObject], c: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_math_isclose(
+    a: ptr[PyObject], b: ptr[PyObject], rel: ptr[PyObject], abs_tol: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_math_nextafter(
+    a: ptr[PyObject], b: ptr[PyObject], steps: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv double_sum(a: float, b: float) -> tuple[float, float];
+
+def:priv fast_sum(a: float, b: float) -> tuple[float, float];
+
+def:priv double_product(a: float, b: float) -> tuple[float, float];
+
+def:priv triple_product(
+    a: float, b: float, total: tuple[float, float, float]
+) -> tuple[float, float, float];
+
+def:priv triple_value(total: tuple[float, float, float]) -> float;
+
+def:priv norm(values: list[float], largest: float, found_nan: bool) -> float;
+
+def:pub jacpy_math_hypot(arguments: ptr[PyObject]) -> ptr[PyObject];
+
+def:pub jacpy_math_dist(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def:pub jacpy_math_prod(
+    iterable: ptr[PyObject], start: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv float_object(value: f64) -> ptr[PyObject];
+
+def:priv unary_float(operation: int, x: f64) -> ptr[PyObject];
+
+def:priv binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject];
+
+def math_gcd_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject];
+
+def math_lcm_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject];
+
+def math_hypot_impl(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject];
+
+def math_ceil_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject];
+
+def math_floor_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject];
+
+def math_trunc_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject];
+
+def math_log10_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject];
+
+def math_log2_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject];
+
+def math_fsum_impl(module: ptr[PyObject], seq: ptr[PyObject]) -> ptr[PyObject];
+
+def math_isqrt_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject];
+
+def math_factorial_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject];
+
+def math_frexp_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_modf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_ldexp_impl(module: ptr[PyObject], x: f64, i: ptr[PyObject]) -> ptr[PyObject];
+
+def math_fma_impl(module: ptr[PyObject], x: f64, y: f64, z: f64) -> ptr[PyObject];
+
+def math_fmod_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject];
+
+def math_pow_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject];
+
+def math_dist_impl(
+    module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
+) -> ptr[PyObject];
+
+def math_sumprod_impl(
+    module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
+) -> ptr[PyObject];
+
+def math_degrees_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_radians_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_isfinite_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_isinf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_isnan_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject];
+
+def math_isclose_impl(
+    module: ptr[PyObject], a: f64, b: f64, rel_tol: f64, abs_tol: f64
+) -> i32;
+
+def math_prod_impl(
+    module: ptr[PyObject], iterable: ptr[PyObject], start: ptr[PyObject]
+) -> ptr[PyObject];
+
+def math_perm_impl(
+    module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
+) -> ptr[PyObject];
+
+def math_comb_impl(
+    module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
+) -> ptr[PyObject];
+
+def math_nextafter_impl(
+    module: ptr[PyObject], x: f64, y: f64, steps: ptr[PyObject]
+) -> ptr[PyObject];
+
+def math_ulp_impl(module: ptr[PyObject], x: f64) -> f64;
+
+impl bits(value: i64) -> int {
+    n = value;
+    result = 0;
+    while n > 0 {
+        result += 1;
+        n >>= 1;
+    }
+    return result;
+}
+
+impl jacpy_math_gcd(arguments: ptr[PyObject], lcm: i64) -> ptr[PyObject] {
+    result: ptr[PyObject] = NULL;
+    try {
+        result = required(PyLong_FromLongLong(1 if lcm != 0 else 0));
+        for i in range(int(PyTuple_Size(arguments))) {
+            argument: ptr[PyObject] = NULL;
+            indexed: ptr[PyObject] = NULL;
+            absolute: ptr[PyObject] = NULL;
+            divisor: ptr[PyObject] = NULL;
+            quotient: ptr[PyObject] = NULL;
+            try {
+                argument = required(jacpy_tuple_item(arguments, i64(i)));
+                indexed = required(PyNumber_Index(argument));
+                absolute = required(PyNumber_Absolute(indexed));
+                divisor = required(_PyLong_GCD(result, absolute));
+                replacement: ptr[PyObject] = NULL;
+                if lcm == 0 {
+                    replacement = Py_NewRef(divisor);
+                } elif jacpy_long_sign(result) == 0 or jacpy_long_sign(absolute) == 0 {
+                    replacement = required(PyLong_FromLongLong(0));
+                } else {
+                    quotient = required(PyNumber_FloorDivide(result, divisor));
+                    replacement = required(PyNumber_Multiply(quotient, absolute));
+                }
+                jacpy_release(result);
+                result = replacement;
+            } finally {
+                jacpy_release(argument);
+                jacpy_release(indexed);
+                jacpy_release(absolute);
+                jacpy_release(divisor);
+                jacpy_release(quotient);
+            }
+        }
+        return Py_NewRef(result);
+    } except boundary_failure {
+        return NULL;
+    } finally {
+        jacpy_release(result);
+    }
+}
+
+impl odd_product(start: i64, stop: i64) -> ptr[PyObject] {
+    count = (stop - start) // 2;
+    if count <= 64 and count * i64(bits(stop - 2)) <= 64 {
+        product: u64 = 1;
+        for i in range(int(start), int(stop), 2) {
+            product *= u64(i);
+        }
+        return required(PyLong_FromUnsignedLongLong(product));
+    }
+    middle = (start + count) | i64(1);
+    left: ptr[PyObject] = NULL;
+    right: ptr[PyObject] = NULL;
+    try {
+        left = odd_product(start, middle);
+        right = odd_product(middle, stop);
+        return required(PyNumber_Multiply(left, right));
+    } finally {
+        jacpy_release(left);
+        jacpy_release(right);
+    }
+}
+
+impl jacpy_math_factorial(argument: ptr[PyObject]) -> ptr[PyObject] {
+    value: ptr[PyObject] = NULL;
+    inner: ptr[PyObject] = NULL;
+    outer: ptr[PyObject] = NULL;
+    try {
+        value = required(PyNumber_Index(argument));
+        if jacpy_long_sign(value) < 0 {
+            object_error(
+                PyExc_ValueError, "factorial() not defined for negative values"
+            );
+            return NULL;
+        }
+        if _PyLong_NumBits(value) > 63 {
+            object_error(
+                PyExc_OverflowError,
+                "factorial() argument should not exceed 9223372036854775807"
+            );
+            return NULL;
+        }
+        n = PyLong_AsLongLong(value);
+        inner = required(PyLong_FromLongLong(1));
+        outer = Py_NewRef(inner);
+        upper: i64 = 3;
+        for i in range(bits(n) - 2, -1, -1) {
+            v = n >> i64(i);
+            if v <= 2 {
+                continue;
+            }
+            lower = upper;
+            upper = (v + 1) | i64(1);
+            partial = odd_product(lower, upper);
+            try {
+                replacement = required(PyNumber_Multiply(inner, partial));
+                jacpy_release(inner);
+                inner = replacement;
+                replacement = required(PyNumber_Multiply(outer, inner));
+                jacpy_release(outer);
+                outer = replacement;
+            } finally {
+                jacpy_release(partial);
+            }
+        }
+        remaining = n;
+        ones: i64 = 0;
+        while remaining != 0 {
+            ones += remaining & i64(1);
+            remaining >>= i64(1);
+        }
+        return required(jacpy_long_shift(outer, n - ones, 1));
+    } except boundary_failure {
+        return NULL;
+    } finally {
+        jacpy_release(value);
+        jacpy_release(inner);
+        jacpy_release(outer);
+    }
+}
+
+impl jacpy_math_isqrt(argument: ptr[PyObject]) -> ptr[PyObject] {
+    n: ptr[PyObject] = NULL;
+    approximation: ptr[PyObject] = NULL;
+    square: ptr[PyObject] = NULL;
+    try {
+        n = required(PyNumber_Index(argument));
+        sign = jacpy_long_sign(n);
+        if sign < 0 {
+            object_error(PyExc_ValueError, "isqrt() argument must be nonnegative");
+            return NULL;
+        }
+        if sign == 0 {
+            return required(PyLong_FromLongLong(0));
+        }
+        c = (_PyLong_NumBits(n) - 1) // 2;
+        approximation = required(PyLong_FromLongLong(1));
+        d: i64 = 0;
+        for s in range(bits(c) - 1, -1, -1) {
+            e = d;
+            d = c >> i64(s);
+            shifted: ptr[PyObject] = NULL;
+            quotient: ptr[PyObject] = NULL;
+            prefix: ptr[PyObject] = NULL;
+            try {
+                shifted = required(jacpy_long_shift(n, 2 * c - e - d + 1, 0));
+                quotient = required(PyNumber_FloorDivide(shifted, approximation));
+                prefix = required(jacpy_long_shift(approximation, d - e - 1, 1));
+                replacement = required(PyNumber_Add(prefix, quotient));
+                jacpy_release(approximation);
+                approximation = replacement;
+            } finally {
+                jacpy_release(shifted);
+                jacpy_release(quotient);
+                jacpy_release(prefix);
+            }
+        }
+        square = required(PyNumber_Multiply(approximation, approximation));
+        too_large = PyObject_RichCompareBool(square, n, 4);
+        if too_large < 0 {
+            return NULL;
+        }
+        if too_large != 0 {
+            one = required(PyLong_FromLongLong(1));
+            try {
+                return required(PyNumber_Subtract(approximation, one));
+            } finally {
+                jacpy_release(one);
+            }
+        }
+        return Py_NewRef(approximation);
+    } except boundary_failure {
+        return NULL;
+    } finally {
+        jacpy_release(n);
+        jacpy_release(approximation);
+        jacpy_release(square);
+    }
+}
+
+impl table_u64(table: ptr[u64], index: u64) -> u64 {
+    return (table + i64(index)).view(1)[0];
+}
+
+impl table_u8(table: ptr[u8], index: u64) -> u64 {
+    return u64((table + i64(index)).view(1)[0]);
+}
+
+impl perm_comb_small(n: u64, k: u64, combination: bool) -> ptr[PyObject] {
+    odd = addressof(reduced_factorial_odd_part);
+    inverted = addressof(inverted_factorial_odd_part);
+    zeros = addressof(factorial_trailing_zeros);
+    if combination {
+        if k < u64(35) and n <= table_u8(addressof(fast_comb_limits1), k) {
+            part = wrapping_mul(
+                wrapping_mul(table_u64(odd, n), table_u64(inverted, k)),
+                table_u64(inverted, n - k)
+            );
+            shift = table_u8(zeros, n) - table_u8(zeros, k) - table_u8(zeros, n - k);
+            return PyLong_FromUnsignedLongLong(wrapping_shl(part, shift));
+        }
+        if k < u64(14) and n <= table_u64(addressof(fast_comb_limits2), k) {
+            result = n;
+            top = n;
+            i = u64(1);
+            while i < k {
+                top -= u64(1);
+                result *= top;
+                i += u64(1);
+                result //= i;
+            }
+            return PyLong_FromUnsignedLongLong(result);
+        }
+    } elif k < u64(21) and n <= table_u64(addressof(fast_perm_limits), k) {
+        if n <= u64(127) {
+            part = wrapping_mul(table_u64(odd, n), table_u64(inverted, n - k));
+            shift = table_u8(zeros, n) - table_u8(zeros, n - k);
+            return PyLong_FromUnsignedLongLong(wrapping_shl(part, shift));
+        }
+        result = n;
+        top = n;
+        i = u64(1);
+        while i < k {
+            top -= u64(1);
+            result *= top;
+            i += u64(1);
+        }
+        return PyLong_FromUnsignedLongLong(result);
+    }
+    j = k // u64(2);
+    left = perm_comb_small(n, j, combination);
+    if not left {
+        return NULL;
+    }
+    right = perm_comb_small(n - j, k - j, combination);
+    if not right {
+        jacpy_release(left);
+        return NULL;
+    }
+    product = PyNumber_Multiply(left, right);
+    jacpy_release(left);
+    jacpy_release(right);
+    if not product or not combination {
+        return product;
+    }
+    divisor = perm_comb_small(k, j, True);
+    if not divisor {
+        jacpy_release(product);
+        return NULL;
+    }
+    quotient = PyNumber_FloorDivide(product, divisor);
+    jacpy_release(product);
+    jacpy_release(divisor);
+    return quotient;
+}
+
+impl perm_comb(n: ptr[PyObject], k: i64, combination: bool) -> ptr[PyObject] {
+    if k == 0 {
+        return required(PyLong_FromLongLong(1));
+    }
+    if k == 1 {
+        return Py_NewRef(n);
+    }
+    middle = k // 2;
+    left: ptr[PyObject] = NULL;
+    right: ptr[PyObject] = NULL;
+    offset: ptr[PyObject] = NULL;
+    remaining: ptr[PyObject] = NULL;
+    product: ptr[PyObject] = NULL;
+    denominator: ptr[PyObject] = NULL;
+    try {
+        left = perm_comb(n, middle, combination);
+        offset = required(PyLong_FromLongLong(middle));
+        remaining = required(PyNumber_Subtract(n, offset));
+        right = perm_comb(remaining, k - middle, combination);
+        product = required(PyNumber_Multiply(left, right));
+        if not combination {
+            return Py_NewRef(product);
+        }
+        denominator = required(perm_comb_small(u64(k), u64(middle), True));
+        return required(PyNumber_FloorDivide(product, denominator));
+    } finally {
+        jacpy_release(left);
+        jacpy_release(right);
+        jacpy_release(offset);
+        jacpy_release(remaining);
+        jacpy_release(product);
+        jacpy_release(denominator);
+    }
+}
+
+impl jacpy_math_comb(
+    n_arg: ptr[PyObject], k_arg: ptr[PyObject], combination: i64
+) -> ptr[PyObject] {
+    if combination == 0 and (k_arg == 0 or k_arg == Py_None) {
+        return jacpy_math_factorial(n_arg);
+    }
+    n: ptr[PyObject] = NULL;
+    k: ptr[PyObject] = NULL;
+    difference: ptr[PyObject] = NULL;
+    try {
+        n = required(PyNumber_Index(n_arg));
+        k = required(PyNumber_Index(k_arg));
+        if jacpy_long_sign(n) < 0 {
+            object_error(PyExc_ValueError, "n must be a non-negative integer");
+            return NULL;
+        }
+        if jacpy_long_sign(k) < 0 {
+            object_error(PyExc_ValueError, "k must be a non-negative integer");
+            return NULL;
+        }
+        comparison = PyObject_RichCompareBool(k, n, 4);
+        if comparison < 0 {
+            return NULL;
+        }
+        if comparison != 0 {
+            return required(PyLong_FromLongLong(0));
+        }
+        if combination != 0 {
+            difference = required(PyNumber_Subtract(n, k));
+            comparison = PyObject_RichCompareBool(difference, k, 0);
+            if comparison < 0 {
+                return NULL;
+            }
+            if comparison != 0 {
+                jacpy_release(k);
+                k = Py_NewRef(difference);
+            }
+        }
+        overflow = i32(0);
+        small_n = PyLong_AsLongLongAndOverflow(n, &mut overflow);
+        if overflow == 0 {
+            small_k = PyLong_AsLongLong(k);
+            if small_k > 1 {
+                return perm_comb_small(u64(small_n), u64(small_k), combination != 0);
+            }
+        }
+        if _PyLong_NumBits(k) > 63 {
+            object_error(
+                PyExc_OverflowError,
+                ("min(n - k, k)" if combination != 0 else "k")
+                    + " must not exceed 9223372036854775807"
+            );
+            return NULL;
+        }
+        count = PyLong_AsLongLong(k);
+        if jacpy_error_pending() != 0 {
+            return NULL;
+        }
+        return perm_comb(n, count, combination != 0);
+    } except boundary_failure {
+        return NULL;
+    } finally {
+        jacpy_release(n);
+        jacpy_release(k);
+        jacpy_release(difference);
+    }
+}
+
+impl input_float(value: ptr[PyObject]) -> float {
+    result = PyFloat_AsDouble(value);
+    if jacpy_error_pending() != 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl float_repr(value: float) -> str {
+    object = required(PyFloat_FromDouble(value));
+    try {
+        return repr_value(object);
+    } finally {
+        jacpy_release(object);
+    }
+}
+
+impl domain(operation: i64, value: float) {
+    message = "math domain error";
+    if operation == 0 or operation == 2 {
+        message = "expected a number in range from -1 up to 1, got "
+            + float_repr(value);
+    } elif operation == 1 {
+        message = "expected argument value not less than 1, got " + float_repr(value);
+    } elif operation == 5 {
+        message = "expected a number between -1 and 1, got " + float_repr(value);
+    } elif operation == 7 or operation == 18 or operation == 21 {
+        message = "expected a finite input, got " + float_repr(value);
+    } elif operation == 15 or operation == 16 {
+        message = "expected a noninteger or positive integer, got " + float_repr(value);
+    } elif operation == 17 {
+        message = "expected argument value > -1, got " + float_repr(value);
+    } elif operation == 20 {
+        message = "expected a nonnegative input, got " + float_repr(value);
+    }
+    object_error(PyExc_ValueError, message);
+}
+
+impl logarithm(value: ptr[PyObject], base: int) -> float {
+    if jacpy_is_long(value) != 0 {
+        if jacpy_long_sign(value) <= 0 {
+            object_error(PyExc_ValueError, "expected a positive input");
+            raise boundary_failure();
+        }
+        x = PyLong_AsDouble(value);
+        if jacpy_error_pending() != 0 {
+            PyErr_Clear();
+            exponent: i64 = 0;
+            x = _PyLong_Frexp(value, &mut exponent);
+            power = float(exponent);
+            if base == 2 {
+                return log2(x) + power;
+            }
+            if base == 10 {
+                return log10(x) + power * log10(2.0);
+            }
+            return log(x) + power * log(2.0);
+        }
+        if base == 2 {
+            return log2(x);
+        }
+        if base == 10 {
+            return log10(x);
+        }
+        return log(x);
+    }
+    x = input_float(value);
+    if x <= 0.0 {
+        object_error(
+            PyExc_ValueError, "expected a positive input, got " + float_repr(x)
+        );
+        raise boundary_failure();
+    }
+    if base == 2 {
+        return log2(x);
+    }
+    if base == 10 {
+        return log10(x);
+    }
+    return log(x);
+}
+
+impl m_sinpi(x: float) -> float {
     y = fmod(fabs(x), 2.0);
     n = int(round(2.0 * y));
     r: float = 0.0;
@@ -462,8 +1173,7 @@ def:priv m_sinpi(x: float) -> float {
     return copysign(1.0, x) * r;
 }
 
-"""Lanczos' sum L_g(x) for positive x, in 1/x above 5.0 to avoid overflow."""
-def:priv lanczos_sum(x: float) -> float {
+impl lanczos_sum(x: float) -> float {
     num = 0.0;
     den = 0.0;
     if x < 5.0 {
@@ -480,10 +1190,7 @@ def:priv lanczos_sum(x: float) -> float {
     return num / den;
 }
 
-"""CPython's m_tgamma. Returns the result and the errno it sets (1 EDOM,
-2 ERANGE, 0 none); the Lanczos step is corrected by the rounding error of
-x+g-0.5 as CPython's comment derives."""
-def:priv m_tgamma(x: float) -> tuple[float, int] {
+impl m_tgamma(x: float) -> tuple[float, int] {
     if not isfinite(x) {
         if isnan(x) or x > 0.0 {
             return (x, 0);
@@ -547,8 +1254,7 @@ def:priv m_tgamma(x: float) -> tuple[float, int] {
     return (r, 2 if isinf(r) else 0);
 }
 
-"""CPython's m_lgamma, log|Gamma(x)|, with m_tgamma's errno convention."""
-def:priv m_lgamma(x: float) -> tuple[float, int] {
+impl m_lgamma(x: float) -> tuple[float, int] {
     if not isfinite(x) {
         if isnan(x) {
             return (x, 0);
@@ -573,7 +1279,7 @@ def:priv m_lgamma(x: float) -> tuple[float, int] {
     return (r, 2 if isinf(r) else 0);
 }
 
-def:pub jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] {
     try {
         numerator = logarithm(value, 0);
         if base == 0 {
@@ -590,8 +1296,7 @@ def:pub jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObjec
     }
 }
 
-# Operation IDs are shared with the native method declarations in bindings/math.jac.
-def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
     try {
         if operation >= 28 and operation <= 30 {
             name = "__ceil__"
@@ -731,7 +1436,7 @@ def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
     }
 }
 
-def:pub jacpy_math_binary(
+impl jacpy_math_binary(
     operation: i64, a: ptr[PyObject], b: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -785,9 +1490,7 @@ def:pub jacpy_math_binary(
     }
 }
 
-# math.frexp(x) (operation 0) and math.modf(x) (operation 1). Special values
-# are handled directly, to sidestep platform differences.
-def:pub jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
     x: float = 0.0;
     try {
         x = input_float(value);
@@ -812,9 +1515,7 @@ def:pub jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] 
     return Py_BuildValue("(dd)", fraction, whole);
 }
 
-def:pub jacpy_math_ldexp(
-    value: ptr[PyObject], exponent: ptr[PyObject]
-) -> ptr[PyObject] {
+impl jacpy_math_ldexp(value: ptr[PyObject], exponent: ptr[PyObject]) -> ptr[PyObject] {
     try {
         x = input_float(value);
         if jacpy_is_long(exponent) == 0 {
@@ -845,7 +1546,7 @@ def:pub jacpy_math_ldexp(
     }
 }
 
-def:pub jacpy_math_fma(
+impl jacpy_math_fma(
     a: ptr[PyObject], b: ptr[PyObject], c: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -867,7 +1568,7 @@ def:pub jacpy_math_fma(
     }
 }
 
-def:pub jacpy_math_isclose(
+impl jacpy_math_isclose(
     a: ptr[PyObject], b: ptr[PyObject], rel: ptr[PyObject], abs_tol: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -900,7 +1601,7 @@ def:pub jacpy_math_isclose(
     }
 }
 
-def:pub jacpy_math_nextafter(
+impl jacpy_math_nextafter(
     a: ptr[PyObject], b: ptr[PyObject], steps: ptr[PyObject]
 ) -> ptr[PyObject] {
     count_object: ptr[PyObject] = NULL;
@@ -975,7 +1676,7 @@ def:pub jacpy_math_nextafter(
     }
 }
 
-def:pub jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject] {
     iterator: ptr[PyObject] = NULL;
     try {
         iterator = required(PyObject_GetIter(iterable));
@@ -1077,24 +1778,23 @@ def:pub jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
-# Error-free transforms used by both norm and dot-product accumulation.
-def:priv double_sum(a: float, b: float) -> tuple[float, float] {
+impl double_sum(a: float, b: float) -> tuple[float, float] {
     high = a + b;
     rounded = high - a;
     return (high, (a - (high - rounded)) + (b - rounded));
 }
 
-def:priv fast_sum(a: float, b: float) -> tuple[float, float] {
+impl fast_sum(a: float, b: float) -> tuple[float, float] {
     high = a + b;
     return (high, (a - high) + b);
 }
 
-def:priv double_product(a: float, b: float) -> tuple[float, float] {
+impl double_product(a: float, b: float) -> tuple[float, float] {
     high = a * b;
     return (high, fma(a, b, -high));
 }
 
-def:priv triple_product(
+impl triple_product(
     a: float, b: float, total: tuple[float, float, float]
 ) -> tuple[float, float, float] {
     product = double_product(a, b);
@@ -1104,12 +1804,12 @@ def:priv triple_product(
     return (high[0], second[0], total[2] + first[1] + second[1]);
 }
 
-def:priv triple_value(total: tuple[float, float, float]) -> float {
+impl triple_value(total: tuple[float, float, float]) -> float {
     last = double_sum(total[1], total[0]);
     return total[2] + last[1] + last[0];
 }
 
-def:priv norm(values: list[float], largest: float, found_nan: bool) -> float {
+impl norm(values: list[float], largest: float, found_nan: bool) -> float {
     if isinf(largest) {
         return largest;
     }
@@ -1152,7 +1852,7 @@ def:priv norm(values: list[float], largest: float, found_nan: bool) -> float {
     return result / scale;
 }
 
-def:pub jacpy_math_hypot(arguments: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_hypot(arguments: ptr[PyObject]) -> ptr[PyObject] {
     try {
         values: list[float] = [];
         largest: float = 0.0;
@@ -1177,7 +1877,7 @@ def:pub jacpy_math_hypot(arguments: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_math_dist(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_dist(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     left: ptr[PyObject] = NULL;
     right: ptr[PyObject] = NULL;
     try {
@@ -1224,9 +1924,7 @@ def:pub jacpy_math_dist(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_math_prod(
-    iterable: ptr[PyObject], start: ptr[PyObject]
-) -> ptr[PyObject] {
+impl jacpy_math_prod(iterable: ptr[PyObject], start: ptr[PyObject]) -> ptr[PyObject] {
     iterator: ptr[PyObject] = NULL;
     result: ptr[PyObject] = NULL;
     try {
@@ -1257,7 +1955,7 @@ def:pub jacpy_math_prod(
     }
 }
 
-def:pub jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     left: ptr[PyObject] = NULL;
     right: ptr[PyObject] = NULL;
     result: ptr[PyObject] = NULL;
@@ -1378,13 +2076,11 @@ def:pub jacpy_math_sumprod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] 
     return NULL;
 }
 
-# The Argument Clinic _impl functions. A double parameter arrives converted;
-# the shared kernels take Python numbers, so it is passed back as a float.
-def:priv float_object(value: f64) -> ptr[PyObject] {
+impl float_object(value: f64) -> ptr[PyObject] {
     return PyFloat_FromDouble(value);
 }
 
-def:priv unary_float(operation: int, x: f64) -> ptr[PyObject] {
+impl unary_float(operation: int, x: f64) -> ptr[PyObject] {
     value = float_object(x);
     if value == 0 {
         return NULL;
@@ -1394,7 +2090,7 @@ def:priv unary_float(operation: int, x: f64) -> ptr[PyObject] {
     return result;
 }
 
-def:priv binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject] {
+impl binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject] {
     left = float_object(x);
     right = float_object(y);
     result: ptr[PyObject] = NULL;
@@ -1406,7 +2102,7 @@ def:priv binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject] {
     return result;
 }
 
-def math_gcd_impl(
+impl math_gcd_impl(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     arguments = vector_tuple(args, nargs);
@@ -1418,7 +2114,7 @@ def math_gcd_impl(
     return result;
 }
 
-def math_lcm_impl(
+impl math_lcm_impl(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     arguments = vector_tuple(args, nargs);
@@ -1430,7 +2126,7 @@ def math_lcm_impl(
     return result;
 }
 
-def math_hypot_impl(
+impl math_hypot_impl(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     arguments = vector_tuple(args, nargs);
@@ -1442,39 +2138,39 @@ def math_hypot_impl(
     return result;
 }
 
-def math_ceil_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+impl math_ceil_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(28, x);
 }
 
-def math_floor_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+impl math_floor_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(29, x);
 }
 
-def math_trunc_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+impl math_trunc_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(30, x);
 }
 
-def math_log10_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+impl math_log10_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(31, x);
 }
 
-def math_log2_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
+impl math_log2_impl(module: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_unary(32, x);
 }
 
-def math_fsum_impl(module: ptr[PyObject], seq: ptr[PyObject]) -> ptr[PyObject] {
+impl math_fsum_impl(module: ptr[PyObject], seq: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_fsum(seq);
 }
 
-def math_isqrt_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+impl math_isqrt_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_isqrt(n);
 }
 
-def math_factorial_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+impl math_factorial_impl(module: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_math_factorial(n);
 }
 
-def math_frexp_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_frexp_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     value = float_object(x);
     if value == 0 {
         return NULL;
@@ -1484,7 +2180,7 @@ def math_frexp_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return result;
 }
 
-def math_modf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_modf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     value = float_object(x);
     if value == 0 {
         return NULL;
@@ -1494,7 +2190,7 @@ def math_modf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return result;
 }
 
-def math_ldexp_impl(module: ptr[PyObject], x: f64, i: ptr[PyObject]) -> ptr[PyObject] {
+impl math_ldexp_impl(module: ptr[PyObject], x: f64, i: ptr[PyObject]) -> ptr[PyObject] {
     value = float_object(x);
     if value == 0 {
         return NULL;
@@ -1504,7 +2200,7 @@ def math_ldexp_impl(module: ptr[PyObject], x: f64, i: ptr[PyObject]) -> ptr[PyOb
     return result;
 }
 
-def math_fma_impl(module: ptr[PyObject], x: f64, y: f64, z: f64) -> ptr[PyObject] {
+impl math_fma_impl(module: ptr[PyObject], x: f64, y: f64, z: f64) -> ptr[PyObject] {
     values = [float_object(x), float_object(y), float_object(z)];
     result: ptr[PyObject] = NULL;
     if 0 not in values {
@@ -1516,48 +2212,47 @@ def math_fma_impl(module: ptr[PyObject], x: f64, y: f64, z: f64) -> ptr[PyObject
     return result;
 }
 
-def math_fmod_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
+impl math_fmod_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
     return binary_float(2, x, y);
 }
 
-def math_pow_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
+impl math_pow_impl(module: ptr[PyObject], x: f64, y: f64) -> ptr[PyObject] {
     return binary_float(4, x, y);
 }
 
-def math_dist_impl(
+impl math_dist_impl(
     module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
 ) -> ptr[PyObject] {
     return jacpy_math_dist(p, q);
 }
 
-def math_sumprod_impl(
+impl math_sumprod_impl(
     module: ptr[PyObject], p: ptr[PyObject], q: ptr[PyObject]
 ) -> ptr[PyObject] {
     return jacpy_math_sumprod(p, q);
 }
 
-def math_degrees_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_degrees_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return unary_float(23, x);
 }
 
-def math_radians_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_radians_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return unary_float(24, x);
 }
 
-def math_isfinite_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_isfinite_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return unary_float(25, x);
 }
 
-def math_isinf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_isinf_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return unary_float(26, x);
 }
 
-def math_isnan_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
+impl math_isnan_impl(module: ptr[PyObject], x: f64) -> ptr[PyObject] {
     return unary_float(27, x);
 }
 
-# isclose returns clinic's bool: -1 with the error set on failure.
-def math_isclose_impl(
+impl math_isclose_impl(
     module: ptr[PyObject], a: f64, b: f64, rel_tol: f64, abs_tol: f64
 ) -> i32 {
     values = [
@@ -1581,25 +2276,25 @@ def math_isclose_impl(
     return i32(truth);
 }
 
-def math_prod_impl(
+impl math_prod_impl(
     module: ptr[PyObject], iterable: ptr[PyObject], start: ptr[PyObject]
 ) -> ptr[PyObject] {
     return jacpy_math_prod(iterable, start);
 }
 
-def math_perm_impl(
+impl math_perm_impl(
     module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
 ) -> ptr[PyObject] {
     return jacpy_math_comb(n, k, 0);
 }
 
-def math_comb_impl(
+impl math_comb_impl(
     module: ptr[PyObject], n: ptr[PyObject], k: ptr[PyObject]
 ) -> ptr[PyObject] {
     return jacpy_math_comb(n, k, 1);
 }
 
-def math_nextafter_impl(
+impl math_nextafter_impl(
     module: ptr[PyObject], x: f64, y: f64, steps: ptr[PyObject]
 ) -> ptr[PyObject] {
     left = float_object(x);
@@ -1613,8 +2308,7 @@ def math_nextafter_impl(
     return result;
 }
 
-# ulp returns clinic's double: -1.0 with the error set on failure.
-def math_ulp_impl(module: ptr[PyObject], x: f64) -> f64 {
+impl math_ulp_impl(module: ptr[PyObject], x: f64) -> f64 {
     result = unary_float(33, x);
     if result == 0 {
         return -1.0;

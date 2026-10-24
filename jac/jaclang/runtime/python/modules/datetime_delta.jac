@@ -1,11 +1,3 @@
-"""The datetime.timedelta type of the _datetime module.
-
-Modules/_datetimemodule.c's PyDateTime_Delta implementation in native Jac:
-`PyDateTime_DeltaType` and the immortal `zero_delta` are C data under their
-C names, as static and immortal as the C definitions. Arithmetic beyond
-C int goes through Python ints, as in C. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob PyType_Type: PyTypeObject; glob:priv delta_as_number: PyNumberMethods = PyNumberMethods(
              nb_add=delta_add,
@@ -70,8 +62,6 @@ import from c {
              tp_members=addressof(delta_members),
              tp_new=delta_new
          ),
-         # The zero timedelta every zero-valued timedelta() returns. Letting its
-         # hash be set lazily is a benign race.
          zero_delta: PyDateTime_Delta = PyDateTime_Delta(
              ob_base=_object(
                  ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
@@ -81,9 +71,88 @@ import from c {
          );
 }
 
-"""Nearest integer to m / n for integers m and n; half-integer results are
-rounded to even."""
-def divide_nearest(m: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
+def divide_nearest(m: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject];
+
+def multiply_int_timedelta(
+    intobj: ptr[PyObject], delta: ptr[PyObject]
+) -> ptr[PyObject];
+
+def get_float_as_integer_ratio(floatobj: ptr[PyObject]) -> ptr[PyObject];
+
+def multiply_truedivide_timedelta_float(
+    delta: ptr[PyObject], floatobj: ptr[PyObject], op: int
+) -> ptr[PyObject];
+
+def divide_timedelta_int(delta: ptr[PyObject], intobj: ptr[PyObject]) -> ptr[PyObject];
+
+def truedivide_timedelta_timedelta(
+    left: ptr[PyObject], right: ptr[PyObject]
+) -> ptr[PyObject];
+
+def truedivide_timedelta_int(delta: ptr[PyObject], i: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_positive(self: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_abs(self: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_richcompare(
+    self: ptr[PyObject], other: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def delta_getstate(self: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_hash(op: ptr[PyObject]) -> i64;
+
+def delta_multiply(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_divide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_truedivide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_remainder(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_divmod(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def accum(
+    tag: str,
+    sofar: ptr[PyObject],
+    num: ptr[PyObject],
+    factor: ptr[PyObject],
+    leftover: f64
+) -> tuple[ptr[PyObject], f64];
+
+def delta_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv COMPONENTS: list[tuple[int, str, int]] = [
+         (2, "microseconds", -1),
+         (3, "milliseconds", STATE_US_PER_MS),
+         (1, "seconds", STATE_US_PER_SECOND),
+         (4, "minutes", STATE_US_PER_MINUTE),
+         (5, "hours", STATE_US_PER_HOUR),
+         (0, "days", STATE_US_PER_DAY),
+         (6, "weeks", STATE_US_PER_WEEK)
+     ];
+
+def:priv delta_new_in(
+    module: ptr[PyObject],
+    type: ptr[PyTypeObject],
+    args: ptr[PyObject],
+    kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def delta_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_str(self: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_total_seconds(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def delta_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+impl divide_nearest(m: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
     temp = _PyLong_DivmodNear(m, n);
     if not temp {
         return NULL;
@@ -93,7 +162,7 @@ def divide_nearest(m: ptr[PyObject], n: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def multiply_int_timedelta(
+impl multiply_int_timedelta(
     intobj: ptr[PyObject], delta: ptr[PyObject]
 ) -> ptr[PyObject] {
     pyus_in = delta_to_microseconds(delta);
@@ -110,7 +179,7 @@ def multiply_int_timedelta(
     return result;
 }
 
-def get_float_as_integer_ratio(floatobj: ptr[PyObject]) -> ptr[PyObject] {
+impl get_float_as_integer_ratio(floatobj: ptr[PyObject]) -> ptr[PyObject] {
     ratio = PyObject_CallMethod(floatobj, "as_integer_ratio", "");
     if not ratio {
         return NULL;
@@ -132,8 +201,7 @@ def get_float_as_integer_ratio(floatobj: ptr[PyObject]) -> ptr[PyObject] {
     return ratio;
 }
 
-"""delta * float (op 0) or delta / float (op 1), rounded half to even."""
-def multiply_truedivide_timedelta_float(
+impl multiply_truedivide_timedelta_float(
     delta: ptr[PyObject], floatobj: ptr[PyObject], op: int
 ) -> ptr[PyObject] {
     pyus_in = delta_to_microseconds(delta);
@@ -160,7 +228,9 @@ def multiply_truedivide_timedelta_float(
     return result;
 }
 
-def divide_timedelta_int(delta: ptr[PyObject], intobj: ptr[PyObject]) -> ptr[PyObject] {
+impl divide_timedelta_int(
+    delta: ptr[PyObject], intobj: ptr[PyObject]
+) -> ptr[PyObject] {
     pyus_in = delta_to_microseconds(delta);
     if not pyus_in {
         return NULL;
@@ -175,7 +245,7 @@ def divide_timedelta_int(delta: ptr[PyObject], intobj: ptr[PyObject]) -> ptr[PyO
     return result;
 }
 
-def truedivide_timedelta_timedelta(
+impl truedivide_timedelta_timedelta(
     left: ptr[PyObject], right: ptr[PyObject]
 ) -> ptr[PyObject] {
     pyus_left = delta_to_microseconds(left);
@@ -193,7 +263,7 @@ def truedivide_timedelta_timedelta(
     return result;
 }
 
-def truedivide_timedelta_int(delta: ptr[PyObject], i: ptr[PyObject]) -> ptr[PyObject] {
+impl truedivide_timedelta_int(delta: ptr[PyObject], i: ptr[PyObject]) -> ptr[PyObject] {
     pyus_in = delta_to_microseconds(delta);
     if not pyus_in {
         return NULL;
@@ -208,10 +278,8 @@ def truedivide_timedelta_int(delta: ptr[PyObject], i: ptr[PyObject]) -> ptr[PyOb
     return result;
 }
 
-def delta_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if delta_check(left) and delta_check(right) {
-        # delta + delta; the additions can't overflow because of the
-        # invariant bounds.
         return new_delta(
             td_days(left) + td_days(right),
             td_seconds(left) + td_seconds(right),
@@ -222,20 +290,18 @@ def delta_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     return not_implemented();
 }
 
-def delta_positive(self: ptr[PyObject]) -> ptr[PyObject] {
-    # Could optimize this (by returning self) if this isn't a subclass -- but
-    # who uses unary + ? Approximately nobody.
+impl delta_positive(self: ptr[PyObject]) -> ptr[PyObject] {
     return new_delta(td_days(self), td_seconds(self), td_microseconds(self), 0);
 }
 
-def delta_abs(self: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_abs(self: ptr[PyObject]) -> ptr[PyObject] {
     if td_days(self) < 0 {
         return delta_negative(self);
     }
     return delta_positive(self);
 }
 
-def delta_richcompare(
+impl delta_richcompare(
     self: ptr[PyObject], other: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if delta_check(other) {
@@ -244,12 +310,11 @@ def delta_richcompare(
     return not_implemented();
 }
 
-"""__getstate__ isn't exposed."""
-def delta_getstate(self: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_getstate(self: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue("lll", td_days(self), td_seconds(self), td_microseconds(self));
 }
 
-def delta_hash(op: ptr[PyObject]) -> i64 {
+impl delta_hash(op: ptr[PyObject]) -> i64 {
     record = ptr[PyDateTime_Delta](op).view(1);
     hash = record[0].hashcode;
     if hash == -1 {
@@ -263,9 +328,8 @@ def delta_hash(op: ptr[PyObject]) -> i64 {
     return hash;
 }
 
-def delta_multiply(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_multiply(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if delta_check(left) {
-        # delta * ???
         if jacpy_is_long(right) != 0 {
             return multiply_int_timedelta(right, left);
         }
@@ -280,7 +344,7 @@ def delta_multiply(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     return not_implemented();
 }
 
-def delta_divide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_divide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if delta_check(left) {
         if jacpy_is_long(right) != 0 {
             return divide_timedelta_int(left, right);
@@ -292,7 +356,7 @@ def delta_divide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     return not_implemented();
 }
 
-def delta_truedivide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_truedivide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if delta_check(left) {
         if delta_check(right) {
             return truedivide_timedelta_timedelta(left, right);
@@ -307,7 +371,7 @@ def delta_truedivide(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject]
     return not_implemented();
 }
 
-def delta_remainder(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_remainder(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if not delta_check(left) or not delta_check(right) {
         return not_implemented();
     }
@@ -331,7 +395,7 @@ def delta_remainder(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] 
     return remainder;
 }
 
-def delta_divmod(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_divmod(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if not delta_check(left) or not delta_check(right) {
         return not_implemented();
     }
@@ -361,12 +425,7 @@ def delta_divmod(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""Fold in the value of the tag ("seconds", "weeks", etc) component of a
-timedelta constructor: `sofar` microseconds plus `num` units of `factor`
-microseconds, computed in a numerically careful way. Returns the new sum and
-`leftover` plus any fractional microseconds a float `num` left; NULL on
-error."""
-def accum(
+impl accum(
     tag: str,
     sofar: ptr[PyObject],
     num: ptr[PyObject],
@@ -383,10 +442,6 @@ def accum(
         return (sum, leftover);
     }
     if jacpy_is_float(num) != 0 {
-        # Decompose num into an integer part and a fractional part; the
-        # integer part times factor is exact in long arithmetic, and the
-        # fractional part times factor splits again into an int part and a
-        # frac part added into leftover.
         dnum = PyFloat_AsDouble(num);
         if dnum == -1.0 and PyErr_Occurred() {
             return (NULL, leftover);
@@ -410,8 +465,7 @@ def accum(
         if fracpart == 0.0 {
             return (sum, leftover);
         }
-        # So far we've lost no information. Dealing with the fractional part
-        # requires float arithmetic, and may lose a little info.
+
         dnum = PyLong_AsDouble(factor);
         dnum *= fracpart;
         fracpart = modf(dnum, &mut intpart);
@@ -434,7 +488,7 @@ def accum(
     return (NULL, leftover);
 }
 
-def delta_new(
+impl delta_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = get_current_state();
@@ -446,19 +500,7 @@ def delta_new(
     return self;
 }
 
-# The components with their names and the module state entry of their unit,
-# in the order delta_new() folds them in.
-glob:priv COMPONENTS: list[tuple[int, str, int]] = [
-         (2, "microseconds", -1),
-         (3, "milliseconds", STATE_US_PER_MS),
-         (1, "seconds", STATE_US_PER_SECOND),
-         (4, "minutes", STATE_US_PER_MINUTE),
-         (5, "hours", STATE_US_PER_HOUR),
-         (0, "days", STATE_US_PER_DAY),
-         (6, "weeks", STATE_US_PER_WEEK)
-     ];
-
-def:priv delta_new_in(
+impl delta_new_in(
     module: ptr[PyObject],
     type: ptr[PyTypeObject],
     args: ptr[PyObject],
@@ -482,7 +524,7 @@ def:priv delta_new_in(
     } except boundary_failure {
         return NULL;
     }
-    # running sum of microseconds
+
     x = PyLong_FromLong(0);
     if not x {
         return NULL;
@@ -503,11 +545,8 @@ def:priv delta_new_in(
         }
     }
     if leftover_us != 0.0 {
-        # Round to nearest whole # of us, and add into x.
         whole_us = round(leftover_us);
         if fabs(whole_us - leftover_us) == 0.5 {
-            # We're exactly halfway between two integers. In order to do
-            # round-half-to-even, we must determine whether x is odd: x & 1.
             temp = PyNumber_And(x, Py_GetConstantBorrowed(Py_CONSTANT_ONE));
             if not temp {
                 jacpy_release(x);
@@ -540,7 +579,7 @@ def:priv delta_new_in(
     return self;
 }
 
-def delta_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     args = Py_GetConstant(Py_CONSTANT_EMPTY_STR);
     if not args {
         return NULL;
@@ -575,7 +614,7 @@ def delta_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     }
     if PyUnicode_GetLength(args) == 0 {
         jacpy_release(args);
-        args = PyUnicode_FromString("0");
+        args = PyUnicode_FromString(ptr[u8]("0"));
         if not args {
             return NULL;
         }
@@ -585,7 +624,7 @@ def delta_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     return repr;
 }
 
-def delta_str(self: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_str(self: ptr[PyObject]) -> ptr[PyObject] {
     us = td_microseconds(self);
     seconds = td_seconds(self);
     minutes = seconds // 60;
@@ -618,7 +657,7 @@ def delta_str(self: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat("%ld:%02ld:%02ld", hours, minutes, seconds);
 }
 
-def delta_total_seconds(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_total_seconds(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     total_microseconds = delta_to_microseconds(op);
     if not total_microseconds {
         return NULL;
@@ -636,6 +675,6 @@ def delta_total_seconds(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject
     return total_seconds;
 }
 
-def delta_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl delta_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue("ON", type_of(op), delta_getstate(op));
 }

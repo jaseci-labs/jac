@@ -1,12 +1,153 @@
-"""The array module: array_new, the sequence, mapping and buffer slots, and
-the clinic-generated methods over the state modules/array.jac keeps."""
-
-# array_new: PyArg_ParseTuple(args, "C|O:array", ...).
 glob:priv array_signature = CallSignature(
          "array", ["typecode", "initializer"], 1, 2, 2, parser=PARSE_FORMAT
      );
 
-def:priv create_bound(args: BoundArguments) -> ptr[PyObject] {
+def:priv create_bound(args: BoundArguments) -> ptr[PyObject];
+
+def:priv create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv length(instance: ptr[PyObject]) -> i64;
+
+def:priv item(instance: ptr[PyObject], index: i64) -> ptr[PyObject];
+
+def:priv assign_item(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) -> i32;
+
+def:priv subscript(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv assign_subscript(
+    instance: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def:priv inplace_concat(
+    instance: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv inplace_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject];
+
+def:priv repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject];
+
+def:priv compare(
+    instance: ptr[PyObject], other: ptr[PyObject], operation: i32
+) -> ptr[PyObject];
+
+def:priv contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32;
+
+def:priv typecode(instance: ptr[PyObject], unused: u64) -> ptr[PyObject];
+
+def:priv itemsize(instance: ptr[PyObject], unused: u64) -> ptr[PyObject];
+
+def:priv get_buffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32;
+
+def:priv release_buffer(instance: ptr[PyObject], view: ptr[Py_buffer]);
+
+def:priv iterate(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv iterator_next(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv iterator_self(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv array_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32;
+
+def:priv array_clear(instance: ptr[PyObject]) -> i32;
+
+def:priv array_dealloc(instance: ptr[PyObject]);
+
+def:priv iterator_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32;
+
+def:priv iterator_clear(instance: ptr[PyObject]) -> i32;
+
+def:priv iterator_dealloc(instance: ptr[PyObject]);
+
+glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
+     iterator_type = TypeDefinition(
+         "array.arrayiterator",
+         "",
+         arrayiterator_methods,
+         flags | u64(TypeFlags.DISALLOW_INSTANTIATION.value),
+         TypeHooks(
+             dealloc=iterator_dealloc,
+             traverse=iterator_traverse,
+             clear=iterator_clear,
+             iter=iterator_self,
+             next=iterator_next
+         ),
+         generic_getattr=True
+     ),
+     array_type = TypeDefinition(
+         "array.array",
+         arraytype_doc,
+         array_methods
+             + [
+                 MethodDefinition(
+                     "__class_getitem__",
+                     MethodCallbacks(positional=Py_GenericAlias),
+                     array_methods___class_getitem___doc,
+                     flags=24
+                 )
+             ],
+         flags | u64(TypeFlags.BASETYPE.value | TypeFlags.SEQUENCE.value),
+         TypeHooks(
+             create=create,
+             dealloc=array_dealloc,
+             traverse=array_traverse,
+             clear=array_clear,
+             repr=repr,
+             compare=compare,
+             iter=iterate,
+             length=length,
+             item=item,
+             assign=assign_item,
+             contains=contains,
+             concat=concat,
+             inplace_concat=inplace_concat,
+             repeat=repeat,
+             inplace_repeat=inplace_repeat,
+             mapping_length=length,
+             subscript=subscript,
+             assign_subscript=assign_subscript,
+             buffer=get_buffer,
+             release_buffer=release_buffer
+         ),
+         [
+             PropertyDefinition(
+                 "typecode",
+                 PropertyCallbacks(read=typecode),
+                 doc=array_getsets_typecode_doc
+             ),
+             PropertyDefinition(
+                 "itemsize",
+                 PropertyCallbacks(read=itemsize),
+                 doc=array_getsets_itemsize_doc
+             )
+         ],
+         unhashable=True,
+         weaklist=True,
+         generic_getattr=True
+     );
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "array",
+         module_doc,
+         module_methods,
+         hooks=ModuleHooks(execute=execute),
+         state_count=2
+     );
+
+def:pub PyInit_array -> ptr[PyObject];
+
+impl create_bound(args: BoundArguments) -> ptr[PyObject] {
     code = i64(convert_unicode_char(args.values[0], "array", "argument 1", False));
     initial = args.values[1];
     audit = owned_tuple(
@@ -86,7 +227,7 @@ def:priv create_bound(args: BoundArguments) -> ptr[PyObject] {
     return instance;
 }
 
-def:priv create(
+impl create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_for(type);
@@ -102,21 +243,21 @@ def:priv create(
         }
         return invoke(array_signature, args, NULL, create_bound, type);
     }
-    # Subclass __init__ owns its keywords; the array constructor sees positionals.
+
     return invoke(array_signature, args, NULL, create_bound, type);
 }
 
-def:priv length(instance: ptr[PyObject]) -> i64 {
+impl length(instance: ptr[PyObject]) -> i64 {
     state = state_for(instance);
     return state.native.length if state is not None else i64(-1);
 }
 
-def:priv item(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
+impl item(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
     state = state_for(instance);
     return jacpy_array_item(state.native, index) if state is not None else NULL;
 }
 
-def:priv assign_item(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) -> i32 {
+impl assign_item(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) -> i32 {
     state = state_for(instance);
     if state is None {
         return i32(-1);
@@ -132,7 +273,7 @@ def:priv assign_item(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) 
     );
 }
 
-def:priv subscript(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
+impl subscript(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
     if PyIndex_Check(key) != 0 {
         index = PyNumber_AsSsize_t(key, PyExc_IndexError);
         if jacpy_error_pending() != 0 {
@@ -176,7 +317,7 @@ def:priv subscript(instance: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject]
     return NULL;
 }
 
-def:priv assign_subscript(
+impl assign_subscript(
     instance: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if PyIndex_Check(key) != 0 {
@@ -222,9 +363,7 @@ def:priv assign_subscript(
     return i32(-1);
 }
 
-def:priv inplace_concat(
-    instance: ptr[PyObject], value: ptr[PyObject]
-) -> ptr[PyObject] {
+impl inplace_concat(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_binding_matches(value, array_token.handle) == 0 {
         object_error(PyExc_TypeError, "can only extend array with array");
         return NULL;
@@ -242,7 +381,7 @@ def:priv inplace_concat(
         else NULL;
 }
 
-def:priv concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     copied = array_array___copy___impl(instance);
     if copied == 0 {
         return NULL;
@@ -252,7 +391,7 @@ def:priv concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] 
     return result;
 }
 
-def:priv inplace_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
+impl inplace_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -262,7 +401,7 @@ def:priv inplace_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
         else NULL;
 }
 
-def:priv repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
+impl repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
     copied = array_array___copy___impl(instance);
     if copied == 0 {
         return NULL;
@@ -272,7 +411,7 @@ def:priv repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
     return result;
 }
 
-def:priv compare(
+impl compare(
     instance: ptr[PyObject], other: ptr[PyObject], operation: i32
 ) -> ptr[PyObject] {
     if jacpy_binding_matches(other, array_token.handle) == 0 {
@@ -286,7 +425,7 @@ def:priv compare(
     return jacpy_array_compare(left.native, right.native, i64(operation));
 }
 
-def:priv contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
+impl contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     state = state_for(instance);
     if state is None {
         return i32(-1);
@@ -294,19 +433,19 @@ def:priv contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     return i32(jacpy_array_search(state.native, value, 0, 9223372036854775807, 3));
 }
 
-def:priv typecode(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
+impl typecode(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
     state = state_for(instance);
     return PyUnicode_FromOrdinal(i32(state.native.code)) if state is not None else NULL;
 }
 
-def:priv itemsize(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
+impl itemsize(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
     state = state_for(instance);
     return PyLong_FromLongLong(i64(state.native.itemsize))
         if state is not None
         else NULL;
 }
 
-def:priv get_buffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
+impl get_buffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
     state = state_for(instance);
     if state is None {
         return i32(-1);
@@ -324,7 +463,7 @@ def:priv get_buffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -
     return status;
 }
 
-def:priv release_buffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
+impl release_buffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
     state = state_for(instance);
     if state is not None {
         jacpy_array_export(state.native, -1);
@@ -332,7 +471,7 @@ def:priv release_buffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
     jacpy_binding_buffer_dispose(view);
 }
 
-def:priv iterate(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl iterate(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -351,16 +490,16 @@ def:priv iterate(instance: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def:priv iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = iterator_state(instance);
     return jacpy_array_cursor_next(state.native) if state is not None else NULL;
 }
 
-def:priv iterator_self(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl iterator_self(instance: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(instance);
 }
 
-def:priv repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -368,102 +507,35 @@ def:priv repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_array_repr(state.native);
 }
 
-def:priv array_traverse(
+impl array_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
     return traverse_payload(instance, array_token.handle, visitor, context);
 }
 
-def:priv array_clear(instance: ptr[PyObject]) -> i32 {
+impl array_clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, array_token.handle);
 }
 
-def:priv array_dealloc(instance: ptr[PyObject]) {
+impl array_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, array_token.handle);
 }
 
-def:priv iterator_traverse(
+impl iterator_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
     return traverse_payload(instance, arrayiterator_token.handle, visitor, context);
 }
 
-def:priv iterator_clear(instance: ptr[PyObject]) -> i32 {
+impl iterator_clear(instance: ptr[PyObject]) -> i32 {
     return clear_payload(instance, arrayiterator_token.handle);
 }
 
-def:priv iterator_dealloc(instance: ptr[PyObject]) {
+impl iterator_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, arrayiterator_token.handle);
 }
 
-glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
-     iterator_type = TypeDefinition(
-         "array.arrayiterator",
-         "",
-         arrayiterator_methods,
-         flags | u64(TypeFlags.DISALLOW_INSTANTIATION.value),
-         TypeHooks(
-             dealloc=iterator_dealloc,
-             traverse=iterator_traverse,
-             clear=iterator_clear,
-             iter=iterator_self,
-             next=iterator_next
-         ),
-         generic_getattr=True
-     ),
-     array_type = TypeDefinition(
-         "array.array",
-         arraytype_doc,
-         array_methods
-             + [
-                 MethodDefinition(
-                     "__class_getitem__",
-                     MethodCallbacks(positional=Py_GenericAlias),
-                     array_methods___class_getitem___doc,
-                     flags=24
-                 )
-             ],
-         flags | u64(TypeFlags.BASETYPE.value | TypeFlags.SEQUENCE.value),
-         TypeHooks(
-             create=create,
-             dealloc=array_dealloc,
-             traverse=array_traverse,
-             clear=array_clear,
-             repr=repr,
-             compare=compare,
-             iter=iterate,
-             length=length,
-             item=item,
-             assign=assign_item,
-             contains=contains,
-             concat=concat,
-             inplace_concat=inplace_concat,
-             repeat=repeat,
-             inplace_repeat=inplace_repeat,
-             mapping_length=length,
-             subscript=subscript,
-             assign_subscript=assign_subscript,
-             buffer=get_buffer,
-             release_buffer=release_buffer
-         ),
-         [
-             PropertyDefinition(
-                 "typecode",
-                 PropertyCallbacks(read=typecode),
-                 doc=array_getsets_typecode_doc
-             ),
-             PropertyDefinition(
-                 "itemsize",
-                 PropertyCallbacks(read=itemsize),
-                 doc=array_getsets_itemsize_doc
-             )
-         ],
-         unhashable=True,
-         weaklist=True,
-         generic_getattr=True
-     );
-
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     array_token.handle = array_type.handle;
     arrayiterator_token.handle = iterator_type.handle;
     array_module_token.handle = definition.handle;
@@ -489,7 +561,9 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if held.references[0] == 0 {
         return i32(-1);
     }
-    held.references[1] = PyObject_GetAttrString(held.references[0], "register");
+    held.references[1] = PyObject_GetAttrString(
+        held.references[0], ptr[u8]("register")
+    );
     if held.references[1] == 0 {
         return i32(-1);
     }
@@ -503,14 +577,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "array",
-         module_doc,
-         module_methods,
-         hooks=ModuleHooks(execute=execute),
-         state_count=2
-     );
-
-def:pub PyInit_array -> ptr[PyObject] {
+impl PyInit_array -> ptr[PyObject] {
     return definition.initialize();
 }

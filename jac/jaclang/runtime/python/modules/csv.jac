@@ -1,35 +1,168 @@
-"""CSV dialect policy and reader/writer state machines in native Jac.
-
-CPython owns public objects and protocol calls; typed native state owns parsing
-and quoting. Derived from CPython 3.14.6; see ../LICENSE.cpython.
-"""
-
 obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;
 
-    def clear {}
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        return i32(0);
-    }
+    def clear;
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32;
 }
 
-def:priv fail(kind: ptr[PyObject], message: str) {
+def:priv fail(kind: ptr[PyObject], message: str);
+
+def:priv csv_error(error: ptr[PyObject], message: str);
+
+def:priv pending;
+
+def:priv dialect_char(
+    name: str, value: ptr[PyObject], fallback: int, optional: bool
+) -> int;
+
+def:priv dialect_bool(value: ptr[PyObject], fallback: bool) -> bool;
+
+def:priv valid_character(
+    name: str, character: int, space: bool, terminator: ptr[PyObject]
+);
+
+def:pub jacpy_csv_dialect(
+    base: ptr[PyObject],
+    overrides: ptr[PyObject],
+    registry: ptr[PyObject],
+    dialect_type: ptr[PyObject],
+    error: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj csv_dialect {
+    has delimiter: int,
+        doublequote: bool,
+        escapechar: int,
+        terminator: ptr[PyObject],
+        quotechar: int,
+        quoting: int,
+        skipspace: bool,
+        strict: bool;
+}
+
+def:priv setting(options: ptr[PyObject], index: int) -> int;
+
+def:priv settings(options: ptr[PyObject]) -> csv_dialect;
+
+def:priv unicode_field(characters: list[int]) -> ptr[PyObject];
+
+enum parse_state {
+    START_RECORD = 0,
+    START_FIELD = 1,
+    ESCAPED_CHAR = 2,
+    IN_FIELD = 3,
+    IN_QUOTED_FIELD = 4,
+    ESCAPE_IN_QUOTED_FIELD = 5,
+    QUOTE_IN_QUOTED_FIELD = 6,
+    EAT_CRNL = 7,
+    AFTER_ESCAPED_CRNL = 8
+}
+
+obj csv_reader {
+    has fields: ptr[PyObject] = NULL,
+        field: list[int] = [],
+        state: parse_state = parse_state.START_RECORD,
+        unquoted: bool = False,
+        line_num: int = 0;
+
+    def reset;
+    def save(dialect: csv_dialect);
+    def append(character: int, module: CsvConfig, error: ptr[PyObject]);
+    def feed(
+        character: int, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
+    );
+}
+
+def:pub jacpy_csv_reader_new -> csv_reader;
+
+def:pub jacpy_csv_reader_clear(reader: csv_reader);
+
+def:pub jacpy_csv_reader_fields(reader: csv_reader) -> ptr[PyObject];
+
+def:pub jacpy_csv_reader_line(reader: csv_reader) -> i64;
+
+def:pub jacpy_csv_read(
+    reader: csv_reader,
+    iterator: ptr[PyObject],
+    options: ptr[PyObject],
+    module: CsvConfig,
+    error: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj csv_writer {
+    has record: list[int] = [],
+        num_fields: int = 0;
+
+    def append(
+        field: ptr[PyObject], quoted: bool, dialect: csv_dialect, error: ptr[PyObject]
+    );
+
+    def row(
+        value: ptr[PyObject],
+        output: ptr[PyObject],
+        options: ptr[PyObject],
+        error: ptr[PyObject]
+    ) -> ptr[PyObject];
+}
+
+def:pub jacpy_csv_writer_new -> csv_writer;
+
+def:pub jacpy_csv_write(
+    writer: csv_writer,
+    value: ptr[PyObject],
+    output: ptr[PyObject],
+    options: ptr[PyObject],
+    error: ptr[PyObject],
+    many: i64
+) -> ptr[PyObject];
+
+def:pub jacpy_csv_registry(
+    registry: ptr[PyObject],
+    key: ptr[PyObject],
+    value: ptr[PyObject],
+    error: ptr[PyObject],
+    operation: i64
+) -> ptr[PyObject];
+
+def:priv registry_call(
+    module: ptr[PyObject], key: ptr[PyObject], operation: i64
+) -> ptr[PyObject];
+
+def _csv_list_dialects_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _csv_get_dialect_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject];
+
+def _csv_unregister_dialect_impl(
+    module: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _csv_field_size_limit_impl(
+    module: ptr[PyObject], new_limit: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl CsvConfig.clear {}
+
+impl CsvConfig.traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    return i32(0);
+}
+
+impl fail(kind: ptr[PyObject], message: str) {
     object_error(kind, message);
     raise boundary_failure();
 }
 
-def:priv csv_error(error: ptr[PyObject], message: str) {
+impl csv_error(error: ptr[PyObject], message: str) {
     jacpy_set_exception(error, message, i64(len(message.encode("utf-8"))));
     raise boundary_failure();
 }
 
-def:priv pending {
+impl pending {
     if jacpy_error_pending() != 0 {
         raise boundary_failure();
     }
 }
 
-def:priv dialect_char(
+impl dialect_char(
     name: str, value: ptr[PyObject], fallback: int, optional: bool
 ) -> int {
     if value == 0 {
@@ -53,7 +186,7 @@ def:priv dialect_char(
     return int(PyUnicode_ReadChar(value, 0));
 }
 
-def:priv dialect_bool(value: ptr[PyObject], fallback: bool) -> bool {
+impl dialect_bool(value: ptr[PyObject], fallback: bool) -> bool {
     if value == 0 {
         return fallback;
     }
@@ -62,7 +195,7 @@ def:priv dialect_bool(value: ptr[PyObject], fallback: bool) -> bool {
     return result != 0;
 }
 
-def:priv valid_character(
+impl valid_character(
     name: str, character: int, space: bool, terminator: ptr[PyObject]
 ) {
     if character == 10 or character == 13 or (character == 32 and not space) {
@@ -75,7 +208,7 @@ def:priv valid_character(
     }
 }
 
-def:pub jacpy_csv_dialect(
+impl jacpy_csv_dialect(
     base: ptr[PyObject],
     overrides: ptr[PyObject],
     registry: ptr[PyObject],
@@ -126,7 +259,7 @@ def:pub jacpy_csv_dialect(
         }
         for i in range(len(names)) {
             if values[i] == 0 and dialect != 0 {
-                values[i] = PyObject_GetAttrString(dialect, names[i]);
+                values[i] = jacpy_object_getattr_text(dialect, names[i]);
                 if values[i] == 0 {
                     PyErr_Clear();
                 }
@@ -206,18 +339,7 @@ def:pub jacpy_csv_dialect(
     }
 }
 
-obj csv_dialect {
-    has delimiter: int,
-        doublequote: bool,
-        escapechar: int,
-        terminator: ptr[PyObject],
-        quotechar: int,
-        quoting: int,
-        skipspace: bool,
-        strict: bool;
-}
-
-def:priv setting(options: ptr[PyObject], index: int) -> int {
+impl setting(options: ptr[PyObject], index: int) -> int {
     value = required(jacpy_tuple_item(options, i64(index)));
     try {
         return int(PyLong_AsLongLong(value));
@@ -226,8 +348,7 @@ def:priv setting(options: ptr[PyObject], index: int) -> int {
     }
 }
 
-def:priv settings(options: ptr[PyObject]) -> csv_dialect {
-    # The caller retains options throughout this borrowed Unicode reference.
+impl settings(options: ptr[PyObject]) -> csv_dialect {
     terminator = required(jacpy_tuple_item(options, 3));
     jacpy_release(terminator);
     return csv_dialect(
@@ -242,7 +363,7 @@ def:priv settings(options: ptr[PyObject]) -> csv_dialect {
     );
 }
 
-def:priv unicode_field(characters: list[int]) -> ptr[PyObject] {
+impl unicode_field(characters: list[int]) -> ptr[PyObject] {
     writer = new_writer();
     try {
         for character in characters {
@@ -258,203 +379,182 @@ def:priv unicode_field(characters: list[int]) -> ptr[PyObject] {
     }
 }
 
-enum parse_state {
-    START_RECORD = 0,
-    START_FIELD = 1,
-    ESCAPED_CHAR = 2,
-    IN_FIELD = 3,
-    IN_QUOTED_FIELD = 4,
-    ESCAPE_IN_QUOTED_FIELD = 5,
-    QUOTE_IN_QUOTED_FIELD = 6,
-    EAT_CRNL = 7,
-    AFTER_ESCAPED_CRNL = 8
+impl csv_reader.reset {
+    fields = required(jacpy_list_new());
+    old = self.fields;
+    self.fields = fields;
+    jacpy_release(old);
+    self.field.clear();
+    self.state = parse_state.START_RECORD;
+    self.unquoted = False;
 }
 
-obj csv_reader {
-    has fields: ptr[PyObject] = NULL,
-        field: list[int] = [],
-        state: parse_state = parse_state.START_RECORD,
-        unquoted: bool = False,
-        line_num: int = 0;
-
-    def reset {
-        fields = required(jacpy_list_new());
-        old = self.fields;
-        self.fields = fields;
-        jacpy_release(old);
-        self.field.clear();
-        self.state = parse_state.START_RECORD;
-        self.unquoted = False;
-    }
-
-    def save(dialect: csv_dialect) {
-        value: ptr[PyObject] = NULL;
-        try {
+impl csv_reader.save(dialect: csv_dialect) {
+    value: ptr[PyObject] = NULL;
+    try {
+        if self.unquoted
+            and len(self.field) == 0
+            and (dialect.quoting == 4 or dialect.quoting == 5) {
+            value = Py_NewRef(Py_None);
+        } else {
+            value = unicode_field(self.field);
             if self.unquoted
-                and len(self.field) == 0
-                and (dialect.quoting == 4 or dialect.quoting == 5) {
-                value = Py_NewRef(Py_None);
-            } else {
-                value = unicode_field(self.field);
-                if self.unquoted
-                    and len(self.field) != 0
-                    and (dialect.quoting == 2 or dialect.quoting == 4) {
-                    numeric = required(PyNumber_Float(value));
-                    jacpy_release(value);
-                    value = numeric;
-                }
-                self.field.clear();
+                and len(self.field) != 0
+                and (dialect.quoting == 2 or dialect.quoting == 4) {
+                numeric = required(PyNumber_Float(value));
+                jacpy_release(value);
+                value = numeric;
             }
-            checked(PyList_Append(self.fields, value));
-        } finally {
-            jacpy_release(value);
+            self.field.clear();
         }
+        checked(PyList_Append(self.fields, value));
+    } finally {
+        jacpy_release(value);
     }
+}
 
-    def append(character: int, module: CsvConfig, error: ptr[PyObject]) {
-        limit = int(module.limit);
-        if len(self.field) >= limit {
-            csv_error(error, "field larger than field limit (" + str(limit) + ")");
-        }
-        self.field.append(character);
+impl csv_reader.append(character: int, module: CsvConfig, error: ptr[PyObject]) {
+    limit = int(module.limit);
+    if len(self.field) >= limit {
+        csv_error(error, "field larger than field limit (" + str(limit) + ")");
     }
+    self.field.append(character);
+}
 
-    def feed(
-        character: int, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
-    ) {
-        # -2 is the physical line boundary; -1 is an unset dialect character.
-        if self.state == parse_state.START_RECORD {
-            if character == -2 {
-                return;
-            }
-            if character == 10 or character == 13 {
-                self.state = parse_state.EAT_CRNL;
-                return;
-            }
-            self.state = parse_state.START_FIELD;
+impl csv_reader.feed(
+    character: int, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
+) {
+    if self.state == parse_state.START_RECORD {
+        if character == -2 {
+            return;
         }
-        if self.state == parse_state.START_FIELD {
-            self.unquoted = True;
-            if character == 10 or character == 13 or character == -2 {
-                self.save(dialect);
-                self.state = parse_state.START_RECORD
-                    if character == -2
-                    else parse_state.EAT_CRNL;
-            } elif character == dialect.quotechar and dialect.quoting != 3 {
-                self.unquoted = False;
-                self.state = parse_state.IN_QUOTED_FIELD;
-            } elif character == dialect.escapechar {
-                self.state = parse_state.ESCAPED_CHAR;
-            } elif character == 32 and dialect.skipspace {
-                return;
-            } elif character == dialect.delimiter {
-                self.save(dialect);
-            } else {
-                self.append(character, module, error);
-                self.state = parse_state.IN_FIELD;
-            }
-        } elif self.state == parse_state.ESCAPED_CHAR {
-            if character == 10 or character == 13 {
-                self.append(character, module, error);
-                self.state = parse_state.AFTER_ESCAPED_CRNL;
-                return;
-            }
-            self.append(10 if character == -2 else character, module, error);
-            self.state = parse_state.IN_FIELD;
-        } elif self.state == parse_state.IN_FIELD
-            or self.state == parse_state.AFTER_ESCAPED_CRNL {
-            if self.state == parse_state.AFTER_ESCAPED_CRNL and character == -2 {
-                return;
-            }
-            if character == 10 or character == 13 or character == -2 {
-                self.save(dialect);
-                self.state = parse_state.START_RECORD
-                    if character == -2
-                    else parse_state.EAT_CRNL;
-            } elif character == dialect.escapechar {
-                self.state = parse_state.ESCAPED_CHAR;
-            } elif character == dialect.delimiter {
-                self.save(dialect);
-                self.state = parse_state.START_FIELD;
-            } else {
-                self.append(character, module, error);
-            }
-        } elif self.state == parse_state.IN_QUOTED_FIELD {
-            if character == -2 {
-                return;
-            }
-            if character == dialect.escapechar {
-                self.state = parse_state.ESCAPE_IN_QUOTED_FIELD;
-            } elif character == dialect.quotechar and dialect.quoting != 3 {
-                self.state = parse_state.QUOTE_IN_QUOTED_FIELD
-                    if dialect.doublequote
-                    else parse_state.IN_FIELD;
-            } else {
-                self.append(character, module, error);
-            }
-        } elif self.state == parse_state.ESCAPE_IN_QUOTED_FIELD {
-            self.append(10 if character == -2 else character, module, error);
+        if character == 10 or character == 13 {
+            self.state = parse_state.EAT_CRNL;
+            return;
+        }
+        self.state = parse_state.START_FIELD;
+    }
+    if self.state == parse_state.START_FIELD {
+        self.unquoted = True;
+        if character == 10 or character == 13 or character == -2 {
+            self.save(dialect);
+            self.state = parse_state.START_RECORD
+                if character == -2
+                else parse_state.EAT_CRNL;
+        } elif character == dialect.quotechar and dialect.quoting != 3 {
+            self.unquoted = False;
             self.state = parse_state.IN_QUOTED_FIELD;
-        } elif self.state == parse_state.QUOTE_IN_QUOTED_FIELD {
-            if dialect.quoting != 3 and character == dialect.quotechar {
-                self.append(character, module, error);
-                self.state = parse_state.IN_QUOTED_FIELD;
-            } elif character == dialect.delimiter {
-                self.save(dialect);
-                self.state = parse_state.START_FIELD;
-            } elif character == 10 or character == 13 or character == -2 {
-                self.save(dialect);
-                self.state = parse_state.START_RECORD
-                    if character == -2
-                    else parse_state.EAT_CRNL;
-            } elif not dialect.strict {
-                self.append(character, module, error);
-                self.state = parse_state.IN_FIELD;
-            } else {
-                csv_error(
-                    error,
-                    "'"
-                        + chr(dialect.delimiter)
-                        + "' expected after '"
-                        + chr(dialect.quotechar)
-                        + "'"
-                );
-            }
-        } elif self.state == parse_state.EAT_CRNL {
-            if character == 10 or character == 13 {
-                return;
-            }
-            if character == -2 {
-                self.state = parse_state.START_RECORD;
-            } else {
-                csv_error(
-                    error,
-                    "new-line character seen in unquoted field - do you need to open the file with newline=''?"
-                );
-            }
+        } elif character == dialect.escapechar {
+            self.state = parse_state.ESCAPED_CHAR;
+        } elif character == 32 and dialect.skipspace {
+            return;
+        } elif character == dialect.delimiter {
+            self.save(dialect);
+        } else {
+            self.append(character, module, error);
+            self.state = parse_state.IN_FIELD;
+        }
+    } elif self.state == parse_state.ESCAPED_CHAR {
+        if character == 10 or character == 13 {
+            self.append(character, module, error);
+            self.state = parse_state.AFTER_ESCAPED_CRNL;
+            return;
+        }
+        self.append(10 if character == -2 else character, module, error);
+        self.state = parse_state.IN_FIELD;
+    } elif self.state == parse_state.IN_FIELD
+        or self.state == parse_state.AFTER_ESCAPED_CRNL {
+        if self.state == parse_state.AFTER_ESCAPED_CRNL and character == -2 {
+            return;
+        }
+        if character == 10 or character == 13 or character == -2 {
+            self.save(dialect);
+            self.state = parse_state.START_RECORD
+                if character == -2
+                else parse_state.EAT_CRNL;
+        } elif character == dialect.escapechar {
+            self.state = parse_state.ESCAPED_CHAR;
+        } elif character == dialect.delimiter {
+            self.save(dialect);
+            self.state = parse_state.START_FIELD;
+        } else {
+            self.append(character, module, error);
+        }
+    } elif self.state == parse_state.IN_QUOTED_FIELD {
+        if character == -2 {
+            return;
+        }
+        if character == dialect.escapechar {
+            self.state = parse_state.ESCAPE_IN_QUOTED_FIELD;
+        } elif character == dialect.quotechar and dialect.quoting != 3 {
+            self.state = parse_state.QUOTE_IN_QUOTED_FIELD
+                if dialect.doublequote
+                else parse_state.IN_FIELD;
+        } else {
+            self.append(character, module, error);
+        }
+    } elif self.state == parse_state.ESCAPE_IN_QUOTED_FIELD {
+        self.append(10 if character == -2 else character, module, error);
+        self.state = parse_state.IN_QUOTED_FIELD;
+    } elif self.state == parse_state.QUOTE_IN_QUOTED_FIELD {
+        if dialect.quoting != 3 and character == dialect.quotechar {
+            self.append(character, module, error);
+            self.state = parse_state.IN_QUOTED_FIELD;
+        } elif character == dialect.delimiter {
+            self.save(dialect);
+            self.state = parse_state.START_FIELD;
+        } elif character == 10 or character == 13 or character == -2 {
+            self.save(dialect);
+            self.state = parse_state.START_RECORD
+                if character == -2
+                else parse_state.EAT_CRNL;
+        } elif not dialect.strict {
+            self.append(character, module, error);
+            self.state = parse_state.IN_FIELD;
+        } else {
+            csv_error(
+                error,
+                "'"
+                    + chr(dialect.delimiter)
+                    + "' expected after '"
+                    + chr(dialect.quotechar)
+                    + "'"
+            );
+        }
+    } elif self.state == parse_state.EAT_CRNL {
+        if character == 10 or character == 13 {
+            return;
+        }
+        if character == -2 {
+            self.state = parse_state.START_RECORD;
+        } else {
+            csv_error(
+                error,
+                "new-line character seen in unquoted field - do you need to open the file with newline=''?"
+            );
         }
     }
 }
 
-def:pub jacpy_csv_reader_new -> csv_reader {
+impl jacpy_csv_reader_new -> csv_reader {
     return csv_reader();
 }
 
-def:pub jacpy_csv_reader_clear(reader: csv_reader) {
+impl jacpy_csv_reader_clear(reader: csv_reader) {
     old = reader.fields;
     reader.fields = NULL;
     jacpy_release(old);
 }
 
-def:pub jacpy_csv_reader_fields(reader: csv_reader) -> ptr[PyObject] {
+impl jacpy_csv_reader_fields(reader: csv_reader) -> ptr[PyObject] {
     return reader.fields;
 }
 
-def:pub jacpy_csv_reader_line(reader: csv_reader) -> i64 {
+impl jacpy_csv_reader_line(reader: csv_reader) -> i64 {
     return i64(reader.line_num);
 }
 
-def:pub jacpy_csv_read(
+impl jacpy_csv_read(
     reader: csv_reader,
     iterator: ptr[PyObject],
     options: ptr[PyObject],
@@ -512,157 +612,149 @@ def:pub jacpy_csv_read(
     }
 }
 
-obj csv_writer {
-    has record: list[int] = [],
-        num_fields: int = 0;
-
-    def append(
-        field: ptr[PyObject], quoted: bool, dialect: csv_dialect, error: ptr[PyObject]
-    ) {
-        length = int(jacpy_unicode_size(field)) if field != 0 else 0;
-        if length == 0 and dialect.delimiter == 32 and dialect.skipspace {
-            if dialect.quoting == 3
-                or (field == 0 and (dialect.quoting == 4 or dialect.quoting == 5)) {
-                csv_error(
-                    error,
-                    "empty field must be quoted if delimiter is a space and skipinitialspace is true"
-                );
-            }
-            quoted = True;
+impl csv_writer.append(
+    field: ptr[PyObject], quoted: bool, dialect: csv_dialect, error: ptr[PyObject]
+) {
+    length = int(jacpy_unicode_size(field)) if field != 0 else 0;
+    if length == 0 and dialect.delimiter == 32 and dialect.skipspace {
+        if dialect.quoting == 3
+            or (field == 0 and (dialect.quoting == 4 or dialect.quoting == 5)) {
+            csv_error(
+                error,
+                "empty field must be quoted if delimiter is a space and skipinitialspace is true"
+            );
         }
-        data: list[int] = [];
-        for i in range(length) {
-            character = int(PyUnicode_ReadChar(field, i64(i)));
-            special = character == dialect.delimiter
-                or character == dialect.escapechar
-                or character == dialect.quotechar
-                or character == 10
-                or character == 13;
-            if not special {
-                for j in range(int(jacpy_unicode_size(dialect.terminator))) {
-                    if int(PyUnicode_ReadChar(dialect.terminator, i64(j)))
-                        == character {
-                        special = True;
-                        break;
-                    }
-                }
-            }
-            if special {
-                escape = dialect.quoting == 3;
-                if not escape {
-                    if character == dialect.quotechar {
-                        if dialect.doublequote {
-                            data.append(dialect.quotechar);
-                        } else {
-                            escape = True;
-                        }
-                    } elif character == dialect.escapechar {
-                        escape = True;
-                    }
-                    if not escape {
-                        quoted = True;
-                    }
-                }
-                if escape {
-                    if dialect.escapechar == -1 {
-                        csv_error(error, "need to escape, but no escapechar set");
-                    }
-                    data.append(dialect.escapechar);
-                }
-            }
-            data.append(character);
-        }
-        if self.num_fields > 0 {
-            self.record.append(dialect.delimiter);
-        }
-        if quoted {
-            self.record.append(dialect.quotechar);
-        }
-        self.record.extend(data);
-        if quoted {
-            self.record.append(dialect.quotechar);
-        }
-        self.num_fields += 1;
+        quoted = True;
     }
-
-    def row(
-        value: ptr[PyObject],
-        output: ptr[PyObject],
-        options: ptr[PyObject],
-        error: ptr[PyObject]
-    ) -> ptr[PyObject] {
-        iterator = PyObject_GetIter(value);
-        if iterator == 0 {
-            if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
-                csv_error(error, "iterable expected, not " + type_name(value)[:200]);
-            }
-            raise boundary_failure();
-        }
-        try {
-            dialect = settings(options);
-            self.record.clear();
-            self.num_fields = 0;
-            null_field = False;
-            while True {
-                field = PyIter_Next(iterator);
-                if field == 0 {
-                    pending();
+    data: list[int] = [];
+    for i in range(length) {
+        character = int(PyUnicode_ReadChar(field, i64(i)));
+        special = character == dialect.delimiter
+            or character == dialect.escapechar
+            or character == dialect.quotechar
+            or character == 10
+            or character == 13;
+        if not special {
+            for j in range(int(jacpy_unicode_size(dialect.terminator))) {
+                if int(PyUnicode_ReadChar(dialect.terminator, i64(j))) == character {
+                    special = True;
                     break;
                 }
-                try {
-                    quoted = dialect.quoting == 1
-                        or (dialect.quoting == 2 and PyNumber_Check(field) == 0)
-                        or (dialect.quoting == 4 and jacpy_is_unicode(field) != 0)
-                        or (dialect.quoting == 5 and field != Py_None);
-                    null_field = field == Py_None;
-                    if jacpy_is_unicode(field) != 0 {
-                        self.append(field, quoted, dialect, error);
-                    } elif null_field {
-                        self.append(NULL, quoted, dialect, error);
-                    } else {
-                        text = required(PyObject_Str(field));
-                        jacpy_release(field);
-                        field = NULL;
-                        try {
-                            self.append(text, quoted, dialect, error);
-                        } finally {
-                            jacpy_release(text);
-                        }
-                    }
-                } finally {
-                    jacpy_release(field);
-                }
             }
-            if self.num_fields > 0 and len(self.record) == 0 {
-                if dialect.quoting == 3
-                    or (
-                        null_field and (dialect.quoting == 4 or dialect.quoting == 5)
-                    ) {
-                    csv_error(error, "single empty field record must be quoted");
-                }
-                self.num_fields -= 1;
-                self.append(NULL, True, dialect, error);
-            }
-            for i in range(int(jacpy_unicode_size(dialect.terminator))) {
-                self.record.append(int(PyUnicode_ReadChar(dialect.terminator, i64(i))));
-            }
-            line = unicode_field(self.record);
-            try {
-                return required(PyObject_CallOneArg(output, line));
-            } finally {
-                jacpy_release(line);
-            }
-        } finally {
-            jacpy_release(iterator);
         }
+        if special {
+            escape = dialect.quoting == 3;
+            if not escape {
+                if character == dialect.quotechar {
+                    if dialect.doublequote {
+                        data.append(dialect.quotechar);
+                    } else {
+                        escape = True;
+                    }
+                } elif character == dialect.escapechar {
+                    escape = True;
+                }
+                if not escape {
+                    quoted = True;
+                }
+            }
+            if escape {
+                if dialect.escapechar == -1 {
+                    csv_error(error, "need to escape, but no escapechar set");
+                }
+                data.append(dialect.escapechar);
+            }
+        }
+        data.append(character);
+    }
+    if self.num_fields > 0 {
+        self.record.append(dialect.delimiter);
+    }
+    if quoted {
+        self.record.append(dialect.quotechar);
+    }
+    self.record.extend(data);
+    if quoted {
+        self.record.append(dialect.quotechar);
+    }
+    self.num_fields += 1;
+}
+
+impl csv_writer.row(
+    value: ptr[PyObject],
+    output: ptr[PyObject],
+    options: ptr[PyObject],
+    error: ptr[PyObject]
+) -> ptr[PyObject] {
+    iterator = PyObject_GetIter(value);
+    if iterator == 0 {
+        if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
+            csv_error(error, "iterable expected, not " + type_name(value)[:200]);
+        }
+        raise boundary_failure();
+    }
+    try {
+        dialect = settings(options);
+        self.record.clear();
+        self.num_fields = 0;
+        null_field = False;
+        while True {
+            field = PyIter_Next(iterator);
+            if field == 0 {
+                pending();
+                break;
+            }
+            try {
+                quoted = dialect.quoting == 1
+                    or (dialect.quoting == 2 and PyNumber_Check(field) == 0)
+                    or (dialect.quoting == 4 and jacpy_is_unicode(field) != 0)
+                    or (dialect.quoting == 5 and field != Py_None);
+                null_field = field == Py_None;
+                if jacpy_is_unicode(field) != 0 {
+                    self.append(field, quoted, dialect, error);
+                } elif null_field {
+                    self.append(NULL, quoted, dialect, error);
+                } else {
+                    text = required(PyObject_Str(field));
+                    jacpy_release(field);
+                    field = NULL;
+                    try {
+                        self.append(text, quoted, dialect, error);
+                    } finally {
+                        jacpy_release(text);
+                    }
+                }
+            } finally {
+                jacpy_release(field);
+            }
+        }
+        if self.num_fields > 0 and len(self.record) == 0 {
+            if dialect.quoting == 3
+                or (null_field and (dialect.quoting == 4 or dialect.quoting == 5)) {
+                csv_error(error, "single empty field record must be quoted");
+            }
+            self.num_fields -= 1;
+            self.append(NULL, True, dialect, error);
+        }
+        for i in range(int(jacpy_unicode_size(dialect.terminator))) {
+            self.record.append(int(PyUnicode_ReadChar(dialect.terminator, i64(i))));
+        }
+        line = unicode_field(self.record);
+        try {
+            return required(PyObject_CallOneArg(output, line));
+        } finally {
+            jacpy_release(line);
+        }
+    } finally {
+        jacpy_release(iterator);
     }
 }
 
-def:pub jacpy_csv_writer_new -> csv_writer {
+impl jacpy_csv_writer_new -> csv_writer {
     return csv_writer();
 }
 
-def:pub jacpy_csv_write(
+impl jacpy_csv_write(
     writer: csv_writer,
     value: ptr[PyObject],
     output: ptr[PyObject],
@@ -697,7 +789,7 @@ def:pub jacpy_csv_write(
     }
 }
 
-def:pub jacpy_csv_registry(
+impl jacpy_csv_registry(
     registry: ptr[PyObject],
     key: ptr[PyObject],
     value: ptr[PyObject],
@@ -731,9 +823,7 @@ def:pub jacpy_csv_registry(
     }
 }
 
-# The Argument Clinic _impl functions. The module keeps its dialect registry
-# in state slot 1 and csv.Error in slot 0; CsvConfig is its native state.
-def:priv registry_call(
+impl registry_call(
     module: ptr[PyObject], key: ptr[PyObject], operation: i64
 ) -> ptr[PyObject] {
     return jacpy_csv_registry(
@@ -745,21 +835,23 @@ def:priv registry_call(
     );
 }
 
-def _csv_list_dialects_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _csv_list_dialects_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return registry_call(module, NULL, 0);
 }
 
-def _csv_get_dialect_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
+impl _csv_get_dialect_impl(
+    module: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject] {
     return registry_call(module, name, 1);
 }
 
-def _csv_unregister_dialect_impl(
+impl _csv_unregister_dialect_impl(
     module: ptr[PyObject], name: ptr[PyObject]
 ) -> ptr[PyObject] {
     return registry_call(module, name, 3);
 }
 
-def _csv_field_size_limit_impl(
+impl _csv_field_size_limit_impl(
     module: ptr[PyObject], new_limit: ptr[PyObject]
 ) -> ptr[PyObject] {
     config: CsvConfig | None = None;

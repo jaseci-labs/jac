@@ -1,51 +1,24 @@
-"""The zlib module: its three stream types, the error type and the constants."""
+def:priv compress_dealloc(instance: ptr[PyObject]);
 
-def:priv compress_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, Compress_token.handle);
-}
+def:priv compress_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv compress_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, Compress_token.handle, visitor, context);
-}
-
-def:priv decompress_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, Decompress_token.handle);
-}
+def:priv decompress_dealloc(instance: ptr[PyObject]);
 
 def:priv decompress_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, Decompress_token.handle, visitor, context);
-}
+) -> i32;
 
-def:priv stream(instance: ptr[PyObject]) -> ZlibStream | None {
-    if jacpy_binding_native_present(instance, Decompress_token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, Decompress_token.handle);
-        if isinstance(state, ZlibStream) {
-            return state;
-        }
-    }
-    return None;
-}
+def:priv stream(instance: ptr[PyObject]) -> ZlibStream | None;
 
 def:priv decompress_unused_data(
     instance: ptr[PyObject], context: u64
-) -> ptr[PyObject] {
-    state = stream(instance);
-    return Py_NewRef(state.unused_data) if state is not None else NULL;
-}
+) -> ptr[PyObject];
 
 def:priv decompress_unconsumed_tail(
     instance: ptr[PyObject], context: u64
-) -> ptr[PyObject] {
-    state = stream(instance);
-    return Py_NewRef(state.unconsumed_tail) if state is not None else NULL;
-}
+) -> ptr[PyObject];
 
-def:priv decompress_eof(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = stream(instance);
-    return PyBool_FromLong(i64(state.eof)) if state is not None else NULL;
-}
+def:priv decompress_eof(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 glob:priv compress_type = TypeDefinition(
          "zlib.Compress",
@@ -71,47 +44,23 @@ glob:priv compress_type = TypeDefinition(
          ]
      );
 
-def:priv decompressor(instance: ptr[PyObject]) -> ZlibDecompressorState | None {
-    if jacpy_binding_native_present(instance, ZlibDecompressor_token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, ZlibDecompressor_token.handle);
-        if isinstance(state, ZlibDecompressorState) {
-            return state;
-        }
-    }
-    return None;
-}
+def:priv decompressor(instance: ptr[PyObject]) -> ZlibDecompressorState | None;
 
-def:priv decompressor_dealloc(instance: ptr[PyObject]) {
-    record_clear(jacpy_binding_record(instance, ZlibDecompressor_token.handle), 16);
-    dispose_payload(instance, ZlibDecompressor_token.handle);
-}
+def:priv decompressor_dealloc(instance: ptr[PyObject]);
 
 def:priv decompressor_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, ZlibDecompressor_token.handle, visitor, context);
-}
+) -> i32;
 
-# PyArg_ParseTupleAndKeywords(args, kwargs, "|iO:_ZlibDecompressor", ...).
 glob:priv decompressor_signature = CallSignature(
          "_ZlibDecompressor", ["wbits", "zdict"], 0, 2, parser=PARSE_FORMAT_KEYWORDS
      );
 
-def:priv decompressor_bound(args: BoundArguments) -> ptr[PyObject] {
-    wbits = MAX_WBITS;
-    args.reach(0);
-    if args.values[0] != NULL {
-        wbits = convert_int(args.values[0]);
-    }
-    args.reach(2);
-    return zlib_decompressor_new(args.context, wbits, args.values[1]);
-}
+def:priv decompressor_bound(args: BoundArguments) -> ptr[PyObject];
 
 def:priv decompressor_create(
     cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(decompressor_signature, args, kwargs, decompressor_bound, cls);
-}
+) -> ptr[PyObject];
 
 glob:priv decompressor_type = TypeDefinition(
          "zlib._ZlibDecompressor",
@@ -149,7 +98,99 @@ glob:priv decompressor_type = TypeDefinition(
          record_size=16
      );
 
-def:priv store(module: ptr[PyObject], slot: int, value: ptr[PyObject]) -> bool {
+def:priv store(module: ptr[PyObject], slot: int, value: ptr[PyObject]) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "zlib",
+         "The functions in this module allow compression and decompression using the\nzlib library, which is based on GNU zip.\n\nadler32(string[, start]) -- Compute an Adler-32 checksum.\ncompress(data[, level]) -- Compress data, with compression level 0-9 or -1.\ncompressobj([level[, ...]]) -- Return a compressor object.\ncrc32(string[, start]) -- Compute a CRC-32 checksum.\ndecompress(string,[wbits],[bufsize]) -- Decompresses a compressed string.\ndecompressobj([wbits[, zdict]]) -- Return a decompressor object.\n\n'wbits' is window buffer size and container format.\nCompressor objects support compress() and flush() methods; decompressor\nobjects support decompress() and flush().",
+         module_methods,
+         ModuleHooks(execute=execute),
+         4
+     );
+
+def:pub PyInit_zlib -> ptr[PyObject];
+
+impl compress_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, Compress_token.handle);
+}
+
+impl compress_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, Compress_token.handle, visitor, context);
+}
+
+impl decompress_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, Decompress_token.handle);
+}
+
+impl decompress_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, Decompress_token.handle, visitor, context);
+}
+
+impl stream(instance: ptr[PyObject]) -> ZlibStream | None {
+    if jacpy_binding_native_present(instance, Decompress_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, Decompress_token.handle);
+        if isinstance(state, ZlibStream) {
+            return state;
+        }
+    }
+    return None;
+}
+
+impl decompress_unused_data(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = stream(instance);
+    return Py_NewRef(state.unused_data) if state is not None else NULL;
+}
+
+impl decompress_unconsumed_tail(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject] {
+    state = stream(instance);
+    return Py_NewRef(state.unconsumed_tail) if state is not None else NULL;
+}
+
+impl decompress_eof(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = stream(instance);
+    return PyBool_FromLong(i64(state.eof)) if state is not None else NULL;
+}
+
+impl decompressor(instance: ptr[PyObject]) -> ZlibDecompressorState | None {
+    if jacpy_binding_native_present(instance, ZlibDecompressor_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, ZlibDecompressor_token.handle);
+        if isinstance(state, ZlibDecompressorState) {
+            return state;
+        }
+    }
+    return None;
+}
+
+impl decompressor_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, ZlibDecompressor_token.handle), 16);
+    dispose_payload(instance, ZlibDecompressor_token.handle);
+}
+
+impl decompressor_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, ZlibDecompressor_token.handle, visitor, context);
+}
+
+impl decompressor_bound(args: BoundArguments) -> ptr[PyObject] {
+    wbits = MAX_WBITS;
+    args.reach(0);
+    if args.values[0] != NULL {
+        wbits = convert_int(args.values[0]);
+    }
+    args.reach(2);
+    return zlib_decompressor_new(args.context, wbits, args.values[1]);
+}
+
+impl decompressor_create(
+    cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke(decompressor_signature, args, kwargs, decompressor_bound, cls);
+}
+
+impl store(module: ptr[PyObject], slot: int, value: ptr[PyObject]) -> bool {
     if not value {
         return False;
     }
@@ -158,7 +199,7 @@ def:priv store(module: ptr[PyObject], slot: int, value: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     Compress_token.handle = compress_type.handle;
     Decompress_token.handle = decompress_type.handle;
     ZlibDecompressor_token.handle = decompressor_type.handle;
@@ -202,22 +243,14 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             return i32(-1);
         }
     }
-    if not add_owned(module, "ZLIB_VERSION", PyUnicode_FromString(ZLIB_VERSION))
+    if not add_owned(module, "ZLIB_VERSION", jacpy_unicode_from_text(ZLIB_VERSION))
         or not add_owned(module, "ZLIB_RUNTIME_VERSION", runtime_version())
-        or not add_owned(module, "__version__", PyUnicode_FromString("1.0")) {
+        or not add_owned(module, "__version__", PyUnicode_FromString(ptr[u8]("1.0"))) {
         return i32(-1);
     }
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "zlib",
-         "The functions in this module allow compression and decompression using the\nzlib library, which is based on GNU zip.\n\nadler32(string[, start]) -- Compute an Adler-32 checksum.\ncompress(data[, level]) -- Compress data, with compression level 0-9 or -1.\ncompressobj([level[, ...]]) -- Return a compressor object.\ncrc32(string[, start]) -- Compute a CRC-32 checksum.\ndecompress(string,[wbits],[bufsize]) -- Decompresses a compressed string.\ndecompressobj([wbits[, zdict]]) -- Return a decompressor object.\n\n'wbits' is window buffer size and container format.\nCompressor objects support compress() and flush() methods; decompressor\nobjects support decompress() and flush().",
-         module_methods,
-         ModuleHooks(execute=execute),
-         4
-     );
-
-def:pub PyInit_zlib -> ptr[PyObject] {
+impl PyInit_zlib -> ptr[PyObject] {
     return definition.initialize();
 }

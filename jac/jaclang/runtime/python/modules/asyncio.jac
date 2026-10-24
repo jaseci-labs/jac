@@ -1,36 +1,361 @@
-"""The _asyncio module: Future, Task, the Future iterator, the Task step
-wrapper, and the running loop and task registry functions.
-
-Derived from CPython 3.14.6 Modules/_asynciomodule.c; see ../LICENSE.cpython.
-The Argument Clinic methods' _impl functions keep their C names and live
-here, with the Task step machinery and the type slots the binding installs;
-the object layouts, state and Future primitives are in asyncio_core.jac.
-"""
-
 glob Future_token = ClassToken(),
      Task_token = ClassToken();
 
-def:priv none -> ptr[PyObject] {
+def:priv none -> ptr[PyObject];
+
+def:priv truth(flag: bool) -> ptr[PyObject];
+
+def:priv defining_module(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv alive(op: ptr[PyObject]) -> bool;
+
+def:priv not_initialized(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future___init___impl(receiver: ptr[PyObject], loop: ptr[PyObject]) -> i32;
+
+def future_clear(op: ptr[PyObject]) -> i32;
+
+def future_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def _asyncio_Future_result_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future_exception_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future_set_result_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], result: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future_set_exception_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], exception: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future_add_done_callback_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    fn: ptr[PyObject],
+    context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future_remove_done_callback_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], fn: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future_cancel_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future_cancelled_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future_done_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future_get_loop_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future__asyncio_awaited_by_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future__asyncio_future_blocking_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future__asyncio_future_blocking_set_impl(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> int;
+
+def _asyncio_Future__log_traceback_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__log_traceback_set_impl(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> int;
+
+def _asyncio_Future__loop_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__callbacks_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__result_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__exception_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__source_traceback_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Future__cancel_message_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__cancel_message_set_impl(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> int;
+
+def _asyncio_Future__state_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def future_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Future__make_cancelled_error_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv call_exception_handler(
+    op: ptr[PyObject], message: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
+);
+
+def future_finalize(op: ptr[PyObject]);
+
+def future_dealloc(op: ptr[PyObject]);
+
+def:priv free_object(type: ptr[PyObject], op: ptr[PyObject]);
+
+def:priv iter_of(op: ptr[PyObject]) -> ptr[FutureIterObject];
+
+def future_new_iter(fut: ptr[PyObject]) -> ptr[PyObject];
+
+def futureiter_dealloc(op: ptr[PyObject]);
+
+def:priv done_result(fut: ptr[PyObject]) -> ptr[PyObject];
+
+def futureiter_am_send(
+    op: ptr[PyObject], arg: ptr[PyObject], result: ptr[ptr[PyObject]]
+) -> i32;
+
+def futureiter_iternext(op: ptr[PyObject]) -> ptr[PyObject];
+
+def futureiter_send(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def futureiter_throw(
+    op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject];
+
+def futureiter_clear(op: ptr[PyObject]) -> i32;
+
+def futureiter_close(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def futureiter_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def:priv wrapper_of(op: ptr[PyObject]) -> ptr[TaskStepMethWrapper];
+
+def stepwrapper_clear(op: ptr[PyObject]) -> i32;
+
+def stepwrapper_dealloc(op: ptr[PyObject]);
+
+def stepwrapper_call(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def stepwrapper_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def stepwrapper_self(op: ptr[PyObject], closure: u64) -> ptr[PyObject];
+
+def:priv stepwrapper_new(task: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+import from c {
+    glob:priv task_wakeup_def: PositionalMethodRecord = PositionalMethodRecord(
+             ml_name=ptr[u8]("task_wakeup"),
+             ml_meth=task_wakeup,
+             ml_flags=i32(8),
+             ml_doc=ptr[u8]()
+         );
+}
+
+def task_wakeup(op: ptr[PyObject], o: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv task_call_step_soon(
+    module: ptr[PyObject], task: ptr[PyObject], arg: ptr[PyObject]
+) -> int;
+
+def:priv task_set_error_soon(
+    module: ptr[PyObject], task: ptr[PyObject], et: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task___init___impl(
+    receiver: ptr[PyObject],
+    coro: ptr[PyObject],
+    loop: ptr[PyObject],
+    name: ptr[PyObject],
+    context: ptr[PyObject],
+    eager_start: bool
+) -> i32;
+
+def task_clear(op: ptr[PyObject]) -> i32;
+
+def task_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def _asyncio_Task__log_destroy_pending_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task__log_destroy_pending_set_impl(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> int;
+
+def _asyncio_Task__must_cancel_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task__coro_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task__fut_waiter_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def task_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task__make_cancelled_error_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task_cancel_impl(
+    receiver: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task_cancelling_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task_uncancel_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv call_with_task(
+    function: ptr[PyObject], receiver: ptr[PyObject], rest: list[ptr[PyObject]]
+) -> ptr[PyObject];
+
+def _asyncio_Task_get_stack_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], limit: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task_print_stack_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    limit: ptr[PyObject],
+    file: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task_set_result_impl(
+    receiver: ptr[PyObject], result: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task_set_exception_impl(
+    receiver: ptr[PyObject], exception: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_Task_get_coro_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task_get_context_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task_get_name_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_Task_set_name_impl(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def task_finalize(op: ptr[PyObject]);
+
+def task_dealloc(op: ptr[PyObject]);
+
+def:priv await_future(
+    module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject], native: bool
+) -> ptr[PyObject];
+
+def:priv call_with_context(
+    callable: ptr[PyObject],
+    arg: ptr[PyObject],
+    ctx: ptr[PyObject],
+    module: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv task_step_handle_result(
+    module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv yield_instead_of_yield_from(
+    module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv different_loop(
+    module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv task_step_impl(
+    module: ptr[PyObject], task: ptr[PyObject], exc: ptr[PyObject]
+) -> ptr[PyObject];
+
+def task_step(
+    module: ptr[PyObject], task: ptr[PyObject], exc: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv task_eager_start(module: ptr[PyObject], task: ptr[PyObject]) -> int;
+
+def _asyncio__get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio__set_running_loop_impl(
+    module: ptr[PyObject], loop: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_get_event_loop_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio_get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _asyncio__register_task_impl(
+    module: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio__register_eager_task_impl(
+    module: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio__unregister_task_impl(
+    module: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio__unregister_eager_task_impl(
+    module: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio__enter_task_impl(
+    module: ptr[PyObject], loop: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio__leave_task_impl(
+    module: ptr[PyObject], loop: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio__swap_current_task_impl(
+    module: ptr[PyObject], loop: ptr[PyObject], task: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_current_task_impl(
+    module: ptr[PyObject], loop: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv add_one_task(
+    module: ptr[PyObject],
+    tasks: ptr[PyObject],
+    task: ptr[PyObject],
+    loop: ptr[PyObject]
+) -> int;
+
+def _asyncio_all_tasks_impl(
+    module: ptr[PyObject], loop: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_future_add_to_awaited_by_impl(
+    module: ptr[PyObject], fut: ptr[PyObject], waiter: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _asyncio_future_discard_from_awaited_by_impl(
+    module: ptr[PyObject], fut: ptr[PyObject], waiter: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl none -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def:priv truth(flag: bool) -> ptr[PyObject] {
+impl truth(flag: bool) -> ptr[PyObject] {
     return Py_NewRef(py_true() if flag else py_false());
 }
 
-"""The module of a method's defining class; with no class (the binding's
-fast paths), the module of the receiver's type, which is the same one."""
-def:priv defining_module(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyObject] {
+impl defining_module(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyObject] {
     return module_of_type(cls) if cls else module_of(receiver);
 }
 
-"""ENSURE_FUTURE_ALIVE: False with RuntimeError for an uninitialized future."""
-def:priv alive(op: ptr[PyObject]) -> bool {
+impl alive(op: ptr[PyObject]) -> bool {
     return future_ensure_alive(op) == 0;
 }
 
-"""The InvalidStateError "Future object is not initialized." of a module."""
-def:priv not_initialized(module: ptr[PyObject]) -> ptr[PyObject] {
+impl not_initialized(module: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_SetString(
         state_ref(module, STATE_INVALID_STATE_ERROR),
         "Future object is not initialized."
@@ -38,23 +363,20 @@ def:priv not_initialized(module: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-# ---------------------------------------------------------------------------
-# Future
-
-def _asyncio_Future___init___impl(receiver: ptr[PyObject], loop: ptr[PyObject]) -> i32 {
+impl _asyncio_Future___init___impl(
+    receiver: ptr[PyObject], loop: ptr[PyObject]
+) -> i32 {
     return i32(future_init(receiver, loop));
 }
 
-"""FutureObj_clear()."""
-def future_clear(op: ptr[PyObject]) -> i32 {
+impl future_clear(op: ptr[PyObject]) -> i32 {
     clear_future_fields(op);
     fut_of(op).view(1)[0].fut_awaited_by_is_set = i8(0);
     PyObject_ClearManagedDict(op);
     return i32(0);
 }
 
-"""FutureObj_traverse()."""
-def future_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl future_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     status = visit_reference(Py_TYPE(op), visitor, context);
     for index in range(11) {
         if status != 0 {
@@ -70,7 +392,7 @@ def future_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return PyObject_VisitManagedDict(op, visitor, context);
 }
 
-def _asyncio_Future_result_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future_result_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of(receiver);
     if not future_is_alive(receiver) {
         return not_initialized(module);
@@ -84,7 +406,7 @@ def _asyncio_Future_result_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def _asyncio_Future_exception_impl(
+impl _asyncio_Future_exception_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not future_is_alive(receiver) {
@@ -110,7 +432,7 @@ def _asyncio_Future_exception_impl(
     return none();
 }
 
-def _asyncio_Future_set_result_impl(
+impl _asyncio_Future_set_result_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], result: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not alive(receiver) {
@@ -119,7 +441,7 @@ def _asyncio_Future_set_result_impl(
     return future_set_result(defining_module(receiver, cls), receiver, result);
 }
 
-def _asyncio_Future_set_exception_impl(
+impl _asyncio_Future_set_exception_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], exception: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not alive(receiver) {
@@ -128,7 +450,7 @@ def _asyncio_Future_set_exception_impl(
     return future_set_exception(defining_module(receiver, cls), receiver, exception);
 }
 
-def _asyncio_Future_add_done_callback_impl(
+impl _asyncio_Future_add_done_callback_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     fn: ptr[PyObject],
@@ -147,7 +469,7 @@ def _asyncio_Future_add_done_callback_impl(
     return future_add_done_callback(module, receiver, fn, context);
 }
 
-def _asyncio_Future_remove_done_callback_impl(
+impl _asyncio_Future_remove_done_callback_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], fn: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not alive(receiver) {
@@ -156,8 +478,6 @@ def _asyncio_Future_remove_done_callback_impl(
     record = fut_of(receiver).view(1);
     cleared_callback0 = 0;
     if record[0].fut_callback0 {
-        # An evil PyObject_RichCompareBool could free fut_callback0 before a
-        # recursive call is made with that same arg.
         fut_callback0 = Py_NewRef(record[0].fut_callback0);
         cmp = int(PyObject_RichCompareBool(fut_callback0, fn, i32(2)));
         jacpy_release(fut_callback0);
@@ -165,7 +485,6 @@ def _asyncio_Future_remove_done_callback_impl(
             return NULL;
         }
         if cmp == 1 {
-            # callback0 == fn
             callback0 = record[0].fut_callback0;
             record[0].fut_callback0 = NULL;
             release(callback0);
@@ -193,20 +512,19 @@ def _asyncio_Future_remove_done_callback_impl(
             return NULL;
         }
         if cmp == 1 {
-            # callbacks[0] == fn
             callbacks = record[0].fut_callbacks;
             record[0].fut_callbacks = NULL;
             release(callbacks);
             return PyLong_FromSsize_t(i64(1 + cleared_callback0));
         }
-        # callbacks[0] != fn and len(callbacks) == 1
+
         return PyLong_FromSsize_t(i64(cleared_callback0));
     }
     newlist = PyList_New(0);
     if not newlist {
         return NULL;
     }
-    # PyObject_RichCompareBool may change fut_callbacks (GH-97592).
+
     i = 0;
     j = 0;
     while record[0].fut_callbacks and i < int(PyList_Size(record[0].fut_callbacks)) {
@@ -223,7 +541,7 @@ def _asyncio_Future_remove_done_callback_impl(
         }
         i += 1;
     }
-    # fut_callbacks may have been cleared.
+
     if j == 0 or not record[0].fut_callbacks {
         callbacks = record[0].fut_callbacks;
         record[0].fut_callbacks = NULL;
@@ -243,7 +561,7 @@ def _asyncio_Future_remove_done_callback_impl(
     return PyLong_FromSsize_t(i64(length - j + cleared_callback0));
 }
 
-def _asyncio_Future_cancel_impl(
+impl _asyncio_Future_cancel_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not alive(receiver) {
@@ -252,21 +570,21 @@ def _asyncio_Future_cancel_impl(
     return future_cancel(defining_module(receiver, cls), receiver, msg);
 }
 
-def _asyncio_Future_cancelled_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future_cancelled_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return truth(
         future_is_alive(receiver)
             and int(fut_of(receiver).view(1)[0].fut_state) == STATE_CANCELLED
     );
 }
 
-def _asyncio_Future_done_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future_done_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return truth(
         future_is_alive(receiver)
             and int(fut_of(receiver).view(1)[0].fut_state) != STATE_PENDING
     );
 }
 
-def _asyncio_Future_get_loop_impl(
+impl _asyncio_Future_get_loop_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not alive(receiver) {
@@ -275,7 +593,7 @@ def _asyncio_Future_get_loop_impl(
     return Py_NewRef(fut_of(receiver).view(1)[0].fut_loop);
 }
 
-def _asyncio_Future__asyncio_awaited_by_get_impl(
+impl _asyncio_Future__asyncio_awaited_by_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = fut_of(receiver).view(1);
@@ -283,7 +601,6 @@ def _asyncio_Future__asyncio_awaited_by_get_impl(
         return none();
     }
     if record[0].fut_awaited_by_is_set {
-        # Already a set: wrap it into a frozen set.
         return PyFrozenSet_New(record[0].fut_awaited_by);
     }
     frozen = PyFrozenSet_New(NULL);
@@ -297,13 +614,13 @@ def _asyncio_Future__asyncio_awaited_by_get_impl(
     return frozen;
 }
 
-def _asyncio_Future__asyncio_future_blocking_get_impl(
+impl _asyncio_Future__asyncio_future_blocking_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     return truth(future_is_alive(receiver) and has_bit(receiver, BIT_BLOCKING));
 }
 
-def _asyncio_Future__asyncio_future_blocking_set_impl(
+impl _asyncio_Future__asyncio_future_blocking_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if future_ensure_alive(receiver) != 0 {
@@ -321,14 +638,14 @@ def _asyncio_Future__asyncio_future_blocking_set_impl(
     return 0;
 }
 
-def _asyncio_Future__log_traceback_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__log_traceback_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(receiver) {
         return NULL;
     }
     return truth(has_bit(receiver, BIT_LOG_TB));
 }
 
-def _asyncio_Future__log_traceback_set_impl(
+impl _asyncio_Future__log_traceback_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if not value {
@@ -347,14 +664,14 @@ def _asyncio_Future__log_traceback_set_impl(
     return 0;
 }
 
-def _asyncio_Future__loop_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__loop_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not future_is_alive(receiver) {
         return none();
     }
     return Py_NewRef(fut_of(receiver).view(1)[0].fut_loop);
 }
 
-def _asyncio_Future__callbacks_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__callbacks_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(receiver) {
         return NULL;
     }
@@ -398,7 +715,7 @@ def _asyncio_Future__callbacks_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject
     return callbacks;
 }
 
-def _asyncio_Future__result_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__result_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(receiver) {
         return NULL;
     }
@@ -406,7 +723,7 @@ def _asyncio_Future__result_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(result) if result else none();
 }
 
-def _asyncio_Future__exception_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__exception_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(receiver) {
         return NULL;
     }
@@ -414,7 +731,7 @@ def _asyncio_Future__exception_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject
     return Py_NewRef(exception) if exception else none();
 }
 
-def _asyncio_Future__source_traceback_get_impl(
+impl _asyncio_Future__source_traceback_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     source_tb = fut_of(receiver).view(1)[0].fut_source_tb;
@@ -424,12 +741,14 @@ def _asyncio_Future__source_traceback_get_impl(
     return Py_NewRef(source_tb);
 }
 
-def _asyncio_Future__cancel_message_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__cancel_message_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject] {
     msg = fut_of(receiver).view(1)[0].fut_cancel_msg;
     return Py_NewRef(msg) if msg else none();
 }
 
-def _asyncio_Future__cancel_message_set_impl(
+impl _asyncio_Future__cancel_message_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if not value {
@@ -443,7 +762,7 @@ def _asyncio_Future__cancel_message_set_impl(
     return 0;
 }
 
-def _asyncio_Future__state_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Future__state_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(receiver) {
         return NULL;
     }
@@ -457,23 +776,20 @@ def _asyncio_Future__state_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(ids.finished);
 }
 
-"""FutureObj_repr()."""
-def future_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl future_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(op) {
         return NULL;
     }
     return PyObject_CallOneArg(state_ref(module_of(op), STATE_FUTURE_REPR_FUNC), op);
 }
 
-def _asyncio_Future__make_cancelled_error_impl(
+impl _asyncio_Future__make_cancelled_error_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     return create_cancelled_error(module_of(receiver), receiver);
 }
 
-"""Report a never-retrieved exception or a pending task's destruction
-through loop.call_exception_handler(), keeping the current exception."""
-def:priv call_exception_handler(
+impl call_exception_handler(
     op: ptr[PyObject], message: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
 ) {
     record = fut_of(op).view(1);
@@ -505,13 +821,12 @@ def:priv call_exception_handler(
     release(message);
 }
 
-"""FutureObj_finalize(): report an exception that was never retrieved."""
-def future_finalize(op: ptr[PyObject]) {
+impl future_finalize(op: ptr[PyObject]) {
     if not has_bit(op, BIT_LOG_TB) {
         return;
     }
     set_bit(op, BIT_LOG_TB, False);
-    # Save the current exception, if any.
+
     exc = PyErr_GetRaisedException();
     message = PyUnicode_FromFormat(
         "%s exception was never retrieved", _PyType_Name(Py_TYPE(op))
@@ -519,14 +834,12 @@ def future_finalize(op: ptr[PyObject]) {
     call_exception_handler(
         op, message, ids.exception, fut_of(op).view(1)[0].fut_exception
     );
-    # Restore the saved exception.
+
     PyErr_SetRaisedException(exc);
 }
 
-"""FutureObj_dealloc()."""
-def future_dealloc(op: ptr[PyObject]) {
+impl future_dealloc(op: ptr[PyObject]) {
     if PyObject_CallFinalizerFromDealloc(op) < 0 {
-        # Resurrected.
         return;
     }
     type = Py_TYPE(op);
@@ -536,20 +849,15 @@ def future_dealloc(op: ptr[PyObject]) {
     free_object(type, op);
 }
 
-"""tp->tp_free(self); Py_DECREF(tp)."""
-def:priv free_object(type: ptr[PyObject], op: ptr[PyObject]) {
+impl free_object(type: ptr[PyObject], op: ptr[PyObject]) {
     jacpy_binding_free(op);
 }
 
-# ---------------------------------------------------------------------------
-# The Future iterator.
-
-def:priv iter_of(op: ptr[PyObject]) -> ptr[FutureIterObject] {
+impl iter_of(op: ptr[PyObject]) -> ptr[FutureIterObject] {
     return ptr[FutureIterObject](op);
 }
 
-"""future_new_iter(): tp_iter and am_await of Future and Task."""
-def future_new_iter(fut: ptr[PyObject]) -> ptr[PyObject] {
+impl future_new_iter(fut: ptr[PyObject]) -> ptr[PyObject] {
     if not alive(fut) {
         return NULL;
     }
@@ -565,9 +873,7 @@ def future_new_iter(fut: ptr[PyObject]) -> ptr[PyObject] {
     return it;
 }
 
-"""FutureIter_dealloc(): kept on the interpreter's freelist when there is
-room (with its type reference), else freed."""
-def futureiter_dealloc(op: ptr[PyObject]) {
+impl futureiter_dealloc(op: ptr[PyObject]) {
     type = Py_TYPE(op);
     PyObject_GC_UnTrack(op);
     futureiter_clear(op);
@@ -577,9 +883,7 @@ def futureiter_dealloc(op: ptr[PyObject]) {
     }
 }
 
-"""Future.result() of a future that is not pending, reading a finished
-future's result in place (what _asyncio_Future_result_impl() then does)."""
-def:priv done_result(fut: ptr[PyObject]) -> ptr[PyObject] {
+impl done_result(fut: ptr[PyObject]) -> ptr[PyObject] {
     record = fut_of(fut).view(1);
     if record[0].fut_loop
         and int(record[0].fut_state) == STATE_FINISHED
@@ -590,9 +894,7 @@ def:priv done_result(fut: ptr[PyObject]) -> ptr[PyObject] {
     return _asyncio_Future_result_impl(fut);
 }
 
-"""FutureIter_am_send(): the future itself while pending (once), else its
-result as the return value."""
-def futureiter_am_send(
+impl futureiter_am_send(
     op: ptr[PyObject], arg: ptr[PyObject], result: ptr[ptr[PyObject]]
 ) -> i32 {
     out = result.view(1);
@@ -615,8 +917,7 @@ def futureiter_am_send(
     return PYGEN_ERROR;
 }
 
-"""FutureIter_iternext()."""
-def futureiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
+impl futureiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     fut = iter_of(op).view(1)[0].future;
     if int(fut_of(fut).view(1)[0].fut_state) == STATE_PENDING {
         if not has_bit(fut, BIT_BLOCKING) {
@@ -634,13 +935,11 @@ def futureiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-"""FutureIter_send(): Future.__iter__ ignores values pushed to it."""
-def futureiter_send(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl futureiter_send(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     return futureiter_iternext(op);
 }
 
-"""FutureIter_throw()."""
-def futureiter_throw(
+impl futureiter_throw(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if _PyArg_CheckPositional("throw", nargs, 1, 3) == 0 {
@@ -714,8 +1013,7 @@ def futureiter_throw(
     return NULL;
 }
 
-"""FutureIter_clear()."""
-def futureiter_clear(op: ptr[PyObject]) -> i32 {
+impl futureiter_clear(op: ptr[PyObject]) -> i32 {
     record = iter_of(op).view(1);
     future = record[0].future;
     if future {
@@ -725,14 +1023,12 @@ def futureiter_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-"""FutureIter_close()."""
-def futureiter_close(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl futureiter_close(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     futureiter_clear(op);
     return none();
 }
 
-"""FutureIter_traverse()."""
-def futureiter_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl futureiter_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     status = visit_reference(Py_TYPE(op), visitor, context);
     if status != 0 {
         return status;
@@ -740,15 +1036,11 @@ def futureiter_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return visit_reference(iter_of(op).view(1)[0].future, visitor, context);
 }
 
-# ---------------------------------------------------------------------------
-# The Task step wrapper and Task._wakeup.
-
-def:priv wrapper_of(op: ptr[PyObject]) -> ptr[TaskStepMethWrapper] {
+impl wrapper_of(op: ptr[PyObject]) -> ptr[TaskStepMethWrapper] {
     return ptr[TaskStepMethWrapper](op);
 }
 
-"""TaskStepMethWrapper_clear()."""
-def stepwrapper_clear(op: ptr[PyObject]) -> i32 {
+impl stepwrapper_clear(op: ptr[PyObject]) -> i32 {
     record = wrapper_of(op).view(1);
     task = record[0].sw_task;
     record[0].sw_task = NULL;
@@ -759,15 +1051,13 @@ def stepwrapper_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-"""TaskStepMethWrapper_dealloc()."""
-def stepwrapper_dealloc(op: ptr[PyObject]) {
+impl stepwrapper_dealloc(op: ptr[PyObject]) {
     PyObject_GC_UnTrack(op);
     stepwrapper_clear(op);
     free_object(Py_TYPE(op), op);
 }
 
-"""TaskStepMethWrapper_call(): step the task with the stored argument."""
-def stepwrapper_call(
+impl stepwrapper_call(
     op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwds and jacpy_dict_size(kwds) != 0 {
@@ -782,8 +1072,7 @@ def stepwrapper_call(
     return task_step(module_of(op), record[0].sw_task, record[0].sw_arg);
 }
 
-"""TaskStepMethWrapper_traverse()."""
-def stepwrapper_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl stepwrapper_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     record = wrapper_of(op).view(1);
     status = visit_reference(Py_TYPE(op), visitor, context);
     if status == 0 {
@@ -795,14 +1084,12 @@ def stepwrapper_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return status;
 }
 
-"""TaskStepMethWrapper_get___self__()."""
-def stepwrapper_self(op: ptr[PyObject], closure: u64) -> ptr[PyObject] {
+impl stepwrapper_self(op: ptr[PyObject], closure: u64) -> ptr[PyObject] {
     task = wrapper_of(op).view(1)[0].sw_task;
     return Py_NewRef(task) if task else none();
 }
 
-"""TaskStepMethWrapper_new()."""
-def:priv stepwrapper_new(task: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl stepwrapper_new(task: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     wrapper = _PyObject_GC_New(
         state_ref(module_of(task), STATE_TASK_STEP_WRAPPER_TYPE)
     );
@@ -816,18 +1103,7 @@ def:priv stepwrapper_new(task: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObjec
     return wrapper;
 }
 
-import from c {
-    # TaskWakeupDef: a METH_O method bound to its task.
-    glob:priv task_wakeup_def: PositionalMethodRecord = PositionalMethodRecord(
-             ml_name=ptr[u8]("task_wakeup"),
-             ml_meth=task_wakeup,
-             ml_flags=i32(8),
-             ml_doc=ptr[u8]()
-         );
-}
-
-"""task_wakeup(): resume the task when the future it awaits is done."""
-def task_wakeup(op: ptr[PyObject], o: ptr[PyObject]) -> ptr[PyObject] {
+impl task_wakeup(op: ptr[PyObject], o: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of(op);
     if task_or_future_check(module, o) {
         if future_awaited_by_discard(o, op) != 0 {
@@ -845,14 +1121,12 @@ def task_wakeup(op: ptr[PyObject], o: ptr[PyObject]) -> ptr[PyObject] {
             jacpy_release(fut_result);
             return result;
         }
-        # An exception was raised.
     } else {
         fut_result = PyObject_CallMethodObjArgs(o, ids.result, NULL);
         if fut_result {
             jacpy_release(fut_result);
             return task_step(module, op, NULL);
         }
-        # An exception was raised.
     }
     exc = PyErr_GetRaisedException();
     result = task_step(module, op, exc);
@@ -860,18 +1134,14 @@ def task_wakeup(op: ptr[PyObject], o: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Task
-
-"""task_call_step_soon(): loop.call_soon(step wrapper, context=task's)."""
-def:priv task_call_step_soon(
+impl task_call_step_soon(
     module: ptr[PyObject], task: ptr[PyObject], arg: ptr[PyObject]
 ) -> int {
     cb = stepwrapper_new(task, arg);
     if not cb {
         return -1;
     }
-    # An evil call_soon could alter task_context (gh-126080).
+
     task_context = Py_NewRef(task_of(task).view(1)[0].task_context);
     ret = call_soon(module, fut_of(task).view(1)[0].fut_loop, cb, NULL, task_context);
     jacpy_release(task_context);
@@ -879,8 +1149,7 @@ def:priv task_call_step_soon(
     return ret;
 }
 
-"""task_set_error_soon(): schedule a step that raises `et(message)`."""
-def:priv task_set_error_soon(
+impl task_set_error_soon(
     module: ptr[PyObject], task: ptr[PyObject], et: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not msg {
@@ -899,7 +1168,7 @@ def:priv task_set_error_soon(
     return none();
 }
 
-def _asyncio_Task___init___impl(
+impl _asyncio_Task___init___impl(
     receiver: ptr[PyObject],
     coro: ptr[PyObject],
     loop: ptr[PyObject],
@@ -944,7 +1213,6 @@ def _asyncio_Task___init___impl(
     release(previous);
     task_name = NULL;
     if name == Py_None {
-        # Defer the task name formatting: store the counter as an int.
         state = native_state(module);
         counter = 0;
         if state is not None {
@@ -984,8 +1252,7 @@ def _asyncio_Task___init___impl(
     return i32(0);
 }
 
-"""TaskObj_clear()."""
-def task_clear(op: ptr[PyObject]) -> i32 {
+impl task_clear(op: ptr[PyObject]) -> i32 {
     future_clear(op);
     record = task_of(op).view(1);
     coro = record[0].task_coro;
@@ -1003,8 +1270,7 @@ def task_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-"""TaskObj_traverse()."""
-def task_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl task_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     record = task_of(op).view(1);
     status = visit_reference(Py_TYPE(op), visitor, context);
     if status == 0 {
@@ -1033,13 +1299,13 @@ def task_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return PyObject_VisitManagedDict(op, visitor, context);
 }
 
-def _asyncio_Task__log_destroy_pending_get_impl(
+impl _asyncio_Task__log_destroy_pending_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     return truth(has_bit(receiver, BIT_LOG_DESTROY_PENDING));
 }
 
-def _asyncio_Task__log_destroy_pending_set_impl(
+impl _asyncio_Task__log_destroy_pending_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if not value {
@@ -1054,30 +1320,31 @@ def _asyncio_Task__log_destroy_pending_set_impl(
     return 0;
 }
 
-def _asyncio_Task__must_cancel_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task__must_cancel_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return truth(has_bit(receiver, BIT_MUST_CANCEL));
 }
 
-def _asyncio_Task__coro_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task__coro_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     coro = task_of(receiver).view(1)[0].task_coro;
     return Py_NewRef(coro) if coro else none();
 }
 
-def _asyncio_Task__fut_waiter_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task__fut_waiter_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     waiter = task_of(receiver).view(1)[0].task_fut_waiter;
     return Py_NewRef(waiter) if waiter else none();
 }
 
-"""TaskObj_repr()."""
-def task_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl task_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_CallOneArg(state_ref(module_of(op), STATE_TASK_REPR_FUNC), op);
 }
 
-def _asyncio_Task__make_cancelled_error_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task__make_cancelled_error_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject] {
     return _asyncio_Future__make_cancelled_error_impl(receiver);
 }
 
-def _asyncio_Task_cancel_impl(
+impl _asyncio_Task_cancel_impl(
     receiver: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     set_bit(receiver, BIT_LOG_TB, False);
@@ -1087,10 +1354,7 @@ def _asyncio_Task_cancel_impl(
     record = task_of(receiver).view(1);
     record[0].task_num_cancels_requested = record[0].task_num_cancels_requested
         + i32(1);
-    # These three lines are controversial: see the discussion starting at
-    # https://github.com/python/cpython/pull/31394#issuecomment-1053545331
-    # and the corresponding code in tasks.py.
-    # if self.task_num_cancels_requested > 1: return False
+
     if record[0].task_fut_waiter {
         res = PyObject_CallMethodObjArgs(
             record[0].task_fut_waiter, ids.cancel, msg, NULL
@@ -1115,13 +1379,13 @@ def _asyncio_Task_cancel_impl(
     return truth(True);
 }
 
-def _asyncio_Task_cancelling_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task_cancelling_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(
         i64(task_of(receiver).view(1)[0].task_num_cancels_requested)
     );
 }
 
-def _asyncio_Task_uncancel_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task_uncancel_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     record = task_of(receiver).view(1);
     if record[0].task_num_cancels_requested > i32(0) {
         record[0].task_num_cancels_requested = record[0].task_num_cancels_requested
@@ -1133,8 +1397,7 @@ def _asyncio_Task_uncancel_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(record[0].task_num_cancels_requested));
 }
 
-"""A call of `function(receiver, *rest)` (the base_tasks helpers)."""
-def:priv call_with_task(
+impl call_with_task(
     function: ptr[PyObject], receiver: ptr[PyObject], rest: list[ptr[PyObject]]
 ) -> ptr[PyObject] {
     arguments = PyTuple_New(i64(1 + len(rest)));
@@ -1151,7 +1414,7 @@ def:priv call_with_task(
     return result;
 }
 
-def _asyncio_Task_get_stack_impl(
+impl _asyncio_Task_get_stack_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], limit: ptr[PyObject]
 ) -> ptr[PyObject] {
     return call_with_task(
@@ -1159,7 +1422,7 @@ def _asyncio_Task_get_stack_impl(
     );
 }
 
-def _asyncio_Task_print_stack_impl(
+impl _asyncio_Task_print_stack_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     limit: ptr[PyObject],
@@ -1172,14 +1435,14 @@ def _asyncio_Task_print_stack_impl(
     );
 }
 
-def _asyncio_Task_set_result_impl(
+impl _asyncio_Task_set_result_impl(
     receiver: ptr[PyObject], result: ptr[PyObject]
 ) -> ptr[PyObject] {
     PyErr_SetString(PyExc_RuntimeError, "Task does not support set_result operation");
     return NULL;
 }
 
-def _asyncio_Task_set_exception_impl(
+impl _asyncio_Task_set_exception_impl(
     receiver: ptr[PyObject], exception: ptr[PyObject]
 ) -> ptr[PyObject] {
     PyErr_SetString(
@@ -1188,15 +1451,15 @@ def _asyncio_Task_set_exception_impl(
     return NULL;
 }
 
-def _asyncio_Task_get_coro_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task_get_coro_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return _asyncio_Task__coro_get_impl(receiver);
 }
 
-def _asyncio_Task_get_context_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task_get_context_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(task_of(receiver).view(1)[0].task_context);
 }
 
-def _asyncio_Task_get_name_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_Task_get_name_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     record = task_of(receiver).view(1);
     if not record[0].task_name {
         return none();
@@ -1213,7 +1476,7 @@ def _asyncio_Task_get_name_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(record[0].task_name);
 }
 
-def _asyncio_Task_set_name_impl(
+impl _asyncio_Task_set_name_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_exact_unicode(value) == 0 {
@@ -1231,26 +1494,22 @@ def _asyncio_Task_set_name_impl(
     return none();
 }
 
-"""TaskObj_finalize(): report a task destroyed while pending, then the
-future's never-retrieved exception."""
-def task_finalize(op: ptr[PyObject]) {
+impl task_finalize(op: ptr[PyObject]) {
     if int(fut_of(op).view(1)[0].fut_state) == STATE_PENDING
         and has_bit(op, BIT_LOG_DESTROY_PENDING) {
-        # Save the current exception, if any.
         exc = PyErr_GetRaisedException();
-        message = PyUnicode_FromString("Task was destroyed but it is pending!");
+        message = PyUnicode_FromString(
+            ptr[u8]("Task was destroyed but it is pending!")
+        );
         call_exception_handler(op, message, ids.task, op);
-        # Restore the saved exception.
+
         PyErr_SetRaisedException(exc);
     }
     future_finalize(op);
 }
 
-"""TaskObj_dealloc(): unregister after finalization, so a resurrected task
-stays registered."""
-def task_dealloc(op: ptr[PyObject]) {
+impl task_dealloc(op: ptr[PyObject]) {
     if PyObject_CallFinalizerFromDealloc(op) < 0 {
-        # Resurrected.
         return;
     }
     unregister_task(op);
@@ -1261,9 +1520,7 @@ def task_dealloc(op: ptr[PyObject]) {
     free_object(type, op);
 }
 
-"""The awaiting part of task_step_handle_result_impl() for a future on the
-task's loop: await it, waking the task when it is done."""
-def:priv await_future(
+impl await_future(
     module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject], native: bool
 ) -> ptr[PyObject] {
     record = task_of(task).view(1);
@@ -1283,10 +1540,9 @@ def:priv await_future(
     tmp = NULL;
     if native {
         set_bit(result, BIT_BLOCKING, False);
-        # result.add_done_callback(task._wakeup)
+
         tmp = future_add_done_callback(module, result, wrapper, record[0].task_context);
     } else {
-        # result._asyncio_future_blocking = False
         if PyObject_SetAttr(result, ids.asyncio_future_blocking, py_false()) == -1 {
             jacpy_release(wrapper);
             jacpy_release(result);
@@ -1307,11 +1563,9 @@ def:priv await_future(
         return NULL;
     }
     jacpy_release(tmp);
-    # task._fut_waiter = result; the reference `result` held moves there.
+
     record[0].task_fut_waiter = result;
     if has_bit(task, BIT_MUST_CANCEL) {
-        # An evil __getattribute__ could delete task_cancel_msg before the
-        # task is cancelled (gh-126138).
         task_cancel_msg = Py_NewRef(fut_of(task).view(1)[0].fut_cancel_msg);
         r = PyObject_CallMethodObjArgs(result, ids.cancel, task_cancel_msg, NULL);
         jacpy_release(task_cancel_msg);
@@ -1330,8 +1584,7 @@ def:priv await_future(
     return none();
 }
 
-"""callable(arg, context=ctx) through vectorcall with keyword names."""
-def:priv call_with_context(
+impl call_with_context(
     callable: ptr[PyObject],
     arg: ptr[PyObject],
     ctx: ptr[PyObject],
@@ -1346,14 +1599,11 @@ def:priv call_with_context(
     );
 }
 
-"""task_step_handle_result_impl(): act on what the coroutine yielded; owns
-`result`."""
-def:priv task_step_handle_result(
+impl task_step_handle_result(
     module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject]
 ) -> ptr[PyObject] {
     task_loop = fut_of(task).view(1)[0].fut_loop;
     if result == task {
-        # A task that wants to await on itself.
         o = task_set_error_soon(
             module,
             task,
@@ -1363,9 +1613,8 @@ def:priv task_step_handle_result(
         jacpy_release(result);
         return o;
     }
-    # Is `result` a FutureObj or TaskObj (and not a subclass)?
+
     if future_check_exact(module, result) or task_check_exact(module, result) {
-        # Is `result` future attached to a different loop?
         if fut_of(result).view(1)[0].fut_loop != task_loop {
             return different_loop(module, task, result);
         }
@@ -1374,7 +1623,7 @@ def:priv task_step_handle_result(
         }
         return await_future(module, task, result, True);
     }
-    # A bare yield relinquishes control for one event loop iteration.
+
     if result == Py_None {
         if task_call_step_soon(module, task, NULL) != 0 {
             jacpy_release(result);
@@ -1382,7 +1631,7 @@ def:priv task_step_handle_result(
         }
         return result;
     }
-    # Is `result` a Future-compatible object?
+
     o = NULL;
     if PyObject_GetOptionalAttr(result, ids.asyncio_future_blocking, &mut o) < 0 {
         jacpy_release(result);
@@ -1395,7 +1644,7 @@ def:priv task_step_handle_result(
             jacpy_release(result);
             return NULL;
         }
-        # Is `result` future attached to a different loop?
+
         oloop = get_future_loop(module, result);
         if not oloop {
             jacpy_release(result);
@@ -1411,7 +1660,7 @@ def:priv task_step_handle_result(
         return await_future(module, task, result, False);
     }
     release(o);
-    # Is `result` a generator?
+
     res = int(PyObject_IsInstance(result, ptr[PyObject](addressof(PyGen_Type))));
     if res < 0 {
         jacpy_release(result);
@@ -1431,7 +1680,7 @@ def:priv task_step_handle_result(
         jacpy_release(result);
         return o;
     }
-    # The `result` is none of the above.
+
     o = task_set_error_soon(
         module,
         task,
@@ -1442,7 +1691,7 @@ def:priv task_step_handle_result(
     return o;
 }
 
-def:priv yield_instead_of_yield_from(
+impl yield_instead_of_yield_from(
     module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject]
 ) -> ptr[PyObject] {
     o = task_set_error_soon(
@@ -1457,7 +1706,7 @@ def:priv yield_instead_of_yield_from(
     return o;
 }
 
-def:priv different_loop(
+impl different_loop(
     module: ptr[PyObject], task: ptr[PyObject], result: ptr[PyObject]
 ) -> ptr[PyObject] {
     o = task_set_error_soon(
@@ -1472,9 +1721,7 @@ def:priv different_loop(
     return o;
 }
 
-"""task_step_impl(): run the coroutine one step (sending None, or throwing
-`exc`)."""
-def:priv task_step_impl(
+impl task_step_impl(
     module: ptr[PyObject], task: ptr[PyObject], exc: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = task_of(task).view(1);
@@ -1494,7 +1741,6 @@ def:priv task_step_impl(
                 exc, state_ref(module, STATE_CANCELLED_ERROR)
             )
                 == 0 {
-            # exc was not a CancelledError.
             exc = create_cancelled_error(module, task);
             if not exc {
                 return NULL;
@@ -1510,7 +1756,6 @@ def:priv task_step_impl(
     if not coro {
         PyErr_SetString(PyExc_RuntimeError, "uninitialized Task object");
         if clear_exc {
-            # We created `exc` during this call.
             jacpy_release(exc);
         }
         return NULL;
@@ -1520,7 +1765,6 @@ def:priv task_step_impl(
     if not exc {
         gen_status = int(PyIter_Send(coro, Py_None, &mut result));
     } else {
-        # gen_status_from_result()
         result = PyObject_CallMethodObjArgs(coro, ids.throw, exc, NULL);
         if result {
             gen_status = int(PYGEN_NEXT);
@@ -1528,16 +1772,13 @@ def:priv task_step_impl(
             gen_status = int(PYGEN_RETURN);
         }
         if clear_exc {
-            # We created `exc` during this call.
             jacpy_release(exc);
         }
     }
     if gen_status == PYGEN_RETURN or gen_status == PYGEN_ERROR {
         if result {
-            # StopIteration: the underlying coroutine has resolved.
             tmp = NULL;
             if has_bit(task, BIT_MUST_CANCEL) {
-                # The task is cancelled right before the coroutine stops.
                 set_bit(task, BIT_MUST_CANCEL, False);
                 tmp = future_cancel(
                     module, task, fut_of(task).view(1)[0].fut_cancel_msg
@@ -1553,23 +1794,20 @@ def:priv task_step_impl(
             return none();
         }
         if PyErr_ExceptionMatches(state_ref(module, STATE_CANCELLED_ERROR)) != 0 {
-            # CancelledError: transfer its ownership to the future.
             cancelled = PyErr_GetRaisedException();
             fut_of(task).view(1)[0].fut_cancelled_exc = cancelled;
             return future_cancel(module, task, NULL);
         }
-        # Some other exception: pop it and call Task.set_exception().
+
         raised = PyErr_GetRaisedException();
         o = future_set_exception(module, task, raised);
         if not o {
-            # An exception in Task.set_exception().
             jacpy_release(raised);
             return NULL;
         }
         jacpy_release(o);
         if PyErr_GivenExceptionMatches(raised, PyExc_KeyboardInterrupt) != 0
             or PyErr_GivenExceptionMatches(raised, PyExc_SystemExit) != 0 {
-            # A KeyboardInterrupt or SystemExit is re-raised.
             PyErr_SetRaisedException(raised);
             return NULL;
         }
@@ -1579,8 +1817,7 @@ def:priv task_step_impl(
     return task_step_handle_result(module, task, result);
 }
 
-"""task_step(): step the task as the running task of its loop."""
-def task_step(
+impl task_step(
     module: ptr[PyObject], task: ptr[PyObject], exc: ptr[PyObject]
 ) -> ptr[PyObject] {
     loop = fut_of(task).view(1)[0].fut_loop;
@@ -1601,17 +1838,14 @@ def task_step(
     return res;
 }
 
-"""task_eager_start(): run the first step now, as the loop's current task."""
-def:priv task_eager_start(module: ptr[PyObject], task: ptr[PyObject]) -> int {
+impl task_eager_start(module: ptr[PyObject], task: ptr[PyObject]) -> int {
     record = task_of(task).view(1);
     loop = fut_of(task).view(1)[0].fut_loop;
     prevtask = swap_current_task(loop, task);
     if not prevtask {
         return -1;
     }
-    # Register the task into the list of tasks: a task that completes
-    # eagerly (without suspending) unregisters itself when done in
-    # future_schedule_callbacks(), otherwise it continues as a regular task.
+
     register_task(task);
     if PyContext_Enter(record[0].task_context) == -1 {
         jacpy_release(prevtask);
@@ -1637,7 +1871,6 @@ def:priv task_eager_start(module: ptr[PyObject], task: ptr[PyObject]) -> int {
         retval = -1;
     }
     if int(fut_of(task).view(1)[0].fut_state) != STATE_PENDING {
-        # This really helps performance on pyperformance benchmarks.
         coro = record[0].task_coro;
         record[0].task_coro = NULL;
         release(coro);
@@ -1645,19 +1878,15 @@ def:priv task_eager_start(module: ptr[PyObject], task: ptr[PyObject]) -> int {
     return retval;
 }
 
-# ---------------------------------------------------------------------------
-# Module functions.
-
-def _asyncio__get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio__get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     loop = running_loop();
     if not loop {
-        # There's no currently running event loop.
         return none();
     }
     return Py_NewRef(loop);
 }
 
-def _asyncio__set_running_loop_impl(
+impl _asyncio__set_running_loop_impl(
     module: ptr[PyObject], loop: ptr[PyObject]
 ) -> ptr[PyObject] {
     slot = running_loop_slot().view(1);
@@ -1667,29 +1896,27 @@ def _asyncio__set_running_loop_impl(
     return none();
 }
 
-def _asyncio_get_event_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_get_event_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return get_event_loop(module);
 }
 
-def _asyncio_get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _asyncio_get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     loop = running_loop();
     if not loop {
-        # There's no currently running event loop.
         PyErr_SetString(PyExc_RuntimeError, "no running event loop");
         return NULL;
     }
     return Py_NewRef(loop);
 }
 
-def _asyncio__register_task_impl(
+impl _asyncio__register_task_impl(
     module: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     if task_check(module, task) {
-        # An asyncio.Task instance or subclass: the linked list.
         register_task(task);
         return none();
     }
-    # A task not inheriting from asyncio.Task falls back to the weak set.
+
     res = PyObject_CallMethodObjArgs(
         state_ref(module, STATE_NON_ASYNCIO_TASKS), ids.add, task, NULL
     );
@@ -1700,7 +1927,7 @@ def _asyncio__register_task_impl(
     return none();
 }
 
-def _asyncio__register_eager_task_impl(
+impl _asyncio__register_eager_task_impl(
     module: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     if task_check(module, task) {
@@ -1713,7 +1940,7 @@ def _asyncio__register_eager_task_impl(
     return none();
 }
 
-def _asyncio__unregister_task_impl(
+impl _asyncio__unregister_task_impl(
     module: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     if task_check(module, task) {
@@ -1730,7 +1957,7 @@ def _asyncio__unregister_task_impl(
     return none();
 }
 
-def _asyncio__unregister_eager_task_impl(
+impl _asyncio__unregister_eager_task_impl(
     module: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     if task_check(module, task) {
@@ -1743,7 +1970,7 @@ def _asyncio__unregister_eager_task_impl(
     return none();
 }
 
-def _asyncio__enter_task_impl(
+impl _asyncio__enter_task_impl(
     module: ptr[PyObject], loop: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     if enter_task(loop, task) < 0 {
@@ -1752,7 +1979,7 @@ def _asyncio__enter_task_impl(
     return none();
 }
 
-def _asyncio__leave_task_impl(
+impl _asyncio__leave_task_impl(
     module: ptr[PyObject], loop: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     if leave_task(loop, task) < 0 {
@@ -1761,13 +1988,13 @@ def _asyncio__leave_task_impl(
     return none();
 }
 
-def _asyncio__swap_current_task_impl(
+impl _asyncio__swap_current_task_impl(
     module: ptr[PyObject], loop: ptr[PyObject], task: ptr[PyObject]
 ) -> ptr[PyObject] {
     return swap_current_task(loop, task);
 }
 
-def _asyncio_current_task_impl(
+impl _asyncio_current_task_impl(
     module: ptr[PyObject], loop: ptr[PyObject]
 ) -> ptr[PyObject] {
     if loop == Py_None {
@@ -1778,20 +2005,19 @@ def _asyncio_current_task_impl(
     } else {
         loop = Py_NewRef(loop);
     }
-    # Fast path for the running loop of the current thread.
+
     if running_loop() == loop {
         jacpy_release(loop);
         task = running_task_slot().view(1)[0];
         return Py_NewRef(task) if task else none();
     }
-    # Look through the running loops and tasks of every thread.
+
     ret = jacpy_asyncio_thread_task(loop);
     jacpy_release(loop);
     return ret;
 }
 
-"""add_one_task(): add a pending task of `loop` to the set `tasks`."""
-def:priv add_one_task(
+impl add_one_task(
     module: ptr[PyObject],
     tasks: ptr[PyObject],
     task: ptr[PyObject],
@@ -1828,7 +2054,7 @@ def:priv add_one_task(
     return 0;
 }
 
-def _asyncio_all_tasks_impl(
+impl _asyncio_all_tasks_impl(
     module: ptr[PyObject], loop: ptr[PyObject]
 ) -> ptr[PyObject] {
     if loop == Py_None {
@@ -1839,9 +2065,7 @@ def _asyncio_all_tasks_impl(
     } else {
         loop = Py_NewRef(loop);
     }
-    # Add the eager tasks first so as not to miss a task that graduates from
-    # eager to non-eager; all tasks go to a list first, and those done are
-    # filtered out into the resulting set.
+
     tasks = PyList_New(0);
     if not tasks {
         jacpy_release(loop);
@@ -1853,9 +2077,7 @@ def _asyncio_all_tasks_impl(
         jacpy_release(loop);
         return NULL;
     }
-    # The current thread's list alone for its running loop; for a loop
-    # running elsewhere, with the world stopped, the interpreter's list (of
-    # tasks whose thread state is gone) and every thread's.
+
     all_threads = running_loop() != loop;
     if jacpy_asyncio_add_tasks(tasks, i64(TASK_NODE_OFFSET), i64(all_threads)) < 0 {
         jacpy_release(tasks);
@@ -1881,7 +2103,7 @@ def _asyncio_all_tasks_impl(
     return res;
 }
 
-def _asyncio_future_add_to_awaited_by_impl(
+impl _asyncio_future_add_to_awaited_by_impl(
     module: ptr[PyObject], fut: ptr[PyObject], waiter: ptr[PyObject]
 ) -> ptr[PyObject] {
     if task_or_future_check(module, fut) and task_or_future_check(module, waiter) {
@@ -1892,7 +2114,7 @@ def _asyncio_future_add_to_awaited_by_impl(
     return none();
 }
 
-def _asyncio_future_discard_from_awaited_by_impl(
+impl _asyncio_future_discard_from_awaited_by_impl(
     module: ptr[PyObject], fut: ptr[PyObject], waiter: ptr[PyObject]
 ) -> ptr[PyObject] {
     if task_or_future_check(module, fut) and task_or_future_check(module, waiter) {

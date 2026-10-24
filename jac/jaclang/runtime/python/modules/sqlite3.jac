@@ -1,20 +1,5 @@
-"""The _sqlite3 module: connections, cursors, rows and blobs over SQLite.
-
-Derived from CPython 3.14.6 Modules/_sqlite/ (module.c, connection.c,
-cursor.c, statement.c, row.c, blob.c, prepare_protocol.c, microprotocols.c,
-util.c); see ../LICENSE.cpython. SQLite runs with the GIL released; the
-callbacks it makes into Python (user functions, aggregates, window functions,
-collations, the authorizer, progress and trace handlers, destructors) take the
-GIL first, and their contexts are C records SQLite keeps pointers to.
-"""
-
 import from c {
-    # SQLite's opaque handles.
-    obj sqlite3_db;  obj sqlite3_stmt;  obj sqlite3_context;  obj sqlite3_value;  obj sqlite3_blob;  obj sqlite3_backup;
-    # callback_context: what a user callback's C record holds. SQLite keeps
-    # its address, so it lives in raw memory; `module` keeps the module state
-    # alive while SQLite can still call back.
-    obj callback_context {
+    obj sqlite3_db;  obj sqlite3_stmt;  obj sqlite3_context;  obj sqlite3_value;  obj sqlite3_blob;  obj sqlite3_backup;  obj callback_context {
         has callable: ptr[PyObject],
             module: ptr[PyObject],
             refcount: i64;
@@ -191,7 +176,6 @@ import from sqlite3 {
     ) -> i32;
 }
 
-# sqlite3.h (SQLite 3.53.4) values the module uses and publishes.
 glob:priv SQLITE_OK: i32 = 0,
      SQLITE_ERROR: i32 = 1,
      SQLITE_INTERNAL: i32 = 2,
@@ -234,13 +218,11 @@ glob:priv SQLITE_OK: i32 = 0,
      SQLITE_SERIALIZE_NOCOPY: u32 = 1,
      SQLITE_DESERIALIZE_FREEONCLOSE: u32 = 1,
      SQLITE_DESERIALIZE_RESIZEABLE: u32 = 2,
-     # SQLITE_TRANSIENT, ((sqlite3_destructor_type)-1): SQLite copies the data.
      SQLITE_TRANSIENT: i64 = -1,
      INT_MAX: i64 = 2147483647,
      PY_EQ: i32 = 2,
      PY_NE: i32 = 3;
 
-# The connection's transaction control (enum autocommit_mode).
 glob LEGACY_TRANSACTION_CONTROL: i32 = -1;
 glob:priv AUTOCOMMIT_LEGACY: i32 = -1,
      AUTOCOMMIT_ENABLED: i32 = 1,
@@ -251,9 +233,6 @@ glob:priv AUTOCOMMIT_LEGACY: i32 = -1,
      BLOB_SEEK_CUR: i32 = 1,
      BLOB_SEEK_END: i32 = 2;
 
-# PY_SQLITE_ENABLE_LOAD_EXTENSION: JacPython builds, like CPython's default
-# configure, leave loadable extensions disabled (the vendored SQLite omits
-# them), so Connection has no enable_load_extension() or load_extension().
 glob ENABLE_LOAD_EXTENSION: bool = False,
      ERROR_CODES: list[tuple[str, i64]] = [
          ("SQLITE_ABORT", 4),
@@ -430,11 +409,6 @@ glob ENABLE_LOAD_EXTENSION: bool = False,
          ("SQLITE_DBCONFIG_TRUSTED_SCHEMA", 1017)
      ];
 
-# The SQLite result codes the module publishes (error_codes[]).
-
-# The integer constants add_integer_constants() publishes.
-# The handle of the module definition, which the binding fills in, so a type
-# finds its module as PyType_GetModuleByDef() does.
 obj DefinitionHandle {
     has handle: ptr = ptr();
 }
@@ -447,7 +421,6 @@ glob module_definition = DefinitionHandle(),
      Statement_token = ClassToken(),
      PrepareProtocol_token = ClassToken();
 
-# pysqlite_state.
 obj SqliteState(NativeState) {
     has DataError: ptr[PyObject] = NULL,
         DatabaseError: ptr[PyObject] = NULL,
@@ -459,10 +432,8 @@ obj SqliteState(NativeState) {
         OperationalError: ptr[PyObject] = NULL,
         ProgrammingError: ptr[PyObject] = NULL,
         Warning: ptr[PyObject] = NULL,
-        # Column types (uppercase) to converter functions.
         converters: ptr[PyObject] = NULL,
         lru_cache: ptr[PyObject] = NULL,
-        # The adapters registry.
         psyco_adapters: ptr[PyObject] = NULL,
         base_type_adapted: bool = False,
         enable_callback_tracebacks: bool = False,
@@ -481,91 +452,801 @@ obj SqliteState(NativeState) {
         str_upper: ptr[PyObject] = NULL,
         str_value: ptr[PyObject] = NULL;
 
-    def visited -> list[ptr[PyObject]] {
-        return [
-            self.DataError,
-            self.DatabaseError,
-            self.Error,
-            self.IntegrityError,
-            self.InterfaceError,
-            self.InternalError,
-            self.NotSupportedError,
-            self.OperationalError,
-            self.ProgrammingError,
-            self.Warning,
-            self.BlobType,
-            self.ConnectionType,
-            self.CursorType,
-            self.PrepareProtocolType,
-            self.RowType,
-            self.StatementType,
-            self.converters,
-            self.lru_cache,
-            self.psyco_adapters
-        ];
-    }
+    def visited -> list[ptr[PyObject]];
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        for value in self.visited() {
-            status = visit_reference(value, visitor, context);
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
+def module_state(module: ptr[PyObject]) -> (SqliteState | None);
 
-    def clear {
-        references = self.visited()
-            + [
-                self.str___adapt__,
-                self.str___conform__,
-                self.str_executescript,
-                self.str_finalize,
-                self.str_inverse,
-                self.str_step,
-                self.str_upper,
-                self.str_value
-            ];
-        self.DataError = NULL;
-        self.DatabaseError = NULL;
-        self.Error = NULL;
-        self.IntegrityError = NULL;
-        self.InterfaceError = NULL;
-        self.InternalError = NULL;
-        self.NotSupportedError = NULL;
-        self.OperationalError = NULL;
-        self.ProgrammingError = NULL;
-        self.Warning = NULL;
-        self.BlobType = NULL;
-        self.ConnectionType = NULL;
-        self.CursorType = NULL;
-        self.PrepareProtocolType = NULL;
-        self.RowType = NULL;
-        self.StatementType = NULL;
-        self.converters = NULL;
-        self.lru_cache = NULL;
-        self.psyco_adapters = NULL;
-        self.str___adapt__ = NULL;
-        self.str___conform__ = NULL;
-        self.str_executescript = NULL;
-        self.str_finalize = NULL;
-        self.str_inverse = NULL;
-        self.str_step = NULL;
-        self.str_upper = NULL;
-        self.str_value = NULL;
-        for value in references {
-            jacpy_release(value);
-        }
-    }
+def state_by_type(type: ptr[PyObject]) -> (SqliteState | None);
 
-    def drop {
-        self.clear();
+def:priv state_of(instance: ptr[PyObject]) -> (SqliteState | None);
+
+def:priv c_text(address: ptr[u8]) -> str;
+
+def:priv unicode_from_memory(address: ptr, size: i64) -> ptr[PyObject];
+
+def:priv bytes_from_memory(address: ptr, size: i64) -> ptr[PyObject];
+
+def:priv tp_name(value: ptr[PyObject]) -> ptr[u8];
+
+def:priv step_unlocked(statement: ptr[sqlite3_stmt]) -> i32;
+
+def:priv get_exception_class(state: SqliteState, errorcode: i32) -> ptr[PyObject];
+
+def error_name(code: i64) -> str;
+
+def:priv raise_exception(type: ptr[PyObject], errcode: i32, errmsg: ptr[u8]);
+
+def set_error_from_code(state: SqliteState, code: i32);
+
+def set_error_from_db(state: SqliteState, db: ptr[sqlite3_db]);
+
+def long_as_int64(value: ptr[PyObject]) -> i64;
+
+def microprotocols_add(
+    state: SqliteState, type: ptr[PyObject], proto: ptr[PyObject], cast: ptr[PyObject]
+) -> i32;
+
+def microprotocols_adapt(
+    state: SqliteState, value: ptr[PyObject], proto: ptr[PyObject], alt: ptr[PyObject]
+) -> ptr[PyObject];
+
+import from c {
+    obj connection_members {
+        has Warning: ptr[PyObject],
+            Error: ptr[PyObject],
+            InterfaceError: ptr[PyObject],
+            DatabaseError: ptr[PyObject],
+            DataError: ptr[PyObject],
+            OperationalError: ptr[PyObject],
+            IntegrityError: ptr[PyObject],
+            InternalError: ptr[PyObject],
+            ProgrammingError: ptr[PyObject],
+            NotSupportedError: ptr[PyObject];
+    }  obj cursor_members {
+        has connection: ptr[PyObject],
+            description: ptr[PyObject],
+            lastrowid: ptr[PyObject],
+            rowcount: i64,
+            row_factory: ptr[PyObject];
     }
 }
 
-# pysqlite_get_state(): the state of a _sqlite3 module object.
-def module_state(module: ptr[PyObject]) -> (SqliteState | None) {
+glob:priv T_OBJECT: int = 6,
+     T_LONG: int = 2;
+
+glob CONNECTION_RECORD_SIZE: int = 80,
+     CONNECTION_MEMBERS: list[MemberField] = [
+         MemberField(name="Warning", kind=T_OBJECT, offset=0, readonly=True),
+         MemberField(name="Error", kind=T_OBJECT, offset=8, readonly=True),
+         MemberField(name="InterfaceError", kind=T_OBJECT, offset=16, readonly=True),
+         MemberField(name="DatabaseError", kind=T_OBJECT, offset=24, readonly=True),
+         MemberField(name="DataError", kind=T_OBJECT, offset=32, readonly=True),
+         MemberField(name="OperationalError", kind=T_OBJECT, offset=40, readonly=True),
+         MemberField(name="IntegrityError", kind=T_OBJECT, offset=48, readonly=True),
+         MemberField(name="InternalError", kind=T_OBJECT, offset=56, readonly=True),
+         MemberField(name="ProgrammingError", kind=T_OBJECT, offset=64, readonly=True),
+         MemberField(name="NotSupportedError", kind=T_OBJECT, offset=72, readonly=True)
+     ],
+     CURSOR_RECORD_SIZE: int = 40,
+     CURSOR_MEMBERS: list[MemberField] = [
+         MemberField(name="connection", kind=T_OBJECT, offset=0, readonly=True),
+         MemberField(name="description", kind=T_OBJECT, offset=8, readonly=True),
+         MemberField(name="lastrowid", kind=T_OBJECT, offset=16, readonly=True),
+         MemberField(name="rowcount", kind=T_LONG, offset=24, readonly=True),
+         MemberField(name="row_factory", kind=T_OBJECT, offset=32)
+     ];
+
+obj StatementState(NativeState) {
+    has st: ptr[sqlite3_stmt] = ptr[sqlite3_stmt](),
+        is_dml: bool = False;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def statement_of(instance: ptr[PyObject]) -> (StatementState | None);
+
+def statement_finalize(instance: ptr[PyObject]);
+
+def:priv lstrip_sql(sql: ptr[u8]) -> ptr[u8];
+
+def:priv starts_with_keyword(p: ptr[u8], word: str) -> bool;
+
+def statement_create(
+    con_object: ptr[PyObject], con: ConnectionState, sql: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv current_statement(cur: CursorState) -> StatementState;
+
+def:priv stmt_reset(statement: StatementState) -> i32;
+
+def:priv reset_statement_object(instance: ptr[PyObject]) -> i32;
+
+obj ConnectionState(NativeState) {
+    has state: SqliteState = SqliteState(),
+        db: ptr[sqlite3_db] = ptr[sqlite3_db](),
+        detect_types: i32 = 0,
+        isolation_level: (str | None) = None,
+        autocommit: i32 = 0,
+        check_same_thread: bool = False,
+        initialized: bool = False,
+        thread_ident: u64 = 0,
+        statement_cache: ptr[PyObject] = NULL,
+        cursors: ptr[PyObject] = NULL,
+        blobs: ptr[PyObject] = NULL,
+        created_cursors: int = 0,
+        row_factory: ptr[PyObject] = NULL,
+        text_factory: ptr[PyObject] = NULL,
+        trace_ctx: ptr[callback_context] = ptr[callback_context](),
+        progress_ctx: ptr[callback_context] = ptr[callback_context](),
+        authorizer_ctx: ptr[callback_context] = ptr[callback_context]();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def connection_of(instance: ptr[PyObject]) -> (ConnectionState | None);
+
+def:priv connection_fields(instance: ptr[PyObject]) -> ptr[connection_members];
+
+def:priv create_callback_context(
+    cls: ptr[PyObject], callable: ptr[PyObject]
+) -> ptr[callback_context];
+
+def:priv free_callback_context(ctx: ptr[callback_context]);
+
+def:priv incref_callback_context(ctx: ptr[callback_context]);
+
+def:priv decref_callback_context(ctx: ptr[callback_context]);
+
+def:priv clear_callback_context(ctx: ptr[callback_context]);
+
+def:priv replace_callback_context(
+    previous: ptr[callback_context], ctx: ptr[callback_context]
+) -> ptr[callback_context];
+
+def:priv free_callback_contexts(con: ConnectionState);
+
+def:priv destructor_callback(ctx: ptr);
+
+def:priv context_state(ctx: ptr[callback_context]) -> (SqliteState | None);
+
+def:priv print_or_clear_traceback(ctx: ptr[callback_context]);
+
+def:priv set_sqlite_error(context: ptr[sqlite3_context], message: str);
+
+def:priv set_result(context: ptr[sqlite3_context], py_val: ptr[PyObject]) -> i32;
+
+def:priv build_py_params(
+    context: ptr[sqlite3_context], argc: i32, argv: ptr[ptr[sqlite3_value]]
+) -> ptr[PyObject];
+
+def:priv func_callback(
+    context: ptr[sqlite3_context], argc: i32, argv: ptr[ptr[sqlite3_value]]
+);
+
+def:priv step_callback(
+    context: ptr[sqlite3_context], argc: i32, params: ptr[ptr[sqlite3_value]]
+);
+
+def:priv final_callback(context: ptr[sqlite3_context]);
+
+def:priv inverse_callback(
+    context: ptr[sqlite3_context], argc: i32, params: ptr[ptr[sqlite3_value]]
+);
+
+def:priv value_callback(context: ptr[sqlite3_context]);
+
+def:priv authorizer_callback(
+    ctx_vp: ptr,
+    action: i32,
+    arg1: ptr[u8],
+    arg2: ptr[u8],
+    dbname: ptr[u8],
+    access_attempt_source: ptr[u8]
+) -> i32;
+
+def:priv progress_callback(ctx_vp: ptr) -> i32;
+
+def:priv trace_callback(kind: u32, ctx_vp: ptr, stmt: ptr, sql: ptr) -> i32;
+
+def:priv collation_callback(
+    context: ptr, text1_length: i32, text1_data: ptr, text2_length: i32, text2_data: ptr
+) -> i32;
+
+def:priv allowed_isolation_level(level: str) -> (str | None);
+
+def convert_isolation_level_converter(
+    value: ptr[PyObject], fname: str, label: str
+) -> (str | None);
+
+def:priv autocommit_value(value: ptr[PyObject]) -> (i32 | None);
+
+def convert_autocommit_converter(value: ptr[PyObject], fname: str, label: str) -> i32;
+
+def convert_sqlite3_int64_converter(
+    value: ptr[PyObject], fname: str, label: str
+) -> i64;
+
+def clinic_state_ConnectionType(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv clinic_state(receiver: ptr[PyObject]) -> SqliteState;
+
+def subclass_clinic_state_ConnectionType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+);
+
+def subclass_clinic_state_CursorType(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+);
+
+def:priv double_to_int(value: f64) -> i32;
+
+def:priv new_statement_cache(
+    instance: ptr[PyObject], state: SqliteState, maxsize: i32
+) -> ptr[PyObject];
+
+def:priv connection_exec_stmt(con: ConnectionState, sql: str) -> i32;
+
+def:priv remove_callbacks(db: ptr[sqlite3_db]);
+
+def:priv connection_close(con: ConnectionState) -> i32;
+
+def connection_finalize(instance: ptr[PyObject]);
+
+def:priv check_thread(con: ConnectionState) -> bool;
+
+def:priv check_connection(instance: ptr[PyObject], con: ConnectionState) -> bool;
+
+def:priv usable_connection(instance: ptr[PyObject]) -> (ConnectionState | None);
+
+def pysqlite_connection_init_impl(
+    receiver: ptr[PyObject],
+    database: ptr[PyObject],
+    timeout: f64,
+    detect_types: i32,
+    isolation_level: (str | None),
+    check_same_thread: bool,
+    factory: ptr[PyObject],
+    cache_size: i32,
+    uri: bool,
+    autocommit: i32
+) -> i32;
+
+def pysqlite_connect_impl(
+    receiver: ptr[PyObject],
+    database: ptr[PyObject],
+    timeout: f64,
+    detect_types: i32,
+    isolation_level: (str | None),
+    check_same_thread: bool,
+    factory: ptr[PyObject],
+    cache_size: i32,
+    uri: bool,
+    autocommit: i32
+) -> ptr[PyObject];
+
+def pysqlite_connect(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_cursor_impl(
+    receiver: ptr[PyObject], factory: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv drop_unused_cursor_references(con: ConnectionState) -> i32;
+
+def connection_get_row_factory(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def connection_set_row_factory(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def connection_get_text_factory(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def connection_set_text_factory(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def blobopen_impl(
+    receiver: ptr[PyObject], table: str, col: str, row: i64, readonly: bool, name: str
+) -> ptr[PyObject];
+
+def pysqlite_connection_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pysqlite_connection_commit_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pysqlite_connection_rollback_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv check_num_params(con: ConnectionState, n: i32, name: str) -> bool;
+
+def pysqlite_connection_create_function_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    name: str,
+    narg: i32,
+    func: ptr[PyObject],
+    deterministic: bool
+) -> ptr[PyObject];
+
+def create_window_function_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    name: str,
+    num_params: i32,
+    aggregate_class: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_create_aggregate_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    name: str,
+    n_arg: i32,
+    aggregate_class: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_set_authorizer_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], callable: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_set_progress_handler_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], callable: ptr[PyObject], n: i32
+) -> ptr[PyObject];
+
+def pysqlite_connection_set_trace_callback_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], callable: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_enable_load_extension_impl(
+    receiver: ptr[PyObject], onoff: bool
+) -> ptr[PyObject];
+
+def pysqlite_connection_load_extension_impl(
+    receiver: ptr[PyObject], extension_name: str, entrypoint: ptr[u8]
+) -> ptr[PyObject];
+
+def connection_get_isolation_level(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def connection_get_total_changes(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def connection_get_in_transaction(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def connection_set_isolation_level(
+    instance: ptr[PyObject], isolation_level: ptr[PyObject], context: u64
+) -> i32;
+
+def connection_call(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_execute_impl(
+    receiver: ptr[PyObject], sql: ptr[PyObject], parameters: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_executemany_impl(
+    receiver: ptr[PyObject], sql: ptr[PyObject], parameters: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_executescript_impl(
+    receiver: ptr[PyObject], script_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_interrupt_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pysqlite_connection_iterdump_impl(
+    receiver: ptr[PyObject], filter: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_connection_backup_impl(
+    receiver: ptr[PyObject],
+    target: ptr[PyObject],
+    pages: i32,
+    progress: ptr[PyObject],
+    name: str,
+    sleep: f64
+) -> ptr[PyObject];
+
+def pysqlite_connection_create_collation_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], name: str, callable: ptr[PyObject]
+) -> ptr[PyObject];
+
+def serialize_impl(receiver: ptr[PyObject], name: str) -> ptr[PyObject];
+
+def deserialize_impl(
+    receiver: ptr[PyObject], data: BufferArgument, name: str
+) -> ptr[PyObject];
+
+def pysqlite_connection_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pysqlite_connection_exit_impl(
+    receiver: ptr[PyObject],
+    exc_type: ptr[PyObject],
+    exc_value: ptr[PyObject],
+    exc_tb: ptr[PyObject]
+) -> ptr[PyObject];
+
+def setlimit_impl(receiver: ptr[PyObject], category: i32, limit: i32) -> ptr[PyObject];
+
+def getlimit_impl(receiver: ptr[PyObject], category: i32) -> ptr[PyObject];
+
+def:priv is_int_config(op: i32) -> bool;
+
+def setconfig_impl(receiver: ptr[PyObject], op: i32, enable: bool) -> ptr[PyObject];
+
+def getconfig_impl(receiver: ptr[PyObject], op: i32) -> i32;
+
+def connection_get_autocommit(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def connection_set_autocommit(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def connection_get_sig(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+obj CursorState(NativeState) {
+    has fields: ptr[cursor_members] = ptr[cursor_members](),
+        row_cast_map: ptr[PyObject] = NULL,
+        arraysize: u32 = 0,
+        statement: ptr[PyObject] = NULL,
+        closed: bool = False,
+        locked: bool = False,
+        initialized: bool = False;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def:priv cursor_fields(instance: ptr[PyObject]) -> ptr[cursor_members];
+
+def cursor_of(instance: ptr[PyObject]) -> (CursorState | None);
+
+def:priv cursor_connection(cur: CursorState) -> (ConnectionState | None);
+
+def:priv set_field_description(cur: CursorState, value: ptr[PyObject]);
+
+def:priv set_field_lastrowid(cur: CursorState, value: ptr[PyObject]);
+
+def:priv set_statement(cur: CursorState, statement: ptr[PyObject]);
+
+def:priv check_cursor_locked(cur: CursorState, con: ConnectionState) -> bool;
+
+def:priv register_cursor(con: ConnectionState, cursor: ptr[PyObject]) -> bool;
+
+def pysqlite_cursor_init_impl(
+    receiver: ptr[PyObject], connection: ptr[PyObject]
+) -> i32;
+
+def:priv get_converter(
+    state: SqliteState, keystr: ptr[u8], keylen: i64
+) -> ptr[PyObject];
+
+def:priv clear_row_cast_map(cur: CursorState);
+
+def:priv build_row_cast_map(cur: CursorState, con: ConnectionState) -> i32;
+
+def:priv build_column_name(con: ConnectionState, colname: ptr[u8]) -> ptr[PyObject];
+
+def:priv fetch_one_row(cur: CursorState, con: ConnectionState) -> ptr[PyObject];
+
+def:priv set_decode_error(con: ConnectionState, colname: ptr[u8], text: ptr[u8]);
+
+def:priv check_cursor(
+    instance: ptr[PyObject], cur: CursorState
+) -> (ConnectionState | None);
+
+def:priv begin_transaction(con: ConnectionState) -> i32;
+
+def:priv get_statement_from_cache(
+    con: ConnectionState, operation: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv bind_param(
+    state: SqliteState, statement: StatementState, pos: i32, parameter: ptr[PyObject]
+) -> i32;
+
+def:priv need_adapt(state: SqliteState, value: ptr[PyObject]) -> bool;
+
+def:priv bind_one(
+    state: SqliteState,
+    statement: StatementState,
+    pos: i32,
+    current_param: ptr[PyObject]
+) -> bool;
+
+def:priv bind_parameters(
+    state: SqliteState, statement: StatementState, parameters: ptr[PyObject]
+);
+
+def query_execute(
+    instance: ptr[PyObject],
+    multiple: bool,
+    operation: ptr[PyObject],
+    second_argument: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv finish_execute(
+    instance: ptr[PyObject],
+    cur: CursorState,
+    parameters: ptr[PyObject],
+    parameters_iter: ptr[PyObject],
+    parameters_list: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_cursor_execute_impl(
+    receiver: ptr[PyObject], sql: ptr[PyObject], parameters: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_cursor_executemany_impl(
+    receiver: ptr[PyObject], sql: ptr[PyObject], seq_of_parameters: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_cursor_executescript_impl(
+    receiver: ptr[PyObject], sql_script: str
+) -> ptr[PyObject];
+
+def cursor_iternext(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def pysqlite_cursor_fetchone_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def self_arraysize(receiver: ptr[PyObject]) -> u32;
+
+def pysqlite_cursor_fetchmany_impl(
+    receiver: ptr[PyObject], maxrows: u32
+) -> ptr[PyObject];
+
+def pysqlite_cursor_fetchall_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pysqlite_cursor_setinputsizes_impl(
+    receiver: ptr[PyObject], sizes: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_cursor_setoutputsize_impl(
+    receiver: ptr[PyObject], size: ptr[PyObject], column: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_cursor_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _sqlite3_Cursor_arraysize_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _sqlite3_Cursor_arraysize_set_impl(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def cursor_self_iter(instance: ptr[PyObject]) -> ptr[PyObject];
+
+obj RowState(NativeState) {
+    has data: ptr[PyObject] = NULL,
+        description: ptr[PyObject] = NULL;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def row_of(instance: ptr[PyObject]) -> (RowState | None);
+
+def pysqlite_row_new_impl(
+    type: ptr[PyObject], cursor: ptr[PyObject], data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def row_item(instance: ptr[PyObject], index: i64) -> ptr[PyObject];
+
+def:priv equal_ignore_case(left: ptr[PyObject], right: ptr[PyObject]) -> i32;
+
+def row_subscript(instance: ptr[PyObject], idx: ptr[PyObject]) -> ptr[PyObject];
+
+def row_length(instance: ptr[PyObject]) -> i64;
+
+def pysqlite_row_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def row_iter(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def row_hash(instance: ptr[PyObject]) -> i64;
+
+def row_richcompare(
+    instance: ptr[PyObject], other: ptr[PyObject], opid: i32
+) -> ptr[PyObject];
+
+obj BlobState(NativeState) {
+    has connection: ptr[PyObject] = NULL,
+        blob: ptr[sqlite3_blob] = ptr[sqlite3_blob](),
+        offset: i32 = 0;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def blob_of(instance: ptr[PyObject]) -> (BlobState | None);
+
+def close_blob(blob: BlobState);
+
+def blob_close_on_dealloc(instance: ptr[PyObject]);
+
+def:priv close_all_blobs(con: ConnectionState);
+
+def:priv check_blob(blob: BlobState) -> (ConnectionState | None);
+
+def:priv usable_blob(
+    instance: ptr[PyObject]
+) -> (tuple[BlobState, ConnectionState] | None);
+
+def blob_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv read_single(
+    blob: BlobState, con: ConnectionState, offset: i64
+) -> ptr[PyObject];
+
+def:priv read_multiple(
+    blob: BlobState, con: ConnectionState, length: i64, offset: i64
+) -> ptr[PyObject];
+
+def blob_read_impl(receiver: ptr[PyObject], length: i32) -> ptr[PyObject];
+
+def:priv inner_write(
+    blob: BlobState, con: ConnectionState, buf: ptr, length: i64, offset: i64
+) -> i32;
+
+def blob_write_impl(receiver: ptr[PyObject], data: BufferArgument) -> ptr[PyObject];
+
+def blob_seek_impl(receiver: ptr[PyObject], offset: i32, origin: i32) -> ptr[PyObject];
+
+def blob_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def blob_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def blob_exit_impl(
+    receiver: ptr[PyObject], type: ptr[PyObject], val: ptr[PyObject], tb: ptr[PyObject]
+) -> ptr[PyObject];
+
+def blob_length(instance: ptr[PyObject]) -> i64;
+
+def:priv get_subscript_index(blob: BlobState, item: ptr[PyObject]) -> i64;
+
+def:priv get_slice_info(blob: BlobState, item: ptr[PyObject]) -> (list[i64] | None);
+
+def blob_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv ass_subscript_index(
+    blob: BlobState, con: ConnectionState, item: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def:priv ass_subscript_slice(
+    blob: BlobState, con: ConnectionState, item: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def blob_ass_subscript(
+    instance: ptr[PyObject], item: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def prepare_protocol_init(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32;
+
+def pysqlite_complete_statement_impl(
+    module: ptr[PyObject], statement: str
+) -> ptr[PyObject];
+
+def pysqlite_register_adapter_impl(
+    module: ptr[PyObject], type: ptr[PyObject], caster: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_register_converter_impl(
+    module: ptr[PyObject], orig_name: ptr[PyObject], callable: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pysqlite_enable_callback_trace_impl(
+    module: ptr[PyObject], enable: i32
+) -> ptr[PyObject];
+
+def pysqlite_adapt_impl(
+    module: ptr[PyObject],
+    value: ptr[PyObject],
+    proto: ptr[PyObject],
+    alt: ptr[PyObject]
+) -> ptr[PyObject];
+
+def threadsafety(state: SqliteState) -> i32;
+
+def initialize_library -> bool;
+
+def library_version -> ptr[PyObject];
+
+impl SqliteState.visited -> list[ptr[PyObject]] {
+    return [
+        self.DataError,
+        self.DatabaseError,
+        self.Error,
+        self.IntegrityError,
+        self.InterfaceError,
+        self.InternalError,
+        self.NotSupportedError,
+        self.OperationalError,
+        self.ProgrammingError,
+        self.Warning,
+        self.BlobType,
+        self.ConnectionType,
+        self.CursorType,
+        self.PrepareProtocolType,
+        self.RowType,
+        self.StatementType,
+        self.converters,
+        self.lru_cache,
+        self.psyco_adapters
+    ];
+}
+
+impl SqliteState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    for value in self.visited() {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    return i32(0);
+}
+
+impl SqliteState.clear {
+    references = self.visited()
+        + [
+            self.str___adapt__,
+            self.str___conform__,
+            self.str_executescript,
+            self.str_finalize,
+            self.str_inverse,
+            self.str_step,
+            self.str_upper,
+            self.str_value
+        ];
+    self.DataError = NULL;
+    self.DatabaseError = NULL;
+    self.Error = NULL;
+    self.IntegrityError = NULL;
+    self.InterfaceError = NULL;
+    self.InternalError = NULL;
+    self.NotSupportedError = NULL;
+    self.OperationalError = NULL;
+    self.ProgrammingError = NULL;
+    self.Warning = NULL;
+    self.BlobType = NULL;
+    self.ConnectionType = NULL;
+    self.CursorType = NULL;
+    self.PrepareProtocolType = NULL;
+    self.RowType = NULL;
+    self.StatementType = NULL;
+    self.converters = NULL;
+    self.lru_cache = NULL;
+    self.psyco_adapters = NULL;
+    self.str___adapt__ = NULL;
+    self.str___conform__ = NULL;
+    self.str_executescript = NULL;
+    self.str_finalize = NULL;
+    self.str_inverse = NULL;
+    self.str_step = NULL;
+    self.str_upper = NULL;
+    self.str_value = NULL;
+    for value in references {
+        jacpy_release(value);
+    }
+}
+
+impl SqliteState.drop {
+    self.clear();
+}
+
+impl module_state(module: ptr[PyObject]) -> (SqliteState | None) {
     if module and jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
         if isinstance(state, SqliteState) {
@@ -578,17 +1259,15 @@ def module_state(module: ptr[PyObject]) -> (SqliteState | None) {
     return None;
 }
 
-# pysqlite_get_state_by_type(): the state of the module defining `type`.
-def state_by_type(type: ptr[PyObject]) -> (SqliteState | None) {
+impl state_by_type(type: ptr[PyObject]) -> (SqliteState | None) {
     return module_state(jacpy_binding_owner(type, module_definition.handle));
 }
 
-def:priv state_of(instance: ptr[PyObject]) -> (SqliteState | None) {
+impl state_of(instance: ptr[PyObject]) -> (SqliteState | None) {
     return state_by_type(Py_TYPE(instance));
 }
 
-# A NUL-terminated UTF-8 C string as a Jac str.
-def:priv c_text(address: ptr[u8]) -> str {
+impl c_text(address: ptr[u8]) -> str {
     text = c_string_text(address);
     try {
         return text_value(text);
@@ -597,36 +1276,29 @@ def:priv c_text(address: ptr[u8]) -> str {
     }
 }
 
-# PyUnicode_FromStringAndSize() over C memory: a strict UTF-8 decode.
-def:priv unicode_from_memory(address: ptr, size: i64) -> ptr[PyObject] {
+impl unicode_from_memory(address: ptr, size: i64) -> ptr[PyObject] {
     return PyUnicode_DecodeUTF8Stateful(address, size, ptr[u8](), None);
 }
 
-# PyBytes_FromStringAndSize() over C memory.
-def:priv bytes_from_memory(address: ptr, size: i64) -> ptr[PyObject] {
+impl bytes_from_memory(address: ptr, size: i64) -> ptr[PyObject] {
     if size == 0 {
         return jacpy_buffer_new(0);
     }
     return jacpy_bytes_from_memory(address, size);
 }
 
-def:priv tp_name(value: ptr[PyObject]) -> ptr[u8] {
+impl tp_name(value: ptr[PyObject]) -> ptr[u8] {
     return object_type(value).view(1)[0].tp_name;
 }
 
-# Py_BEGIN_ALLOW_THREADS / Py_END_ALLOW_THREADS around one SQLite call.
-def:priv step_unlocked(statement: ptr[sqlite3_stmt]) -> i32 {
+impl step_unlocked(statement: ptr[sqlite3_stmt]) -> i32 {
     thread = PyEval_SaveThread();
     rc = sqlite3_step(statement);
     PyEval_RestoreThread(thread);
     return rc;
 }
 
-# ------------------------------------------------------------------- util.c
-
-# get_exception_class(): the class a result code raises; NULL when none is
-# to be raised (SQLITE_OK clears the error, SQLITE_NOMEM sets MemoryError).
-def:priv get_exception_class(state: SqliteState, errorcode: i32) -> ptr[PyObject] {
+impl get_exception_class(state: SqliteState, errorcode: i32) -> ptr[PyObject] {
     if errorcode == SQLITE_OK {
         PyErr_Clear();
         return NULL;
@@ -670,8 +1342,7 @@ def:priv get_exception_class(state: SqliteState, errorcode: i32) -> ptr[PyObject
     return state.DatabaseError;
 }
 
-# pysqlite_error_name(): the name of a result code, or "" for none.
-def error_name(code: i64) -> str {
+impl error_name(code: i64) -> str {
     for (name, value) in ERROR_CODES {
         if value == code {
             return name;
@@ -680,7 +1351,7 @@ def error_name(code: i64) -> str {
     return "";
 }
 
-def:priv raise_exception(type: ptr[PyObject], errcode: i32, errmsg: ptr[u8]) {
+impl raise_exception(type: ptr[PyObject], errcode: i32, errmsg: ptr[u8]) {
     message = c_string_text(errmsg);
     if not message {
         return;
@@ -695,21 +1366,21 @@ def:priv raise_exception(type: ptr[PyObject], errcode: i32, errmsg: ptr[u8]) {
         jacpy_release(exc);
         return;
     }
-    rc = PyObject_SetAttrString(exc, "sqlite_errorcode", code);
+    rc = PyObject_SetAttrString(exc, ptr[u8]("sqlite_errorcode"), code);
     jacpy_release(code);
     if rc < 0 {
         jacpy_release(exc);
         return;
     }
     known = error_name(i64(errcode));
-    name = PyUnicode_FromString(known)
+    name = jacpy_unicode_from_text(known)
         if known
-        else PyUnicode_InternFromString("unknown");
+        else PyUnicode_InternFromString(ptr[u8]("unknown"));
     if not name {
         jacpy_release(exc);
         return;
     }
-    rc = PyObject_SetAttrString(exc, "sqlite_errorname", name);
+    rc = PyObject_SetAttrString(exc, ptr[u8]("sqlite_errorname"), name);
     jacpy_release(name);
     if rc < 0 {
         jacpy_release(exc);
@@ -719,7 +1390,7 @@ def:priv raise_exception(type: ptr[PyObject], errcode: i32, errmsg: ptr[u8]) {
     jacpy_release(exc);
 }
 
-def set_error_from_code(state: SqliteState, code: i32) {
+impl set_error_from_code(state: SqliteState, code: i32) {
     exc_class = get_exception_class(state, code);
     if not exc_class {
         return;
@@ -727,18 +1398,16 @@ def set_error_from_code(state: SqliteState, code: i32) {
     raise_exception(exc_class, code, sqlite3_errstr(code));
 }
 
-# set_error_from_db(): the DB-API exception for the connection's last error.
-def set_error_from_db(state: SqliteState, db: ptr[sqlite3_db]) {
+impl set_error_from_db(state: SqliteState, db: ptr[sqlite3_db]) {
     exc_class = get_exception_class(state, sqlite3_errcode(db));
     if not exc_class {
         return;
     }
-    # sqlite3_errmsg() always returns an UTF-8 encoded message.
+
     raise_exception(exc_class, sqlite3_extended_errcode(db), sqlite3_errmsg(db));
 }
 
-# _pysqlite_long_as_int64(): -1 with the exception set on failure.
-def long_as_int64(value: ptr[PyObject]) -> i64 {
+impl long_as_int64(value: ptr[PyObject]) -> i64 {
     overflow: i32 = 0;
     result = PyLong_AsLongLongAndOverflow(value, &mut overflow);
     if result == -1 and PyErr_Occurred() {
@@ -753,9 +1422,7 @@ def long_as_int64(value: ptr[PyObject]) -> i64 {
     return -1;
 }
 
-# --------------------------------------------------------- microprotocols.c
-
-def microprotocols_add(
+impl microprotocols_add(
     state: SqliteState, type: ptr[PyObject], proto: ptr[PyObject], cast: ptr[PyObject]
 ) -> i32 {
     key = PyTuple_Pack(2, type, proto);
@@ -767,9 +1434,7 @@ def microprotocols_add(
     return rc;
 }
 
-# pysqlite_microprotocols_adapt(): the registry's adapter, then the
-# protocol's __adapt__, then the object's __conform__, then `alt`.
-def microprotocols_adapt(
+impl microprotocols_adapt(
     state: SqliteState, value: ptr[PyObject], proto: ptr[PyObject], alt: ptr[PyObject]
 ) -> ptr[PyObject] {
     key = PyTuple_Pack(2, Py_TYPE(value), proto);
@@ -787,7 +1452,7 @@ def microprotocols_adapt(
         jacpy_release(adapter);
         return adapted;
     }
-    # Try to have the protocol adapt this object.
+
     if PyObject_GetOptionalAttr(proto, state.str___adapt__, &mut adapter) < 0 {
         return NULL;
     }
@@ -802,7 +1467,7 @@ def microprotocols_adapt(
             PyErr_Clear();
         }
     }
-    # And finally try to have the object adapt itself.
+
     adapter = NULL;
     if PyObject_GetOptionalAttr(value, state.str___conform__, &mut adapter) < 0 {
         return NULL;
@@ -825,75 +1490,13 @@ def microprotocols_adapt(
     return NULL;
 }
 
-# ---------------------------------------------------- object field records
-
-import from c {
-    # The Connection fields published as member descriptors: the module's
-    # exception classes, borrowed.
-    obj connection_members {
-        has Warning: ptr[PyObject],
-            Error: ptr[PyObject],
-            InterfaceError: ptr[PyObject],
-            DatabaseError: ptr[PyObject],
-            DataError: ptr[PyObject],
-            OperationalError: ptr[PyObject],
-            IntegrityError: ptr[PyObject],
-            InternalError: ptr[PyObject],
-            ProgrammingError: ptr[PyObject],
-            NotSupportedError: ptr[PyObject];
-    }
-    # The Cursor fields published as member descriptors; the object
-    # references are owned.
-    obj cursor_members {
-        has connection: ptr[PyObject],
-            description: ptr[PyObject],
-            lastrowid: ptr[PyObject],
-            rowcount: i64,
-            row_factory: ptr[PyObject];
-    }
+impl StatementState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-# Py_T_OBJECT and Py_T_LONG member types, and the record layouts.
-glob:priv T_OBJECT: int = 6,
-     T_LONG: int = 2;
+impl StatementState.clear {}
 
-glob CONNECTION_RECORD_SIZE: int = 80,
-     CONNECTION_MEMBERS: list[MemberField] = [
-         MemberField(name="Warning", kind=T_OBJECT, offset=0, readonly=True),
-         MemberField(name="Error", kind=T_OBJECT, offset=8, readonly=True),
-         MemberField(name="InterfaceError", kind=T_OBJECT, offset=16, readonly=True),
-         MemberField(name="DatabaseError", kind=T_OBJECT, offset=24, readonly=True),
-         MemberField(name="DataError", kind=T_OBJECT, offset=32, readonly=True),
-         MemberField(name="OperationalError", kind=T_OBJECT, offset=40, readonly=True),
-         MemberField(name="IntegrityError", kind=T_OBJECT, offset=48, readonly=True),
-         MemberField(name="InternalError", kind=T_OBJECT, offset=56, readonly=True),
-         MemberField(name="ProgrammingError", kind=T_OBJECT, offset=64, readonly=True),
-         MemberField(name="NotSupportedError", kind=T_OBJECT, offset=72, readonly=True)
-     ],
-     CURSOR_RECORD_SIZE: int = 40,
-     CURSOR_MEMBERS: list[MemberField] = [
-         MemberField(name="connection", kind=T_OBJECT, offset=0, readonly=True),
-         MemberField(name="description", kind=T_OBJECT, offset=8, readonly=True),
-         MemberField(name="lastrowid", kind=T_OBJECT, offset=16, readonly=True),
-         MemberField(name="rowcount", kind=T_LONG, offset=24, readonly=True),
-         MemberField(name="row_factory", kind=T_OBJECT, offset=32)
-     ];
-
-# ------------------------------------------------------------- statement.c
-
-# pysqlite_Statement.
-obj StatementState(NativeState) {
-    has st: ptr[sqlite3_stmt] = ptr[sqlite3_stmt](),
-        is_dml: bool = False;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
-}
-
-def statement_of(instance: ptr[PyObject]) -> (StatementState | None) {
+impl statement_of(instance: ptr[PyObject]) -> (StatementState | None) {
     if jacpy_binding_native_present(instance, Statement_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, Statement_token.handle);
         if isinstance(state, StatementState) {
@@ -903,8 +1506,7 @@ def statement_of(instance: ptr[PyObject]) -> (StatementState | None) {
     return None;
 }
 
-# stmt_dealloc(): finalize the statement with the GIL released.
-def statement_finalize(instance: ptr[PyObject]) {
+impl statement_finalize(instance: ptr[PyObject]) {
     statement = statement_of(instance);
     if statement is not None and not statement.st.is_null() {
         st = statement.st;
@@ -915,9 +1517,7 @@ def statement_finalize(instance: ptr[PyObject]) {
     }
 }
 
-# lstrip_sql(): the first character of `sql` that is not whitespace or a
-# comment, or NULL when there is none (a loop borrowed from SQLite).
-def:priv lstrip_sql(sql: ptr[u8]) -> ptr[u8] {
+impl lstrip_sql(sql: ptr[u8]) -> ptr[u8] {
     pos = sql;
     while pos.view(1)[0] != 0 {
         c = pos.view(1)[0];
@@ -926,7 +1526,6 @@ def:priv lstrip_sql(sql: ptr[u8]) -> ptr[u8] {
             continue;
         }
         if c == 45 {
-            # Skip line comments.
             if (pos + 1).view(1)[0] == 45 {
                 pos += 2;
                 while pos.view(1)[0] != 0 and pos.view(1)[0] != 10 {
@@ -940,7 +1539,6 @@ def:priv lstrip_sql(sql: ptr[u8]) -> ptr[u8] {
             return pos;
         }
         if c == 47 {
-            # Skip C style comments.
             if (pos + 1).view(1)[0] == 42 {
                 pos += 2;
                 while pos.view(1)[0] != 0
@@ -960,8 +1558,7 @@ def:priv lstrip_sql(sql: ptr[u8]) -> ptr[u8] {
     return ptr[u8]();
 }
 
-# PyOS_strnicmp(p, word, len(word)) == 0 for an ASCII keyword.
-def:priv starts_with_keyword(p: ptr[u8], word: str) -> bool {
+impl starts_with_keyword(p: ptr[u8], word: str) -> bool {
     for i in range(len(word)) {
         c = int((p + i).view(1)[0]);
         if c == 0 {
@@ -977,8 +1574,7 @@ def:priv starts_with_keyword(p: ptr[u8], word: str) -> bool {
     return True;
 }
 
-# pysqlite_statement_create().
-def statement_create(
+impl statement_create(
     con_object: ptr[PyObject], con: ConnectionState, sql: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = con.state;
@@ -1013,8 +1609,7 @@ def statement_create(
         sqlite3_finalize(stmt);
         return NULL;
     }
-    # Determine if the statement is a DML statement. SELECT is the only
-    # exception. See #9924.
+
     is_dml = False;
     p = lstrip_sql(sql_cstr);
     if not p.is_null() {
@@ -1038,14 +1633,12 @@ def statement_create(
     return instance;
 }
 
-# The cursor's statement object's state; a blank one (no sqlite3_stmt) when
-# the object is not a statement.
-def:priv current_statement(cur: CursorState) -> StatementState {
+impl current_statement(cur: CursorState) -> StatementState {
     statement = statement_of(cur.statement) if cur.statement else None;
     return statement if statement is not None else StatementState();
 }
 
-def:priv stmt_reset(statement: StatementState) -> i32 {
+impl stmt_reset(statement: StatementState) -> i32 {
     rc = SQLITE_OK;
     if not statement.st.is_null() {
         thread = PyEval_SaveThread();
@@ -1055,8 +1648,7 @@ def:priv stmt_reset(statement: StatementState) -> i32 {
     return rc;
 }
 
-# Reset the statement object `instance` (a pysqlite_Statement), if any.
-def:priv reset_statement_object(instance: ptr[PyObject]) -> i32 {
+impl reset_statement_object(instance: ptr[PyObject]) -> i32 {
     if not instance {
         return SQLITE_OK;
     }
@@ -1064,89 +1656,56 @@ def:priv reset_statement_object(instance: ptr[PyObject]) -> i32 {
     return stmt_reset(statement) if statement is not None else SQLITE_OK;
 }
 
-# ------------------------------------------------------------ connection.c
-
-# pysqlite_Connection, apart from the exception fields of its record.
-obj ConnectionState(NativeState) {
-    has state: SqliteState = SqliteState(),
-        db: ptr[sqlite3_db] = ptr[sqlite3_db](),
-        # The type detection mode: 0, PARSE_DECLTYPES, PARSE_COLNAMES or both.
-        detect_types: i32 = 0,
-        # None for autocommit, otherwise the isolation level.
-        isolation_level: (str | None) = None,
-        autocommit: i32 = 0,
-        check_same_thread: bool = False,
-        initialized: bool = False,
-        # The thread the connection was created in.
-        thread_ident: u64 = 0,
-        statement_cache: ptr[PyObject] = NULL,
-        # Lists of weak references to cursors and blobs of this connection.
-        cursors: ptr[PyObject] = NULL,
-        blobs: ptr[PyObject] = NULL,
-        created_cursors: int = 0,
-        row_factory: ptr[PyObject] = NULL,
-        # How TEXT values become Python objects: str, bytes, bytearray or a
-        # callable.
-        text_factory: ptr[PyObject] = NULL,
-        # The contexts of the trace, progress and authorizer callbacks.
-        trace_ctx: ptr[callback_context] = ptr[callback_context](),
-        progress_ctx: ptr[callback_context] = ptr[callback_context](),
-        authorizer_ctx: ptr[callback_context] = ptr[callback_context]();
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        for value in [
-            self.statement_cache,
-            self.cursors,
-            self.blobs,
-            self.row_factory,
-            self.text_factory
-        ] {
-            status = visit_reference(value, visitor, context);
+impl ConnectionState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    for value in [
+        self.statement_cache,
+        self.cursors,
+        self.blobs,
+        self.row_factory,
+        self.text_factory
+    ] {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    for ctx in [self.trace_ctx, self.progress_ctx, self.authorizer_ctx] {
+        if not ctx.is_null() {
+            record = ctx.view(1);
+            status = visit_reference(record[0].callable, visitor, context);
+            if status == 0 {
+                status = visit_reference(record[0].module, visitor, context);
+            }
             if status != 0 {
                 return status;
             }
         }
-        for ctx in [self.trace_ctx, self.progress_ctx, self.authorizer_ctx] {
-            if not ctx.is_null() {
-                record = ctx.view(1);
-                status = visit_reference(record[0].callable, visitor, context);
-                if status == 0 {
-                    status = visit_reference(record[0].module, visitor, context);
-                }
-                if status != 0 {
-                    return status;
-                }
-            }
-        }
-        return i32(0);
     }
+    return i32(0);
+}
 
-    # connection_clear().
-    def clear {
-        references = [
-            self.statement_cache,
-            self.cursors,
-            self.blobs,
-            self.row_factory,
-            self.text_factory
-        ];
-        self.statement_cache = NULL;
-        self.cursors = NULL;
-        self.blobs = NULL;
-        self.row_factory = NULL;
-        self.text_factory = NULL;
-        for value in references {
-            jacpy_release(value);
-        }
-        for ctx in [self.trace_ctx, self.progress_ctx, self.authorizer_ctx] {
-            clear_callback_context(ctx);
-        }
+impl ConnectionState.clear {
+    references = [
+        self.statement_cache,
+        self.cursors,
+        self.blobs,
+        self.row_factory,
+        self.text_factory
+    ];
+    self.statement_cache = NULL;
+    self.cursors = NULL;
+    self.blobs = NULL;
+    self.row_factory = NULL;
+    self.text_factory = NULL;
+    for value in references {
+        jacpy_release(value);
+    }
+    for ctx in [self.trace_ctx, self.progress_ctx, self.authorizer_ctx] {
+        clear_callback_context(ctx);
     }
 }
 
-# The ConnectionState of a Connection instance, created on first use as the
-# zeroed C struct would be; None with the error set when it cannot be.
-def connection_of(instance: ptr[PyObject]) -> (ConnectionState | None) {
+impl connection_of(instance: ptr[PyObject]) -> (ConnectionState | None) {
     if jacpy_binding_native_present(instance, Connection_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, Connection_token.handle);
         if isinstance(state, ConnectionState) {
@@ -1163,17 +1722,13 @@ def connection_of(instance: ptr[PyObject]) -> (ConnectionState | None) {
     return fresh;
 }
 
-def:priv connection_fields(instance: ptr[PyObject]) -> ptr[connection_members] {
+impl connection_fields(instance: ptr[PyObject]) -> ptr[connection_members] {
     return ptr[connection_members](
         jacpy_binding_record(instance, Connection_token.handle)
     );
 }
 
-# ---------------------------------------------- callback contexts (C records)
-
-# create_callback_context(): the context owns a reference to the module of
-# the defining class, so the module state outlives the callback.
-def:priv create_callback_context(
+impl create_callback_context(
     cls: ptr[PyObject], callable: ptr[PyObject]
 ) -> ptr[callback_context] {
     ctx = ptr[callback_context](PyMem_Malloc(24));
@@ -1189,19 +1744,19 @@ def:priv create_callback_context(
     return ctx;
 }
 
-def:priv free_callback_context(ctx: ptr[callback_context]) {
+impl free_callback_context(ctx: ptr[callback_context]) {
     record = ctx.view(1);
     jacpy_release(record[0].callable);
     jacpy_release(record[0].module);
     PyMem_Free(ctx);
 }
 
-def:priv incref_callback_context(ctx: ptr[callback_context]) {
+impl incref_callback_context(ctx: ptr[callback_context]) {
     record = ctx.view(1);
     record[0].refcount = record[0].refcount + 1;
 }
 
-def:priv decref_callback_context(ctx: ptr[callback_context]) {
+impl decref_callback_context(ctx: ptr[callback_context]) {
     record = ctx.view(1);
     record[0].refcount = record[0].refcount - 1;
     if record[0].refcount == 0 {
@@ -1209,7 +1764,7 @@ def:priv decref_callback_context(ctx: ptr[callback_context]) {
     }
 }
 
-def:priv clear_callback_context(ctx: ptr[callback_context]) {
+impl clear_callback_context(ctx: ptr[callback_context]) {
     if not ctx.is_null() {
         record = ctx.view(1);
         callable = record[0].callable;
@@ -1221,8 +1776,7 @@ def:priv clear_callback_context(ctx: ptr[callback_context]) {
     }
 }
 
-# set_callback_context(): the new context; the replaced one is released.
-def:priv replace_callback_context(
+impl replace_callback_context(
     previous: ptr[callback_context], ctx: ptr[callback_context]
 ) -> ptr[callback_context] {
     if not previous.is_null() {
@@ -1231,7 +1785,7 @@ def:priv replace_callback_context(
     return ctx;
 }
 
-def:priv free_callback_contexts(con: ConnectionState) {
+impl free_callback_contexts(con: ConnectionState) {
     trace = con.trace_ctx;
     progress = con.progress_ctx;
     authorizer = con.authorizer_ctx;
@@ -1243,8 +1797,7 @@ def:priv free_callback_contexts(con: ConnectionState) {
     replace_callback_context(authorizer, ptr[callback_context]());
 }
 
-# destructor_callback(): SQLite may call it without the GIL.
-def:priv destructor_callback(ctx: ptr) {
+impl destructor_callback(ctx: ptr) {
     if ctx {
         gil = PyGILState_Ensure();
         decref_callback_context(ptr[callback_context](ctx));
@@ -1252,8 +1805,7 @@ def:priv destructor_callback(ctx: ptr) {
     }
 }
 
-# The callback's module state, without raising.
-def:priv context_state(ctx: ptr[callback_context]) -> (SqliteState | None) {
+impl context_state(ctx: ptr[callback_context]) -> (SqliteState | None) {
     module = ctx.view(1)[0].module;
     if module and jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
@@ -1264,7 +1816,7 @@ def:priv context_state(ctx: ptr[callback_context]) -> (SqliteState | None) {
     return None;
 }
 
-def:priv print_or_clear_traceback(ctx: ptr[callback_context]) {
+impl print_or_clear_traceback(ctx: ptr[callback_context]) {
     state = context_state(ctx);
     if state is not None and state.enable_callback_tracebacks {
         PyErr_FormatUnraisable(
@@ -1275,8 +1827,7 @@ def:priv print_or_clear_traceback(ctx: ptr[callback_context]) {
     }
 }
 
-# set_sqlite_error(): the SQLite error code for the pending Python exception.
-def:priv set_sqlite_error(context: ptr[sqlite3_context], message: str) {
+impl set_sqlite_error(context: ptr[sqlite3_context], message: str) {
     if PyErr_ExceptionMatches(PyExc_MemoryError) != 0 {
         sqlite3_result_error_nomem(context);
     } elif PyErr_ExceptionMatches(PyExc_OverflowError) != 0 {
@@ -1287,8 +1838,7 @@ def:priv set_sqlite_error(context: ptr[sqlite3_context], message: str) {
     print_or_clear_traceback(ptr[callback_context](sqlite3_user_data(context)));
 }
 
-# _pysqlite_set_result(): 0, or -1 with the exception set.
-def:priv set_result(context: ptr[sqlite3_context], py_val: ptr[PyObject]) -> i32 {
+impl set_result(context: ptr[sqlite3_context], py_val: ptr[PyObject]) -> i32 {
     if py_val == Py_None {
         sqlite3_result_null(context);
     } elif jacpy_is_long(py_val) != 0 {
@@ -1341,8 +1891,7 @@ def:priv set_result(context: ptr[sqlite3_context], py_val: ptr[PyObject]) -> i32
     return i32(0);
 }
 
-# _pysqlite_build_py_params(): the SQL arguments as a tuple of Python values.
-def:priv build_py_params(
+impl build_py_params(
     context: ptr[sqlite3_context], argc: i32, argv: ptr[ptr[sqlite3_value]]
 ) -> ptr[PyObject] {
     args = PyTuple_New(i64(argc));
@@ -1390,7 +1939,7 @@ def:priv build_py_params(
     return args;
 }
 
-def:priv func_callback(
+impl func_callback(
     context: ptr[sqlite3_context], argc: i32, argv: ptr[ptr[sqlite3_value]]
 ) {
     gil = PyGILState_Ensure();
@@ -1414,7 +1963,7 @@ def:priv func_callback(
     PyGILState_Release(gil);
 }
 
-def:priv step_callback(
+impl step_callback(
     context: ptr[sqlite3_context], argc: i32, params: ptr[ptr[sqlite3_value]]
 ) {
     gil = PyGILState_Ensure();
@@ -1466,14 +2015,11 @@ def:priv step_callback(
     PyGILState_Release(gil);
 }
 
-def:priv final_callback(context: ptr[sqlite3_context]) {
+impl final_callback(context: ptr[sqlite3_context]) {
     gil = PyGILState_Ensure();
     slot = ptr[ptr[PyObject]](sqlite3_aggregate_context(context, i32(0)));
-    # With no slot, no rows matched and step never ran; with an empty one,
-    # the aggregate's __init__ raised.
+
     if not slot.is_null() and slot.view(1)[0] {
-        # Keep the exception (if any) of the last call to step, value, or
-        # inverse.
         exc = PyErr_GetRaisedException();
         ctx = ptr[callback_context](sqlite3_user_data(context));
         incref_callback_context(ctx);
@@ -1492,8 +2038,7 @@ def:priv final_callback(context: ptr[sqlite3_context]) {
         if not ok {
             attr_err = PyErr_ExceptionMatches(PyExc_AttributeError) != 0;
             _PyErr_ChainExceptions1(exc);
-            # SQLite does not propagate errors of the finalize callback to
-            # sqlite3_step(), so execute*() does not raise OperationalError.
+
             set_sqlite_error(
                 context,
                 "user-defined aggregate's 'finalize' method not defined"
@@ -1507,9 +2052,7 @@ def:priv final_callback(context: ptr[sqlite3_context]) {
     PyGILState_Release(gil);
 }
 
-# inverse(): removes a row from the current window of an aggregate window
-# function.
-def:priv inverse_callback(
+impl inverse_callback(
     context: ptr[sqlite3_context], argc: i32, params: ptr[ptr[sqlite3_value]]
 ) {
     gil = PyGILState_Ensure();
@@ -1548,8 +2091,7 @@ def:priv inverse_callback(
     PyGILState_Release(gil);
 }
 
-# value(): the current value of an aggregate window function.
-def:priv value_callback(context: ptr[sqlite3_context]) {
+impl value_callback(context: ptr[sqlite3_context]) {
     gil = PyGILState_Ensure();
     ctx = ptr[callback_context](sqlite3_user_data(context));
     incref_callback_context(ctx);
@@ -1580,7 +2122,7 @@ def:priv value_callback(context: ptr[sqlite3_context]) {
     PyGILState_Release(gil);
 }
 
-def:priv authorizer_callback(
+impl authorizer_callback(
     ctx_vp: ptr,
     action: i32,
     arg1: ptr[u8],
@@ -1621,7 +2163,7 @@ def:priv authorizer_callback(
     return rc;
 }
 
-def:priv progress_callback(ctx_vp: ptr) -> i32 {
+impl progress_callback(ctx_vp: ptr) -> i32 {
     gil = PyGILState_Ensure();
     ctx = ptr[callback_context](ctx_vp);
     incref_callback_context(ctx);
@@ -1639,8 +2181,7 @@ def:priv progress_callback(ctx_vp: ptr) -> i32 {
     return rc;
 }
 
-# The trace callback's return value is ignored by SQLite; it returns 0.
-def:priv trace_callback(kind: u32, ctx_vp: ptr, stmt: ptr, sql: ptr) -> i32 {
+impl trace_callback(kind: u32, ctx_vp: ptr, stmt: ptr, sql: ptr) -> i32 {
     if kind != SQLITE_TRACE_STMT {
         return i32(0);
     }
@@ -1662,7 +2203,6 @@ def:priv trace_callback(kind: u32, ctx_vp: ptr, stmt: ptr, sql: ptr) -> i32 {
                 "Expanded SQL string exceeds the maximum string length"
             );
             print_or_clear_traceback(ctx);
-            # Fall back to the unexpanded SQL.
             py_statement = c_string_text(ptr[u8](sql));
         }
     } else {
@@ -1684,7 +2224,7 @@ def:priv trace_callback(kind: u32, ctx_vp: ptr, stmt: ptr, sql: ptr) -> i32 {
     return i32(0);
 }
 
-def:priv collation_callback(
+impl collation_callback(
     context: ptr, text1_length: i32, text1_data: ptr, text2_length: i32, text2_data: ptr
 ) -> i32 {
     gil = PyGILState_Ensure();
@@ -1694,8 +2234,7 @@ def:priv collation_callback(
     string1 = NULL;
     string2 = NULL;
     retval = NULL;
-    # This callback may run several times per sqlite3_step(); bail out when
-    # the previous call failed.
+
     if not PyErr_Occurred() {
         string1 = unicode_from_memory(text1_data, i64(text1_length));
         if string1 {
@@ -1729,9 +2268,7 @@ def:priv collation_callback(
     return result;
 }
 
-# ------------------------------------------------------ connection methods
-
-def:priv allowed_isolation_level(level: str) -> (str | None) {
+impl allowed_isolation_level(level: str) -> (str | None) {
     folded = "".join([chr(ord(c) - 32) if c >= "a" and c <= "z" else c for c in level]);
     for candidate in ["", "DEFERRED", "IMMEDIATE", "EXCLUSIVE"] {
         if folded == candidate {
@@ -1741,9 +2278,7 @@ def:priv allowed_isolation_level(level: str) -> (str | None) {
     return None;
 }
 
-# isolation_level_converter(): None, or one of the allowed levels; raises
-# boundary_failure with the exception set.
-def convert_isolation_level_converter(
+impl convert_isolation_level_converter(
     value: ptr[PyObject], fname: str, label: str
 ) -> (str | None) {
     if value == Py_None {
@@ -1767,8 +2302,7 @@ def convert_isolation_level_converter(
     return level;
 }
 
-# autocommit_converter() for a value, or None with ValueError set.
-def:priv autocommit_value(value: ptr[PyObject]) -> (i32 | None) {
+impl autocommit_value(value: ptr[PyObject]) -> (i32 | None) {
     if value == borrowed_true() {
         return AUTOCOMMIT_ENABLED;
     }
@@ -1786,7 +2320,7 @@ def:priv autocommit_value(value: ptr[PyObject]) -> (i32 | None) {
     return None;
 }
 
-def convert_autocommit_converter(value: ptr[PyObject], fname: str, label: str) -> i32 {
+impl convert_autocommit_converter(value: ptr[PyObject], fname: str, label: str) -> i32 {
     mode = autocommit_value(value);
     if mode is None {
         raise boundary_failure();
@@ -1794,7 +2328,7 @@ def convert_autocommit_converter(value: ptr[PyObject], fname: str, label: str) -
     return mode;
 }
 
-def convert_sqlite3_int64_converter(
+impl convert_sqlite3_int64_converter(
     value: ptr[PyObject], fname: str, label: str
 ) -> i64 {
     if jacpy_is_long(value) == 0 {
@@ -1808,8 +2342,7 @@ def convert_sqlite3_int64_converter(
     return result;
 }
 
-# The default `factory` of Connection.__init__: the module's Connection type.
-def clinic_state_ConnectionType(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl clinic_state_ConnectionType(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = state_of(receiver);
     if state is None {
         raise boundary_failure();
@@ -1817,8 +2350,7 @@ def clinic_state_ConnectionType(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return state.ConnectionType;
 }
 
-# The default `proto` of adapt(): the module's PrepareProtocol type.
-def clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject] {
+impl clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject] {
     state = module_state(module);
     if state is None {
         raise boundary_failure();
@@ -1826,9 +2358,7 @@ def clinic_state_PrepareProtocolType(module: ptr[PyObject]) -> ptr[PyObject] {
     return state.PrepareProtocolType;
 }
 
-# clinic_state(): the state of the receiver's module; in Row's __new__ the
-# receiver is the type.
-def:priv clinic_state(receiver: ptr[PyObject]) -> SqliteState {
+impl clinic_state(receiver: ptr[PyObject]) -> SqliteState {
     state = state_by_type(
         receiver if jacpy_is_type(receiver) != 0 else Py_TYPE(receiver)
     );
@@ -1838,8 +2368,7 @@ def:priv clinic_state(receiver: ptr[PyObject]) -> SqliteState {
     return state;
 }
 
-# object(subclass_of='clinic_state()->ConnectionType').
-def subclass_clinic_state_ConnectionType(
+impl subclass_clinic_state_ConnectionType(
     receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
 ) {
     if jacpy_type_check(value, clinic_state(receiver).ConnectionType) == 0 {
@@ -1847,8 +2376,7 @@ def subclass_clinic_state_ConnectionType(
     }
 }
 
-# object(subclass_of='clinic_state()->CursorType').
-def subclass_clinic_state_CursorType(
+impl subclass_clinic_state_CursorType(
     receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
 ) {
     if jacpy_type_check(value, clinic_state(receiver).CursorType) == 0 {
@@ -1856,8 +2384,7 @@ def subclass_clinic_state_CursorType(
     }
 }
 
-# C's (int)(value) for a finite double in range.
-def:priv double_to_int(value: f64) -> i32 {
+impl double_to_int(value: f64) -> i32 {
     if value != value {
         return i32(0);
     }
@@ -1870,7 +2397,7 @@ def:priv double_to_int(value: f64) -> i32 {
     return i32(int(value));
 }
 
-def:priv new_statement_cache(
+impl new_statement_cache(
     instance: ptr[PyObject], state: SqliteState, maxsize: i32
 ) -> ptr[PyObject] {
     size = PyLong_FromLong(i64(maxsize));
@@ -1887,8 +2414,7 @@ def:priv new_statement_cache(
     return result;
 }
 
-# connection_exec_stmt(): run one statement with the GIL released.
-def:priv connection_exec_stmt(con: ConnectionState, sql: str) -> i32 {
+impl connection_exec_stmt(con: ConnectionState, sql: str) -> i32 {
     text = c_string_copy(sql);
     if text.is_null() {
         PyErr_NoMemory();
@@ -1911,13 +2437,13 @@ def:priv connection_exec_stmt(con: ConnectionState, sql: str) -> i32 {
     return i32(0);
 }
 
-def:priv remove_callbacks(db: ptr[sqlite3_db]) {
+impl remove_callbacks(db: ptr[sqlite3_db]) {
     sqlite3_trace_v2(db, SQLITE_TRACE_STMT, 0, ptr());
     sqlite3_progress_handler(db, i32(0), 0, ptr());
     sqlite3_set_authorizer(db, 0, ptr());
 }
 
-def:priv connection_close(con: ConnectionState) -> i32 {
+impl connection_close(con: ConnectionState) -> i32 {
     if con.db.is_null() {
         return i32(0);
     }
@@ -1929,7 +2455,7 @@ def:priv connection_close(con: ConnectionState) -> i32 {
     }
     db = con.db;
     con.db = ptr[sqlite3_db]();
-    # The v2 close call always returns SQLITE_OK for a valid database.
+
     thread = PyEval_SaveThread();
     sqlite3_close_v2(db);
     PyEval_RestoreThread(thread);
@@ -1937,9 +2463,7 @@ def:priv connection_close(con: ConnectionState) -> i32 {
     return rc;
 }
 
-# connection_finalize(): close an unclosed connection, with a
-# ResourceWarning, without calling back into Python at interpreter teardown.
-def connection_finalize(instance: ptr[PyObject]) {
+impl connection_finalize(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, Connection_token.handle) == 0 {
         return;
     }
@@ -1956,7 +2480,6 @@ def connection_finalize(instance: ptr[PyObject]) {
     if not con.db.is_null() {
         if PyErr_ResourceWarning(instance, 1, "unclosed database in %R", instance)
             != 0 {
-            # Spurious errors can appear at shutdown.
             if PyErr_ExceptionMatches(PyExc_Warning) != 0 {
                 PyErr_FormatUnraisable(
                     "Exception ignored while finalizing database connection %R",
@@ -1977,8 +2500,7 @@ def connection_finalize(instance: ptr[PyObject]) {
     PyErr_SetRaisedException(exc);
 }
 
-# pysqlite_check_thread().
-def:priv check_thread(con: ConnectionState) -> bool {
+impl check_thread(con: ConnectionState) -> bool {
     if con.check_same_thread {
         current = PyThread_get_thread_ident();
         if current != con.thread_ident {
@@ -1994,8 +2516,7 @@ def:priv check_thread(con: ConnectionState) -> bool {
     return True;
 }
 
-# pysqlite_check_connection().
-def:priv check_connection(instance: ptr[PyObject], con: ConnectionState) -> bool {
+impl check_connection(instance: ptr[PyObject], con: ConnectionState) -> bool {
     if not con.initialized {
         state = state_of(instance);
         if state is not None {
@@ -2014,8 +2535,7 @@ def:priv check_connection(instance: ptr[PyObject], con: ConnectionState) -> bool
     return True;
 }
 
-# The connection of `instance` when it is usable from this thread.
-def:priv usable_connection(instance: ptr[PyObject]) -> (ConnectionState | None) {
+impl usable_connection(instance: ptr[PyObject]) -> (ConnectionState | None) {
     con = connection_of(instance);
     if con is None or not check_thread(con) or not check_connection(instance, con) {
         return None;
@@ -2023,7 +2543,7 @@ def:priv usable_connection(instance: ptr[PyObject]) -> (ConnectionState | None) 
     return con;
 }
 
-def pysqlite_connection_init_impl(
+impl pysqlite_connection_init_impl(
     receiver: ptr[PyObject],
     database: ptr[PyObject],
     timeout: f64,
@@ -2055,7 +2575,7 @@ def pysqlite_connection_init_impl(
             return i32(-1);
         }
     }
-    # Create and configure the SQLite database object.
+
     db = ptr[sqlite3_db]();
     flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
     if uri {
@@ -2082,7 +2602,7 @@ def pysqlite_connection_init_impl(
         sqlite3_close(db);
         return i32(-1);
     }
-    # Create the LRU statement cache.
+
     statement_cache = new_statement_cache(receiver, state, cache_size);
     if not statement_cache {
         sqlite3_close(db);
@@ -2101,7 +2621,7 @@ def pysqlite_connection_init_impl(
         sqlite3_close(db);
         return i32(-1);
     }
-    # Init connection state members.
+
     con.db = db;
     con.state = state;
     con.detect_types = detect_types;
@@ -2118,7 +2638,7 @@ def pysqlite_connection_init_impl(
     con.trace_ctx = ptr[callback_context]();
     con.progress_ctx = ptr[callback_context]();
     con.authorizer_ctx = ptr[callback_context]();
-    # Borrowed references.
+
     fields = connection_fields(receiver).view(1);
     fields[0].Warning = state.Warning;
     fields[0].Error = state.Error;
@@ -2131,7 +2651,6 @@ def pysqlite_connection_init_impl(
     fields[0].ProgrammingError = state.ProgrammingError;
     fields[0].NotSupportedError = state.NotSupportedError;
     if PySys_Audit("sqlite3.connect/handle", "O", receiver) < 0 {
-        # Not closed here: dealloc cleans up.
         return i32(-1);
     }
     con.initialized = True;
@@ -2143,9 +2662,7 @@ def pysqlite_connection_init_impl(
     return i32(0);
 }
 
-# The implementation behind the connect() clone of Connection.__init__; the
-# binding forwards connect() to the factory as C does.
-def pysqlite_connect_impl(
+impl pysqlite_connect_impl(
     receiver: ptr[PyObject],
     database: ptr[PyObject],
     timeout: f64,
@@ -2161,8 +2678,7 @@ def pysqlite_connect_impl(
     return NULL;
 }
 
-# connect(): forward the arguments to `factory` (5th positional or keyword).
-def pysqlite_connect(
+impl pysqlite_connect(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = module_state(module);
@@ -2188,7 +2704,7 @@ def pysqlite_connect(
         stack = args.view(int(nargs + count));
         for i in range(int(count)) {
             item = PyTuple_GetItem(kwnames, i64(i));
-            if PyUnicode_CompareWithASCIIString(item, "factory") == 0 {
+            if PyUnicode_CompareWithASCIIString(item, ptr[u8]("factory")) == 0 {
                 factory = stack[int(nargs) + i];
                 break;
             }
@@ -2197,7 +2713,7 @@ def pysqlite_connect(
     return PyObject_Vectorcall(factory, args, u64(nargs), kwnames);
 }
 
-def pysqlite_connection_cursor_impl(
+impl pysqlite_connection_cursor_impl(
     receiver: ptr[PyObject], factory: ptr[PyObject]
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
@@ -2231,8 +2747,7 @@ def pysqlite_connection_cursor_impl(
     return cursor;
 }
 
-def:priv drop_unused_cursor_references(con: ConnectionState) -> i32 {
-    # Only needed once in a while.
+impl drop_unused_cursor_references(con: ConnectionState) -> i32 {
     con.created_cursors += 1;
     if con.created_cursors - 1 < 200 {
         return i32(0);
@@ -2258,7 +2773,9 @@ def:priv drop_unused_cursor_references(con: ConnectionState) -> i32 {
     return i32(0);
 }
 
-def connection_get_row_factory(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl connection_get_row_factory(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject] {
     con = connection_of(instance);
     if con is None {
         return NULL;
@@ -2266,7 +2783,7 @@ def connection_get_row_factory(instance: ptr[PyObject], context: u64) -> ptr[PyO
     return Py_NewRef(con.row_factory or Py_None);
 }
 
-def connection_set_row_factory(
+impl connection_set_row_factory(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -2283,7 +2800,7 @@ def connection_set_row_factory(
     return i32(0);
 }
 
-def connection_get_text_factory(
+impl connection_get_text_factory(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     con = connection_of(instance);
@@ -2293,7 +2810,7 @@ def connection_get_text_factory(
     return Py_NewRef(con.text_factory or Py_None);
 }
 
-def connection_set_text_factory(
+impl connection_set_text_factory(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -2310,7 +2827,7 @@ def connection_set_text_factory(
     return i32(0);
 }
 
-def blobopen_impl(
+impl blobopen_impl(
     receiver: ptr[PyObject], table: str, col: str, row: i64, readonly: bool, name: str
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
@@ -2340,7 +2857,7 @@ def blobopen_impl(
         jacpy_release(instance);
         return NULL;
     }
-    # Add the blob to the connection's blobs list.
+
     weakref = PyWeakref_NewRef(instance, NULL);
     if not weakref {
         jacpy_release(instance);
@@ -2355,7 +2872,7 @@ def blobopen_impl(
     return instance;
 }
 
-def pysqlite_connection_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_connection_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     con = connection_of(receiver);
     if con is None or not check_thread(con) {
         return NULL;
@@ -2379,7 +2896,7 @@ def pysqlite_connection_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_commit_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_connection_commit_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     con = usable_connection(receiver);
     if con is None {
         return NULL;
@@ -2401,7 +2918,7 @@ def pysqlite_connection_commit_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_rollback_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_connection_rollback_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     con = usable_connection(receiver);
     if con is None {
         return NULL;
@@ -2423,7 +2940,7 @@ def pysqlite_connection_rollback_impl(receiver: ptr[PyObject]) -> ptr[PyObject] 
     return Py_NewRef(Py_None);
 }
 
-def:priv check_num_params(con: ConnectionState, n: i32, name: str) -> bool {
+impl check_num_params(con: ConnectionState, n: i32, name: str) -> bool {
     limit = sqlite3_limit(con.db, SQLITE_LIMIT_FUNCTION_ARG, i32(-1));
     if n < -1 or n > limit {
         object_error(
@@ -2435,7 +2952,7 @@ def:priv check_num_params(con: ConnectionState, n: i32, name: str) -> bool {
     return True;
 }
 
-def pysqlite_connection_create_function_impl(
+impl pysqlite_connection_create_function_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     name: str,
@@ -2455,19 +2972,18 @@ def pysqlite_connection_create_function_impl(
     if ctx.is_null() {
         return NULL;
     }
-    # The destructor frees `ctx`.
+
     rc = sqlite3_create_function_v2(
         con.db, name, narg, flags, ctx, func_callback, 0, 0, destructor_callback
     );
     if rc != SQLITE_OK {
-        # Workaround for SQLite bug: no error code or string is available.
         object_error(con.state.OperationalError, "Error creating function");
         return NULL;
     }
     return Py_NewRef(Py_None);
 }
 
-def create_window_function_impl(
+impl create_window_function_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     name: str,
@@ -2518,14 +3034,13 @@ def create_window_function_impl(
         );
     }
     if rc != SQLITE_OK {
-        # Errors are not set on the database connection; use the result code.
         set_error_from_code(con.state, rc);
         return NULL;
     }
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_create_aggregate_impl(
+impl pysqlite_connection_create_aggregate_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     name: str,
@@ -2552,14 +3067,13 @@ def pysqlite_connection_create_aggregate_impl(
         destructor_callback
     );
     if rc != SQLITE_OK {
-        # Workaround for SQLite bug: no error code or string is available.
         object_error(con.state.OperationalError, "Error creating aggregate");
         return NULL;
     }
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_set_authorizer_impl(
+impl pysqlite_connection_set_authorizer_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], callable: ptr[PyObject]
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
@@ -2590,7 +3104,7 @@ def pysqlite_connection_set_authorizer_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_set_progress_handler_impl(
+impl pysqlite_connection_set_progress_handler_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], callable: ptr[PyObject], n: i32
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
@@ -2598,7 +3112,6 @@ def pysqlite_connection_set_progress_handler_impl(
         return NULL;
     }
     if callable == Py_None {
-        # None clears the progress handler previously set.
         sqlite3_progress_handler(con.db, i32(0), 0, ptr());
         con.progress_ctx = replace_callback_context(
             con.progress_ctx, ptr[callback_context]()
@@ -2614,7 +3127,7 @@ def pysqlite_connection_set_progress_handler_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_set_trace_callback_impl(
+impl pysqlite_connection_set_trace_callback_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], callable: ptr[PyObject]
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
@@ -2622,7 +3135,6 @@ def pysqlite_connection_set_trace_callback_impl(
         return NULL;
     }
     if callable == Py_None {
-        # None clears the trace callback previously set.
         sqlite3_trace_v2(con.db, SQLITE_TRACE_STMT, 0, ptr());
         con.trace_ctx = replace_callback_context(
             con.trace_ctx, ptr[callback_context]()
@@ -2638,24 +3150,21 @@ def pysqlite_connection_set_trace_callback_impl(
     return Py_NewRef(Py_None);
 }
 
-# enable_load_extension() and load_extension() are compiled only with
-# PY_SQLITE_ENABLE_LOAD_EXTENSION, which JacPython builds leave undefined;
-# the binding does not install them (see ENABLE_LOAD_EXTENSION).
-def pysqlite_connection_enable_load_extension_impl(
+impl pysqlite_connection_enable_load_extension_impl(
     receiver: ptr[PyObject], onoff: bool
 ) -> ptr[PyObject] {
     object_error(PyExc_SystemError, "loadable extensions are not built");
     return NULL;
 }
 
-def pysqlite_connection_load_extension_impl(
+impl pysqlite_connection_load_extension_impl(
     receiver: ptr[PyObject], extension_name: str, entrypoint: ptr[u8]
 ) -> ptr[PyObject] {
     object_error(PyExc_SystemError, "loadable extensions are not built");
     return NULL;
 }
 
-def connection_get_isolation_level(
+impl connection_get_isolation_level(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     con = connection_of(instance);
@@ -2664,12 +3173,12 @@ def connection_get_isolation_level(
     }
     level = con.isolation_level;
     if level is not None {
-        return PyUnicode_FromString(level);
+        return jacpy_unicode_from_text(level);
     }
     return Py_NewRef(Py_None);
 }
 
-def connection_get_total_changes(
+impl connection_get_total_changes(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     con = connection_of(instance);
@@ -2679,7 +3188,7 @@ def connection_get_total_changes(
     return PyLong_FromLong(i64(sqlite3_total_changes(con.db)));
 }
 
-def connection_get_in_transaction(
+impl connection_get_in_transaction(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     con = connection_of(instance);
@@ -2689,7 +3198,7 @@ def connection_get_in_transaction(
     return PyBool_FromLong(i64(sqlite3_get_autocommit(con.db) == 0));
 }
 
-def connection_set_isolation_level(
+impl connection_set_isolation_level(
     instance: ptr[PyObject], isolation_level: ptr[PyObject], context: u64
 ) -> i32 {
     if not isolation_level {
@@ -2702,7 +3211,7 @@ def connection_set_isolation_level(
     }
     if isolation_level == Py_None {
         con.isolation_level = None;
-        # Execute a COMMIT to re-enable autocommit mode.
+
         res = pysqlite_connection_commit_impl(instance);
         if not res {
             return i32(-1);
@@ -2720,8 +3229,7 @@ def connection_set_isolation_level(
     return i32(0);
 }
 
-# Connection.__call__(sql): a prepared statement.
-def connection_call(
+impl connection_call(
     instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     con = usable_connection(instance);
@@ -2742,7 +3250,7 @@ def connection_call(
     return statement_create(instance, con, values[0].object);
 }
 
-def pysqlite_connection_execute_impl(
+impl pysqlite_connection_execute_impl(
     receiver: ptr[PyObject], sql: ptr[PyObject], parameters: ptr[PyObject]
 ) -> ptr[PyObject] {
     cursor = pysqlite_connection_cursor_impl(receiver, NULL);
@@ -2758,7 +3266,7 @@ def pysqlite_connection_execute_impl(
     return cursor;
 }
 
-def pysqlite_connection_executemany_impl(
+impl pysqlite_connection_executemany_impl(
     receiver: ptr[PyObject], sql: ptr[PyObject], parameters: ptr[PyObject]
 ) -> ptr[PyObject] {
     cursor = pysqlite_connection_cursor_impl(receiver, NULL);
@@ -2774,7 +3282,7 @@ def pysqlite_connection_executemany_impl(
     return cursor;
 }
 
-def pysqlite_connection_executescript_impl(
+impl pysqlite_connection_executescript_impl(
     receiver: ptr[PyObject], script_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     cursor = pysqlite_connection_cursor_impl(receiver, NULL);
@@ -2797,7 +3305,7 @@ def pysqlite_connection_executescript_impl(
     return cursor;
 }
 
-def pysqlite_connection_interrupt_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_connection_interrupt_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     con = connection_of(receiver);
     if con is None or not check_connection(receiver, con) {
         return NULL;
@@ -2806,7 +3314,7 @@ def pysqlite_connection_interrupt_impl(receiver: ptr[PyObject]) -> ptr[PyObject]
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_iterdump_impl(
+impl pysqlite_connection_iterdump_impl(
     receiver: ptr[PyObject], filter: ptr[PyObject]
 ) -> ptr[PyObject] {
     con = connection_of(receiver);
@@ -2825,7 +3333,9 @@ def pysqlite_connection_iterdump_impl(
     args = PyTuple_Pack(1, receiver);
     kwargs = PyDict_New();
     retval = NULL;
-    if args and kwargs and PyDict_SetItemString(kwargs, "filter", filter) == 0 {
+    if args
+        and kwargs
+        and PyDict_SetItemString(kwargs, ptr[u8]("filter"), filter) == 0 {
         retval = PyObject_Call(iterdump, args, kwargs);
     }
     jacpy_release(args);
@@ -2834,7 +3344,7 @@ def pysqlite_connection_iterdump_impl(
     return retval;
 }
 
-def pysqlite_connection_backup_impl(
+impl pysqlite_connection_backup_impl(
     receiver: ptr[PyObject],
     target: ptr[PyObject],
     pages: i32,
@@ -2880,7 +3390,6 @@ def pysqlite_connection_backup_impl(
             pagecount = sqlite3_backup_pagecount(bck_handle);
             res = PyObject_CallFunction(progress, "iii", rc, remaining, pagecount);
             if not res {
-                # Callback failed: abort the backup and bail.
                 thread = PyEval_SaveThread();
                 sqlite3_backup_finish(bck_handle);
                 PyEval_RestoreThread(thread);
@@ -2888,8 +3397,7 @@ def pysqlite_connection_backup_impl(
             }
             jacpy_release(res);
         }
-        # Sleep when there are still pages to copy and the engine could not
-        # make progress.
+
         if rc == SQLITE_BUSY or rc == SQLITE_LOCKED {
             thread = PyEval_SaveThread();
             sqlite3_sleep(sleep_ms);
@@ -2909,7 +3417,7 @@ def pysqlite_connection_backup_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_create_collation_impl(
+impl pysqlite_connection_create_collation_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], name: str, callable: ptr[PyObject]
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
@@ -2934,8 +3442,6 @@ def pysqlite_connection_create_collation_impl(
         );
     }
     if rc != SQLITE_OK {
-        # Unlike the other sqlite3_* functions, the destructor is not called
-        # when sqlite3_create_collation_v2() fails.
         if callable != Py_None {
             decref_callback_context(ctx);
         }
@@ -2945,13 +3451,12 @@ def pysqlite_connection_create_collation_impl(
     return Py_NewRef(Py_None);
 }
 
-def serialize_impl(receiver: ptr[PyObject], name: str) -> ptr[PyObject] {
+impl serialize_impl(receiver: ptr[PyObject], name: str) -> ptr[PyObject] {
     con = usable_connection(receiver);
     if con is None {
         return NULL;
     }
-    # With a contiguous in-memory database SQLite avoids a copy, so try the
-    # no-copy flag first.
+
     size: i64 = 0;
     flags = SQLITE_SERIALIZE_NOCOPY;
     thread = PyEval_SaveThread();
@@ -2972,15 +3477,14 @@ def serialize_impl(receiver: ptr[PyObject], name: str) -> ptr[PyObject] {
     return res;
 }
 
-def deserialize_impl(
+impl deserialize_impl(
     receiver: ptr[PyObject], data: BufferArgument, name: str
 ) -> ptr[PyObject] {
     con = usable_connection(receiver);
     if con is None {
         return NULL;
     }
-    # Move the buffer from Python to SQLite, which frees it and may grow the
-    # resulting database.
+
     size = data.size();
     buf = sqlite3_malloc64(u64(size));
     if not buf {
@@ -2998,7 +3502,7 @@ def deserialize_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_connection_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_connection_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     con = connection_of(receiver);
     if con is None or not check_connection(receiver, con) {
         return NULL;
@@ -3006,7 +3510,7 @@ def pysqlite_connection_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(receiver);
 }
 
-def pysqlite_connection_exit_impl(
+impl pysqlite_connection_exit_impl(
     receiver: ptr[PyObject],
     exc_type: ptr[PyObject],
     exc_value: ptr[PyObject],
@@ -3018,8 +3522,6 @@ def pysqlite_connection_exit_impl(
         else pysqlite_connection_rollback_impl(receiver);
     if not result {
         if commit {
-            # Commit failed; roll back to unlock the database, chaining the
-            # exceptions when that fails too.
             exc = PyErr_GetRaisedException();
             result = pysqlite_connection_rollback_impl(receiver);
             if not result {
@@ -3035,7 +3537,9 @@ def pysqlite_connection_exit_impl(
     return Py_NewRef(borrowed_false());
 }
 
-def setlimit_impl(receiver: ptr[PyObject], category: i32, limit: i32) -> ptr[PyObject] {
+impl setlimit_impl(
+    receiver: ptr[PyObject], category: i32, limit: i32
+) -> ptr[PyObject] {
     con = usable_connection(receiver);
     if con is None {
         return NULL;
@@ -3048,11 +3552,11 @@ def setlimit_impl(receiver: ptr[PyObject], category: i32, limit: i32) -> ptr[PyO
     return PyLong_FromLong(i64(old_limit));
 }
 
-def getlimit_impl(receiver: ptr[PyObject], category: i32) -> ptr[PyObject] {
+impl getlimit_impl(receiver: ptr[PyObject], category: i32) -> ptr[PyObject] {
     return setlimit_impl(receiver, category, i32(-1));
 }
 
-def:priv is_int_config(op: i32) -> bool {
+impl is_int_config(op: i32) -> bool {
     for (name, value) in INTEGER_CONSTANTS {
         if name.startswith("SQLITE_DBCONFIG_") and value == i64(op) {
             return True;
@@ -3061,7 +3565,7 @@ def:priv is_int_config(op: i32) -> bool {
     return False;
 }
 
-def setconfig_impl(receiver: ptr[PyObject], op: i32, enable: bool) -> ptr[PyObject] {
+impl setconfig_impl(receiver: ptr[PyObject], op: i32, enable: bool) -> ptr[PyObject] {
     con = usable_connection(receiver);
     if con is None {
         return NULL;
@@ -3083,7 +3587,7 @@ def setconfig_impl(receiver: ptr[PyObject], op: i32, enable: bool) -> ptr[PyObje
     return Py_NewRef(Py_None);
 }
 
-def getconfig_impl(receiver: ptr[PyObject], op: i32) -> i32 {
+impl getconfig_impl(receiver: ptr[PyObject], op: i32) -> i32 {
     con = usable_connection(receiver);
     if con is None {
         return i32(-1);
@@ -3101,7 +3605,7 @@ def getconfig_impl(receiver: ptr[PyObject], op: i32) -> i32 {
     return current;
 }
 
-def connection_get_autocommit(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl connection_get_autocommit(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     con = usable_connection(instance);
     if con is None {
         return NULL;
@@ -3115,7 +3619,7 @@ def connection_get_autocommit(instance: ptr[PyObject], context: u64) -> ptr[PyOb
     return PyLong_FromLong(i64(LEGACY_TRANSACTION_CONTROL));
 }
 
-def connection_set_autocommit(
+impl connection_set_autocommit(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     con = usable_connection(instance);
@@ -3149,80 +3653,62 @@ def connection_set_autocommit(
     return i32(0);
 }
 
-def connection_get_sig(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return PyUnicode_FromString("(sql, /)");
+impl connection_get_sig(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return PyUnicode_FromString(ptr[u8]("(sql, /)"));
 }
 
-# ---------------------------------------------------------------- cursor.c
-
-# pysqlite_Cursor, apart from the member fields of its record.
-obj CursorState(NativeState) {
-    has fields: ptr[cursor_members] = ptr[cursor_members](),
-        row_cast_map: ptr[PyObject] = NULL,
-        arraysize: u32 = 0,
-        # The pysqlite_Statement object being executed, if any.
-        statement: ptr[PyObject] = NULL,
-        closed: bool = False,
-        locked: bool = False,
-        initialized: bool = False;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        references = [self.row_cast_map, self.statement];
-        if not self.fields.is_null() {
-            record = self.fields.view(1);
-            references += [
-                record[0].connection,
-                record[0].description,
-                record[0].lastrowid,
-                record[0].row_factory
-            ];
-        }
-        for value in references {
-            status = visit_reference(value, visitor, context);
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
+impl CursorState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    references = [self.row_cast_map, self.statement];
+    if not self.fields.is_null() {
+        record = self.fields.view(1);
+        references += [
+            record[0].connection,
+            record[0].description,
+            record[0].lastrowid,
+            record[0].row_factory
+        ];
     }
+    for value in references {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    return i32(0);
+}
 
-    # cursor_clear().
-    def clear {
-        references = [self.row_cast_map];
-        self.row_cast_map = NULL;
-        if not self.fields.is_null() {
-            record = self.fields.view(1);
-            references += [
-                record[0].connection,
-                record[0].description,
-                record[0].lastrowid,
-                record[0].row_factory
-            ];
-            record[0].connection = NULL;
-            record[0].description = NULL;
-            record[0].lastrowid = NULL;
-            record[0].row_factory = NULL;
-        }
-        if self.statement {
-            # Reset the statement if the user has not closed the cursor.
-            statement = self.statement;
-            self.statement = NULL;
-            reset_statement_object(statement);
-            references.append(statement);
-        }
-        for value in references {
-            jacpy_release(value);
-        }
+impl CursorState.clear {
+    references = [self.row_cast_map];
+    self.row_cast_map = NULL;
+    if not self.fields.is_null() {
+        record = self.fields.view(1);
+        references += [
+            record[0].connection,
+            record[0].description,
+            record[0].lastrowid,
+            record[0].row_factory
+        ];
+        record[0].connection = NULL;
+        record[0].description = NULL;
+        record[0].lastrowid = NULL;
+        record[0].row_factory = NULL;
+    }
+    if self.statement {
+        statement = self.statement;
+        self.statement = NULL;
+        reset_statement_object(statement);
+        references.append(statement);
+    }
+    for value in references {
+        jacpy_release(value);
     }
 }
 
-def:priv cursor_fields(instance: ptr[PyObject]) -> ptr[cursor_members] {
+impl cursor_fields(instance: ptr[PyObject]) -> ptr[cursor_members] {
     return ptr[cursor_members](jacpy_binding_record(instance, Cursor_token.handle));
 }
 
-# The CursorState of a Cursor instance, created on first use as the zeroed C
-# struct would be.
-def cursor_of(instance: ptr[PyObject]) -> (CursorState | None) {
+impl cursor_of(instance: ptr[PyObject]) -> (CursorState | None) {
     if jacpy_binding_native_present(instance, Cursor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, Cursor_token.handle);
         if isinstance(state, CursorState) {
@@ -3239,33 +3725,32 @@ def cursor_of(instance: ptr[PyObject]) -> (CursorState | None) {
     return fresh;
 }
 
-# The connection state of a cursor's connection.
-def:priv cursor_connection(cur: CursorState) -> (ConnectionState | None) {
+impl cursor_connection(cur: CursorState) -> (ConnectionState | None) {
     connection = cur.fields.view(1)[0].connection;
     return connection_of(connection) if connection else None;
 }
 
-def:priv set_field_description(cur: CursorState, value: ptr[PyObject]) {
+impl set_field_description(cur: CursorState, value: ptr[PyObject]) {
     record = cur.fields.view(1);
     previous = record[0].description;
     record[0].description = value;
     jacpy_release(previous);
 }
 
-def:priv set_field_lastrowid(cur: CursorState, value: ptr[PyObject]) {
+impl set_field_lastrowid(cur: CursorState, value: ptr[PyObject]) {
     record = cur.fields.view(1);
     previous = record[0].lastrowid;
     record[0].lastrowid = value;
     jacpy_release(previous);
 }
 
-def:priv set_statement(cur: CursorState, statement: ptr[PyObject]) {
+impl set_statement(cur: CursorState, statement: ptr[PyObject]) {
     previous = cur.statement;
     cur.statement = statement;
     jacpy_release(previous);
 }
 
-def:priv check_cursor_locked(cur: CursorState, con: ConnectionState) -> bool {
+impl check_cursor_locked(cur: CursorState, con: ConnectionState) -> bool {
     if cur.locked {
         object_error(
             con.state.ProgrammingError, "Recursive use of cursors not allowed."
@@ -3275,8 +3760,7 @@ def:priv check_cursor_locked(cur: CursorState, con: ConnectionState) -> bool {
     return True;
 }
 
-# register_cursor(): a weak reference in the connection's cursor list.
-def:priv register_cursor(con: ConnectionState, cursor: ptr[PyObject]) -> bool {
+impl register_cursor(con: ConnectionState, cursor: ptr[PyObject]) -> bool {
     weakref = PyWeakref_NewRef(cursor, NULL);
     if not weakref {
         return False;
@@ -3286,7 +3770,7 @@ def:priv register_cursor(con: ConnectionState, cursor: ptr[PyObject]) -> bool {
     return rc >= 0;
 }
 
-def pysqlite_cursor_init_impl(
+impl pysqlite_cursor_init_impl(
     receiver: ptr[PyObject], connection: ptr[PyObject]
 ) -> i32 {
     cur = cursor_of(receiver);
@@ -3325,8 +3809,7 @@ def pysqlite_cursor_init_impl(
     if not check_thread(con) {
         return i32(-1);
     }
-    # An uninitialized connection has no cursor list: PyList_Append() then
-    # reports the bad internal call, as in C.
+
     if not register_cursor(con, receiver) {
         return i32(-1);
     }
@@ -3334,11 +3817,7 @@ def pysqlite_cursor_init_impl(
     return i32(0);
 }
 
-# _pysqlite_get_converter(): the converter registered for a type name
-# (borrowed), or NULL, with an exception only on failure.
-def:priv get_converter(
-    state: SqliteState, keystr: ptr[u8], keylen: i64
-) -> ptr[PyObject] {
+impl get_converter(state: SqliteState, keystr: ptr[u8], keylen: i64) -> ptr[PyObject] {
     key = unicode_from_memory(keystr, keylen);
     if not key {
         return NULL;
@@ -3353,14 +3832,13 @@ def:priv get_converter(
     return retval;
 }
 
-def:priv clear_row_cast_map(cur: CursorState) {
+impl clear_row_cast_map(cur: CursorState) {
     previous = cur.row_cast_map;
     cur.row_cast_map = NULL;
     jacpy_release(previous);
 }
 
-# pysqlite_build_row_cast_map(): 0, or -1 with the exception set.
-def:priv build_row_cast_map(cur: CursorState, con: ConnectionState) -> i32 {
+impl build_row_cast_map(cur: CursorState, con: ConnectionState) -> i32 {
     if con.detect_types == 0 {
         return i32(0);
     }
@@ -3401,8 +3879,6 @@ def:priv build_row_cast_map(cur: CursorState, con: ConnectionState) -> i32 {
         if not converter and (con.detect_types & PARSE_DECLTYPES) != 0 {
             decltype = sqlite3_column_decltype(st, i32(i));
             if not decltype.is_null() {
-                # Converter names are split at '(' and blanks: 'INTEGER NOT
-                # NULL' is 'INTEGER' and 'NUMBER(10)' is 'NUMBER'.
                 pos = decltype;
                 while True {
                     c = pos.view(1)[0];
@@ -3429,7 +3905,7 @@ def:priv build_row_cast_map(cur: CursorState, con: ConnectionState) -> i32 {
     return i32(0);
 }
 
-def:priv build_column_name(con: ConnectionState, colname: ptr[u8]) -> ptr[PyObject] {
+impl build_column_name(con: ConnectionState, colname: ptr[u8]) -> ptr[PyObject] {
     length = 0;
     if (con.detect_types & PARSE_COLNAMES) != 0 {
         pos = colname;
@@ -3449,9 +3925,7 @@ def:priv build_column_name(con: ConnectionState, colname: ptr[u8]) -> ptr[PyObje
     return unicode_from_memory(colname, i64(length));
 }
 
-# _pysqlite_fetch_one_row(): the current row of the active statement
-# (sqlite3_step() returned SQLITE_ROW) as a tuple.
-def:priv fetch_one_row(cur: CursorState, con: ConnectionState) -> ptr[PyObject] {
+impl fetch_one_row(cur: CursorState, con: ConnectionState) -> ptr[PyObject] {
     st = current_statement(cur).st;
     thread = PyEval_SaveThread();
     numcols = sqlite3_data_count(st);
@@ -3470,8 +3944,7 @@ def:priv fetch_one_row(cur: CursorState, con: ConnectionState) -> ptr[PyObject] 
             converter = PyList_GetItem(cur.row_cast_map, i64(i));
         }
         converted = NULL;
-        # sqlite3_column_bytes() must come after sqlite3_column_blob() or
-        # sqlite3_column_text().
+
         if converter != Py_None {
             blob = sqlite3_column_blob(st, column);
             if not blob {
@@ -3539,7 +4012,6 @@ def:priv fetch_one_row(cur: CursorState, con: ConnectionState) -> ptr[PyObject] 
                     }
                 }
             } else {
-                # SQLITE_BLOB
                 blob = sqlite3_column_blob(st, column);
                 if not blob and sqlite3_errcode(db) == SQLITE_NOMEM {
                     PyErr_NoMemory();
@@ -3563,9 +4035,7 @@ def:priv fetch_one_row(cur: CursorState, con: ConnectionState) -> ptr[PyObject] 
     return row;
 }
 
-# The OperationalError for undecodable TEXT: PyOS_snprintf() into a
-# 200-byte buffer, then an ASCII decode with replacement.
-def:priv set_decode_error(con: ConnectionState, colname: ptr[u8], text: ptr[u8]) {
+impl set_decode_error(con: ConnectionState, colname: ptr[u8], text: ptr[u8]) {
     prefix = "Could not decode to UTF-8 column '";
     parts: list[int] = [ord(c) for c in prefix];
     for index in range(c_string_length(colname)) {
@@ -3578,7 +4048,7 @@ def:priv set_decode_error(con: ConnectionState, colname: ptr[u8], text: ptr[u8])
         parts.append(int((text + index).view(1)[0]));
     }
     parts.append(39);
-    # sizeof(buf) - 1 bytes are formatted, keeping room for the NUL.
+
     kept = parts[:198];
     memory = ptr[u8](PyMem_Malloc(u64(len(kept) + 1)));
     if memory.is_null() {
@@ -3600,9 +4070,7 @@ def:priv set_decode_error(con: ConnectionState, colname: ptr[u8], text: ptr[u8])
     }
 }
 
-# check_cursor(): the cursor is initialized, open, unlocked and its
-# connection usable from this thread.
-def:priv check_cursor(
+impl check_cursor(
     instance: ptr[PyObject], cur: CursorState
 ) -> (ConnectionState | None) {
     if not cur.initialized {
@@ -3629,19 +4097,18 @@ def:priv check_cursor(
     return con;
 }
 
-def:priv begin_transaction(con: ConnectionState) -> i32 {
+impl begin_transaction(con: ConnectionState) -> i32 {
     level = con.isolation_level;
     return connection_exec_stmt(con, "BEGIN " + (level if level is not None else ""));
 }
 
-def:priv get_statement_from_cache(
+impl get_statement_from_cache(
     con: ConnectionState, operation: ptr[PyObject]
 ) -> ptr[PyObject] {
     return PyObject_CallOneArg(con.statement_cache, operation);
 }
 
-# bind_param(): the SQLite result code of binding one parameter.
-def:priv bind_param(
+impl bind_param(
     state: SqliteState, statement: StatementState, pos: i32, parameter: ptr[PyObject]
 ) -> i32 {
     st = statement.st;
@@ -3707,8 +4174,7 @@ def:priv bind_param(
     return SQLITE_ERROR;
 }
 
-# need_adapt(): False for the builtin types that bind without adaption.
-def:priv need_adapt(state: SqliteState, value: ptr[PyObject]) -> bool {
+impl need_adapt(state: SqliteState, value: ptr[PyObject]) -> bool {
     if state.base_type_adapted {
         return True;
     }
@@ -3720,9 +4186,7 @@ def:priv need_adapt(state: SqliteState, value: ptr[PyObject]) -> bool {
     );
 }
 
-# Adapt one parameter (a new reference, consumed) and bind it; False with
-# the exception set.
-def:priv bind_one(
+impl bind_one(
     state: SqliteState,
     statement: StatementState,
     pos: i32,
@@ -3749,7 +4213,7 @@ def:priv bind_one(
     return True;
 }
 
-def:priv bind_parameters(
+impl bind_parameters(
     state: SqliteState, statement: StatementState, parameters: ptr[PyObject]
 ) {
     thread = PyEval_SaveThread();
@@ -3760,7 +4224,6 @@ def:priv bind_parameters(
     if exact_tuple
         or exact_list
         or (jacpy_is_dict(parameters) == 0 and PySequence_Check(parameters) != 0) {
-        # Parameters passed as a sequence.
         num_params: i64 = 0;
         if exact_tuple {
             num_params = PyTuple_Size(parameters);
@@ -3809,7 +4272,6 @@ def:priv bind_parameters(
             }
         }
     } elif jacpy_is_dict(parameters) != 0 {
-        # Parameters passed as a dictionary.
         for i in range(1, int(num_params_needed) + 1) {
             thread = PyEval_SaveThread();
             binding_name = sqlite3_bind_parameter_name(statement.st, i32(i));
@@ -3822,11 +4284,11 @@ def:priv bind_parameters(
                 );
                 return;
             }
-            # Skip the first character (the colon).
+
             binding_name += 1;
             current_param = NULL;
             found = PyMapping_GetOptionalItemString(
-                parameters, c_text(binding_name), &mut current_param
+                parameters, binding_name, &mut current_param
             );
             if found == -1 {
                 return;
@@ -3847,9 +4309,7 @@ def:priv bind_parameters(
     }
 }
 
-# _pysqlite_query_execute(): execute `operation` once or for each parameter
-# set; the cursor (a new reference), or NULL with the exception set.
-def query_execute(
+impl query_execute(
     instance: ptr[PyObject],
     multiple: bool,
     operation: ptr[PyObject],
@@ -3861,7 +4321,6 @@ def query_execute(
     }
     con = check_cursor(instance, cur);
     if con is None {
-        # C still marks the cursor idle and resets it on this path.
         return finish_execute(instance, cur, NULL, NULL, NULL);
     }
     cur.locked = True;
@@ -3905,10 +4364,9 @@ def query_execute(
             );
         }
     }
-    # Reset the description.
+
     set_field_description(cur, Py_NewRef(Py_None));
     if cur.statement {
-        # Reset pending statements on this cursor.
         reset_statement_object(cur.statement);
     }
     set_statement(cur, get_statement_from_cache(con, operation));
@@ -3936,8 +4394,7 @@ def query_execute(
     stmt_reset(statement);
     fields = cur.fields.view(1);
     fields[0].rowcount = 0 if statement.is_dml else -1;
-    # A transaction starts implicitly before a DML statement. SELECT is the
-    # only exception. See #9924.
+
     if con.autocommit == AUTOCOMMIT_LEGACY
         and con.isolation_level is not None
         and statement.is_dml
@@ -3962,7 +4419,6 @@ def query_execute(
         rc = step_unlocked(statement.st);
         if rc != SQLITE_DONE and rc != SQLITE_ROW {
             if PyErr_Occurred() {
-                # An error in a user-defined callback.
                 if state.enable_callback_tracebacks {
                     PyErr_Print();
                 } else {
@@ -4031,14 +4487,13 @@ def query_execute(
         thread = PyEval_SaveThread();
         lastrowid = sqlite3_last_insert_rowid(con.db);
         PyEval_RestoreThread(thread);
-        # On failure the exception falls through to finish_execute().
+
         set_field_lastrowid(cur, PyLong_FromLongLong(lastrowid));
     }
     return finish_execute(instance, cur, NULL, parameters_iter, parameters_list);
 }
 
-# The common exit of _pysqlite_query_execute().
-def:priv finish_execute(
+impl finish_execute(
     instance: ptr[PyObject],
     cur: CursorState,
     parameters: ptr[PyObject],
@@ -4068,19 +4523,19 @@ def:priv finish_execute(
     return Py_NewRef(instance);
 }
 
-def pysqlite_cursor_execute_impl(
+impl pysqlite_cursor_execute_impl(
     receiver: ptr[PyObject], sql: ptr[PyObject], parameters: ptr[PyObject]
 ) -> ptr[PyObject] {
     return query_execute(receiver, False, sql, parameters);
 }
 
-def pysqlite_cursor_executemany_impl(
+impl pysqlite_cursor_executemany_impl(
     receiver: ptr[PyObject], sql: ptr[PyObject], seq_of_parameters: ptr[PyObject]
 ) -> ptr[PyObject] {
     return query_execute(receiver, True, sql, seq_of_parameters);
 }
 
-def pysqlite_cursor_executescript_impl(
+impl pysqlite_cursor_executescript_impl(
     receiver: ptr[PyObject], sql_script: str
 ) -> ptr[PyObject] {
     cur = cursor_of(receiver);
@@ -4104,7 +4559,7 @@ def pysqlite_cursor_executescript_impl(
     }
     db = con.db;
     failed = False;
-    # Commit if needed.
+
     if con.autocommit == AUTOCOMMIT_LEGACY and sqlite3_get_autocommit(db) == 0 {
         thread = PyEval_SaveThread();
         rc = sqlite3_exec(db, "COMMIT", ptr(), ptr(), ptr());
@@ -4143,9 +4598,7 @@ def pysqlite_cursor_executescript_impl(
     return Py_NewRef(receiver);
 }
 
-# pysqlite_cursor_iternext(): the next row, or NULL (with no exception when
-# the rows are exhausted).
-def cursor_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl cursor_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
     cur = cursor_of(instance);
     if cur is None {
         return NULL;
@@ -4156,7 +4609,7 @@ def cursor_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
     }
     statement = current_statement(cur);
     stmt = statement.st;
-    # GH-80254: prevent recursive use of cursors.
+
     cur.locked = True;
     row = fetch_one_row(cur, con);
     cur.locked = False;
@@ -4186,7 +4639,7 @@ def cursor_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
     return row;
 }
 
-def pysqlite_cursor_fetchone_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_cursor_fetchone_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     row = cursor_iternext(receiver);
     if not row and not PyErr_Occurred() {
         return Py_NewRef(Py_None);
@@ -4194,8 +4647,7 @@ def pysqlite_cursor_fetchone_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return row;
 }
 
-# The default `size` of fetchmany(): the cursor's arraysize.
-def self_arraysize(receiver: ptr[PyObject]) -> u32 {
+impl self_arraysize(receiver: ptr[PyObject]) -> u32 {
     cur = cursor_of(receiver);
     if cur is None {
         raise boundary_failure();
@@ -4203,7 +4655,7 @@ def self_arraysize(receiver: ptr[PyObject]) -> u32 {
     return cur.arraysize;
 }
 
-def pysqlite_cursor_fetchmany_impl(
+impl pysqlite_cursor_fetchmany_impl(
     receiver: ptr[PyObject], maxrows: u32
 ) -> ptr[PyObject] {
     rows = PyList_New(0);
@@ -4230,7 +4682,7 @@ def pysqlite_cursor_fetchmany_impl(
     return rows;
 }
 
-def pysqlite_cursor_fetchall_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_cursor_fetchall_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     rows = PyList_New(0);
     if not rows {
         return NULL;
@@ -4253,19 +4705,19 @@ def pysqlite_cursor_fetchall_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return rows;
 }
 
-def pysqlite_cursor_setinputsizes_impl(
+impl pysqlite_cursor_setinputsizes_impl(
     receiver: ptr[PyObject], sizes: ptr[PyObject]
 ) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_cursor_setoutputsize_impl(
+impl pysqlite_cursor_setoutputsize_impl(
     receiver: ptr[PyObject], size: ptr[PyObject], column: ptr[PyObject]
 ) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_cursor_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_cursor_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     cur = cursor_of(receiver);
     if cur is None {
         return NULL;
@@ -4299,7 +4751,7 @@ def pysqlite_cursor_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def _sqlite3_Cursor_arraysize_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _sqlite3_Cursor_arraysize_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     cur = cursor_of(receiver);
     if cur is None {
         return NULL;
@@ -4307,7 +4759,7 @@ def _sqlite3_Cursor_arraysize_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject]
     return PyLong_FromUInt32(cur.arraysize);
 }
 
-def _sqlite3_Cursor_arraysize_set_impl(
+impl _sqlite3_Cursor_arraysize_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     cur = cursor_of(receiver);
@@ -4326,35 +4778,28 @@ def _sqlite3_Cursor_arraysize_set_impl(
     return i32(0);
 }
 
-def cursor_self_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl cursor_self_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(instance);
 }
 
-# ------------------------------------------------------------------- row.c
-
-obj RowState(NativeState) {
-    has data: ptr[PyObject] = NULL,
-        description: ptr[PyObject] = NULL;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        status = visit_reference(self.data, visitor, context);
-        if status != 0 {
-            return status;
-        }
-        return visit_reference(self.description, visitor, context);
+impl RowState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    status = visit_reference(self.data, visitor, context);
+    if status != 0 {
+        return status;
     }
-
-    def clear {
-        data = self.data;
-        description = self.description;
-        self.data = NULL;
-        self.description = NULL;
-        jacpy_release(data);
-        jacpy_release(description);
-    }
+    return visit_reference(self.description, visitor, context);
 }
 
-def row_of(instance: ptr[PyObject]) -> (RowState | None) {
+impl RowState.clear {
+    data = self.data;
+    description = self.description;
+    self.data = NULL;
+    self.description = NULL;
+    jacpy_release(data);
+    jacpy_release(description);
+}
+
+impl row_of(instance: ptr[PyObject]) -> (RowState | None) {
     if jacpy_binding_native_present(instance, Row_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, Row_token.handle);
         if isinstance(state, RowState) {
@@ -4367,7 +4812,7 @@ def row_of(instance: ptr[PyObject]) -> (RowState | None) {
     return None;
 }
 
-def pysqlite_row_new_impl(
+impl pysqlite_row_new_impl(
     type: ptr[PyObject], cursor: ptr[PyObject], data: ptr[PyObject]
 ) -> ptr[PyObject] {
     cur = cursor_of(cursor);
@@ -4387,7 +4832,7 @@ def pysqlite_row_new_impl(
     return instance;
 }
 
-def row_item(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
+impl row_item(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
     row = row_of(instance);
     if row is None {
         return NULL;
@@ -4396,9 +4841,7 @@ def row_item(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
     return Py_NewRef(item) if item else NULL;
 }
 
-# equal_ignore_case(): 1 when equal (or equal ignoring ASCII case), 0 when
-# not, -1 with the exception set.
-def:priv equal_ignore_case(left: ptr[PyObject], right: ptr[PyObject]) -> i32 {
+impl equal_ignore_case(left: ptr[PyObject], right: ptr[PyObject]) -> i32 {
     eq = PyObject_RichCompareBool(left, right, PY_EQ);
     if eq != 0 {
         return eq;
@@ -4414,7 +4857,7 @@ def:priv equal_ignore_case(left: ptr[PyObject], right: ptr[PyObject]) -> i32 {
     return i32(1) if first.lower() == second.lower() else i32(0);
 }
 
-def row_subscript(instance: ptr[PyObject], idx: ptr[PyObject]) -> ptr[PyObject] {
+impl row_subscript(instance: ptr[PyObject], idx: ptr[PyObject]) -> ptr[PyObject] {
     row = row_of(instance);
     if row is None {
         return NULL;
@@ -4455,7 +4898,7 @@ def row_subscript(instance: ptr[PyObject], idx: ptr[PyObject]) -> ptr[PyObject] 
     return NULL;
 }
 
-def row_length(instance: ptr[PyObject]) -> i64 {
+impl row_length(instance: ptr[PyObject]) -> i64 {
     row = row_of(instance);
     if row is None {
         return -1;
@@ -4463,7 +4906,7 @@ def row_length(instance: ptr[PyObject]) -> i64 {
     return PyTuple_Size(row.data);
 }
 
-def pysqlite_row_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pysqlite_row_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     row = row_of(receiver);
     if row is None {
         return NULL;
@@ -4486,7 +4929,7 @@ def pysqlite_row_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return keys;
 }
 
-def row_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl row_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
     row = row_of(instance);
     if row is None {
         return NULL;
@@ -4494,7 +4937,7 @@ def row_iter(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_GetIter(row.data);
 }
 
-def row_hash(instance: ptr[PyObject]) -> i64 {
+impl row_hash(instance: ptr[PyObject]) -> i64 {
     row = row_of(instance);
     if row is None {
         return -1;
@@ -4502,7 +4945,7 @@ def row_hash(instance: ptr[PyObject]) -> i64 {
     return PyObject_Hash(row.description) ^ PyObject_Hash(row.data);
 }
 
-def row_richcompare(
+impl row_richcompare(
     instance: ptr[PyObject], other: ptr[PyObject], opid: i32
 ) -> ptr[PyObject] {
     if opid != PY_EQ and opid != PY_NE {
@@ -4530,25 +4973,17 @@ def row_richcompare(
     return Py_NewRef(Py_NotImplemented);
 }
 
-# ------------------------------------------------------------------ blob.c
-
-obj BlobState(NativeState) {
-    has connection: ptr[PyObject] = NULL,
-        blob: ptr[sqlite3_blob] = ptr[sqlite3_blob](),
-        offset: i32 = 0;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.connection, visitor, context);
-    }
-
-    def clear {
-        connection = self.connection;
-        self.connection = NULL;
-        jacpy_release(connection);
-    }
+impl BlobState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.connection, visitor, context);
 }
 
-def blob_of(instance: ptr[PyObject]) -> (BlobState | None) {
+impl BlobState.clear {
+    connection = self.connection;
+    self.connection = NULL;
+    jacpy_release(connection);
+}
+
+impl blob_of(instance: ptr[PyObject]) -> (BlobState | None) {
     if jacpy_binding_native_present(instance, Blob_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, Blob_token.handle);
         if isinstance(state, BlobState) {
@@ -4561,7 +4996,7 @@ def blob_of(instance: ptr[PyObject]) -> (BlobState | None) {
     return None;
 }
 
-def close_blob(blob: BlobState) {
+impl close_blob(blob: BlobState) {
     if not blob.blob.is_null() {
         handle = blob.blob;
         blob.blob = ptr[sqlite3_blob]();
@@ -4571,8 +5006,7 @@ def close_blob(blob: BlobState) {
     }
 }
 
-# blob_dealloc() closes the blob before the object is freed.
-def blob_close_on_dealloc(instance: ptr[PyObject]) {
+impl blob_close_on_dealloc(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, Blob_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, Blob_token.handle);
         if isinstance(state, BlobState) {
@@ -4581,8 +5015,7 @@ def blob_close_on_dealloc(instance: ptr[PyObject]) {
     }
 }
 
-# pysqlite_close_all_blobs().
-def:priv close_all_blobs(con: ConnectionState) {
+impl close_all_blobs(con: ConnectionState) {
     if not con.blobs {
         return;
     }
@@ -4602,8 +5035,7 @@ def:priv close_all_blobs(con: ConnectionState) {
     }
 }
 
-# check_blob(): the blob's connection when the blob is usable.
-def:priv check_blob(blob: BlobState) -> (ConnectionState | None) {
+impl check_blob(blob: BlobState) -> (ConnectionState | None) {
     con = connection_of(blob.connection);
     if con is None
         or not check_connection(blob.connection, con)
@@ -4617,7 +5049,7 @@ def:priv check_blob(blob: BlobState) -> (ConnectionState | None) {
     return con;
 }
 
-def:priv usable_blob(
+impl usable_blob(
     instance: ptr[PyObject]
 ) -> (tuple[BlobState, ConnectionState] | None) {
     blob = blob_of(instance);
@@ -4631,7 +5063,7 @@ def:priv usable_blob(
     return (blob, con);
 }
 
-def blob_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl blob_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     blob = blob_of(receiver);
     if blob is None {
         return NULL;
@@ -4646,9 +5078,7 @@ def blob_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def:priv read_single(
-    blob: BlobState, con: ConnectionState, offset: i64
-) -> ptr[PyObject] {
+impl read_single(blob: BlobState, con: ConnectionState, offset: i64) -> ptr[PyObject] {
     buf = ptr[u8](PyMem_Malloc(1));
     if buf.is_null() {
         return PyErr_NoMemory();
@@ -4666,7 +5096,7 @@ def:priv read_single(
     return PyLong_FromUnsignedLong(u64(value));
 }
 
-def:priv read_multiple(
+impl read_multiple(
     blob: BlobState, con: ConnectionState, length: i64, offset: i64
 ) -> ptr[PyObject] {
     buffer = jacpy_buffer_new(length);
@@ -4685,13 +5115,13 @@ def:priv read_multiple(
     return buffer;
 }
 
-def blob_read_impl(receiver: ptr[PyObject], length: i32) -> ptr[PyObject] {
+impl blob_read_impl(receiver: ptr[PyObject], length: i32) -> ptr[PyObject] {
     usable = usable_blob(receiver);
     if usable is None {
         return NULL;
     }
     (blob, con) = usable;
-    # Never read past the end; a negative length reads the rest.
+
     blob_len = sqlite3_blob_bytes(blob.blob);
     max_read_len = blob_len - blob.offset;
     if length < 0 or length > max_read_len {
@@ -4708,7 +5138,7 @@ def blob_read_impl(receiver: ptr[PyObject], length: i32) -> ptr[PyObject] {
     return buffer;
 }
 
-def:priv inner_write(
+impl inner_write(
     blob: BlobState, con: ConnectionState, buf: ptr, length: i64, offset: i64
 ) -> i32 {
     blob_len = i64(sqlite3_blob_bytes(blob.blob));
@@ -4727,7 +5157,7 @@ def:priv inner_write(
     return i32(0);
 }
 
-def blob_write_impl(receiver: ptr[PyObject], data: BufferArgument) -> ptr[PyObject] {
+impl blob_write_impl(receiver: ptr[PyObject], data: BufferArgument) -> ptr[PyObject] {
     usable = usable_blob(receiver);
     if usable is None {
         return NULL;
@@ -4740,7 +5170,9 @@ def blob_write_impl(receiver: ptr[PyObject], data: BufferArgument) -> ptr[PyObje
     return Py_NewRef(Py_None);
 }
 
-def blob_seek_impl(receiver: ptr[PyObject], offset: i32, origin: i32) -> ptr[PyObject] {
+impl blob_seek_impl(
+    receiver: ptr[PyObject], offset: i32, origin: i32
+) -> ptr[PyObject] {
     usable = usable_blob(receiver);
     if usable is None {
         return NULL;
@@ -4777,7 +5209,7 @@ def blob_seek_impl(receiver: ptr[PyObject], offset: i32, origin: i32) -> ptr[PyO
     return Py_NewRef(Py_None);
 }
 
-def blob_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl blob_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     usable = usable_blob(receiver);
     if usable is None {
         return NULL;
@@ -4785,14 +5217,14 @@ def blob_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(usable[0].offset));
 }
 
-def blob_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl blob_enter_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if usable_blob(receiver) is None {
         return NULL;
     }
     return Py_NewRef(receiver);
 }
 
-def blob_exit_impl(
+impl blob_exit_impl(
     receiver: ptr[PyObject], type: ptr[PyObject], val: ptr[PyObject], tb: ptr[PyObject]
 ) -> ptr[PyObject] {
     usable = usable_blob(receiver);
@@ -4803,7 +5235,7 @@ def blob_exit_impl(
     return Py_NewRef(borrowed_false());
 }
 
-def blob_length(instance: ptr[PyObject]) -> i64 {
+impl blob_length(instance: ptr[PyObject]) -> i64 {
     usable = usable_blob(instance);
     if usable is None {
         return -1;
@@ -4811,7 +5243,7 @@ def blob_length(instance: ptr[PyObject]) -> i64 {
     return i64(sqlite3_blob_bytes(usable[0].blob));
 }
 
-def:priv get_subscript_index(blob: BlobState, item: ptr[PyObject]) -> i64 {
+impl get_subscript_index(blob: BlobState, item: ptr[PyObject]) -> i64 {
     i = PyNumber_AsSsize_t(item, PyExc_IndexError);
     if i == -1 and PyErr_Occurred() {
         return -1;
@@ -4827,8 +5259,7 @@ def:priv get_subscript_index(blob: BlobState, item: ptr[PyObject]) -> i64 {
     return i;
 }
 
-# The slice's start, stop, step and length over the blob; None on failure.
-def:priv get_slice_info(blob: BlobState, item: ptr[PyObject]) -> (list[i64] | None) {
+impl get_slice_info(blob: BlobState, item: ptr[PyObject]) -> (list[i64] | None) {
     start: i64 = 0;
     stop: i64 = 0;
     step: i64 = 0;
@@ -4840,7 +5271,7 @@ def:priv get_slice_info(blob: BlobState, item: ptr[PyObject]) -> (list[i64] | No
     return [start, stop, step, slicelen];
 }
 
-def blob_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+impl blob_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     usable = usable_blob(instance);
     if usable is None {
         return NULL;
@@ -4886,7 +5317,7 @@ def blob_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject
     return NULL;
 }
 
-def:priv ass_subscript_index(
+impl ass_subscript_index(
     blob: BlobState, con: ConnectionState, item: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if not value {
@@ -4925,7 +5356,7 @@ def:priv ass_subscript_index(
     return rc;
 }
 
-def:priv ass_subscript_slice(
+impl ass_subscript_slice(
     blob: BlobState, con: ConnectionState, item: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if not value {
@@ -4971,7 +5402,7 @@ def:priv ass_subscript_slice(
     return rc;
 }
 
-def blob_ass_subscript(
+impl blob_ass_subscript(
     instance: ptr[PyObject], item: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     usable = usable_blob(instance);
@@ -4989,17 +5420,13 @@ def blob_ass_subscript(
     return i32(-1);
 }
 
-# ------------------------------------------------------- prepare_protocol.c
-
-def prepare_protocol_init(
+impl prepare_protocol_init(
     instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
     return i32(0);
 }
 
-# ---------------------------------------------------------------- module.c
-
-def pysqlite_complete_statement_impl(
+impl pysqlite_complete_statement_impl(
     module: ptr[PyObject], statement: str
 ) -> ptr[PyObject] {
     if sqlite3_complete(statement) != 0 {
@@ -5008,14 +5435,14 @@ def pysqlite_complete_statement_impl(
     return Py_NewRef(borrowed_false());
 }
 
-def pysqlite_register_adapter_impl(
+impl pysqlite_register_adapter_impl(
     module: ptr[PyObject], type: ptr[PyObject], caster: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = module_state(module);
     if state is None {
         return NULL;
     }
-    # Adapting a basic type disables the fast path that skips adaption.
+
     if type == addressof(PyLong_Type)
         or type == addressof(PyFloat_Type)
         or type == addressof(PyUnicode_Type)
@@ -5028,14 +5455,14 @@ def pysqlite_register_adapter_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_register_converter_impl(
+impl pysqlite_register_converter_impl(
     module: ptr[PyObject], orig_name: ptr[PyObject], callable: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = module_state(module);
     if state is None {
         return NULL;
     }
-    # Converter names are upper case.
+
     name = PyObject_CallMethodObjArgs(orig_name, state.str_upper, NULL);
     if not name {
         return NULL;
@@ -5048,7 +5475,7 @@ def pysqlite_register_converter_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_enable_callback_trace_impl(
+impl pysqlite_enable_callback_trace_impl(
     module: ptr[PyObject], enable: i32
 ) -> ptr[PyObject] {
     state = module_state(module);
@@ -5059,7 +5486,7 @@ def pysqlite_enable_callback_trace_impl(
     return Py_NewRef(Py_None);
 }
 
-def pysqlite_adapt_impl(
+impl pysqlite_adapt_impl(
     module: ptr[PyObject],
     value: ptr[PyObject],
     proto: ptr[PyObject],
@@ -5072,22 +5499,15 @@ def pysqlite_adapt_impl(
     return microprotocols_adapt(state, value, proto, alt);
 }
 
-# get_threadsafety(): the DB-API threadsafety level of SQLite's default
-# threading mode; -1 with the error set.
-def threadsafety(state: SqliteState) -> i32 {
+impl threadsafety(state: SqliteState) -> i32 {
     mode = sqlite3_threadsafe();
     if mode == 0 {
-        # Single-thread mode; threads may not share the module.
         return i32(0);
     }
     if mode == 1 {
-        # Serialized mode; threads may share the module, connections and
-        # cursors.
         return i32(3);
     }
     if mode == 2 {
-        # Multi-thread mode; threads may share the module, but not
-        # connections.
         return i32(1);
     }
     PyErr_Format(
@@ -5098,9 +5518,7 @@ def threadsafety(state: SqliteState) -> i32 {
     return i32(-1);
 }
 
-# The first part of module_exec(): the SQLite version check and
-# sqlite3_initialize(); False with ImportError set.
-def initialize_library -> bool {
+impl initialize_library -> bool {
     if sqlite3_libversion_number() < 3015002 {
         object_error(PyExc_ImportError, "sqlite3: SQLite 3.15.2 or higher required");
         return False;
@@ -5117,7 +5535,6 @@ def initialize_library -> bool {
     return True;
 }
 
-# The SQLite library version string.
-def library_version -> ptr[PyObject] {
+impl library_version -> ptr[PyObject] {
     return c_string_text(sqlite3_libversion());
 }

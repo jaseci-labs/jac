@@ -1,14 +1,3 @@
-"""File helpers and the bootstrap std printer: Objects/fileobject.c in native Jac.
-
-The file C API (`PyFile_FromFd`, `PyFile_GetLine`, `PyFile_WriteObject`,
-`PyFile_WriteString`, `PyObject_AsFileDescriptor`, the open_code hook,
-`Py_UniversalNewlineFgets`, `_PyFile_Flush`, ...) is defined as C functions
-under their C names, and `PyStdPrinter_Type` as C data. The open_code hook
-lives in `_PyRuntime`, whose layout differs between builds, so it is reached
-through object_api.c's `jacpy_open_code_hook`. See ../LICENSE.cpython.
-"""
-
-# The newline and EOF characters the universal-newline reader compares.
 glob:priv CR: i32 = 13,
      LF: i32 = 10,
      EOF: i32 = -1;
@@ -91,11 +80,7 @@ import from c {
          );
 }
 
-def py_bool(value: bool) -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_TrueStruct))
-        if value
-        else ptr[PyObject](addressof(_Py_FalseStruct));
-}
+def py_bool(value: bool) -> ptr[PyObject];
 
 import from c {
     def PyFile_FromFd(
@@ -124,8 +109,7 @@ import from c {
             py_bool(closefd != 0)
         );
         jacpy_release(open);
-        # The name is not set: the name attribute of FileIO is read-only, and
-        # the stream's name comes from the fd.
+
         return stream;
     }  def PyFile_GetLine(f: ptr[PyObject], n: i32) -> ptr[PyObject] {
         if not f {
@@ -172,7 +156,7 @@ import from c {
             PyErr_SetString(PyExc_TypeError, "writeobject with NULL file");
             return i32(-1);
         }
-        writer = PyObject_GetAttrString(f, "write");
+        writer = PyObject_GetAttrString(f, ptr[u8]("write"));
         if not writer {
             return i32(-1);
         }
@@ -206,12 +190,7 @@ import from c {
         err = PyFile_WriteObject(v, f, Py_PRINT_RAW);
         jacpy_release(v);
         return err;
-    }
-    # Try to get a file-descriptor from a Python object. If the object is an
-    # integer, its value is returned. If not, the object's fileno() method is
-    # called if it exists; the method must return an integer, which is
-    # returned as the file descriptor value. -1 is returned on failure.
-    def PyObject_AsFileDescriptor(o: ptr[PyObject]) -> i32 {
+    }  def PyObject_AsFileDescriptor(o: ptr[PyObject]) -> i32 {
         fd = i32(0);
         if jacpy_is_long(o) != 0 {
             if bool_check(o)
@@ -224,7 +203,7 @@ import from c {
             fd = PyLong_AsInt(o);
         } else {
             meth = NULL;
-            if PyObject_GetOptionalAttrString(o, "fileno", &mut meth) < 0 {
+            if PyObject_GetOptionalAttrString(o, ptr[u8]("fileno"), &mut meth) < 0 {
                 return i32(-1);
             }
             if not meth {
@@ -338,11 +317,35 @@ import from c {
     }
 }
 
-# Py_UniversalNewlineFgets: an fgets() variation that understands all of \r,
-# \n and \r\n. A \r is translated into a \n, and an adjacent \n after it is
-# skipped. The stream should be opened in binary mode; fobj exists for legacy
-# reasons and must be NULL. The line (NULL at EOF or error) and its length.
 def universal_newline_fgets(
+    buf: ptr[u8], n: i32, stream: ptr[FILE], fobj: ptr[PyObject]
+) -> tuple[ptr[u8], u64];
+
+def printer_of(op: ptr[PyObject]) -> ptr[PyStdPrinter_Object];
+
+def stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_fileno(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_noop(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def get_closed(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def get_mode(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def get_encoding(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+impl py_bool(value: bool) -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_TrueStruct))
+        if value
+        else ptr[PyObject](addressof(_Py_FalseStruct));
+}
+
+impl universal_newline_fgets(
     buf: ptr[u8], n: i32, stream: ptr[FILE], fobj: ptr[PyObject]
 ) -> tuple[ptr[u8], u64] {
     p = buf;
@@ -379,15 +382,11 @@ def universal_newline_fgets(
     return (buf, u64(p - buf));
 }
 
-# ---------------------------------------------------------------- std printer
-# The stdprinter is used during the bootstrapping phase as a preliminary
-# file-like object for sys.stderr.
-
-def printer_of(op: ptr[PyObject]) -> ptr[PyStdPrinter_Object] {
+impl printer_of(op: ptr[PyObject]) -> ptr[PyStdPrinter_Object] {
     return ptr[PyStdPrinter_Object](op);
 }
 
-def stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     fd = printer_of(op).view(1)[0].fd;
     if fd < 0 {
         return Py_NewRef(Py_None);
@@ -422,21 +421,21 @@ def stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(written);
 }
 
-def stdprinter_fileno(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_fileno(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(printer_of(op).view(1)[0].fd));
 }
 
-def stdprinter_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat(
         "<stdprinter(fd=%d) object at %p>", printer_of(op).view(1)[0].fd, op
     );
 }
 
-def stdprinter_noop(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_noop(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     fd = printer_of(op).view(1)[0].fd;
     if fd < 0 {
         return py_bool(False);
@@ -447,14 +446,14 @@ def stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
     return PyBool_FromLong(i64(result));
 }
 
-def get_closed(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl get_closed(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return py_bool(False);
 }
 
-def get_mode(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
-    return PyUnicode_FromString("w");
+impl get_mode(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+    return PyUnicode_FromString(ptr[u8]("w"));
 }
 
-def get_encoding(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl get_encoding(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }

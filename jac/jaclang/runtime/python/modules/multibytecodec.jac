@@ -1,16 +1,4 @@
-"""The _multibytecodec module: Modules/cjkcodecs/multibytecodec.c in native Jac.
-
-MultibyteCodec objects wrap a codec a _codecs_<locale> module defines;
-the incremental encoder and decoder and the stream reader and writer keep the
-codec's 8 bytes of state, their error handling and their pending input in
-native state. The encode and decode loops, the error-callback protocol and
-getstate()/setstate() follow the C. See ../LICENSE.cpython.
-"""
-
 import from c {
-    # MultibyteEncodeBuffer. The codec advances `inpos` and `outbuf` through
-    # their addresses, which are the record's first two words; `replpos` is
-    # encerror()'s position in its one-character replacement.
     obj MultibyteEncodeBuffer {
         has inpos: i64,
             outbuf: ptr[u8],
@@ -20,20 +8,14 @@ import from c {
             excobj: ptr[PyObject],
             outobj: ptr[PyObject],
             replpos: i64;
-    }
-    # MultibyteDecodeBuffer. The codec advances `inbuf` through its address,
-    # the record's first word, and writes to `writer`, the next two.
-    obj MultibyteDecodeBuffer {
+    }  obj MultibyteDecodeBuffer {
         has inbuf: ptr[u8],
             writer: DecodeWriter,
             inbuf_top: ptr[u8],
             inbuf_end: ptr[u8],
             excobj: ptr[PyObject],
             min_length: i64;
-    }
-    # A stateful codec object's C memory: the codec state and, for a
-    # decoder, its pending bytes (MAXDECPENDING of them).
-    obj StatefulRecord {
+    }  obj StatefulRecord {
         has state: MultibyteCodec_State,
             pending: u64,
             pendingsize: i64;
@@ -46,7 +28,6 @@ glob MultibyteCodec_token = ClassToken(),
      MultibyteStreamReader_token = ClassToken(),
      MultibyteStreamWriter_token = ClassToken();
 
-# The module state slots.
 glob STATE_CODEC_TYPE: int = 0,
      STATE_ENCODER_TYPE: int = 1,
      STATE_DECODER_TYPE: int = 2,
@@ -60,29 +41,271 @@ glob:priv ERROR_STRICT: int = 1,
      ERROR_REPLACE: int = 3,
      MAXENCPENDING: int = 2,
      MAXDECPENDING: int = 8,
-     # reset after an encoding session
      MBENC_RESET: i32 = 2,
      PY_SSIZE_T_MAX: int = 0x7FFFFFFFFFFFFFFF,
      Py_CONSTANT_EMPTY_STR: u32 = 7;
 
-def:priv error_code(errors: ptr[PyObject]) -> int {
+def:priv error_code(errors: ptr[PyObject]) -> int;
+
+def:priv error_is_custom(errors: ptr[PyObject]) -> bool;
+
+def:priv error_release(errors: ptr[PyObject]);
+
+def:priv make_tuple(object: ptr[PyObject], length: i64) -> ptr[PyObject];
+
+def:priv internal_error_callback(errors: ptr[u8]) -> ptr[PyObject];
+
+def:priv call_error_callback(
+    errors: ptr[PyObject], exc: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv bytes_data(value: ptr[PyObject]) -> ptr[u8];
+
+def:priv copy_memory(target: ptr[u8], source: ptr[u8], size: int);
+
+def:priv encode_inpos(buf: ptr[MultibyteEncodeBuffer]) -> ptr[i64];
+
+def:priv encode_outbuf(buf: ptr[MultibyteEncodeBuffer]) -> ptr[ptr[u8]];
+
+def:priv encode_replpos(buf: ptr[MultibyteEncodeBuffer]) -> ptr[i64];
+
+def:priv decode_inbuf(buf: ptr[MultibyteDecodeBuffer]) -> ptr[ptr[u8]];
+
+def:priv decode_writer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[DecodeWriter];
+
+def:priv expand_encodebuffer(buf: ptr[MultibyteEncodeBuffer], esize: int) -> int;
+
+def:priv require_encodebuffer(buf: ptr[MultibyteEncodeBuffer], s: int) -> bool;
+
+def:priv valid_encode_reply(retobj: ptr[PyObject]) -> bool;
+
+def:priv multibytecodec_encerror(
+    codec: ptr[MultibyteCodec],
+    state: ptr[MultibyteCodec_State],
+    buf: ptr[MultibyteEncodeBuffer],
+    errors: ptr[PyObject],
+    e: i64
+) -> int;
+
+def:priv decode_input_size(buf: ptr[MultibyteDecodeBuffer]) -> i64;
+
+def:priv decode_writer_ready(buf: ptr[MultibyteDecodeBuffer]) -> bool;
+
+def:priv decode_write_str(
+    buf: ptr[MultibyteDecodeBuffer], text: ptr[PyObject]
+) -> bool;
+
+def:priv multibytecodec_decerror(
+    codec: ptr[MultibyteCodec],
+    state: ptr[MultibyteCodec_State],
+    buf: ptr[MultibyteDecodeBuffer],
+    errors: ptr[PyObject],
+    e: i64
+) -> int;
+
+def:priv release_encodebuffer(buf: ptr[MultibyteEncodeBuffer]);
+
+def multibytecodec_encode(
+    codec: ptr[MultibyteCodec],
+    state: ptr[MultibyteCodec_State],
+    text: ptr[PyObject],
+    inpos_t: ptr[i64],
+    errors: ptr[PyObject],
+    flags: i32
+) -> ptr[PyObject];
+
+obj CodecState(NativeState) {
+    has codec: ptr[MultibyteCodec],
+        cjk_module: ptr[PyObject] = NULL;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def:priv codec_of(instance: ptr[PyObject]) -> ptr[MultibyteCodec];
+
+def _multibytecodec_MultibyteCodec_encode_impl(
+    self: ptr[PyObject], input: ptr[PyObject], errors: ptr[u8]
+) -> ptr[PyObject];
+
+def:priv new_decodebuffer -> ptr[MultibyteDecodeBuffer];
+
+def:priv release_decodebuffer(buf: ptr[MultibyteDecodeBuffer]);
+
+def:priv finish_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[PyObject];
+
+def:priv run_decode(
+    codec: ptr[MultibyteCodec],
+    state: ptr[MultibyteCodec_State],
+    buf: ptr[MultibyteDecodeBuffer]
+) -> i64;
+
+def _multibytecodec_MultibyteCodec_decode_impl(
+    self: ptr[PyObject], input: BufferArgument, errors: ptr[u8]
+) -> ptr[PyObject];
+
+obj StatefulState(NativeState) {
+    has codec: ptr[MultibyteCodec],
+        record: ptr[StatefulRecord],
+        errors: ptr[PyObject] = NULL,
+        pending: ptr[PyObject] = NULL,
+        stream: ptr[PyObject] = NULL;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+    def state -> ptr[MultibyteCodec_State];
+    def pending_bytes -> ptr[u8];
+    def pendingsize -> int;
+    def set_pendingsize(size: int);
+}
+
+def:priv stateful_of(
+    instance: ptr[PyObject], token: ClassToken
+) -> (StatefulState | None);
+
+def:priv stateful_token(kind: u64) -> ClassToken;
+
+def codecctx_errors_get(instance: ptr[PyObject], kind: u64) -> ptr[PyObject];
+
+def codecctx_errors_set(
+    instance: ptr[PyObject], value: ptr[PyObject], kind: u64
+) -> i32;
+
+def:priv encoder_encode_stateful(
+    ctx: StatefulState, unistr: ptr[PyObject], final: bool
+) -> ptr[PyObject];
+
+def:priv decoder_append_pending(
+    ctx: StatefulState, buf: ptr[MultibyteDecodeBuffer]
+) -> int;
+
+def:priv decoder_prepare_buffer(
+    buf: ptr[MultibyteDecodeBuffer], data: ptr[u8], size: int
+) -> int;
+
+def:priv decoder_feed_buffer(
+    ctx: StatefulState, buf: ptr[MultibyteDecodeBuffer]
+) -> int;
+
+def _multibytecodec_MultibyteIncrementalEncoder_encode_impl(
+    self: ptr[PyObject], input: ptr[PyObject], final: bool
+) -> ptr[PyObject];
+
+glob:priv ENCODER_STATE_BYTES: int = 17;
+
+def _multibytecodec_MultibyteIncrementalEncoder_getstate_impl(
+    self: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteIncrementalEncoder_setstate_impl(
+    self: ptr[PyObject], statelong: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteIncrementalEncoder_reset_impl(
+    self: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv type_codec(type: ptr[PyObject], definition: ptr) -> ptr[PyObject];
+
+def stateful_new(
+    type: ptr[PyObject],
+    token: ClassToken,
+    module_definition: ptr,
+    errors: ptr[u8],
+    stream: ptr[PyObject],
+    encoder: bool
+) -> ptr[PyObject];
+
+obj NewArguments {
+    has stream: ptr[PyObject] = NULL,
+        errors: ptr[u8] = ptr[u8]();
+}
+
+def parse_new_arguments(
+    args: ptr[PyObject], kwds: ptr[PyObject], name: str, stream: bool
+) -> (NewArguments | None);
+
+def _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
+    self: ptr[PyObject], input: BufferArgument, final: bool
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteIncrementalDecoder_getstate_impl(
+    self: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(
+    self: ptr[PyObject], state: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv decoder_reset(ctx: StatefulState) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteIncrementalDecoder_reset_impl(
+    self: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv as_c_int(value: int) -> i32;
+
+def:priv mbstreamreader_iread(
+    ctx: StatefulState, method: str, sizehint: int
+) -> ptr[PyObject];
+
+def:priv reader_size(sizeobj: ptr[PyObject]) -> (int | None);
+
+def _multibytecodec_MultibyteStreamReader_read_impl(
+    self: ptr[PyObject], sizeobj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteStreamReader_readline_impl(
+    self: ptr[PyObject], sizeobj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteStreamReader_readlines_impl(
+    self: ptr[PyObject], sizehintobj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteStreamReader_reset_impl(
+    self: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv mbstreamwriter_iwrite(
+    ctx: StatefulState, unistr: ptr[PyObject], str_write: ptr[PyObject]
+) -> int;
+
+def:priv str_write_of(cls: ptr[PyObject]) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteStreamWriter_write_impl(
+    self: ptr[PyObject], cls: ptr[PyObject], strobj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteStreamWriter_writelines_impl(
+    self: ptr[PyObject], cls: ptr[PyObject], lines: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec_MultibyteStreamWriter_reset_impl(
+    self: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _multibytecodec___create_codec_impl(
+    module: ptr[PyObject], arg: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl error_code(errors: ptr[PyObject]) -> int {
     return int(errors);
 }
 
-# ERROR_ISCUSTOM: an error handler name rather than a built-in policy.
-def:priv error_is_custom(errors: ptr[PyObject]) -> bool {
+impl error_is_custom(errors: ptr[PyObject]) -> bool {
     code = error_code(errors);
     return code < ERROR_STRICT or code > ERROR_REPLACE;
 }
 
-# ERROR_DECREF.
-def:priv error_release(errors: ptr[PyObject]) {
+impl error_release(errors: ptr[PyObject]) {
     if errors and error_is_custom(errors) {
         jacpy_release(errors);
     }
 }
 
-def:priv make_tuple(object: ptr[PyObject], length: i64) -> ptr[PyObject] {
+impl make_tuple(object: ptr[PyObject], length: i64) -> ptr[PyObject] {
     if not object {
         return NULL;
     }
@@ -101,9 +324,7 @@ def:priv make_tuple(object: ptr[PyObject], length: i64) -> ptr[PyObject] {
     return v;
 }
 
-# internal_error_callback: a built-in policy, or the handler's name as a
-# new str; NULL with the exception set on failure.
-def:priv internal_error_callback(errors: ptr[u8]) -> ptr[PyObject] {
+impl internal_error_callback(errors: ptr[u8]) -> ptr[PyObject] {
     if errors.is_null() {
         return ptr[PyObject](ERROR_STRICT);
     }
@@ -127,9 +348,7 @@ def:priv internal_error_callback(errors: ptr[u8]) -> ptr[PyObject] {
     return name;
 }
 
-def:priv call_error_callback(
-    errors: ptr[PyObject], exc: ptr[PyObject]
-) -> ptr[PyObject] {
+impl call_error_callback(errors: ptr[PyObject], exc: ptr[PyObject]) -> ptr[PyObject] {
     cb = PyCodec_LookupError(text_value(errors));
     if not cb {
         return NULL;
@@ -139,38 +358,37 @@ def:priv call_error_callback(
     return r;
 }
 
-# PyBytes_AS_STRING.
-def:priv bytes_data(value: ptr[PyObject]) -> ptr[u8] {
+impl bytes_data(value: ptr[PyObject]) -> ptr[u8] {
     return ptr[u8](jacpy_bytes_address(value));
 }
 
-def:priv copy_memory(target: ptr[u8], source: ptr[u8], size: int) {
+impl copy_memory(target: ptr[u8], source: ptr[u8], size: int) {
     for i in range(size) {
         (target + i).view(1)[0] = (source + i).view(1)[0];
     }
 }
 
-def:priv encode_inpos(buf: ptr[MultibyteEncodeBuffer]) -> ptr[i64] {
+impl encode_inpos(buf: ptr[MultibyteEncodeBuffer]) -> ptr[i64] {
     return ptr[i64](ptr(buf));
 }
 
-def:priv encode_outbuf(buf: ptr[MultibyteEncodeBuffer]) -> ptr[ptr[u8]] {
+impl encode_outbuf(buf: ptr[MultibyteEncodeBuffer]) -> ptr[ptr[u8]] {
     return ptr[ptr[u8]](ptr(buf)) + 1;
 }
 
-def:priv encode_replpos(buf: ptr[MultibyteEncodeBuffer]) -> ptr[i64] {
+impl encode_replpos(buf: ptr[MultibyteEncodeBuffer]) -> ptr[i64] {
     return ptr[i64](ptr(buf)) + 7;
 }
 
-def:priv decode_inbuf(buf: ptr[MultibyteDecodeBuffer]) -> ptr[ptr[u8]] {
+impl decode_inbuf(buf: ptr[MultibyteDecodeBuffer]) -> ptr[ptr[u8]] {
     return ptr[ptr[u8]](ptr(buf));
 }
 
-def:priv decode_writer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[DecodeWriter] {
+impl decode_writer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[DecodeWriter] {
     return ptr[DecodeWriter](ptr(buf) + 8);
 }
 
-def:priv expand_encodebuffer(buf: ptr[MultibyteEncodeBuffer], esize: int) -> int {
+impl expand_encodebuffer(buf: ptr[MultibyteEncodeBuffer], esize: int) -> int {
     b = buf.view(1)[0];
     orgpos = int(b.outbuf - bytes_data(b.outobj));
     orgsize = int(jacpy_bytes_length(b.outobj));
@@ -191,8 +409,7 @@ def:priv expand_encodebuffer(buf: ptr[MultibyteEncodeBuffer], esize: int) -> int
     return 0;
 }
 
-# REQUIRE_ENCODEBUFFER: False when growing the output failed.
-def:priv require_encodebuffer(buf: ptr[MultibyteEncodeBuffer], s: int) -> bool {
+impl require_encodebuffer(buf: ptr[MultibyteEncodeBuffer], s: int) -> bool {
     b = buf.view(1)[0];
     if s < 0 or s > int(b.outbuf_end - b.outbuf) {
         return expand_encodebuffer(buf, s) != -1;
@@ -200,8 +417,7 @@ def:priv require_encodebuffer(buf: ptr[MultibyteEncodeBuffer], s: int) -> bool {
     return True;
 }
 
-# The (str, int) or (bytes, int) tuple an encoding error handler returns.
-def:priv valid_encode_reply(retobj: ptr[PyObject]) -> bool {
+impl valid_encode_reply(retobj: ptr[PyObject]) -> bool {
     if jacpy_is_tuple(retobj) == 0 or PyTuple_Size(retobj) != 2 {
         return False;
     }
@@ -212,24 +428,22 @@ def:priv valid_encode_reply(retobj: ptr[PyObject]) -> bool {
     return jacpy_is_long(PyTuple_GetItem(retobj, 1)) != 0;
 }
 
-# MultibyteCodec object
-
-def:priv multibytecodec_encerror(
+impl multibytecodec_encerror(
     codec: ptr[MultibyteCodec],
     state: ptr[MultibyteCodec_State],
     buf: ptr[MultibyteEncodeBuffer],
     errors: ptr[PyObject],
     e: i64
 ) -> int {
-    reason = "";
+    reason = ptr[u8]("");
     esize: i64 = 0;
     if e > 0 {
-        reason = "illegal multibyte sequence";
+        reason = ptr[u8]("illegal multibyte sequence");
         esize = e;
     } elif e == MBERR_TOOSMALL {
         return 0 if require_encodebuffer(buf, -1) else -1;
     } elif e == MBERR_TOOFEW {
-        reason = "incomplete multibyte sequence";
+        reason = ptr[u8]("incomplete multibyte sequence");
         esize = buf.view(1)[0].inpos;
     } elif e == MBERR_INTERNAL {
         object_error(PyExc_RuntimeError, "internal codec error");
@@ -285,7 +499,7 @@ def:priv multibytecodec_encerror(
     }
     start = buf.view(1)[0].inpos;
     end = start + esize;
-    # use cached exception object if available
+
     if not buf.view(1)[0].excobj {
         excobj = PyObject_CallFunction(
             PyExc_UnicodeEncodeError,
@@ -362,14 +576,11 @@ def:priv multibytecodec_encerror(
     return 0;
 }
 
-# The decoder's input size (buf->inbuf_end - buf->inbuf_top).
-def:priv decode_input_size(buf: ptr[MultibyteDecodeBuffer]) -> i64 {
+impl decode_input_size(buf: ptr[MultibyteDecodeBuffer]) -> i64 {
     return i64(buf.view(1)[0].inbuf_end - buf.view(1)[0].inbuf_top);
 }
 
-# _PyUnicodeWriter_WriteChar / _PyUnicodeWriter_WriteStr on the buffer's
-# writer, created on first use with the input size as its capacity.
-def:priv decode_writer_ready(buf: ptr[MultibyteDecodeBuffer]) -> bool {
+impl decode_writer_ready(buf: ptr[MultibyteDecodeBuffer]) -> bool {
     if buf.view(1)[0].writer.writer.is_null() {
         writer = PyUnicodeWriter_Create(buf.view(1)[0].min_length);
         if writer.is_null() {
@@ -380,9 +591,7 @@ def:priv decode_writer_ready(buf: ptr[MultibyteDecodeBuffer]) -> bool {
     return True;
 }
 
-def:priv decode_write_str(
-    buf: ptr[MultibyteDecodeBuffer], text: ptr[PyObject]
-) -> bool {
+impl decode_write_str(buf: ptr[MultibyteDecodeBuffer], text: ptr[PyObject]) -> bool {
     if not decode_writer_ready(buf) {
         return False;
     }
@@ -395,23 +604,22 @@ def:priv decode_write_str(
     return True;
 }
 
-def:priv multibytecodec_decerror(
+impl multibytecodec_decerror(
     codec: ptr[MultibyteCodec],
     state: ptr[MultibyteCodec_State],
     buf: ptr[MultibyteDecodeBuffer],
     errors: ptr[PyObject],
     e: i64
 ) -> int {
-    reason = "";
+    reason = ptr[u8]("");
     esize: i64 = 0;
     if e > 0 {
-        reason = "illegal multibyte sequence";
+        reason = ptr[u8]("illegal multibyte sequence");
         esize = e;
     } elif e == MBERR_TOOSMALL {
-        # retry it
         return 0;
     } elif e == MBERR_TOOFEW {
-        reason = "incomplete multibyte sequence";
+        reason = ptr[u8]("incomplete multibyte sequence");
         esize = i64(buf.view(1)[0].inbuf_end - buf.view(1)[0].inbuf);
     } elif e == MBERR_INTERNAL {
         object_error(PyExc_RuntimeError, "internal codec error");
@@ -437,7 +645,7 @@ def:priv multibytecodec_decerror(
     }
     start = i64(buf.view(1)[0].inbuf - buf.view(1)[0].inbuf_top);
     end = start + esize;
-    # use cached exception object if available
+
     if not buf.view(1)[0].excobj {
         excobj = PyUnicodeDecodeError_Create(
             ptr(codec.view(1)[0].encoding),
@@ -495,12 +703,12 @@ def:priv multibytecodec_decerror(
     return 0;
 }
 
-def:priv release_encodebuffer(buf: ptr[MultibyteEncodeBuffer]) {
+impl release_encodebuffer(buf: ptr[MultibyteEncodeBuffer]) {
     jacpy_release(buf.view(1)[0].excobj);
     PyMem_Free(ptr(buf));
 }
 
-def multibytecodec_encode(
+impl multibytecodec_encode(
     codec: ptr[MultibyteCodec],
     state: ptr[MultibyteCodec_State],
     text: ptr[PyObject],
@@ -538,8 +746,6 @@ def multibytecodec_encode(
     failed = False;
     r: i64 = 0;
     while buf.view(1)[0].inpos < buf.view(1)[0].inlen {
-        # we don't reuse inleft and outleft here.
-        # error callbacks can relocate the cursor anywhere on buffer
         outleft = i64(buf.view(1)[0].outbuf_end - buf.view(1)[0].outbuf);
         r = codec.view(1)[0].encode(
             state,
@@ -594,23 +800,17 @@ def multibytecodec_encode(
     return result;
 }
 
-# The state of a MultibyteCodec object: the codec and the module defining it.
-obj CodecState(NativeState) {
-    has codec: ptr[MultibyteCodec],
-        cjk_module: ptr[PyObject] = NULL;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.cjk_module, visitor, context);
-    }
-
-    def clear {
-        module = self.cjk_module;
-        self.cjk_module = NULL;
-        jacpy_release(module);
-    }
+impl CodecState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.cjk_module, visitor, context);
 }
 
-def:priv codec_of(instance: ptr[PyObject]) -> ptr[MultibyteCodec] {
+impl CodecState.clear {
+    module = self.cjk_module;
+    self.cjk_module = NULL;
+    jacpy_release(module);
+}
+
+impl codec_of(instance: ptr[PyObject]) -> ptr[MultibyteCodec] {
     if jacpy_binding_native_present(instance, MultibyteCodec_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, MultibyteCodec_token.handle);
         if isinstance(state, CodecState) {
@@ -620,7 +820,7 @@ def:priv codec_of(instance: ptr[PyObject]) -> ptr[MultibyteCodec] {
     return ptr[MultibyteCodec]();
 }
 
-def _multibytecodec_MultibyteCodec_encode_impl(
+impl _multibytecodec_MultibyteCodec_encode_impl(
     self: ptr[PyObject], input: ptr[PyObject], errors: ptr[u8]
 ) -> ptr[PyObject] {
     codec = codec_of(self);
@@ -665,7 +865,7 @@ def _multibytecodec_MultibyteCodec_encode_impl(
     return make_tuple(r, datalen);
 }
 
-def:priv new_decodebuffer -> ptr[MultibyteDecodeBuffer] {
+impl new_decodebuffer -> ptr[MultibyteDecodeBuffer] {
     buf = ptr[MultibyteDecodeBuffer](PyMem_Calloc(u64(1), u64(56)));
     if buf.is_null() {
         PyErr_NoMemory();
@@ -673,8 +873,7 @@ def:priv new_decodebuffer -> ptr[MultibyteDecodeBuffer] {
     return buf;
 }
 
-# _PyUnicodeWriter_Dealloc and the buffer's cached exception.
-def:priv release_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) {
+impl release_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) {
     writer = buf.view(1)[0].writer.writer;
     if not writer.is_null() {
         PyUnicodeWriter_Discard(writer);
@@ -683,8 +882,7 @@ def:priv release_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) {
     PyMem_Free(ptr(buf));
 }
 
-# _PyUnicodeWriter_Finish: the decoded str; the buffer is released.
-def:priv finish_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[PyObject] {
+impl finish_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[PyObject] {
     if not decode_writer_ready(buf) {
         release_decodebuffer(buf);
         return NULL;
@@ -696,8 +894,7 @@ def:priv finish_decodebuffer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[PyObject] {
     return res;
 }
 
-# The codec's decode entry over the buffer: the writer exists first.
-def:priv run_decode(
+impl run_decode(
     codec: ptr[MultibyteCodec],
     state: ptr[MultibyteCodec_State],
     buf: ptr[MultibyteDecodeBuffer]
@@ -711,7 +908,7 @@ def:priv run_decode(
     );
 }
 
-def _multibytecodec_MultibyteCodec_decode_impl(
+impl _multibytecodec_MultibyteCodec_decode_impl(
     self: ptr[PyObject], input: BufferArgument, errors: ptr[u8]
 ) -> ptr[PyObject] {
     codec = codec_of(self);
@@ -762,59 +959,44 @@ def _multibytecodec_MultibyteCodec_decode_impl(
     return make_tuple(res, datalen);
 }
 
-# Utility functions for stateful codec mechanism
-
-# The state of the incremental encoder and decoder and the stream reader and
-# writer (_MultibyteStatefulCodec_HEAD and its encoder, decoder and stream
-# parts).
-obj StatefulState(NativeState) {
-    has codec: ptr[MultibyteCodec],
-        record: ptr[StatefulRecord],
-        errors: ptr[PyObject] = NULL,
-        pending: ptr[PyObject] = NULL,
-        stream: ptr[PyObject] = NULL;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        if self.errors and error_is_custom(self.errors) {
-            result = visit_reference(self.errors, visitor, context);
-            if result != 0 {
-                return result;
-            }
-        }
-        return visit_reference(self.stream, visitor, context);
-    }
-
-    def clear {}
-    def drop {
-        error_release(self.errors);
-        jacpy_release(self.pending);
-        jacpy_release(self.stream);
-        if not self.record.is_null() {
-            PyMem_Free(ptr(self.record));
+impl StatefulState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    if self.errors and error_is_custom(self.errors) {
+        result = visit_reference(self.errors, visitor, context);
+        if result != 0 {
+            return result;
         }
     }
+    return visit_reference(self.stream, visitor, context);
+}
 
-    def state -> ptr[MultibyteCodec_State] {
-        return ptr[MultibyteCodec_State](self.record);
-    }
+impl StatefulState.clear {}
 
-    # The decoder's pending bytes.
-    def pending_bytes -> ptr[u8] {
-        return ptr[u8](self.record) + 8;
-    }
-
-    def pendingsize -> int {
-        return int(self.record.view(1)[0].pendingsize);
-    }
-
-    def set_pendingsize(size: int) {
-        self.record.view(1)[0].pendingsize = i64(size);
+impl StatefulState.drop {
+    error_release(self.errors);
+    jacpy_release(self.pending);
+    jacpy_release(self.stream);
+    if not self.record.is_null() {
+        PyMem_Free(ptr(self.record));
     }
 }
 
-def:priv stateful_of(
-    instance: ptr[PyObject], token: ClassToken
-) -> (StatefulState | None) {
+impl StatefulState.state -> ptr[MultibyteCodec_State] {
+    return ptr[MultibyteCodec_State](self.record);
+}
+
+impl StatefulState.pending_bytes -> ptr[u8] {
+    return ptr[u8](self.record) + 8;
+}
+
+impl StatefulState.pendingsize -> int {
+    return int(self.record.view(1)[0].pendingsize);
+}
+
+impl StatefulState.set_pendingsize(size: int) {
+    self.record.view(1)[0].pendingsize = i64(size);
+}
+
+impl stateful_of(instance: ptr[PyObject], token: ClassToken) -> (StatefulState | None) {
     if jacpy_binding_native_present(instance, token.handle) != 0 {
         state = jacpy_binding_native_get(instance, token.handle);
         if isinstance(state, StatefulState) {
@@ -825,9 +1007,7 @@ def:priv stateful_of(
     return None;
 }
 
-# The four stateful codec types, by the context their "errors" property
-# carries.
-def:priv stateful_token(kind: u64) -> ClassToken {
+impl stateful_token(kind: u64) -> ClassToken {
     if kind == u64(0) {
         return MultibyteIncrementalEncoder_token;
     }
@@ -840,8 +1020,7 @@ def:priv stateful_token(kind: u64) -> ClassToken {
     return MultibyteStreamWriter_token;
 }
 
-# The "errors" attribute of every stateful codec object.
-def codecctx_errors_get(instance: ptr[PyObject], kind: u64) -> ptr[PyObject] {
+impl codecctx_errors_get(instance: ptr[PyObject], kind: u64) -> ptr[PyObject] {
     ctx = stateful_of(instance, stateful_token(kind));
     if ctx is None {
         return NULL;
@@ -859,7 +1038,7 @@ def codecctx_errors_get(instance: ptr[PyObject], kind: u64) -> ptr[PyObject] {
     return Py_NewRef(ctx.errors);
 }
 
-def codecctx_errors_set(
+impl codecctx_errors_set(
     instance: ptr[PyObject], value: ptr[PyObject], kind: u64
 ) -> i32 {
     ctx = stateful_of(instance, stateful_token(kind));
@@ -888,7 +1067,7 @@ def codecctx_errors_set(
     return i32(0);
 }
 
-def:priv encoder_encode_stateful(
+impl encoder_encode_stateful(
     ctx: StatefulState, unistr: ptr[PyObject], final: bool
 ) -> ptr[PyObject] {
     ucvt = NULL;
@@ -943,7 +1122,6 @@ def:priv encoder_encode_stateful(
     consumed = inpos.view(1)[0];
     PyMem_Free(ptr(inpos));
     if not r {
-        # recover the original pending buffer
         jacpy_release(ctx.pending);
         ctx.pending = origpending;
         jacpy_release(inbuf);
@@ -953,7 +1131,6 @@ def:priv encoder_encode_stateful(
     jacpy_release(origpending);
     if consumed < datalen {
         if datalen - consumed > MAXENCPENDING {
-            # normal codecs can't reach here
             excobj = PyObject_CallFunction(
                 PyExc_UnicodeEncodeError,
                 "sOnns",
@@ -974,7 +1151,6 @@ def:priv encoder_encode_stateful(
         }
         ctx.pending = PyUnicode_Substring(inbuf, consumed, datalen);
         if not ctx.pending {
-            # normal codecs can't reach here
             jacpy_release(r);
             jacpy_release(inbuf);
             jacpy_release(ucvt);
@@ -986,7 +1162,7 @@ def:priv encoder_encode_stateful(
     return r;
 }
 
-def:priv decoder_append_pending(
+impl decoder_append_pending(
     ctx: StatefulState, buf: ptr[MultibyteDecodeBuffer]
 ) -> int {
     npendings = int(buf.view(1)[0].inbuf_end - buf.view(1)[0].inbuf);
@@ -999,7 +1175,7 @@ def:priv decoder_append_pending(
             bufsize,
             0,
             bufsize,
-            "pending buffer overflow"
+            ptr[u8]("pending buffer overflow")
         );
         if not excobj {
             return -1;
@@ -1015,7 +1191,7 @@ def:priv decoder_append_pending(
     return 0;
 }
 
-def:priv decoder_prepare_buffer(
+impl decoder_prepare_buffer(
     buf: ptr[MultibyteDecodeBuffer], data: ptr[u8], size: int
 ) -> int {
     buf.view(1)[0].inbuf = data;
@@ -1025,9 +1201,7 @@ def:priv decoder_prepare_buffer(
     return 0;
 }
 
-def:priv decoder_feed_buffer(
-    ctx: StatefulState, buf: ptr[MultibyteDecodeBuffer]
-) -> int {
+impl decoder_feed_buffer(ctx: StatefulState, buf: ptr[MultibyteDecodeBuffer]) -> int {
     while buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end {
         r = run_decode(ctx.codec, ctx.state(), buf);
         if r == 0 or r == MBERR_TOOFEW {
@@ -1040,7 +1214,7 @@ def:priv decoder_feed_buffer(
     return 0;
 }
 
-def _multibytecodec_MultibyteIncrementalEncoder_encode_impl(
+impl _multibytecodec_MultibyteIncrementalEncoder_encode_impl(
     self: ptr[PyObject], input: ptr[PyObject], final: bool
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalEncoder_token);
@@ -1050,12 +1224,7 @@ def _multibytecodec_MultibyteIncrementalEncoder_encode_impl(
     return encoder_encode_stateful(ctx, input, final);
 }
 
-# The bytes a stateful encoder's state is made of: 1 byte for the pending
-# buffer's size, up to MAXENCPENDING*4 bytes for its UTF-8, and the codec
-# state.
-glob:priv ENCODER_STATE_BYTES: int = 17;
-
-def _multibytecodec_MultibyteIncrementalEncoder_getstate_impl(
+impl _multibytecodec_MultibyteIncrementalEncoder_getstate_impl(
     self: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalEncoder_token);
@@ -1106,7 +1275,7 @@ def _multibytecodec_MultibyteIncrementalEncoder_getstate_impl(
     return result;
 }
 
-def _multibytecodec_MultibyteIncrementalEncoder_setstate_impl(
+impl _multibytecodec_MultibyteIncrementalEncoder_setstate_impl(
     self: ptr[PyObject], statelong: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalEncoder_token);
@@ -1146,14 +1315,14 @@ def _multibytecodec_MultibyteIncrementalEncoder_setstate_impl(
     return Py_NewRef(Py_None);
 }
 
-def _multibytecodec_MultibyteIncrementalEncoder_reset_impl(
+impl _multibytecodec_MultibyteIncrementalEncoder_reset_impl(
     self: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalEncoder_token);
     if ctx is None {
         return NULL;
     }
-    # Longest output: 4 bytes (b'\x0F\x1F(B') with ISO 2022
+
     cursor = ptr[ptr[u8]](PyMem_Calloc(u64(1), u64(16)));
     if cursor.is_null() {
         PyErr_NoMemory();
@@ -1171,10 +1340,8 @@ def _multibytecodec_MultibyteIncrementalEncoder_reset_impl(
     return Py_NewRef(Py_None);
 }
 
-# The codec object a stateful type's `codec` attribute names, borrowed from
-# the reference the caller releases; NULL with the exception set.
-def:priv type_codec(type: ptr[PyObject], definition: ptr) -> ptr[PyObject] {
-    codec = PyObject_GetAttrString(type, "codec");
+impl type_codec(type: ptr[PyObject], definition: ptr) -> ptr[PyObject] {
+    codec = PyObject_GetAttrString(type, ptr[u8]("codec"));
     if not codec {
         return NULL;
     }
@@ -1190,9 +1357,7 @@ def:priv type_codec(type: ptr[PyObject], definition: ptr) -> ptr[PyObject] {
     return codec;
 }
 
-# The native state of a new stateful codec object of `type`; its codec
-# state is initialized by `init`. NULL with the exception set.
-def stateful_new(
+impl stateful_new(
     type: ptr[PyObject],
     token: ClassToken,
     module_definition: ptr,
@@ -1240,16 +1405,7 @@ def stateful_new(
     return self;
 }
 
-# The arguments of a stateful codec type's constructor.
-obj NewArguments {
-    has stream: ptr[PyObject] = NULL,
-        errors: ptr[u8] = ptr[u8]();
-}
-
-# PyArg_ParseTupleAndKeywords(args, kwds, "|s:<name>", {"errors"}) or, for a
-# stream type, "O|s:<name>" over {"stream", "errors"}: the errors name is the
-# argument's UTF-8. None with the exception set.
-def parse_new_arguments(
+impl parse_new_arguments(
     args: ptr[PyObject], kwds: ptr[PyObject], name: str, stream: bool
 ) -> (NewArguments | None) {
     format = ArgumentFormat(name=name);
@@ -1274,7 +1430,7 @@ def parse_new_arguments(
     }
 }
 
-def _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
+impl _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
     self: ptr[PyObject], input: BufferArgument, final: bool
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalDecoder_token);
@@ -1316,12 +1472,11 @@ def _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
             ctx.codec, ctx.state(), buf, ctx.errors, MBERR_TOOFEW
         )
             != 0 {
-        # recover the original pending buffer
         copy_memory(ctx.pending_bytes(), wdata, origpending);
         ctx.set_pendingsize(origpending);
         failed = True;
     }
-    # pending sequence still exists
+
     if not failed
         and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end
         and decoder_append_pending(ctx, buf) != 0 {
@@ -1337,7 +1492,7 @@ def _multibytecodec_MultibyteIncrementalDecoder_decode_impl(
     return finish_decodebuffer(buf);
 }
 
-def _multibytecodec_MultibyteIncrementalDecoder_getstate_impl(
+impl _multibytecodec_MultibyteIncrementalDecoder_getstate_impl(
     self: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalDecoder_token);
@@ -1359,15 +1514,14 @@ def _multibytecodec_MultibyteIncrementalDecoder_getstate_impl(
     return result;
 }
 
-def _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(
+impl _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(
     self: ptr[PyObject], state: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalDecoder_token);
     if ctx is None {
         return NULL;
     }
-    # PyArg_ParseTuple(state, "SO!;setstate(): illegal state argument",
-    # &buffer, &PyLong_Type, &statelong)
+
     format = ArgumentFormat(
         message="setstate(): illegal state argument", types=[addressof(PyLong_Type)]
     );
@@ -1397,7 +1551,7 @@ def _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(
             i64(buffersize),
             0,
             i64(buffersize),
-            "pending buffer too large"
+            ptr[u8]("pending buffer too large")
         );
         if excobj {
             PyErr_SetObject(PyExc_UnicodeDecodeError, excobj);
@@ -1413,7 +1567,7 @@ def _multibytecodec_MultibyteIncrementalDecoder_setstate_impl(
     return Py_NewRef(Py_None);
 }
 
-def:priv decoder_reset(ctx: StatefulState) -> ptr[PyObject] {
+impl decoder_reset(ctx: StatefulState) -> ptr[PyObject] {
     if ctx.codec.view(1)[0].decreset(ctx.state(), ctx.codec) != 0 {
         return NULL;
     }
@@ -1421,7 +1575,7 @@ def:priv decoder_reset(ctx: StatefulState) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def _multibytecodec_MultibyteIncrementalDecoder_reset_impl(
+impl _multibytecodec_MultibyteIncrementalDecoder_reset_impl(
     self: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteIncrementalDecoder_token);
@@ -1431,13 +1585,11 @@ def _multibytecodec_MultibyteIncrementalDecoder_reset_impl(
     return decoder_reset(ctx);
 }
 
-# int(sizehint) as the "i" format reads a Py_ssize_t passed for it: the low
-# 32 bits.
-def:priv as_c_int(value: int) -> i32 {
+impl as_c_int(value: int) -> i32 {
     return i32(((value + 0x80000000) & 0xFFFFFFFF) - 0x80000000);
 }
 
-def:priv mbstreamreader_iread(
+impl mbstreamreader_iread(
     ctx: StatefulState, method: str, sizehint: int
 ) -> ptr[PyObject] {
     if sizehint == 0 {
@@ -1502,7 +1654,7 @@ def:priv mbstreamreader_iread(
                 != 0 {
             failed = True;
         }
-        # pending sequence exists
+
         if not failed
             and buf.view(1)[0].inbuf < buf.view(1)[0].inbuf_end
             and decoder_append_pending(ctx, buf) != 0 {
@@ -1516,14 +1668,13 @@ def:priv mbstreamreader_iread(
         if sizehint < 0 or buf.view(1)[0].writer.written != 0 or rsize == 0 {
             break;
         }
-        # read 1 more byte and retry
+
         sizehint = 1;
     }
     return finish_decodebuffer(buf);
 }
 
-# sizeobj as read()'s size: -1 for None; None with the exception set.
-def:priv reader_size(sizeobj: ptr[PyObject]) -> (int | None) {
+impl reader_size(sizeobj: ptr[PyObject]) -> (int | None) {
     if sizeobj == Py_None {
         return -1;
     }
@@ -1538,7 +1689,7 @@ def:priv reader_size(sizeobj: ptr[PyObject]) -> (int | None) {
     return size;
 }
 
-def _multibytecodec_MultibyteStreamReader_read_impl(
+impl _multibytecodec_MultibyteStreamReader_read_impl(
     self: ptr[PyObject], sizeobj: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamReader_token);
@@ -1552,7 +1703,7 @@ def _multibytecodec_MultibyteStreamReader_read_impl(
     return mbstreamreader_iread(ctx, "read", size);
 }
 
-def _multibytecodec_MultibyteStreamReader_readline_impl(
+impl _multibytecodec_MultibyteStreamReader_readline_impl(
     self: ptr[PyObject], sizeobj: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamReader_token);
@@ -1566,7 +1717,7 @@ def _multibytecodec_MultibyteStreamReader_readline_impl(
     return mbstreamreader_iread(ctx, "readline", size);
 }
 
-def _multibytecodec_MultibyteStreamReader_readlines_impl(
+impl _multibytecodec_MultibyteStreamReader_readlines_impl(
     self: ptr[PyObject], sizehintobj: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamReader_token);
@@ -1586,7 +1737,7 @@ def _multibytecodec_MultibyteStreamReader_readlines_impl(
     return sr;
 }
 
-def _multibytecodec_MultibyteStreamReader_reset_impl(
+impl _multibytecodec_MultibyteStreamReader_reset_impl(
     self: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamReader_token);
@@ -1596,7 +1747,7 @@ def _multibytecodec_MultibyteStreamReader_reset_impl(
     return decoder_reset(ctx);
 }
 
-def:priv mbstreamwriter_iwrite(
+impl mbstreamwriter_iwrite(
     ctx: StatefulState, unistr: ptr[PyObject], str_write: ptr[PyObject]
 ) -> int {
     str = encoder_encode_stateful(ctx, unistr, False);
@@ -1612,12 +1763,11 @@ def:priv mbstreamwriter_iwrite(
     return 0;
 }
 
-# PyType_GetModuleState(cls)->str_write.
-def:priv str_write_of(cls: ptr[PyObject]) -> ptr[PyObject] {
+impl str_write_of(cls: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_state_get(PyType_GetModule(cls), i64(STATE_STR_WRITE));
 }
 
-def _multibytecodec_MultibyteStreamWriter_write_impl(
+impl _multibytecodec_MultibyteStreamWriter_write_impl(
     self: ptr[PyObject], cls: ptr[PyObject], strobj: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamWriter_token);
@@ -1630,7 +1780,7 @@ def _multibytecodec_MultibyteStreamWriter_write_impl(
     return Py_NewRef(Py_None);
 }
 
-def _multibytecodec_MultibyteStreamWriter_writelines_impl(
+impl _multibytecodec_MultibyteStreamWriter_writelines_impl(
     self: ptr[PyObject], cls: ptr[PyObject], lines: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamWriter_token);
@@ -1643,7 +1793,7 @@ def _multibytecodec_MultibyteStreamWriter_writelines_impl(
     }
     str_write = str_write_of(cls);
     i = 0;
-    # length can be changed even within this loop
+
     while i < int(PySequence_Length(lines)) {
         strobj = PySequence_GetItem(lines, i64(i));
         if not strobj {
@@ -1656,14 +1806,14 @@ def _multibytecodec_MultibyteStreamWriter_writelines_impl(
         }
         i += 1;
     }
-    # PySequence_Length() can fail
+
     if PyErr_Occurred() {
         return NULL;
     }
     return Py_NewRef(Py_None);
 }
 
-def _multibytecodec_MultibyteStreamWriter_reset_impl(
+impl _multibytecodec_MultibyteStreamWriter_reset_impl(
     self: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     ctx = stateful_of(self, MultibyteStreamWriter_token);
@@ -1681,10 +1831,7 @@ def _multibytecodec_MultibyteStreamWriter_reset_impl(
         ctx.errors,
         MBENC_FLUSH | MBENC_RESET
     );
-    # some pending buffer can be truncated when UnicodeEncodeError is
-    # raised on 'strict' mode. but, 'reset' method is designed to
-    # reset the pending buffer or states so failed string sequence
-    # ought to be missed
+
     pending = ctx.pending;
     ctx.pending = NULL;
     jacpy_release(pending);
@@ -1703,7 +1850,7 @@ def _multibytecodec_MultibyteStreamWriter_reset_impl(
     return Py_NewRef(Py_None);
 }
 
-def _multibytecodec___create_codec_impl(
+impl _multibytecodec___create_codec_impl(
     module: ptr[PyObject], arg: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyCapsule_IsValid(arg, ptr[u8]("multibytecodec.codec")) == 0 {

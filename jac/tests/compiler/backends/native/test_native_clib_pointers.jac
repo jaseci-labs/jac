@@ -694,8 +694,7 @@ import from "CLIB_POINTERS_LIBRARY" {
     assert checker_codes(code) == ["E1155", "E1155"];
 }
 
-test "a Jac function C calls runs outside the caller's open region" {
-    code = '''import from "CLIB_POINTERS_LIBRARY" {
+glob C_CALLBACK_ENTRY: str = '''import from "CLIB_POINTERS_LIBRARY" {
     obj CpVec3 { has x: f32, y: f32, z: f32; }
     obj CpRecipe {
         has count: i32, scale: Callable[[i32], i32], label: ptr[u8], origin: ptr[CpVec3];
@@ -723,8 +722,10 @@ with entry {
     }
 }
 ''';
+
+test "a Jac function C calls runs outside the caller's open region" {
     with tempfile.TemporaryDirectory() as directory {
-        out = assert_native_identity(stage_source(directory, code));
+        out = assert_native_identity(stage_source(directory, C_CALLBACK_ENTRY));
     }
     lines = out.splitlines();
     assert "open False" in lines , out;
@@ -778,18 +779,175 @@ test "a C function definition C calls runs outside the caller's open region" {
         ] , out;
 }
 
+glob C_DEFINITION_REENTRY: str = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj Slots {
+        has s0: ptr[CpVec3] = ptr[CpVec3](), s1: ptr[CpVec3] = ptr[CpVec3]();
+    }
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    def cp_record_address(record: &mut Slots) -> int;
+    def cp_address_call(fn: ptr, a: i64) -> i64;
+    def reenter(depth: i64) -> i64 {
+        refs: own Slots = Slots();
+        slot = ptr[i64](cp_record_address(&mut refs));
+        slot.view(1)[0] = depth * 100;
+        inner = 0;
+        if depth > 0 {
+            inner = cp_address_call(ptr(reenter), depth - 1);
+        }
+        print("depth", depth, "kept", slot.view(1)[0] == depth * 100, "inner", inner);
+        return slot.view(1)[0];
+    }
+}
+with entry {
+    print("outer", reenter(3));
+}
+''';
+
+test "a C definition C re-enters keeps each activation's C record" {
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(
+            stage_source(directory, C_DEFINITION_REENTRY, "reentry.jac")
+        );
+    }
+    assert out.splitlines()
+        == [
+            "depth 0 kept True inner 0",
+            "depth 1 kept True inner 0",
+            "depth 2 kept True inner 100",
+            "depth 3 kept True inner 200",
+            "outer 300"
+        ] , out;
+}
+
 test "a scalar C definition's entry jumps into its body unless a region is open" {
     with tempfile.TemporaryDirectory() as directory {
         stage_source(directory, C_DEFINITION_ENTRY, "centry.jac");
         text = str(compile_native_ir("centry.jac", fixture_dir=directory).gen.llvm_ir);
     }
-    found = re.search(r'define [^\n]*@"?c_remember"?\(.*?\n}\n', text, re.S);
-    assert found , "no C entry for c_remember";
-    thunk = found.group(0);
-    assert "musttail" in thunk , thunk;
-    assert "__jac_region_escape" in thunk , thunk;
-    assert "__jac_region_restore" in thunk , thunk;
+    (thunk, escape) = c_entry_pair(text, "c_remember");
+    assert_frameless_entry(thunk, escape, "c_remember.jac");
+}
+
+test "under native TLS a C entry reads the region slot with the initial-exec model" {
+    options = native_force_opts();
+    options.native_tls = True;
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, C_DEFINITION_ENTRY, "centry.jac");
+        text = str(
+            compile_native_ir(
+                "centry.jac", fixture_dir=directory, options=options
+            ).gen.llvm_ir
+        );
+    }
+    assert re.search(
+        r'@"?__jac_region_tls_tl"? = weak thread_local\(initialexec\) global', text
+    ) , "the region slot is not initial-exec";
+    (thunk, escape) = c_entry_pair(text, "c_remember");
+    assert_frameless_entry(thunk, escape, "c_remember.jac");
+    assert "pthread_getspecific" not in thunk , thunk;
+}
+
+test "a Jac callback's C trampoline leaves an open region out of line" {
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, C_CALLBACK_ENTRY, "cbentry.jac");
+        text = str(compile_native_ir("cbentry.jac", fixture_dir=directory).gen.llvm_ir);
+    }
+    found = re.search(
+        r'define internal [^\n]*@"?([^"(\s]*remember\.__clibcb\.\d+)"?\(', text
+    );
+    assert found , "no C trampoline for remember";
+    trampoline = found.group(1);
+    (thunk, escape) = c_entry_pair(text, trampoline);
+    assert_frameless_entry(thunk, escape, trampoline.rsplit(".__clibcb.", 1)[0]);
+}
+
+glob C_CONVERTING_CALLBACK: str = '''import from "CLIB_POINTERS_LIBRARY" {
+    obj CpVec3 { has x: f32, y: f32, z: f32; }
+    def cp_call_drop(fn: Callable[[ptr[CpVec3]], None], p: ptr[CpVec3]);
+}
+obj Kept {
+    has value: i32;
+
+    def drop {}
+}
+def vec_drop(p: ptr[CpVec3]) {
+    item = Kept(value=i32(1));
+    print("drop on heap", region_of(item) is None, int(p) == 0);
+}
+with entry {
+    cp_call_drop(vec_drop, ptr[CpVec3]());
+    r: own Region = Region();
+    in r {
+        opened = Kept(value=i32(1));
+        print("open", region_of(opened) is None);
+        cp_call_drop(vec_drop, ptr[CpVec3]());
+    }
+}
+''';
+
+test "a converting C trampoline runs outside the caller's open region" {
+    with tempfile.TemporaryDirectory() as directory {
+        out = assert_native_identity(
+            stage_source(directory, C_CONVERTING_CALLBACK, "cbconvert.jac")
+        );
+    }
+    assert out.splitlines()
+        == ["drop on heap True True", "open False", "drop on heap True True"] , out;
+}
+
+# vec_drop has no annotated result, so its body returns a word the void C
+# slot never reads; the trampoline still jumps straight into it.
+test "a C trampoline over a def without `-> T` jumps into its body" {
+    with tempfile.TemporaryDirectory() as directory {
+        stage_source(directory, C_CONVERTING_CALLBACK, "cbconvert.jac");
+        text = str(
+            compile_native_ir("cbconvert.jac", fixture_dir=directory).gen.llvm_ir
+        );
+    }
+    found = re.search(
+        r'define internal void @"?([^"(\s]*vec_drop\.__clibcb\.\d+)"?\(', text
+    );
+    assert found , "no C trampoline for vec_drop";
+    trampoline = found.group(1);
+    (thunk, escape) = c_entry_pair(text, trampoline);
+    assert_frameless_entry(thunk, escape, trampoline.rsplit(".__clibcb.", 1)[0]);
+}
+
+"""The C entry `name` and the cold function that leaves an open region for it."""
+def c_entry_pair(text: str, name: str) -> tuple[str, str] {
+    thunk = re.search(
+        r'define [^\n]*@"?' + re.escape(name) + r'"?\(.*?\n}\n', text, re.S
+    );
+    assert thunk , f"no C entry {name}";
+    escape = re.search(
+        r'define internal [^\n]*@"?' + re.escape(name) + r'\.escape"?\(.*?\n}\n',
+        text,
+        re.S
+    );
+    assert escape , f"no escape function for {name}";
+    return (thunk.group(0), escape.group(0));
+}
+
+"""The entry tests the thread's region and jumps; only the escape calls back."""
+def assert_frameless_entry(thunk: str, escape: str, body: str) {
     assert thunk.index("region.open") < thunk.index("musttail") , thunk;
+    assert thunk.count("musttail call") == 2 , thunk;
+    target = f'@"{body}"';
+    assert ".escape" in thunk and target in thunk , thunk;
+    assert "__jac_region_escape" not in thunk , thunk;
+    assert "__jac_region_restore" not in thunk , thunk;
+    returning = [
+        line
+        for line in thunk.splitlines()
+        if " call " in line and "musttail" not in line
+    ];
+    assert all(("__jac_region_tls_get" in line) for line in returning) , thunk;
+    head = escape.splitlines()[0];
+    assert "cold" in head and "noinline" in head , head;
+    assert escape.index("__jac_region_escape")
+        < escape.index(target)
+        < escape.index("__jac_region_restore") , escape;
+    assert "musttail" not in escape , escape;
 }
 
 glob C_BLOCK_ORDER: str = '''import from c {

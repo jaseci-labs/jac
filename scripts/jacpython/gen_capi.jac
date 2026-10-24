@@ -227,8 +227,6 @@ glob OPAQUE: list[str] = [
      # A `const char *` parameter is a NUL-terminated C string (Jac `str`) unless
      # the function reads a sized payload; those take raw memory as `bytes`.
      PAYLOAD_PARAMETERS: dict[str, set[int]] = {
-         "PyBytes_FromStringAndSize": {0},
-         "PyByteArray_FromStringAndSize": {0},
          "PyUnicode_DecodeUTF8": {0},
          "PyUnicode_Decode": {0},
          "PyUnicode_FromStringAndSize": {0},
@@ -239,6 +237,23 @@ glob OPAQUE: list[str] = [
          "PyFloat_Unpack2": {0},
          "PyFloat_Unpack4": {0},
          "PyFloat_Unpack8": {0}
+     },
+     # `char *` parameters of functions a Jac module now defines. A Jac C
+     # definition cannot take `str` or `bytes`, and the program-wide C symbol
+     # check holds every declaration to the definition, so these take the
+     # address `ptr[u8]`.
+     JAC_DEFINED_CHAR_PARAMETERS: dict[str, set[int]] = {
+         "PyBytes_FromFormat": {0},
+         "PyBytes_FromStringAndSize": {0},
+         "PyByteArray_FromStringAndSize": {0},
+         "PyDict_GetItemStringRef": {1},
+         "PyDict_PopString": {1},
+         "PyDict_SetItemString": {1},
+         "PyModule_New": {0},
+         "PyUnicodeDecodeError_Create": {5},
+         "PyUnicodeDecodeError_SetReason": {1},
+         "PyUnicodeEncodeError_SetReason": {1},
+         "PyUnicodeTranslateError_SetReason": {1}
      },
      # Pointer parameters that take memory the caller holds as a raw address
      # (a HACL* digest buffer, a Py_buffer, a path read after fork(), an
@@ -282,6 +297,7 @@ glob OPAQUE: list[str] = [
          "PyOS_double_to_string": {4},
          "PyCodec_Decode": {1, 2},
          "PyCodec_Encode": {1, 2},
+         "PyDict_Pop": {2},
          "PyDict_SetDefaultRef": {3},
          "PyErr_WarnExplicit": {4},
          "PyUnicode_AsWideCharString": {1},
@@ -551,7 +567,9 @@ def jac_type(function: str, ctype: str, index: int | None) -> str | None {
     }
     nullable = index is not None and index in NULLABLE_PARAMETERS.get(function, set());
     if base == "char *" {
-        if index is None or nullable {
+        if index is None
+            or nullable
+            or index in JAC_DEFINED_CHAR_PARAMETERS.get(function, set()) {
             return "ptr[u8]";
         }
         if index in PAYLOAD_PARAMETERS.get(function, set()) or "const" not in ctype {

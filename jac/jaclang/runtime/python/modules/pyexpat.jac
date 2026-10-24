@@ -1,16 +1,5 @@
-"""The pyexpat module: Python's wrapper for the Expat XML parser.
-
-Derived from CPython 3.14.6 Modules/pyexpat.c; see ../LICENSE.cpython. Expat
-runs with the GIL held and calls back into the handlers below with the parser
-object as its user data; the object's fields are a C record so those callbacks
-reach them as pyexpat.c does. A failing handler adds a traceback entry for the
-pyexpat.c line CPython reports, stops the parser and clears every handler.
-"""
-
 import from c {
-    # xmlparseobject after its header; `intern` comes first so the member
-    # descriptor reads it at offset 0.
-    obj xmlparser_record {
+    def PyModule_NewObject(name: ptr[PyObject]) -> ptr[PyObject];  obj xmlparser_record {
         has intern: ptr[PyObject],
             itself: ptr,
             parent: ptr[PyObject],
@@ -31,8 +20,6 @@ glob XMLPARSER_RECORD_SIZE: int = 72,
          MemberField(name="intern", kind=6, offset=0, readonly=True)
      ];
 
-# enum HandlerTypes, with each handler's attribute name, the name its
-# traceback entry carries, and the pyexpat.c line CPython reports for it.
 glob StartElement: int = 0,
      EndElement: int = 1,
      ProcessingInstruction: int = 2,
@@ -133,14 +120,10 @@ glob StartElement: int = 0,
      MAX_CHUNK_SIZE: int = 1 << 20,
      BUF_SIZE: int = 2048,
      INT_MAX: int = 2147483647,
-     # Installing a handler: none, the dispatching one, or the no-op character
-     # data handler used while a character data callback is active.
      HANDLER_OFF: int = 0,
      HANDLER_ON: int = 1,
      HANDLER_NOOP: int = 2;
 
-# The handle of the module definition, which the binding fills in, so a type
-# finds its module as PyType_GetModuleByDef() does.
 obj DefinitionHandle {
     has handle: ptr = ptr();
 }
@@ -148,38 +131,480 @@ obj DefinitionHandle {
 glob module_definition = DefinitionHandle(),
      xmlparser_token = ClassToken();
 
-# pyexpat_state.
 obj PyexpatState(NativeState) {
     has xml_parse_type: ptr[PyObject] = NULL,
         error: ptr[PyObject] = NULL,
         str_read: ptr[PyObject] = NULL;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        for value in [self.xml_parse_type, self.error, self.str_read] {
-            status = visit_reference(value, visitor, context);
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def clear {
-        references = [self.xml_parse_type, self.error, self.str_read];
-        self.xml_parse_type = NULL;
-        self.error = NULL;
-        self.str_read = NULL;
-        for value in references {
-            jacpy_release(value);
+def module_state(module: ptr[PyObject]) -> PyexpatState;
+
+def:priv state_of_class(cls: ptr[PyObject]) -> PyexpatState;
+
+def:priv fields(instance: ptr[PyObject]) -> ptr[xmlparser_record];
+
+def:priv set_xml_error(
+    error: ptr[PyObject], code: i32, lineno: u64, column: u64, message: str = ""
+) -> ptr[PyObject];
+
+def:priv set_error_attribute(
+    error: ptr[PyObject], name: str, value: ptr[PyObject]
+) -> bool;
+
+def:priv set_error(
+    state: PyexpatState, instance: ptr[PyObject], code: i32, message: str = ""
+) -> ptr[PyObject];
+
+def:priv set_invalid_arg(
+    state: PyexpatState, instance: ptr[PyObject], message: str
+) -> ptr[PyObject];
+
+def conv_string_to_unicode(text: ptr[u8]) -> ptr[PyObject];
+
+def:priv conv_string_len_to_unicode(text: ptr[u8], size: i32) -> ptr[PyObject];
+
+def:priv string_intern(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject];
+
+def:priv owned_tuple(items: list[ptr[PyObject]]) -> ptr[PyObject];
+
+def:priv have_handler(instance: ptr[PyObject], index: int) -> bool;
+
+def:priv error_external_entity_ref_handler(
+    parser: ptr, context: ptr[u8], base: ptr[u8], system_id: ptr[u8], public_id: ptr[u8]
+) -> i32;
+
+def:priv noop_character_data_handler(user_data: ptr, data: ptr[u8], size: i32);
+
+def:priv flag_error(instance: ptr[PyObject]);
+
+def:priv call_with_frame(
+    index: int, func: ptr[PyObject], args: ptr[PyObject], instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv call_character_handler(
+    instance: ptr[PyObject], text: ptr[u8], size: i32
+) -> i32;
+
+def:priv flush_character_buffer(instance: ptr[PyObject]) -> i32;
+
+def:priv my_CharacterDataHandler(user_data: ptr, data: ptr[u8], size: i32);
+
+def:priv ready(instance: ptr[PyObject], index: int) -> bool;
+
+def:priv dispatch(
+    instance: ptr[PyObject], index: int, args: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv void_handler(instance: ptr[PyObject], index: int, args: ptr[PyObject]);
+
+def:priv my_StartElementHandler(user_data: ptr, name: ptr[u8], atts: ptr[ptr[u8]]);
+
+def:priv my_EndElementHandler(user_data: ptr, name: ptr[u8]);
+
+def:priv my_ProcessingInstructionHandler(
+    user_data: ptr, target: ptr[u8], data: ptr[u8]
+);
+
+def:priv my_UnparsedEntityDeclHandler(
+    user_data: ptr,
+    entity_name: ptr[u8],
+    base: ptr[u8],
+    system_id: ptr[u8],
+    public_id: ptr[u8],
+    notation_name: ptr[u8]
+);
+
+def:priv my_EntityDeclHandler(
+    user_data: ptr,
+    entity_name: ptr[u8],
+    is_parameter_entity: i32,
+    value: ptr[u8],
+    value_length: i32,
+    base: ptr[u8],
+    system_id: ptr[u8],
+    public_id: ptr[u8],
+    notation_name: ptr[u8]
+);
+
+def:priv my_XmlDeclHandler(
+    user_data: ptr, version: ptr[u8], encoding: ptr[u8], standalone: i32
+);
+
+def:priv conv_content_model(model: ptr[XML_Content]) -> ptr[PyObject];
+
+def:priv my_ElementDeclHandler(user_data: ptr, name: ptr[u8], model: ptr[XML_Content]);
+
+def:priv my_AttlistDeclHandler(
+    user_data: ptr,
+    elname: ptr[u8],
+    attname: ptr[u8],
+    att_type: ptr[u8],
+    dflt: ptr[u8],
+    isrequired: i32
+);
+
+def:priv my_SkippedEntityHandler(
+    user_data: ptr, entity_name: ptr[u8], is_parameter_entity: i32
+);
+
+def:priv my_NotationDeclHandler(
+    user_data: ptr,
+    notation_name: ptr[u8],
+    base: ptr[u8],
+    system_id: ptr[u8],
+    public_id: ptr[u8]
+);
+
+def:priv my_StartNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8], uri: ptr[u8]);
+
+def:priv my_EndNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8]);
+
+def:priv my_CommentHandler(user_data: ptr, data: ptr[u8]);
+
+def:priv my_StartCdataSectionHandler(user_data: ptr);
+
+def:priv my_EndCdataSectionHandler(user_data: ptr);
+
+def:priv my_DefaultHandler(user_data: ptr, text: ptr[u8], size: i32);
+
+def:priv my_DefaultHandlerExpandHandler(user_data: ptr, text: ptr[u8], size: i32);
+
+def:priv int_result(result: ptr[PyObject]) -> i32;
+
+def:priv my_NotStandaloneHandler(user_data: ptr) -> i32;
+
+def:priv my_ExternalEntityRefHandler(
+    parser: ptr, context: ptr[u8], base: ptr[u8], system_id: ptr[u8], public_id: ptr[u8]
+) -> i32;
+
+def:priv my_StartDoctypeDeclHandler(
+    user_data: ptr,
+    doctype_name: ptr[u8],
+    sysid: ptr[u8],
+    pubid: ptr[u8],
+    has_internal_subset: i32
+);
+
+def:priv my_EndDoctypeDeclHandler(user_data: ptr);
+
+def:priv install_handler(parser: ptr, index: int, mode: int);
+
+def:priv clear_handlers(instance: ptr[PyObject], initial: bool);
+
+def:priv get_parse_result(
+    state: PyexpatState, instance: ptr[PyObject], status: i32
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetReparseDeferralEnabled_impl(
+    receiver: ptr[PyObject], enabled: bool
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_GetReparseDeferralEnabled_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_Parse_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], data: ptr[PyObject], isfinal: bool
+) -> ptr[PyObject];
+
+def:priv readinst(buffer: ptr, size: i32, method: ptr[PyObject]) -> i32;
+
+def pyexpat_xmlparser_ParseFile_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], file: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetBase_impl(
+    receiver: ptr[PyObject], base: str
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_GetBase_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pyexpat_xmlparser_GetInputContext_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def pyexpat_xmlparser_ExternalEntityParserCreate_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], context: ptr[u8], encoding: ptr[u8]
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetParamEntityParsing_impl(
+    receiver: ptr[PyObject], flag: i32
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_UseForeignDTD_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], flag: bool
+) -> ptr[PyObject];
+
+def:priv activation_threshold_result(
+    receiver: ptr[PyObject], cls: ptr[PyObject], accepted: u8
+) -> ptr[PyObject];
+
+def:priv maximum_amplification_result(
+    receiver: ptr[PyObject], cls: ptr[PyObject], max_factor: f32, accepted: u8
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetBillionLaughsAttackProtectionActivationThreshold_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], threshold: u64
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetBillionLaughsAttackProtectionMaximumAmplification_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], max_factor: f32
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetAllocTrackerActivationThreshold_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], threshold: u64
+) -> ptr[PyObject];
+
+def pyexpat_xmlparser_SetAllocTrackerMaximumAmplification_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], max_factor: f32
+) -> ptr[PyObject];
+
+glob:priv TEMPLATE_BUFFER: bytes = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+         + b"\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
+         + b"\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f"
+         + b"\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f"
+         + b"\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f"
+         + b"\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f"
+         + b"\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f"
+         + b"\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c\x7d\x7e\x7f"
+         + b"\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f"
+         + b"\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f"
+         + b"\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf"
+         + b"\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf"
+         + b"\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf"
+         + b"\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf"
+         + b"\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef"
+         + b"\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff";
+
+def PyUnknownEncodingHandler(data: ptr, name: ptr[u8], info: ptr[i32]) -> i32;
+
+def:priv new_xmlparser(
+    state: PyexpatState,
+    encoding: ptr[u8],
+    namespace_separator: ptr[u8],
+    intern: ptr[PyObject]
+) -> ptr[PyObject];
+
+def xmlparse_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def xmlparse_clear(instance: ptr[PyObject]) -> i32;
+
+def xmlparse_dealloc(instance: ptr[PyObject]);
+
+def xmlparse_handler_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def xmlparse_handler_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def xmlparse_ErrorCode_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def xmlparse_ErrorLineNumber_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_ErrorColumnNumber_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_ErrorByteIndex_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_buffer_text_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_buffer_text_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def xmlparse_buffer_size_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_buffer_size_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def xmlparse_buffer_used_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_namespace_prefixes_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_namespace_prefixes_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def xmlparse_ordered_attributes_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_ordered_attributes_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def xmlparse_specified_attributes_getter(
+    instance: ptr[PyObject], context: u64
+) -> ptr[PyObject];
+
+def xmlparse_specified_attributes_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def pyexpat_ParserCreate_impl(
+    module: ptr[PyObject],
+    encoding: ptr[u8],
+    namespace_separator: ptr[u8],
+    intern: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pyexpat_ErrorString_impl(module: ptr[PyObject], code: i64) -> ptr[PyObject];
+
+def capsule_destructor(capsule: ptr[PyObject]);
+
+glob:priv capsule_name = StaticText(text=PYEXPAT_CAPSULE_NAME),
+     utf8_name = StaticText(text="utf-8"),
+     capsule_magic = StaticText(text=PYEXPAT_CAPI_MAGIC);
+
+def new_capsule -> ptr[PyObject];
+
+glob ERROR_INFO: list[tuple[str, str]] = [
+         ("", ""),
+         ("XML_ERROR_NO_MEMORY", "out of memory"),
+         ("XML_ERROR_SYNTAX", "syntax error"),
+         ("XML_ERROR_NO_ELEMENTS", "no element found"),
+         ("XML_ERROR_INVALID_TOKEN", "not well-formed (invalid token)"),
+         ("XML_ERROR_UNCLOSED_TOKEN", "unclosed token"),
+         ("XML_ERROR_PARTIAL_CHAR", "partial character"),
+         ("XML_ERROR_TAG_MISMATCH", "mismatched tag"),
+         ("XML_ERROR_DUPLICATE_ATTRIBUTE", "duplicate attribute"),
+         ("XML_ERROR_JUNK_AFTER_DOC_ELEMENT", "junk after document element"),
+         ("XML_ERROR_PARAM_ENTITY_REF", "illegal parameter entity reference"),
+         ("XML_ERROR_UNDEFINED_ENTITY", "undefined entity"),
+         ("XML_ERROR_RECURSIVE_ENTITY_REF", "recursive entity reference"),
+         ("XML_ERROR_ASYNC_ENTITY", "asynchronous entity"),
+         ("XML_ERROR_BAD_CHAR_REF", "reference to invalid character number"),
+         ("XML_ERROR_BINARY_ENTITY_REF", "reference to binary entity"),
+         (
+             "XML_ERROR_ATTRIBUTE_EXTERNAL_ENTITY_REF",
+             "reference to external entity in attribute"
+         ),
+         (
+             "XML_ERROR_MISPLACED_XML_PI",
+             "XML or text declaration not at start of entity"
+         ),
+         ("XML_ERROR_UNKNOWN_ENCODING", "unknown encoding"),
+         (
+             "XML_ERROR_INCORRECT_ENCODING",
+             "encoding specified in XML declaration is incorrect"
+         ),
+         ("XML_ERROR_UNCLOSED_CDATA_SECTION", "unclosed CDATA section"),
+         (
+             "XML_ERROR_EXTERNAL_ENTITY_HANDLING",
+             "error in processing external entity reference"
+         ),
+         ("XML_ERROR_NOT_STANDALONE", "document is not standalone"),
+         (
+             "XML_ERROR_UNEXPECTED_STATE",
+             "unexpected parser state - please send a bug report"
+         ),
+         ("XML_ERROR_ENTITY_DECLARED_IN_PE", "entity declared in parameter entity"),
+         (
+             "XML_ERROR_FEATURE_REQUIRES_XML_DTD",
+             "requested feature requires XML_DTD support in Expat"
+         ),
+         (
+             "XML_ERROR_CANT_CHANGE_FEATURE_ONCE_PARSING",
+             "cannot change setting once parsing has begun"
+         ),
+         ("XML_ERROR_UNBOUND_PREFIX", "unbound prefix"),
+         ("XML_ERROR_UNDECLARING_PREFIX", "must not undeclare prefix"),
+         ("XML_ERROR_INCOMPLETE_PE", "incomplete markup in parameter entity"),
+         ("XML_ERROR_XML_DECL", "XML declaration not well-formed"),
+         ("XML_ERROR_TEXT_DECL", "text declaration not well-formed"),
+         ("XML_ERROR_PUBLICID", "illegal character(s) in public id"),
+         ("XML_ERROR_SUSPENDED", "parser suspended"),
+         ("XML_ERROR_NOT_SUSPENDED", "parser not suspended"),
+         ("XML_ERROR_ABORTED", "parsing aborted"),
+         ("XML_ERROR_FINISHED", "parsing finished"),
+         ("XML_ERROR_SUSPEND_PE", "cannot suspend in external parameter entity"),
+         (
+             "XML_ERROR_RESERVED_PREFIX_XML",
+             "reserved prefix (xml) must not be undeclared or bound to another namespace name"
+         ),
+         (
+             "XML_ERROR_RESERVED_PREFIX_XMLNS",
+             "reserved prefix (xmlns) must not be declared or undeclared"
+         ),
+         (
+             "XML_ERROR_RESERVED_NAMESPACE_URI",
+             "prefix must not be bound to one of the reserved namespace names"
+         ),
+         ("XML_ERROR_INVALID_ARGUMENT", "invalid argument"),
+         (
+             "XML_ERROR_NO_BUFFER",
+             "a successful prior call to function XML_GetBuffer is required"
+         ),
+         (
+             "XML_ERROR_AMPLIFICATION_LIMIT_BREACH",
+             "limit on input amplification factor (from DTD and entities) breached"
+         ),
+         ("XML_ERROR_NOT_STARTED", "parser not started")
+     ],
+     MODEL_CONSTANTS: list[tuple[str, int]] = [
+         ("XML_CTYPE_EMPTY", 1),
+         ("XML_CTYPE_ANY", 2),
+         ("XML_CTYPE_MIXED", 3),
+         ("XML_CTYPE_NAME", 4),
+         ("XML_CTYPE_CHOICE", 5),
+         ("XML_CTYPE_SEQ", 6),
+         ("XML_CQUANT_NONE", 0),
+         ("XML_CQUANT_OPT", 1),
+         ("XML_CQUANT_REP", 2),
+         ("XML_CQUANT_PLUS", 3)
+     ];
+
+def:priv add_submodule(module: ptr[PyObject], fullname: str) -> ptr[PyObject];
+
+def add_errors_module(module: ptr[PyObject]) -> i32;
+
+def add_model_module(module: ptr[PyObject]) -> i32;
+
+def add_features(module: ptr[PyObject]) -> i32;
+
+def add_version(module: ptr[PyObject]) -> i32;
+
+impl PyexpatState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    for value in [self.xml_parse_type, self.error, self.str_read] {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
         }
     }
+    return i32(0);
+}
 
-    def drop {
-        self.clear();
+impl PyexpatState.clear {
+    references = [self.xml_parse_type, self.error, self.str_read];
+    self.xml_parse_type = NULL;
+    self.error = NULL;
+    self.str_read = NULL;
+    for value in references {
+        jacpy_release(value);
     }
 }
 
-def module_state(module: ptr[PyObject]) -> PyexpatState {
+impl PyexpatState.drop {
+    self.clear();
+}
+
+impl module_state(module: ptr[PyObject]) -> PyexpatState {
     state = jacpy_binding_module_native_get(module);
     if isinstance(state, PyexpatState) {
         return state;
@@ -187,22 +612,17 @@ def module_state(module: ptr[PyObject]) -> PyexpatState {
     return PyexpatState();
 }
 
-# PyType_GetModuleState(cls).
-def:priv state_of_class(cls: ptr[PyObject]) -> PyexpatState {
+impl state_of_class(cls: ptr[PyObject]) -> PyexpatState {
     return module_state(PyType_GetModule(cls));
 }
 
-def:priv fields(instance: ptr[PyObject]) -> ptr[xmlparser_record] {
+impl fields(instance: ptr[PyObject]) -> ptr[xmlparser_record] {
     return ptr[xmlparser_record](
         jacpy_binding_record(instance, xmlparser_token.handle)
     );
 }
 
-# ------------------------------------------------------------------ errors
-
-# set_xml_error(): an ExpatError with code, lineno and offset attributes;
-# `message` replaces Expat's text for the code when given.
-def:priv set_xml_error(
+impl set_xml_error(
     error: ptr[PyObject], code: i32, lineno: u64, column: u64, message: str = ""
 ) -> ptr[PyObject] {
     arg: ptr[PyObject] = NULL;
@@ -228,17 +648,15 @@ def:priv set_xml_error(
     return NULL;
 }
 
-# Set an attribute to an owned value; False with the exception set.
-def:priv set_error_attribute(
+impl set_error_attribute(
     error: ptr[PyObject], name: str, value: ptr[PyObject]
 ) -> bool {
-    ok = value != NULL and PyObject_SetAttrString(error, name, value) != -1;
+    ok = value != NULL and jacpy_object_setattr_text(error, name, value) != -1;
     jacpy_release(value);
     return ok;
 }
 
-# set_error(): the error `code` at the parser's current position.
-def:priv set_error(
+impl set_error(
     state: PyexpatState, instance: ptr[PyObject], code: i32, message: str = ""
 ) -> ptr[PyObject] {
     parser = fields(instance).view(1)[0].itself;
@@ -247,31 +665,27 @@ def:priv set_error(
     return set_xml_error(state.error, code, lineno, column, message);
 }
 
-def:priv set_invalid_arg(
+impl set_invalid_arg(
     state: PyexpatState, instance: ptr[PyObject], message: str
 ) -> ptr[PyObject] {
     return set_error(state, instance, XML_ERROR_INVALID_ARGUMENT, message);
 }
 
-# ------------------------------------------------------------- conversions
-
-# conv_string_to_unicode(): None for a NULL string, else strict UTF-8.
-def conv_string_to_unicode(text: ptr[u8]) -> ptr[PyObject] {
+impl conv_string_to_unicode(text: ptr[u8]) -> ptr[PyObject] {
     if not text {
         return Py_NewRef(Py_None);
     }
     return PyUnicode_DecodeUTF8Stateful(ptr(text), i64(strlen(text)), ptr[u8](), None);
 }
 
-def:priv conv_string_len_to_unicode(text: ptr[u8], size: i32) -> ptr[PyObject] {
+impl conv_string_len_to_unicode(text: ptr[u8], size: i32) -> ptr[PyObject] {
     if not text {
         return Py_NewRef(Py_None);
     }
     return PyUnicode_DecodeUTF8Stateful(ptr(text), i64(size), ptr[u8](), None);
 }
 
-# string_intern(): the text, shared through the parser's intern dict.
-def:priv string_intern(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
+impl string_intern(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
     result = conv_string_to_unicode(text);
     if not result {
         return result;
@@ -289,9 +703,7 @@ def:priv string_intern(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] 
     return value;
 }
 
-# A tuple owning `items`; NULL (releasing the others) when any is missing, as
-# Py_BuildValue() does with its N and O& conversions.
-def:priv owned_tuple(items: list[ptr[PyObject]]) -> ptr[PyObject] {
+impl owned_tuple(items: list[ptr[PyObject]]) -> ptr[PyObject] {
     complete = True;
     for item in items {
         if not item {
@@ -314,31 +726,27 @@ def:priv owned_tuple(items: list[ptr[PyObject]]) -> ptr[PyObject] {
     return result;
 }
 
-# ----------------------------------------------------------------- handlers
-
-def:priv have_handler(instance: ptr[PyObject], index: int) -> bool {
+impl have_handler(instance: ptr[PyObject], index: int) -> bool {
     handlers = fields(instance).view(1)[0].handlers;
     return bool((handlers + index).view(1)[0]);
 }
 
-# error_external_entity_ref_handler(): installed after a failure so parsing
-# stops at the next external entity reference.
-def:priv error_external_entity_ref_handler(
+impl error_external_entity_ref_handler(
     parser: ptr, context: ptr[u8], base: ptr[u8], system_id: ptr[u8], public_id: ptr[u8]
 ) -> i32 {
     return i32(0);
 }
 
-def:priv noop_character_data_handler(user_data: ptr, data: ptr[u8], size: i32) {}
+impl noop_character_data_handler(user_data: ptr, data: ptr[u8], size: i32) {}
 
-def:priv flag_error(instance: ptr[PyObject]) {
+impl flag_error(instance: ptr[PyObject]) {
     clear_handlers(instance, False);
     XML_SetExternalEntityRefHandler(
         fields(instance).view(1)[0].itself, error_external_entity_ref_handler
     );
 }
 
-def:priv call_with_frame(
+impl call_with_frame(
     index: int, func: ptr[PyObject], args: ptr[PyObject], instance: ptr[PyObject]
 ) -> ptr[PyObject] {
     result = PyObject_Call(func, args, NULL);
@@ -349,10 +757,7 @@ def:priv call_with_frame(
     return result;
 }
 
-# call_character_handler(): 0, or -1 once the error is flagged.
-def:priv call_character_handler(
-    instance: ptr[PyObject], text: ptr[u8], size: i32
-) -> i32 {
+impl call_character_handler(instance: ptr[PyObject], text: ptr[u8], size: i32) -> i32 {
     if not have_handler(instance, CharacterData) {
         return i32(-1);
     }
@@ -387,7 +792,7 @@ def:priv call_character_handler(
     return i32(0);
 }
 
-def:priv flush_character_buffer(instance: ptr[PyObject]) -> i32 {
+impl flush_character_buffer(instance: ptr[PyObject]) -> i32 {
     record = fields(instance).view(1);
     if not record[0].buffer or record[0].buffer_used == 0 {
         return i32(0);
@@ -397,7 +802,7 @@ def:priv flush_character_buffer(instance: ptr[PyObject]) -> i32 {
     return status;
 }
 
-def:priv my_CharacterDataHandler(user_data: ptr, data: ptr[u8], size: i32) {
+impl my_CharacterDataHandler(user_data: ptr, data: ptr[u8], size: i32) {
     instance = ptr[PyObject](user_data);
     if PyErr_Occurred() {
         return;
@@ -411,7 +816,7 @@ def:priv my_CharacterDataHandler(user_data: ptr, data: ptr[u8], size: i32) {
         if flush_character_buffer(instance) < 0 {
             return;
         }
-        # The handler may have gone; the rest is dropped then.
+
         if not have_handler(instance, CharacterData) {
             return;
         }
@@ -428,9 +833,7 @@ def:priv my_CharacterDataHandler(user_data: ptr, data: ptr[u8], size: i32) {
     }
 }
 
-# The start of each RC_HANDLER: a handler is set, no error is pending and
-# the buffered character data went out.
-def:priv ready(instance: ptr[PyObject], index: int) -> bool {
+impl ready(instance: ptr[PyObject], index: int) -> bool {
     if not have_handler(instance, index) {
         return False;
     }
@@ -440,9 +843,7 @@ def:priv ready(instance: ptr[PyObject], index: int) -> bool {
     return flush_character_buffer(instance) >= 0;
 }
 
-# The rest of an RC_HANDLER: call the handler with `args` (owned); its
-# result, or NULL once the error is flagged.
-def:priv dispatch(
+impl dispatch(
     instance: ptr[PyObject], index: int, args: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not args {
@@ -461,11 +862,11 @@ def:priv dispatch(
     return result;
 }
 
-def:priv void_handler(instance: ptr[PyObject], index: int, args: ptr[PyObject]) {
+impl void_handler(instance: ptr[PyObject], index: int, args: ptr[PyObject]) {
     jacpy_release(dispatch(instance, index, args));
 }
 
-def:priv my_StartElementHandler(user_data: ptr, name: ptr[u8], atts: ptr[ptr[u8]]) {
+impl my_StartElementHandler(user_data: ptr, name: ptr[u8], atts: ptr[ptr[u8]]) {
     instance = ptr[PyObject](user_data);
     if not have_handler(instance, StartElement) {
         return;
@@ -477,7 +878,7 @@ def:priv my_StartElementHandler(user_data: ptr, name: ptr[u8], atts: ptr[ptr[u8]
         return;
     }
     record = fields(instance).view(1);
-    # max: the number of atts slots filled; max / 2 attributes.
+
     count = 0;
     if record[0].specified_attributes {
         count = int(XML_GetSpecifiedAttributeCount(record[0].itself));
@@ -544,7 +945,7 @@ def:priv my_StartElementHandler(user_data: ptr, name: ptr[u8], atts: ptr[ptr[u8]
     jacpy_release(result);
 }
 
-def:priv my_EndElementHandler(user_data: ptr, name: ptr[u8]) {
+impl my_EndElementHandler(user_data: ptr, name: ptr[u8]) {
     instance = ptr[PyObject](user_data);
     if ready(instance, EndElement) {
         void_handler(
@@ -553,9 +954,7 @@ def:priv my_EndElementHandler(user_data: ptr, name: ptr[u8]) {
     }
 }
 
-def:priv my_ProcessingInstructionHandler(
-    user_data: ptr, target: ptr[u8], data: ptr[u8]
-) {
+impl my_ProcessingInstructionHandler(user_data: ptr, target: ptr[u8], data: ptr[u8]) {
     instance = ptr[PyObject](user_data);
     if ready(instance, ProcessingInstruction) {
         void_handler(
@@ -566,7 +965,7 @@ def:priv my_ProcessingInstructionHandler(
     }
 }
 
-def:priv my_UnparsedEntityDeclHandler(
+impl my_UnparsedEntityDeclHandler(
     user_data: ptr,
     entity_name: ptr[u8],
     base: ptr[u8],
@@ -592,7 +991,7 @@ def:priv my_UnparsedEntityDeclHandler(
     }
 }
 
-def:priv my_EntityDeclHandler(
+impl my_EntityDeclHandler(
     user_data: ptr,
     entity_name: ptr[u8],
     is_parameter_entity: i32,
@@ -623,7 +1022,7 @@ def:priv my_EntityDeclHandler(
     }
 }
 
-def:priv my_XmlDeclHandler(
+impl my_XmlDeclHandler(
     user_data: ptr, version: ptr[u8], encoding: ptr[u8], standalone: i32
 ) {
     instance = ptr[PyObject](user_data);
@@ -642,8 +1041,7 @@ def:priv my_XmlDeclHandler(
     }
 }
 
-# conv_content_model(): (type, quant, name, children) for a content model.
-def:priv conv_content_model(model: ptr[XML_Content]) -> ptr[PyObject] {
+impl conv_content_model(model: ptr[XML_Content]) -> ptr[PyObject] {
     if jacpy_recursion_enter(" in conv_content_model") != 0 {
         return NULL;
     }
@@ -676,7 +1074,7 @@ def:priv conv_content_model(model: ptr[XML_Content]) -> ptr[PyObject] {
     return result;
 }
 
-def:priv my_ElementDeclHandler(user_data: ptr, name: ptr[u8], model: ptr[XML_Content]) {
+impl my_ElementDeclHandler(user_data: ptr, name: ptr[u8], model: ptr[XML_Content]) {
     instance = ptr[PyObject](user_data);
     args: ptr[PyObject] = NULL;
     if have_handler(instance, ElementDecl) {
@@ -713,7 +1111,7 @@ def:priv my_ElementDeclHandler(user_data: ptr, name: ptr[u8], model: ptr[XML_Con
     XML_FreeContentModel(fields(instance).view(1)[0].itself, model);
 }
 
-def:priv my_AttlistDeclHandler(
+impl my_AttlistDeclHandler(
     user_data: ptr,
     elname: ptr[u8],
     attname: ptr[u8],
@@ -739,7 +1137,7 @@ def:priv my_AttlistDeclHandler(
     }
 }
 
-def:priv my_SkippedEntityHandler(
+impl my_SkippedEntityHandler(
     user_data: ptr, entity_name: ptr[u8], is_parameter_entity: i32
 ) {
     instance = ptr[PyObject](user_data);
@@ -757,7 +1155,7 @@ def:priv my_SkippedEntityHandler(
     }
 }
 
-def:priv my_NotationDeclHandler(
+impl my_NotationDeclHandler(
     user_data: ptr,
     notation_name: ptr[u8],
     base: ptr[u8],
@@ -781,7 +1179,7 @@ def:priv my_NotationDeclHandler(
     }
 }
 
-def:priv my_StartNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8], uri: ptr[u8]) {
+impl my_StartNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8], uri: ptr[u8]) {
     instance = ptr[PyObject](user_data);
     if ready(instance, StartNamespaceDecl) {
         void_handler(
@@ -792,7 +1190,7 @@ def:priv my_StartNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8], uri: ptr[
     }
 }
 
-def:priv my_EndNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8]) {
+impl my_EndNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8]) {
     instance = ptr[PyObject](user_data);
     if ready(instance, EndNamespaceDecl) {
         void_handler(
@@ -801,28 +1199,28 @@ def:priv my_EndNamespaceDeclHandler(user_data: ptr, prefix: ptr[u8]) {
     }
 }
 
-def:priv my_CommentHandler(user_data: ptr, data: ptr[u8]) {
+impl my_CommentHandler(user_data: ptr, data: ptr[u8]) {
     instance = ptr[PyObject](user_data);
     if ready(instance, Comment) {
         void_handler(instance, Comment, owned_tuple([conv_string_to_unicode(data)]));
     }
 }
 
-def:priv my_StartCdataSectionHandler(user_data: ptr) {
+impl my_StartCdataSectionHandler(user_data: ptr) {
     instance = ptr[PyObject](user_data);
     if ready(instance, StartCdataSection) {
         void_handler(instance, StartCdataSection, PyTuple_New(0));
     }
 }
 
-def:priv my_EndCdataSectionHandler(user_data: ptr) {
+impl my_EndCdataSectionHandler(user_data: ptr) {
     instance = ptr[PyObject](user_data);
     if ready(instance, EndCdataSection) {
         void_handler(instance, EndCdataSection, PyTuple_New(0));
     }
 }
 
-def:priv my_DefaultHandler(user_data: ptr, text: ptr[u8], size: i32) {
+impl my_DefaultHandler(user_data: ptr, text: ptr[u8], size: i32) {
     instance = ptr[PyObject](user_data);
     if ready(instance, Default) {
         void_handler(
@@ -831,7 +1229,7 @@ def:priv my_DefaultHandler(user_data: ptr, text: ptr[u8], size: i32) {
     }
 }
 
-def:priv my_DefaultHandlerExpandHandler(user_data: ptr, text: ptr[u8], size: i32) {
+impl my_DefaultHandlerExpandHandler(user_data: ptr, text: ptr[u8], size: i32) {
     instance = ptr[PyObject](user_data);
     if ready(instance, DefaultHandlerExpand) {
         void_handler(
@@ -842,8 +1240,7 @@ def:priv my_DefaultHandlerExpandHandler(user_data: ptr, text: ptr[u8], size: i32
     }
 }
 
-# INT_HANDLER: the handler's result as a C long, truncated to int.
-def:priv int_result(result: ptr[PyObject]) -> i32 {
+impl int_result(result: ptr[PyObject]) -> i32 {
     if not result {
         return i32(0);
     }
@@ -852,7 +1249,7 @@ def:priv int_result(result: ptr[PyObject]) -> i32 {
     return code;
 }
 
-def:priv my_NotStandaloneHandler(user_data: ptr) -> i32 {
+impl my_NotStandaloneHandler(user_data: ptr) -> i32 {
     instance = ptr[PyObject](user_data);
     if not ready(instance, NotStandalone) {
         return i32(0);
@@ -860,10 +1257,9 @@ def:priv my_NotStandaloneHandler(user_data: ptr) -> i32 {
     return int_result(dispatch(instance, NotStandalone, PyTuple_New(0)));
 }
 
-def:priv my_ExternalEntityRefHandler(
+impl my_ExternalEntityRefHandler(
     parser: ptr, context: ptr[u8], base: ptr[u8], system_id: ptr[u8], public_id: ptr[u8]
 ) -> i32 {
-    # XML_GetUserData(): the first field of the parser.
     instance = ptr[PyObject](ptr[ptr](parser).view(1)[0]);
     if not ready(instance, ExternalEntityRef) {
         return i32(0);
@@ -884,7 +1280,7 @@ def:priv my_ExternalEntityRefHandler(
     );
 }
 
-def:priv my_StartDoctypeDeclHandler(
+impl my_StartDoctypeDeclHandler(
     user_data: ptr,
     doctype_name: ptr[u8],
     sysid: ptr[u8],
@@ -908,16 +1304,14 @@ def:priv my_StartDoctypeDeclHandler(
     }
 }
 
-def:priv my_EndDoctypeDeclHandler(user_data: ptr) {
+impl my_EndDoctypeDeclHandler(user_data: ptr) {
     instance = ptr[PyObject](user_data);
     if ready(instance, EndDoctypeDecl) {
         void_handler(instance, EndDoctypeDecl, PyTuple_New(0));
     }
 }
 
-# CALL_XML_HANDLER_SETTER(): install the handler `index` dispatches to, or
-# none, or (character data only) the no-op one.
-def:priv install_handler(parser: ptr, index: int, mode: int) {
+impl install_handler(parser: ptr, index: int, mode: int) {
     on = mode == HANDLER_ON;
     if index == StartElement {
         if on {
@@ -1058,8 +1452,7 @@ def:priv install_handler(parser: ptr, index: int, mode: int) {
     }
 }
 
-# clear_handlers(): `initial` only empties a fresh table.
-def:priv clear_handlers(instance: ptr[PyObject], initial: bool) {
+impl clear_handlers(instance: ptr[PyObject], initial: bool) {
     record = fields(instance).view(1);
     handlers = record[0].handlers;
     if not handlers {
@@ -1078,9 +1471,7 @@ def:priv clear_handlers(instance: ptr[PyObject], initial: bool) {
     }
 }
 
-# --------------------------------------------------------- xmlparser methods
-
-def:priv get_parse_result(
+impl get_parse_result(
     state: PyexpatState, instance: ptr[PyObject], status: i32
 ) -> ptr[PyObject] {
     if PyErr_Occurred() {
@@ -1097,7 +1488,7 @@ def:priv get_parse_result(
     return PyLong_FromLong(i64(status));
 }
 
-def pyexpat_xmlparser_SetReparseDeferralEnabled_impl(
+impl pyexpat_xmlparser_SetReparseDeferralEnabled_impl(
     receiver: ptr[PyObject], enabled: bool
 ) -> ptr[PyObject] {
     record = fields(receiver).view(1);
@@ -1108,13 +1499,13 @@ def pyexpat_xmlparser_SetReparseDeferralEnabled_impl(
     return Py_NewRef(Py_None);
 }
 
-def pyexpat_xmlparser_GetReparseDeferralEnabled_impl(
+impl pyexpat_xmlparser_GetReparseDeferralEnabled_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     return PyBool_FromLong(i64(fields(receiver).view(1)[0].reparse_deferral_enabled));
 }
 
-def pyexpat_xmlparser_Parse_impl(
+impl pyexpat_xmlparser_Parse_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], data: ptr[PyObject], isfinal: bool
 ) -> ptr[PyObject] {
     state = state_of_class(cls);
@@ -1127,7 +1518,7 @@ def pyexpat_xmlparser_Parse_impl(
         if not text {
             return NULL;
         }
-        # Explicitly set UTF-8 encoding; the result is ignored.
+
         XML_SetEncoding(fields(receiver).view(1)[0].itself, utf8_name.get());
     } else {
         if not view.export(data, 0) {
@@ -1161,8 +1552,7 @@ def pyexpat_xmlparser_Parse_impl(
     return get_parse_result(state, receiver, status);
 }
 
-# readinst(): read up to `size` bytes into `buffer`; the count, or -1.
-def:priv readinst(buffer: ptr, size: i32, method: ptr[PyObject]) -> i32 {
+impl readinst(buffer: ptr, size: i32, method: ptr[PyObject]) -> i32 {
     data = PyObject_CallFunction(method, "i", size);
     if not data {
         return i32(-1);
@@ -1194,7 +1584,7 @@ def:priv readinst(buffer: ptr, size: i32, method: ptr[PyObject]) -> i32 {
     return i32(length);
 }
 
-def pyexpat_xmlparser_ParseFile_impl(
+impl pyexpat_xmlparser_ParseFile_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], file: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_of_class(cls);
@@ -1233,7 +1623,7 @@ def pyexpat_xmlparser_ParseFile_impl(
     return get_parse_result(state, receiver, status);
 }
 
-def pyexpat_xmlparser_SetBase_impl(
+impl pyexpat_xmlparser_SetBase_impl(
     receiver: ptr[PyObject], base: str
 ) -> ptr[PyObject] {
     if not XML_SetBase(fields(receiver).view(1)[0].itself, base) {
@@ -1242,11 +1632,11 @@ def pyexpat_xmlparser_SetBase_impl(
     return Py_NewRef(Py_None);
 }
 
-def pyexpat_xmlparser_GetBase_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pyexpat_xmlparser_GetBase_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return conv_string_to_unicode(XML_GetBase(fields(receiver).view(1)[0].itself));
 }
 
-def pyexpat_xmlparser_GetInputContext_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl pyexpat_xmlparser_GetInputContext_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     record = fields(receiver).view(1);
     if record[0].in_callback {
         offset = i32(0);
@@ -1259,7 +1649,7 @@ def pyexpat_xmlparser_GetInputContext_impl(receiver: ptr[PyObject]) -> ptr[PyObj
     return Py_NewRef(Py_None);
 }
 
-def pyexpat_xmlparser_ExternalEntityParserCreate_impl(
+impl pyexpat_xmlparser_ExternalEntityParserCreate_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], context: ptr[u8], encoding: ptr[u8]
 ) -> ptr[PyObject] {
     state = state_of_class(cls);
@@ -1279,8 +1669,7 @@ def pyexpat_xmlparser_ExternalEntityParserCreate_impl(
     record[0].itself = XML_ExternalEntityParserCreate(
         source[0].itself, context, encoding
     );
-    # The subparser uses the parent's XML_Parser inside Expat, so it keeps
-    # the parent object alive.
+
     record[0].parent = Py_NewRef(receiver);
     record[0].handlers = ptr[ptr[PyObject]]();
     record[0].intern = Py_NewRef(source[0].intern) if source[0].intern else NULL;
@@ -1314,14 +1703,14 @@ def pyexpat_xmlparser_ExternalEntityParserCreate_impl(
     return created;
 }
 
-def pyexpat_xmlparser_SetParamEntityParsing_impl(
+impl pyexpat_xmlparser_SetParamEntityParsing_impl(
     receiver: ptr[PyObject], flag: i32
 ) -> ptr[PyObject] {
     result = XML_SetParamEntityParsing(fields(receiver).view(1)[0].itself, flag);
     return PyLong_FromLong(i64(result));
 }
 
-def pyexpat_xmlparser_UseForeignDTD_impl(
+impl pyexpat_xmlparser_UseForeignDTD_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], flag: bool
 ) -> ptr[PyObject] {
     state = state_of_class(cls);
@@ -1334,8 +1723,7 @@ def pyexpat_xmlparser_UseForeignDTD_impl(
     return Py_NewRef(Py_None);
 }
 
-# set_activation_threshold(): the setter fails only for a non-root parser.
-def:priv activation_threshold_result(
+impl activation_threshold_result(
     receiver: ptr[PyObject], cls: ptr[PyObject], accepted: u8
 ) -> ptr[PyObject] {
     if accepted == XML_TRUE {
@@ -1346,9 +1734,7 @@ def:priv activation_threshold_result(
     );
 }
 
-# set_maximum_amplification(): Expat does not say which check failed, so an
-# out-of-range factor is named before the parser kind.
-def:priv maximum_amplification_result(
+impl maximum_amplification_result(
     receiver: ptr[PyObject], cls: ptr[PyObject], max_factor: f32, accepted: u8
 ) -> ptr[PyObject] {
     if accepted == XML_TRUE {
@@ -1360,7 +1746,7 @@ def:priv maximum_amplification_result(
     return set_invalid_arg(state_of_class(cls), receiver, message);
 }
 
-def pyexpat_xmlparser_SetBillionLaughsAttackProtectionActivationThreshold_impl(
+impl pyexpat_xmlparser_SetBillionLaughsAttackProtectionActivationThreshold_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], threshold: u64
 ) -> ptr[PyObject] {
     return activation_threshold_result(
@@ -1372,7 +1758,7 @@ def pyexpat_xmlparser_SetBillionLaughsAttackProtectionActivationThreshold_impl(
     );
 }
 
-def pyexpat_xmlparser_SetBillionLaughsAttackProtectionMaximumAmplification_impl(
+impl pyexpat_xmlparser_SetBillionLaughsAttackProtectionMaximumAmplification_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], max_factor: f32
 ) -> ptr[PyObject] {
     return maximum_amplification_result(
@@ -1385,7 +1771,7 @@ def pyexpat_xmlparser_SetBillionLaughsAttackProtectionMaximumAmplification_impl(
     );
 }
 
-def pyexpat_xmlparser_SetAllocTrackerActivationThreshold_impl(
+impl pyexpat_xmlparser_SetAllocTrackerActivationThreshold_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], threshold: u64
 ) -> ptr[PyObject] {
     return activation_threshold_result(
@@ -1397,7 +1783,7 @@ def pyexpat_xmlparser_SetAllocTrackerActivationThreshold_impl(
     );
 }
 
-def pyexpat_xmlparser_SetAllocTrackerMaximumAmplification_impl(
+impl pyexpat_xmlparser_SetAllocTrackerMaximumAmplification_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], max_factor: f32
 ) -> ptr[PyObject] {
     return maximum_amplification_result(
@@ -1410,29 +1796,7 @@ def pyexpat_xmlparser_SetAllocTrackerMaximumAmplification_impl(
     );
 }
 
-# ------------------------------------------------------- unknown encodings
-
-# template_buffer: the bytes 0 to 255.
-glob:priv TEMPLATE_BUFFER: bytes = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
-         + b"\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
-         + b"\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f"
-         + b"\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f"
-         + b"\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f"
-         + b"\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f"
-         + b"\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f"
-         + b"\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c\x7d\x7e\x7f"
-         + b"\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f"
-         + b"\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f"
-         + b"\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf"
-         + b"\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf"
-         + b"\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf"
-         + b"\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf"
-         + b"\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef"
-         + b"\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff";
-
-# PyUnknownEncodingHandler(): a single-byte codec's map, -1 for bytes it
-# decodes to U+FFFD. `info` is the XML_Encoding record.
-def PyUnknownEncodingHandler(data: ptr, name: ptr[u8], info: ptr[i32]) -> i32 {
+impl PyUnknownEncodingHandler(data: ptr, name: ptr[u8], info: ptr[i32]) -> i32 {
     if PyErr_Occurred() {
         return XML_STATUS_ERROR;
     }
@@ -1440,7 +1804,13 @@ def PyUnknownEncodingHandler(data: ptr, name: ptr[u8], info: ptr[i32]) -> i32 {
     if not encoding {
         return XML_STATUS_ERROR;
     }
-    decoded = PyUnicode_Decode(TEMPLATE_BUFFER, 256, text_value(encoding), "replace");
+    template = jacpy_bytes_from_payload(TEMPLATE_BUFFER, 256);
+    if not template {
+        jacpy_release(encoding);
+        return XML_STATUS_ERROR;
+    }
+    decoded = PyUnicode_FromEncodedObject(template, name, ptr[u8]("replace"));
+    jacpy_release(template);
     jacpy_release(encoding);
     if not decoded {
         return XML_STATUS_ERROR;
@@ -1456,7 +1826,7 @@ def PyUnknownEncodingHandler(data: ptr, name: ptr[u8], info: ptr[i32]) -> i32 {
             if character == u32(0xFFFD)
             else i32(character);
     }
-    # data, convert and release follow the map.
+
     tail = ptr[ptr](info + 256);
     for index in range(3) {
         (tail + index).view(1)[0] = ptr();
@@ -1465,10 +1835,7 @@ def PyUnknownEncodingHandler(data: ptr, name: ptr[u8], info: ptr[i32]) -> i32 {
     return XML_STATUS_OK;
 }
 
-# ---------------------------------------------------------- object lifetime
-
-# newxmlparseobject().
-def:priv new_xmlparser(
+impl new_xmlparser(
     state: PyexpatState,
     encoding: ptr[u8],
     namespace_separator: ptr[u8],
@@ -1489,7 +1856,7 @@ def:priv new_xmlparser(
     record[0].handlers = ptr[ptr[PyObject]]();
     record[0].intern = Py_NewRef(intern) if intern else NULL;
     record[0].reparse_deferral_enabled = 1;
-    # namespace_separator is either NULL or one character.
+
     record[0].itself = XML_ParserCreate_MM(
         encoding, addressof(expat_memory_suite), namespace_separator
     );
@@ -1514,7 +1881,7 @@ def:priv new_xmlparser(
     return created;
 }
 
-def xmlparse_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl xmlparse_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     record = fields(instance).view(1);
     handlers = record[0].handlers;
     if handlers {
@@ -1532,9 +1899,7 @@ def xmlparse_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i3
     return visit_reference(Py_TYPE(instance), visitor, context);
 }
 
-# xmlparse_clear(): the parent stays until XML_ParserFree() has run, since a
-# subparser still uses its parent's XML_Parser.
-def xmlparse_clear(instance: ptr[PyObject]) -> i32 {
+impl xmlparse_clear(instance: ptr[PyObject]) -> i32 {
     clear_handlers(instance, False);
     record = fields(instance).view(1);
     intern = record[0].intern;
@@ -1543,7 +1908,7 @@ def xmlparse_clear(instance: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def xmlparse_dealloc(instance: ptr[PyObject]) {
+impl xmlparse_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_untrack(instance);
     xmlparse_clear(instance);
     record = fields(instance).view(1);
@@ -1566,14 +1931,12 @@ def xmlparse_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_free(instance);
 }
 
-# ---------------------------------------------------------------- getsets
-
-def xmlparse_handler_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl xmlparse_handler_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     handler = (fields(instance).view(1)[0].handlers + int(context)).view(1)[0];
     return Py_NewRef(handler or Py_None);
 }
 
-def xmlparse_handler_setter(
+impl xmlparse_handler_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     index = int(context);
@@ -1582,7 +1945,6 @@ def xmlparse_handler_setter(
         return i32(-1);
     }
     if index == CharacterData {
-        # The cached data goes out with the old handler.
         if flush_character_buffer(instance) < 0 {
             return i32(-1);
         }
@@ -1590,8 +1952,6 @@ def xmlparse_handler_setter(
     mode = HANDLER_ON;
     stored: ptr[PyObject] = NULL;
     if value == Py_None {
-        # With a character data callback active the C handler cannot be
-        # removed safely; a no-op replaces it.
         mode = HANDLER_OFF;
         if index == CharacterData and fields(instance).view(1)[0].in_callback {
             mode = HANDLER_NOOP;
@@ -1607,11 +1967,11 @@ def xmlparse_handler_setter(
     return i32(0);
 }
 
-def xmlparse_ErrorCode_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl xmlparse_ErrorCode_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return PyLong_FromLong(i64(XML_GetErrorCode(fields(instance).view(1)[0].itself)));
 }
 
-def xmlparse_ErrorLineNumber_getter(
+impl xmlparse_ErrorLineNumber_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyLong_FromLong(
@@ -1619,7 +1979,7 @@ def xmlparse_ErrorLineNumber_getter(
     );
 }
 
-def xmlparse_ErrorColumnNumber_getter(
+impl xmlparse_ErrorColumnNumber_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyLong_FromLong(
@@ -1627,19 +1987,19 @@ def xmlparse_ErrorColumnNumber_getter(
     );
 }
 
-def xmlparse_ErrorByteIndex_getter(
+impl xmlparse_ErrorByteIndex_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyLong_FromLong(XML_GetCurrentByteIndex(fields(instance).view(1)[0].itself));
 }
 
-def xmlparse_buffer_text_getter(
+impl xmlparse_buffer_text_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyBool_FromLong(i64(bool(fields(instance).view(1)[0].buffer)));
 }
 
-def xmlparse_buffer_text_setter(
+impl xmlparse_buffer_text_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -1671,13 +2031,13 @@ def xmlparse_buffer_text_setter(
     return i32(0);
 }
 
-def xmlparse_buffer_size_getter(
+impl xmlparse_buffer_size_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyLong_FromLong(i64(fields(instance).view(1)[0].buffer_size));
 }
 
-def xmlparse_buffer_size_setter(
+impl xmlparse_buffer_size_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -1696,7 +2056,7 @@ def xmlparse_buffer_size_setter(
         return i32(-1);
     }
     record = fields(instance).view(1);
-    # Trivial case: no change.
+
     if new_size == i64(record[0].buffer_size) {
         return i32(0);
     }
@@ -1724,19 +2084,19 @@ def xmlparse_buffer_size_setter(
     return i32(0);
 }
 
-def xmlparse_buffer_used_getter(
+impl xmlparse_buffer_used_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyLong_FromLong(i64(fields(instance).view(1)[0].buffer_used));
 }
 
-def xmlparse_namespace_prefixes_getter(
+impl xmlparse_namespace_prefixes_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyBool_FromLong(i64(fields(instance).view(1)[0].ns_prefixes));
 }
 
-def xmlparse_namespace_prefixes_setter(
+impl xmlparse_namespace_prefixes_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -1753,13 +2113,13 @@ def xmlparse_namespace_prefixes_setter(
     return i32(0);
 }
 
-def xmlparse_ordered_attributes_getter(
+impl xmlparse_ordered_attributes_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyBool_FromLong(i64(fields(instance).view(1)[0].ordered_attributes));
 }
 
-def xmlparse_ordered_attributes_setter(
+impl xmlparse_ordered_attributes_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -1774,13 +2134,13 @@ def xmlparse_ordered_attributes_setter(
     return i32(0);
 }
 
-def xmlparse_specified_attributes_getter(
+impl xmlparse_specified_attributes_getter(
     instance: ptr[PyObject], context: u64
 ) -> ptr[PyObject] {
     return PyBool_FromLong(i64(fields(instance).view(1)[0].specified_attributes));
 }
 
-def xmlparse_specified_attributes_setter(
+impl xmlparse_specified_attributes_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if not value {
@@ -1795,9 +2155,7 @@ def xmlparse_specified_attributes_setter(
     return i32(0);
 }
 
-# ------------------------------------------------------- module functions
-
-def pyexpat_ParserCreate_impl(
+impl pyexpat_ParserCreate_impl(
     module: ptr[PyObject],
     encoding: ptr[u8],
     namespace_separator: ptr[u8],
@@ -1810,7 +2168,7 @@ def pyexpat_ParserCreate_impl(
         );
         return NULL;
     }
-    # Explicitly passing None means no interning; omitting it, a new dict.
+
     owned = False;
     if intern == Py_None {
         intern = NULL;
@@ -1831,12 +2189,11 @@ def pyexpat_ParserCreate_impl(
     return result;
 }
 
-def pyexpat_ErrorString_impl(module: ptr[PyObject], code: i64) -> ptr[PyObject] {
+impl pyexpat_ErrorString_impl(module: ptr[PyObject], code: i64) -> ptr[PyObject] {
     return conv_string_to_unicode(XML_ErrorString(i32.wrap(code)));
 }
 
-# pyexpat_capsule_destructor().
-def capsule_destructor(capsule: ptr[PyObject]) {
+impl capsule_destructor(capsule: ptr[PyObject]) {
     address = PyCapsule_GetPointer(capsule, capsule_name.get());
     if not address {
         PyErr_FormatUnraisable("Exception ignored while destroying pyexact capsule");
@@ -1845,17 +2202,7 @@ def capsule_destructor(capsule: ptr[PyObject]) {
     PyMem_Free(address);
 }
 
-# ------------------------------------------------------------ the C API
-
-# The capsule's name and magic outlive every capsule.
-glob:priv capsule_name = StaticText(text=PYEXPAT_CAPSULE_NAME),
-     utf8_name = StaticText(text="utf-8"),
-     capsule_magic = StaticText(text=PYEXPAT_CAPI_MAGIC);
-
-# The pyexpat.expat_CAPI capsule over a PyMem copy of the dispatch table.
-# The linked Expat (2.7) predates XML_SetHashSalt16Bytes, so that entry is
-# NULL, as in a CPython build against it.
-def new_capsule -> ptr[PyObject] {
+impl new_capsule -> ptr[PyObject] {
     name = capsule_name.get();
     magic = capsule_magic.get();
     if not name or not magic {
@@ -1904,115 +2251,14 @@ def new_capsule -> ptr[PyObject] {
     return capsule;
 }
 
-# --------------------------------------------------------- the submodules
-
-# error_info_of: each XML_Error by code (XML_ERROR_NONE is not exposed), with
-# the message used when the linked Expat has none for it.
-glob ERROR_INFO: list[tuple[str, str]] = [
-         ("", ""),
-         ("XML_ERROR_NO_MEMORY", "out of memory"),
-         ("XML_ERROR_SYNTAX", "syntax error"),
-         ("XML_ERROR_NO_ELEMENTS", "no element found"),
-         ("XML_ERROR_INVALID_TOKEN", "not well-formed (invalid token)"),
-         ("XML_ERROR_UNCLOSED_TOKEN", "unclosed token"),
-         ("XML_ERROR_PARTIAL_CHAR", "partial character"),
-         ("XML_ERROR_TAG_MISMATCH", "mismatched tag"),
-         ("XML_ERROR_DUPLICATE_ATTRIBUTE", "duplicate attribute"),
-         ("XML_ERROR_JUNK_AFTER_DOC_ELEMENT", "junk after document element"),
-         ("XML_ERROR_PARAM_ENTITY_REF", "illegal parameter entity reference"),
-         ("XML_ERROR_UNDEFINED_ENTITY", "undefined entity"),
-         ("XML_ERROR_RECURSIVE_ENTITY_REF", "recursive entity reference"),
-         ("XML_ERROR_ASYNC_ENTITY", "asynchronous entity"),
-         ("XML_ERROR_BAD_CHAR_REF", "reference to invalid character number"),
-         ("XML_ERROR_BINARY_ENTITY_REF", "reference to binary entity"),
-         (
-             "XML_ERROR_ATTRIBUTE_EXTERNAL_ENTITY_REF",
-             "reference to external entity in attribute"
-         ),
-         (
-             "XML_ERROR_MISPLACED_XML_PI",
-             "XML or text declaration not at start of entity"
-         ),
-         ("XML_ERROR_UNKNOWN_ENCODING", "unknown encoding"),
-         (
-             "XML_ERROR_INCORRECT_ENCODING",
-             "encoding specified in XML declaration is incorrect"
-         ),
-         ("XML_ERROR_UNCLOSED_CDATA_SECTION", "unclosed CDATA section"),
-         (
-             "XML_ERROR_EXTERNAL_ENTITY_HANDLING",
-             "error in processing external entity reference"
-         ),
-         ("XML_ERROR_NOT_STANDALONE", "document is not standalone"),
-         (
-             "XML_ERROR_UNEXPECTED_STATE",
-             "unexpected parser state - please send a bug report"
-         ),
-         ("XML_ERROR_ENTITY_DECLARED_IN_PE", "entity declared in parameter entity"),
-         (
-             "XML_ERROR_FEATURE_REQUIRES_XML_DTD",
-             "requested feature requires XML_DTD support in Expat"
-         ),
-         (
-             "XML_ERROR_CANT_CHANGE_FEATURE_ONCE_PARSING",
-             "cannot change setting once parsing has begun"
-         ),
-         ("XML_ERROR_UNBOUND_PREFIX", "unbound prefix"),
-         ("XML_ERROR_UNDECLARING_PREFIX", "must not undeclare prefix"),
-         ("XML_ERROR_INCOMPLETE_PE", "incomplete markup in parameter entity"),
-         ("XML_ERROR_XML_DECL", "XML declaration not well-formed"),
-         ("XML_ERROR_TEXT_DECL", "text declaration not well-formed"),
-         ("XML_ERROR_PUBLICID", "illegal character(s) in public id"),
-         ("XML_ERROR_SUSPENDED", "parser suspended"),
-         ("XML_ERROR_NOT_SUSPENDED", "parser not suspended"),
-         ("XML_ERROR_ABORTED", "parsing aborted"),
-         ("XML_ERROR_FINISHED", "parsing finished"),
-         ("XML_ERROR_SUSPEND_PE", "cannot suspend in external parameter entity"),
-         (
-             "XML_ERROR_RESERVED_PREFIX_XML",
-             "reserved prefix (xml) must not be undeclared or bound to another namespace name"
-         ),
-         (
-             "XML_ERROR_RESERVED_PREFIX_XMLNS",
-             "reserved prefix (xmlns) must not be declared or undeclared"
-         ),
-         (
-             "XML_ERROR_RESERVED_NAMESPACE_URI",
-             "prefix must not be bound to one of the reserved namespace names"
-         ),
-         ("XML_ERROR_INVALID_ARGUMENT", "invalid argument"),
-         (
-             "XML_ERROR_NO_BUFFER",
-             "a successful prior call to function XML_GetBuffer is required"
-         ),
-         (
-             "XML_ERROR_AMPLIFICATION_LIMIT_BREACH",
-             "limit on input amplification factor (from DTD and entities) breached"
-         ),
-         ("XML_ERROR_NOT_STARTED", "parser not started")
-     ],
-     MODEL_CONSTANTS: list[tuple[str, int]] = [
-         ("XML_CTYPE_EMPTY", 1),
-         ("XML_CTYPE_ANY", 2),
-         ("XML_CTYPE_MIXED", 3),
-         ("XML_CTYPE_NAME", 4),
-         ("XML_CTYPE_CHOICE", 5),
-         ("XML_CTYPE_SEQ", 6),
-         ("XML_CQUANT_NONE", 0),
-         ("XML_CQUANT_OPT", 1),
-         ("XML_CQUANT_REP", 2),
-         ("XML_CQUANT_PLUS", 3)
-     ];
-
-# add_submodule(): a new module registered in sys.modules and added to
-# `module`; it is returned borrowed.
-def:priv add_submodule(module: ptr[PyObject], fullname: str) -> ptr[PyObject] {
+impl add_submodule(module: ptr[PyObject], fullname: str) -> ptr[PyObject] {
     name = fullname.split(".")[-1];
-    submodule = PyModule_New(fullname);
+    key = text_object(fullname);
+    submodule = PyModule_NewObject(key);
     if not submodule {
+        jacpy_release(key);
         return NULL;
     }
-    key = text_object(fullname);
     if _PyImport_SetModule(key, submodule) < 0 {
         jacpy_release(submodule);
         jacpy_release(key);
@@ -2025,8 +2271,7 @@ def:priv add_submodule(module: ptr[PyObject], fullname: str) -> ptr[PyObject] {
     return submodule;
 }
 
-# add_errors_module().
-def add_errors_module(module: ptr[PyObject]) -> i32 {
+impl add_errors_module(module: ptr[PyObject]) -> i32 {
     errors = add_submodule(module, "pyexpat.errors");
     if not errors {
         return i32(-1);
@@ -2042,7 +2287,7 @@ def add_errors_module(module: ptr[PyObject]) -> i32 {
     }
     for code in range(1, len(ERROR_INFO)) {
         (name, description) = ERROR_INFO[code];
-        # Expat's own text is the source of truth; the copy is a fallback.
+
         found = XML_ErrorString(i32(code));
         message = c_string_text(found) if found else text_object(description);
         number = PyLong_FromLong(i64(code)) if message else NULL;
@@ -2078,8 +2323,7 @@ def add_errors_module(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-# add_model_module().
-def add_model_module(module: ptr[PyObject]) -> i32 {
+impl add_model_module(module: ptr[PyObject]) -> i32 {
     model = add_submodule(module, "pyexpat.model");
     if not model {
         return i32(-1);
@@ -2098,8 +2342,7 @@ def add_model_module(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-# add_features(): (name, value) for each compiled-in Expat feature.
-def add_features(module: ptr[PyObject]) -> i32 {
+impl add_features(module: ptr[PyObject]) -> i32 {
     features = PyList_New(0);
     if not features {
         return i32(-1);
@@ -2126,8 +2369,7 @@ def add_features(module: ptr[PyObject]) -> i32 {
     return PyModule_Add(module, "features", features);
 }
 
-# EXPAT_VERSION and version_info.
-def add_version(module: ptr[PyObject]) -> i32 {
+impl add_version(module: ptr[PyObject]) -> i32 {
     text = c_string_text(XML_ExpatVersion());
     if not text or PyModule_Add(module, "EXPAT_VERSION", text) < 0 {
         return i32(-1);

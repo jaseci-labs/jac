@@ -205,40 +205,6 @@
      }
 
      str = _Py_SourceAsString(source, "compile", "string, bytes or AST", &cf, &source_copy);
---- a/Objects/object.c
-+++ b/Objects/object.c
-@@ -15,7 +15,6 @@
- #include "pycore_genobject.h"     // _PyAsyncGenAThrow_Type
- #include "pycore_hamt.h"          // _PyHamtItems_Type
- #include "pycore_initconfig.h"    // _PyStatus_OK()
--#include "pycore_instruction_sequence.h" // _PyInstructionSequence_Type
- #include "pycore_interpframe.h"   // _PyFrame_Stackbase()
- #include "pycore_interpolation.h" // _PyInterpolation_Type
- #include "pycore_list.h"          // _PyList_DebugMallocStats()
-@@ -27,7 +26,6 @@
- #include "pycore_pyerrors.h"      // _PyErr_Occurred()
- #include "pycore_pymem.h"         // _PyMem_IsPtrFreed()
- #include "pycore_pystate.h"       // _PyThreadState_GET()
--#include "pycore_symtable.h"      // PySTEntry_Type
- #include "pycore_template.h"      // _PyTemplate_Type _PyTemplateIter_Type
- #include "pycore_tuple.h"         // _PyTuple_DebugMallocStats()
- #include "pycore_typeobject.h"    // _PyBufferWrapper_Type
-@@ -2512,7 +2510,6 @@
-     &PyRangeIter_Type,
-     &PyRange_Type,
-     &PyReversed_Type,
--    &PySTEntry_Type,
-     &PySeqIter_Type,
-     &PySetIter_Type,
-     &PySet_Type,
-@@ -2543,7 +2540,6 @@
-     &_PyHamt_BitmapNode_Type,
-     &_PyHamt_CollisionNode_Type,
-     &_PyHamt_Type,
--    &_PyInstructionSequence_Type,
-     &_PyInterpolation_Type,
-     &_PyLegacyEventHandler_Type,
-     &_PyLineIterator,
 --- a/Modules/Setup.bootstrap.in
 +++ b/Modules/Setup.bootstrap.in
 @@ -36,7 +36,6 @@
@@ -251,25 +217,75 @@
  @MODULE_PWD_TRUE@pwd pwdmodule.c
 --- a/Modules/config.c.in
 +++ b/Modules/config.c.in
-@@ -19,6 +19,7 @@
- extern PyObject* PyInit_gc(void);
- extern PyObject* PyInit__ast(void);
- extern PyObject* PyInit__tokenize(void);
-+extern PyObject* PyInit__symtable(void);
- extern PyObject* PyInit__contextvars(void);
- extern PyObject* _PyWarnings_Init(void);
- extern PyObject* PyInit__string(void);
-@@ -36,8 +37,9 @@
-     /* This lives in Python/Python-ast.c */
-     {"_ast", PyInit__ast},
-
+@@ -1,65 +1,7 @@
+ /* Module configuration */
+ 
+-/* !!! !!! !!! This file is edited by the makesetup script !!! !!! !!! */
+-
+-/* This file contains the table of built-in modules.
+-   See create_builtin() in import.c. */
++/* JacPython's table of built-in modules, _PyImport_Inittab, is C data that
++   jaclang/runtime/python/inittab.jac defines. makesetup still writes this
++   file, and without its ADDMODULE markers it adds nothing here. */
+ 
+ #include "Python.h"
+-
+-#ifdef __cplusplus
+-extern "C" {
+-#endif
+-
+-
+-/* -- ADDMODULE MARKER 1 -- */
+-
+-extern PyObject* PyMarshal_Init(void);
+-extern PyObject* PyInit__imp(void);
+-extern PyObject* PyInit_gc(void);
+-extern PyObject* PyInit__ast(void);
+-extern PyObject* PyInit__tokenize(void);
+-extern PyObject* PyInit__contextvars(void);
+-extern PyObject* _PyWarnings_Init(void);
+-extern PyObject* PyInit__string(void);
+-
+-struct _inittab _PyImport_Inittab[] = {
+-
+-/* -- ADDMODULE MARKER 2 -- */
+-
+-    /* This module lives in marshal.c */
+-    {"marshal", PyMarshal_Init},
+-
+-    /* This lives in import.c */
+-    {"_imp", PyInit__imp},
+-
+-    /* This lives in Python/Python-ast.c */
+-    {"_ast", PyInit__ast},
+-
 -    /* This lives in Python/Python-tokenize.c */
-+    /* Jac-backed compiler APIs live in Python/jac_compile.c. */
-     {"_tokenize", PyInit__tokenize},
-+    {"_symtable", PyInit__symtable},
-
-     /* These entries are here for sys.builtin_module_names */
-     {"builtins", NULL},
+-    {"_tokenize", PyInit__tokenize},
+-
+-    /* These entries are here for sys.builtin_module_names */
+-    {"builtins", NULL},
+-    {"sys", NULL},
+-
+-    /* This lives in gcmodule.c */
+-    {"gc", PyInit_gc},
+-
+-    /* This lives in Python/_contextvars.c */
+-    {"_contextvars", PyInit__contextvars},
+-
+-    /* This lives in _warnings.c */
+-    {"_warnings", _PyWarnings_Init},
+-
+-    /* This lives in Objects/unicodeobject.c */
+-    {"_string", PyInit__string},
+-
+-    /* Sentinel */
+-    {0, 0}
+-};
+-
+-
+-#ifdef __cplusplus
+-}
+-#endif
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
 @@ -381,38 +381,2 @@
@@ -335,41 +351,70 @@
 -		Python/instruction_sequence.o \
 @@ -495,1 +450,0 @@
 -		Python/symtable.o \
-@@ -523,1 +477,0 @@
+@@ -522,10 +476,0 @@
+-		Objects/abstract.o \
 -		Objects/boolobject.o \
-@@ -528,3 +481,0 @@
+-		Objects/bytes_methods.o \
+-		Objects/bytearrayobject.o \
+-		Objects/bytesobject.o \
+-		Objects/call.o \
 -		Objects/capsule.o \
 -		Objects/cellobject.o \
 -		Objects/classobject.o \
-@@ -532,1 +482,0 @@
+-		Objects/codeobject.o \
+@@ -532,2 +476,0 @@
 -		Objects/complexobject.o \
-@@ -534,1 +483,0 @@
+-		Objects/descrobject.o \
+@@ -534,2 +476,0 @@
 -		Objects/enumobject.o \
-@@ -536,1 +484,0 @@
+-		Objects/exceptions.o \
+@@ -536,2 +476,0 @@
 -		Objects/genericaliasobject.o \
-@@ -538,1 +485,0 @@
+-		Objects/genobject.o \
+@@ -538,3 +476,0 @@
 -		Objects/fileobject.o \
-@@ -542,2 +488,0 @@
+-		Objects/floatobject.o \
+-		Objects/frameobject.o \
+@@ -541,5 +476,0 @@
+-		Objects/funcobject.o \
 -		Objects/interpolationobject.o \
 -		Objects/iterobject.o \
-@@ -551,1 +495,0 @@
+-		Objects/listobject.o \
+-		Objects/longobject.o \
+@@ -546,3 +476,0 @@
+-		Objects/dictobject.o \
+-		Objects/odictobject.o \
+-		Objects/memoryobject.o \
+@@ -549,5 +476,0 @@
+-		Objects/methodobject.o \
+-		Objects/moduleobject.o \
 -		Objects/namespaceobject.o \
-@@ -554,2 +497,0 @@
+-		Objects/object.o \
+-		Objects/obmalloc.o \
+@@ -554,6 +476,0 @@
 -		Objects/picklebufobject.o \
 -		Objects/rangeobject.o \
-@@ -557,3 +498,0 @@
+-		Objects/setobject.o \
 -		Objects/sliceobject.o \
 -		Objects/structseq.o \
 -		Objects/templateobject.o \
-@@ -565,1 +503,0 @@
+@@ -560,2 +476,0 @@
+-		Objects/tupleobject.o \
+-		Objects/typeobject.o \
+@@ -562,3 +476,0 @@
+-		Objects/typevarobject.o \
+-		Objects/unicodeobject.o \
+-		Objects/unicodectype.o \
+@@ -565,2 +476,0 @@
 -		Objects/unionobject.o \
-@@ -1937,1 +1892,1 @@
+-		Objects/weakrefobject.o \
+@@ -1937,1 +1864,1 @@
 -Modules/posixmodule.o: $(srcdir)/Modules/posixmodule.c $(srcdir)/Modules/posixmodule.h
 +# posixmodule.c and posixmodule.h are native Jac (jaclang/runtime/python/modules/posix*.jac).
-@@ -1943,1 +1898,1 @@
+@@ -1943,1 +1870,1 @@
 -Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c $(srcdir)/Modules/posixmodule.h
 +Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c
-@@ -1986,8 +1941,2 @@
+@@ -1986,8 +1913,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
 -	@$(MKDIR_P) $(srcdir)/Parser/lexer
@@ -380,7 +425,7 @@
 -	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2015,21 +1964,2 @@
+@@ -2015,21 +1936,2 @@
 -	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
 -	# using Tools/build/generate_token.py
 -	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
@@ -404,10 +449,10 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065,1 +1995,1 @@
+@@ -2065,1 +1967,1 @@
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
-@@ -2201,7 +2130,0 @@
+@@ -2201,7 +2102,0 @@
 -Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
 -                $(srcdir)/Include/internal/pycore_compile.h \
 -                $(srcdir)/Include/internal/pycore_flowgraph.h \
@@ -415,17 +460,19 @@
 -                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
 -                $(srcdir)/Include/internal/pycore_opcode_utils.h
 -
-@@ -2214,3 +2136,0 @@
+@@ -2214,3 +2108,0 @@
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2817,1 +2737,1 @@
+@@ -2247,1 +2138,0 @@
+-Objects/typeobject.o: Objects/typeslots.inc
+@@ -2817,1 +2708,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822,1 +2742,1 @@
+@@ -2822,1 +2713,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3343,7 @@
+@@ -3422,0 +3314,7 @@
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h

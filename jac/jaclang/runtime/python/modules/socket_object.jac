@@ -1,11 +1,3 @@
-"""The _socket.socket type: its methods, ancillary data (sendmsg, recvmsg,
-recvmsg_into), creation, finalization and representation.
-
-Derived from CPython 3.14.6 Modules/socketmodule.c; see ../LICENSE.cpython.
-Arguments are parsed with PyArg_ParseTuple() and its siblings in the same
-formats as the C methods, so conversions and messages are getargs.c's.
-"""
-
 import from c {
     def socket(domain: i32, type: i32, protocol: i32) -> i32;  def bind(
         fd: i32, addr: ptr, len: u32
@@ -25,9 +17,8 @@ import from c {
         fd: i32, buf: ptr, len: u64, flags: i32, addr: ptr, addrlen: u32
     ) -> i64;  def sendmsg(fd: i32, msg: ptr, flags: i32) -> i64;  def shutdown(
         fd: i32, how: i32
-    ) -> i32;  glob PyLong_Type: PyTypeObject;
-    # The keyword lists of the METH_VARARGS | METH_KEYWORDS methods.
-    glob:priv recv_into_keywords: list[ptr[u8]] = [
+    ) -> i32;  glob PyLong_Type: PyTypeObject; glob:priv recv_into_keywords:
+             list[ptr[u8]] = [
              ptr[u8]("buffer"),
              ptr[u8]("nbytes"),
              ptr[u8]("flags"),
@@ -43,92 +34,27 @@ import from c {
          ];
 }
 
-glob:priv
-     # The length of a sock_addr_t's socklen_t cell, after the record.
-     SOCKLEN_SIZE: int = 8,
-     # sizeof(struct iovec) and of the sendmsg() control-message records
-     # (int level, int type, Py_buffer data).
+glob:priv SOCKLEN_SIZE: int = 8,
      IOVEC_SIZE: int = 16,
      CMSGINFO_SIZE: int = 88,
      SSIZE_MAX: int = 0x7FFFFFFFFFFFFFFF;
 
-# ---------------------------------------------------------------------------
-# Scratch memory.
+def new_address_space -> ptr[u8];
 
-"""A zeroed sock_addr_t followed by its socklen_t."""
-def new_address_space -> ptr[u8] {
-    address = ptr[u8](PyMem_Calloc(1, u64(SOCK_ADDR_SIZE + SOCKLEN_SIZE)));
-    if not address {
-        PyErr_NoMemory();
-    }
-    return address;
-}
-
-"""The socklen_t cell of a new_address_space()."""
-def length_cell(address: ptr[u8]) -> ptr[u32] {
-    return ptr[u32](address + SOCK_ADDR_SIZE);
-}
-
-# ---------------------------------------------------------------------------
-# Socket functions sock_call() runs.
+def length_cell(address: ptr[u8]) -> ptr[u32];
 
 obj AcceptCall(SocketCall) {
     has address: ptr[u8],
         family: int,
         result: i32 = -1;
 
-    def run(fd: i32) -> bool {
-        addr = ptr(self.address);
-        paddrlen = length_cell(self.address);
-        # AF_ALG does not support accept() with addr and raises ECONNABORTED
-        # instead.
-        if HAS_ALG and self.family == AF_ALG {
-            addr = ptr();
-            paddrlen = ptr[u32]();
-            length_cell(self.address).view(1)[0] = u32(0);
-        }
-        if HAS_ACCEPT4 and accept4_works != 0 {
-            self.result = accept_cloexec(fd, addr, paddrlen, i32(SOCK_CLOEXEC));
-            if self.result == INVALID_SOCKET and accept4_works == -1 {
-                # Linux older than 2.6.28 fails accept4() with ENOSYS.
-                accept4_works = i32(1) if jacpy_errno() != ENOSYS else i32(0);
-            }
-        }
-        if not HAS_ACCEPT4 or accept4_works == 0 {
-            self.result = accept(fd, addr, paddrlen);
-        }
-        if self.result < 0 {
-            self.error = int(jacpy_errno());
-        }
-        return self.result >= 0;
-    }
+    def run(fd: i32) -> bool;
 }
 
-"""sock_connect_impl(): the outcome of an asynchronous connect()."""
 obj ConnectCall(SocketCall) {
     has scratch: ptr[u8];
 
-    def run(fd: i32) -> bool {
-        value = ptr[i32](self.scratch);
-        size = ptr[u32](self.scratch + 4);
-        value.view(1)[0] = i32(0);
-        size.view(1)[0] = u32(4);
-        if getsockopt(fd, i32(SOL_SOCKET), i32(SO_ERROR), ptr(value), size) != 0 {
-            # getsockopt() failed.
-            self.error = int(jacpy_errno());
-            return False;
-        }
-        err = int(value.view(1)[0]);
-        if err == EISCONN {
-            return True;
-        }
-        if err != 0 {
-            # sock_call_ex() reports the connect() error.
-            self.error = err;
-            return False;
-        }
-        return True;
-    }
+    def run(fd: i32) -> bool;
 }
 
 obj RecvCall(SocketCall) {
@@ -137,13 +63,7 @@ obj RecvCall(SocketCall) {
         flags: int,
         result: int = 0;
 
-    def run(fd: i32) -> bool {
-        self.result = int(recv(fd, self.buffer, u64(self.length), i32(self.flags)));
-        if self.result < 0 {
-            self.error = int(jacpy_errno());
-        }
-        return self.result >= 0;
-    }
+    def run(fd: i32) -> bool;
 }
 
 obj RecvFromCall(SocketCall) {
@@ -153,24 +73,7 @@ obj RecvFromCall(SocketCall) {
         address: ptr[u8],
         result: int = 0;
 
-    def run(fd: i32) -> bool {
-        paddrlen = length_cell(self.address);
-        jacpy_memory_zero(ptr(self.address), i64(paddrlen.view(1)[0]));
-        self.result = int(
-            recvfrom(
-                fd,
-                self.buffer,
-                u64(self.length),
-                i32(self.flags),
-                ptr(self.address),
-                paddrlen
-            )
-        );
-        if self.result < 0 {
-            self.error = int(jacpy_errno());
-        }
-        return self.result >= 0;
-    }
+    def run(fd: i32) -> bool;
 }
 
 obj MessageCall(SocketCall) {
@@ -179,17 +82,7 @@ obj MessageCall(SocketCall) {
         sending: bool,
         result: int = 0;
 
-    def run(fd: i32) -> bool {
-        if self.sending {
-            self.result = int(sendmsg(fd, ptr(self.message), i32(self.flags)));
-        } else {
-            self.result = int(recvmsg(fd, ptr(self.message), i32(self.flags)));
-        }
-        if self.result < 0 {
-            self.error = int(jacpy_errno());
-        }
-        return self.result >= 0;
-    }
+    def run(fd: i32) -> bool;
 }
 
 obj SendCall(SocketCall) {
@@ -198,13 +91,7 @@ obj SendCall(SocketCall) {
         flags: int,
         result: int = 0;
 
-    def run(fd: i32) -> bool {
-        self.result = int(send(fd, self.buffer, u64(self.length), i32(self.flags)));
-        if self.result < 0 {
-            self.error = int(jacpy_errno());
-        }
-        return self.result >= 0;
-    }
+    def run(fd: i32) -> bool;
 }
 
 obj SendToCall(SocketCall) {
@@ -215,53 +102,337 @@ obj SendToCall(SocketCall) {
         address_length: int,
         result: int = 0;
 
-    def run(fd: i32) -> bool {
-        self.result = int(
-            sendto(
-                fd,
-                self.buffer,
-                u64(self.length),
-                i32(self.flags),
-                ptr(self.address),
-                u32(self.address_length)
-            )
-        );
-        if self.result < 0 {
-            self.error = int(jacpy_errno());
-        }
-        return self.result >= 0;
-    }
+    def run(fd: i32) -> bool;
 }
 
-# ---------------------------------------------------------------------------
-# Ancillary data (RFC 3542): CMSG_LEN(), CMSG_SPACE() and the bounds of a
-# received control message.
+def cmsg_len_of(length: int) -> int;
 
-"""CMSG_LEN(length)."""
-def cmsg_len_of(length: int) -> int {
+def cmsg_space_of(length: int) -> int;
+
+def cmsg_data(header: ptr[cmsghdr]) -> ptr[u8];
+
+def cmsg_firsthdr(message: ptr[msghdr]) -> ptr[cmsghdr];
+
+def get_CMSG_LEN(length: int) -> int;
+
+def get_CMSG_SPACE(length: int) -> int;
+
+def cmsg_min_space(message: ptr[msghdr], header: ptr[cmsghdr], space: int) -> bool;
+
+def get_cmsg_data_space(message: ptr[msghdr], header: ptr[cmsghdr]) -> int;
+
+obj CmsgData {
+    has status: int = -1,
+        length: int = 0;
+}
+
+def get_cmsg_data_len(message: ptr[msghdr], header: ptr[cmsghdr]) -> CmsgData;
+
+def sock_accept(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_setblocking(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_getblocking(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_settimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_gettimeout_method(
+    self: ptr[PyObject], ignored: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sock_gettimeout_getter(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv setsockopt_done(scratch: ptr[u8], res: i32) -> ptr[PyObject];
+
+def sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_bind(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_close(self: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_detach(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject];
+
+def internal_connect(
+    s: ptr[PySocketSockObject], addr: ptr[u8], addrlen: int, raise_: bool
+) -> int;
+
+def sock_connect(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_connect_ex(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_fileno(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv socket_name(self: ptr[PyObject], peer: bool) -> ptr[PyObject];
+
+def sock_getsockname(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_getpeername(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_listen(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_recv_guts(
+    s: ptr[PySocketSockObject], cbuf: ptr, length: int, flags: int
+) -> int;
+
+def sock_recv(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_recv_into(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj RecvFromOutcome {
+    has count: int = -1,
+        address: ptr[PyObject] = NULL;
+}
+
+def sock_recvfrom_guts(
+    s: ptr[PySocketSockObject], cbuf: ptr, length: int, flags: int
+) -> RecvFromOutcome;
+
+def sock_recvfrom(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_recvfrom_into(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj ReceivedData {
+    has into: bool = False,
+        buffer: ptr[PyObject] = NULL;
+
+    def value(received: int) -> ptr[PyObject];
+}
+
+def:priv close_received_fds(message: ptr[msghdr]);
+
+def sock_recvmsg_guts(
+    s: ptr[PySocketSockObject],
+    iov: ptr,
+    iovlen: int,
+    flags: int,
+    controllen: int,
+    received: ReceivedData
+) -> ptr[PyObject];
+
+def:priv received_message(
+    s: ptr[PySocketSockObject],
+    message: ptr[msghdr],
+    addrbuf: ptr[u8],
+    addrbuflen: int,
+    count: int,
+    received: ReceivedData
+) -> ptr[PyObject];
+
+def sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv release_views(views: ptr[u8], count: int);
+
+def sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_send(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_sendto(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+obj DataBuffers {
+    has iovs: ptr[u8] = ptr[u8](),
+        views: ptr[u8] = ptr[u8](),
+        count: int = 0;
+
+    def close;
+}
+
+def sock_sendmsg_iovec(
+    data_arg: ptr[PyObject], message: ptr[msghdr], buffers: DataBuffers
+) -> bool;
+
+def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv sendmsg_finally(
+    message: ptr[msghdr],
+    addrbuf: ptr[u8],
+    buffers: DataBuffers,
+    cmsg_fast: ptr[PyObject],
+    cmsgs: ptr[u8],
+    ncmsgbufs: int,
+    controlbuf: ptr,
+    retval: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sock_sendmsg_afalg(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv afalg_finally(
+    message: ptr[msghdr],
+    buffers: DataBuffers,
+    controlbuf: ptr,
+    iv: ptr[Py_buffer],
+    retval: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sock_shutdown(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_finalize(self: ptr[PyObject]);
+
+def sock_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def sock_dealloc(self: ptr[PyObject]);
+
+def sock_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sock_init(
+    self: ptr[PyObject], family: i32, type: i32, proto: i32, fdobj: ptr[PyObject]
+) -> i32;
+
+def set_inheritable_new(fd: i32) -> int;
+
+impl new_address_space -> ptr[u8] {
+    address = ptr[u8](PyMem_Calloc(1, u64(SOCK_ADDR_SIZE + SOCKLEN_SIZE)));
+    if not address {
+        PyErr_NoMemory();
+    }
+    return address;
+}
+
+impl length_cell(address: ptr[u8]) -> ptr[u32] {
+    return ptr[u32](address + SOCK_ADDR_SIZE);
+}
+
+impl AcceptCall.run(fd: i32) -> bool {
+    addr = ptr(self.address);
+    paddrlen = length_cell(self.address);
+
+    if HAS_ALG and self.family == AF_ALG {
+        addr = ptr();
+        paddrlen = ptr[u32]();
+        length_cell(self.address).view(1)[0] = u32(0);
+    }
+    if HAS_ACCEPT4 and accept4_works != 0 {
+        self.result = accept_cloexec(fd, addr, paddrlen, i32(SOCK_CLOEXEC));
+        if self.result == INVALID_SOCKET and accept4_works == -1 {
+            accept4_works = i32(1) if jacpy_errno() != ENOSYS else i32(0);
+        }
+    }
+    if not HAS_ACCEPT4 or accept4_works == 0 {
+        self.result = accept(fd, addr, paddrlen);
+    }
+    if self.result < 0 {
+        self.error = int(jacpy_errno());
+    }
+    return self.result >= 0;
+}
+
+impl ConnectCall.run(fd: i32) -> bool {
+    value = ptr[i32](self.scratch);
+    size = ptr[u32](self.scratch + 4);
+    value.view(1)[0] = i32(0);
+    size.view(1)[0] = u32(4);
+    if getsockopt(fd, i32(SOL_SOCKET), i32(SO_ERROR), ptr(value), size) != 0 {
+        self.error = int(jacpy_errno());
+        return False;
+    }
+    err = int(value.view(1)[0]);
+    if err == EISCONN {
+        return True;
+    }
+    if err != 0 {
+        self.error = err;
+        return False;
+    }
+    return True;
+}
+
+impl RecvCall.run(fd: i32) -> bool {
+    self.result = int(recv(fd, self.buffer, u64(self.length), i32(self.flags)));
+    if self.result < 0 {
+        self.error = int(jacpy_errno());
+    }
+    return self.result >= 0;
+}
+
+impl RecvFromCall.run(fd: i32) -> bool {
+    paddrlen = length_cell(self.address);
+    jacpy_memory_zero(ptr(self.address), i64(paddrlen.view(1)[0]));
+    self.result = int(
+        recvfrom(
+            fd,
+            self.buffer,
+            u64(self.length),
+            i32(self.flags),
+            ptr(self.address),
+            paddrlen
+        )
+    );
+    if self.result < 0 {
+        self.error = int(jacpy_errno());
+    }
+    return self.result >= 0;
+}
+
+impl MessageCall.run(fd: i32) -> bool {
+    if self.sending {
+        self.result = int(sendmsg(fd, ptr(self.message), i32(self.flags)));
+    } else {
+        self.result = int(recvmsg(fd, ptr(self.message), i32(self.flags)));
+    }
+    if self.result < 0 {
+        self.error = int(jacpy_errno());
+    }
+    return self.result >= 0;
+}
+
+impl SendCall.run(fd: i32) -> bool {
+    self.result = int(send(fd, self.buffer, u64(self.length), i32(self.flags)));
+    if self.result < 0 {
+        self.error = int(jacpy_errno());
+    }
+    return self.result >= 0;
+}
+
+impl SendToCall.run(fd: i32) -> bool {
+    self.result = int(
+        sendto(
+            fd,
+            self.buffer,
+            u64(self.length),
+            i32(self.flags),
+            ptr(self.address),
+            u32(self.address_length)
+        )
+    );
+    if self.result < 0 {
+        self.error = int(jacpy_errno());
+    }
+    return self.result >= 0;
+}
+
+impl cmsg_len_of(length: int) -> int {
     return cmsg_align(CMSGHDR_SIZE) + length;
 }
 
-"""CMSG_SPACE(length)."""
-def cmsg_space_of(length: int) -> int {
+impl cmsg_space_of(length: int) -> int {
     return cmsg_align(CMSGHDR_SIZE) + cmsg_align(length);
 }
 
-"""CMSG_DATA(header)."""
-def cmsg_data(header: ptr[cmsghdr]) -> ptr[u8] {
+impl cmsg_data(header: ptr[cmsghdr]) -> ptr[u8] {
     return ptr[u8](header) + cmsg_align(CMSGHDR_SIZE);
 }
 
-"""CMSG_FIRSTHDR(message)."""
-def cmsg_firsthdr(message: ptr[msghdr]) -> ptr[cmsghdr] {
+impl cmsg_firsthdr(message: ptr[msghdr]) -> ptr[cmsghdr] {
     if msg_controllen(message) >= CMSGHDR_SIZE {
         return ptr[cmsghdr](message.view(1)[0].msg_control);
     }
     return ptr[cmsghdr]();
 }
 
-"""get_CMSG_LEN(): CMSG_LEN(length) when it is in range, else -1."""
-def get_CMSG_LEN(length: int) -> int {
+impl get_CMSG_LEN(length: int) -> int {
     if length > SOCKLEN_T_LIMIT - cmsg_len_of(0) {
         return -1;
     }
@@ -272,9 +443,7 @@ def get_CMSG_LEN(length: int) -> int {
     return tmp;
 }
 
-"""get_CMSG_SPACE(): CMSG_SPACE(length) when it is in range, else -1.
-CMSG_SPACE(1) accounts for the padding before and after the data."""
-def get_CMSG_SPACE(length: int) -> int {
+impl get_CMSG_SPACE(length: int) -> int {
     if length > SOCKLEN_T_LIMIT - cmsg_space_of(1) {
         return -1;
     }
@@ -285,14 +454,12 @@ def get_CMSG_SPACE(length: int) -> int {
     return tmp;
 }
 
-"""cmsg_min_space(): whether `header` lies in the message's control buffer
-with at least `space` bytes (and its cmsg_len member) after it."""
-def cmsg_min_space(message: ptr[msghdr], header: ptr[cmsghdr], space: int) -> bool {
+impl cmsg_min_space(message: ptr[msghdr], header: ptr[cmsghdr], space: int) -> bool {
     control = message.view(1)[0].msg_control;
     if not header or not control {
         return False;
     }
-    # The end of the cmsg_len member.
+
     cmsg_len_end = CMSGHDR_SIZE - 8;
     if space < cmsg_len_end {
         space = cmsg_len_end;
@@ -301,9 +468,7 @@ def cmsg_min_space(message: ptr[msghdr], header: ptr[cmsghdr], space: int) -> bo
     return cmsg_offset >= 0 and cmsg_offset + space <= msg_controllen(message);
 }
 
-"""get_cmsg_data_space(): the bytes after CMSG_DATA(header) in the control
-buffer, or -1 when the data starts past it."""
-def get_cmsg_data_space(message: ptr[msghdr], header: ptr[cmsghdr]) -> int {
+impl get_cmsg_data_space(message: ptr[msghdr], header: ptr[cmsghdr]) -> int {
     data_offset = int(cmsg_data(header)) - int(message.view(1)[0].msg_control);
     if data_offset > msg_controllen(message) {
         return -1;
@@ -311,15 +476,7 @@ def get_cmsg_data_space(message: ptr[msghdr], header: ptr[cmsghdr]) -> int {
     return msg_controllen(message) - data_offset;
 }
 
-"""get_cmsg_data_len()'s outcome: `status` -1 when the header is invalid or
-outside the buffer, 0 when its data is whole and 1 when it is truncated;
-`length` the data length in the buffer."""
-obj CmsgData {
-    has status: int = -1,
-        length: int = 0;
-}
-
-def get_cmsg_data_len(message: ptr[msghdr], header: ptr[cmsghdr]) -> CmsgData {
+impl get_cmsg_data_len(message: ptr[msghdr], header: ptr[cmsghdr]) -> CmsgData {
     if not cmsg_min_space(message, header, cmsg_len_of(0))
         or cmsg_length(header) < cmsg_len_of(0) {
         return CmsgData();
@@ -335,11 +492,7 @@ def get_cmsg_data_len(message: ptr[msghdr], header: ptr[cmsghdr]) -> CmsgData {
     return CmsgData(status=1, length=space);
 }
 
-# ---------------------------------------------------------------------------
-# accept, blocking and timeouts.
-
-"""s._accept() -> (fd, address)."""
-def sock_accept(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_accept(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     addrlen = getsockaddrlen(s);
     if addrlen < 0 {
@@ -382,9 +535,7 @@ def sock_accept(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     return res;
 }
 
-"""s.setblocking(flag): setblocking(True) is settimeout(None) and
-setblocking(False) settimeout(0.0)."""
-def sock_setblocking(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_setblocking(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     block = PyObject_IsTrue(arg);
     if block < 0 {
         return NULL;
@@ -397,18 +548,14 @@ def sock_setblocking(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-"""s.getblocking(): True unless the socket is non-blocking."""
-def sock_getblocking(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_getblocking(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     if sock_timeout(sock_of(self)) != 0 {
         return Py_NewRef(py_true());
     }
     return Py_NewRef(py_false());
 }
 
-"""s.settimeout(timeout): None blocks, 0.0 is non-blocking and a positive
-number of seconds times operations out; the descriptor is non-blocking in
-the last two modes."""
-def sock_settimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_settimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     timeout = socket_parse_timeout(arg);
     if timeout == TIMEOUT_ERROR {
         return NULL;
@@ -421,22 +568,17 @@ def sock_settimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def sock_gettimeout_method(
+impl sock_gettimeout_method(
     self: ptr[PyObject], ignored: ptr[PyObject]
 ) -> ptr[PyObject] {
     return timeout_object(sock_timeout(sock_of(self)));
 }
 
-def sock_gettimeout_getter(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl sock_gettimeout_getter(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return timeout_object(sock_timeout(sock_of(self)));
 }
 
-# ---------------------------------------------------------------------------
-# Options.
-
-"""s.setsockopt(level, option, value): an int (as a C int, or a 64-bit
-value for AF_VSOCK), a bytes-like buffer, or None with an option length."""
-def sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     level = i32(0);
     optname = i32(0);
@@ -501,7 +643,7 @@ def sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return setsockopt_done(scratch, res);
 }
 
-def:priv setsockopt_done(scratch: ptr[u8], res: i32) -> ptr[PyObject] {
+impl setsockopt_done(scratch: ptr[u8], res: i32) -> ptr[PyObject] {
     error = jacpy_errno();
     PyMem_Free(ptr(scratch));
     if res < 0 {
@@ -510,9 +652,7 @@ def:priv setsockopt_done(scratch: ptr[u8], res: i32) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-"""s.getsockopt(level, option[, buffersize]): an int option, or a bytes
-string of at most buffersize (1-1024) bytes."""
-def sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     level = i32(0);
     optname = i32(0);
@@ -528,7 +668,6 @@ def sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     size = ptr[u32](scratch + 8);
     if buflen == 0 {
         if HAS_VSOCK and sock_family(s) == AF_VSOCK {
-            # 64 bits wide.
             size.view(1)[0] = u32(8);
             res = getsockopt(get_sock_fd(s), level, optname, ptr(scratch), size);
             error = jacpy_errno();
@@ -577,11 +716,7 @@ def sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return buf;
 }
 
-# ---------------------------------------------------------------------------
-# Addresses and connections.
-
-"""s.bind(address)."""
-def sock_bind(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_bind(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     addrbuf = new_addrbuf();
     if not addrbuf {
@@ -607,9 +742,7 @@ def sock_bind(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-"""socket.close(): close the descriptor once; ECONNRESET (a peer that has
-already closed) is not an error, and EINTR is not retried."""
-def sock_close(self: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_close(self: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     fd = get_sock_fd(s);
     if fd != INVALID_SOCKET {
@@ -625,19 +758,14 @@ def sock_close(self: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-"""s.detach(): forget the descriptor without closing it, and return it."""
-def sock_detach(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_detach(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     fd = get_sock_fd(s);
     set_sock_fd(s, INVALID_SOCKET);
     return PyLong_FromLong(i64(fd));
 }
 
-"""internal_connect(): connect() and, when it runs asynchronously on a
-blocking or timeout socket, wait for its outcome. With `raise_`, 0 or -1
-with the exception set; without, 0, the connect() errno, or -1 with the
-exception set."""
-def internal_connect(
+impl internal_connect(
     s: ptr[PySocketSockObject], addr: ptr[u8], addrlen: int, raise_: bool
 ) -> int {
     thread = PyEval_SaveThread();
@@ -645,7 +773,6 @@ def internal_connect(
     err = int(jacpy_errno());
     PyEval_RestoreThread(thread);
     if res == 0 {
-        # connect() succeeded, the socket is connected.
         return 0;
     }
     wait_connect = False;
@@ -653,9 +780,7 @@ def internal_connect(
         if PyErr_CheckSignals() != 0 {
             return -1;
         }
-        # When connect() fails with EINTR the connection runs
-        # asynchronously: a blocking or timeout socket waits for it, a
-        # non-blocking one raises InterruptedError.
+
         wait_connect = sock_timeout(s) != 0;
     } else {
         wait_connect = sock_timeout(s) > 0 and err == EINPROGRESS;
@@ -681,8 +806,7 @@ def internal_connect(
     return 0;
 }
 
-"""s.connect(address)."""
-def sock_connect(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_connect(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     addrbuf = new_addrbuf();
     if not addrbuf {
@@ -705,8 +829,7 @@ def sock_connect(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-"""s.connect_ex(address) -> errno."""
-def sock_connect_ex(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_connect_ex(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     addrbuf = new_addrbuf();
     if not addrbuf {
@@ -729,12 +852,11 @@ def sock_connect_ex(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] 
     return PyLong_FromLong(i64(res));
 }
 
-def sock_fileno(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_fileno(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(get_sock_fd(sock_of(self))));
 }
 
-"""getsockname() or getpeername() as an address object."""
-def:priv socket_name(self: ptr[PyObject], peer: bool) -> ptr[PyObject] {
+impl socket_name(self: ptr[PyObject], peer: bool) -> ptr[PyObject] {
     s = sock_of(self);
     addrlen = getsockaddrlen(s);
     if addrlen < 0 {
@@ -761,17 +883,15 @@ def:priv socket_name(self: ptr[PyObject], peer: bool) -> ptr[PyObject] {
     return result;
 }
 
-def sock_getsockname(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_getsockname(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     return socket_name(self, False);
 }
 
-def sock_getpeername(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_getpeername(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     return socket_name(self, True);
 }
 
-"""s.listen([backlog]): a backlog below 0 is 0; the default is
-min(SOMAXCONN, 128)."""
-def sock_listen(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_listen(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     backlog = i32(SOMAXCONN if SOMAXCONN < 128 else 128);
     if PyArg_ParseTuple(args, "|i:listen", &mut backlog) == 0 {
@@ -790,12 +910,7 @@ def sock_listen(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# ---------------------------------------------------------------------------
-# Receiving.
-
-"""sock_recv_guts(): recv() into `cbuf`; the byte count, or -1 with the
-exception set. Zero bytes requested reads nothing."""
-def sock_recv_guts(
+impl sock_recv_guts(
     s: ptr[PySocketSockObject], cbuf: ptr, length: int, flags: int
 ) -> int {
     if length == 0 {
@@ -808,8 +923,7 @@ def sock_recv_guts(
     return call.result;
 }
 
-"""s.recv(buffersize[, flags]) -> data."""
-def sock_recv(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_recv(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     recvlen = i64(0);
     flags = i32(0);
@@ -830,14 +944,12 @@ def sock_recv(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if outlen != recvlen {
-        # Fewer bytes than requested: shrink the string.
         _PyBytes_Resize(&mut buf, i64(outlen));
     }
     return buf;
 }
 
-"""s.recv_into(buffer[, nbytes[, flags]]) -> nbytes_read."""
-def sock_recv_into(
+impl sock_recv_into(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     s = sock_of(self);
@@ -867,7 +979,6 @@ def sock_recv_into(
         return NULL;
     }
     if recvlen == 0 {
-        # nbytes not given: the buffer's length.
         recvlen = buflen;
     }
     if buflen < recvlen {
@@ -883,15 +994,7 @@ def sock_recv_into(
     return PyLong_FromSsize_t(i64(readlen));
 }
 
-"""sock_recvfrom_guts()'s outcome: the byte count and the sender's address
-(a new reference), or -1 with the exception set."""
-obj RecvFromOutcome {
-    has count: int = -1,
-        address: ptr[PyObject] = NULL;
-}
-
-"""sock_recvfrom_guts(): recvfrom() into `cbuf`."""
-def sock_recvfrom_guts(
+impl sock_recvfrom_guts(
     s: ptr[PySocketSockObject], cbuf: ptr, length: int, flags: int
 ) -> RecvFromOutcome {
     outcome = RecvFromOutcome();
@@ -919,8 +1022,7 @@ def sock_recvfrom_guts(
     return outcome;
 }
 
-"""s.recvfrom(buffersize[, flags]) -> (data, address)."""
-def sock_recvfrom(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_recvfrom(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     recvlen = i64(0);
     flags = i32(0);
@@ -949,8 +1051,7 @@ def sock_recvfrom(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return ret;
 }
 
-"""s.recvfrom_into(buffer[, nbytes[, flags]]) -> (nbytes, address)."""
-def sock_recvfrom_into(
+impl sock_recvfrom_into(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     s = sock_of(self);
@@ -980,7 +1081,6 @@ def sock_recvfrom_into(
         return NULL;
     }
     if recvlen == 0 {
-        # nbytes not given: the buffer's length.
         recvlen = buflen;
     } elif recvlen > buflen {
         jacpy_buffer_release(pbuf);
@@ -998,32 +1098,22 @@ def sock_recvfrom_into(
     return Py_BuildValue("nN", i64(outcome.count), outcome.address);
 }
 
-"""The non-ancillary data recvmsg() returns: the bytes object recvmsg()
-reads into, shrunk to the byte count (makeval_recvmsg), or for
-recvmsg_into() the byte count (makeval_recvmsg_into)."""
-obj ReceivedData {
-    has into: bool = False,
-        buffer: ptr[PyObject] = NULL;
-
-    def value(received: int) -> ptr[PyObject] {
-        if self.into {
-            return PyLong_FromSsize_t(i64(received));
-        }
-        if received < int(jacpy_bytes_length(self.buffer)) {
-            buffer = self.buffer;
-            _PyBytes_Resize(&mut buffer, i64(received));
-            self.buffer = buffer;
-        }
-        if not self.buffer {
-            return NULL;
-        }
-        return Py_NewRef(self.buffer);
+impl ReceivedData.value(received: int) -> ptr[PyObject] {
+    if self.into {
+        return PyLong_FromSsize_t(i64(received));
     }
+    if received < int(jacpy_bytes_length(self.buffer)) {
+        buffer = self.buffer;
+        _PyBytes_Resize(&mut buffer, i64(received));
+        self.buffer = buffer;
+    }
+    if not self.buffer {
+        return NULL;
+    }
+    return Py_NewRef(self.buffer);
 }
 
-"""Close the descriptors of the SCM_RIGHTS messages received, so they do not
-leak when recvmsg() fails after the call."""
-def:priv close_received_fds(message: ptr[msghdr]) {
+impl close_received_fds(message: ptr[msghdr]) {
     header = cmsg_firsthdr(message) if msg_controllen(message) > 0 else ptr[cmsghdr]();
     while header {
         data = get_cmsg_data_len(message, header);
@@ -1045,11 +1135,7 @@ def:priv close_received_fds(message: ptr[msghdr]) {
     }
 }
 
-"""sock_recvmsg_guts(): recvmsg() with `iovlen` iovec records at `iov` and
-a `controllen`-byte ancillary buffer; the (data, ancdata, msg_flags,
-address) tuple, or NULL with the exception set (closing any descriptors
-received)."""
-def sock_recvmsg_guts(
+impl sock_recvmsg_guts(
     s: ptr[PySocketSockObject],
     iov: ptr,
     iovlen: int,
@@ -1057,8 +1143,6 @@ def sock_recvmsg_guts(
     controllen: int,
     received: ReceivedData
 ) -> ptr[PyObject] {
-    # msg_name and msg_namelen are ignored for a connected socket; start
-    # from an address that won't be mistaken for a real one.
     addrbuflen = getsockaddrlen(s);
     if addrbuflen < 0 {
         return NULL;
@@ -1105,10 +1189,7 @@ def sock_recvmsg_guts(
     return retval;
 }
 
-"""The (data, ancdata, msg_flags, address) result of a received message:
-(level, type, data) tuples from the control messages, warning about
-malformed or truncated ones."""
-def:priv received_message(
+impl received_message(
     s: ptr[PySocketSockObject],
     message: ptr[msghdr],
     addrbuf: ptr[u8],
@@ -1120,8 +1201,7 @@ def:priv received_message(
     if not cmsg_list {
         return NULL;
     }
-    # Old CMSG_FIRSTHDR() implementations don't check for empty ancillary
-    # data.
+
     header = cmsg_firsthdr(message) if msg_controllen(message) > 0 else ptr[cmsghdr]();
     while header {
         data = get_cmsg_data_len(message, header);
@@ -1182,9 +1262,7 @@ def:priv received_message(
     return retval;
 }
 
-"""s.recvmsg(bufsize[, ancbufsize[, flags]]) -> (data, ancdata, msg_flags,
-address)."""
-def sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     bufsize = i64(0);
     ancbufsize = i64(0);
@@ -1208,7 +1286,7 @@ def sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
     ptr[ptr](iov).view(1)[0] = jacpy_bytes_address(buf);
     ptr[u64](iov + 8).view(1)[0] = u64(bufsize);
-    # The bytes object is shrunk in place (or replaced) by the result.
+
     received = ReceivedData(into=False, buffer=buf);
     retval = sock_recvmsg_guts(s, ptr(iov), 1, int(flags), int(ancbufsize), received);
     jacpy_release(received.buffer);
@@ -1216,22 +1294,19 @@ def sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return retval;
 }
 
-"""Release the first `count` Py_buffer records of `views` and free them."""
-def:priv release_views(views: ptr[u8], count: int) {
+impl release_views(views: ptr[u8], count: int) {
     if not views {
         return;
     }
     for i in range(count) {
         view = ptr[Py_buffer](views + i * int(PY_BUFFER_SIZE));
-        # PyBuffer_Release() without freeing the record: the array owns it.
+
         PyBuffer_Release(view);
     }
     PyMem_Free(ptr(views));
 }
 
-"""s.recvmsg_into(buffers[, ancbufsize[, flags]]) -> (nbytes, ancdata,
-msg_flags, address)."""
-def sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     ancbufsize = i64(0);
     flags = i32(0);
@@ -1243,7 +1318,7 @@ def sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
         return NULL;
     }
     fast = PySequence_Fast(
-        buffers_arg, "recvmsg_into() argument 1 must be an iterable"
+        buffers_arg, ptr[u8]("recvmsg_into() argument 1 must be an iterable")
     );
     if not fast {
         return NULL;
@@ -1258,7 +1333,7 @@ def sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
         PyErr_SetString(PyExc_OSError, "recvmsg_into() argument 1 is too long");
         ok = False;
     }
-    # An iovec per item, and the Py_buffer records to release afterwards.
+
     if ok and nitems > 0 {
         iovs = ptr[u8](PyMem_Calloc(u64(nitems), u64(IOVEC_SIZE)));
         bufs = ptr[u8](PyMem_Calloc(u64(nitems), PY_BUFFER_SIZE));
@@ -1295,11 +1370,7 @@ def sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     return retval;
 }
 
-# ---------------------------------------------------------------------------
-# Sending.
-
-"""s.send(data[, flags]) -> count."""
-def sock_send(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_send(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     flags = i32(0);
     pbuf = new_view();
@@ -1320,9 +1391,7 @@ def sock_send(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(i64(call.result));
 }
 
-"""s.sendall(data[, flags]): send() until all data is sent, within the
-socket's timeout overall."""
-def sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     flags = i32(0);
     pbuf = new_view();
@@ -1343,7 +1412,6 @@ def sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     while True {
         if has_timeout {
             if deadline_initialized {
-                # Recompute the timeout.
                 timeout = int(_PyDeadline_Get(i64(deadline)));
             } else {
                 deadline_initialized = True;
@@ -1361,8 +1429,7 @@ def sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         n = call.result;
         buf = buf + n;
         length -= n;
-        # Run signal handlers before looping again: send() can succeed
-        # partially when interrupted.
+
         if PyErr_CheckSignals() != 0 {
             break;
         }
@@ -1375,8 +1442,7 @@ def sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return res;
 }
 
-"""s.sendto(data[, flags], address) -> count."""
-def sock_sendto(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_sendto(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     flags = i32(0);
     addro = NULL;
@@ -1429,28 +1495,20 @@ def sock_sendto(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(i64(call.result));
 }
 
-"""The iovec records of sendmsg()'s data and the Py_buffer records they
-point into; `count` records are held."""
-obj DataBuffers {
-    has iovs: ptr[u8] = ptr[u8](),
-        views: ptr[u8] = ptr[u8](),
-        count: int = 0;
-
-    def close {
-        release_views(self.views, self.count);
-        self.views = ptr[u8]();
-        self.count = 0;
-        PyMem_Free(ptr(self.iovs));
-        self.iovs = ptr[u8]();
-    }
+impl DataBuffers.close {
+    release_views(self.views, self.count);
+    self.views = ptr[u8]();
+    self.count = 0;
+    PyMem_Free(ptr(self.iovs));
+    self.iovs = ptr[u8]();
 }
 
-"""sock_sendmsg_iovec(): an iovec for each bytes-like object of `data_arg`
-into the message; False with the exception set."""
-def sock_sendmsg_iovec(
+impl sock_sendmsg_iovec(
     data_arg: ptr[PyObject], message: ptr[msghdr], buffers: DataBuffers
 ) -> bool {
-    data_fast = PySequence_Fast(data_arg, "sendmsg() argument 1 must be an iterable");
+    data_fast = PySequence_Fast(
+        data_arg, ptr[u8]("sendmsg() argument 1 must be an iterable")
+    );
     if not data_fast {
         return False;
     }
@@ -1498,8 +1556,7 @@ def sock_sendmsg_iovec(
     return result;
 }
 
-"""s.sendmsg(buffers[, ancdata[, flags[, address]]]) -> count."""
-def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     data_arg = NULL;
     cmsg_arg = NULL;
@@ -1526,7 +1583,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     ncmsgbufs = 0;
     controlbuf = ptr();
     retval = NULL;
-    # Parse the destination address.
+
     if addr_arg and addr_arg != Py_None {
         addrlen = getsockaddrarg(s, addr_arg, addrbuf, "sendmsg");
         if addrlen < 0 {
@@ -1545,8 +1602,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
             message, addrbuf, buffers, cmsg_fast, cmsgs, 0, controlbuf, NULL
         );
     }
-    # An iovec for each message part, and the Py_buffer records to release
-    # afterwards.
+
     if not sock_sendmsg_iovec(data_arg, message, buffers) {
         return sendmsg_finally(
             message, addrbuf, buffers, cmsg_fast, cmsgs, 0, controlbuf, NULL
@@ -1565,7 +1621,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         }
         ncmsgs = int(PyTuple_Size(cmsg_fast));
     }
-    # The level, type and data of each control message, and the total size.
+
     if ncmsgs > 0 {
         cmsgs = ptr[u8](PyMem_Calloc(u64(ncmsgs), u64(CMSGINFO_SIZE)));
         if not cmsgs {
@@ -1609,7 +1665,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         }
         controllen_last = controllen;
     }
-    # The ancillary data block of the control messages.
+
     if ncmsgbufs > 0 {
         controlbuf = PyMem_Malloc(u64(controllen));
         if not controlbuf {
@@ -1619,8 +1675,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
             );
         }
         set_msg_control(message, controlbuf, controllen);
-        # Zeroed for glibc's CMSG_NXTHDR(), which checks the (uninitialized)
-        # cmsg_len of the next header.
+
         jacpy_memory_zero(controlbuf, i64(controllen));
         header = ptr[cmsghdr]();
         for i in range(ncmsgbufs) {
@@ -1689,7 +1744,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
             jacpy_memory_copy(ptr(cmsg_data(header)), data[0].buf, i64(data_len));
         }
     }
-    # Make the system call.
+
     call = MessageCall(message=message, flags=int(flags), sending=True);
     if sock_call(s, True, call) >= 0 {
         retval = PyLong_FromSsize_t(i64(call.result));
@@ -1699,9 +1754,7 @@ def sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-"""sock_sendmsg()'s cleanup: the control block, the control-message data,
-the iovec records and the data buffers."""
-def:priv sendmsg_finally(
+impl sendmsg_finally(
     message: ptr[msghdr],
     addrbuf: ptr[u8],
     buffers: DataBuffers,
@@ -1723,10 +1776,7 @@ def:priv sendmsg_finally(
     return retval;
 }
 
-"""s.sendmsg_afalg([msg], *, op[, iv[, assoclen[, flags]]]) (AF_ALG): set
-the operation, initialization vector and associated-data length of an
-AF_ALG operation socket, and send the message."""
-def sock_sendmsg_afalg(
+impl sock_sendmsg_afalg(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     s = sock_of(self);
@@ -1767,17 +1817,16 @@ def sock_sendmsg_afalg(
         PyErr_NoMemory();
         return afalg_finally(message, buffers, controlbuf, iv, retval);
     }
-    # op is a required, keyword-only argument >= 0.
+
     op = -1;
     if opobj {
         op = int(PyLong_AsInt(opobj));
     }
     if op < 0 {
-        # Override the exception from PyLong_AsInt().
         PyErr_SetString(PyExc_TypeError, "Invalid or missing argument 'op'");
         return afalg_finally(message, buffers, controlbuf, iv, retval);
     }
-    # assoclen is optional but must be >= 0.
+
     assoclen = -1;
     if assoclenobj {
         assoclen = int(PyLong_AsInt(assoclenobj));
@@ -1792,7 +1841,6 @@ def sock_sendmsg_afalg(
     iv_view = iv.view(1);
     controllen = cmsg_space_of(4);
     if iv_view[0].buf {
-        # struct af_alg_iv: a u32 length and the vector.
         controllen += cmsg_space_of(4 + int(iv_view[0].length));
     }
     if assoclen >= 0 {
@@ -1805,11 +1853,11 @@ def sock_sendmsg_afalg(
     }
     jacpy_memory_zero(controlbuf, i64(controllen));
     set_msg_control(message, controlbuf, controllen);
-    # An iovec for each message part.
+
     if data_arg and not sock_sendmsg_iovec(data_arg, message, buffers) {
         return afalg_finally(message, buffers, controlbuf, iv, retval);
     }
-    # Set the operation to encrypt or decrypt.
+
     header = cmsg_firsthdr(message);
     if not header {
         PyErr_SetString(
@@ -1821,7 +1869,7 @@ def sock_sendmsg_afalg(
     header.view(1)[0].cmsg_type = i32(ALG_SET_OP);
     set_cmsg_length(header, cmsg_len_of(4));
     put_u32(cmsg_data(header), 0, op);
-    # Set the initialization vector.
+
     if iv_view[0].buf {
         header = cmsg_nxthdr(message, header);
         if not header {
@@ -1837,7 +1885,7 @@ def sock_sendmsg_afalg(
         put_u32(alg_iv, 0, int(iv_view[0].length));
         jacpy_memory_copy(ptr(alg_iv + 4), iv_view[0].buf, iv_view[0].length);
     }
-    # Set the length of the associated data for AEAD.
+
     if assoclen >= 0 {
         header = cmsg_nxthdr(message, header);
         if not header {
@@ -1858,7 +1906,7 @@ def sock_sendmsg_afalg(
     return afalg_finally(message, buffers, controlbuf, iv, retval);
 }
 
-def:priv afalg_finally(
+impl afalg_finally(
     message: ptr[msghdr],
     buffers: DataBuffers,
     controlbuf: ptr,
@@ -1872,8 +1920,7 @@ def:priv afalg_finally(
     return retval;
 }
 
-"""s.shutdown(how): SHUT_RD, SHUT_WR or SHUT_RDWR."""
-def sock_shutdown(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_shutdown(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     how = PyLong_AsInt(arg);
     if how == -1 and PyErr_Occurred() {
@@ -1889,18 +1936,12 @@ def sock_shutdown(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# ---------------------------------------------------------------------------
-# Lifecycle.
-
-"""tp_finalize: close a socket that is still open, warning about it
-(ResourceWarning) first so the warning can still read the socket."""
-def sock_finalize(self: ptr[PyObject]) {
+impl sock_finalize(self: ptr[PyObject]) {
     s = sock_of(self);
-    # Save the current exception, if any.
+
     exc = PyErr_GetRaisedException();
     if get_sock_fd(s) != INVALID_SOCKET {
         if PyErr_ResourceWarning(self, 1, "unclosed %R", self) != 0 {
-            # Spurious errors can appear at shutdown.
             if PyErr_ExceptionMatches(PyExc_Warning) != 0 {
                 PyErr_FormatUnraisable(
                     "Exception ignored while finalizing socket %R", self
@@ -1909,20 +1950,20 @@ def sock_finalize(self: ptr[PyObject]) {
         }
         fd = get_sock_fd(s);
         set_sock_fd(s, INVALID_SOCKET);
-        # EINTR is not retried, as in close().
+
         thread = PyEval_SaveThread();
         close(fd);
         PyEval_RestoreThread(thread);
     }
-    # Restore the saved exception.
+
     PyErr_SetRaisedException(exc);
 }
 
-def sock_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl sock_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(ptr[PyObject](object_type(self)), visitor, arg);
 }
 
-def sock_dealloc(self: ptr[PyObject]) {
+impl sock_dealloc(self: ptr[PyObject]) {
     if PyObject_CallFinalizerFromDealloc(self) < 0 {
         return;
     }
@@ -1932,7 +1973,7 @@ def sock_dealloc(self: ptr[PyObject]) {
     jacpy_release(ptr[PyObject](tp));
 }
 
-def sock_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl sock_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     record = s.view(1);
     return PyUnicode_FromFormat(
@@ -1944,8 +1985,7 @@ def sock_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-"""tp_new: an unopened socket (no descriptor, blocking)."""
-def sock_new(
+impl sock_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     op = type.view(1)[0].tp_alloc(type, 0);
@@ -1958,10 +1998,7 @@ def sock_new(
     return op;
 }
 
-"""socket.__init__(family=-1, type=-1, proto=-1, fileno=None): open a
-socket (AF_INET, SOCK_STREAM, 0 by default), or adopt descriptor `fileno`
-with its family, type and protocol read from it where not given."""
-def sock_init(
+impl sock_init(
     self: ptr[PyObject], family: i32, type: i32, proto: i32, fdobj: ptr[PyObject]
 ) -> i32 {
     s = sock_of(self);
@@ -1981,13 +2018,13 @@ def sock_init(
         if value == -1 and PyErr_Occurred() {
             return i32(-1);
         }
-        # PyLong_AsSocket_t(): a C int.
+
         fd = c_int(int(value));
         if fd < 0 {
             PyErr_SetString(PyExc_ValueError, "negative file descriptor");
             return i32(-1);
         }
-        # Validate that the descriptor is valid and a socket.
+
         space = new_address_space();
         if not space {
             return i32(-1);
@@ -1999,7 +2036,6 @@ def sock_init(
             }
         } else {
             error = int(jacpy_errno());
-            # getsockname() is not supported for SOL_ALG on Linux.
             if fam == -1 or error == EBADF or error == ENOTSOCK {
                 free_addrbuf(space);
                 socket_error(error);
@@ -2037,7 +2073,6 @@ def sock_init(
         }
         free_addrbuf(space);
     } else {
-        # No descriptor: AF_INET and SOCK_STREAM by default.
         if fam == -1 {
             fam = AF_INET;
         }
@@ -2056,7 +2091,6 @@ def sock_init(
                 if fd >= 0 {
                     sock_cloexec_works = i32(1);
                 } elif error == EINVAL {
-                    # Linux older than 2.6.27 does not support SOCK_CLOEXEC.
                     sock_cloexec_works = i32(0);
                     fd = socket(i32(fam), i32(typ), i32(pro));
                     error = jacpy_errno();
@@ -2083,10 +2117,7 @@ def sock_init(
     return i32(0);
 }
 
-"""_Py_set_inheritable(fd, 0, atomic_flag_works) for a descriptor socket()
-or socketpair() created: with SOCK_CLOEXEC the flag records whether the
-kernel honours it."""
-def set_inheritable_new(fd: i32) -> int {
+impl set_inheritable_new(fd: i32) -> int {
     if HAS_SOCK_CLOEXEC {
         works = sock_cloexec_works;
         status = _Py_set_inheritable(fd, 0, &mut works);

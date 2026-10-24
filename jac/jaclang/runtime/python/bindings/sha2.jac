@@ -1,65 +1,24 @@
-"""The _sha2 module: SHA224Type and SHA256Type over SHA256Type's generated
-methods, SHA384Type and SHA512Type over SHA512Type's."""
+def:priv sha256_dealloc(instance: ptr[PyObject]);
 
-def:priv sha256_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, SHA256Type_token.definition_of(Py_TYPE(instance)));
-}
+def:priv sha512_dealloc(instance: ptr[PyObject]);
 
-def:priv sha512_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, SHA512Type_token.definition_of(Py_TYPE(instance)));
-}
+def:priv sha256_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv sha256_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, SHA256Type_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+def:priv sha512_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv sha512_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, SHA512Type_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+def:priv sha256_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv sha256_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return PyLong_FromLong(SHA256_BLOCKSIZE);
-}
+def:priv sha512_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv sha512_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return PyLong_FromLong(SHA512_BLOCKSIZE);
-}
+def:priv digest_size_of(instance: ptr[PyObject], token: ClassToken) -> ptr[PyObject];
 
-def:priv digest_size_of(instance: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
-    state = sha2_of(instance, token);
-    if state is None {
-        return NULL;
-    }
-    return PyLong_FromLong(state.digestsize);
-}
+def:priv sha256_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv sha256_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return digest_size_of(instance, SHA256Type_token);
-}
+def:priv sha512_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv sha512_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return digest_size_of(instance, SHA512Type_token);
-}
+def:priv sha256_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv sha256_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = sha2_of(instance, SHA256Type_token);
-    if state is None {
-        return NULL;
-    }
-    return PyUnicode_FromString("sha224" if state.digestsize == 28 else "sha256");
-}
-
-def:priv sha512_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = sha2_of(instance, SHA512Type_token);
-    if state is None {
-        return NULL;
-    }
-    return PyUnicode_FromString("sha512" if state.digestsize == 64 else "sha384");
-}
+def:priv sha512_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 glob:priv FLAGS: u64 = u64(
          TypeFlags.DISALLOW_INSTANTIATION.value
@@ -67,8 +26,82 @@ glob:priv FLAGS: u64 = u64(
              | TypeFlags.GC.value
      );
 
-"""One of the four types; `wide` selects SHA512Type's methods and getters."""
-def:priv sha2_type(name: str, wide: bool) -> TypeDefinition {
+def:priv sha2_type(name: str, wide: bool) -> TypeDefinition;
+
+glob:priv sha224_type = sha2_type("_sha2.SHA224Type", False),
+     sha256_type = sha2_type("_sha2.SHA256Type", False),
+     sha384_type = sha2_type("_sha2.SHA384Type", True),
+     sha512_type = sha2_type("_sha2.SHA512Type", True);
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_sha2", "", module_methods, ModuleHooks(execute=execute), 4
+     );
+
+def:pub PyInit__sha2 -> ptr[PyObject];
+
+impl sha256_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, SHA256Type_token.definition_of(Py_TYPE(instance)));
+}
+
+impl sha512_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, SHA512Type_token.definition_of(Py_TYPE(instance)));
+}
+
+impl sha256_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, SHA256Type_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl sha512_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, SHA512Type_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl sha256_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return PyLong_FromLong(SHA256_BLOCKSIZE);
+}
+
+impl sha512_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return PyLong_FromLong(SHA512_BLOCKSIZE);
+}
+
+impl digest_size_of(instance: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
+    state = sha2_of(instance, token);
+    if state is None {
+        return NULL;
+    }
+    return PyLong_FromLong(state.digestsize);
+}
+
+impl sha256_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return digest_size_of(instance, SHA256Type_token);
+}
+
+impl sha512_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return digest_size_of(instance, SHA512Type_token);
+}
+
+impl sha256_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = sha2_of(instance, SHA256Type_token);
+    if state is None {
+        return NULL;
+    }
+    return jacpy_unicode_from_text("sha224" if state.digestsize == 28 else "sha256");
+}
+
+impl sha512_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    state = sha2_of(instance, SHA512Type_token);
+    if state is None {
+        return NULL;
+    }
+    return jacpy_unicode_from_text("sha512" if state.digestsize == 64 else "sha384");
+}
+
+impl sha2_type(name: str, wide: bool) -> TypeDefinition {
     if wide {
         return TypeDefinition(
             name,
@@ -103,12 +136,7 @@ def:priv sha2_type(name: str, wide: bool) -> TypeDefinition {
     );
 }
 
-glob:priv sha224_type = sha2_type("_sha2.SHA224Type", False),
-     sha256_type = sha2_type("_sha2.SHA256Type", False),
-     sha384_type = sha2_type("_sha2.SHA384Type", True),
-     sha512_type = sha2_type("_sha2.SHA512Type", True);
-
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     SHA256Type_token.handle = sha256_type.handle;
     SHA256Type_token.share(sha224_type.handle);
     SHA512Type_token.handle = sha512_type.handle;
@@ -123,10 +151,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_sha2", "", module_methods, ModuleHooks(execute=execute), 4
-     );
-
-def:pub PyInit__sha2 -> ptr[PyObject] {
+impl PyInit__sha2 -> ptr[PyObject] {
     return definition.initialize();
 }

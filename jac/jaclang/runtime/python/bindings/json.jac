@@ -1,5 +1,3 @@
-"""JSON scanner and encoder bindings, with native-owned Python settings."""
-
 obj JsonScannerState(ReferenceState) {
     has strict: i64 = 1;
 }
@@ -24,130 +22,39 @@ glob:priv scanner_names = [
          "item_separator"
      ];
 
-def:priv check_string(value: ptr[PyObject]) -> bool {
-    if jacpy_is_unicode(value) != 0 {
-        return True;
-    }
-    object_error(
-        PyExc_TypeError, f"first argument must be a string, not {type_name(value)[:80]}"
-    );
-    return False;
-}
+def:priv check_string(value: ptr[PyObject]) -> bool;
 
-def:priv escape_value(value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_json_escape(value, 0) if check_string(value) else NULL;
-}
+def:priv escape_value(value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv escape_ascii_value(value: ptr[PyObject]) -> ptr[PyObject] {
-    return jacpy_json_escape(value, 1) if check_string(value) else NULL;
-}
+def:priv escape_ascii_value(value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv escape_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke_one(value, escape_value);
-}
+def:priv escape_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv escape_ascii_call(
     module: ptr[PyObject], value: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_one(value, escape_ascii_value);
-}
+) -> ptr[PyObject];
 
-# PyArg_ParseTuple(args, "On|p:scanstring", ...).
 glob:priv scanstring_signature = CallSignature(
          "scanstring", ["string", "end", "strict"], 2, 3, 3, parser=PARSE_FORMAT
      );
 
-def:priv scanstring_bound(args: BoundArguments) -> ptr[PyObject] {
-    end = index_value(args.values[1]);
-    if end is None {
-        return NULL;
-    }
-    strict: i64 = 1;
-    if args.values[2] != 0 {
-        strict = PyObject_IsTrue(args.values[2]);
-        if strict < 0 {
-            return NULL;
-        }
-    }
-    if not check_string(args.values[0]) {
-        return NULL;
-    }
-    return jacpy_json_scanstring(args.values[0], end, strict);
-}
+def:priv scanstring_bound(args: BoundArguments) -> ptr[PyObject];
 
-def:priv scanstring_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return invoke(scanstring_signature, args, NULL, scanstring_bound);
-}
+def:priv scanstring_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv scanner_state(instance: ptr[PyObject]) -> (JsonScannerState | None) {
-    if jacpy_binding_native_present(instance, scanner_type.handle) != 0 {
-        state = jacpy_binding_native_get(instance, scanner_type.handle);
-        if isinstance(state, JsonScannerState) {
-            return state;
-        }
-    }
-    object_error(PyExc_SystemError, "native JSON scanner state is unavailable");
-    return None;
-}
+def:priv scanner_state(instance: ptr[PyObject]) -> (JsonScannerState | None);
 
-def:priv encoder_state(instance: ptr[PyObject]) -> (JsonEncoderState | None) {
-    if jacpy_binding_native_present(instance, encoder_type.handle) != 0 {
-        state = jacpy_binding_native_get(instance, encoder_type.handle);
-        if isinstance(state, JsonEncoderState) {
-            return state;
-        }
-    }
-    object_error(PyExc_SystemError, "native JSON encoder state is unavailable");
-    return None;
-}
+def:priv encoder_state(instance: ptr[PyObject]) -> (JsonEncoderState | None);
 
 glob:priv scanner_init_signature = CallSignature(
          "make_scanner", ["context"], 1, 1
      );
 
-def:priv scanner_create_bound(args: BoundArguments) -> ptr[PyObject] {
-    instance = jacpy_binding_allocate(args.context);
-    if instance == 0 {
-        return NULL;
-    }
-    state = JsonScannerState(references=[NULL for _ in scanner_names]);
-    if jacpy_binding_native_set(instance, scanner_type.handle, state) < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    context = args.values[0];
-    strict = PyObject_GetAttrString(context, "strict");
-    if strict == 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    state.strict = PyObject_IsTrue(strict);
-    jacpy_release(strict);
-    if state.strict < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    for i in range(len(scanner_names)) {
-        value = PyObject_GetAttrString(context, scanner_names[i]);
-        if value == 0 {
-            jacpy_release(instance);
-            return NULL;
-        }
-        state.references[i] = value;
-    }
-    record = jacpy_binding_record(instance, scanner_type.handle);
-    record_set_byte(record, 0, int(state.strict));
-    for i in range(len(scanner_names)) {
-        record_set_object(record, 8 * (i + 1), state.references[i]);
-    }
-    return instance;
-}
+def:priv scanner_create_bound(args: BoundArguments) -> ptr[PyObject];
 
 def:priv scanner_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(scanner_init_signature, args, kwargs, scanner_create_bound, type);
-}
+) -> ptr[PyObject];
 
 glob:priv encoder_init_signature = CallSignature(
          "make_encoder",
@@ -166,7 +73,231 @@ glob:priv encoder_init_signature = CallSignature(
          9
      );
 
-def:priv encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
+def:priv encoder_create_bound(args: BoundArguments) -> ptr[PyObject];
+
+def:priv encoder_create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv scanner_call_signature = CallSignature(
+         "scan_once", ["string", "idx"], 2, 2
+     );
+
+def:priv scanner_call_bound(args: BoundArguments) -> ptr[PyObject];
+
+def:priv scanner_call(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv encoder_call_signature = CallSignature(
+         "_iterencode", ["obj", "_current_indent_level"], 2, 2
+     );
+
+def:priv encoder_call_bound(args: BoundArguments) -> ptr[PyObject];
+
+def:priv encoder_call(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv scanner_deallocate(instance: ptr[PyObject]);
+
+def:priv scanner_clear(instance: ptr[PyObject]) -> i32;
+
+def:priv scanner_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32;
+
+def:priv encoder_deallocate(instance: ptr[PyObject]);
+
+def:priv encoder_clear(instance: ptr[PyObject]) -> i32;
+
+def:priv encoder_traverse(
+    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32;
+
+glob:priv SCANNER_RECORD: int = 48,
+     ENCODER_RECORD: int = 56;
+
+def:priv scanner_members -> list[MemberField];
+
+def:priv encoder_members -> list[MemberField];
+
+glob:priv scanner_type = TypeDefinition(
+         "_json.Scanner",
+         scanner_doc,
+         [],
+         u64(TypeFlags.GC.value),
+         TypeHooks(
+             create=scanner_create,
+             call=scanner_call,
+             dealloc=scanner_deallocate,
+             clear=scanner_clear,
+             traverse=scanner_traverse
+         ),
+         members=scanner_members(),
+         record_size=SCANNER_RECORD
+     ),
+     encoder_type = TypeDefinition(
+         "_json.Encoder",
+         encoder_doc,
+         [],
+         u64(TypeFlags.GC.value),
+         TypeHooks(
+             create=encoder_create,
+             call=encoder_call,
+             dealloc=encoder_deallocate,
+             clear=encoder_clear,
+             traverse=encoder_traverse
+         ),
+         members=encoder_members(),
+         record_size=ENCODER_RECORD
+     );
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_json",
+         module_doc,
+         [
+             MethodDefinition(
+                 "encode_basestring_ascii",
+                 MethodCallbacks(positional=escape_ascii_call),
+                 pydoc_encode_basestring_ascii,
+                 flags=8
+             ),
+             MethodDefinition(
+                 "encode_basestring",
+                 MethodCallbacks(positional=escape_call),
+                 pydoc_encode_basestring,
+                 flags=8
+             ),
+             MethodDefinition(
+                 "scanstring",
+                 MethodCallbacks(positional=scanstring_call),
+                 pydoc_scanstring,
+                 flags=1
+             )
+         ],
+         ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__json -> ptr[PyObject];
+
+impl check_string(value: ptr[PyObject]) -> bool {
+    if jacpy_is_unicode(value) != 0 {
+        return True;
+    }
+    object_error(
+        PyExc_TypeError, f"first argument must be a string, not {type_name(value)[:80]}"
+    );
+    return False;
+}
+
+impl escape_value(value: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_json_escape(value, 0) if check_string(value) else NULL;
+}
+
+impl escape_ascii_value(value: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_json_escape(value, 1) if check_string(value) else NULL;
+}
+
+impl escape_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke_one(value, escape_value);
+}
+
+impl escape_ascii_call(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke_one(value, escape_ascii_value);
+}
+
+impl scanstring_bound(args: BoundArguments) -> ptr[PyObject] {
+    end = index_value(args.values[1]);
+    if end is None {
+        return NULL;
+    }
+    strict: i64 = 1;
+    if args.values[2] != 0 {
+        strict = PyObject_IsTrue(args.values[2]);
+        if strict < 0 {
+            return NULL;
+        }
+    }
+    if not check_string(args.values[0]) {
+        return NULL;
+    }
+    return jacpy_json_scanstring(args.values[0], end, strict);
+}
+
+impl scanstring_call(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return invoke(scanstring_signature, args, NULL, scanstring_bound);
+}
+
+impl scanner_state(instance: ptr[PyObject]) -> (JsonScannerState | None) {
+    if jacpy_binding_native_present(instance, scanner_type.handle) != 0 {
+        state = jacpy_binding_native_get(instance, scanner_type.handle);
+        if isinstance(state, JsonScannerState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native JSON scanner state is unavailable");
+    return None;
+}
+
+impl encoder_state(instance: ptr[PyObject]) -> (JsonEncoderState | None) {
+    if jacpy_binding_native_present(instance, encoder_type.handle) != 0 {
+        state = jacpy_binding_native_get(instance, encoder_type.handle);
+        if isinstance(state, JsonEncoderState) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native JSON encoder state is unavailable");
+    return None;
+}
+
+impl scanner_create_bound(args: BoundArguments) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(args.context);
+    if instance == 0 {
+        return NULL;
+    }
+    state = JsonScannerState(references=[NULL for _ in scanner_names]);
+    if jacpy_binding_native_set(instance, scanner_type.handle, state) < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    context = args.values[0];
+    strict = PyObject_GetAttrString(context, ptr[u8]("strict"));
+    if strict == 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    state.strict = PyObject_IsTrue(strict);
+    jacpy_release(strict);
+    if state.strict < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    for i in range(len(scanner_names)) {
+        value = jacpy_object_getattr_text(context, scanner_names[i]);
+        if value == 0 {
+            jacpy_release(instance);
+            return NULL;
+        }
+        state.references[i] = value;
+    }
+    record = jacpy_binding_record(instance, scanner_type.handle);
+    record_set_byte(record, 0, int(state.strict));
+    for i in range(len(scanner_names)) {
+        record_set_object(record, 8 * (i + 1), state.references[i]);
+    }
+    return instance;
+}
+
+impl scanner_create(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke(scanner_init_signature, args, kwargs, scanner_create_bound, type);
+}
+
+impl encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
     for i in [4, 5] {
         if jacpy_is_unicode(args.values[i]) == 0 {
             object_error(
@@ -215,17 +346,13 @@ def:priv encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
     return instance;
 }
 
-def:priv encoder_create(
+impl encoder_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return invoke(encoder_init_signature, args, kwargs, encoder_create_bound, type);
 }
 
-glob:priv scanner_call_signature = CallSignature(
-         "scan_once", ["string", "idx"], 2, 2
-     );
-
-def:priv scanner_call_bound(args: BoundArguments) -> ptr[PyObject] {
+impl scanner_call_bound(args: BoundArguments) -> ptr[PyObject] {
     start = index_value(args.values[1]);
     if start is None or not check_string(args.values[0]) {
         return NULL;
@@ -246,17 +373,13 @@ def:priv scanner_call_bound(args: BoundArguments) -> ptr[PyObject] {
     );
 }
 
-def:priv scanner_call(
+impl scanner_call(
     instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return invoke(scanner_call_signature, args, kwargs, scanner_call_bound, instance);
 }
 
-glob:priv encoder_call_signature = CallSignature(
-         "_iterencode", ["obj", "_current_indent_level"], 2, 2
-     );
-
-def:priv encoder_call_bound(args: BoundArguments) -> ptr[PyObject] {
+impl encoder_call_bound(args: BoundArguments) -> ptr[PyObject] {
     level = index_value(args.values[1]);
     if level is None {
         return NULL;
@@ -276,49 +399,43 @@ def:priv encoder_call_bound(args: BoundArguments) -> ptr[PyObject] {
     return result;
 }
 
-def:priv encoder_call(
+impl encoder_call(
     instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return invoke(encoder_call_signature, args, kwargs, encoder_call_bound, instance);
 }
 
-def:priv scanner_deallocate(instance: ptr[PyObject]) {
+impl scanner_deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, scanner_type.handle);
 }
 
-def:priv scanner_clear(instance: ptr[PyObject]) -> i32 {
+impl scanner_clear(instance: ptr[PyObject]) -> i32 {
     record_clear(jacpy_binding_record(instance, scanner_type.handle), SCANNER_RECORD);
     return clear_payload(instance, scanner_type.handle);
 }
 
-def:priv scanner_traverse(
+impl scanner_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
     return traverse_payload(instance, scanner_type.handle, visitor, context);
 }
 
-def:priv encoder_deallocate(instance: ptr[PyObject]) {
+impl encoder_deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, encoder_type.handle);
 }
 
-def:priv encoder_clear(instance: ptr[PyObject]) -> i32 {
+impl encoder_clear(instance: ptr[PyObject]) -> i32 {
     record_clear(jacpy_binding_record(instance, encoder_type.handle), ENCODER_RECORD);
     return clear_payload(instance, encoder_type.handle);
 }
 
-def:priv encoder_traverse(
+impl encoder_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
     return traverse_payload(instance, encoder_type.handle, visitor, context);
 }
 
-# PyScannerObject's and PyEncoderObject's read-only PyMemberDefs, over a
-# field record mirroring the native state: strict (a char) then five object
-# pointers; six object pointers then the sort_keys and skipkeys chars.
-glob:priv SCANNER_RECORD: int = 48,
-     ENCODER_RECORD: int = 56;
-
-def:priv scanner_members -> list[MemberField] {
+impl scanner_members -> list[MemberField] {
     docs = [
         scanner_members_object_hook_doc,
         None,
@@ -346,7 +463,7 @@ def:priv scanner_members -> list[MemberField] {
         ];
 }
 
-def:priv encoder_members -> list[MemberField] {
+impl encoder_members -> list[MemberField] {
     docs = [
         encoder_members_markers_doc,
         encoder_members_default_doc,
@@ -382,38 +499,7 @@ def:priv encoder_members -> list[MemberField] {
         ];
 }
 
-glob:priv scanner_type = TypeDefinition(
-         "_json.Scanner",
-         scanner_doc,
-         [],
-         u64(TypeFlags.GC.value),
-         TypeHooks(
-             create=scanner_create,
-             call=scanner_call,
-             dealloc=scanner_deallocate,
-             clear=scanner_clear,
-             traverse=scanner_traverse
-         ),
-         members=scanner_members(),
-         record_size=SCANNER_RECORD
-     ),
-     encoder_type = TypeDefinition(
-         "_json.Encoder",
-         encoder_doc,
-         [],
-         u64(TypeFlags.GC.value),
-         TypeHooks(
-             create=encoder_create,
-             call=encoder_call,
-             dealloc=encoder_deallocate,
-             clear=encoder_clear,
-             traverse=encoder_traverse
-         ),
-         members=encoder_members(),
-         record_size=ENCODER_RECORD
-     );
-
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if not add_owned(module, "make_scanner", scanner_type.create(module)) {
         return i32(-1);
     }
@@ -423,33 +509,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-# speedups_methods[]: hand-written in _json.c, with its PyDoc_STRVAR docs.
-glob:priv definition = ModuleDefinition(
-         "_json",
-         module_doc,
-         [
-             MethodDefinition(
-                 "encode_basestring_ascii",
-                 MethodCallbacks(positional=escape_ascii_call),
-                 pydoc_encode_basestring_ascii,
-                 flags=8
-             ),
-             MethodDefinition(
-                 "encode_basestring",
-                 MethodCallbacks(positional=escape_call),
-                 pydoc_encode_basestring,
-                 flags=8
-             ),
-             MethodDefinition(
-                 "scanstring",
-                 MethodCallbacks(positional=scanstring_call),
-                 pydoc_scanstring,
-                 flags=1
-             )
-         ],
-         ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__json -> ptr[PyObject] {
+impl PyInit__json -> ptr[PyObject] {
     return definition.initialize();
 }

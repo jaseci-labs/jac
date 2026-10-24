@@ -1,18 +1,4 @@
-"""The _ssl module: its types over the generated clinic tables, the SSLError
-hierarchy, the published constants and the execution slots in
-Modules/_ssl.c's order."""
-
-# ---------------------------------------------------------------------------
-# SSLError
-
-"""SSLError_str(): the strerror when it is a str, else str(args)."""
-def:priv sslerror_str(op: ptr[PyObject]) -> ptr[PyObject] {
-    error = ptr[PyOSErrorObject](op).view(1)[0];
-    if error.strerror and jacpy_is_unicode(error.strerror) != 0 {
-        return Py_NewRef(error.strerror);
-    }
-    return PyObject_Str(error.args);
-}
+def:priv sslerror_str(op: ptr[PyObject]) -> ptr[PyObject];
 
 import from c {
     glob:priv sslerror_slots: list[PyType_Slot] = [
@@ -33,136 +19,55 @@ import from c {
          );
 }
 
-# ---------------------------------------------------------------------------
-# Type hooks.
+def:priv context_dealloc(instance: ptr[PyObject]);
 
-def:priv context_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, _SSLContext_token.definition_of(Py_TYPE(instance)));
-}
+def:priv context_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv context_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, _SSLContext_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+def:priv context_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv context_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, _SSLContext_token.definition_of(Py_TYPE(instance)));
-}
+def:priv socket_dealloc(instance: ptr[PyObject]);
 
-"""PySSL_dealloc(): the SSL object is marked shut down and freed before the
-references are cleared."""
-def:priv socket_dealloc(instance: ptr[PyObject]) {
-    sock = socket_of(instance);
-    if sock is not None {
-        sock.release_ssl();
-    }
-    dispose_payload(instance, _SSLSocket_token.definition_of(Py_TYPE(instance)));
-}
+def:priv socket_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv socket_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, _SSLSocket_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+def:priv socket_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv socket_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, _SSLSocket_token.definition_of(Py_TYPE(instance)));
-}
-
-def:priv memory_bio_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, MemoryBIO_token.definition_of(Py_TYPE(instance)));
-}
+def:priv memory_bio_dealloc(instance: ptr[PyObject]);
 
 def:priv memory_bio_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(
-        instance, MemoryBIO_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+) -> i32;
 
-def:priv session_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, SSLSession_token.definition_of(Py_TYPE(instance)));
-}
+def:priv session_dealloc(instance: ptr[PyObject]);
 
-def:priv session_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, SSLSession_token.definition_of(Py_TYPE(instance)), visitor, context
-    );
-}
+def:priv session_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv session_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, SSLSession_token.definition_of(Py_TYPE(instance)));
-}
+def:priv session_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv certificate_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, Certificate_token.definition_of(Py_TYPE(instance)));
-}
+def:priv certificate_dealloc(instance: ptr[PyObject]);
 
-# The hand-written getters and setters of _SSLContext.
-
-def:priv keylog_filename_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return context_get_keylog_filename(instance);
-}
+def:priv keylog_filename_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 def:priv keylog_filename_set(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
-) -> i32 {
-    return context_set_keylog_filename(instance, value);
-}
+) -> i32;
 
-def:priv msg_callback_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return context_get_msg_callback(instance);
-}
+def:priv msg_callback_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 def:priv msg_callback_set(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
-) -> i32 {
-    return context_set_msg_callback(instance, value);
-}
+) -> i32;
 
 def:priv post_handshake_auth_get(
     instance: ptr[PyObject], context: u64
-) -> ptr[PyObject] {
-    return context_get_post_handshake_auth(instance);
-}
+) -> ptr[PyObject];
 
 def:priv post_handshake_auth_set(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
-) -> i32 {
-    return context_set_post_handshake_auth(instance, value);
-}
+) -> i32;
 
-"""_ssl._SSLSocket.read(size, [buffer]): a clinic optional group, parsed as
-the generated C does, by argument count."""
 def:priv socket_read_call(
     receiver: ptr[PyObject], args: ptr[PyObject]
-) -> ptr[PyObject] {
-    size = i64(0);
-    count = PyTuple_Size(args);
-    if count == 1 {
-        if PyArg_ParseTuple(args, "n:read", &mut size) == 0 {
-            return NULL;
-        }
-        return ssl_socket_read(receiver, size, False, ptr[Py_buffer]());
-    }
-    if count == 2 {
-        buffer = new_view();
-        if not buffer {
-            return NULL;
-        }
-        if PyArg_ParseTuple(args, "nw*:read", &mut size, buffer) == 0 {
-            PyMem_Free(ptr(buffer));
-            return NULL;
-        }
-        result = ssl_socket_read(receiver, size, True, buffer);
-        jacpy_buffer_release(buffer);
-        return result;
-    }
-    PyErr_SetString(PyExc_TypeError, "_ssl._SSLSocket.read requires 1 to 2 arguments");
-    return NULL;
-}
+) -> ptr[PyObject];
 
 glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value),
      context_type = TypeDefinition(
@@ -262,11 +167,165 @@ glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value),
          )
      );
 
-# ---------------------------------------------------------------------------
-# Execution slots.
+def:priv init_types(module: ptr[PyObject]) -> bool;
 
-"""sslmodule_init_types()."""
-def:priv init_types(module: ptr[PyObject]) -> bool {
+def:priv add_exception(
+    module: ptr[PyObject], index: int, name: str, doc: str, base: ptr[PyObject]
+) -> bool;
+
+def:priv init_exceptions(module: ptr[PyObject]) -> bool;
+
+def:priv init_socketapi(module: ptr[PyObject]) -> bool;
+
+def:priv init_errorcodes(module: ptr[PyObject]) -> bool;
+
+def:priv defined(name: str) -> bool;
+
+def:priv init_constants(module: ptr[PyObject]) -> bool;
+
+def:priv init_versioninfo(module: ptr[PyObject]) -> bool;
+
+def:priv init_strings(module: ptr[PyObject]) -> bool;
+
+def:priv init_lock(module: ptr[PyObject]) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_ssl",
+         "Implementation module for SSL socket operations.  See the socket module\nfor documentation.",
+         module_methods,
+         ModuleHooks(execute=execute),
+         STATE_COUNT
+     );
+
+def:pub PyInit__ssl -> ptr[PyObject];
+
+impl sslerror_str(op: ptr[PyObject]) -> ptr[PyObject] {
+    error = ptr[PyOSErrorObject](op).view(1)[0];
+    if error.strerror and jacpy_is_unicode(error.strerror) != 0 {
+        return Py_NewRef(error.strerror);
+    }
+    return PyObject_Str(error.args);
+}
+
+impl context_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, _SSLContext_token.definition_of(Py_TYPE(instance)));
+}
+
+impl context_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, _SSLContext_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl context_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, _SSLContext_token.definition_of(Py_TYPE(instance)));
+}
+
+impl socket_dealloc(instance: ptr[PyObject]) {
+    sock = socket_of(instance);
+    if sock is not None {
+        sock.release_ssl();
+    }
+    dispose_payload(instance, _SSLSocket_token.definition_of(Py_TYPE(instance)));
+}
+
+impl socket_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, _SSLSocket_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl socket_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, _SSLSocket_token.definition_of(Py_TYPE(instance)));
+}
+
+impl memory_bio_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, MemoryBIO_token.definition_of(Py_TYPE(instance)));
+}
+
+impl memory_bio_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, MemoryBIO_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl session_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, SSLSession_token.definition_of(Py_TYPE(instance)));
+}
+
+impl session_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, SSLSession_token.definition_of(Py_TYPE(instance)), visitor, context
+    );
+}
+
+impl session_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, SSLSession_token.definition_of(Py_TYPE(instance)));
+}
+
+impl certificate_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, Certificate_token.definition_of(Py_TYPE(instance)));
+}
+
+impl keylog_filename_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return context_get_keylog_filename(instance);
+}
+
+impl keylog_filename_set(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32 {
+    return context_set_keylog_filename(instance, value);
+}
+
+impl msg_callback_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return context_get_msg_callback(instance);
+}
+
+impl msg_callback_set(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32 {
+    return context_set_msg_callback(instance, value);
+}
+
+impl post_handshake_auth_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return context_get_post_handshake_auth(instance);
+}
+
+impl post_handshake_auth_set(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32 {
+    return context_set_post_handshake_auth(instance, value);
+}
+
+impl socket_read_call(receiver: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    size = i64(0);
+    count = PyTuple_Size(args);
+    if count == 1 {
+        if PyArg_ParseTuple(args, "n:read", &mut size) == 0 {
+            return NULL;
+        }
+        return ssl_socket_read(receiver, size, False, ptr[Py_buffer]());
+    }
+    if count == 2 {
+        buffer = new_view();
+        if not buffer {
+            return NULL;
+        }
+        if PyArg_ParseTuple(args, "nw*:read", &mut size, buffer) == 0 {
+            PyMem_Free(ptr(buffer));
+            return NULL;
+        }
+        result = ssl_socket_read(receiver, size, True, buffer);
+        jacpy_buffer_release(buffer);
+        return result;
+    }
+    PyErr_SetString(PyExc_TypeError, "_ssl._SSLSocket.read requires 1 to 2 arguments");
+    return NULL;
+}
+
+impl init_types(module: ptr[PyObject]) -> bool {
     _SSLContext_token.handle = context_type.handle;
     _SSLSocket_token.handle = socket_type.handle;
     MemoryBIO_token.handle = memory_bio_type.handle;
@@ -303,8 +362,7 @@ def:priv init_types(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-"""An exception in module state slot `index`, also published as `name`."""
-def:priv add_exception(
+impl add_exception(
     module: ptr[PyObject], index: int, name: str, doc: str, base: ptr[PyObject]
 ) -> bool {
     exc = PyErr_NewExceptionWithDoc("ssl." + name, doc, base, NULL);
@@ -316,8 +374,7 @@ def:priv add_exception(
     return PyModule_AddObjectRef(module, name, exc) == 0;
 }
 
-"""sslmodule_init_exceptions()."""
-def:priv init_exceptions(module: ptr[PyObject]) -> bool {
+impl init_exceptions(module: ptr[PyObject]) -> bool {
     sslerror = PyType_FromSpecWithBases(addressof(sslerror_type_spec), PyExc_OSError);
     if not sslerror {
         return False;
@@ -327,7 +384,7 @@ def:priv init_exceptions(module: ptr[PyObject]) -> bool {
     if PyModule_AddObjectRef(module, "SSLError", sslerror) < 0 {
         return False;
     }
-    # ssl.CertificateError used to be a subclass of ValueError.
+
     bases = PyTuple_Pack(2, sslerror, PyExc_ValueError);
     if not bases {
         return False;
@@ -378,8 +435,7 @@ def:priv init_exceptions(module: ptr[PyObject]) -> bool {
         );
 }
 
-"""sslmodule_init_socketapi(): the socket type of _socket's C API capsule."""
-def:priv init_socketapi(module: ptr[PyObject]) -> bool {
+impl init_socketapi(module: ptr[PyObject]) -> bool {
     sockmod = ptr[PySocketModule_APIObject](
         PyCapsule_Import(ptr[u8]("_socket.CAPI"), i32(1))
     );
@@ -394,8 +450,7 @@ def:priv init_socketapi(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-"""sslmodule_init_errorcodes(): err_codes_to_names and lib_codes_to_names."""
-def:priv init_errorcodes(module: ptr[PyObject]) -> bool {
+impl init_errorcodes(module: ptr[PyObject]) -> bool {
     err_codes_to_names = PyDict_New();
     if not err_codes_to_names {
         return False;
@@ -409,7 +464,7 @@ def:priv init_errorcodes(module: ptr[PyObject]) -> bool {
     jacpy_binding_state_set(module, i64(STATE_LIB_CODES_TO_NAMES), lib_codes_to_names);
     jacpy_release(lib_codes_to_names);
     for (mnemonic, library, reason) in ERROR_CODES {
-        mnemo = PyUnicode_FromString(mnemonic);
+        mnemo = jacpy_unicode_from_text(mnemonic);
         if not mnemo {
             return False;
         }
@@ -427,7 +482,7 @@ def:priv init_errorcodes(module: ptr[PyObject]) -> bool {
     }
     for (library, code) in LIBRARY_CODES {
         key = PyLong_FromLong(code);
-        mnemo = PyUnicode_FromString(library);
+        mnemo = jacpy_unicode_from_text(library);
         if not key or not mnemo {
             return False;
         }
@@ -440,13 +495,11 @@ def:priv init_errorcodes(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-"""defined(NAME) for a macro of openssl_constants."""
-def:priv defined(name: str) -> bool {
+impl defined(name: str) -> bool {
     return name not in UNDEFINED;
 }
 
-"""sslmodule_init_constants()."""
-def:priv init_constants(module: ptr[PyObject]) -> bool {
+impl init_constants(module: ptr[PyObject]) -> bool {
     if PyModule_AddStringConstant(
         module, "_DEFAULT_CIPHERS", PY_SSL_DEFAULT_CIPHER_STRING
     )
@@ -461,14 +514,11 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
         ("SSL_ERROR_SYSCALL", PY_SSL_ERROR_SYSCALL),
         ("SSL_ERROR_SSL", PY_SSL_ERROR_SSL),
         ("SSL_ERROR_WANT_CONNECT", PY_SSL_ERROR_WANT_CONNECT),
-        # non ssl.h errorcodes
         ("SSL_ERROR_EOF", PY_SSL_ERROR_EOF),
         ("SSL_ERROR_INVALID_ERROR_CODE", PY_SSL_ERROR_INVALID_ERROR_CODE),
-        # cert requirements
         ("CERT_NONE", PY_SSL_CERT_NONE),
         ("CERT_OPTIONAL", PY_SSL_CERT_OPTIONAL),
         ("CERT_REQUIRED", PY_SSL_CERT_REQUIRED),
-        # CRL verification for verification_flags
         ("VERIFY_DEFAULT", 0),
         ("VERIFY_CRL_CHECK_LEAF", X509_V_FLAG_CRL_CHECK),
         ("VERIFY_CRL_CHECK_CHAIN", X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL),
@@ -479,9 +529,7 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
     if defined("X509_V_FLAG_PARTIAL_CHAIN") {
         constants.append(("VERIFY_X509_PARTIAL_CHAIN", X509_V_FLAG_PARTIAL_CHAIN));
     }
-    # Alert Descriptions from ssl.h; RESERVED constants no longer intended
-    # for use have been removed.
-    # http://www.iana.org/assignments/tls-parameters/tls-parameters.xml#tls-parameters-6
+
     constants += [
         ("ALERT_DESCRIPTION_CLOSE_NOTIFY", SSL_AD_CLOSE_NOTIFY),
         ("ALERT_DESCRIPTION_UNEXPECTED_MESSAGE", SSL_AD_UNEXPECTED_MESSAGE),
@@ -505,7 +553,7 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
         ("ALERT_DESCRIPTION_USER_CANCELLED", SSL_AD_USER_CANCELLED),
         ("ALERT_DESCRIPTION_NO_RENEGOTIATION", SSL_AD_NO_RENEGOTIATION)
     ];
-    # Not all constants are in old OpenSSL versions.
+
     for (name, value, macro) in [
         (
             "ALERT_DESCRIPTION_UNSUPPORTED_EXTENSION",
@@ -542,7 +590,7 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
             constants.append((name, value));
         }
     }
-    # protocol versions
+
     if HAS_SSLv3 {
         constants.append(("PROTOCOL_SSLv3", PY_SSL_VERSION_SSL3));
     }
@@ -560,7 +608,7 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
             return False;
         }
     }
-    # protocol options
+
     options: list[tuple[str, int]] = [
         ("OP_ALL", SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS),
         ("OP_NO_SSLv2", SSL_OP_NO_SSLv2),
@@ -637,10 +685,8 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
         }
     }
     host_flags += [
-        # file types
         ("ENCODING_PEM", int(PY_SSL_ENCODING_PEM)),
         ("ENCODING_DER", int(PY_SSL_ENCODING_DER)),
-        # protocol versions
         ("PROTO_MINIMUM_SUPPORTED", PY_PROTO_MINIMUM_SUPPORTED),
         ("PROTO_MAXIMUM_SUPPORTED", PY_PROTO_MAXIMUM_SUPPORTED),
         ("PROTO_SSLv3", PY_PROTO_SSLv3),
@@ -676,8 +722,7 @@ def:priv init_constants(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-"""sslmodule_init_versioninfo()."""
-def:priv init_versioninfo(module: ptr[PyObject]) -> bool {
+impl init_versioninfo(module: ptr[PyObject]) -> bool {
     for (name, value) in version_constants() {
         if PyModule_Add(module, name, value) < 0 {
             return False;
@@ -686,15 +731,14 @@ def:priv init_versioninfo(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-"""sslmodule_init_strings()."""
-def:priv init_strings(module: ptr[PyObject]) -> bool {
+impl init_strings(module: ptr[PyObject]) -> bool {
     for (index, text) in [
         (STATE_STR_LIBRARY, "library"),
         (STATE_STR_REASON, "reason"),
         (STATE_STR_VERIFY_MESSAGE, "verify_message"),
         (STATE_STR_VERIFY_CODE, "verify_code")
     ] {
-        interned = PyUnicode_InternFromString(text);
+        interned = jacpy_unicode_intern_text(text);
         if not interned {
             return False;
         }
@@ -704,8 +748,7 @@ def:priv init_strings(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-"""sslmodule_init_lock()."""
-def:priv init_lock(module: ptr[PyObject]) -> bool {
+impl init_lock(module: ptr[PyObject]) -> bool {
     lock = PyThread_allocate_lock();
     if not lock {
         PyErr_NoMemory();
@@ -715,7 +758,7 @@ def:priv init_lock(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     ssl_module_token.handle = definition.handle;
     if not init_types(module)
         or not init_exceptions(module)
@@ -730,14 +773,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_ssl",
-         "Implementation module for SSL socket operations.  See the socket module\nfor documentation.",
-         module_methods,
-         ModuleHooks(execute=execute),
-         STATE_COUNT
-     );
-
-def:pub PyInit__ssl -> ptr[PyObject] {
+impl PyInit__ssl -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -1,10 +1,7 @@
-"""The select module: select(), poll, epoll (Linux), kqueue and kevent (macOS)."""
-
 glob:priv POLL_TYPE: int = 0,
      EPOLL_TYPE: int = 1,
      KEVENT_TYPE: int = 2,
      KQUEUE_TYPE: int = 3,
-     # Constants the module uses without publishing them.
      INTERNAL: list[str] = [
          "FD_SETSIZE",
          "EPOLL_CTL_ADD",
@@ -15,28 +12,13 @@ glob:priv POLL_TYPE: int = 0,
      EPOLL_DOC: str = "select.epoll(sizehint=-1, flags=0)\n\nReturns an epolling object\n\nsizehint must be a positive integer or -1 for the default size. The\nsizehint is used to optimize internal data structures. It doesn't limit\nthe maximum number of monitored events.",
      KEVENT_DOC: str = "kevent(ident, filter=KQ_FILTER_READ, flags=KQ_EV_ADD, fflags=0, data=0, udata=0)\n\nThis object is the equivalent of the struct kevent for the C API.\n\nSee the kqueue manpage for more detailed information about the meaning\nof the arguments.\n\nOne minor note: while you might hope that udata could store a\nreference to a python object, it cannot, because it is impossible to\nkeep a proper reference count of the object once it's passed into the\nkernel. Therefore, I have restricted it to only storing an integer.  I\nrecommend ignoring it and simply using the 'ident' field to key off\nof. You could also set up a dictionary on the python side to store a\nudata->object mapping.";
 
-def:priv poll_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, poll_token.handle);
-}
+def:priv poll_dealloc(instance: ptr[PyObject]);
 
-def:priv epoll_dealloc(instance: ptr[PyObject]) {
-    if jacpy_binding_native_present(instance, epoll_token.handle) != 0 {
-        state = epoll_of(instance);
-        if state is not None {
-            epoll_internal_close(state);
-        }
-    }
-    dispose_payload(instance, epoll_token.handle);
-}
+def:priv epoll_dealloc(instance: ptr[PyObject]);
 
-def:priv kevent_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, kevent_token.handle);
-}
+def:priv kevent_dealloc(instance: ptr[PyObject]);
 
-def:priv kqueue_dealloc(instance: ptr[PyObject]) {
-    kqueue_finalize(instance);
-    dispose_payload(instance, kqueue_token.handle);
-}
+def:priv kqueue_dealloc(instance: ptr[PyObject]);
 
 glob:priv poll_type = TypeDefinition(
          "select.poll",
@@ -94,7 +76,50 @@ glob:priv poll_type = TypeDefinition(
          ]
      );
 
-def:priv add_constants(module: ptr[PyObject], prefix: str) -> bool {
+def:priv add_constants(module: ptr[PyObject], prefix: str) -> bool;
+
+def:priv add_type(
+    module: ptr[PyObject],
+    slot: int,
+    name: str,
+    definition: TypeDefinition,
+    public: bool
+) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+def:priv methods -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "select", MODULE_DOC, methods(), ModuleHooks(execute=execute), 4
+     );
+
+def:pub PyInit_select -> ptr[PyObject];
+
+impl poll_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, poll_token.handle);
+}
+
+impl epoll_dealloc(instance: ptr[PyObject]) {
+    if jacpy_binding_native_present(instance, epoll_token.handle) != 0 {
+        state = epoll_of(instance);
+        if state is not None {
+            epoll_internal_close(state);
+        }
+    }
+    dispose_payload(instance, epoll_token.handle);
+}
+
+impl kevent_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, kevent_token.handle);
+}
+
+impl kqueue_dealloc(instance: ptr[PyObject]) {
+    kqueue_finalize(instance);
+    dispose_payload(instance, kqueue_token.handle);
+}
+
+impl add_constants(module: ptr[PyObject], prefix: str) -> bool {
     for (name, value) in CONSTANTS {
         if name.startswith(prefix)
             and name not in INTERNAL
@@ -105,9 +130,7 @@ def:priv add_constants(module: ptr[PyObject], prefix: str) -> bool {
     return True;
 }
 
-# Create a type into state slot `slot`, publishing it on the module when
-# `public`.
-def:priv add_type(
+impl add_type(
     module: ptr[PyObject],
     slot: int,
     name: str,
@@ -126,7 +149,7 @@ def:priv add_type(
     return True;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
             PyExc_ImportError,
@@ -139,7 +162,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     epoll_token.handle = epoll_type.handle;
     kevent_token.handle = kevent_type.handle;
     kqueue_token.handle = kqueue_type.handle;
-    close = PyUnicode_InternFromString("close");
+    close = PyUnicode_InternFromString(ptr[u8]("close"));
     if not close {
         return i32(-1);
     }
@@ -149,7 +172,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     if PROBE_BROKEN_POLL and have_broken_poll() {
-        if PyObject_DelAttrString(module, "poll") == -1 {
+        if PyObject_DelAttrString(module, ptr[u8]("poll")) == -1 {
             PyErr_Clear();
         }
     } elif not add_type(module, POLL_TYPE, "poll", poll_type, False)
@@ -174,9 +197,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-# select_methods[]: select() and poll(); devpoll() exists only with
-# <sys/devpoll.h>, which no supported target has.
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     return [
         method
         for method in module_methods
@@ -184,10 +205,6 @@ def:priv methods -> list[MethodDefinition] {
     ];
 }
 
-glob:priv definition = ModuleDefinition(
-         "select", MODULE_DOC, methods(), ModuleHooks(execute=execute), 4
-     );
-
-def:pub PyInit_select -> ptr[PyObject] {
+impl PyInit_select -> ptr[PyObject] {
     return definition.initialize();
 }

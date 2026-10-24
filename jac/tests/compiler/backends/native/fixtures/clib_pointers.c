@@ -170,3 +170,5 @@ int64_t cp_erased_call(const CpErased *e, int64_t a, int64_t b) {
 }
 int64_t cp_address_call(void *fn, int64_t a) { return ((int64_t (*)(int64_t))fn)(a); }
 int32_t cp_call_i32(void *fn, int32_t v) { return ((int32_t (*)(int32_t))fn)(v); }
+int64_t cp_record_address(void *record) { return (int64_t)(intptr_t)record; }
+void cp_call_drop(void (*fn)(void *), void *p) { fn(p); }

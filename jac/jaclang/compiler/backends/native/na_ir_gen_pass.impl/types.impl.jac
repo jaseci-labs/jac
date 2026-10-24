@@ -1062,7 +1062,7 @@ impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.Functi
     if t.return_type is not None {
         _r = self._lower_type(t.return_type);
         if _r is not None {
-            ret_type = _r;
+            ret_type = self._byvalue_ret_type(_r);
         }
     }
     param_types: list[ir.Type] = [];
@@ -1345,6 +1345,25 @@ impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStruct
         self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
     }
     return self.tuple_types[tuple_key];
+}
+
+impl NaIRGenPass._byvalue_ret_type(ret_type: ir.Type) -> ir.Type {
+    if not isinstance(ret_type, ir.PointerType) {
+        return ret_type;
+    }
+    shape = ret_type.pointee;
+    if not isinstance(shape, ir.LiteralStructType) or not shape.elements {
+        return ret_type;
+    }
+    for element in shape.elements {
+        if not isinstance(element, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+            return ret_type;
+        }
+    }
+    if shape not in self.tuple_types.values() {
+        return ret_type;
+    }
+    return shape;
 }
 
 impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
@@ -2999,6 +3018,18 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         and isinstance(val.type.pointee, ir.FunctionType)
         and isinstance(target_type, ir.IntType) {
         return self.builder.ptrtoint(val, target_type, name="fn.ptrtoint");
+    }
+
+    if isinstance(target_type, ir.LiteralStructType)
+        and isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.LiteralStructType)
+        and len(val.type.pointee.members()) == len(target_type.members())
+        and not self._tuple_managed_fields(val.type.pointee) {
+        held = self.builder.load(val, name="tuple.unbox");
+        if self._is_owned(val) {
+            self._emit_rc_release_simple(val, op="tuple_unbox", loc="");
+        }
+        return self._coerce_tuple_to_struct(held, target_type);
     }
 
     if isinstance(val.type, ir.PointerType)
@@ -6585,6 +6616,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                 if _fnret is None {
                     _fnret = ir.VoidType();
                 }
+                _fnret = self._byvalue_ret_type(_fnret);
                 _fnparams: list[ir.Type] = [];
                 if isinstance(_fnparams_nd, uni.ListVal) {
                     for _fp in _fnparams_nd.values {

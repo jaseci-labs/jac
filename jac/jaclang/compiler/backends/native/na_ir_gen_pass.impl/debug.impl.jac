@@ -1,6 +1,16 @@
 import os;
 import sys;
 
+impl NaIRGenPass._native_tls_on -> bool {
+    opts = self.prog.options;
+    return opts is not None and bool(opts.native_tls);
+}
+
+impl NaIRGenPass._native_sjlj_on -> bool {
+    opts = self.prog.options;
+    return opts is not None and bool(opts.native_sjlj);
+}
+
 impl NaIRGenPass._na_debug_on -> bool {
     _opts = self.prog.options;
     return _opts is not None and bool(_opts.na_debug);

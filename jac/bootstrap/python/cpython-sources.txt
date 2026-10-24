@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 130 C files / 229,391 lines; 119 headers / 115,516 lines.
-#   Total: 249 files / 344,907 source lines.
+#   Excluded: 189 C files / 352,849 lines; 149 headers / 136,455 lines.
+#   Total: 338 files / 489,304 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -98,8 +98,8 @@ Python/Python-ast.c
 Python/_contextvars.c
 Python/_warnings.c
 Python/asdl.c
-Python/asm_trampoline.S
-Python/asm_trampoline_aarch64.h
+# Python/asm_trampoline.S  # removed: 63 source lines
+# Python/asm_trampoline_aarch64.h  # removed: 56 source lines
 # Python/assemble.c  # removed: 802 source lines
 # Python/ast.c  # removed: 1,091 source lines
 # Python/ast_preprocess.c  # removed: 990 source lines
@@ -180,8 +180,8 @@ Python/optimizer.c
 # Python/optimizer_symbols.c  # pruned: 880 source lines
 Python/parking_lot.c
 Python/pathconfig.c
-Python/perf_jit_trampoline.c
-Python/perf_trampoline.c
+# Python/perf_jit_trampoline.c  # removed: 1,376 source lines
+# Python/perf_trampoline.c  # removed: 641 source lines
 Python/preconfig.c
 Python/pyarena.c
 Python/pyctype.c
@@ -196,8 +196,8 @@ Python/pystrtod.c
 Python/pythonrun.c
 Python/pytime.c
 Python/qsbr.c
-Python/remote_debug.h
-Python/remote_debugging.c
+# Python/remote_debug.h  # removed: 1,191 source lines
+# Python/remote_debugging.c  # removed: 401 source lines
 Python/specialize.c
 Python/stackrefs.c
 Python/stdlib_module_names.h
@@ -214,101 +214,101 @@ Python/tracemalloc.c
 Python/uniqueid.c
 
 # Builtin objects
-Objects/abstract.c
+# Objects/abstract.c  # removed: 2,947 source lines
 # Objects/boolobject.c  # removed: 227 source lines
-Objects/bytearrayobject.c
-Objects/bytes_methods.c
-Objects/bytesobject.c
-Objects/call.c
+# Objects/bytearrayobject.c  # removed: 3,077 source lines
+# Objects/bytes_methods.c  # removed: 740 source lines
+# Objects/bytesobject.c  # removed: 3,744 source lines
+# Objects/call.c  # removed: 1,130 source lines
 # Objects/capsule.c  # removed: 366 source lines
 # Objects/cellobject.c  # removed: 212 source lines
 # Objects/classobject.c  # removed: 518 source lines
-Objects/clinic/bytearrayobject.c.h
-Objects/clinic/bytesobject.c.h
+# Objects/clinic/bytearrayobject.c.h  # removed: 1,808 source lines
+# Objects/clinic/bytesobject.c.h  # removed: 1,419 source lines
 # Objects/clinic/classobject.c.h  # removed: 85 source lines
-Objects/clinic/codeobject.c.h
+# Objects/clinic/codeobject.c.h  # removed: 474 source lines
 # Objects/clinic/complexobject.c.h  # removed: 188 source lines
-Objects/clinic/descrobject.c.h
-Objects/clinic/dictobject.c.h
+# Objects/clinic/descrobject.c.h  # removed: 182 source lines
+# Objects/clinic/dictobject.c.h  # removed: 326 source lines
 # Objects/clinic/enumobject.c.h  # removed: 113 source lines
-Objects/clinic/exceptions.c.h
-Objects/clinic/floatobject.c.h
-Objects/clinic/frameobject.c.h
-Objects/clinic/funcobject.c.h
+# Objects/clinic/exceptions.c.h  # removed: 383 source lines
+# Objects/clinic/floatobject.c.h  # removed: 356 source lines
+# Objects/clinic/frameobject.c.h  # removed: 436 source lines
+# Objects/clinic/funcobject.c.h  # removed: 293 source lines
 # Objects/clinic/interpolationobject.c.h  # removed: 94 source lines
-Objects/clinic/listobject.c.h
-Objects/clinic/longobject.c.h
-Objects/clinic/memoryobject.c.h
-Objects/clinic/moduleobject.c.h
-Objects/clinic/odictobject.c.h
-Objects/clinic/setobject.c.h
+# Objects/clinic/listobject.c.h  # removed: 471 source lines
+# Objects/clinic/longobject.c.h  # removed: 491 source lines
+# Objects/clinic/memoryobject.c.h  # removed: 500 source lines
+# Objects/clinic/moduleobject.c.h  # removed: 80 source lines
+# Objects/clinic/odictobject.c.h  # removed: 455 source lines
+# Objects/clinic/setobject.c.h  # removed: 557 source lines
 # Objects/clinic/structseq.c.h  # removed: 68 source lines
-Objects/clinic/tupleobject.c.h
-Objects/clinic/typeobject.c.h
-Objects/clinic/typevarobject.c.h
-Objects/clinic/unicodeobject.c.h
-Objects/codeobject.c
+# Objects/clinic/tupleobject.c.h  # removed: 130 source lines
+# Objects/clinic/typeobject.c.h  # removed: 265 source lines
+# Objects/clinic/typevarobject.c.h  # removed: 760 source lines
+# Objects/clinic/unicodeobject.c.h  # removed: 1,919 source lines
+# Objects/codeobject.c  # removed: 3,667 source lines
 # Objects/complexobject.c  # removed: 1,422 source lines
-Objects/descrobject.c
-Objects/dictobject.c
+# Objects/descrobject.c  # removed: 2,082 source lines
+# Objects/dictobject.c  # removed: 7,845 source lines
 # Objects/enumobject.c  # removed: 585 source lines
-Objects/exceptions.c
+# Objects/exceptions.c  # removed: 4,587 source lines
 # Objects/fileobject.c  # removed: 548 source lines
-Objects/floatobject.c
-Objects/frameobject.c
-Objects/funcobject.c
+# Objects/floatobject.c  # removed: 2,642 source lines
+# Objects/frameobject.c  # removed: 2,446 source lines
+# Objects/funcobject.c  # removed: 1,907 source lines
 # Objects/genericaliasobject.c  # removed: 1,056 source lines
-Objects/genobject.c
+# Objects/genobject.c  # removed: 2,421 source lines
 # Objects/interpolationobject.c  # removed: 231 source lines
 # Objects/iterobject.c  # removed: 541 source lines
-Objects/listobject.c
-Objects/longobject.c
-Objects/memoryobject.c
-Objects/methodobject.c
-Objects/mimalloc/alloc-aligned.c
-Objects/mimalloc/alloc-override.c
-Objects/mimalloc/alloc-posix.c
-Objects/mimalloc/alloc.c
-Objects/mimalloc/arena.c
-Objects/mimalloc/bitmap.c
-Objects/mimalloc/bitmap.h
-Objects/mimalloc/heap.c
-Objects/mimalloc/init.c
-Objects/mimalloc/options.c
-Objects/mimalloc/os.c
-Objects/mimalloc/page-queue.c
-Objects/mimalloc/page.c
-Objects/mimalloc/prim/osx/alloc-override-zone.c
-Objects/mimalloc/prim/osx/prim.c
-Objects/mimalloc/prim/prim.c
-Objects/mimalloc/prim/unix/prim.c
-Objects/mimalloc/prim/wasi/prim.c
-Objects/mimalloc/random.c
-Objects/mimalloc/segment-map.c
-Objects/mimalloc/segment.c
-Objects/mimalloc/static.c
-Objects/mimalloc/stats.c
-Objects/moduleobject.c
+# Objects/listobject.c  # removed: 4,263 source lines
+# Objects/longobject.c  # removed: 6,875 source lines
+# Objects/memoryobject.c  # removed: 3,610 source lines
+# Objects/methodobject.c  # removed: 578 source lines
+# Objects/mimalloc/alloc-aligned.c  # removed: 298 source lines
+# Objects/mimalloc/alloc-override.c  # removed: 297 source lines
+# Objects/mimalloc/alloc-posix.c  # removed: 185 source lines
+# Objects/mimalloc/alloc.c  # removed: 1,074 source lines
+# Objects/mimalloc/arena.c  # removed: 935 source lines
+# Objects/mimalloc/bitmap.c  # removed: 432 source lines
+# Objects/mimalloc/bitmap.h  # removed: 115 source lines
+# Objects/mimalloc/heap.c  # removed: 696 source lines
+# Objects/mimalloc/init.c  # removed: 687 source lines
+# Objects/mimalloc/options.c  # removed: 571 source lines
+# Objects/mimalloc/os.c  # removed: 698 source lines
+# Objects/mimalloc/page-queue.c  # removed: 332 source lines
+# Objects/mimalloc/page.c  # removed: 976 source lines
+# Objects/mimalloc/prim/osx/alloc-override-zone.c  # removed: 458 source lines
+# Objects/mimalloc/prim/osx/prim.c  # removed: 9 source lines
+# Objects/mimalloc/prim/prim.c  # removed: 24 source lines
+# Objects/mimalloc/prim/unix/prim.c  # removed: 860 source lines
+# Objects/mimalloc/prim/wasi/prim.c  # removed: 276 source lines
+# Objects/mimalloc/random.c  # removed: 254 source lines
+# Objects/mimalloc/segment-map.c  # removed: 153 source lines
+# Objects/mimalloc/segment.c  # removed: 1,684 source lines
+# Objects/mimalloc/static.c  # removed: 40 source lines
+# Objects/mimalloc/stats.c  # removed: 467 source lines
+# Objects/moduleobject.c  # removed: 1,440 source lines
 # Objects/namespaceobject.c  # removed: 332 source lines
-Objects/object.c
-Objects/obmalloc.c
-Objects/odictobject.c
+# Objects/object.c  # removed: 3,395 source lines
+# Objects/obmalloc.c  # removed: 3,662 source lines
+# Objects/odictobject.c  # removed: 2,372 source lines
 # Objects/picklebufobject.c  # removed: 224 source lines
 # Objects/rangeobject.c  # removed: 1,317 source lines
-Objects/setobject.c
+# Objects/setobject.c  # removed: 2,888 source lines
 # Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
 # Objects/structseq.c  # removed: 795 source lines
 # Objects/templateobject.c  # removed: 416 source lines
-Objects/tupleobject.c
-Objects/typeobject.c
-Objects/typeslots.inc
-Objects/typevarobject.c
-Objects/unicodectype.c
-Objects/unicodeobject.c
-Objects/unicodetype_db.h
+# Objects/tupleobject.c  # removed: 1,220 source lines
+# Objects/typeobject.c  # removed: 12,312 source lines
+# Objects/typeslots.inc  # removed: 84 source lines
+# Objects/typevarobject.c  # removed: 2,388 source lines
+# Objects/unicodectype.c  # removed: 287 source lines
+# Objects/unicodeobject.c  # removed: 16,806 source lines
+# Objects/unicodetype_db.h  # removed: 6,734 source lines
 # Objects/unionobject.c  # removed: 600 source lines
-Objects/weakrefobject.c
+# Objects/weakrefobject.c  # removed: 1,135 source lines
 
 # Builtin and extension modules
 Modules/Setup
@@ -399,7 +399,7 @@ Modules/_io/iobase.c
 Modules/_io/stringio.c
 Modules/_io/textio.c
 # Modules/_json.c  # removed: 1,974 source lines
-Modules/_localemodule.c
+# Modules/_localemodule.c  # removed: 1,129 source lines
 # Modules/_lsprof.c  # removed: 1,146 source lines
 # Modules/_lzmamodule.c  # removed: 1,664 source lines
 Modules/_math.h
@@ -416,7 +416,7 @@ Modules/_math.h
 # Modules/_posixsubprocess.c  # removed: 1,357 source lines
 # Modules/_queuemodule.c  # removed: 628 source lines
 # Modules/_randommodule.c  # removed: 679 source lines
-Modules/_remote_debugging_module.c
+# Modules/_remote_debugging_module.c  # removed: 3,666 source lines
 Modules/_scproxy.c
 # Modules/_sqlite/blob.c  # removed: 631 source lines
 # Modules/_sqlite/blob.h  # removed: 24 source lines
@@ -480,7 +480,7 @@ Modules/_threadmodule.c
 # Modules/_zstd/decompressor.c  # removed: 717 source lines
 # Modules/_zstd/zstddict.c  # removed: 275 source lines
 # Modules/_zstd/zstddict.h  # removed: 29 source lines
-Modules/addrinfo.h
+# Modules/addrinfo.h  # removed: 172 source lines
 # Modules/arraymodule.c  # removed: 3,359 source lines
 # Modules/atexitmodule.c  # removed: 361 source lines
 # Modules/binascii.c  # removed: 1,337 source lines
@@ -515,7 +515,7 @@ Modules/addrinfo.h
 # Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
 # Modules/clinic/_hashopenssl.c.h  # removed: 1,987 source lines
 # Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
-Modules/clinic/_localemodule.c.h
+# Modules/clinic/_localemodule.c.h  # removed: 598 source lines
 # Modules/clinic/_lsprof.c.h  # removed: 479 source lines
 # Modules/clinic/_lzmamodule.c.h  # removed: 337 source lines
 # Modules/clinic/_opcode.c.h  # removed: 779 source lines
@@ -524,7 +524,7 @@ Modules/clinic/_localemodule.c.h
 # Modules/clinic/_posixsubprocess.c.h  # removed: 153 source lines
 # Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
 # Modules/clinic/_randommodule.c.h  # removed: 177 source lines
-Modules/clinic/_remote_debugging_module.c.h
+# Modules/clinic/_remote_debugging_module.c.h  # removed: 291 source lines
 # Modules/clinic/_ssl.c.h  # removed: 2,909 source lines
 # Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
 # Modules/clinic/_struct.c.h  # removed: 461 source lines
@@ -559,7 +559,7 @@ Modules/clinic/signalmodule.c.h
 # Modules/clinic/socketmodule.c.h  # removed: 376 source lines
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
-Modules/clinic/termios.c.h
+# Modules/clinic/termios.c.h  # removed: 303 source lines
 # Modules/clinic/timemodule.c.h  # removed: 74 source lines
 # Modules/clinic/unicodedata.c.h  # removed: 552 source lines
 # Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
@@ -569,9 +569,9 @@ Modules/config.c.in
 Modules/faulthandler.c
 # Modules/fcntlmodule.c  # removed: 789 source lines
 Modules/gcmodule.c
-Modules/getaddrinfo.c
+# Modules/getaddrinfo.c  # removed: 642 source lines
 Modules/getbuildinfo.c
-Modules/getnameinfo.c
+# Modules/getnameinfo.c  # removed: 207 source lines
 Modules/getpath.c
 Modules/getpath.py
 Modules/getpath_noop.c
@@ -590,8 +590,8 @@ Modules/makesetup
 # Modules/pwdmodule.c  # removed: 380 source lines
 # Modules/pyexpat.c  # removed: 2,537 source lines
 # Modules/resource.c  # removed: 568 source lines
-Modules/rotatingtree.c
-Modules/rotatingtree.h
+# Modules/rotatingtree.c  # removed: 125 source lines
+# Modules/rotatingtree.h  # removed: 27 source lines
 # Modules/selectmodule.c  # removed: 2,896 source lines
 # Modules/sha1module.c  # removed: 411 source lines
 # Modules/sha2module.c  # removed: 954 source lines
@@ -601,7 +601,7 @@ Modules/signalmodule.c
 # Modules/socketmodule.h  # removed: 414 source lines
 # Modules/symtablemodule.c  # removed: 130 source lines
 # Modules/syslogmodule.c  # removed: 469 source lines
-Modules/termios.c
+# Modules/termios.c  # removed: 1,399 source lines
 # Modules/timemodule.c  # removed: 2,398 source lines
 # Modules/unicodedata.c  # removed: 1,821 source lines
 # Modules/unicodedata_db.h  # removed: 8,358 source lines

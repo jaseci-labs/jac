@@ -1,166 +1,38 @@
-"""The _stat module: mode predicates and constants, compiled into JacPython."""
-
 glob:priv METH_O: i64 = 8;
 
-def:priv predicate(value: ptr[PyObject], kind: u64) -> ptr[PyObject] {
-    try {
-        return PyBool_FromLong(i64(is_type(mode_value(value), kind)));
-    } except boundary_failure {
-        return NULL;
-    }
-}
+def:priv predicate(value: ptr[PyObject], kind: u64) -> ptr[PyObject];
 
-def:priv is_dir(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFDIR);
-}
+def:priv is_dir(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_chr(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFCHR);
-}
+def:priv is_chr(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_blk(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFBLK);
-}
+def:priv is_blk(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_reg(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFREG);
-}
+def:priv is_reg(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_fifo(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFIFO);
-}
+def:priv is_fifo(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_lnk(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFLNK);
-}
+def:priv is_lnk(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_sock(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFSOCK);
-}
+def:priv is_sock(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_door(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFDOOR);
-}
+def:priv is_door(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_port(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFPORT);
-}
+def:priv is_port(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv is_wht(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return predicate(value, S_IFWHT);
-}
+def:priv is_wht(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv masked(value: ptr[PyObject], mask: u64) -> ptr[PyObject] {
-    try {
-        return PyLong_FromUnsignedLong(mode_value(value) & mask);
-    } except boundary_failure {
-        return NULL;
-    }
-}
+def:priv masked(value: ptr[PyObject], mask: u64) -> ptr[PyObject];
 
-def:priv imode(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return masked(value, S_IMODE);
-}
+def:priv imode(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv ifmt(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    return masked(value, S_IFMT);
-}
+def:priv ifmt(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv filemode(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    try {
-        return PyUnicode_FromString(filemode_text(mode_value(value), S_IFWHT));
-    } except boundary_failure {
-        return NULL;
-    }
-}
+def:priv filemode(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv constants -> list[tuple[str, u64]] {
-    names = [
-        ("S_IFDIR", S_IFDIR),
-        ("S_IFCHR", S_IFCHR),
-        ("S_IFBLK", S_IFBLK),
-        ("S_IFREG", S_IFREG),
-        ("S_IFIFO", S_IFIFO),
-        ("S_IFLNK", S_IFLNK),
-        ("S_IFSOCK", S_IFSOCK),
-        ("S_IFDOOR", S_IFDOOR),
-        ("S_IFPORT", S_IFPORT),
-        ("S_IFWHT", S_IFWHT),
-        ("S_ISUID", S_ISUID),
-        ("S_ISGID", S_ISGID),
-        ("S_ISVTX", S_ISVTX),
-        ("S_ENFMT", S_ISGID),
-        ("S_IREAD", S_IRUSR),
-        ("S_IWRITE", S_IWUSR),
-        ("S_IEXEC", S_IXUSR),
-        ("S_IRWXU", S_IRWXU),
-        ("S_IRUSR", S_IRUSR),
-        ("S_IWUSR", S_IWUSR),
-        ("S_IXUSR", S_IXUSR),
-        ("S_IRWXG", S_IRWXG),
-        ("S_IRGRP", S_IRGRP),
-        ("S_IWGRP", S_IWGRP),
-        ("S_IXGRP", S_IXGRP),
-        ("S_IRWXO", S_IRWXO),
-        ("S_IROTH", S_IROTH),
-        ("S_IWOTH", S_IWOTH),
-        ("S_IXOTH", S_IXOTH),
-        ("UF_SETTABLE", UF_SETTABLE),
-        ("UF_NODUMP", UF_NODUMP),
-        ("UF_IMMUTABLE", UF_IMMUTABLE),
-        ("UF_APPEND", UF_APPEND),
-        ("UF_OPAQUE", UF_OPAQUE),
-        ("UF_NOUNLINK", UF_NOUNLINK),
-        ("UF_COMPRESSED", UF_COMPRESSED),
-        ("UF_TRACKED", UF_TRACKED),
-        ("UF_DATAVAULT", UF_DATAVAULT),
-        ("UF_HIDDEN", UF_HIDDEN),
-        ("SF_SETTABLE", SF_SETTABLE),
-        ("SF_ARCHIVED", SF_ARCHIVED),
-        ("SF_IMMUTABLE", SF_IMMUTABLE),
-        ("SF_APPEND", SF_APPEND),
-        ("SF_NOUNLINK", SF_NOUNLINK),
-        ("SF_SNAPSHOT", SF_SNAPSHOT),
-        ("SF_FIRMLINK", SF_FIRMLINK),
-        ("SF_DATALESS", SF_DATALESS)
-    ];
-    if HAS_SF_SUPPORTED {
-        names.append(("SF_SUPPORTED", SF_SUPPORTED));
-        names.append(("SF_SYNTHETIC", SF_SYNTHETIC));
-    }
-    fields = [
-        "ST_MODE",
-        "ST_INO",
-        "ST_DEV",
-        "ST_NLINK",
-        "ST_UID",
-        "ST_GID",
-        "ST_SIZE",
-        "ST_ATIME",
-        "ST_MTIME",
-        "ST_CTIME"
-    ];
-    for index in range(len(fields)) {
-        names.append((fields[index], u64(index)));
-    }
-    return names;
-}
+def:priv constants -> list[tuple[str, u64]];
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
-    if PLATFORM == "" {
-        object_error(
-            PyExc_ImportError,
-            "_stat has no stat_platform.<os>.jac for this target platform"
-        );
-        return i32(-1);
-    }
-    for (name, value) in constants() {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
-            return i32(-1);
-        }
-    }
-    return i32(0);
-}
+def:priv execute(module: ptr[PyObject]) -> i32;
 
 glob:priv definition = ModuleDefinition(
          "_stat",
@@ -248,6 +120,168 @@ glob:priv definition = ModuleDefinition(
          ModuleHooks(execute=execute)
      );
 
-def:pub PyInit__stat -> ptr[PyObject] {
+def:pub PyInit__stat -> ptr[PyObject];
+
+impl predicate(value: ptr[PyObject], kind: u64) -> ptr[PyObject] {
+    try {
+        return PyBool_FromLong(i64(is_type(mode_value(value), kind)));
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl is_dir(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFDIR);
+}
+
+impl is_chr(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFCHR);
+}
+
+impl is_blk(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFBLK);
+}
+
+impl is_reg(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFREG);
+}
+
+impl is_fifo(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFIFO);
+}
+
+impl is_lnk(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFLNK);
+}
+
+impl is_sock(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFSOCK);
+}
+
+impl is_door(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFDOOR);
+}
+
+impl is_port(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFPORT);
+}
+
+impl is_wht(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return predicate(value, S_IFWHT);
+}
+
+impl masked(value: ptr[PyObject], mask: u64) -> ptr[PyObject] {
+    try {
+        return PyLong_FromUnsignedLong(mode_value(value) & mask);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl imode(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return masked(value, S_IMODE);
+}
+
+impl ifmt(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    return masked(value, S_IFMT);
+}
+
+impl filemode(module: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return jacpy_unicode_from_text(filemode_text(mode_value(value), S_IFWHT));
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl constants -> list[tuple[str, u64]] {
+    names = [
+        ("S_IFDIR", S_IFDIR),
+        ("S_IFCHR", S_IFCHR),
+        ("S_IFBLK", S_IFBLK),
+        ("S_IFREG", S_IFREG),
+        ("S_IFIFO", S_IFIFO),
+        ("S_IFLNK", S_IFLNK),
+        ("S_IFSOCK", S_IFSOCK),
+        ("S_IFDOOR", S_IFDOOR),
+        ("S_IFPORT", S_IFPORT),
+        ("S_IFWHT", S_IFWHT),
+        ("S_ISUID", S_ISUID),
+        ("S_ISGID", S_ISGID),
+        ("S_ISVTX", S_ISVTX),
+        ("S_ENFMT", S_ISGID),
+        ("S_IREAD", S_IRUSR),
+        ("S_IWRITE", S_IWUSR),
+        ("S_IEXEC", S_IXUSR),
+        ("S_IRWXU", S_IRWXU),
+        ("S_IRUSR", S_IRUSR),
+        ("S_IWUSR", S_IWUSR),
+        ("S_IXUSR", S_IXUSR),
+        ("S_IRWXG", S_IRWXG),
+        ("S_IRGRP", S_IRGRP),
+        ("S_IWGRP", S_IWGRP),
+        ("S_IXGRP", S_IXGRP),
+        ("S_IRWXO", S_IRWXO),
+        ("S_IROTH", S_IROTH),
+        ("S_IWOTH", S_IWOTH),
+        ("S_IXOTH", S_IXOTH),
+        ("UF_SETTABLE", UF_SETTABLE),
+        ("UF_NODUMP", UF_NODUMP),
+        ("UF_IMMUTABLE", UF_IMMUTABLE),
+        ("UF_APPEND", UF_APPEND),
+        ("UF_OPAQUE", UF_OPAQUE),
+        ("UF_NOUNLINK", UF_NOUNLINK),
+        ("UF_COMPRESSED", UF_COMPRESSED),
+        ("UF_TRACKED", UF_TRACKED),
+        ("UF_DATAVAULT", UF_DATAVAULT),
+        ("UF_HIDDEN", UF_HIDDEN),
+        ("SF_SETTABLE", SF_SETTABLE),
+        ("SF_ARCHIVED", SF_ARCHIVED),
+        ("SF_IMMUTABLE", SF_IMMUTABLE),
+        ("SF_APPEND", SF_APPEND),
+        ("SF_NOUNLINK", SF_NOUNLINK),
+        ("SF_SNAPSHOT", SF_SNAPSHOT),
+        ("SF_FIRMLINK", SF_FIRMLINK),
+        ("SF_DATALESS", SF_DATALESS)
+    ];
+    if HAS_SF_SUPPORTED {
+        names.append(("SF_SUPPORTED", SF_SUPPORTED));
+        names.append(("SF_SYNTHETIC", SF_SYNTHETIC));
+    }
+    fields = [
+        "ST_MODE",
+        "ST_INO",
+        "ST_DEV",
+        "ST_NLINK",
+        "ST_UID",
+        "ST_GID",
+        "ST_SIZE",
+        "ST_ATIME",
+        "ST_MTIME",
+        "ST_CTIME"
+    ];
+    for index in range(len(fields)) {
+        names.append((fields[index], u64(index)));
+    }
+    return names;
+}
+
+impl execute(module: ptr[PyObject]) -> i32 {
+    if PLATFORM == "" {
+        object_error(
+            PyExc_ImportError,
+            "_stat has no stat_platform.<os>.jac for this target platform"
+        );
+        return i32(-1);
+    }
+    for (name, value) in constants() {
+        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+            return i32(-1);
+        }
+    }
+    return i32(0);
+}
+
+impl PyInit__stat -> ptr[PyObject] {
     return definition.initialize();
 }

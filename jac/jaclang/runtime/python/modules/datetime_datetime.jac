@@ -1,12 +1,3 @@
-"""The datetime.datetime type of the _datetime module.
-
-Modules/_datetimemodule.c's PyDateTime_DateTime implementation in native
-Jac: `PyDateTime_DateTimeType`, a subclass of date, is C data under its C
-name. Local time conversions go through _PyTime_localtime() and
-_PyTime_gmtime() as in C, including the PEP 495 fold detection. See
-../LICENSE.cpython.
-"""
-
 import from c {
     glob PyType_Type: PyTypeObject; glob:priv datetime_as_number:
              PyNumberMethods = PyNumberMethods(
@@ -51,17 +42,143 @@ import from c {
          );
 }
 
-# _PyDateTime_DATETIME_DATASIZE: bytes of year, month, day, hour, minute,
-# second, and usecond.
 glob DATETIME_DATASIZE: Final[int] = 10,
-     # As of version 2015f max fold in IANA database is 23 hours at
-     # 1969-09-30 13:00:00 in Kwajalein.
      MAX_FOLD_SECONDS: Final[int] = 24 * 3600,
-     # NB: date(1970,1,1).toordinal() == 719163
      EPOCH_SECONDS: Final[int] = 719163 * 24 * 60 * 60;
 
-"""tp_alloc: `aware` (C's nitems) says whether the tzinfo member is needed."""
-def datetime_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject] {
+def datetime_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject];
+
+def datetime_hour(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def datetime_minute(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def datetime_second(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def datetime_microsecond(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def datetime_tzinfo(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def datetime_fold(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def datetime_from_pickle(
+    type: ptr[PyTypeObject], state: ptr[PyObject], tzinfo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def utc_to_seconds(
+    year: int, month: int, day: int, hour: int, minute: int, second: int
+) -> int;
+
+def local(seconds: int) -> int;
+
+def datetime_from_timet_and_us(
+    cls: ptr[PyObject], local_time: bool, timet: i64, us: int, tzinfo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_from_timestamp(
+    cls: ptr[PyObject],
+    local_time: bool,
+    timestamp: ptr[PyObject],
+    tzinfo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_best_possible(
+    cls: ptr[PyObject], local_time: bool, tzinfo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_now(type: ptr[PyObject], tz: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_utcnow(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_fromtimestamp(
+    cls: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_utcfromtimestamp(
+    cls: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_combine(
+    cls: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sanitize_isoformat_str(dtstr: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_dealloc(op: ptr[PyObject]);
+
+def datetime_tzname(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_str(op: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_isoformat(
+    op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_ctime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def flip_fold(dt: ptr[PyObject]) -> ptr[PyObject];
+
+def get_flip_fold_offset(dt: ptr[PyObject]) -> ptr[PyObject];
+
+def pep495_eq_exception(
+    self: ptr[PyObject],
+    other: ptr[PyObject],
+    offset_self: ptr[PyObject],
+    offset_other: ptr[PyObject]
+) -> int;
+
+def datetime_richcompare(
+    self: ptr[PyObject], other: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def datetime_hash(op: ptr[PyObject]) -> i64;
+
+def local_timezone_from_timestamp(timestamp: i64) -> ptr[PyObject];
+
+def local_timezone(utc_time: ptr[PyObject]) -> ptr[PyObject];
+
+def local_to_seconds(
+    year: int, month: int, day: int, hour: int, minute: int, second: int, fold: int
+) -> int;
+
+def local_timezone_from_local(local_dt: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_astimezone(
+    op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def datetime_timetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_timestamp(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_getdate(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_gettime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_gettimetz(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_utctimetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject];
+
+def datetime_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def datetime_reduce(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+impl datetime_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject] {
     size = PY_DATETIME_DATETIME_SIZE if aware != 0 else PY_DATETIME_BASE_DATETIME_SIZE;
     self = PyObject_Malloc(u64(size));
     if not self {
@@ -70,40 +187,31 @@ def datetime_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject] {
     return PyObject_Init(ptr[PyObject](self), ptr[PyObject](type));
 }
 
-# ---------------------------------------------------------------------------
-# Accessor properties. Properties for day, month, and year are inherited
-# from date.
-
-def datetime_hour(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl datetime_hour(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(date_get_hour(op));
 }
 
-def datetime_minute(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl datetime_minute(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(date_get_minute(op));
 }
 
-def datetime_second(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl datetime_second(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(date_get_second(op));
 }
 
-def datetime_microsecond(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl datetime_microsecond(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(date_get_microsecond(op));
 }
 
-def datetime_tzinfo(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl datetime_tzinfo(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(datetime_tzinfo_of(op));
 }
 
-def datetime_fold(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl datetime_fold(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(date_get_fold(op));
 }
 
-# ---------------------------------------------------------------------------
-# Constructors.
-
-"""A datetime from the 10-byte state of its pickle and its tzinfo; the high
-bit of the third byte is the fold."""
-def datetime_from_pickle(
+impl datetime_from_pickle(
     type: ptr[PyTypeObject], state: ptr[PyObject], tzinfo: ptr[PyObject]
 ) -> ptr[PyObject] {
     aware = tzinfo != Py_None;
@@ -134,10 +242,9 @@ def datetime_from_pickle(
     return me;
 }
 
-def datetime_new(
+impl datetime_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Check for invocation from pickle with __getstate__ state
     count = PyTuple_Size(args);
     if count >= 1 and count <= 2 {
         state = PyTuple_GetItem(args, 0);
@@ -155,7 +262,6 @@ def datetime_new(
                 latin1 = PyUnicode_AsLatin1String(state);
                 if not latin1 {
                     if PyErr_ExceptionMatches(PyExc_UnicodeEncodeError) != 0 {
-                        # More informative error message.
                         PyErr_SetString(
                             PyExc_ValueError,
                             "Failed to encode latin1 string when unpickling a datetime object. pickle.load(data, encoding='latin1') is assumed."
@@ -203,9 +309,7 @@ def datetime_new(
     );
 }
 
-"""Seconds since 0001-01-01 of a UTC time; -1 with ValueError when the
-year is out of range (ymd_to_ord() doesn't support year <= 0)."""
-def utc_to_seconds(
+impl utc_to_seconds(
     year: int, month: int, day: int, hour: int, minute: int, second: int
 ) -> int {
     if year < MINYEAR or year > MAXYEAR {
@@ -222,9 +326,7 @@ def utc_to_seconds(
     return ((ordinal * 24 + hour) * 60 + minute) * 60 + second;
 }
 
-"""localtime() of `seconds` since 0001-01-01 as seconds since 0001-01-01;
--1 on error."""
-def local(seconds: int) -> int {
+impl local(seconds: int) -> int {
     local_time = tm();
     if _PyTime_localtime(seconds - EPOCH_SECONDS, &mut local_time) != 0 {
         return -1;
@@ -239,9 +341,7 @@ def local(seconds: int) -> int {
     );
 }
 
-"""Build a datetime of class `cls` from a time_t and a distinct count of
-microseconds, as local time (`local_time`) or UTC."""
-def datetime_from_timet_and_us(
+impl datetime_from_timet_and_us(
     cls: ptr[PyObject], local_time: bool, timet: i64, us: int, tzinfo: ptr[PyObject]
 ) -> ptr[PyObject] {
     moment = tm();
@@ -256,18 +356,16 @@ def datetime_from_timet_and_us(
     day = int(moment.tm_mday);
     hour = int(moment.tm_hour);
     minute = int(moment.tm_min);
-    # The platform localtime/gmtime may insert leap seconds, indicated by
-    # tm.tm_sec > 59; passing them on would raise ValueError for a reason
-    # that makes no sense to the user.
+
     second = min(59, int(moment.tm_sec));
     fold = 0;
-    # local timezone requires to compute fold
+
     if tzinfo == Py_None and local_time {
         result_seconds = utc_to_seconds(year, month, day, hour, minute, second);
         if result_seconds == -1 and PyErr_Occurred() {
             return NULL;
         }
-        # Probe max_fold_seconds to detect a fold.
+
         probe_seconds = local(EPOCH_SECONDS + timet - MAX_FOLD_SECONDS);
         if probe_seconds == -1 {
             return NULL;
@@ -288,8 +386,7 @@ def datetime_from_timet_and_us(
     );
 }
 
-"""Build a datetime from a Python timestamp, as local time or UTC."""
-def datetime_from_timestamp(
+impl datetime_from_timestamp(
     cls: ptr[PyObject],
     local_time: bool,
     timestamp: ptr[PyObject],
@@ -304,8 +401,7 @@ def datetime_from_timestamp(
     return datetime_from_timet_and_us(cls, local_time, timet, int(us), tzinfo);
 }
 
-"""Build the most accurate possible datetime for the current time."""
-def datetime_best_possible(
+impl datetime_best_possible(
     cls: ptr[PyObject], local_time: bool, tzinfo: ptr[PyObject]
 ) -> ptr[PyObject] {
     ts: i64 = 0;
@@ -320,15 +416,12 @@ def datetime_best_possible(
     return datetime_from_timet_and_us(cls, local_time, secs, int(us), tzinfo);
 }
 
-"""datetime.now(tz): the current time local to tz, or local time when tz is
-None."""
-def datetime_now(type: ptr[PyObject], tz: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_now(type: ptr[PyObject], tz: ptr[PyObject]) -> ptr[PyObject] {
     if check_tzinfo_subclass(tz) < 0 {
         return NULL;
     }
     self = datetime_best_possible(type, tz == Py_None, tz);
     if self and tz != Py_None {
-        # Convert UTC to tzinfo's zone.
         res = PyObject_CallMethod(tz, "fromutc", "O", self);
         jacpy_release(self);
         return res;
@@ -336,9 +429,7 @@ def datetime_now(type: ptr[PyObject], tz: ptr[PyObject]) -> ptr[PyObject] {
     return self;
 }
 
-"""Return best possible UTC time -- this isn't constrained by the precision
-of a timestamp."""
-def datetime_utcnow(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_utcnow(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
         "datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).",
@@ -350,8 +441,7 @@ def datetime_utcnow(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return datetime_best_possible(cls, False, Py_None);
 }
 
-"""Return new local datetime from timestamp (Python timestamp -- a double)."""
-def datetime_fromtimestamp(
+impl datetime_fromtimestamp(
     cls: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -367,7 +457,6 @@ def datetime_fromtimestamp(
     }
     self = datetime_from_timestamp(cls, tzinfo == Py_None, values[0].object, tzinfo);
     if self and tzinfo != Py_None {
-        # Convert UTC to tzinfo's zone.
         res = PyObject_CallMethod(tzinfo, "fromutc", "O", self);
         jacpy_release(self);
         return res;
@@ -375,8 +464,7 @@ def datetime_fromtimestamp(
     return self;
 }
 
-"""Return new UTC datetime from timestamp (Python timestamp -- a double)."""
-def datetime_utcfromtimestamp(
+impl datetime_utcfromtimestamp(
     cls: ptr[PyObject], args: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyErr_WarnEx(
@@ -395,13 +483,11 @@ def datetime_utcfromtimestamp(
     return datetime_from_timestamp(cls, False, timestamp, Py_None);
 }
 
-"""Return new datetime from _strptime._strptime_datetime_datetime()."""
-def datetime_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return strptime_via(cls, args, "_strptime_datetime_datetime");
 }
 
-"""Return new datetime from date/datetime and time arguments."""
-def datetime_combine(
+impl datetime_combine(
     cls: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -430,18 +516,14 @@ def datetime_combine(
     );
 }
 
-"""The string with a surrogate separator (at 7, 8 or 10) replaced by 'T',
-so every valid string can be encoded in UTF-8; a new reference, or NULL for
-a string too short to be valid (or on error)."""
-def sanitize_isoformat_str(dtstr: ptr[PyObject]) -> ptr[PyObject] {
+impl sanitize_isoformat_str(dtstr: ptr[PyObject]) -> ptr[PyObject] {
     length = PyUnicode_GetLength(dtstr);
-    # All valid ISO 8601 strings are at least 7 characters long
+
     if length < 7 {
         return NULL;
     }
     surrogate_separator = 0;
     for position in [7, 8, 10] {
-        # Past the end is the terminating NUL, which is no surrogate.
         if position >= length {
             break;
         }
@@ -465,13 +547,12 @@ def sanitize_isoformat_str(dtstr: ptr[PyObject]) -> ptr[PyObject] {
     return str_out;
 }
 
-def datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(dtstr) == 0 {
         PyErr_SetString(PyExc_TypeError, "fromisoformat: argument must be str");
         return NULL;
     }
-    # Only a surrogate separator needs sanitizing; where the separator is
-    # ambiguous it is '-' or a digit.
+
     dtstr_clean = sanitize_isoformat_str(dtstr);
     if not dtstr_clean {
         PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", dtstr);
@@ -481,21 +562,19 @@ def datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyOb
     text = PyUnicode_AsUTF8AndSize(dtstr_clean, &mut length);
     if not text {
         if PyErr_ExceptionMatches(PyExc_UnicodeEncodeError) != 0 {
-            # Encoding errors are invalid string errors at this point
             PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", dtstr);
         }
         jacpy_release(dtstr_clean);
         return NULL;
     }
     separator_location = find_isoformat_datetime_separator(text, int(length));
-    # C passes the separator position as a size_t, so -1 reads as unbounded.
+
     date = YearMonthDay();
     rv = parse_isoformat_date(
         text, separator_location if separator_location >= 0 else (1 << 62), date
     );
     parsed = IsoTime();
     if rv == 0 and length > separator_location {
-        # In UTF-8, the length of multi-byte characters is encoded in the MSB
         p = text + separator_location;
         lead = int(p.view(1)[0]);
         if (lead & 0x80) == 0 {
@@ -527,7 +606,6 @@ def datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyOb
         d_in_month = days_in_month(year, month);
         if day <= d_in_month {
             if parsed.minute == 0 and parsed.second == 0 and parsed.microsecond == 0 {
-                # Calculate midnight of the next day
                 hour = 0;
                 day += 1;
                 if day > d_in_month {
@@ -565,45 +643,39 @@ def datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyOb
     return dt;
 }
 
-def datetime_dealloc(op: ptr[PyObject]) {
+impl datetime_dealloc(op: ptr[PyObject]) {
     if has_tzinfo(op) {
         jacpy_release(ptr[PyDateTime_DateTime](op).view(1)[0].tzinfo);
     }
     type_free(op);
 }
 
-def datetime_tzname(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_tzname(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return call_tzname(datetime_tzinfo_of(op), op);
 }
 
-# ---------------------------------------------------------------------------
-# datetime arithmetic.
-
-def datetime_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if datetime_check(left) {
-        # datetime + delta
         if delta_check(right) {
             return add_datetime_timedelta(left, right, 1);
         }
     } elif delta_check(left) {
-        # delta + datetime
         return add_datetime_timedelta(right, left, 1);
     }
     return not_implemented();
 }
 
-def datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if not datetime_check(left) {
         return not_implemented();
     }
     if delta_check(right) {
-        # datetime - delta
         return add_datetime_timedelta(left, right, -1);
     }
     if not datetime_check(right) {
         return not_implemented();
     }
-    # datetime - datetime
+
     offset1: ptr[PyObject] = NULL;
     offset2: ptr[PyObject] = NULL;
     if datetime_tzinfo_of(left) == datetime_tzinfo_of(right) {
@@ -642,8 +714,7 @@ def datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject
     jacpy_release(offset2);
     delta_d = ymd_to_ord(get_year(left), get_month(left), get_day(left))
         - ymd_to_ord(get_year(right), get_month(right), get_day(right));
-    # These can't overflow, since the values are normalized. At most this
-    # gives the number of seconds in one day.
+
     delta_s = (date_get_hour(left) - date_get_hour(right)) * 3600
         + (date_get_minute(left) - date_get_minute(right)) * 60
         + (date_get_second(left) - date_get_second(right));
@@ -662,10 +733,7 @@ def datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Various ways to turn a datetime into a string.
-
-def datetime_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     type_name = type_name_of(op);
     baserepr: ptr[PyObject] = NULL;
     if date_get_microsecond(op) != 0 {
@@ -713,8 +781,8 @@ def datetime_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def datetime_str(op: ptr[PyObject]) -> ptr[PyObject] {
-    space = PyUnicode_FromString(" ");
+impl datetime_str(op: ptr[PyObject]) -> ptr[PyObject] {
+    space = PyUnicode_FromString(ptr[u8](" "));
     if not space {
         return NULL;
     }
@@ -723,7 +791,7 @@ def datetime_str(op: ptr[PyObject]) -> ptr[PyObject] {
     return res;
 }
 
-def datetime_isoformat(
+impl datetime_isoformat(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -786,20 +854,17 @@ def datetime_isoformat(
     if not result or not has_tzinfo(op) {
         return result;
     }
-    # We need to append the UTC offset.
+
     return append_utcoffset(result, ptr[PyDateTime_DateTime](op).view(1)[0].tzinfo, op);
 }
 
-def datetime_ctime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_ctime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return format_ctime(
         op, date_get_hour(op), date_get_minute(op), date_get_second(op)
     );
 }
 
-# ---------------------------------------------------------------------------
-# Miscellaneous methods.
-
-def flip_fold(dt: ptr[PyObject]) -> ptr[PyObject] {
+impl flip_fold(dt: ptr[PyObject]) -> ptr[PyObject] {
     return new_datetime_ex2(
         get_year(dt),
         get_month(dt),
@@ -814,7 +879,7 @@ def flip_fold(dt: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def get_flip_fold_offset(dt: ptr[PyObject]) -> ptr[PyObject] {
+impl get_flip_fold_offset(dt: ptr[PyObject]) -> ptr[PyObject] {
     flip_dt = flip_fold(dt);
     if not flip_dt {
         return NULL;
@@ -824,11 +889,7 @@ def get_flip_fold_offset(dt: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""PEP 495 exception: whenever one or both of the operands in inter-zone
-comparison is such that its utcoffset() depends on the value of its fold
-attribute, the result is False. 1 if the exception applies, 0 if not, -1
-on error."""
-def pep495_eq_exception(
+impl pep495_eq_exception(
     self: ptr[PyObject],
     other: ptr[PyObject],
     offset_self: ptr[PyObject],
@@ -854,7 +915,7 @@ def pep495_eq_exception(
     return result;
 }
 
-def datetime_richcompare(
+impl datetime_richcompare(
     self: ptr[PyObject], other: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if not datetime_check(other) {
@@ -871,8 +932,6 @@ def datetime_richcompare(
     result: ptr[PyObject] = NULL;
     equality = int(op) == Py_EQ or int(op) == Py_NE;
     if offset2 {
-        # If they're both naive, or both aware and have the same offsets, we
-        # get off cheap. Both naive means offset1 == offset2 == None here.
         if offset1 == offset2
             or (
                 delta_check(offset1)
@@ -924,7 +983,7 @@ def datetime_richcompare(
     return result;
 }
 
-def datetime_hash(op: ptr[PyObject]) -> i64 {
+impl datetime_hash(op: ptr[PyObject]) -> i64 {
     record = ptr[PyDateTime_DateTime](op).view(1);
     hash = record[0].hashcode;
     if hash != -1 {
@@ -955,7 +1014,7 @@ def datetime_hash(op: ptr[PyObject]) -> i64 {
     if not offset {
         return -1;
     }
-    # Reduce this to a hash of another object.
+
     if offset == Py_None {
         hash = generic_hash(op, DATETIME_DATASIZE);
         record[0].hashcode = hash;
@@ -983,9 +1042,7 @@ def datetime_hash(op: ptr[PyObject]) -> i64 {
     return hash;
 }
 
-"""The local timezone at a timestamp: a fixed timezone with the platform's
-offset and zone name."""
-def local_timezone_from_timestamp(timestamp: i64) -> ptr[PyObject] {
+impl local_timezone_from_timestamp(timestamp: i64) -> ptr[PyObject] {
     local_time_tm = tm();
     if _PyTime_localtime(timestamp, &mut local_time_tm) != 0 {
         return NULL;
@@ -1009,8 +1066,7 @@ def local_timezone_from_timestamp(timestamp: i64) -> ptr[PyObject] {
     return result;
 }
 
-"""The local timezone of an aware UTC datetime."""
-def local_timezone(utc_time: ptr[PyObject]) -> ptr[PyObject] {
+impl local_timezone(utc_time: ptr[PyObject]) -> ptr[PyObject] {
     module = get_current_state();
     if not module {
         return NULL;
@@ -1039,14 +1095,11 @@ def local_timezone(utc_time: ptr[PyObject]) -> ptr[PyObject] {
     return local_timezone_from_timestamp(timestamp);
 }
 
-"""Seconds since 0001-01-01 of the UTC time a local time maps to: solve
-t = local(u) for u, the earlier solution for fold 0 and the later for fold
-1; in a gap, the later or earlier of the two candidates. -1 on error."""
-def local_to_seconds(
+impl local_to_seconds(
     year: int, month: int, day: int, hour: int, minute: int, second: int, fold: int
 ) -> int {
     t = utc_to_seconds(year, month, day, hour, minute, second);
-    # Our goal is to solve t = local(u) for u.
+
     lt = local(t);
     if lt == -1 {
         return -1;
@@ -1059,9 +1112,6 @@ def local_to_seconds(
     }
     b = 0;
     if t1 == t {
-        # We found one solution, but it may not be the one we need. Look for
-        # an earlier solution (if `fold` is 0), or a later one (if `fold` is
-        # 1).
         u2 = u1 + MAX_FOLD_SECONDS if fold != 0 else u1 - MAX_FOLD_SECONDS;
         lt = local(u2);
         if lt == -1 {
@@ -1085,13 +1135,11 @@ def local_to_seconds(
     if t1 == t {
         return u1;
     }
-    # We have found both offsets a and b, but neither t - a nor t - b is a
-    # solution. This means t is in the gap.
+
     return min(u1, u2) if fold != 0 else max(u1, u2);
 }
 
-"""The local timezone of a naive local datetime."""
-def local_timezone_from_local(local_dt: ptr[PyObject]) -> ptr[PyObject] {
+impl local_timezone_from_local(local_dt: ptr[PyObject]) -> ptr[PyObject] {
     fold = date_get_fold(local_dt);
     seconds = local_to_seconds(
         get_year(local_dt),
@@ -1117,14 +1165,14 @@ def local_timezone_from_local(local_dt: ptr[PyObject]) -> ptr[PyObject] {
     if seconds2 == -1 {
         return NULL;
     }
-    # Detect gap
+
     if seconds2 != seconds and (1 if seconds2 > seconds else 0) == fold {
         seconds = seconds2;
     }
     return local_timezone_from_timestamp(seconds - EPOCH_SECONDS);
 }
 
-def datetime_astimezone(
+impl datetime_astimezone(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -1151,12 +1199,12 @@ def datetime_astimezone(
         } else {
             self_tzinfo = Py_NewRef(ptr[PyDateTime_DateTime](op).view(1)[0].tzinfo);
         }
-        # Conversion to self's own time zone is a NOP.
+
         if self_tzinfo == tzinfo {
             jacpy_release(self_tzinfo);
             return Py_NewRef(op);
         }
-        # Convert self to UTC.
+
         offset = call_utcoffset(self_tzinfo, op);
         jacpy_release(self_tzinfo);
         if not offset {
@@ -1178,13 +1226,13 @@ def datetime_astimezone(
         jacpy_release(offset);
         return NULL;
     }
-    # result = self - offset
+
     result = add_datetime_timedelta(op, offset, -1);
     jacpy_release(offset);
     if not result {
         return NULL;
     }
-    # Make sure result is aware and UTC.
+
     if not has_tzinfo(result) {
         temp = result;
         result = new_datetime_ex2(
@@ -1204,13 +1252,12 @@ def datetime_astimezone(
             return NULL;
         }
     } else {
-        # Result is already aware - just replace tzinfo.
         record = ptr[PyDateTime_DateTime](result).view(1);
         old = record[0].tzinfo;
         record[0].tzinfo = Py_NewRef(utc());
         jacpy_release(old);
     }
-    # Attach new tzinfo and let fromutc() do the rest.
+
     if tzinfo == Py_None {
         tzinfo = local_timezone(result);
         if not tzinfo {
@@ -1230,7 +1277,7 @@ def datetime_astimezone(
     return result;
 }
 
-def datetime_timetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_timetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     dstflag = -1;
     if has_tzinfo(op) and ptr[PyDateTime_DateTime](op).view(1)[0].tzinfo != Py_None {
         dst = call_dst(ptr[PyDateTime_DateTime](op).view(1)[0].tzinfo, op);
@@ -1253,7 +1300,7 @@ def datetime_timetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject]
     );
 }
 
-def datetime_timestamp(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_timestamp(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if has_tzinfo(op) and ptr[PyDateTime_DateTime](op).view(1)[0].tzinfo != Py_None {
         module = get_current_state();
         if not module {
@@ -1285,11 +1332,11 @@ def datetime_timestamp(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject]
     );
 }
 
-def datetime_getdate(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_getdate(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return new_date(get_year(op), get_month(op), get_day(op));
 }
 
-def datetime_gettime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_gettime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return new_time(
         date_get_hour(op),
         date_get_minute(op),
@@ -1300,7 +1347,7 @@ def datetime_gettime(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def datetime_gettimetz(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_gettimetz(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return new_time(
         date_get_hour(op),
         date_get_minute(op),
@@ -1311,7 +1358,7 @@ def datetime_gettimetz(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject]
     );
 }
 
-def datetime_utctimetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_utctimetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     tzinfo = datetime_tzinfo_of(op);
     utcself: ptr[PyObject] = NULL;
     if tzinfo == Py_None {
@@ -1342,19 +1389,12 @@ def datetime_utctimetuple(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObje
     return build_struct_time(y, m, d, hh, mm, ss, 0);
 }
 
-# ---------------------------------------------------------------------------
-# Pickle support, a simple use of __reduce__.
-
-"""(basestate,) or (basestate, tzinfo), where basestate is the non-tzinfo
-data; the fold sets the first bit of the third byte for protocols above 3.
-__getstate__ isn't exposed."""
-def datetime_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject] {
+impl datetime_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject] {
     basestate = data_bytes(op, DATETIME_DATASIZE);
     if not basestate {
         return NULL;
     }
     if proto > 3 and date_get_fold(op) != 0 {
-        # Set the first bit of the third byte
         third = ptr[u8](jacpy_bytes_address(basestate)) + 2;
         third.view(1)[0] = third.view(1)[0] | u8(128);
     }
@@ -1371,7 +1411,7 @@ def datetime_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject] {
     return result;
 }
 
-def datetime_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         proto = ArgumentFormat(name="__reduce_ex__").parse(args, "i")[0].signed;
     } except boundary_failure {
@@ -1380,6 +1420,6 @@ def datetime_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     return Py_BuildValue("(ON)", type_of(op), datetime_getstate(op, proto));
 }
 
-def datetime_reduce(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl datetime_reduce(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue("(ON)", type_of(op), datetime_getstate(op, 2));
 }

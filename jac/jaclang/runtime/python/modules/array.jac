@@ -1,11 +1,3 @@
-"""Native typed array storage and sequence policies.
-
-CPython bytearray supplies the retained buffer allocation; resizing, element
-conversion, slicing and sequence behavior are native Jac. Exported views pin
-logical size until the final buffer release. Derived from CPython 3.14.6;
-see ../LICENSE.cpython.
-"""
-
 obj array_state {
     has storage: ptr[PyObject] = NULL,
         code: int = 0,
@@ -16,17 +8,265 @@ obj array_state {
         little: bool = True;
 }
 
-def:priv pending {
+def:priv pending;
+
+def:pub jacpy_array_new -> array_state;
+
+def:pub jacpy_array_init(state: array_state, code: i64) -> i64;
+
+def:pub jacpy_array_clear(state: array_state);
+
+def:pub jacpy_array_field(state: array_state) -> ptr[PyObject];
+
+def:pub jacpy_array_length(state: array_state) -> i64;
+
+def:pub jacpy_array_code(state: array_state) -> i64;
+
+def:pub jacpy_array_itemsize(state: array_state) -> i64;
+
+def:pub jacpy_array_address(state: array_state) -> ptr;
+
+def:pub jacpy_array_export(state: array_state, delta: i64);
+
+def:pub jacpy_array_memory(state: array_state) -> i64;
+
+def:priv encode(state: array_state, value: ptr[PyObject]) -> u64;
+
+def:priv decode(state: array_state, index: i64) -> ptr[PyObject];
+
+def:priv resize(state: array_state, length: i64);
+
+def:pub jacpy_array_item(state: array_state, index: i64) -> ptr[PyObject];
+
+def:pub jacpy_array_assign(
+    state: array_state, index: i64, value: ptr[PyObject]
+) -> i64;
+
+def:pub jacpy_array_insert(
+    state: array_state, index: i64, value: ptr[PyObject]
+) -> i64;
+
+def:pub jacpy_array_empty(state: array_state) -> i64;
+
+def:pub jacpy_array_extend(state: array_state, values: ptr[PyObject]) -> i64;
+
+def:pub jacpy_array_tolist(state: array_state) -> ptr[PyObject];
+
+def:pub jacpy_array_tobytes(state: array_state) -> ptr[PyObject];
+
+def:pub jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i64;
+
+def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64);
+
+def:pub jacpy_array_copy(
+    out: array_state, source: array_state, start: i64, step: i64, count: i64
+) -> i64;
+
+def:pub jacpy_array_assign_slice(
+    state: array_state, start: i64, step: i64, count: i64, source: array_state
+) -> i64;
+
+def:pub jacpy_array_delete(
+    state: array_state, start: i64, step: i64, count: i64
+) -> i64;
+
+def:pub jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject];
+
+def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64;
+
+def:pub jacpy_array_fromlist(state: array_state, values: ptr[PyObject]) -> i64;
+
+def:pub jacpy_array_search(
+    state: array_state, value: ptr[PyObject], start: i64, stop: i64, mode: i64
+) -> i64;
+
+def:pub jacpy_array_compare(
+    left: array_state, right: array_state, operation: i64
+) -> ptr[PyObject];
+
+def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject];
+
+def:pub jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64;
+
+def:pub jacpy_array_repr(state: array_state) -> ptr[PyObject];
+
+obj array_cursor {
+    has state: (array_state | None),
+        owner: ptr[PyObject] = NULL,
+        index: i64 = 0;
+}
+
+def:pub jacpy_array_cursor_new(
+    owner: ptr[PyObject], state: array_state
+) -> array_cursor;
+
+def:pub jacpy_array_cursor_owner(cursor: array_cursor) -> ptr[PyObject];
+
+def:pub jacpy_array_cursor_index(cursor: array_cursor) -> i64;
+
+def:pub jacpy_array_cursor_clear(cursor: array_cursor);
+
+def:pub jacpy_array_cursor_set(cursor: array_cursor, index: i64);
+
+def:pub jacpy_array_cursor_next(cursor: array_cursor) -> ptr[PyObject];
+
+def:pub jacpy_array_fromfile(
+    state: array_state, file: ptr[PyObject], count: i64
+) -> i64;
+
+def:pub jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64;
+
+def:priv machine_format(state: array_state) -> int;
+
+def:pub jacpy_array_reduce(
+    state: array_state,
+    type: ptr[PyObject],
+    dictionary: ptr[PyObject],
+    reconstructor: ptr[PyObject],
+    protocol: i64
+) -> ptr[PyObject];
+
+def:pub jacpy_array_cursor_reduce(
+    cursor: array_cursor, iterate: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv decode_pickle(
+    state: array_state, format: i64, data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_array_reconstruct_object(
+    type: ptr[PyObject], code: i64, format: i64, data: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob array_token = ClassToken(),
+     arrayiterator_token = ClassToken(),
+     array_module_token = ClassToken();
+
+obj ArrayState(NativeState) {
+    has native: array_state;
+
+    def clear;
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32;
+    def drop;
+}
+
+obj ArrayIteratorState(NativeState) {
+    has native: array_cursor;
+
+    def clear;
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32;
+    def drop;
+}
+
+def module_for(type: ptr[PyObject]) -> ptr[PyObject];
+
+def state_for(instance: ptr[PyObject]) -> (ArrayState | None);
+
+def iterator_state(instance: ptr[PyObject]) -> (ArrayIteratorState | None);
+
+def allocate(type: ptr[PyObject], code: i64) -> ptr[PyObject];
+
+def done(status: i64) -> ptr[PyObject];
+
+def append_buffer(state: array_state, value: ptr[PyObject]) -> i64;
+
+def array_array___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array___deepcopy___impl(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_clear_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_count_impl(instance: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_index_impl(
+    instance: ptr[PyObject], v: ptr[PyObject], start: i64, stop: i64
+) -> ptr[PyObject];
+
+def array_array_remove_impl(
+    instance: ptr[PyObject], v: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_pop_impl(instance: ptr[PyObject], i: i64) -> ptr[PyObject];
+
+def array_array_extend_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], bb: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_insert_impl(
+    instance: ptr[PyObject], i: i64, v: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_buffer_info_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_append_impl(
+    instance: ptr[PyObject], v: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_byteswap_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_fromfile_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], f: ptr[PyObject], n: i64
+) -> ptr[PyObject];
+
+def array_array_tofile_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], f: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_fromlist_impl(
+    instance: ptr[PyObject], list_: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_tolist_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_frombytes_impl(
+    instance: ptr[PyObject], buffer: BufferArgument
+) -> ptr[PyObject];
+
+def array_array_tobytes_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array_fromunicode_impl(
+    instance: ptr[PyObject], ustr: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_array_tounicode_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def array_array___reduce_ex___impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array__array_reconstructor_impl(
+    module: ptr[PyObject],
+    arraytype: ptr[PyObject],
+    typecode: i32,
+    mformat_code: i32,
+    items: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_arrayiterator___setstate___impl(
+    instance: ptr[PyObject], state: ptr[PyObject]
+) -> ptr[PyObject];
+
+def array_arrayiterator___reduce___impl(
+    instance: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl pending {
     if jacpy_error_pending() != 0 {
         raise boundary_failure();
     }
 }
 
-def:pub jacpy_array_new -> array_state {
+impl jacpy_array_new -> array_state {
     return array_state();
 }
 
-def:pub jacpy_array_init(state: array_state, code: i64) -> i64 {
+impl jacpy_array_init(state: array_state, code: i64) -> i64 {
     state.code = int(code);
     state.little = jacpy_native_little_endian() != 0;
     letter = chr(state.code);
@@ -51,7 +291,7 @@ def:pub jacpy_array_init(state: array_state, code: i64) -> i64 {
     return 0 if state.storage != 0 else -1;
 }
 
-def:pub jacpy_array_clear(state: array_state) {
+impl jacpy_array_clear(state: array_state) {
     storage = state.storage;
     state.storage = NULL;
     state.length = 0;
@@ -59,39 +299,37 @@ def:pub jacpy_array_clear(state: array_state) {
     jacpy_release(storage);
 }
 
-def:pub jacpy_array_field(state: array_state) -> ptr[PyObject] {
+impl jacpy_array_field(state: array_state) -> ptr[PyObject] {
     return state.storage;
 }
 
-def:pub jacpy_array_length(state: array_state) -> i64 {
+impl jacpy_array_length(state: array_state) -> i64 {
     return state.length;
 }
 
-def:pub jacpy_array_code(state: array_state) -> i64 {
+impl jacpy_array_code(state: array_state) -> i64 {
     return i64(state.code);
 }
 
-def:pub jacpy_array_itemsize(state: array_state) -> i64 {
+impl jacpy_array_itemsize(state: array_state) -> i64 {
     return i64(state.itemsize);
 }
 
-def:pub jacpy_array_address(state: array_state) -> ptr {
+impl jacpy_array_address(state: array_state) -> ptr {
     return jacpy_bytes_address(state.storage);
 }
 
-def:pub jacpy_array_export(state: array_state, delta: i64) {
+impl jacpy_array_export(state: array_state, delta: i64) {
     state.exports += delta;
 }
 
-def:pub jacpy_array_memory(state: array_state) -> i64 {
+impl jacpy_array_memory(state: array_state) -> i64 {
     return jac_heap_size(u64(id(state))) + jacpy_bytearray_memory(state.storage);
 }
 
-# Convert before taking an address: __index__ and __float__ may resize the array.
-def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
+impl encode(state: array_state, value: ptr[PyObject]) -> u64 {
     letter = chr(state.code);
     if letter in "uw" {
-        # u_setitem / w_setitem (wchar_t is UCS-4 on every JacPython target).
         if jacpy_is_unicode(value) == 0 {
             object_error(
                 PyExc_TypeError,
@@ -144,7 +382,7 @@ def:priv encode(state: array_state, value: ptr[PyObject]) -> u64 {
     }
 }
 
-def:priv decode(state: array_state, index: i64) -> ptr[PyObject] {
+impl decode(state: array_state, index: i64) -> ptr[PyObject] {
     address = jacpy_bytes_address(state.storage) + index * i64(state.itemsize);
     letter = chr(state.code);
     if letter in "fd" {
@@ -163,7 +401,7 @@ def:priv decode(state: array_state, index: i64) -> ptr[PyObject] {
     return integer_from_bits(bits, state.itemsize, letter in "bhilq");
 }
 
-def:priv resize(state: array_state, length: i64) {
+impl resize(state: array_state, length: i64) {
     if length == state.length {
         return;
     }
@@ -190,7 +428,7 @@ def:priv resize(state: array_state, length: i64) {
     state.length = length;
 }
 
-def:pub jacpy_array_item(state: array_state, index: i64) -> ptr[PyObject] {
+impl jacpy_array_item(state: array_state, index: i64) -> ptr[PyObject] {
     try {
         if index < 0 or index >= state.length {
             object_error(PyExc_IndexError, "array index out of range");
@@ -202,9 +440,7 @@ def:pub jacpy_array_item(state: array_state, index: i64) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_array_assign(
-    state: array_state, index: i64, value: ptr[PyObject]
-) -> i64 {
+impl jacpy_array_assign(state: array_state, index: i64, value: ptr[PyObject]) -> i64 {
     try {
         bits = encode(state, value);
         if index < 0 or index >= state.length {
@@ -223,9 +459,7 @@ def:pub jacpy_array_assign(
     }
 }
 
-def:pub jacpy_array_insert(
-    state: array_state, index: i64, value: ptr[PyObject]
-) -> i64 {
+impl jacpy_array_insert(state: array_state, index: i64, value: ptr[PyObject]) -> i64 {
     try {
         bits = encode(state, value);
         if index < 0 {
@@ -248,7 +482,7 @@ def:pub jacpy_array_insert(
     }
 }
 
-def:pub jacpy_array_empty(state: array_state) -> i64 {
+impl jacpy_array_empty(state: array_state) -> i64 {
     try {
         resize(state, 0);
         return 0;
@@ -257,7 +491,7 @@ def:pub jacpy_array_empty(state: array_state) -> i64 {
     }
 }
 
-def:pub jacpy_array_extend(state: array_state, values: ptr[PyObject]) -> i64 {
+impl jacpy_array_extend(state: array_state, values: ptr[PyObject]) -> i64 {
     iterator: ptr[PyObject] = NULL;
     value: ptr[PyObject] = NULL;
     try {
@@ -280,7 +514,7 @@ def:pub jacpy_array_extend(state: array_state, values: ptr[PyObject]) -> i64 {
     }
 }
 
-def:pub jacpy_array_tolist(state: array_state) -> ptr[PyObject] {
+impl jacpy_array_tolist(state: array_state) -> ptr[PyObject] {
     result: ptr[PyObject] = NULL;
     value: ptr[PyObject] = NULL;
     try {
@@ -304,14 +538,13 @@ def:pub jacpy_array_tolist(state: array_state) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_array_tobytes(state: array_state) -> ptr[PyObject] {
+impl jacpy_array_tobytes(state: array_state) -> ptr[PyObject] {
     return jacpy_bytes_from_memory(
         jacpy_bytes_address(state.storage), state.length * i64(state.itemsize)
     );
 }
 
-# Source bytes are held by the boundary across resizing, including self-views.
-def:pub jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i64 {
+impl jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i64 {
     try {
         width = i64(state.itemsize);
         if size % width != 0 {
@@ -335,7 +568,7 @@ def:pub jacpy_array_frombytes(state: array_state, address: ptr, size: i64) -> i6
     }
 }
 
-def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64) {
+impl jacpy_array_reverse(state: array_state, swap_bytes: i64) {
     address = jacpy_bytes_address(state.storage);
     width = i64(state.itemsize);
     if swap_bytes != 0 {
@@ -364,7 +597,7 @@ def:pub jacpy_array_reverse(state: array_state, swap_bytes: i64) {
     }
 }
 
-def:pub jacpy_array_copy(
+impl jacpy_array_copy(
     out: array_state, source: array_state, start: i64, step: i64, count: i64
 ) -> i64 {
     try {
@@ -389,7 +622,7 @@ def:pub jacpy_array_copy(
     }
 }
 
-def:pub jacpy_array_assign_slice(
+impl jacpy_array_assign_slice(
     state: array_state, start: i64, step: i64, count: i64, source: array_state
 ) -> i64 {
     snapshot: ptr[PyObject] = NULL;
@@ -460,9 +693,7 @@ def:pub jacpy_array_assign_slice(
     }
 }
 
-def:pub jacpy_array_delete(
-    state: array_state, start: i64, step: i64, count: i64
-) -> i64 {
+impl jacpy_array_delete(state: array_state, start: i64, step: i64, count: i64) -> i64 {
     try {
         if count == 0 {
             return 0;
@@ -506,7 +737,7 @@ def:pub jacpy_array_delete(
     }
 }
 
-def:pub jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject] {
+impl jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject] {
     value: ptr[PyObject] = NULL;
     try {
         if index < 0 {
@@ -528,7 +759,7 @@ def:pub jacpy_array_pop(state: array_state, index: i64) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64 {
+impl jacpy_array_repeat(state: array_state, times: i64) -> i64 {
     try {
         if times < 0 {
             times = 0;
@@ -556,7 +787,7 @@ def:pub jacpy_array_repeat(state: array_state, times: i64) -> i64 {
     }
 }
 
-def:pub jacpy_array_fromlist(state: array_state, values: ptr[PyObject]) -> i64 {
+impl jacpy_array_fromlist(state: array_state, values: ptr[PyObject]) -> i64 {
     temporary = array_state();
     try {
         checked(jacpy_array_init(temporary, i64(state.code)));
@@ -569,8 +800,7 @@ def:pub jacpy_array_fromlist(state: array_state, values: ptr[PyObject]) -> i64 {
     }
 }
 
-# Element comparisons keep a strong operand while arbitrary Python equality runs.
-def:pub jacpy_array_search(
+impl jacpy_array_search(
     state: array_state, value: ptr[PyObject], start: i64, stop: i64, mode: i64
 ) -> i64 {
     item: ptr[PyObject] = NULL;
@@ -623,7 +853,7 @@ def:pub jacpy_array_search(
     }
 }
 
-def:pub jacpy_array_compare(
+impl jacpy_array_compare(
     left: array_state, right: array_state, operation: i64
 ) -> ptr[PyObject] {
     a: ptr[PyObject] = NULL;
@@ -658,7 +888,7 @@ def:pub jacpy_array_compare(
     }
 }
 
-def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
+impl jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
     values: ptr[PyObject] = NULL;
     separator: ptr[PyObject] = NULL;
     try {
@@ -680,7 +910,7 @@ def:pub jacpy_array_tounicode(state: array_state) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64 {
+impl jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64 {
     if chr(state.code) not in "uw" {
         object_error(
             PyExc_ValueError,
@@ -691,7 +921,7 @@ def:pub jacpy_array_fromunicode(state: array_state, value: ptr[PyObject]) -> i64
     return jacpy_array_extend(state, value);
 }
 
-def:pub jacpy_array_repr(state: array_state) -> ptr[PyObject] {
+impl jacpy_array_repr(state: array_state) -> ptr[PyObject] {
     value: ptr[PyObject] = NULL;
     try {
         prefix = "array('" + chr(state.code) + "'";
@@ -711,41 +941,33 @@ def:pub jacpy_array_repr(state: array_state) -> ptr[PyObject] {
     }
 }
 
-obj array_cursor {
-    has state: (array_state | None),
-        owner: ptr[PyObject] = NULL,
-        index: i64 = 0;
-}
-
-def:pub jacpy_array_cursor_new(
-    owner: ptr[PyObject], state: array_state
-) -> array_cursor {
+impl jacpy_array_cursor_new(owner: ptr[PyObject], state: array_state) -> array_cursor {
     return array_cursor(state=state, owner=Py_NewRef(owner));
 }
 
-def:pub jacpy_array_cursor_owner(cursor: array_cursor) -> ptr[PyObject] {
+impl jacpy_array_cursor_owner(cursor: array_cursor) -> ptr[PyObject] {
     return cursor.owner;
 }
 
-def:pub jacpy_array_cursor_index(cursor: array_cursor) -> i64 {
+impl jacpy_array_cursor_index(cursor: array_cursor) -> i64 {
     return cursor.index;
 }
 
-def:pub jacpy_array_cursor_clear(cursor: array_cursor) {
+impl jacpy_array_cursor_clear(cursor: array_cursor) {
     owner = cursor.owner;
     cursor.owner = NULL;
     cursor.state = None;
     jacpy_release(owner);
 }
 
-def:pub jacpy_array_cursor_set(cursor: array_cursor, index: i64) {
+impl jacpy_array_cursor_set(cursor: array_cursor, index: i64) {
     state = cursor.state;
     if cursor.owner != 0 and state is not None {
         cursor.index = min(state.length, max(i64(0), index));
     }
 }
 
-def:pub jacpy_array_cursor_next(cursor: array_cursor) -> ptr[PyObject] {
+impl jacpy_array_cursor_next(cursor: array_cursor) -> ptr[PyObject] {
     state = cursor.state;
     if cursor.owner == 0 or state is None {
         return NULL;
@@ -763,9 +985,7 @@ def:pub jacpy_array_cursor_next(cursor: array_cursor) -> ptr[PyObject] {
     }
 }
 
-def:pub jacpy_array_fromfile(
-    state: array_state, file: ptr[PyObject], count: i64
-) -> i64 {
+impl jacpy_array_fromfile(state: array_state, file: ptr[PyObject], count: i64) -> i64 {
     method: ptr[PyObject] = NULL;
     size: ptr[PyObject] = NULL;
     data: ptr[PyObject] = NULL;
@@ -780,7 +1000,7 @@ def:pub jacpy_array_fromfile(
         }
         expected = count * i64(state.itemsize);
         size = required(PyLong_FromLongLong(expected));
-        method = required(PyObject_GetAttrString(file, "read"));
+        method = required(PyObject_GetAttrString(file, ptr[u8]("read")));
         data = required(PyObject_CallOneArg(method, size));
         if jacpy_is_bytes(data) == 0 {
             object_error(PyExc_TypeError, "read() didn't return bytes");
@@ -802,7 +1022,7 @@ def:pub jacpy_array_fromfile(
     }
 }
 
-def:pub jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64 {
+impl jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64 {
     snapshot: ptr[PyObject] = NULL;
     method: ptr[PyObject] = NULL;
     block: ptr[PyObject] = NULL;
@@ -819,7 +1039,7 @@ def:pub jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64 {
             block = required(
                 jacpy_bytes_from_memory(jacpy_bytes_address(snapshot) + offset, amount)
             );
-            method = required(PyObject_GetAttrString(file, "write"));
+            method = required(PyObject_GetAttrString(file, ptr[u8]("write")));
             result = required(PyObject_CallOneArg(method, block));
             jacpy_release(result);
             result = NULL;
@@ -840,7 +1060,7 @@ def:pub jacpy_array_tofile(state: array_state, file: ptr[PyObject]) -> i64 {
     }
 }
 
-def:priv machine_format(state: array_state) -> int {
+impl machine_format(state: array_state) -> int {
     code = chr(state.code);
     endian = int(not state.little);
     if code == "b" {
@@ -862,7 +1082,7 @@ def:priv machine_format(state: array_state) -> int {
     return base + endian + (2 if code in "hilq" else 0);
 }
 
-def:pub jacpy_array_reduce(
+impl jacpy_array_reduce(
     state: array_state,
     type: ptr[PyObject],
     dictionary: ptr[PyObject],
@@ -894,7 +1114,7 @@ def:pub jacpy_array_reduce(
     }
 }
 
-def:pub jacpy_array_cursor_reduce(
+impl jacpy_array_cursor_reduce(
     cursor: array_cursor, iterate: ptr[PyObject]
 ) -> ptr[PyObject] {
     args: ptr[PyObject] = NULL;
@@ -918,7 +1138,7 @@ def:pub jacpy_array_cursor_reduce(
     }
 }
 
-def:priv decode_pickle(
+impl decode_pickle(
     state: array_state, format: i64, data: ptr[PyObject]
 ) -> ptr[PyObject] {
     value: ptr[PyObject] = NULL;
@@ -962,8 +1182,6 @@ def:priv decode_pickle(
         }
         signed = format == 1 or (format >= 2 and (format - 2) % 4 >= 2);
         if format < 14 {
-            # Match the retained platform's narrowest suitable integer layout;
-            # ties follow the descriptor order used by CPython array pickles.
             for code in "bBhHiIlLqQ" {
                 kind = "bBhHiIlLqQ".find(code) // 2;
                 if jacpy_native_size(i64(kind), 0) == i64(width)
@@ -1004,7 +1222,7 @@ def:priv decode_pickle(
     }
 }
 
-def:pub jacpy_array_reconstruct_object(
+impl jacpy_array_reconstruct_object(
     type: ptr[PyObject], code: i64, format: i64, data: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = array_state();
@@ -1027,52 +1245,39 @@ def:pub jacpy_array_reconstruct_object(
     }
 }
 
-# The definitions the binding creates: methods find the receiver's state and
-# the module's by these (clinic's defining-class tokens).
-glob array_token = ClassToken(),
-     arrayiterator_token = ClassToken(),
-     array_module_token = ClassToken();
-
-obj ArrayState(NativeState) {
-    has native: array_state;
-
-    def clear {
-        # An exported view keeps storage valid until its release callback runs.
-        if self.native.exports == 0 {
-            jacpy_array_clear(self.native);
-        }
-    }
-
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        return visit_reference(jacpy_array_field(self.native), visitor, context);
-    }
-
-    def drop {
-        self.clear();
+impl ArrayState.clear {
+    if self.native.exports == 0 {
+        jacpy_array_clear(self.native);
     }
 }
 
-obj ArrayIteratorState(NativeState) {
-    has native: array_cursor;
-
-    def clear {
-        jacpy_array_cursor_clear(self.native);
-    }
-
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        return visit_reference(jacpy_array_cursor_owner(self.native), visitor, context);
-    }
-
-    def drop {
-        self.clear();
-    }
+impl ArrayState.traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    return visit_reference(jacpy_array_field(self.native), visitor, context);
 }
 
-def module_for(type: ptr[PyObject]) -> ptr[PyObject] {
+impl ArrayState.drop {
+    self.clear();
+}
+
+impl ArrayIteratorState.clear {
+    jacpy_array_cursor_clear(self.native);
+}
+
+impl ArrayIteratorState.traverse_refs(
+    visitor: ptr[PyObject], context: ptr[PyObject]
+) -> i32 {
+    return visit_reference(jacpy_array_cursor_owner(self.native), visitor, context);
+}
+
+impl ArrayIteratorState.drop {
+    self.clear();
+}
+
+impl module_for(type: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_owner(type, array_module_token.handle);
 }
 
-def state_for(instance: ptr[PyObject]) -> (ArrayState | None) {
+impl state_for(instance: ptr[PyObject]) -> (ArrayState | None) {
     if jacpy_binding_native_present(instance, array_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, array_token.handle);
         if isinstance(state, ArrayState) {
@@ -1083,7 +1288,7 @@ def state_for(instance: ptr[PyObject]) -> (ArrayState | None) {
     return None;
 }
 
-def iterator_state(instance: ptr[PyObject]) -> (ArrayIteratorState | None) {
+impl iterator_state(instance: ptr[PyObject]) -> (ArrayIteratorState | None) {
     if jacpy_binding_native_present(instance, arrayiterator_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, arrayiterator_token.handle);
         if isinstance(state, ArrayIteratorState) {
@@ -1094,7 +1299,7 @@ def iterator_state(instance: ptr[PyObject]) -> (ArrayIteratorState | None) {
     return None;
 }
 
-def allocate(type: ptr[PyObject], code: i64) -> ptr[PyObject] {
+impl allocate(type: ptr[PyObject], code: i64) -> ptr[PyObject] {
     state = ArrayState(native=array_state());
     if jacpy_array_init(state.native, code) < 0 {
         return NULL;
@@ -1108,11 +1313,11 @@ def allocate(type: ptr[PyObject], code: i64) -> ptr[PyObject] {
     return instance;
 }
 
-def done(status: i64) -> ptr[PyObject] {
+impl done(status: i64) -> ptr[PyObject] {
     return Py_NewRef(Py_None) if status >= 0 else NULL;
 }
 
-def append_buffer(state: array_state, value: ptr[PyObject]) -> i64 {
+impl append_buffer(state: array_state, value: ptr[PyObject]) -> i64 {
     buffer = BufferArgument();
     if not buffer.acquire(value) {
         return -1;
@@ -1120,8 +1325,7 @@ def append_buffer(state: array_state, value: ptr[PyObject]) -> i64 {
     return jacpy_array_frombytes(state, buffer.address(), buffer.size());
 }
 
-# The Argument Clinic _impl functions.
-def array_array___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -1144,18 +1348,20 @@ def array_array___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def array_array___deepcopy___impl(
+impl array_array___deepcopy___impl(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     return array_array___copy___impl(instance);
 }
 
-def array_array_clear_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_clear_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     return done(jacpy_array_empty(state.native)) if state is not None else NULL;
 }
 
-def array_array_count_impl(instance: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_count_impl(
+    instance: ptr[PyObject], v: ptr[PyObject]
+) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -1164,7 +1370,7 @@ def array_array_count_impl(instance: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyO
     return PyLong_FromLongLong(result) if result >= 0 else NULL;
 }
 
-def array_array_index_impl(
+impl array_array_index_impl(
     instance: ptr[PyObject], v: ptr[PyObject], start: i64, stop: i64
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1175,7 +1381,7 @@ def array_array_index_impl(
     return PyLong_FromLongLong(result) if result >= 0 else NULL;
 }
 
-def array_array_remove_impl(
+impl array_array_remove_impl(
     instance: ptr[PyObject], v: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1185,12 +1391,12 @@ def array_array_remove_impl(
     return done(jacpy_array_search(state.native, v, 0, 9223372036854775807, 2));
 }
 
-def array_array_pop_impl(instance: ptr[PyObject], i: i64) -> ptr[PyObject] {
+impl array_array_pop_impl(instance: ptr[PyObject], i: i64) -> ptr[PyObject] {
     state = state_for(instance);
     return jacpy_array_pop(state.native, i) if state is not None else NULL;
 }
 
-def array_array_extend_impl(
+impl array_array_extend_impl(
     instance: ptr[PyObject], cls: ptr[PyObject], bb: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1211,7 +1417,7 @@ def array_array_extend_impl(
     return done(jacpy_array_extend(state.native, bb));
 }
 
-def array_array_insert_impl(
+impl array_array_insert_impl(
     instance: ptr[PyObject], i: i64, v: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1221,7 +1427,7 @@ def array_array_insert_impl(
     return done(jacpy_array_insert(state.native, i, v));
 }
 
-def array_array_buffer_info_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_buffer_info_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -1232,7 +1438,7 @@ def array_array_buffer_info_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def array_array_append_impl(
+impl array_array_append_impl(
     instance: ptr[PyObject], v: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1242,7 +1448,7 @@ def array_array_append_impl(
     return done(jacpy_array_insert(state.native, 9223372036854775807, v));
 }
 
-def array_array_byteswap_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_byteswap_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -1251,7 +1457,7 @@ def array_array_byteswap_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def array_array_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -1260,7 +1466,7 @@ def array_array_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def array_array_fromfile_impl(
+impl array_array_fromfile_impl(
     instance: ptr[PyObject], cls: ptr[PyObject], f: ptr[PyObject], n: i64
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1270,7 +1476,7 @@ def array_array_fromfile_impl(
     return done(jacpy_array_fromfile(state.native, f, n));
 }
 
-def array_array_tofile_impl(
+impl array_array_tofile_impl(
     instance: ptr[PyObject], cls: ptr[PyObject], f: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1280,7 +1486,7 @@ def array_array_tofile_impl(
     return done(jacpy_array_tofile(state.native, f));
 }
 
-def array_array_fromlist_impl(
+impl array_array_fromlist_impl(
     instance: ptr[PyObject], list_: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_list(list_) == 0 {
@@ -1293,12 +1499,12 @@ def array_array_fromlist_impl(
         else NULL;
 }
 
-def array_array_tolist_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_tolist_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     return jacpy_array_tolist(state.native) if state is not None else NULL;
 }
 
-def array_array_frombytes_impl(
+impl array_array_frombytes_impl(
     instance: ptr[PyObject], buffer: BufferArgument
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1308,12 +1514,12 @@ def array_array_frombytes_impl(
     return done(jacpy_array_frombytes(state.native, buffer.address(), buffer.size()));
 }
 
-def array_array_tobytes_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_tobytes_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     return jacpy_array_tobytes(state.native) if state is not None else NULL;
 }
 
-def array_array_fromunicode_impl(
+impl array_array_fromunicode_impl(
     instance: ptr[PyObject], ustr: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_for(instance);
@@ -1322,12 +1528,12 @@ def array_array_fromunicode_impl(
         else NULL;
 }
 
-def array_array_tounicode_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array_tounicode_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     return jacpy_array_tounicode(state.native) if state is not None else NULL;
 }
 
-def array_array___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl array_array___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -1339,7 +1545,7 @@ def array_array___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def array_array___reduce_ex___impl(
+impl array_array___reduce_ex___impl(
     instance: ptr[PyObject], cls: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_long(value) == 0 {
@@ -1355,7 +1561,10 @@ def array_array___reduce_ex___impl(
         return NULL;
     }
     held = ReferenceState(
-        references=[PyObject_GetAttrString(module, "_array_reconstructor"), NULL]
+        references=[
+            PyObject_GetAttrString(module, ptr[u8]("_array_reconstructor")),
+            NULL
+        ]
     );
     if held.references[0] == 0 {
         return NULL;
@@ -1380,7 +1589,7 @@ def array_array___reduce_ex___impl(
     );
 }
 
-def array__array_reconstructor_impl(
+impl array__array_reconstructor_impl(
     module: ptr[PyObject],
     arraytype: ptr[PyObject],
     typecode: i32,
@@ -1401,7 +1610,7 @@ def array__array_reconstructor_impl(
     );
 }
 
-def array_arrayiterator___setstate___impl(
+impl array_arrayiterator___setstate___impl(
     instance: ptr[PyObject], state: ptr[PyObject]
 ) -> ptr[PyObject] {
     index = PyLong_AsSsize_t(state);
@@ -1416,7 +1625,7 @@ def array_arrayiterator___setstate___impl(
     return Py_NewRef(Py_None);
 }
 
-def array_arrayiterator___reduce___impl(
+impl array_arrayiterator___reduce___impl(
     instance: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     held = ReferenceState(references=[jacpy_builtins(), text_object("iter"), NULL]);

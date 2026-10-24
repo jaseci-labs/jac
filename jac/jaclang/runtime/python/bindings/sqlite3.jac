@@ -1,112 +1,42 @@
-"""The _sqlite3 module: Connection, Cursor, Row, Blob, PrepareProtocol, Statement,
-the DB-API exceptions and the SQLite constants."""
-
-def:priv connection_dealloc(instance: ptr[PyObject]) {
-    if PyObject_CallFinalizerFromDealloc(instance) < 0 {
-        return;
-    }
-    dispose_payload(instance, Connection_token.handle);
-}
+def:priv connection_dealloc(instance: ptr[PyObject]);
 
 def:priv connection_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, Connection_token.handle, visitor, context);
-}
+) -> i32;
 
-def:priv connection_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, Connection_token.handle);
-}
+def:priv connection_clear(instance: ptr[PyObject]) -> i32;
 
-# The cursor's state owns the references of its member record, so the state
-# exists before the object goes away.
-def:priv cursor_dealloc(instance: ptr[PyObject]) {
-    cursor_of(instance);
-    dispose_payload(instance, Cursor_token.handle);
-}
+def:priv cursor_dealloc(instance: ptr[PyObject]);
 
-def:priv cursor_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    if jacpy_binding_native_present(instance, Cursor_token.handle) != 0 {
-        return traverse_payload(instance, Cursor_token.handle, visitor, context);
-    }
-    # Before the state exists only the member record holds references.
-    status = traverse_payload(instance, Cursor_token.handle, visitor, context);
-    if status != 0 {
-        return status;
-    }
-    record = ptr[ptr[PyObject]](jacpy_binding_record(instance, Cursor_token.handle));
-    for slot in [0, 1, 2, 4] {
-        status = visit_reference((record + slot).view(1)[0], visitor, context);
-        if status != 0 {
-            return status;
-        }
-    }
-    return i32(0);
-}
+def:priv cursor_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv cursor_clear(instance: ptr[PyObject]) -> i32 {
-    cursor_of(instance);
-    return clear_payload(instance, Cursor_token.handle);
-}
+def:priv cursor_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv row_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, Row_token.handle);
-}
+def:priv row_dealloc(instance: ptr[PyObject]);
 
-def:priv row_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, Row_token.handle, visitor, context);
-}
+def:priv row_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv row_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, Row_token.handle);
-}
+def:priv row_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv statement_dealloc(instance: ptr[PyObject]) {
-    statement_finalize(instance);
-    dispose_payload(instance, Statement_token.handle);
-}
+def:priv statement_dealloc(instance: ptr[PyObject]);
 
 def:priv statement_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, Statement_token.handle, visitor, context);
-}
+) -> i32;
 
-def:priv prepare_protocol_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, PrepareProtocol_token.handle);
-}
+def:priv prepare_protocol_dealloc(instance: ptr[PyObject]);
 
 def:priv prepare_protocol_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
-) -> i32 {
-    return traverse_payload(instance, PrepareProtocol_token.handle, visitor, context);
-}
+) -> i32;
 
-def:priv blob_dealloc(instance: ptr[PyObject]) {
-    blob_close_on_dealloc(instance);
-    dispose_payload(instance, Blob_token.handle);
-}
+def:priv blob_dealloc(instance: ptr[PyObject]);
 
-def:priv blob_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, Blob_token.handle, visitor, context);
-}
+def:priv blob_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv blob_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, Blob_token.handle);
-}
+def:priv blob_clear(instance: ptr[PyObject]) -> i32;
 
-# Connection's methods, without the loadable-extension pair when the build
-# does not define PY_SQLITE_ENABLE_LOAD_EXTENSION.
-def:priv connection_methods -> list[MethodDefinition] {
-    methods: list[MethodDefinition] = [];
-    for method in Connection_methods {
-        if ENABLE_LOAD_EXTENSION
-            or method.name not in ["enable_load_extension", "load_extension"] {
-            methods.append(method);
-        }
-    }
-    return methods;
-}
+def:priv connection_methods -> list[MethodDefinition];
 
 glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
      connection_type = TypeDefinition(
@@ -232,9 +162,127 @@ glob:priv GC_TYPE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          weaklist=True
      );
 
-# A new exception class sqlite3.<name> added to the module; its reference
-# stays with the caller.
 def:priv add_exception(
+    module: ptr[PyObject], name: str, base: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv methods: list[MethodDefinition] = module_methods
+         + [
+             MethodDefinition(
+                 "connect",
+                 MethodCallbacks(fast_keywords=pysqlite_connect),
+                 pysqlite_connect_doc,
+                 130
+             )
+         ],
+     definition = ModuleDefinition(
+         "_sqlite3", "", methods, ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__sqlite3 -> ptr[PyObject];
+
+impl connection_dealloc(instance: ptr[PyObject]) {
+    if PyObject_CallFinalizerFromDealloc(instance) < 0 {
+        return;
+    }
+    dispose_payload(instance, Connection_token.handle);
+}
+
+impl connection_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, Connection_token.handle, visitor, context);
+}
+
+impl connection_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, Connection_token.handle);
+}
+
+impl cursor_dealloc(instance: ptr[PyObject]) {
+    cursor_of(instance);
+    dispose_payload(instance, Cursor_token.handle);
+}
+
+impl cursor_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    if jacpy_binding_native_present(instance, Cursor_token.handle) != 0 {
+        return traverse_payload(instance, Cursor_token.handle, visitor, context);
+    }
+
+    status = traverse_payload(instance, Cursor_token.handle, visitor, context);
+    if status != 0 {
+        return status;
+    }
+    record = ptr[ptr[PyObject]](jacpy_binding_record(instance, Cursor_token.handle));
+    for slot in [0, 1, 2, 4] {
+        status = visit_reference((record + slot).view(1)[0], visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
+    return i32(0);
+}
+
+impl cursor_clear(instance: ptr[PyObject]) -> i32 {
+    cursor_of(instance);
+    return clear_payload(instance, Cursor_token.handle);
+}
+
+impl row_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, Row_token.handle);
+}
+
+impl row_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, Row_token.handle, visitor, context);
+}
+
+impl row_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, Row_token.handle);
+}
+
+impl statement_dealloc(instance: ptr[PyObject]) {
+    statement_finalize(instance);
+    dispose_payload(instance, Statement_token.handle);
+}
+
+impl statement_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, Statement_token.handle, visitor, context);
+}
+
+impl prepare_protocol_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, PrepareProtocol_token.handle);
+}
+
+impl prepare_protocol_traverse(
+    instance: ptr[PyObject], visitor: ptr, context: ptr
+) -> i32 {
+    return traverse_payload(instance, PrepareProtocol_token.handle, visitor, context);
+}
+
+impl blob_dealloc(instance: ptr[PyObject]) {
+    blob_close_on_dealloc(instance);
+    dispose_payload(instance, Blob_token.handle);
+}
+
+impl blob_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, Blob_token.handle, visitor, context);
+}
+
+impl blob_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, Blob_token.handle);
+}
+
+impl connection_methods -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in Connection_methods {
+        if ENABLE_LOAD_EXTENSION
+            or method.name not in ["enable_load_extension", "load_extension"] {
+            methods.append(method);
+        }
+    }
+    return methods;
+}
+
+impl add_exception(
     module: ptr[PyObject], name: str, base: ptr[PyObject]
 ) -> ptr[PyObject] {
     exception = jacpy_binding_exception("sqlite3." + name, base, "");
@@ -248,7 +296,7 @@ def:priv add_exception(
     return exception;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     module_definition.handle = definition.handle;
     Connection_token.handle = connection_type.handle;
     Cursor_token.handle = cursor_type.handle;
@@ -286,7 +334,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             return i32(-1);
         }
     }
-    # The DB-API exception hierarchy.
+
     state.Error = add_exception(module, "Error", PyExc_Exception);
     if not state.Error {
         return i32(-1);
@@ -333,15 +381,15 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not state.NotSupportedError {
         return i32(-1);
     }
-    # Interned strings.
-    state.str___adapt__ = PyUnicode_InternFromString("__adapt__");
-    state.str___conform__ = PyUnicode_InternFromString("__conform__");
-    state.str_executescript = PyUnicode_InternFromString("executescript");
-    state.str_finalize = PyUnicode_InternFromString("finalize");
-    state.str_inverse = PyUnicode_InternFromString("inverse");
-    state.str_step = PyUnicode_InternFromString("step");
-    state.str_upper = PyUnicode_InternFromString("upper");
-    state.str_value = PyUnicode_InternFromString("value");
+
+    state.str___adapt__ = PyUnicode_InternFromString(ptr[u8]("__adapt__"));
+    state.str___conform__ = PyUnicode_InternFromString(ptr[u8]("__conform__"));
+    state.str_executescript = PyUnicode_InternFromString(ptr[u8]("executescript"));
+    state.str_finalize = PyUnicode_InternFromString(ptr[u8]("finalize"));
+    state.str_inverse = PyUnicode_InternFromString(ptr[u8]("inverse"));
+    state.str_step = PyUnicode_InternFromString(ptr[u8]("step"));
+    state.str_upper = PyUnicode_InternFromString(ptr[u8]("upper"));
+    state.str_value = PyUnicode_InternFromString(ptr[u8]("value"));
     if not state.str___adapt__
         or not state.str___conform__
         or not state.str_executescript
@@ -370,13 +418,13 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if level < 0 or PyModule_AddIntConstant(module, "threadsafety", i64(level)) < 0 {
         return i32(-1);
     }
-    # The microprotocols layer: the adapters registry.
+
     state.psyco_adapters = PyDict_New();
     if not state.psyco_adapters
         or PyModule_AddObjectRef(module, "adapters", state.psyco_adapters) < 0 {
         return i32(-1);
     }
-    # The default converters.
+
     state.converters = PyDict_New();
     if not state.converters
         or PyModule_AddObjectRef(module, "converters", state.converters) < 0 {
@@ -389,19 +437,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv methods: list[MethodDefinition] = module_methods
-         + [
-             MethodDefinition(
-                 "connect",
-                 MethodCallbacks(fast_keywords=pysqlite_connect),
-                 pysqlite_connect_doc,
-                 130
-             )
-         ],
-     definition = ModuleDefinition(
-         "_sqlite3", "", methods, ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__sqlite3 -> ptr[PyObject] {
+impl PyInit__sqlite3 -> ptr[PyObject] {
     return definition.initialize();
 }

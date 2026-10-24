@@ -1,11 +1,3 @@
-"""The simple namespace type: Objects/namespaceobject.c in native Jac.
-
-`_PyNamespace_Type` (types.SimpleNamespace) is C data Jac defines under its C
-name, and `_PyNamespace_New` a C function under its name, so sys.implementation
-and the C API use them unchanged. The object layout, `_PyNamespaceObject`,
-comes from layouts.jac. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob:priv namespace_members: list[PyMemberDef] = [
              PyMemberDef(
@@ -65,24 +57,66 @@ import from c {
          );
 }
 
-"""The namespace layout behind a handle."""
-def namespace_of(op: ptr[PyObject]) -> ptr[_PyNamespaceObject] {
+def namespace_of(op: ptr[PyObject]) -> ptr[_PyNamespaceObject];
+
+def namespace_dict(op: ptr[PyObject]) -> ptr[PyObject];
+
+def namespace_check(op: ptr[PyObject]) -> bool;
+
+def namespace_new(
+    _type: ptr[PyTypeObject], _args: ptr[PyObject], _kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def namespace_init(op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32;
+
+def namespace_dealloc(op: ptr[PyObject]);
+
+def namespace_repr(ns: ptr[PyObject]) -> ptr[PyObject];
+
+def namespace_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def namespace_clear(op: ptr[PyObject]) -> i32;
+
+def namespace_richcompare(
+    left: ptr[PyObject], right: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def namespace_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def namespace_replace(
+    op: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+import from c {
+    def _PyNamespace_New(kwds: ptr[PyObject]) -> ptr[PyObject] {
+        ns = namespace_new(addressof(_PyNamespace_Type), NULL, NULL);
+        if not ns {
+            return NULL;
+        }
+        if not kwds {
+            return ns;
+        }
+        if PyDict_Update(namespace_dict(ns), kwds) != 0 {
+            jacpy_release(ns);
+            return NULL;
+        }
+        return ns;
+    }
+}
+
+impl namespace_of(op: ptr[PyObject]) -> ptr[_PyNamespaceObject] {
     return ptr[_PyNamespaceObject](op);
 }
 
-"""The namespace's attribute dict (borrowed)."""
-def namespace_dict(op: ptr[PyObject]) -> ptr[PyObject] {
+impl namespace_dict(op: ptr[PyObject]) -> ptr[PyObject] {
     return namespace_of(op).view(1)[0].ns_dict;
 }
 
-"""_PyNamespace_Check."""
-def namespace_check(op: ptr[PyObject]) -> bool {
+impl namespace_check(op: ptr[PyObject]) -> bool {
     return object_type_check(op, addressof(_PyNamespace_Type));
 }
 
-# Methods
-
-def namespace_new(
+impl namespace_new(
     _type: ptr[PyTypeObject], _args: ptr[PyObject], _kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     op = _type.view(1)[0].tp_alloc(_type, 0);
@@ -96,7 +130,9 @@ def namespace_new(
     return op;
 }
 
-def namespace_init(op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
+impl namespace_init(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> i32 {
     arg = NULL;
     if PyArg_UnpackTuple(
         args, _PyType_Name(ptr[PyObject](object_type(op))), 0, 1, &mut arg
@@ -130,13 +166,13 @@ def namespace_init(op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) 
     return PyDict_Update(namespace_dict(op), kwds);
 }
 
-def namespace_dealloc(op: ptr[PyObject]) {
+impl namespace_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     namespace_clear(op);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
 
-def namespace_repr(ns: ptr[PyObject]) -> ptr[PyObject] {
+impl namespace_repr(ns: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]("namespace")
         if object_is_type(ns, addressof(_PyNamespace_Type))
         else object_type(ns).view(1)[0].tp_name;
@@ -183,7 +219,7 @@ def namespace_repr(ns: ptr[PyObject]) -> ptr[PyObject] {
             key = PyIter_Next(keys_iter);
         }
         if not failed and not PyErr_Occurred() {
-            separator = PyUnicode_FromString(", ");
+            separator = PyUnicode_FromString(ptr[u8](", "));
             if separator {
                 pairsrepr = PyUnicode_Join(separator, pairs);
                 jacpy_release(separator);
@@ -202,18 +238,18 @@ def namespace_repr(ns: ptr[PyObject]) -> ptr[PyObject] {
     return repr;
 }
 
-def namespace_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl namespace_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(namespace_dict(op), visitor, arg);
 }
 
-def namespace_clear(op: ptr[PyObject]) -> i32 {
+impl namespace_clear(op: ptr[PyObject]) -> i32 {
     old = namespace_dict(op);
     namespace_of(op).view(1)[0].ns_dict = NULL;
     jacpy_release(old);
     return i32(0);
 }
 
-def namespace_richcompare(
+impl namespace_richcompare(
     left: ptr[PyObject], right: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if namespace_check(left) and namespace_check(right) {
@@ -222,7 +258,7 @@ def namespace_richcompare(
     return Py_NewRef(Py_NotImplemented);
 }
 
-def namespace_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl namespace_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     args = PyTuple_New(0);
     if not args {
         return NULL;
@@ -232,7 +268,7 @@ def namespace_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject]
     return result;
 }
 
-def namespace_replace(
+impl namespace_replace(
     op: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if args and _PyArg_NoPositional("__replace__", args) == 0 {
@@ -262,21 +298,4 @@ def namespace_replace(
         return NULL;
     }
     return result;
-}
-
-import from c {
-    def _PyNamespace_New(kwds: ptr[PyObject]) -> ptr[PyObject] {
-        ns = namespace_new(addressof(_PyNamespace_Type), NULL, NULL);
-        if not ns {
-            return NULL;
-        }
-        if not kwds {
-            return ns;
-        }
-        if PyDict_Update(namespace_dict(ns), kwds) != 0 {
-            jacpy_release(ns);
-            return NULL;
-        }
-        return ns;
-    }
 }

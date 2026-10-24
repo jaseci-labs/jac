@@ -1,16 +1,3 @@
-"""The slice type and the Ellipsis singleton: Objects/sliceobject.c in native
-Jac.
-
-`PySlice_Type`, `PyEllipsis_Type` and `_Py_EllipsisObject` (Py_Ellipsis) are
-C data Jac defines under their C names, and the slice API (`PySlice_New`,
-`PySlice_Unpack`, `PySlice_AdjustIndices`, `_PyBuildSlice_ConsumeRefs`,
-`_PySlice_GetLongIndices`, ...) C functions under theirs, so the evaluator's
-BUILD_SLICE and the C API use them unchanged. `PySliceObject` comes from
-layouts.jac; slices are recycled through the interpreter's freelist as
-sliceobject.c does. See ../LICENSE.cpython.
-"""
-
-# code based on tuplehash() of Objects/tupleobject.c (64-bit Py_uhash_t)
 glob:priv XXPRIME_1: u64 = 11400714785074694791,
      XXPRIME_2: u64 = 14029467366897019727,
      XXPRIME_5: u64 = 2870177450012600261;
@@ -83,8 +70,6 @@ import from c {
              tp_methods=addressof(ellipsis_methods),
              tp_new=ellipsis_new
          ),
-         # Py_Ellipsis, the '...' rubber index token: like Py_None, the one
-         # object of its type.
          _Py_EllipsisObject: _object = _object(
              ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
              ob_type=addressof(PyEllipsis_Type)
@@ -118,71 +103,25 @@ import from c {
          );
 }
 
-# ---------------------------------------------------------------- Ellipsis
-"""Py_Ellipsis."""
-def py_ellipsis -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_EllipsisObject));
-}
+def py_ellipsis -> ptr[PyObject];
 
 def ellipsis_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    if object_size(args) != 0 or (kwargs and PyDict_Size(kwargs) != 0) {
-        PyErr_SetString(PyExc_TypeError, "EllipsisType takes no arguments");
-        return NULL;
-    }
-    return py_ellipsis();
-}
+) -> ptr[PyObject];
 
-# This should never get called, but we also don't want to SEGV if we
-# accidentally decref Ellipsis out of existence. Instead, since Ellipsis is
-# an immortal object, re-set the reference count.
-def ellipsis_dealloc(ellipsis: ptr[PyObject]) {
-    _Py_SetImmortal(ellipsis);
-}
+def ellipsis_dealloc(ellipsis: ptr[PyObject]);
 
-def ellipsis_repr(_op: ptr[PyObject]) -> ptr[PyObject] {
-    return PyUnicode_FromString("Ellipsis");
-}
+def ellipsis_repr(_op: ptr[PyObject]) -> ptr[PyObject];
 
-def ellipsis_reduce(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    return PyUnicode_FromString("Ellipsis");
-}
+def ellipsis_reduce(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
 
-# ---------------------------------------------------------------- slices
-# start, stop, and step are python objects with None indicating no index is
-# present.
+def slice_of(op: ptr[PyObject]) -> ptr[PySliceObject];
 
-def slice_of(op: ptr[PyObject]) -> ptr[PySliceObject] {
-    return ptr[PySliceObject](op);
-}
+def slice_check(op: ptr[PyObject]) -> bool;
 
-"""PySlice_Check."""
-def slice_check(op: ptr[PyObject]) -> bool {
-    return object_is_type(op, addressof(PySlice_Type));
-}
-
-# A slice owning `start` and `stop` (stolen) and a new reference to `step`,
-# from the freelist when it has one.
 def build_slice_consume2(
     start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
-) -> ptr[PyObject] {
-    op = freelist_pop(_Py_freelists_SLICES);
-    if not op {
-        op = _PyObject_GC_New(ptr[PyObject](addressof(PySlice_Type)));
-        if not op {
-            jacpy_release(start);
-            jacpy_release(stop);
-            return NULL;
-        }
-    }
-    slice = slice_of(op);
-    slice.view(1)[0].start = start;
-    slice.view(1)[0].stop = stop;
-    slice.view(1)[0].step = Py_NewRef(step);
-    object_gc_track(op);
-    return op;
-}
+) -> ptr[PyObject];
 
 import from c {
     def PySlice_New(
@@ -220,7 +159,7 @@ import from c {
         op: ptr[PyObject], length: i64, start: ptr[i64], stop: ptr[i64], step: ptr[i64]
     ) -> i32 {
         r = slice_of(op);
-        # XXX support long ints
+
         if r.view(1)[0].step == Py_None {
             step.view(1)[0] = 1;
         } else {
@@ -261,7 +200,7 @@ import from c {
         op: ptr[PyObject], start: ptr[i64], stop: ptr[i64], step: ptr[i64]
     ) -> i32 {
         r = slice_of(op);
-        # this is harder to get right than you might think
+
         value = i64(0);
         if r.view(1)[0].step == Py_None {
             step.view(1)[0] = 1;
@@ -273,10 +212,6 @@ import from c {
                 PyErr_SetString(PyExc_ValueError, "slice step cannot be zero");
                 return i32(-1);
             }
-            # Here the step might be -PY_SSIZE_T_MAX-1; in this case we replace
-            # it with -PY_SSIZE_T_MAX. This doesn't affect the semantics, and
-            # it guards against later undefined behaviour resulting from code
-            # that does "step = -step" as part of a slice reversal.
             if value < -i64.MAX {
                 value = -i64.MAX;
             }
@@ -302,7 +237,6 @@ import from c {
     }  def PySlice_AdjustIndices(
         length: i64, start: ptr[i64], stop: ptr[i64], step: i64
     ) -> i64 {
-        # this is harder to get right than you might think
         if start.view(1)[0] < 0 {
             start.view(1)[0] += length;
             if start.view(1)[0] < 0 {
@@ -347,6 +281,111 @@ import from c {
 
 def slice_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def slice_dealloc(op: ptr[PyObject]);
+
+def slice_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def evaluate_slice_index(v: ptr[PyObject]) -> ptr[PyObject];
+
+def long_is_negative(value: ptr[PyObject]) -> bool;
+
+def clip_long_index(
+    index: ptr[PyObject],
+    length: ptr[PyObject],
+    lower: ptr[PyObject],
+    upper: ptr[PyObject]
+) -> ptr[PyObject];
+
+def slice_get_long_indices(
+    op: ptr[PyObject], length: ptr[PyObject]
+) -> tuple[ptr[PyObject], ptr[PyObject], ptr[PyObject]];
+
+import from c {
+    def _PySlice_GetLongIndices(
+        op: ptr[PyObject],
+        length: ptr[PyObject],
+        start_ptr: ptr[ptr[PyObject]],
+        stop_ptr: ptr[ptr[PyObject]],
+        step_ptr: ptr[ptr[PyObject]]
+    ) -> i32 {
+        (start, stop, step) = slice_get_long_indices(op, length);
+        start_ptr.view(1)[0] = start;
+        stop_ptr.view(1)[0] = stop;
+        step_ptr.view(1)[0] = step;
+        return i32(-1) if not step else i32(0);
+    }
+}
+
+def slice_indices(op: ptr[PyObject], length_arg: ptr[PyObject]) -> ptr[PyObject];
+
+def slice_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def slice_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject];
+
+def slice_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def slice_hash_round(acc: u64, lane: u64) -> u64;
+
+def slice_hash(op: ptr[PyObject]) -> i64;
+
+impl py_ellipsis -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_EllipsisObject));
+}
+
+impl ellipsis_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    if object_size(args) != 0 or (kwargs and PyDict_Size(kwargs) != 0) {
+        PyErr_SetString(PyExc_TypeError, "EllipsisType takes no arguments");
+        return NULL;
+    }
+    return py_ellipsis();
+}
+
+impl ellipsis_dealloc(ellipsis: ptr[PyObject]) {
+    _Py_SetImmortal(ellipsis);
+}
+
+impl ellipsis_repr(_op: ptr[PyObject]) -> ptr[PyObject] {
+    return PyUnicode_FromString(ptr[u8]("Ellipsis"));
+}
+
+impl ellipsis_reduce(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+    return PyUnicode_FromString(ptr[u8]("Ellipsis"));
+}
+
+impl slice_of(op: ptr[PyObject]) -> ptr[PySliceObject] {
+    return ptr[PySliceObject](op);
+}
+
+impl slice_check(op: ptr[PyObject]) -> bool {
+    return object_is_type(op, addressof(PySlice_Type));
+}
+
+impl build_slice_consume2(
+    start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
+) -> ptr[PyObject] {
+    op = freelist_pop(_Py_freelists_SLICES);
+    if not op {
+        op = _PyObject_GC_New(ptr[PyObject](addressof(PySlice_Type)));
+        if not op {
+            jacpy_release(start);
+            jacpy_release(stop);
+            return NULL;
+        }
+    }
+    slice = slice_of(op);
+    slice.view(1)[0].start = start;
+    slice.view(1)[0].stop = stop;
+    slice.view(1)[0].step = Py_NewRef(step);
+    object_gc_track(op);
+    return op;
+}
+
+impl slice_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     start = NULL;
     stop = NULL;
@@ -357,7 +396,7 @@ def slice_new(
     if PyArg_UnpackTuple(args, "slice", 1, 3, &mut start, &mut stop, &mut step) == 0 {
         return NULL;
     }
-    # This swapping of stop and start is to maintain similarity with range().
+
     if not stop {
         stop = start;
         start = NULL;
@@ -365,7 +404,7 @@ def slice_new(
     return PySlice_New(start, stop, step);
 }
 
-def slice_dealloc(op: ptr[PyObject]) {
+impl slice_dealloc(op: ptr[PyObject]) {
     slice = slice_of(op);
     object_gc_untrack(op);
     jacpy_release(slice.view(1)[0].step);
@@ -376,16 +415,14 @@ def slice_dealloc(op: ptr[PyObject]) {
     }
 }
 
-def slice_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl slice_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     r = slice_of(op);
     return PyUnicode_FromFormat(
         "slice(%R, %R, %R)", r.view(1)[0].start, r.view(1)[0].stop, r.view(1)[0].step
     );
 }
 
-# Convert a slice argument to a PyLong, and raise TypeError with a suitable
-# message on failure.
-def evaluate_slice_index(v: ptr[PyObject]) -> ptr[PyObject] {
+impl evaluate_slice_index(v: ptr[PyObject]) -> ptr[PyObject] {
     if PyIndex_Check(v) != 0 {
         return PyNumber_Index(v);
     }
@@ -396,23 +433,19 @@ def evaluate_slice_index(v: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-"""_PyLong_IsNegative for an int."""
-def long_is_negative(value: ptr[PyObject]) -> bool {
+impl long_is_negative(value: ptr[PyObject]) -> bool {
     sign = i32(0);
     PyLong_GetSign(value, &mut sign);
     return sign < 0;
 }
 
-# An index clipped to [lower, upper] after adding `length` when negative, as
-# slice.indices computes start and stop; a new reference, NULL on error.
-def clip_long_index(
+impl clip_long_index(
     index: ptr[PyObject],
     length: ptr[PyObject],
     lower: ptr[PyObject],
     upper: ptr[PyObject]
 ) -> ptr[PyObject] {
     if long_is_negative(index) {
-        # index += length
         shifted = PyNumber_Add(index, length);
         jacpy_release(index);
         if not shifted {
@@ -441,10 +474,7 @@ def clip_long_index(
     return index;
 }
 
-# Compute slice indices given a slice and length: (start, stop, step) as new
-# references, or three NULLs with the error set. Used by slice.indices and
-# range slicing. Assumes that `length` is a nonnegative instance of PyLong.
-def slice_get_long_indices(
+impl slice_get_long_indices(
     op: ptr[PyObject], length: ptr[PyObject]
 ) -> tuple[ptr[PyObject], ptr[PyObject], ptr[PyObject]] {
     r = slice_of(op);
@@ -455,7 +485,7 @@ def slice_get_long_indices(
     lower = NULL;
     failed = False;
     step_is_negative = False;
-    # Convert step to an integer; raise for zero step.
+
     if r.view(1)[0].step == Py_None {
         step = PyLong_FromLong(1);
     } else {
@@ -472,7 +502,7 @@ def slice_get_long_indices(
             step_is_negative = step_sign < 0;
         }
     }
-    # Find lower and upper bounds for start and stop.
+
     if not failed {
         if step_is_negative {
             lower = PyLong_FromLong(-1);
@@ -483,7 +513,7 @@ def slice_get_long_indices(
             upper = Py_NewRef(length);
         }
     }
-    # Compute start.
+
     if not failed {
         if r.view(1)[0].start == Py_None {
             start = Py_NewRef(upper if step_is_negative else lower);
@@ -495,7 +525,7 @@ def slice_get_long_indices(
             failed = not start;
         }
     }
-    # Compute stop.
+
     if not failed {
         if r.view(1)[0].stop == Py_None {
             stop = Py_NewRef(lower if step_is_negative else upper);
@@ -518,25 +548,7 @@ def slice_get_long_indices(
     return (start, stop, step);
 }
 
-import from c {
-    def _PySlice_GetLongIndices(
-        op: ptr[PyObject],
-        length: ptr[PyObject],
-        start_ptr: ptr[ptr[PyObject]],
-        stop_ptr: ptr[ptr[PyObject]],
-        step_ptr: ptr[ptr[PyObject]]
-    ) -> i32 {
-        (start, stop, step) = slice_get_long_indices(op, length);
-        start_ptr.view(1)[0] = start;
-        stop_ptr.view(1)[0] = stop;
-        step_ptr.view(1)[0] = step;
-        return i32(-1) if not step else i32(0);
-    }
-}
-
-# Implementation of slice.indices.
-def slice_indices(op: ptr[PyObject], length_arg: ptr[PyObject]) -> ptr[PyObject] {
-    # Convert length to an integer if necessary; raise for negative length.
+impl slice_indices(op: ptr[PyObject], length_arg: ptr[PyObject]) -> ptr[PyObject] {
     length = PyNumber_Index(length_arg);
     if not length {
         return NULL;
@@ -554,7 +566,7 @@ def slice_indices(op: ptr[PyObject], length_arg: ptr[PyObject]) -> ptr[PyObject]
     return Py_BuildValue("(NNN)", start, stop, step);
 }
 
-def slice_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl slice_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     r = slice_of(op);
     return Py_BuildValue(
         "O(OOO)",
@@ -565,13 +577,11 @@ def slice_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def slice_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject] {
+impl slice_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject] {
     if not slice_check(v) or not slice_check(w) {
         return Py_NewRef(Py_NotImplemented);
     }
     if v == w {
-        # XXX Do we really need this shortcut?
-        # There's a unit test for it, but is that fair?
         if op == Py_EQ or op == Py_LE or op == Py_GE {
             return ptr[PyObject](addressof(_Py_TrueStruct));
         }
@@ -594,7 +604,7 @@ def slice_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObje
     return result;
 }
 
-def slice_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl slice_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     v = slice_of(op);
     status = visit_reference(v.view(1)[0].start, visitor, arg);
     if status == 0 {
@@ -606,14 +616,13 @@ def slice_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return status;
 }
 
-# One xxHash round: fold a component's hash into the accumulator.
-def slice_hash_round(acc: u64, lane: u64) -> u64 {
+impl slice_hash_round(acc: u64, lane: u64) -> u64 {
     acc = wrapping_add(acc, wrapping_mul(lane, XXPRIME_2));
-    acc = wrapping_shl(acc, u64(31)) | (acc >> u64(33));  # Rotate left 31 bits
+    acc = wrapping_shl(acc, u64(31)) | (acc >> u64(33));
     return wrapping_mul(acc, XXPRIME_1);
 }
 
-def slice_hash(op: ptr[PyObject]) -> i64 {
+impl slice_hash(op: ptr[PyObject]) -> i64 {
     v = slice_of(op);
     lane = u64.wrap(PyObject_Hash(v.view(1)[0].start));
     if lane == u64.MAX {

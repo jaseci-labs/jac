@@ -1,14 +1,3 @@
-"""Time access and conversions.
-
-Derived from CPython 3.14.6 Modules/timemodule.c; see ../LICENSE.cpython.
-Clock arithmetic stays in CPython's Python/pytime.c, called by its _PyTime_*
-names. The C records come from time_records.<os>.jac, the clock identifiers
-from time_constants.<os>.jac, and clock_nanosleep()/pthread_getcpuclockid(),
-which only some systems have, from time_platform.<os>.jac. The C library's
-tm_zone and tm_gmtoff fields are always present, so the zone names are read
-from localtime() as CPython does without a usable tzname declaration.
-"""
-
 import from c {
     def clock -> i64;  def clock_gettime(clock: i32, value: &mut timespec) -> i32;  def clock_settime(
         clock: i32, value: &timespec
@@ -22,8 +11,6 @@ import from c {
 }
 import from c { def time(result: ptr) -> i64;  }
 
-# The error handler tm_zone decodes with, as a C string for the process.
-
 glob:priv SEC_TO_NS: i64 = 1000000000,
      INT_MAX: int = 2147483647,
      INT_MIN: int = -2147483648,
@@ -33,7 +20,6 @@ glob:priv SEC_TO_NS: i64 = 1000000000,
      RUSAGE_SELF: i32 = 0,
      WCHAR_SIZE: int = 4,
      MAX_TIMEZONE: int = 48 * 3600,
-     # A year of 365.25 days: init_timezone() samples January and July.
      YEAR: int = (365 * 24 + 6) * 3600,
      WEEKDAY_NAMES: list[str] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
      MONTH_NAMES: list[str] = [
@@ -51,11 +37,9 @@ glob:priv SEC_TO_NS: i64 = 1000000000,
          "Dec"
      ];
 
-# The times() and clock() tick frequencies, set once by time_exec().
 glob:priv times_base: _PyTimeFraction = _PyTimeFraction(),
      clock_base: _PyTimeFraction = _PyTimeFraction();
 
-# The fields of _Py_clock_info_t, as Jac values.
 obj ClockInfo {
     has implementation: str = "",
         monotonic: bool = False,
@@ -63,38 +47,152 @@ obj ClockInfo {
         resolution: f64 = 1.0;
 }
 
-def:priv os_error -> ptr[PyObject] {
+def:priv os_error -> ptr[PyObject];
+
+def:priv float_from_time(t: i64) -> ptr[PyObject];
+
+def:priv timespec_seconds(value: timespec) -> f64;
+
+def:priv c_remainder(value: int, divisor: int) -> int;
+
+def:priv audit(event: str, value: ptr[PyObject]) -> bool;
+
+def:priv struct_time_type(module: ptr[PyObject]) -> ptr[PyObject];
+
+def time_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv py_clock(info: ClockInfo | None) -> tuple[bool, i64];
+
+def convert_time_clockid_converter(
+    value: ptr[PyObject], fname: str, label: str
+) -> i32;
+
+def time_clock_gettime_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject];
+
+def time_clock_gettime_ns_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject];
+
+def time_clock_settime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_clock_settime_ns(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_clock_getres(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_pthread_getcpuclockid(
+    module: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv pysleep(timeout: i64) -> bool;
+
+def time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject];
+
+def:priv parse_time_t_args(args: ptr[PyObject], name: str) -> i64;
+
+def time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv gettmarg(
+    module: ptr[PyObject], args: ptr[PyObject], p: &mut tm, message: str
+);
+
+def:priv checktm(buf: &mut tm);
+
+def:priv strftime_chunk(
+    output: ptr, size: int, format: ptr[i32], length: int, value: &tm
+) -> tuple[ptr[PyObject], ptr, int];
+
+def time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_strptime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv asctime_text(value: tm) -> ptr[PyObject];
+
+def:priv two_digits(value: i32) -> str;
+
+def time_asctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_ctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_mktime(module: ptr[PyObject], tm_tuple: ptr[PyObject]) -> ptr[PyObject];
+
+def time_tzset(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_monotonic(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_monotonic_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_perf_counter(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_perf_counter_ns(
+    module: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv process_time_times(info: ClockInfo | None) -> tuple[bool, i64];
+
+def:priv cpu_clock(
+    clk_id: i32, function: str, ts: timespec, info: ClockInfo | None
+) -> tuple[bool, i64];
+
+def:priv py_process_time(info: ClockInfo | None) -> tuple[bool, i64];
+
+def time_process_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_process_time_ns(
+    module: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv thread_time(info: ClockInfo | None) -> tuple[bool, i64];
+
+def time_thread_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def time_thread_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv reported(record: _Py_clock_info_t, info: ClockInfo) -> bool;
+
+def:priv set_item(dictionary: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool;
+
+def time_get_clock_info(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv zone_at(t: int) -> tuple[ptr[PyObject], int];
+
+def init_timezone(m: ptr[PyObject]) -> i32;
+
+def init_clock_bases -> i32;
+
+impl os_error -> ptr[PyObject] {
     PyErr_SetFromErrno(PyExc_OSError);
     return NULL;
 }
 
-def:priv float_from_time(t: i64) -> ptr[PyObject] {
+impl float_from_time(t: i64) -> ptr[PyObject] {
     return PyFloat_FromDouble(PyTime_AsSecondsDouble(t));
 }
 
-def:priv timespec_seconds(value: timespec) -> f64 {
+impl timespec_seconds(value: timespec) -> f64 {
     return f64(value.tv_sec) + f64(value.tv_nsec) * 1e-9;
 }
 
-# C's `%`: the remainder takes the dividend's sign.
-def:priv c_remainder(value: int, divisor: int) -> int {
+impl c_remainder(value: int, divisor: int) -> int {
     rest = abs(value) % divisor;
     return -rest if value < 0 else rest;
 }
 
-def:priv audit(event: str, value: ptr[PyObject]) -> bool {
+impl audit(event: str, value: ptr[PyObject]) -> bool {
     arguments = object_tuple([value]);
     status = PySys_AuditTuple(event, arguments);
     jacpy_release(arguments);
     return status >= 0;
 }
 
-# The struct_time type of `module`, borrowed from the module state.
-def:priv struct_time_type(module: ptr[PyObject]) -> ptr[PyObject] {
+impl struct_time_type(module: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_state_get(module, 0);
 }
 
-def time_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     t: i64 = 0;
     if PyTime_Time(&mut t) < 0 {
         return NULL;
@@ -102,7 +200,7 @@ def time_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     return float_from_time(t);
 }
 
-def time_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     t: i64 = 0;
     if PyTime_Time(&mut t) < 0 {
         return NULL;
@@ -110,8 +208,7 @@ def time_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] 
     return _PyTime_AsLong(t);
 }
 
-# py_clock(): whether clock() works, and its reading.
-def:priv py_clock(info: ClockInfo | None) -> tuple[bool, i64] {
+impl py_clock(info: ClockInfo | None) -> tuple[bool, i64] {
     if info is not None {
         info.implementation = "clock()";
         info.resolution = _PyTimeFraction_Resolution(&clock_base);
@@ -129,8 +226,7 @@ def:priv py_clock(info: ClockInfo | None) -> tuple[bool, i64] {
     return (True, _PyTimeFraction_Mul(ticks, &clock_base));
 }
 
-# time_clockid_converter(): any int that fits a C int.
-def convert_time_clockid_converter(
+impl convert_time_clockid_converter(
     value: ptr[PyObject], fname: str, label: str
 ) -> i32 {
     clk_id = PyLong_AsInt(value);
@@ -144,7 +240,7 @@ def convert_time_clockid_converter(
     return clk_id;
 }
 
-def time_clock_gettime_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject] {
+impl time_clock_gettime_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject] {
     tp = timespec();
     if clock_gettime(clk_id, &mut tp) != 0 {
         return os_error();
@@ -152,7 +248,7 @@ def time_clock_gettime_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject]
     return PyFloat_FromDouble(timespec_seconds(tp));
 }
 
-def time_clock_gettime_ns_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject] {
+impl time_clock_gettime_ns_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObject] {
     ts = timespec();
     if clock_gettime(clk_id, &mut ts) != 0 {
         return os_error();
@@ -164,7 +260,7 @@ def time_clock_gettime_ns_impl(module: ptr[PyObject], clk_id: i32) -> ptr[PyObje
     return _PyTime_AsLong(t);
 }
 
-def time_clock_settime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_clock_settime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         values = ArgumentFormat(name="clock_settime").parse(args, "iO");
         clk_id = i32(values[0].signed);
@@ -185,7 +281,9 @@ def time_clock_settime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
     }
 }
 
-def time_clock_settime_ns(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_clock_settime_ns(
+    module: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
     try {
         values = ArgumentFormat(name="clock_settime").parse(args, "iO");
         clk_id = i32(values[0].signed);
@@ -206,7 +304,7 @@ def time_clock_settime_ns(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyO
     }
 }
 
-def time_clock_getres(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_clock_getres(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         clk_id = i32(ArgumentFormat(name="clock_getres").parse(args, "i")[0].signed);
         tp = timespec();
@@ -219,7 +317,7 @@ def time_clock_getres(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
     }
 }
 
-def time_pthread_getcpuclockid(
+impl time_pthread_getcpuclockid(
     module: ptr[PyObject], args: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -238,8 +336,7 @@ def time_pthread_getcpuclockid(
     }
 }
 
-# pysleep(): sleep `timeout` nanoseconds, resuming after signal handlers run.
-def:priv pysleep(timeout: i64) -> bool {
+impl pysleep(timeout: i64) -> bool {
     monotonic: i64 = 0;
     if PyTime_Monotonic(&mut monotonic) < 0 {
         return False;
@@ -293,7 +390,7 @@ def:priv pysleep(timeout: i64) -> bool {
     return True;
 }
 
-def time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObject] {
+impl time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObject] {
     if not audit("time.sleep", timeout_obj) {
         return NULL;
     }
@@ -311,8 +408,7 @@ def time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObjec
     return Py_NewRef(borrowed_none());
 }
 
-# tmtotuple(): a struct_time from a struct tm.
-def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
+impl tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
     v = PyStructSequence_New(struct_time_type(module));
     if not v {
         return NULL;
@@ -345,9 +441,7 @@ def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
     return v;
 }
 
-# parse_time_t_args(): an optional seconds argument, the current time when
-# absent or None.
-def:priv parse_time_t_args(args: ptr[PyObject], name: str) -> i64 {
+impl parse_time_t_args(args: ptr[PyObject], name: str) -> i64 {
     ot = ArgumentFormat(name=name).parse(args, "|O")[0];
     if not ot.given or ot.object == Py_None {
         return time(ptr());
@@ -359,7 +453,7 @@ def:priv parse_time_t_args(args: ptr[PyObject], name: str) -> i64 {
     return whent;
 }
 
-def time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         when = parse_time_t_args(args, "gmtime");
         buf = tm();
@@ -373,7 +467,7 @@ def time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
-def time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         when = parse_time_t_args(args, "localtime");
         buf = tm();
@@ -386,11 +480,7 @@ def time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     }
 }
 
-# gettmarg(): a 9-item tuple or struct_time as a struct tm. `message` is the
-# text PyArg_ParseTuple() reports for a malformed tuple.
-def:priv gettmarg(
-    module: ptr[PyObject], args: ptr[PyObject], p: &mut tm, message: str
-) {
+impl gettmarg(module: ptr[PyObject], args: ptr[PyObject], p: &mut tm, message: str) {
     if jacpy_is_tuple(args) == 0 {
         object_error(PyExc_TypeError, "Tuple or struct_time argument required");
         raise boundary_failure();
@@ -430,9 +520,7 @@ def:priv gettmarg(
     }
 }
 
-# checktm(): the field ranges strftime() and asctime() index tables by; a
-# zero month, day of month or day of year selects the first.
-def:priv checktm(buf: &mut tm) {
+impl checktm(buf: &mut tm) {
     failure = "";
     if buf.tm_mon == -1 {
         buf.tm_mon = 0;
@@ -471,9 +559,7 @@ def:priv checktm(buf: &mut tm) {
     }
 }
 
-# time_strftime1(): wcsftime() into a buffer grown until the result fits or
-# the buffer is 256 times the format, when an empty result is the answer.
-def:priv strftime_chunk(
+impl strftime_chunk(
     output: ptr, size: int, format: ptr[i32], length: int, value: &tm
 ) -> tuple[ptr[PyObject], ptr, int] {
     while True {
@@ -497,7 +583,7 @@ def:priv strftime_chunk(
     }
 }
 
-def time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     buf = tm();
     format_arg = NULL;
     try {
@@ -519,7 +605,7 @@ def time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     } except boundary_failure {
         return NULL;
     }
-    # Normalize tm_isdst in case a C library indexes %Z by it.
+
     if buf.tm_isdst < -1 {
         buf.tm_isdst = -1;
     } elif buf.tm_isdst > 1 {
@@ -545,8 +631,7 @@ def time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     size = 1024;
     failed = False;
     i = 0;
-    # ASCII runs go through wcsftime(); everything else, NUL included, is
-    # copied through unchanged.
+
     while i < format_size and not failed {
         length = 0;
         while i < format_size {
@@ -594,7 +679,7 @@ def time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicodeWriter_Finish(writer);
 }
 
-def time_strptime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_strptime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     func = PyImport_ImportModuleAttrString("_strptime", "_strptime_time");
     if not func {
         return NULL;
@@ -604,8 +689,7 @@ def time_strptime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# _asctime(): "Sun Jun 20 23:21:05 1993".
-def:priv asctime_text(value: tm) -> ptr[PyObject] {
+impl asctime_text(value: tm) -> ptr[PyObject] {
     day = str(value.tm_mday);
     text = (
         f"{WEEKDAY_NAMES[value.tm_wday]} {MONTH_NAMES[value.tm_mon]}"
@@ -615,11 +699,10 @@ def:priv asctime_text(value: tm) -> ptr[PyObject] {
             value.tm_sec
         )} {1900 + int(value.tm_year)}"
     );
-    return PyUnicode_FromString(text);
+    return jacpy_unicode_from_text(text);
 }
 
-# printf's "%.2d": at least two digits after any sign.
-def:priv two_digits(value: i32) -> str {
+impl two_digits(value: i32) -> str {
     digits = str(abs(int(value)));
     if len(digits) < 2 {
         digits = "0" + digits;
@@ -627,7 +710,7 @@ def:priv two_digits(value: i32) -> str {
     return "-" + digits if value < 0 else digits;
 }
 
-def time_asctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_asctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     buf = tm();
     try {
         count = PyTuple_Size(args);
@@ -653,7 +736,7 @@ def time_asctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return asctime_text(buf);
 }
 
-def time_ctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_ctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         tt = parse_time_t_args(args, "ctime");
         buf = tm();
@@ -666,14 +749,14 @@ def time_ctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
-def time_mktime(module: ptr[PyObject], tm_tuple: ptr[PyObject]) -> ptr[PyObject] {
+impl time_mktime(module: ptr[PyObject], tm_tuple: ptr[PyObject]) -> ptr[PyObject] {
     value = tm();
     try {
         gettmarg(module, tm_tuple, &mut value, "mktime(): illegal time tuple argument");
     } except boundary_failure {
         return NULL;
     }
-    # tm_wday is a sentinel: mktime() replaces it on success.
+
     value.tm_wday = -1;
     tt = mktime(&mut value);
     if tt == -1 and value.tm_wday == -1 {
@@ -683,7 +766,7 @@ def time_mktime(module: ptr[PyObject], tm_tuple: ptr[PyObject]) -> ptr[PyObject]
     return PyFloat_FromDouble(f64(tt));
 }
 
-def time_tzset(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_tzset(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     m = PyImport_ImportModule("time");
     if not m {
         return NULL;
@@ -699,7 +782,7 @@ def time_tzset(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def time_monotonic(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_monotonic(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     t: i64 = 0;
     if PyTime_Monotonic(&mut t) < 0 {
         return NULL;
@@ -707,7 +790,7 @@ def time_monotonic(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject
     return float_from_time(t);
 }
 
-def time_monotonic_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_monotonic_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     t: i64 = 0;
     if PyTime_Monotonic(&mut t) < 0 {
         return NULL;
@@ -715,7 +798,7 @@ def time_monotonic_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
     return _PyTime_AsLong(t);
 }
 
-def time_perf_counter(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_perf_counter(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     t: i64 = 0;
     if PyTime_PerfCounter(&mut t) < 0 {
         return NULL;
@@ -723,7 +806,7 @@ def time_perf_counter(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
     return float_from_time(t);
 }
 
-def time_perf_counter_ns(
+impl time_perf_counter_ns(
     module: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     t: i64 = 0;
@@ -733,8 +816,7 @@ def time_perf_counter_ns(
     return _PyTime_AsLong(t);
 }
 
-# process_time_times(): times() user and system ticks; False when times() fails.
-def:priv process_time_times(info: ClockInfo | None) -> tuple[bool, i64] {
+impl process_time_times(info: ClockInfo | None) -> tuple[bool, i64] {
     process = tms();
     if times(&mut process) == -1 {
         return (False, 0);
@@ -752,9 +834,7 @@ def:priv process_time_times(info: ClockInfo | None) -> tuple[bool, i64] {
     );
 }
 
-# A CPU-time clock read with clock_gettime(); with `info`, its resolution
-# comes from clock_getres().
-def:priv cpu_clock(
+impl cpu_clock(
     clk_id: i32, function: str, ts: timespec, info: ClockInfo | None
 ) -> tuple[bool, i64] {
     if info is not None {
@@ -773,9 +853,7 @@ def:priv cpu_clock(
     return (ok, t);
 }
 
-# py_process_time(): the first of clock_gettime(CLOCK_PROCESS_CPUTIME_ID),
-# getrusage(RUSAGE_SELF), times() and clock() that works.
-def:priv py_process_time(info: ClockInfo | None) -> tuple[bool, i64] {
+impl py_process_time(info: ClockInfo | None) -> tuple[bool, i64] {
     ts = timespec();
     if clock_gettime(i32(CLOCK_PROCESS_CPUTIME_ID), &mut ts) == 0 {
         return cpu_clock(
@@ -793,7 +871,7 @@ def:priv py_process_time(info: ClockInfo | None) -> tuple[bool, i64] {
             info.adjustable = False;
             info.resolution = 1e-6;
         }
-        # resource_records declares its own timeval; pytime reads this one.
+
         user = timeval(tv_sec=usage.ru_utime.tv_sec, tv_usec=usage.ru_utime.tv_usec);
         system = timeval(tv_sec=usage.ru_stime.tv_sec, tv_usec=usage.ru_stime.tv_usec);
         utime: i64 = 0;
@@ -813,7 +891,7 @@ def:priv py_process_time(info: ClockInfo | None) -> tuple[bool, i64] {
     return py_clock(info);
 }
 
-def time_process_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_process_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     (ok, t) = py_process_time(None);
     if not ok {
         return NULL;
@@ -821,7 +899,7 @@ def time_process_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
     return float_from_time(t);
 }
 
-def time_process_time_ns(
+impl time_process_time_ns(
     module: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     (ok, t) = py_process_time(None);
@@ -831,8 +909,7 @@ def time_process_time_ns(
     return _PyTime_AsLong(t);
 }
 
-# _PyTime_GetThreadTimeWithInfo() over CLOCK_THREAD_CPUTIME_ID.
-def:priv thread_time(info: ClockInfo | None) -> tuple[bool, i64] {
+impl thread_time(info: ClockInfo | None) -> tuple[bool, i64] {
     ts = timespec();
     if clock_gettime(i32(CLOCK_THREAD_CPUTIME_ID), &mut ts) != 0 {
         os_error();
@@ -843,7 +920,7 @@ def:priv thread_time(info: ClockInfo | None) -> tuple[bool, i64] {
     );
 }
 
-def time_thread_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_thread_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     (ok, t) = thread_time(None);
     if not ok {
         return NULL;
@@ -851,7 +928,9 @@ def time_thread_time(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObje
     return float_from_time(t);
 }
 
-def time_thread_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl time_thread_time_ns(
+    module: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
     (ok, t) = thread_time(None);
     if not ok {
         return NULL;
@@ -859,8 +938,7 @@ def time_thread_time_ns(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyO
     return _PyTime_AsLong(t);
 }
 
-# The clock information pytime.c reports through _Py_clock_info_t.
-def:priv reported(record: _Py_clock_info_t, info: ClockInfo) -> bool {
+impl reported(record: _Py_clock_info_t, info: ClockInfo) -> bool {
     implementation = c_string_text(record.implementation);
     if not implementation {
         return False;
@@ -873,16 +951,16 @@ def:priv reported(record: _Py_clock_info_t, info: ClockInfo) -> bool {
     return True;
 }
 
-def:priv set_item(dictionary: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool {
+impl set_item(dictionary: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool {
     if not value {
         return False;
     }
-    status = PyDict_SetItemString(dictionary, key, value);
+    status = dict_set_text(dictionary, key, value);
     jacpy_release(value);
     return status == 0;
 }
 
-def time_get_clock_info(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_get_clock_info(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = "";
     try {
         name = ArgumentFormat(name="get_clock_info").parse(args, "s")[0].text;
@@ -926,7 +1004,7 @@ def time_get_clock_info(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     if not set_item(
-        dictionary, "implementation", PyUnicode_FromString(info.implementation)
+        dictionary, "implementation", jacpy_unicode_from_text(info.implementation)
     )
         or not set_item(dictionary, "monotonic", PyBool_FromLong(i64(info.monotonic)))
         or not set_item(dictionary, "adjustable", PyBool_FromLong(i64(info.adjustable)))
@@ -941,20 +1019,17 @@ def time_get_clock_info(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     return namespace;
 }
 
-# The zone name and UTC offset localtime() reports for `t`.
-def:priv zone_at(t: int) -> tuple[ptr[PyObject], int] {
+impl zone_at(t: int) -> tuple[ptr[PyObject], int] {
     p = tm();
     _PyTime_localtime(t, &mut p);
-    # strncpy(zone, p->tm_zone ? p->tm_zone : "   ", 9)
+
     name = c_string_text(p.tm_zone, 9)
         if not p.tm_zone.is_null()
-        else PyUnicode_FromString("   ");
+        else PyUnicode_FromString(ptr[u8]("   "));
     return (name, -int(p.tm_gmtoff));
 }
 
-# init_timezone(): timezone, altzone, daylight and tzname from the offsets
-# of January and July, the larger offset being standard time.
-def init_timezone(m: ptr[PyObject]) -> i32 {
+impl init_timezone(m: ptr[PyObject]) -> i32 {
     t = (int(time(ptr())) // YEAR) * YEAR;
     january = zone_at(t);
     july = zone_at(t + YEAR // 2);
@@ -997,8 +1072,7 @@ def init_timezone(m: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-# The times() and clock() frequencies as fractions of a second.
-def init_clock_bases -> i32 {
+impl init_clock_bases -> i32 {
     ticks_per_second: i64 = 0;
     if _Py_GetTicksPerSecond(&mut ticks_per_second) < 0 {
         object_error(PyExc_RuntimeError, "cannot read ticks_per_second");

@@ -1,14 +1,3 @@
-"""types.GenericAlias, e.g. list[int]: Objects/genericaliasobject.c in native Jac.
-
-`Py_GenericAliasType` and `_Py_GenericAliasIterType` are C data Jac defines
-under their C names, and `Py_GenericAlias` (every `__class_getitem__` of the
-builtin types) and the parameter substitution `_Py_make_parameters` /
-`_Py_subs_parameters` that typing.Union shares are C functions under theirs.
-The object layouts, `gaobject` and `gaiterobject`, come from layouts.jac.
-See ../LICENSE.cpython.
-"""
-
-# Attributes of the alias itself, which take priority over `__origin__`'s.
 glob:priv ATTR_EXCEPTIONS: list[str] = [
          "__class__",
          "__origin__",
@@ -17,16 +6,15 @@ glob:priv ATTR_EXCEPTIONS: list[str] = [
          "__parameters__",
          "__typing_unpacked_tuple_args__",
          "__mro_entries__",
-         "__reduce_ex__",  # needed so we don't look up object.__reduce_ex__
+         "__reduce_ex__",
          "__reduce__"
      ],
-     # Attributes never proxied to `__origin__`, so existing code keeps working.
      ATTR_BLOCKED: list[str] = ["__bases__", "__copy__", "__deepcopy__"];
 
 import from c {
-    glob PyTuple_Type: PyTypeObject;
-    # The interned __typing_subst__ name, found on first use.
-    glob:priv typing_subst_key: ptr[PyObject] = ptr[PyObject](),
+    glob PyTuple_Type: PyTypeObject; glob:priv typing_subst_key: ptr[PyObject] = ptr[
+             PyObject
+         ](),
          ga_as_mapping: PyMappingMethods = PyMappingMethods(mp_subscript=ga_getitem),
          ga_methods: list[PyMethodDef] = [
              PyMethodDef(
@@ -103,9 +91,7 @@ import from c {
                  ml_doc=ptr[u8]()
              ),
              PyMethodDef(ml_name=ptr[u8](), ml_meth=ptr(), ml_flags=0, ml_doc=ptr[u8]())
-         ];
-    # gh-91632: exported to be cleared in _PyTypes_FiniTypes.
-    glob _Py_GenericAliasIterType: PyTypeObject = PyTypeObject(
+         ]; glob _Py_GenericAliasIterType: PyTypeObject = PyTypeObject(
              ob_base=PyVarObject(
                  ob_base=_object(
                      ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
@@ -163,287 +149,43 @@ import from c {
          );
 }
 
-def ga_of(op: ptr[PyObject]) -> ptr[gaobject] {
-    return ptr[gaobject](op);
-}
+def ga_of(op: ptr[PyObject]) -> ptr[gaobject];
 
-"""_PyGenericAlias_Check."""
-def generic_alias_check(op: ptr[PyObject]) -> bool {
-    return object_type_check(op, addressof(Py_GenericAliasType));
-}
+def generic_alias_check(op: ptr[PyObject]) -> bool;
 
-def py_bool(value: bool) -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_TrueStruct))
-        if value
-        else ptr[PyObject](addressof(_Py_FalseStruct));
-}
+def py_bool(value: bool) -> ptr[PyObject];
 
-def ga_dealloc(op: ptr[PyObject]) {
-    alias = ga_of(op);
-    object_gc_untrack(op);
-    if alias.view(1)[0].weakreflist {
-        PyObject_ClearWeakRefs(op);
-    }
-    jacpy_release(alias.view(1)[0].origin);
-    jacpy_release(alias.view(1)[0].args);
-    jacpy_release(alias.view(1)[0].parameters);
-    object_type(op).view(1)[0].tp_free(ptr(op));
-}
+def ga_dealloc(op: ptr[PyObject]);
 
-def ga_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    alias = ga_of(op);
-    status = visit_reference(alias.view(1)[0].origin, visitor, arg);
-    if status == 0 {
-        status = visit_reference(alias.view(1)[0].args, visitor, arg);
-    }
-    if status == 0 {
-        status = visit_reference(alias.view(1)[0].parameters, visitor, arg);
-    }
-    return status;
-}
+def ga_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
 
-def ga_repr_items_list(writer: ptr[PyUnicodeWriter], p: ptr[PyObject]) -> i32 {
-    length = object_size(p);
-    if PyUnicodeWriter_WriteChar(writer, u32(91)) < 0 {
-        return i32(-1);
-    }
-    for i in range(length) {
-        if i > 0 and PyUnicodeWriter_WriteASCII(writer, ", ", 2) < 0 {
-            return i32(-1);
-        }
-        item = PyList_GetItemRef(p, i64(i));
-        if not item {
-            return i32(-1);  # list can be mutated in a callback
-        }
-        result = _Py_typing_type_repr(writer, item);
-        jacpy_release(item);
-        if result < 0 {
-            return i32(-1);
-        }
-    }
-    if PyUnicodeWriter_WriteChar(writer, u32(93)) < 0 {
-        return i32(-1);
-    }
-    return i32(0);
-}
+def ga_repr_items_list(writer: ptr[PyUnicodeWriter], p: ptr[PyObject]) -> i32;
 
-def ga_repr_into(writer: ptr[PyUnicodeWriter], alias: ptr[gaobject]) -> bool {
-    args = alias.view(1)[0].args;
-    length = object_size(args);
-    if alias.view(1)[0].starred != u8(0)
-        and PyUnicodeWriter_WriteChar(writer, u32(42)) < 0 {
-        return False;
-    }
-    if _Py_typing_type_repr(writer, alias.view(1)[0].origin) < 0
-        or PyUnicodeWriter_WriteChar(writer, u32(91)) < 0 {
-        return False;
-    }
-    for i in range(length) {
-        if i > 0 and PyUnicodeWriter_WriteASCII(writer, ", ", 2) < 0 {
-            return False;
-        }
-        p = tuple_get_item(args, i64(i));
-        if jacpy_is_exact_list(p) != 0 {
-            # Looks like we are working with ParamSpec's list of type args:
-            if ga_repr_items_list(writer, p) < 0 {
-                return False;
-            }
-        } elif _Py_typing_type_repr(writer, p) < 0 {
-            return False;
-        }
-    }
-    # for something like tuple[()] we should print a "()"
-    if length == 0 and PyUnicodeWriter_WriteASCII(writer, "()", 2) < 0 {
-        return False;
-    }
-    return PyUnicodeWriter_WriteChar(writer, u32(93)) >= 0;
-}
+def ga_repr_into(writer: ptr[PyUnicodeWriter], alias: ptr[gaobject]) -> bool;
 
-def ga_repr(op: ptr[PyObject]) -> ptr[PyObject] {
-    alias = ga_of(op);
-    length = object_size(alias.view(1)[0].args);
-    # Estimation based on the shortest format: "int[int, int, int]"
-    estimate = length * 5 if length <= i64.MAX // 5 else length;
-    writer = PyUnicodeWriter_Create(3 + 1 + estimate + 1);
-    if not writer {
-        return NULL;
-    }
-    if not ga_repr_into(writer, alias) {
-        PyUnicodeWriter_Discard(writer);
-        return NULL;
-    }
-    return PyUnicodeWriter_Finish(writer);
-}
+def ga_repr(op: ptr[PyObject]) -> ptr[PyObject];
 
-# Index of item in tuple[:length], or -1 if not found.
-def tuple_index(tuple: ptr[PyObject], length: i64, item: ptr[PyObject]) -> i64 {
-    for i in range(length) {
-        if tuple_get_item(tuple, i64(i)) == item {
-            return i64(i);
-        }
-    }
-    return -1;
-}
+def tuple_index(tuple: ptr[PyObject], length: i64, item: ptr[PyObject]) -> i64;
 
-# Store item at `length` when it is not among the first `length` items;
-# 1 when stored.
-def tuple_add(tuple: ptr[PyObject], length: i64, item: ptr[PyObject]) -> i64 {
-    if tuple_index(tuple, length, item) < 0 {
-        tuple_set_item(tuple, length, Py_NewRef(item));
-        return 1;
-    }
-    return 0;
-}
+def tuple_add(tuple: ptr[PyObject], length: i64, item: ptr[PyObject]) -> i64;
 
-# Grow `dst` by count-1 and copy the items of `src` into it from `dstindex`:
-# the resized tuple and the next index, or (NULL, -1) with the error set (the
-# old tuple released, as _PyTuple_Resize() does).
 def tuple_extend(
     dst: ptr[PyObject], dstindex: i64, src: ptr[PyObject], count: i64
-) -> tuple[ptr[PyObject], i64] {
-    target = dst;
-    if _PyTuple_Resize(&mut target, object_size(dst) + count - 1) != 0 {
-        return (NULL, i64(-1));
-    }
-    for i in range(count) {
-        tuple_set_item(target, dstindex + i, Py_NewRef(tuple_get_item(src, i64(i))));
-    }
-    return (target, dstindex + count);
-}
+) -> tuple[ptr[PyObject], i64];
 
-# The argument items of a subscription: a tuple's items, or the one item.
-def arg_count(item: ptr[PyObject]) -> i64 {
-    return object_size(item) if jacpy_is_tuple(item) != 0 else i64(1);
-}
+def arg_count(item: ptr[PyObject]) -> i64;
 
-def arg_at(item: ptr[PyObject], index: i64) -> ptr[PyObject] {
-    return tuple_get_item(item, index) if jacpy_is_tuple(item) != 0 else item;
-}
+def arg_at(item: ptr[PyObject], index: i64) -> ptr[PyObject];
 
-# If obj is a generic alias, substitute type variables params with the
-# substitutions of `item`. For example, if obj is list[T], params is (T, S),
-# and item is (str, int), return list[str]. If obj doesn't have a
-# __parameters__ attribute or that's not a non-empty tuple, return a new
-# reference to obj.
 def subs_tvars(
     obj_arg: ptr[PyObject], params: ptr[PyObject], item: ptr[PyObject]
-) -> ptr[PyObject] {
-    subparams = NULL;
-    if PyObject_GetOptionalAttrString(obj_arg, "__parameters__", &mut subparams) < 0 {
-        return NULL;
-    }
-    if not subparams or jacpy_is_tuple(subparams) == 0 or object_size(subparams) == 0 {
-        jacpy_release(subparams);
-        return Py_NewRef(obj_arg);
-    }
-    nparams = object_size(params);
-    nsubargs = object_size(subparams);
-    subargs = PyTuple_New(nsubargs);
-    if not subargs {
-        jacpy_release(subparams);
-        return NULL;
-    }
-    j = i64(0);
-    for i in range(nsubargs) {
-        arg = tuple_get_item(subparams, i64(i));
-        iparam = tuple_index(params, nparams, arg);
-        if iparam >= 0 {
-            param = tuple_get_item(params, iparam);
-            arg = arg_at(item, iparam);
-            if int(object_type(param).view(1)[0].tp_iter) != 0
-                and jacpy_is_tuple(arg) != 0 {
-                # TypeVarTuple
-                (subargs, j) = tuple_extend(subargs, j, arg, object_size(arg));
-                if j < 0 {
-                    jacpy_release(subparams);
-                    return NULL;
-                }
-                continue;
-            }
-        }
-        tuple_set_item(subargs, j, Py_NewRef(arg));
-        j += 1;
-    }
-    result = PyObject_GetItem(obj_arg, subargs);
-    jacpy_release(subargs);
-    jacpy_release(subparams);
-    return result;
-}
+) -> ptr[PyObject];
 
-def is_unpacked_typevartuple(arg: ptr[PyObject]) -> i32 {
-    if jacpy_is_type(arg) != 0 {
-        return i32(0);
-    }
-    tmp = NULL;
-    result = PyObject_GetOptionalAttrString(
-        arg, "__typing_is_unpacked_typevartuple__", &mut tmp
-    );
-    if result > 0 {
-        result = PyObject_IsTrue(tmp);
-        jacpy_release(tmp);
-    }
-    return result;
-}
+def is_unpacked_typevartuple(arg: ptr[PyObject]) -> i32;
 
-def unpacked_tuple_args(arg: ptr[PyObject]) -> ptr[PyObject] {
-    # Fast path
-    if generic_alias_check(arg)
-        and ga_of(arg).view(1)[0].starred != u8(0)
-        and ga_of(arg).view(1)[0].origin == ptr[PyObject](addressof(PyTuple_Type)) {
-        return Py_NewRef(ga_of(arg).view(1)[0].args);
-    }
-    result = NULL;
-    if PyObject_GetOptionalAttrString(
-        arg, "__typing_unpacked_tuple_args__", &mut result
-    )
-        > 0 {
-        if result == Py_None {
-            jacpy_release(result);
-            return NULL;
-        }
-        return result;
-    }
-    return NULL;
-}
+def unpacked_tuple_args(arg: ptr[PyObject]) -> ptr[PyObject];
 
-def unpack_args(item: ptr[PyObject]) -> ptr[PyObject] {
-    newargs = PyList_New(0);
-    if not newargs {
-        return NULL;
-    }
-    for i in range(arg_count(item)) {
-        arg = arg_at(item, i64(i));
-        if jacpy_is_type(arg) == 0 {
-            subargs = unpacked_tuple_args(arg);
-            if subargs
-                and jacpy_is_tuple(subargs) != 0
-                and not (
-                    object_size(subargs) != 0
-                    and tuple_get_item(subargs, object_size(subargs) - 1) == Py_Ellipsis
-                ) {
-                if PyList_SetSlice(newargs, i64.MAX, i64.MAX, subargs) < 0 {
-                    jacpy_release(subargs);
-                    jacpy_release(newargs);
-                    return NULL;
-                }
-                jacpy_release(subargs);
-                continue;
-            }
-            jacpy_release(subargs);
-            if PyErr_Occurred() {
-                jacpy_release(newargs);
-                return NULL;
-            }
-        }
-        if PyList_Append(newargs, arg) < 0 {
-            jacpy_release(newargs);
-            return NULL;
-        }
-    }
-    result = PySequence_Tuple(newargs);
-    jacpy_release(newargs);
-    return result;
-}
+def unpack_args(item: ptr[PyObject]) -> ptr[PyObject];
 
 import from c {
     def _Py_make_parameters(args: ptr[PyObject]) -> ptr[PyObject] {
@@ -465,7 +207,7 @@ import from c {
         iparam = i64(0);
         for iarg in range(nargs) {
             t = tuple_get_item(args, i64(iarg));
-            # We don't want __parameters__ descriptor of a bare Python class.
+
             if jacpy_is_type(t) != 0 {
                 continue;
             }
@@ -480,15 +222,15 @@ import from c {
                 continue;
             }
             subparams = NULL;
-            if PyObject_GetOptionalAttrString(t, "__parameters__", &mut subparams)
+            if PyObject_GetOptionalAttrString(
+                t, ptr[u8]("__parameters__"), &mut subparams
+            )
                 < 0 {
                 jacpy_release(parameters);
                 jacpy_release(tuple_args);
                 return NULL;
             }
             if not subparams and (jacpy_is_tuple(t) != 0 or jacpy_is_list(t) != 0) {
-                # Recursively call _Py_make_parameters for lists/tuples and
-                # add the results to the current parameters.
                 subparams = _Py_make_parameters(t);
                 if not subparams {
                     jacpy_release(parameters);
@@ -543,7 +285,7 @@ import from c {
             param = tuple_get_item(parameters, i64(i));
             prepare = NULL;
             if PyObject_GetOptionalAttrString(
-                param, "__typing_prepare_subst__", &mut prepare
+                param, ptr[u8]("__typing_prepare_subst__"), &mut prepare
             )
                 < 0 {
                 jacpy_release(item);
@@ -576,12 +318,7 @@ import from c {
             );
             return NULL;
         }
-        # Replace all type variables (specified by parameters) with the
-        # corresponding values of the items:
-        #   t = list[T];          t[int]      -> newargs = [int]
-        #   t = dict[str, T];     t[int]      -> newargs = [str, int]
-        #   t = dict[T, list[S]]; t[str, int] -> newargs = [str, list[int]]
-        #   t = list[[T]];        t[str]      -> newargs = [[str]]
+
         tuple_args = NULL;
         if jacpy_is_list(args) != 0 {
             tuple_args = PySequence_Tuple(args);
@@ -605,12 +342,10 @@ import from c {
                 jarg += 1;
                 continue;
             }
-            # Recursively substitute params in lists/tuples.
+
             if jacpy_is_tuple(arg) != 0 or jacpy_is_list(arg) != 0 {
                 subargs = _Py_subs_parameters(op, arg, parameters, item);
                 if subargs and jacpy_is_tuple(arg) == 0 {
-                    # _Py_subs_parameters returns a tuple. If the original arg
-                    # was a list, convert subargs to a list as well.
                     subargs_list = PySequence_List(subargs);
                     jacpy_release(subargs);
                     subargs = subargs_list;
@@ -633,7 +368,9 @@ import from c {
                 return NULL;
             }
             subst = NULL;
-            if PyObject_GetOptionalAttrString(arg, "__typing_subst__", &mut subst)
+            if PyObject_GetOptionalAttrString(
+                arg, ptr[u8]("__typing_subst__"), &mut subst
+            )
                 < 0 {
                 jacpy_release(newargs);
                 jacpy_release(item);
@@ -688,23 +425,360 @@ import from c {
     }
 }
 
-"""The __typing_subst__ attribute name, interned."""
-def typing_subst_name -> ptr[PyObject] {
+def typing_subst_name -> ptr[PyObject];
+
+def ga_parameters_of(alias: ptr[gaobject]) -> ptr[PyObject];
+
+def ga_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_hash(op: ptr[PyObject]) -> i64;
+
+def set_orig_class(result: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_call(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ga_vectorcall(
+    op: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ga_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject];
+
+def ga_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_instancecheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_subclasscheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_dir(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def ga_unpacked_tuple_args(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def setup_ga(alias: ptr[gaobject], origin: ptr[PyObject], args: ptr[PyObject]) -> bool;
+
+def ga_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def gaiter_of(op: ptr[PyObject]) -> ptr[gaiterobject];
+
+def ga_iternext(op: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_iter_dealloc(op: ptr[PyObject]);
+
+def ga_iter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def ga_iter_clear(op: ptr[PyObject]) -> i32;
+
+def ga_iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def ga_iter(op: ptr[PyObject]) -> ptr[PyObject];
+
+import from c {
+    def Py_GenericAlias(origin: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+        op = PyType_GenericAlloc(ptr[PyObject](addressof(Py_GenericAliasType)), 0);
+        if not op {
+            return NULL;
+        }
+        if not setup_ga(ga_of(op), origin, args) {
+            jacpy_release(op);
+            return NULL;
+        }
+        return op;
+    }
+}
+
+impl ga_of(op: ptr[PyObject]) -> ptr[gaobject] {
+    return ptr[gaobject](op);
+}
+
+impl generic_alias_check(op: ptr[PyObject]) -> bool {
+    return object_type_check(op, addressof(Py_GenericAliasType));
+}
+
+impl py_bool(value: bool) -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_TrueStruct))
+        if value
+        else ptr[PyObject](addressof(_Py_FalseStruct));
+}
+
+impl ga_dealloc(op: ptr[PyObject]) {
+    alias = ga_of(op);
+    object_gc_untrack(op);
+    if alias.view(1)[0].weakreflist {
+        PyObject_ClearWeakRefs(op);
+    }
+    jacpy_release(alias.view(1)[0].origin);
+    jacpy_release(alias.view(1)[0].args);
+    jacpy_release(alias.view(1)[0].parameters);
+    object_type(op).view(1)[0].tp_free(ptr(op));
+}
+
+impl ga_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+    alias = ga_of(op);
+    status = visit_reference(alias.view(1)[0].origin, visitor, arg);
+    if status == 0 {
+        status = visit_reference(alias.view(1)[0].args, visitor, arg);
+    }
+    if status == 0 {
+        status = visit_reference(alias.view(1)[0].parameters, visitor, arg);
+    }
+    return status;
+}
+
+impl ga_repr_items_list(writer: ptr[PyUnicodeWriter], p: ptr[PyObject]) -> i32 {
+    length = object_size(p);
+    if PyUnicodeWriter_WriteChar(writer, u32(91)) < 0 {
+        return i32(-1);
+    }
+    for i in range(length) {
+        if i > 0 and PyUnicodeWriter_WriteASCII(writer, ptr[u8](", "), 2) < 0 {
+            return i32(-1);
+        }
+        item = PyList_GetItemRef(p, i64(i));
+        if not item {
+            return i32(-1);
+        }
+        result = _Py_typing_type_repr(writer, item);
+        jacpy_release(item);
+        if result < 0 {
+            return i32(-1);
+        }
+    }
+    if PyUnicodeWriter_WriteChar(writer, u32(93)) < 0 {
+        return i32(-1);
+    }
+    return i32(0);
+}
+
+impl ga_repr_into(writer: ptr[PyUnicodeWriter], alias: ptr[gaobject]) -> bool {
+    args = alias.view(1)[0].args;
+    length = object_size(args);
+    if alias.view(1)[0].starred != u8(0)
+        and PyUnicodeWriter_WriteChar(writer, u32(42)) < 0 {
+        return False;
+    }
+    if _Py_typing_type_repr(writer, alias.view(1)[0].origin) < 0
+        or PyUnicodeWriter_WriteChar(writer, u32(91)) < 0 {
+        return False;
+    }
+    for i in range(length) {
+        if i > 0 and PyUnicodeWriter_WriteASCII(writer, ptr[u8](", "), 2) < 0 {
+            return False;
+        }
+        p = tuple_get_item(args, i64(i));
+        if jacpy_is_exact_list(p) != 0 {
+            if ga_repr_items_list(writer, p) < 0 {
+                return False;
+            }
+        } elif _Py_typing_type_repr(writer, p) < 0 {
+            return False;
+        }
+    }
+
+    if length == 0 and PyUnicodeWriter_WriteASCII(writer, ptr[u8]("()"), 2) < 0 {
+        return False;
+    }
+    return PyUnicodeWriter_WriteChar(writer, u32(93)) >= 0;
+}
+
+impl ga_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+    alias = ga_of(op);
+    length = object_size(alias.view(1)[0].args);
+
+    estimate = length * 5 if length <= i64.MAX // 5 else length;
+    writer = PyUnicodeWriter_Create(3 + 1 + estimate + 1);
+    if not writer {
+        return NULL;
+    }
+    if not ga_repr_into(writer, alias) {
+        PyUnicodeWriter_Discard(writer);
+        return NULL;
+    }
+    return PyUnicodeWriter_Finish(writer);
+}
+
+impl tuple_index(tuple: ptr[PyObject], length: i64, item: ptr[PyObject]) -> i64 {
+    for i in range(length) {
+        if tuple_get_item(tuple, i64(i)) == item {
+            return i64(i);
+        }
+    }
+    return -1;
+}
+
+impl tuple_add(tuple: ptr[PyObject], length: i64, item: ptr[PyObject]) -> i64 {
+    if tuple_index(tuple, length, item) < 0 {
+        tuple_set_item(tuple, length, Py_NewRef(item));
+        return 1;
+    }
+    return 0;
+}
+
+impl tuple_extend(
+    dst: ptr[PyObject], dstindex: i64, src: ptr[PyObject], count: i64
+) -> tuple[ptr[PyObject], i64] {
+    target = dst;
+    if _PyTuple_Resize(&mut target, object_size(dst) + count - 1) != 0 {
+        return (NULL, i64(-1));
+    }
+    for i in range(count) {
+        tuple_set_item(target, dstindex + i, Py_NewRef(tuple_get_item(src, i64(i))));
+    }
+    return (target, dstindex + count);
+}
+
+impl arg_count(item: ptr[PyObject]) -> i64 {
+    return object_size(item) if jacpy_is_tuple(item) != 0 else i64(1);
+}
+
+impl arg_at(item: ptr[PyObject], index: i64) -> ptr[PyObject] {
+    return tuple_get_item(item, index) if jacpy_is_tuple(item) != 0 else item;
+}
+
+impl subs_tvars(
+    obj_arg: ptr[PyObject], params: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    subparams = NULL;
+    if PyObject_GetOptionalAttrString(
+        obj_arg, ptr[u8]("__parameters__"), &mut subparams
+    )
+        < 0 {
+        return NULL;
+    }
+    if not subparams or jacpy_is_tuple(subparams) == 0 or object_size(subparams) == 0 {
+        jacpy_release(subparams);
+        return Py_NewRef(obj_arg);
+    }
+    nparams = object_size(params);
+    nsubargs = object_size(subparams);
+    subargs = PyTuple_New(nsubargs);
+    if not subargs {
+        jacpy_release(subparams);
+        return NULL;
+    }
+    j = i64(0);
+    for i in range(nsubargs) {
+        arg = tuple_get_item(subparams, i64(i));
+        iparam = tuple_index(params, nparams, arg);
+        if iparam >= 0 {
+            param = tuple_get_item(params, iparam);
+            arg = arg_at(item, iparam);
+            if int(object_type(param).view(1)[0].tp_iter) != 0
+                and jacpy_is_tuple(arg) != 0 {
+                (subargs, j) = tuple_extend(subargs, j, arg, object_size(arg));
+                if j < 0 {
+                    jacpy_release(subparams);
+                    return NULL;
+                }
+                continue;
+            }
+        }
+        tuple_set_item(subargs, j, Py_NewRef(arg));
+        j += 1;
+    }
+    result = PyObject_GetItem(obj_arg, subargs);
+    jacpy_release(subargs);
+    jacpy_release(subparams);
+    return result;
+}
+
+impl is_unpacked_typevartuple(arg: ptr[PyObject]) -> i32 {
+    if jacpy_is_type(arg) != 0 {
+        return i32(0);
+    }
+    tmp = NULL;
+    result = PyObject_GetOptionalAttrString(
+        arg, ptr[u8]("__typing_is_unpacked_typevartuple__"), &mut tmp
+    );
+    if result > 0 {
+        result = PyObject_IsTrue(tmp);
+        jacpy_release(tmp);
+    }
+    return result;
+}
+
+impl unpacked_tuple_args(arg: ptr[PyObject]) -> ptr[PyObject] {
+    if generic_alias_check(arg)
+        and ga_of(arg).view(1)[0].starred != u8(0)
+        and ga_of(arg).view(1)[0].origin == ptr[PyObject](addressof(PyTuple_Type)) {
+        return Py_NewRef(ga_of(arg).view(1)[0].args);
+    }
+    result = NULL;
+    if PyObject_GetOptionalAttrString(
+        arg, ptr[u8]("__typing_unpacked_tuple_args__"), &mut result
+    )
+        > 0 {
+        if result == Py_None {
+            jacpy_release(result);
+            return NULL;
+        }
+        return result;
+    }
+    return NULL;
+}
+
+impl unpack_args(item: ptr[PyObject]) -> ptr[PyObject] {
+    newargs = PyList_New(0);
+    if not newargs {
+        return NULL;
+    }
+    for i in range(arg_count(item)) {
+        arg = arg_at(item, i64(i));
+        if jacpy_is_type(arg) == 0 {
+            subargs = unpacked_tuple_args(arg);
+            if subargs
+                and jacpy_is_tuple(subargs) != 0
+                and not (
+                    object_size(subargs) != 0
+                    and tuple_get_item(subargs, object_size(subargs) - 1) == Py_Ellipsis
+                ) {
+                if PyList_SetSlice(newargs, i64.MAX, i64.MAX, subargs) < 0 {
+                    jacpy_release(subargs);
+                    jacpy_release(newargs);
+                    return NULL;
+                }
+                jacpy_release(subargs);
+                continue;
+            }
+            jacpy_release(subargs);
+            if PyErr_Occurred() {
+                jacpy_release(newargs);
+                return NULL;
+            }
+        }
+        if PyList_Append(newargs, arg) < 0 {
+            jacpy_release(newargs);
+            return NULL;
+        }
+    }
+    result = PySequence_Tuple(newargs);
+    jacpy_release(newargs);
+    return result;
+}
+
+impl typing_subst_name -> ptr[PyObject] {
     if not typing_subst_key {
-        typing_subst_key = PyUnicode_InternFromString("__typing_subst__");
+        typing_subst_key = PyUnicode_InternFromString(ptr[u8]("__typing_subst__"));
     }
     return typing_subst_key;
 }
 
-# Populate __parameters__ if needed; NULL with the error set.
-def ga_parameters_of(alias: ptr[gaobject]) -> ptr[PyObject] {
+impl ga_parameters_of(alias: ptr[gaobject]) -> ptr[PyObject] {
     if not alias.view(1)[0].parameters {
         alias.view(1)[0].parameters = _Py_make_parameters(alias.view(1)[0].args);
     }
     return alias.view(1)[0].parameters;
 }
 
-def ga_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     alias = ga_of(op);
     parameters = ga_parameters_of(alias);
     if not parameters {
@@ -722,9 +796,9 @@ def ga_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def ga_hash(op: ptr[PyObject]) -> i64 {
+impl ga_hash(op: ptr[PyObject]) -> i64 {
     alias = ga_of(op);
-    # TODO: Hash in the hash for the origin
+
     h0 = PyObject_Hash(alias.view(1)[0].origin);
     if h0 == -1 {
         return -1;
@@ -736,8 +810,8 @@ def ga_hash(op: ptr[PyObject]) -> i64 {
     return h0 ^ h1;
 }
 
-def set_orig_class(result: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
-    if result and PyObject_SetAttrString(result, "__orig_class__", op) < 0 {
+impl set_orig_class(result: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
+    if result and PyObject_SetAttrString(result, ptr[u8]("__orig_class__"), op) < 0 {
         if PyErr_ExceptionMatches(PyExc_AttributeError) == 0
             and PyErr_ExceptionMatches(PyExc_TypeError) == 0 {
             jacpy_release(result);
@@ -748,13 +822,13 @@ def set_orig_class(result: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def ga_call(
+impl ga_call(
     op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     return set_orig_class(PyObject_Call(ga_of(op).view(1)[0].origin, args, kwds), op);
 }
 
-def ga_vectorcall(
+impl ga_vectorcall(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     return set_orig_class(
@@ -762,18 +836,16 @@ def ga_vectorcall(
     );
 }
 
-def ga_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(name) != 0 {
-        # Blocked attributes are not proxied to `__origin__`, so existing code
-        # keeps working.
         for blocked in ATTR_BLOCKED {
-            if _PyUnicode_EqualToASCIIString(name, blocked) != 0 {
+            if jacpy_unicode_equal_text(name, blocked) != 0 {
                 return PyObject_GenericGetAttr(op, name);
             }
         }
-        # The alias's own attributes take priority over `__origin__`'s.
+
         for attribute in ATTR_EXCEPTIONS {
-            if _PyUnicode_EqualToASCIIString(name, attribute) != 0 {
+            if jacpy_unicode_equal_text(name, attribute) != 0 {
                 return PyObject_GenericGetAttr(op, name);
             }
         }
@@ -782,7 +854,7 @@ def ga_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_GenericGetAttr(op, name);
 }
 
-def ga_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
+impl ga_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
     if not generic_alias_check(b) or (op != Py_EQ and op != Py_NE) {
         return Py_NewRef(Py_NotImplemented);
     }
@@ -809,25 +881,25 @@ def ga_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject]
     return PyObject_RichCompare(aa.view(1)[0].args, bb.view(1)[0].args, Py_EQ);
 }
 
-def ga_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
     return PyTuple_Pack(1, ga_of(op).view(1)[0].origin);
 }
 
-def ga_instancecheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_instancecheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_SetString(
         PyExc_TypeError, "isinstance() argument 2 cannot be a parameterized generic"
     );
     return NULL;
 }
 
-def ga_subclasscheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_subclasscheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_SetString(
         PyExc_TypeError, "issubclass() argument 2 cannot be a parameterized generic"
     );
     return NULL;
 }
 
-def ga_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     alias = ga_of(op);
     if alias.view(1)[0].starred != u8(0) {
         tmp = Py_GenericAlias(alias.view(1)[0].origin, alias.view(1)[0].args);
@@ -846,13 +918,13 @@ def ga_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def ga_dir(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_dir(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     dir = PyObject_Dir(ga_of(op).view(1)[0].origin);
     if not dir {
         return NULL;
     }
     for attribute in ATTR_EXCEPTIONS {
-        listed = PyUnicode_FromString(attribute);
+        listed = jacpy_unicode_from_text(attribute);
         if not listed {
             jacpy_release(dir);
             return NULL;
@@ -868,12 +940,12 @@ def ga_dir(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return dir;
 }
 
-def ga_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl ga_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     parameters = ga_parameters_of(ga_of(op));
     return Py_NewRef(parameters) if parameters else NULL;
 }
 
-def ga_unpacked_tuple_args(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl ga_unpacked_tuple_args(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     alias = ga_of(op);
     if alias.view(1)[0].starred != u8(0)
         and alias.view(1)[0].origin == ptr[PyObject](addressof(PyTuple_Type)) {
@@ -882,9 +954,9 @@ def ga_unpacked_tuple_args(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# Create the alias's args tuple and set its attributes; False with the error
-# set.
-def setup_ga(alias: ptr[gaobject], origin: ptr[PyObject], args: ptr[PyObject]) -> bool {
+impl setup_ga(
+    alias: ptr[gaobject], origin: ptr[PyObject], args: ptr[PyObject]
+) -> bool {
     if jacpy_is_tuple(args) == 0 {
         args = PyTuple_Pack(1, args);
         if not args {
@@ -905,7 +977,7 @@ def setup_ga(alias: ptr[gaobject], origin: ptr[PyObject], args: ptr[PyObject]) -
     return True;
 }
 
-def ga_new(
+impl ga_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwds and _PyArg_NoKeywords("GenericAlias", kwds) == 0 {
@@ -926,12 +998,11 @@ def ga_new(
     return op;
 }
 
-# ---------------------------------------------------------------- iterator
-def gaiter_of(op: ptr[PyObject]) -> ptr[gaiterobject] {
+impl gaiter_of(op: ptr[PyObject]) -> ptr[gaiterobject] {
     return ptr[gaiterobject](op);
 }
 
-def ga_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     gi = gaiter_of(op);
     wrapped = gi.view(1)[0].obj_;
     if not wrapped {
@@ -949,26 +1020,24 @@ def ga_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     return starred_alias;
 }
 
-def ga_iter_dealloc(op: ptr[PyObject]) {
+impl ga_iter_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     jacpy_release(gaiter_of(op).view(1)[0].obj_);
     PyObject_GC_Del(op);
 }
 
-def ga_iter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl ga_iter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(gaiter_of(op).view(1)[0].obj_, visitor, arg);
 }
 
-def ga_iter_clear(op: ptr[PyObject]) -> i32 {
+impl ga_iter_clear(op: ptr[PyObject]) -> i32 {
     wrapped = gaiter_of(op).view(1)[0].obj_;
     gaiter_of(op).view(1)[0].obj_ = NULL;
     jacpy_release(wrapped);
     return i32(0);
 }
 
-def ga_iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    # _PyEval_GetBuiltin can invoke arbitrary code, so the call must come
-    # before the iterator's fields are read. see issue #101765
+impl ga_iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     iterator = eval_builtin("iter");
     wrapped = gaiter_of(op).view(1)[0].obj_;
     if wrapped {
@@ -977,7 +1046,7 @@ def ga_iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue("N(())", iterator);
 }
 
-def ga_iter(op: ptr[PyObject]) -> ptr[PyObject] {
+impl ga_iter(op: ptr[PyObject]) -> ptr[PyObject] {
     gi = _PyObject_GC_New(ptr[PyObject](addressof(_Py_GenericAliasIterType)));
     if not gi {
         return NULL;
@@ -985,18 +1054,4 @@ def ga_iter(op: ptr[PyObject]) -> ptr[PyObject] {
     gaiter_of(gi).view(1)[0].obj_ = Py_NewRef(op);
     object_gc_track(gi);
     return gi;
-}
-
-import from c {
-    def Py_GenericAlias(origin: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-        op = PyType_GenericAlloc(ptr[PyObject](addressof(Py_GenericAliasType)), 0);
-        if not op {
-            return NULL;
-        }
-        if not setup_ga(ga_of(op), origin, args) {
-            jacpy_release(op);
-            return NULL;
-        }
-        return op;
-    }
 }

@@ -1,22 +1,116 @@
-"""Conversions to Decimal of the _decimal module.
-
-Modules/_decimal/_decimal.c's conversions from str, int, float, tuple and
-Decimal, the implicit conversions of arithmetic operands and the conversions
-for comparison with rationals, in native Jac. Exact conversions use the
-maximal context and signal InvalidOperation when the value does not fit.
-See ../LICENSE.cpython.
-"""
-
-# ---------------------------------------------------------------------------
-# From strings.
-
-"""The ASCII form of a numeric str as a PyMem_Malloc'd C string: characters
-in [1, 127] are kept, Unicode spaces become ' ' and Unicode digits their
-ASCII digit. With `strip_ws`, leading and trailing whitespace is stripped;
-with `ignore_underscores`, underscores are dropped. An empty string when an
-invalid character is found (which triggers ConversionSyntax); NULL with
-MemoryError."""
 def numeric_as_ascii(
+    u: ptr[PyObject], strip_ws: bool, ignore_underscores: bool
+) -> ptr[u8];
+
+def dec_type_from_cstring(
+    type: ptr[PyObject], s: ptr[u8], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_cstring_exact(
+    type: ptr[PyObject], s: ptr[u8], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_unicode(
+    type: ptr[PyObject], u: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_unicode_exact_ws(
+    type: ptr[PyObject], u: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_settriple(dec: ptr[PyObject], sign: u8, v: u32, exp: i64);
+
+def dec_type_from_ssize(
+    type: ptr[PyObject], v: i64, context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_ssize_exact(
+    type: ptr[PyObject], v: i64, context: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj LongConversion {
+    has dec: ptr[PyObject] = NULL,
+        status: u32 = 0;
+}
+
+def dec_from_long(
+    module: ptr[PyObject],
+    type: ptr[PyObject],
+    v: ptr[PyObject],
+    ctx: ptr[mpd_context_t]
+) -> LongConversion;
+
+def dec_type_from_long(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_long_exact(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_float_exact(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_float(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_decimal_exact(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sequence_as_tuple(v: ptr[PyObject], ex: ptr[PyObject], mesg: str) -> ptr[PyObject];
+
+def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8];
+
+def unicode_code(value: ptr[PyObject]) -> str;
+
+def dec_type_from_sequence(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_type_from_sequence_exact(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def unsupported_conversion(v: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_type_from_number_exact(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_apply(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_type_from_object_exact(
+    type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_from_object(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject];
+
+def convert_op(
+    type_err: bool, v: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def failed_operand(operand: ptr[PyObject]) -> bool;
+
+def multiply_by_denominator(
+    v: ptr[PyObject], r: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def numerator_as_decimal(r: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject];
+
+obj ComparisonOperands {
+    has v: ptr[PyObject] = NULL,
+        w: ptr[PyObject] = NULL,
+        ok: bool = False;
+}
+
+def convert_op_cmp(
+    v: ptr[PyObject], w: ptr[PyObject], op: int, context: ptr[PyObject]
+) -> ComparisonOperands;
+
+impl numeric_as_ascii(
     u: ptr[PyObject], strip_ws: bool, ignore_underscores: bool
 ) -> ptr[u8] {
     length = PyUnicode_GetLength(u);
@@ -54,7 +148,6 @@ def numeric_as_ascii(
         }
         d = _PyUnicode_ToDecimalDigit(ch);
         if d < 0 {
-            # empty string triggers ConversionSyntax
             result.view(1)[0] = u8(0);
             return result;
         }
@@ -65,8 +158,7 @@ def numeric_as_ascii(
     return result;
 }
 
-"""A new Decimal of `type` from a C string, using the context."""
-def dec_type_from_cstring(
+impl dec_type_from_cstring(
     type: ptr[PyObject], s: ptr[u8], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dec = dec_type_new(module_of_context(context), type);
@@ -82,9 +174,7 @@ def dec_type_from_cstring(
     return dec;
 }
 
-"""A new Decimal of `type` from a C string, converted exactly or set to NaN
-with InvalidOperation."""
-def dec_type_from_cstring_exact(
+impl dec_type_from_cstring_exact(
     type: ptr[PyObject], s: ptr[u8], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dec = dec_type_new(module_of_context(context), type);
@@ -94,7 +184,6 @@ def dec_type_from_cstring_exact(
     status: u32 = 0;
     mpd_qset_string(mpd(dec), s, addressof(max_context), &mut status);
     if (status & (MPD_Inexact | MPD_Rounded | MPD_Clamped)) != u32(0) {
-        # we want exact results
         mpd_seterror(mpd(dec), MPD_Invalid_operation, &mut status);
     }
     status = status & MPD_Errors;
@@ -105,7 +194,7 @@ def dec_type_from_cstring_exact(
     return dec;
 }
 
-def dec_type_from_unicode(
+impl dec_type_from_unicode(
     type: ptr[PyObject], u: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     s = numeric_as_ascii(u, False, False);
@@ -117,9 +206,7 @@ def dec_type_from_unicode(
     return dec;
 }
 
-"""Exact conversion of a str, which may have leading and trailing whitespace
-and underscores."""
-def dec_type_from_unicode_exact_ws(
+impl dec_type_from_unicode_exact_ws(
     type: ptr[PyObject], u: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     s = numeric_as_ascii(u, True, True);
@@ -131,12 +218,7 @@ def dec_type_from_unicode_exact_ws(
     return dec;
 }
 
-# ---------------------------------------------------------------------------
-# From integers.
-
-"""_dec_settriple: set a Decimal to sign, a one-word coefficient and an
-exponent without any error checking."""
-def dec_settriple(dec: ptr[PyObject], sign: u8, v: u32, exp: i64) {
+impl dec_settriple(dec: ptr[PyObject], sign: u8, v: u32, exp: i64) {
     record = mpd(dec).view(1);
     record[0].data.view(1)[0] = u64(v);
     record[0].len = 1;
@@ -145,7 +227,7 @@ def dec_settriple(dec: ptr[PyObject], sign: u8, v: u32, exp: i64) {
     mpd_setdigits(mpd(dec));
 }
 
-def dec_type_from_ssize(
+impl dec_type_from_ssize(
     type: ptr[PyObject], v: i64, context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dec = dec_type_new(module_of_context(context), type);
@@ -161,7 +243,7 @@ def dec_type_from_ssize(
     return dec;
 }
 
-def dec_type_from_ssize_exact(
+impl dec_type_from_ssize_exact(
     type: ptr[PyObject], v: i64, context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dec = dec_type_new(module_of_context(context), type);
@@ -177,16 +259,7 @@ def dec_type_from_ssize_exact(
     return dec;
 }
 
-"""A Decimal converted from an int and the flags the conversion raised,
-which go to no Context yet."""
-obj LongConversion {
-    has dec: ptr[PyObject] = NULL,
-        status: u32 = 0;
-}
-
-"""A new Decimal of `type` from an int through PyLong_Export(), in context
-`ctx`."""
-def dec_from_long(
+impl dec_from_long(
     module: ptr[PyObject],
     type: ptr[PyObject],
     v: ptr[PyObject],
@@ -238,8 +311,7 @@ def dec_from_long(
     return result;
 }
 
-"""A new Decimal of `type` from an int, in the context."""
-def dec_type_from_long(
+impl dec_type_from_long(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_long(v) == 0 {
@@ -259,9 +331,7 @@ def dec_type_from_long(
     return dec;
 }
 
-"""A new Decimal of `type` from an int, converted exactly or set to NaN with
-InvalidOperation."""
-def dec_type_from_long_exact(
+impl dec_type_from_long_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_long(v) == 0 {
@@ -277,7 +347,6 @@ def dec_type_from_long_exact(
     }
     status = converted.status;
     if (status & (MPD_Inexact | MPD_Rounded | MPD_Clamped)) != u32(0) {
-        # we want exact results
         mpd_seterror(mpd(dec), MPD_Invalid_operation, &mut status);
     }
     status = status & MPD_Errors;
@@ -288,12 +357,7 @@ def dec_type_from_long_exact(
     return dec;
 }
 
-# ---------------------------------------------------------------------------
-# From floats.
-
-"""A new Decimal of `type` from an int or float, exactly: n * 5**k * 10**-k
-for the float's ratio n / 2**k."""
-def dec_type_from_float_exact(
+impl dec_type_from_float_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_context(context);
@@ -315,20 +379,18 @@ def dec_type_from_float_exact(
             return NULL;
         }
         if isnan(x) {
-            # decimal.py calls repr(float(+-nan)), which always gives a
-            # positive result.
             mpd_setspecial(mpd(dec), MPD_POS, MPD_NAN);
         } else {
             mpd_setspecial(mpd(dec), sign, MPD_INF);
         }
         return dec;
     }
-    # absolute value of the float
+
     tmp = addressof(PyFloat_Type).view(1)[0].tp_as_number.view(1)[0].nb_absolute(v);
     if not tmp {
         return NULL;
     }
-    # float as integer ratio: numerator/denominator
+
     n_d = addressof(builtin_methods).view(1)[0].float_as_integer_ratio(tmp, NULL);
     jacpy_release(tmp);
     if not n_d {
@@ -376,7 +438,7 @@ def dec_type_from_float_exact(
         jacpy_release(dec);
         return NULL;
     }
-    # result = n * 5**k
+
     mpd_qmul(mpd(dec), mpd(dec), d1, addressof(max_context), &mut status);
     mpd_del(d1);
     mpd_del(d2);
@@ -384,13 +446,13 @@ def dec_type_from_float_exact(
         jacpy_release(dec);
         return NULL;
     }
-    # result = +- n * 5**k * 10**-k
+
     mpd_set_sign(mpd(dec), sign);
     mpd(dec).view(1)[0].exp = -k;
     return dec;
 }
 
-def dec_type_from_float(
+impl dec_type_from_float(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dec = dec_type_from_float_exact(type, v, context);
@@ -406,10 +468,7 @@ def dec_type_from_float(
     return dec;
 }
 
-# ---------------------------------------------------------------------------
-# From Decimals and tuples.
-
-def dec_type_from_decimal_exact(
+impl dec_type_from_decimal_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_context(context);
@@ -429,8 +488,9 @@ def dec_type_from_decimal_exact(
     return dec;
 }
 
-"""A tuple or a list as a tuple (new reference), else `mesg` as `ex`."""
-def sequence_as_tuple(v: ptr[PyObject], ex: ptr[PyObject], mesg: str) -> ptr[PyObject] {
+impl sequence_as_tuple(
+    v: ptr[PyObject], ex: ptr[PyObject], mesg: str
+) -> ptr[PyObject] {
     if jacpy_is_tuple(v) != 0 {
         return Py_NewRef(v);
     }
@@ -441,14 +501,12 @@ def sequence_as_tuple(v: ptr[PyObject], ex: ptr[PyObject], mesg: str) -> ptr[PyO
     return NULL;
 }
 
-"""The string form of a DecimalTuple (sign, digits, exponent) as a
-PyMem_Malloc'd C string, or NULL with an error set."""
-def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
+impl dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
     if PyTuple_Size(dectuple) != 3 {
         PyErr_SetString(PyExc_ValueError, "argument must be a sequence of length 3");
         return ptr[u8]();
     }
-    # sign
+
     tmp = PyTuple_GetItem(dectuple, 0);
     if jacpy_is_long(tmp) == 0 {
         PyErr_SetString(
@@ -470,10 +528,9 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
     is_infinite = False;
     is_special = False;
     exp: i64 = 0;
-    # exponent or encoding for a special number
+
     tmp = PyTuple_GetItem(dectuple, 2);
     if jacpy_is_unicode(tmp) != 0 {
-        # special
         code = unicode_code(tmp);
         is_special = True;
         if code == "F" {
@@ -491,7 +548,6 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
             return ptr[u8]();
         }
     } else {
-        # exponent
         if jacpy_is_long(tmp) == 0 {
             PyErr_SetString(PyExc_ValueError, "exponent must be an integer");
             return ptr[u8]();
@@ -501,7 +557,7 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
             return ptr[u8]();
         }
     }
-    # coefficient
+
     digits = sequence_as_tuple(
         PyTuple_GetItem(dectuple, 1),
         PyExc_ValueError,
@@ -511,7 +567,7 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
         return ptr[u8]();
     }
     tsize = int(PyTuple_Size(digits));
-    # [sign][coeffdigits+1][E][-][expdigits+1]['\0']
+
     mem = 1 + tsize + 3 + 19 + 2;
     decstring = ptr[u8](PyMem_Malloc(u64(mem)));
     if not decstring {
@@ -525,7 +581,6 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
         cp += 1;
     }
     if tsize == 0 and not is_special {
-        # empty tuple: zero coefficient, except for special numbers
         (decstring + cp).view(1)[0] = u8(48);
         cp += 1;
     }
@@ -550,15 +605,12 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
             return ptr[u8]();
         }
         if is_infinite {
-            # accept but ignore any well-formed coefficient for compatibility
-            # with decimal.py
             continue;
         }
         (decstring + cp).view(1)[0] = u8(48 + int(l));
         cp += 1;
     }
     if not is_special {
-        # not a special number
         (decstring + cp).view(1)[0] = u8(69);
         cp += 1;
         for character in str(exp) {
@@ -571,15 +623,14 @@ def dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
     return decstring;
 }
 
-"""The text of a one-character str (or "" for anything longer)."""
-def unicode_code(value: ptr[PyObject]) -> str {
+impl unicode_code(value: ptr[PyObject]) -> str {
     if PyUnicode_GetLength(value) != 1 {
         return "";
     }
     return chr(int(PyUnicode_ReadChar(value, 0)));
 }
 
-def dec_type_from_sequence(
+impl dec_type_from_sequence(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dectuple = sequence_as_tuple(
@@ -598,7 +649,7 @@ def dec_type_from_sequence(
     return dec;
 }
 
-def dec_type_from_sequence_exact(
+impl dec_type_from_sequence_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     dectuple = sequence_as_tuple(
@@ -617,7 +668,7 @@ def dec_type_from_sequence_exact(
     return dec;
 }
 
-def unsupported_conversion(v: ptr[PyObject]) -> ptr[PyObject] {
+impl unsupported_conversion(v: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_Format(
         PyExc_TypeError,
         "conversion from %s to Decimal is not supported",
@@ -626,8 +677,7 @@ def unsupported_conversion(v: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-"""A Decimal, int or float `v` as a Decimal of `type`, exactly."""
-def dec_type_from_number_exact(
+impl dec_type_from_number_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_type(type);
@@ -644,8 +694,7 @@ def dec_type_from_number_exact(
     return unsupported_conversion(v);
 }
 
-"""Apply the context to a Decimal: a new rounded copy."""
-def dec_apply(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_apply(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
     result = dec_alloc(module_of_context(context));
     if not result {
         return NULL;
@@ -664,9 +713,7 @@ def dec_apply(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""Anything the Decimal constructor accepts (NULL for no value) as a Decimal
-of `type`, exactly."""
-def dec_type_from_object_exact(
+impl dec_type_from_object_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_context(context);
@@ -689,8 +736,7 @@ def dec_type_from_object_exact(
     return unsupported_conversion(v);
 }
 
-"""context.create_decimal(v): the conversion rounds to the context."""
-def dec_from_object(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_from_object(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of_context(context);
     type = dec_type(module);
     if not v {
@@ -699,7 +745,6 @@ def dec_from_object(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
         ctx = ctx_of(context).view(1);
         if mpd_isnan(mpd(v)) != 0
             and mpd(v).view(1)[0].digits > ctx[0].prec - i64(ctx[0].clamp) {
-            # Special case: too many NaN payload digits
             if dec_addstatus(context, MPD_Conversion_syntax) {
                 return NULL;
             }
@@ -726,13 +771,7 @@ def dec_from_object(v: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
     return unsupported_conversion(v);
 }
 
-# ---------------------------------------------------------------------------
-# Implicit conversions to Decimal.
-
-"""convert_op: a Decimal operand as a new reference, an int converted
-exactly, else NotImplemented (new reference) or, with `type_err`, NULL with
-TypeError. Callers stop on NULL and NotImplemented and return them."""
-def convert_op(
+impl convert_op(
     type_err: bool, v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_context(context);
@@ -748,21 +787,14 @@ def convert_op(
     return Py_NewRef(Py_NotImplemented);
 }
 
-"""Whether a converted operand stops the operation (NULL or
-NotImplemented)."""
-def failed_operand(operand: ptr[PyObject]) -> bool {
+impl failed_operand(operand: ptr[PyObject]) -> bool {
     return not operand or operand == Py_NotImplemented;
 }
 
-# ---------------------------------------------------------------------------
-# Implicit conversions to Decimal for comparison.
-
-"""v * denominator(r) for comparing a finite Decimal with a rational;
-computed with the exponent dropped and put back, so it cannot overflow."""
-def multiply_by_denominator(
+impl multiply_by_denominator(
     v: ptr[PyObject], r: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
-    tmp = PyObject_GetAttrString(r, "denominator");
+    tmp = PyObject_GetAttrString(r, ptr[u8]("denominator"));
     if not tmp {
         return NULL;
     }
@@ -784,8 +816,7 @@ def multiply_by_denominator(
         mpd_del(vv);
         return NULL;
     }
-    # Prevent Overflow in the multiplication; the result is only used in
-    # mpd_qcmp, which handles values technically out of bounds.
+
     exp = vv.view(1)[0].exp;
     vv.view(1)[0].exp = 0;
     status: u32 = 0;
@@ -793,7 +824,7 @@ def multiply_by_denominator(
     mpd(result).view(1)[0].exp = exp;
     jacpy_release(denom);
     mpd_del(vv);
-    # Any status makes the result invalid (very unlikely).
+
     if status != u32(0) {
         PyErr_SetString(PyExc_ValueError, "exact conversion for comparison failed");
         jacpy_release(result);
@@ -802,8 +833,8 @@ def multiply_by_denominator(
     return result;
 }
 
-def numerator_as_decimal(r: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
-    tmp = PyObject_GetAttrString(r, "numerator");
+impl numerator_as_decimal(r: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObject] {
+    tmp = PyObject_GetAttrString(r, ptr[u8]("numerator"));
     if not tmp {
         return NULL;
     }
@@ -812,17 +843,7 @@ def numerator_as_decimal(r: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyObje
     return num;
 }
 
-"""The operands of a comparison: `v` a Decimal and `w` the other object,
-both converted (a rational scales `v` by its denominator). `ok` with new
-references in `v` and `w`; otherwise `w` is NULL (error) or NotImplemented
-(new reference)."""
-obj ComparisonOperands {
-    has v: ptr[PyObject] = NULL,
-        w: ptr[PyObject] = NULL,
-        ok: bool = False;
-}
-
-def convert_op_cmp(
+impl convert_op_cmp(
     v: ptr[PyObject], w: ptr[PyObject], op: int, context: ptr[PyObject]
 ) -> ComparisonOperands {
     result = ComparisonOperands(v=v);

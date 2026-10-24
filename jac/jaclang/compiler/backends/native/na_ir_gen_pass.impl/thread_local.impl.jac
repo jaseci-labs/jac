@@ -40,6 +40,24 @@ impl NaIRGenPass._emit_tls_slot(
         return (get_fn, set_fn);
     }
 
+    native_tls = self._native_tls_on();
+    cache: ir.GlobalVariable | None = None;
+    if native_tls {
+        cache = ir.GlobalVariable(self.llvm_module, i8p, name=f"{slot_name}_tl");
+        cache.linkage = "weak";
+        cache.thread_local = True;
+        cache.tls_model = "initialexec";
+        cache.initializer = ir.Constant(i8p, None);
+        gb = ir.IRBuilder(get_fn.append_basic_block("entry"));
+        gb.ret(gb.ptrtoint(gb.load(cache, name="tls.v"), i64, name="tls.i64"));
+        if destructor is None {
+            sb = ir.IRBuilder(set_fn.append_basic_block("entry"));
+            sb.store(sb.inttoptr(set_fn.args[0], i8p, name="tls.p"), cache);
+            sb.ret_void();
+            return (get_fn, set_fn);
+        }
+    }
+
     key_gv = ir.GlobalVariable(self.llvm_module, i64, name=f"{slot_name}_key");
     key_gv.linkage = "weak";
     key_gv.initializer = zero;
@@ -95,14 +113,20 @@ impl NaIRGenPass._emit_tls_slot(
     ib.store_atomic(zero, lock_gv, "release", 8);
     ib.ret_void();
 
-    get_key = self._emit_tls_ready_key(get_fn, state_gv, key_gv, init_fn);
-    gb = ir.IRBuilder(get_fn.blocks[-1]);
-    _gp = gb.call(get_specific, [get_key], name="tls.v");
-    gb.ret(gb.ptrtoint(_gp, i64, name="tls.i64"));
+    if cache is None {
+        get_key = self._emit_tls_ready_key(get_fn, state_gv, key_gv, init_fn);
+        gb = ir.IRBuilder(get_fn.blocks[-1]);
+        _gp = gb.call(get_specific, [get_key], name="tls.v");
+        gb.ret(gb.ptrtoint(_gp, i64, name="tls.i64"));
+    }
 
     set_key = self._emit_tls_ready_key(set_fn, state_gv, key_gv, init_fn);
     sb = ir.IRBuilder(set_fn.blocks[-1]);
-    sb.call(set_specific, [set_key, sb.inttoptr(set_fn.args[0], i8p, name="tls.p")]);
+    value = sb.inttoptr(set_fn.args[0], i8p, name="tls.p");
+    if cache is not None {
+        sb.store(value, cache);
+    }
+    sb.call(set_specific, [set_key, value]);
     sb.ret_void();
     return (get_fn, set_fn);
 }

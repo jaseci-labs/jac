@@ -36,13 +36,29 @@ from jaclang.compiler.backends.native.link_plan import (
 import jaclang.compiler.backends.native.llvm.binding as llvm
 
 program = JacProgram()
-entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
+# The roots of the native object: the compiler's entry points, the table of
+# built-in modules (its PyInit addresses root every native extension module)
+# and the object model and interpreter ports, which define interpreter types
+# and functions under their C names for C callers no Jac module imports.
+entries = [
+    root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
+    root / "jaclang/runtime/python/inittab.jac",
+    *sorted(
+        path
+        for package in ("object_model", "interpreter")
+        for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
+        if path.name != "__init__.jac"
+    ),
+]
 options = CompileOptions(
     aot_mode=True, default_codespace="native", skip_native_engine=True,
     native_required=True,
     memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
+    # libpython is linked by the system linker, which takes TLS relocations,
+    # and every frame arms through LLVM's builtin setjmp.
+    native_tls=True, native_sjlj=True,
 )
-plan = build_link_plan(program, [str(entry)], options)
+plan = build_link_plan(program, [str(entry) for entry in entries], options)
 if program.errors_had:
     for error in program.errors_had:
         print(error.pretty_print(), file=sys.stderr)
@@ -50,7 +66,14 @@ if program.errors_had:
 init_object_codegen()
 spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
 compiled, runtime_exports = whole_program_module(plan, spec)
-native_fallbacks_in_ir(str(compiled)).require()
+compiled_ir = str(compiled)
+native_fallbacks_in_ir(compiled_ir).require()
+# Every unit must agree on how thread-local slots are held and how frames
+# arm: the accessors and the raise path are shared, so a unit lowered without
+# these options would bring back the pthread-key lookup or libc's setjmp.
+for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "native_sjlj")):
+    if getattr(options, option) and symbol in compiled_ir:
+        raise RuntimeError(f"a JacPython unit was lowered without {option}")
 internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )

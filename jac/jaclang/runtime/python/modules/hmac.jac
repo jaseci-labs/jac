@@ -1,11 +1,3 @@
-"""HMAC over HACL*; derived from CPython 3.14.6 Modules/hmacmodule.c.
-
-See ../LICENSE.cpython. The HACL* library stays C: CPython's
-Modules/_hacl/libHacl_HMAC.a, which the registry links for _hmac. Only hash
-functions named in HASH_INFO are recognized. A BLAKE2 HMAC object uses the
-vectorized HACL* kind when the CPU runs it, decided once at creation.
-"""
-
 import from c {
     def _Py_LibHacl_Hacl_Streaming_HMAC_malloc_(
         hash_impl: u8, key: ptr, key_length: u32, dst: &mut ptr
@@ -63,9 +55,6 @@ glob:priv MAX_DIGEST_SIZE: i64 = 64,
      KIND_BLAKE2B_32: u8 = 12,
      KIND_BLAKE2B_256: u8 = 13;
 
-"""py_hmac_static_hinfo: HACL* name, hashlib name ("" when it is the same),
-static kind, block size and digest size. Both names find an entry; the
-hashlib name is the one objects display."""
 obj HashInfo {
     has name: str,
         hashlib_name: str,
@@ -73,9 +62,7 @@ obj HashInfo {
         block_size: i64,
         digest_size: i64;
 
-    def display_name -> str {
-        return self.hashlib_name or self.name;
-    }
+    def display_name -> str;
 }
 
 glob:priv HASH_INFO: list[HashInfo] = [
@@ -101,20 +88,125 @@ obj HMACState(NativeState) {
         block_size: i64 = 0,
         digest_size: i64 = 0;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def clear {}
-    def drop {
-        if self.hash_state {
-            _Py_LibHacl_Hacl_Streaming_HMAC_free(self.hash_state);
-        }
+def:priv convert_errno(code: u8) -> int;
+
+def:priv narrow_kind(kind: u8) -> u8;
+
+def:priv info_named(name: str) -> HashInfo | None;
+
+def:priv find_hash_info(module: ptr[PyObject], ref: ptr[PyObject]) -> HashInfo | None;
+
+def:priv hmac_update(hacl: ptr, address: ptr, size: i64);
+
+def:priv hmac_of(instance: ptr[PyObject]) -> HMACState | None;
+
+def _hmac_new_impl(
+    module: ptr[PyObject],
+    keyobj: ptr[PyObject],
+    msgobj: ptr[PyObject],
+    hash_info_ref: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_HMAC_copy_impl(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyObject];
+
+def _hmac_HMAC_update_impl(
+    receiver: ptr[PyObject], msgobj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv hmac_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject];
+
+def _hmac_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _hmac_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _hmac_HMAC_name_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _hmac_HMAC_block_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _hmac_HMAC_digest_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv compute(kind: u8, out: ptr, key: ptr, key_len: u32, data: ptr, data_len: u32);
+
+def:priv oneshot(
+    kind: u8, digest_size: i64, keyobj: ptr[PyObject], msgobj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_digest_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject], digest: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_md5_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha1_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha2_224_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha2_256_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha2_384_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha2_512_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha3_224_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha3_256_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha3_384_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_sha3_512_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_blake2s_32_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _hmac_compute_blake2b_32_impl(
+    module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl HashInfo.display_name -> str {
+    return self.hashlib_name or self.name;
+}
+
+impl HMACState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
+
+impl HMACState.clear {}
+
+impl HMACState.drop {
+    if self.hash_state {
+        _Py_LibHacl_Hacl_Streaming_HMAC_free(self.hash_state);
     }
 }
 
-"""_hacl_convert_errno(): 0 for success, else -1 with the error set."""
-def:priv convert_errno(code: u8) -> int {
+impl convert_errno(code: u8) -> int {
     if code == u8(0) {
         return 0;
     }
@@ -135,8 +227,7 @@ def:priv convert_errno(code: u8) -> int {
     return -1;
 }
 
-"""narrow_hmac_hash_kind(): the vectorized BLAKE2 kind when the CPU runs it."""
-def:priv narrow_kind(kind: u8) -> u8 {
+impl narrow_kind(kind: u8) -> u8 {
     features = jacpy_hacl_simd_features();
     if kind == KIND_BLAKE2S_32 and (features & 1) != 0 {
         return KIND_BLAKE2S_128;
@@ -147,7 +238,7 @@ def:priv narrow_kind(kind: u8) -> u8 {
     return kind;
 }
 
-def:priv info_named(name: str) -> HashInfo | None {
+impl info_named(name: str) -> HashInfo | None {
     for info in HASH_INFO {
         if info.name == name or (info.hashlib_name and info.hashlib_name == name) {
             return info;
@@ -156,9 +247,7 @@ def:priv info_named(name: str) -> HashInfo | None {
     return None;
 }
 
-"""find_hash_info(): the entry for a hash name, looked up as given and then
-lowercased; None with UnknownHashError (or the lookup's error) set."""
-def:priv find_hash_info(module: ptr[PyObject], ref: ptr[PyObject]) -> HashInfo | None {
+impl find_hash_info(module: ptr[PyObject], ref: ptr[PyObject]) -> HashInfo | None {
     if jacpy_is_unicode(ref) != 0 {
         if not PyUnicode_AsUTF8(ref) {
             return None;
@@ -167,7 +256,7 @@ def:priv find_hash_info(module: ptr[PyObject], ref: ptr[PyObject]) -> HashInfo |
         if found is not None {
             return found;
         }
-        lower = PyObject_GetAttrString(ref, "lower");
+        lower = PyObject_GetAttrString(ref, ptr[u8]("lower"));
         if not lower {
             return None;
         }
@@ -190,7 +279,7 @@ def:priv find_hash_info(module: ptr[PyObject], ref: ptr[PyObject]) -> HashInfo |
     if not shown {
         return None;
     }
-    prefix = PyUnicode_FromString("unsupported hash type: ");
+    prefix = PyUnicode_FromString(ptr[u8]("unsupported hash type: "));
     message = PyUnicode_Concat(prefix, shown) if prefix else NULL;
     jacpy_release(prefix);
     jacpy_release(shown);
@@ -201,8 +290,7 @@ def:priv find_hash_info(module: ptr[PyObject], ref: ptr[PyObject]) -> HashInfo |
     return None;
 }
 
-"""Py_HMAC_HACL_UPDATE in a release build: the error code is not checked."""
-def:priv hmac_update(hacl: ptr, address: ptr, size: i64) {
+impl hmac_update(hacl: ptr, address: ptr, size: i64) {
     remaining = size;
     cursor = address;
     while remaining > UINT32_MAX {
@@ -213,7 +301,7 @@ def:priv hmac_update(hacl: ptr, address: ptr, size: i64) {
     _Py_LibHacl_Hacl_Streaming_HMAC_update(hacl, cursor, u32(remaining));
 }
 
-def:priv hmac_of(instance: ptr[PyObject]) -> HMACState | None {
+impl hmac_of(instance: ptr[PyObject]) -> HMACState | None {
     state = hash_state_of(instance, HMAC_token);
     if isinstance(state, HMACState) {
         return state;
@@ -221,7 +309,7 @@ def:priv hmac_of(instance: ptr[PyObject]) -> HMACState | None {
     return None;
 }
 
-def _hmac_new_impl(
+impl _hmac_new_impl(
     module: ptr[PyObject],
     keyobj: ptr[PyObject],
     msgobj: ptr[PyObject],
@@ -276,7 +364,9 @@ def _hmac_new_impl(
     return instance;
 }
 
-def _hmac_HMAC_copy_impl(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyObject] {
+impl _hmac_HMAC_copy_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -302,7 +392,7 @@ def _hmac_HMAC_copy_impl(receiver: ptr[PyObject], cls: ptr[PyObject]) -> ptr[PyO
     );
 }
 
-def _hmac_HMAC_update_impl(
+impl _hmac_HMAC_update_impl(
     receiver: ptr[PyObject], msgobj: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = hmac_of(receiver);
@@ -312,8 +402,7 @@ def _hmac_HMAC_update_impl(
     return hash_update(state.lock, state.hash_state, msgobj, hmac_update);
 }
 
-"""hmac_digest_compute_cond_lock(), as bytes or hex text."""
-def:priv hmac_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
+impl hmac_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -338,23 +427,23 @@ def:priv hmac_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
     return result;
 }
 
-def _hmac_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hmac_HMAC_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return hmac_digest(receiver, False);
 }
 
-def _hmac_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hmac_HMAC_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return hmac_digest(receiver, True);
 }
 
-def _hmac_HMAC_name_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hmac_HMAC_name_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
     }
-    return PyUnicode_FromString("hmac-" + state.name);
+    return jacpy_unicode_from_text("hmac-" + state.name);
 }
 
-def _hmac_HMAC_block_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hmac_HMAC_block_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -362,7 +451,7 @@ def _hmac_HMAC_block_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(state.block_size);
 }
 
-def _hmac_HMAC_digest_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _hmac_HMAC_digest_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(receiver);
     if state is None {
         return NULL;
@@ -370,9 +459,7 @@ def _hmac_HMAC_digest_size_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(state.digest_size);
 }
 
-"""HMACObject_repr(): "<name HMAC object @ address>", the address as %p
-renders it."""
-def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = hmac_of(instance);
     if state is None {
         return NULL;
@@ -386,8 +473,8 @@ def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     if not address {
         return NULL;
     }
-    head = PyUnicode_FromString(f"<{state.name} HMAC object @ ");
-    tail = PyUnicode_FromString(">");
+    head = jacpy_unicode_from_text(f"<{state.name} HMAC object @ ");
+    tail = PyUnicode_FromString(ptr[u8](">"));
     result = NULL;
     if head and tail {
         joined = PyUnicode_Concat(head, address);
@@ -402,8 +489,7 @@ def hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""The one-shot HACL* HMAC of a kind: out receives the digest."""
-def:priv compute(kind: u8, out: ptr, key: ptr, key_len: u32, data: ptr, data_len: u32) {
+impl compute(kind: u8, out: ptr, key: ptr, key_len: u32, data: ptr, data_len: u32) {
     if kind == KIND_MD5 {
         _Py_LibHacl_Hacl_HMAC_compute_md5(out, key, key_len, data, data_len);
     } elif kind == KIND_SHA1 {
@@ -431,9 +517,7 @@ def:priv compute(kind: u8, out: ptr, key: ptr, key_len: u32, data: ptr, data_len
     }
 }
 
-"""Py_HMAC_HACL_ONESHOT: key and message longer than 4 GiB raise
-OverflowError; the hmac module falls back to OpenSSL for those."""
-def:priv oneshot(
+impl oneshot(
     kind: u8, digest_size: i64, keyobj: ptr[PyObject], msgobj: ptr[PyObject]
 ) -> ptr[PyObject] {
     key = hash_buffer(keyobj);
@@ -471,7 +555,7 @@ def:priv oneshot(
     return result;
 }
 
-def _hmac_compute_digest_impl(
+impl _hmac_compute_digest_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject], digest: ptr[PyObject]
 ) -> ptr[PyObject] {
     info = find_hash_info(module, digest);
@@ -481,73 +565,73 @@ def _hmac_compute_digest_impl(
     return oneshot(info.kind, info.digest_size, key, msg);
 }
 
-def _hmac_compute_md5_impl(
+impl _hmac_compute_md5_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_MD5, 16, key, msg);
 }
 
-def _hmac_compute_sha1_impl(
+impl _hmac_compute_sha1_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA1, 20, key, msg);
 }
 
-def _hmac_compute_sha2_224_impl(
+impl _hmac_compute_sha2_224_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA2_224, 28, key, msg);
 }
 
-def _hmac_compute_sha2_256_impl(
+impl _hmac_compute_sha2_256_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA2_256, 32, key, msg);
 }
 
-def _hmac_compute_sha2_384_impl(
+impl _hmac_compute_sha2_384_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA2_384, 48, key, msg);
 }
 
-def _hmac_compute_sha2_512_impl(
+impl _hmac_compute_sha2_512_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA2_512, 64, key, msg);
 }
 
-def _hmac_compute_sha3_224_impl(
+impl _hmac_compute_sha3_224_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA3_224, 28, key, msg);
 }
 
-def _hmac_compute_sha3_256_impl(
+impl _hmac_compute_sha3_256_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA3_256, 32, key, msg);
 }
 
-def _hmac_compute_sha3_384_impl(
+impl _hmac_compute_sha3_384_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA3_384, 48, key, msg);
 }
 
-def _hmac_compute_sha3_512_impl(
+impl _hmac_compute_sha3_512_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_SHA3_512, 64, key, msg);
 }
 
-def _hmac_compute_blake2s_32_impl(
+impl _hmac_compute_blake2s_32_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_BLAKE2S_32, 32, key, msg);
 }
 
-def _hmac_compute_blake2b_32_impl(
+impl _hmac_compute_blake2b_32_impl(
     module: ptr[PyObject], key: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     return oneshot(KIND_BLAKE2B_32, 64, key, msg);

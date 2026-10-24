@@ -1405,6 +1405,53 @@ impl NaIRGenPass._isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.
     return hit;
 }
 
+impl NaIRGenPass._isinstance_vtable_walk(
+    vptr: ir.Value, names: list[str], prefix: str
+) -> ir.Value {
+    """The ancestry walk of `_isinstance_vtable_hit`, behind a one-entry cache
+    of the last vtable this check answered `False` for.
+
+    A class's ancestry never changes and vtables are static, so a miss for one
+    vtable is a miss for good. The cache is one pointer per check, read and
+    written with relaxed atomics, so threads can only see a vtable that did
+    miss here. A dispatch chain of checks sees mostly misses, each of which
+    would otherwise walk the whole ancestry.
+    """;
+    i1 = ir.IntType(1);
+    i8p = ir.IntType(8).as_pointer();
+    site = ir.GlobalVariable(
+        self.llvm_module, i8p, name=f".jac.isa.miss.{self._isa_miss_sites}"
+    );
+    self._isa_miss_sites += 1;
+    site.linkage = "private";
+    site.initializer = ir.Constant(i8p, None);
+    key = self.builder.bitcast(vptr, i8p, name=f"{prefix}.vt.key");
+    fn = self.builder.block.function;
+    check_end = self.builder.block;
+    walk_bb = fn.append_basic_block(name=f"{prefix}.vt.miss.walk");
+    note_bb = fn.append_basic_block(name=f"{prefix}.vt.miss.note");
+    done_bb = fn.append_basic_block(name=f"{prefix}.vt.miss.done");
+    cached = self.builder.load_atomic(site, "monotonic", 8, name=f"{prefix}.vt.cached");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned("==", cached, key, name=f"{prefix}.vt.known"),
+        done_bb,
+        walk_bb
+    );
+    self.builder.position_at_end(walk_bb);
+    walked = self._isinstance_vtable_hit(vptr, names);
+    walk_end = self.builder.block;
+    self.builder.cbranch(walked, done_bb, note_bb);
+    self.builder.position_at_end(note_bb);
+    self.builder.store_atomic(key, site, "monotonic", 8);
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    res = self.builder.phi(i1, name=f"{prefix}.vt.miss.res");
+    res.add_incoming(ir.Constant(i1, 0), check_end);
+    res.add_incoming(ir.Constant(i1, 1), walk_end);
+    res.add_incoming(ir.Constant(i1, 0), note_bb);
+    return res;
+}
+
 impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
     """Does every object this static type admits hold a vtable pointer in slot 0?
 
@@ -1453,7 +1500,7 @@ impl NaIRGenPass._isinstance_vtable_fallback(
     answers.
     """;
     if hit is None {
-        return self._isinstance_vtable_hit(vptr, names);
+        return self._isinstance_vtable_walk(vptr, names, prefix);
     }
     i1 = ir.IntType(1);
     fn = self.builder.block.function;
@@ -1462,7 +1509,7 @@ impl NaIRGenPass._isinstance_vtable_fallback(
     done_bb = fn.append_basic_block(name=f"{prefix}.vt.done");
     self.builder.cbranch(hit, done_bb, walk_bb);
     self.builder.position_at_end(walk_bb);
-    walked = self._isinstance_vtable_hit(vptr, names);
+    walked = self._isinstance_vtable_walk(vptr, names, prefix);
     walk_end = self.builder.block;
     self.builder.branch(done_bb);
     self.builder.position_at_end(done_bb);

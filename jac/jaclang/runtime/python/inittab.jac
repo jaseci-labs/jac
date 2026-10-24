@@ -1,0 +1,118 @@
+import from c {
+    obj _inittab {
+        has name: ptr[u8],
+            initfunc: ptr;
+    }  def PyInit_faulthandler -> ptr[PyObject];  def PyInit__signal -> ptr[PyObject];  def PyInit__io -> ptr[
+        PyObject
+    ];  def PyInit__thread -> ptr[PyObject];  def PyMarshal_Init -> ptr[PyObject];  def PyInit__imp -> ptr[
+        PyObject
+    ];  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[PyObject];  def PyInit__symtable -> ptr[
+        PyObject
+    ];  def PyInit_gc -> ptr[PyObject];  def PyInit__contextvars -> ptr[PyObject];  def _PyWarnings_Init -> ptr[
+        PyObject
+    ];  def PyInit__string -> ptr[PyObject];  glob _PyImport_Inittab:
+             list[_inittab] = [
+             _inittab(name=ptr[u8]("_bisect"), initfunc=ptr(PyInit__bisect)),
+             _inittab(name=ptr[u8]("_heapq"), initfunc=ptr(PyInit__heapq)),
+             _inittab(name=ptr[u8]("_random"), initfunc=ptr(PyInit__random)),
+             _inittab(name=ptr[u8]("binascii"), initfunc=ptr(PyInit_binascii)),
+             _inittab(name=ptr[u8]("_operator"), initfunc=ptr(PyInit__operator)),
+             _inittab(name=ptr[u8]("_queue"), initfunc=ptr(PyInit__queue)),
+             _inittab(name=ptr[u8]("_json"), initfunc=ptr(PyInit__json)),
+             _inittab(name=ptr[u8]("_csv"), initfunc=ptr(PyInit__csv)),
+             _inittab(
+                 name=ptr[u8]("_remote_debugging"),
+                 initfunc=ptr(PyInit__remote_debugging)
+             ),
+             _inittab(name=ptr[u8]("_struct"), initfunc=ptr(PyInit__struct)),
+             _inittab(name=ptr[u8]("cmath"), initfunc=ptr(PyInit_cmath)),
+             _inittab(name=ptr[u8]("math"), initfunc=ptr(PyInit_math)),
+             _inittab(name=ptr[u8]("_collections"), initfunc=ptr(PyInit__collections)),
+             _inittab(name=ptr[u8]("_functools"), initfunc=ptr(PyInit__functools)),
+             _inittab(name=ptr[u8]("itertools"), initfunc=ptr(PyInit_itertools)),
+             _inittab(name=ptr[u8]("array"), initfunc=ptr(PyInit_array)),
+             _inittab(name=ptr[u8]("_pickle"), initfunc=ptr(PyInit__pickle)),
+             _inittab(name=ptr[u8]("_statistics"), initfunc=ptr(PyInit__statistics)),
+             _inittab(name=ptr[u8]("_stat"), initfunc=ptr(PyInit__stat)),
+             _inittab(name=ptr[u8]("_opcode"), initfunc=ptr(PyInit__opcode)),
+             _inittab(name=ptr[u8]("pwd"), initfunc=ptr(PyInit_pwd)),
+             _inittab(name=ptr[u8]("grp"), initfunc=ptr(PyInit_grp)),
+             _inittab(name=ptr[u8]("_types"), initfunc=ptr(PyInit__types)),
+             _inittab(name=ptr[u8]("_typing"), initfunc=ptr(PyInit__typing)),
+             _inittab(name=ptr[u8]("_suggestions"), initfunc=ptr(PyInit__suggestions)),
+             _inittab(name=ptr[u8]("_sysconfig"), initfunc=ptr(PyInit__sysconfig)),
+             _inittab(name=ptr[u8]("_weakref"), initfunc=ptr(PyInit__weakref)),
+             _inittab(name=ptr[u8]("_tracemalloc"), initfunc=ptr(PyInit__tracemalloc)),
+             _inittab(name=ptr[u8]("zlib"), initfunc=ptr(PyInit_zlib)),
+             _inittab(name=ptr[u8]("_bz2"), initfunc=ptr(PyInit__bz2)),
+             _inittab(name=ptr[u8]("_lzma"), initfunc=ptr(PyInit__lzma)),
+             _inittab(name=ptr[u8]("_zstd"), initfunc=ptr(PyInit__zstd)),
+             _inittab(name=ptr[u8]("_sqlite3"), initfunc=ptr(PyInit__sqlite3)),
+             _inittab(name=ptr[u8]("pyexpat"), initfunc=ptr(PyInit_pyexpat)),
+             _inittab(name=ptr[u8]("_elementtree"), initfunc=ptr(PyInit__elementtree)),
+             _inittab(name=ptr[u8]("errno"), initfunc=ptr(PyInit_errno)),
+             _inittab(name=ptr[u8]("syslog"), initfunc=ptr(PyInit_syslog)),
+             _inittab(name=ptr[u8]("resource"), initfunc=ptr(PyInit_resource)),
+             _inittab(name=ptr[u8]("atexit"), initfunc=ptr(PyInit_atexit)),
+             _inittab(name=ptr[u8]("time"), initfunc=ptr(PyInit_time)),
+             _inittab(name=ptr[u8]("select"), initfunc=ptr(PyInit_select)),
+             _inittab(name=ptr[u8]("mmap"), initfunc=ptr(PyInit_mmap)),
+             _inittab(name=ptr[u8]("_md5"), initfunc=ptr(PyInit__md5)),
+             _inittab(name=ptr[u8]("_sha1"), initfunc=ptr(PyInit__sha1)),
+             _inittab(name=ptr[u8]("_sha2"), initfunc=ptr(PyInit__sha2)),
+             _inittab(name=ptr[u8]("_sha3"), initfunc=ptr(PyInit__sha3)),
+             _inittab(name=ptr[u8]("_blake2"), initfunc=ptr(PyInit__blake2)),
+             _inittab(name=ptr[u8]("_hmac"), initfunc=ptr(PyInit__hmac)),
+             _inittab(name=ptr[u8]("fcntl"), initfunc=ptr(PyInit_fcntl)),
+             _inittab(name=ptr[u8]("termios"), initfunc=ptr(PyInit_termios)),
+             _inittab(
+                 name=ptr[u8]("_posixsubprocess"), initfunc=ptr(PyInit__posixsubprocess)
+             ),
+             _inittab(name=ptr[u8]("_uuid"), initfunc=ptr(PyInit__uuid)),
+             _inittab(name=ptr[u8]("_lsprof"), initfunc=ptr(PyInit__lsprof)),
+             _inittab(
+                 name=ptr[u8]("_multiprocessing"), initfunc=ptr(PyInit__multiprocessing)
+             ),
+             _inittab(name=ptr[u8]("_posixshmem"), initfunc=ptr(PyInit__posixshmem)),
+             _inittab(name=ptr[u8]("_abc"), initfunc=ptr(PyInit__abc)),
+             _inittab(name=ptr[u8]("_codecs"), initfunc=ptr(PyInit__codecs)),
+             _inittab(name=ptr[u8]("_locale"), initfunc=ptr(PyInit__locale)),
+             _inittab(name=ptr[u8]("_zoneinfo"), initfunc=ptr(PyInit__zoneinfo)),
+             _inittab(name=ptr[u8]("unicodedata"), initfunc=ptr(PyInit_unicodedata)),
+             _inittab(name=ptr[u8]("_datetime"), initfunc=ptr(PyInit__datetime)),
+             _inittab(name=ptr[u8]("_decimal"), initfunc=ptr(PyInit__decimal)),
+             _inittab(
+                 name=ptr[u8]("_multibytecodec"), initfunc=ptr(PyInit__multibytecodec)
+             ),
+             _inittab(name=ptr[u8]("_codecs_cn"), initfunc=ptr(PyInit__codecs_cn)),
+             _inittab(name=ptr[u8]("_codecs_hk"), initfunc=ptr(PyInit__codecs_hk)),
+             _inittab(
+                 name=ptr[u8]("_codecs_iso2022"), initfunc=ptr(PyInit__codecs_iso2022)
+             ),
+             _inittab(name=ptr[u8]("_codecs_jp"), initfunc=ptr(PyInit__codecs_jp)),
+             _inittab(name=ptr[u8]("_codecs_kr"), initfunc=ptr(PyInit__codecs_kr)),
+             _inittab(name=ptr[u8]("_codecs_tw"), initfunc=ptr(PyInit__codecs_tw)),
+             _inittab(name=ptr[u8]("_socket"), initfunc=ptr(PyInit__socket)),
+             _inittab(name=ptr[u8]("_sre"), initfunc=ptr(PyInit__sre)),
+             _inittab(name=ptr[u8]("_hashlib"), initfunc=ptr(PyInit__hashlib)),
+             _inittab(name=ptr[u8]("_ssl"), initfunc=ptr(PyInit__ssl)),
+             _inittab(name=ptr[u8]("_asyncio"), initfunc=ptr(PyInit__asyncio)),
+             _inittab(name=ptr[u8]("posix"), initfunc=ptr(PyInit_posix)),
+             _inittab(name=ptr[u8]("faulthandler"), initfunc=ptr(PyInit_faulthandler)),
+             _inittab(name=ptr[u8]("_signal"), initfunc=ptr(PyInit__signal)),
+             _inittab(name=ptr[u8]("_io"), initfunc=ptr(PyInit__io)),
+             _inittab(name=ptr[u8]("_thread"), initfunc=ptr(PyInit__thread)),
+             _inittab(name=ptr[u8]("marshal"), initfunc=ptr(PyMarshal_Init)),
+             _inittab(name=ptr[u8]("_imp"), initfunc=ptr(PyInit__imp)),
+             _inittab(name=ptr[u8]("_ast"), initfunc=ptr(PyInit__ast)),
+             _inittab(name=ptr[u8]("_tokenize"), initfunc=ptr(PyInit__tokenize)),
+             _inittab(name=ptr[u8]("_symtable"), initfunc=ptr(PyInit__symtable)),
+             _inittab(name=ptr[u8]("builtins"), initfunc=ptr()),
+             _inittab(name=ptr[u8]("sys"), initfunc=ptr()),
+             _inittab(name=ptr[u8]("gc"), initfunc=ptr(PyInit_gc)),
+             _inittab(name=ptr[u8]("_contextvars"), initfunc=ptr(PyInit__contextvars)),
+             _inittab(name=ptr[u8]("_warnings"), initfunc=ptr(_PyWarnings_Init)),
+             _inittab(name=ptr[u8]("_string"), initfunc=ptr(PyInit__string)),
+             _inittab(name=ptr[u8](), initfunc=ptr())
+         ];
+}

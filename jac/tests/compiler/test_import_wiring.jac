@@ -678,6 +678,41 @@ test "a scoped wire's name unused in its function is an error" {
 }
 
 
+test "a wired C global a function assigns counts as used" {
+    base = _standard(
+        arch=_ARCH.replace(
+            "    core.util ++> app.main { now as when }\n",
+            "    core.util ++> app.main { now as when }\n"
+            "    core.cdata ++> app.main { hits }\n"
+        ),
+        main=_MAIN + "\ndef reset {\n    hits = 0;\n}\n"
+    );
+    _write(base, "core/cdata.jac", "import from c {\n    glob hits: i64;\n}\n");
+    try {
+        assert _errors(_compile(base, "app/main.jac")) == [];
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a wired Jac name a function only assigns is still unused" {
+    base = _standard(
+        arch=_ARCH.replace(
+            "    core.util ++> app.main { now as when }\n",
+            "    core.util ++> app.main { now as when }\n"
+            "    core.other ++> app.main { helper }\n"
+        ),
+        main=_MAIN + "\ndef reset {\n    helper = 0;\n}\n"
+    );
+    try {
+        assert _errors(_compile(base, "app/main.jac")) == ["E1146"];
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
 test "a name used only in an impl annex counts as used" {
     base = _standard(
         main=("def greet -> str;\n" "\n" "with entry {\n" "    print(greet());\n" "}\n")

@@ -37,6 +37,8 @@ walker RcFactsPass(CompilerPass) {
 
     def _is_param_sym(sym: Symbol) -> bool;
     def _last_use_tracked(sym: Symbol) -> bool;
+    def _lent_to_c(sym: Symbol) -> bool;
+    def _c_import_of(decl: UniNode) -> (Import | None);
     def _stamp_last_use(ir_in: Module) -> None;
     def _stamp_scope_cleanup(ir_in: Module) -> None;
     def _stamp_move_in(ir_in: Module) -> None;

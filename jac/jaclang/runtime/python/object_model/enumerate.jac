@@ -1,12 +1,3 @@
-"""The enumerate and reversed types: Objects/enumobject.c in native Jac.
-
-`PyEnum_Type` and `PyReversed_Type` are C data Jac defines under their C
-names, so the builtins module and C code use them unchanged. Their `__new__`
-argument parsing is Objects/clinic/enumobject.c.h's, and their vectorcall
-entry points parse positional and keyword arguments by hand as the C file
-does. The object layouts come from layouts.jac. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob:priv enum_keywords: list[ptr[u8]] = [
              ptr[u8]("iterable"),
@@ -112,13 +103,67 @@ import from c {
          );
 }
 
-# ---------------------------------------------------------------- enumerate
-def enum_of(op: ptr[PyObject]) -> ptr[enumobject] {
+def enum_of(op: ptr[PyObject]) -> ptr[enumobject];
+
+def enum_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def enum_new_impl(
+    _type: ptr[PyTypeObject], iterable: ptr[PyObject], start: ptr[PyObject]
+) -> ptr[PyObject];
+
+def check_keyword(kwnames: ptr[PyObject], index: i64, name: str) -> bool;
+
+def enumerate_vectorcall(
+    _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def enum_dealloc(op: ptr[PyObject]);
+
+def enum_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def increment_longindex(en: ptr[enumobject]) -> ptr[PyObject];
+
+def enum_pair(
+    en: ptr[enumobject], next_index: ptr[PyObject], next_item: ptr[PyObject]
+) -> ptr[PyObject];
+
+def enum_next_long(en: ptr[enumobject], next_item: ptr[PyObject]) -> ptr[PyObject];
+
+def enum_next(op: ptr[PyObject]) -> ptr[PyObject];
+
+def enum_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def reversed_of(op: ptr[PyObject]) -> ptr[reversedobject];
+
+def reversed_new_impl(_type: ptr[PyTypeObject], seq: ptr[PyObject]) -> ptr[PyObject];
+
+def reversed_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def reversed_vectorcall(
+    _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def reversed_dealloc(op: ptr[PyObject]);
+
+def reversed_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def reversed_next(op: ptr[PyObject]) -> ptr[PyObject];
+
+def reversed_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def reversed_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def reversed_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject];
+
+impl enum_of(op: ptr[PyObject]) -> ptr[enumobject] {
     return ptr[enumobject](op);
 }
 
-# enumerate.__new__(iterable, start=0), as Argument Clinic parses it.
-def enum_new(
+impl enum_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     iterable = NULL;
@@ -137,7 +182,7 @@ def enum_new(
     return enum_new_impl(_type, iterable, start);
 }
 
-def enum_new_impl(
+impl enum_new_impl(
     _type: ptr[PyTypeObject], iterable: ptr[PyObject], start: ptr[PyObject]
 ) -> ptr[PyObject] {
     op = _type.view(1)[0].tp_alloc(_type, 0);
@@ -174,14 +219,14 @@ def enum_new_impl(
         jacpy_release(op);
         return NULL;
     }
-    # borrowed reference to the immortal one
+
     en.view(1)[0].one = PyLong_FromLong(1);
     return op;
 }
 
-def check_keyword(kwnames: ptr[PyObject], index: i64, name: str) -> bool {
+impl check_keyword(kwnames: ptr[PyObject], index: i64, name: str) -> bool {
     kw = tuple_get_item(kwnames, index);
-    if _PyUnicode_EqualToASCIIString(kw, name) == 0 {
+    if jacpy_unicode_equal_text(kw, name) == 0 {
         PyErr_Format(
             PyExc_TypeError, "'%S' is an invalid keyword argument for enumerate()", kw
         );
@@ -190,7 +235,7 @@ def check_keyword(kwnames: ptr[PyObject], index: i64, name: str) -> bool {
     return True;
 }
 
-def enumerate_vectorcall(
+impl enumerate_vectorcall(
     _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     tp = ptr[PyTypeObject](_type);
@@ -199,7 +244,7 @@ def enumerate_vectorcall(
     if kwnames {
         nkwargs = object_size(kwnames);
     }
-    # Manually implement enumerate(iterable, start=...)
+
     if nargs + nkwargs == 2 {
         if nkwargs == 1 {
             if not check_keyword(kwnames, 0, "start") {
@@ -207,7 +252,7 @@ def enumerate_vectorcall(
             }
         } elif nkwargs == 2 {
             kw0 = tuple_get_item(kwnames, 0);
-            if _PyUnicode_EqualToASCIIString(kw0, "start") != 0 {
+            if _PyUnicode_EqualToASCIIString(kw0, ptr[u8]("start")) != 0 {
                 if not check_keyword(kwnames, 1, "iterable") {
                     return NULL;
                 }
@@ -240,7 +285,7 @@ def enumerate_vectorcall(
     return NULL;
 }
 
-def enum_dealloc(op: ptr[PyObject]) {
+impl enum_dealloc(op: ptr[PyObject]) {
     en = enum_of(op);
     object_gc_untrack(op);
     jacpy_release(en.view(1)[0].en_sit);
@@ -249,7 +294,7 @@ def enum_dealloc(op: ptr[PyObject]) {
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
 
-def enum_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl enum_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     en = enum_of(op);
     status = visit_reference(en.view(1)[0].en_sit, visitor, arg);
     if status == 0 {
@@ -261,8 +306,7 @@ def enum_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return status;
 }
 
-# Advance en_longindex; return the next index to be used, or NULL on error.
-def increment_longindex(en: ptr[enumobject]) -> ptr[PyObject] {
+impl increment_longindex(en: ptr[enumobject]) -> ptr[PyObject] {
     next_index = en.view(1)[0].en_longindex;
     if not next_index {
         next_index = PyLong_FromSsize_t(i64.MAX);
@@ -278,9 +322,7 @@ def increment_longindex(en: ptr[enumobject]) -> ptr[PyObject] {
     return next_index;
 }
 
-# The (index, item) pair, reusing the result tuple when nothing else holds it;
-# both are stolen.
-def enum_pair(
+impl enum_pair(
     en: ptr[enumobject], next_index: ptr[PyObject], next_item: ptr[PyObject]
 ) -> ptr[PyObject] {
     result = en.view(1)[0].en_result;
@@ -306,7 +348,7 @@ def enum_pair(
     return result;
 }
 
-def enum_next_long(en: ptr[enumobject], next_item: ptr[PyObject]) -> ptr[PyObject] {
+impl enum_next_long(en: ptr[enumobject], next_item: ptr[PyObject]) -> ptr[PyObject] {
     next_index = increment_longindex(en);
     if not next_index {
         jacpy_release(next_item);
@@ -315,7 +357,7 @@ def enum_next_long(en: ptr[enumobject], next_item: ptr[PyObject]) -> ptr[PyObjec
     return enum_pair(en, next_index, next_item);
 }
 
-def enum_next(op: ptr[PyObject]) -> ptr[PyObject] {
+impl enum_next(op: ptr[PyObject]) -> ptr[PyObject] {
     en = enum_of(op);
     it = en.view(1)[0].en_sit;
     next_item = object_type(it).view(1)[0].tp_iternext(it);
@@ -335,7 +377,7 @@ def enum_next(op: ptr[PyObject]) -> ptr[PyObject] {
     return enum_pair(en, next_index, next_item);
 }
 
-def enum_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl enum_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     en = enum_of(op);
     if en.view(1)[0].en_longindex {
         return Py_BuildValue(
@@ -347,13 +389,12 @@ def enum_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-# ---------------------------------------------------------------- reversed
-def reversed_of(op: ptr[PyObject]) -> ptr[reversedobject] {
+impl reversed_of(op: ptr[PyObject]) -> ptr[reversedobject] {
     return ptr[reversedobject](op);
 }
 
-def reversed_new_impl(_type: ptr[PyTypeObject], seq: ptr[PyObject]) -> ptr[PyObject] {
-    name = PyUnicode_InternFromString("__reversed__");
+impl reversed_new_impl(_type: ptr[PyTypeObject], seq: ptr[PyObject]) -> ptr[PyObject] {
+    name = PyUnicode_InternFromString(ptr[u8]("__reversed__"));
     if not name {
         return NULL;
     }
@@ -396,8 +437,7 @@ def reversed_new_impl(_type: ptr[PyTypeObject], seq: ptr[PyObject]) -> ptr[PyObj
     return op;
 }
 
-# reversed.__new__(sequence, /), as Argument Clinic parses it.
-def reversed_new(
+impl reversed_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     base_tp = addressof(PyReversed_Type);
@@ -416,7 +456,7 @@ def reversed_new(
     return reversed_new_impl(_type, tuple_get_item(args, 0));
 }
 
-def reversed_vectorcall(
+impl reversed_vectorcall(
     _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames and _PyArg_NoKwnames("reversed", kwnames) == 0 {
@@ -429,17 +469,17 @@ def reversed_vectorcall(
     return reversed_new_impl(ptr[PyTypeObject](_type), args.view(1)[0]);
 }
 
-def reversed_dealloc(op: ptr[PyObject]) {
+impl reversed_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     jacpy_release(reversed_of(op).view(1)[0].seq);
     object_type(op).view(1)[0].tp_free(ptr(op));
 }
 
-def reversed_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl reversed_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(reversed_of(op).view(1)[0].seq, visitor, arg);
 }
 
-def reversed_next(op: ptr[PyObject]) -> ptr[PyObject] {
+impl reversed_next(op: ptr[PyObject]) -> ptr[PyObject] {
     ro = reversed_of(op);
     index = ro.view(1)[0].index;
     if index >= 0 {
@@ -460,7 +500,7 @@ def reversed_next(op: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def reversed_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl reversed_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     ro = reversed_of(op);
     index = ro.view(1)[0].index;
     if index == -1 {
@@ -474,7 +514,7 @@ def reversed_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(0 if seqsize < position else position);
 }
 
-def reversed_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl reversed_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     ro = reversed_of(op);
     if ro.view(1)[0].index != -1 {
         return Py_BuildValue(
@@ -484,14 +524,13 @@ def reversed_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     return Py_BuildValue("O(())", object_type(op));
 }
 
-def reversed_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
+impl reversed_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
     ro = reversed_of(op);
     index = PyLong_AsSsize_t(state);
     if index == -1 and PyErr_Occurred() {
         return NULL;
     }
-    # if the iterator is exhausted we do not set the state; this is for
-    # backwards compatibility reasons (gh-120971).
+
     if ro.view(1)[0].index != -1 {
         n = PySequence_Size(ro.view(1)[0].seq);
         if n < 0 {

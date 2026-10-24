@@ -1,32 +1,41 @@
-# Explicit AST field traversal for the native compiler.
-
-# Receives the direct children of one node in field order, so traversals
-# allocate no per-node child lists.
 obj ast_child_visitor {
     def child(field: str, value: ast_node) abst;
 }
 
-# One node's children, collected into storage reused across a traversal for
-# worklists that push them in reverse. Not reentrant.
 obj ast_child_buffer(ast_child_visitor) {
     has fields: list[str] = [],
         nodes: list[ast_node] = [];
 
-    def child(field: str, value: ast_node) {
-        self.fields.append(field);
-        self.nodes.append(value);
-    }
-
-    def collect(value: ast_node) -> int {
-        self.fields.clear();
-        self.nodes.clear();
-        visit_ast_children(value, self);
-        return len(self.nodes);
-    }
+    def child(field: str, value: ast_node);
+    def collect(value: ast_node) -> int;
 }
 
-def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
-    if isinstance(value, Module) {
+def visit_ast_children(value: ast_node, visitor: ast_child_visitor);
+
+obj ast_visitor {}
+
+obj ast_rewriter(ast_visitor) {
+    def transform(value: ast_node) -> ast_node;
+    def visit_field(owner: ast_node, field: str) -> bool;
+}
+
+def rewrite_ast_children(value: ast_node, visitor: ast_rewriter);
+
+impl ast_child_buffer.child(field: str, value: ast_node) {
+    self.fields.append(field);
+    self.nodes.append(value);
+}
+
+impl ast_child_buffer.collect(value: ast_node) -> int {
+    self.fields.clear();
+    self.nodes.clear();
+    visit_ast_children(value, self);
+    return len(self.nodes);
+}
+
+impl visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
+    kind = value.kind();
+    if kind == ast_kind.Module and isinstance(value, Module) {
         for child in value.body {
             visitor.child("body", child);
         }
@@ -35,24 +44,24 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Interactive) {
+    if kind == ast_kind.Interactive and isinstance(value, Interactive) {
         for child in value.body {
             visitor.child("body", child);
         }
         return;
     }
-    if isinstance(value, Expression) {
+    if kind == ast_kind.Expression and isinstance(value, Expression) {
         visitor.child("body", value.body);
         return;
     }
-    if isinstance(value, FunctionType) {
+    if kind == ast_kind.FunctionType and isinstance(value, FunctionType) {
         for child in value.argtypes {
             visitor.child("argtypes", child);
         }
         visitor.child("returns", value.returns);
         return;
     }
-    if isinstance(value, FunctionDef) {
+    if kind == ast_kind.FunctionDef and isinstance(value, FunctionDef) {
         visitor.child("args", value.args);
         for child in value.body {
             visitor.child("body", child);
@@ -68,7 +77,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, AsyncFunctionDef) {
+    if kind == ast_kind.AsyncFunctionDef and isinstance(value, AsyncFunctionDef) {
         visitor.child("args", value.args);
         for child in value.body {
             visitor.child("body", child);
@@ -84,7 +93,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, ClassDef) {
+    if kind == ast_kind.ClassDef and isinstance(value, ClassDef) {
         for child in value.bases {
             visitor.child("bases", child);
         }
@@ -102,26 +111,26 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Return) {
+    if kind == ast_kind.Return and isinstance(value, Return) {
         if value.value is not None {
             visitor.child("value", value.value);
         }
         return;
     }
-    if isinstance(value, Delete) {
+    if kind == ast_kind.Delete and isinstance(value, Delete) {
         for child in value.targets {
             visitor.child("targets", child);
         }
         return;
     }
-    if isinstance(value, Assign) {
+    if kind == ast_kind.Assign and isinstance(value, Assign) {
         for child in value.targets {
             visitor.child("targets", child);
         }
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, TypeAlias) {
+    if kind == ast_kind.TypeAlias and isinstance(value, TypeAlias) {
         visitor.child("name", value.name);
         for child in value.type_params {
             visitor.child("type_params", child);
@@ -129,13 +138,13 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, AugAssign) {
+    if kind == ast_kind.AugAssign and isinstance(value, AugAssign) {
         visitor.child("target", value.target);
         visitor.child("op", value.op);
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, AnnAssign) {
+    if kind == ast_kind.AnnAssign and isinstance(value, AnnAssign) {
         visitor.child("target", value.target);
         visitor.child("annotation", value.annotation);
         if value.value is not None {
@@ -143,7 +152,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, For) {
+    if kind == ast_kind.For and isinstance(value, For) {
         visitor.child("target", value.target);
         visitor.child("iter", value.iter);
         for child in value.body {
@@ -154,7 +163,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, AsyncFor) {
+    if kind == ast_kind.AsyncFor and isinstance(value, AsyncFor) {
         visitor.child("target", value.target);
         visitor.child("iter", value.iter);
         for child in value.body {
@@ -165,7 +174,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, While) {
+    if kind == ast_kind.While and isinstance(value, While) {
         visitor.child("test", value.`test);
         for child in value.body {
             visitor.child("body", child);
@@ -175,7 +184,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, If) {
+    if kind == ast_kind.If and isinstance(value, If) {
         visitor.child("test", value.`test);
         for child in value.body {
             visitor.child("body", child);
@@ -185,7 +194,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, With) {
+    if kind == ast_kind.With and isinstance(value, With) {
         for child in value.items {
             visitor.child("items", child);
         }
@@ -194,7 +203,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, AsyncWith) {
+    if kind == ast_kind.AsyncWith and isinstance(value, AsyncWith) {
         for child in value.items {
             visitor.child("items", child);
         }
@@ -203,14 +212,14 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Match) {
+    if kind == ast_kind.Match and isinstance(value, Match) {
         visitor.child("subject", value.subject);
         for child in value.cases {
             visitor.child("cases", child);
         }
         return;
     }
-    if isinstance(value, Raise) {
+    if kind == ast_kind.Raise and isinstance(value, Raise) {
         if value.exc is not None {
             visitor.child("exc", value.exc);
         }
@@ -219,7 +228,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Try) {
+    if kind == ast_kind.Try and isinstance(value, Try) {
         for child in value.body {
             visitor.child("body", child);
         }
@@ -234,7 +243,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, TryStar) {
+    if kind == ast_kind.TryStar and isinstance(value, TryStar) {
         for child in value.body {
             visitor.child("body", child);
         }
@@ -249,64 +258,64 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Assert) {
+    if kind == ast_kind.Assert and isinstance(value, Assert) {
         visitor.child("test", value.`test);
         if value.msg is not None {
             visitor.child("msg", value.msg);
         }
         return;
     }
-    if isinstance(value, Import) {
+    if kind == ast_kind.Import and isinstance(value, Import) {
         for child in value.names {
             visitor.child("names", child);
         }
         return;
     }
-    if isinstance(value, ImportFrom) {
+    if kind == ast_kind.ImportFrom and isinstance(value, ImportFrom) {
         for child in value.names {
             visitor.child("names", child);
         }
         return;
     }
-    if isinstance(value, Expr) {
+    if kind == ast_kind.Expr and isinstance(value, Expr) {
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, BoolOp) {
+    if kind == ast_kind.BoolOp and isinstance(value, BoolOp) {
         visitor.child("op", value.op);
         for child in value.values {
             visitor.child("values", child);
         }
         return;
     }
-    if isinstance(value, NamedExpr) {
+    if kind == ast_kind.NamedExpr and isinstance(value, NamedExpr) {
         visitor.child("target", value.target);
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, BinOp) {
+    if kind == ast_kind.BinOp and isinstance(value, BinOp) {
         visitor.child("left", value.left);
         visitor.child("op", value.op);
         visitor.child("right", value.right);
         return;
     }
-    if isinstance(value, UnaryOp) {
+    if kind == ast_kind.UnaryOp and isinstance(value, UnaryOp) {
         visitor.child("op", value.op);
         visitor.child("operand", value.operand);
         return;
     }
-    if isinstance(value, Lambda) {
+    if kind == ast_kind.Lambda and isinstance(value, Lambda) {
         visitor.child("args", value.args);
         visitor.child("body", value.body);
         return;
     }
-    if isinstance(value, IfExp) {
+    if kind == ast_kind.IfExp and isinstance(value, IfExp) {
         visitor.child("test", value.`test);
         visitor.child("body", value.body);
         visitor.child("orelse", value.orelse);
         return;
     }
-    if isinstance(value, Dict) {
+    if kind == ast_kind.Dict and isinstance(value, Dict) {
         for child in value.keys {
             if child is None {
                 continue;
@@ -318,27 +327,27 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Set) {
+    if kind == ast_kind.Set and isinstance(value, Set) {
         for child in value.elts {
             visitor.child("elts", child);
         }
         return;
     }
-    if isinstance(value, ListComp) {
+    if kind == ast_kind.ListComp and isinstance(value, ListComp) {
         visitor.child("elt", value.elt);
         for child in value.generators {
             visitor.child("generators", child);
         }
         return;
     }
-    if isinstance(value, SetComp) {
+    if kind == ast_kind.SetComp and isinstance(value, SetComp) {
         visitor.child("elt", value.elt);
         for child in value.generators {
             visitor.child("generators", child);
         }
         return;
     }
-    if isinstance(value, DictComp) {
+    if kind == ast_kind.DictComp and isinstance(value, DictComp) {
         visitor.child("key", value.key);
         visitor.child("value", value.value);
         for child in value.generators {
@@ -346,28 +355,28 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, GeneratorExp) {
+    if kind == ast_kind.GeneratorExp and isinstance(value, GeneratorExp) {
         visitor.child("elt", value.elt);
         for child in value.generators {
             visitor.child("generators", child);
         }
         return;
     }
-    if isinstance(value, Await) {
+    if kind == ast_kind.Await and isinstance(value, Await) {
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, Yield) {
+    if kind == ast_kind.Yield and isinstance(value, Yield) {
         if value.value is not None {
             visitor.child("value", value.value);
         }
         return;
     }
-    if isinstance(value, YieldFrom) {
+    if kind == ast_kind.YieldFrom and isinstance(value, YieldFrom) {
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, Compare) {
+    if kind == ast_kind.Compare and isinstance(value, Compare) {
         visitor.child("left", value.left);
         for child in value.ops {
             visitor.child("ops", child);
@@ -377,7 +386,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, Call) {
+    if kind == ast_kind.Call and isinstance(value, Call) {
         visitor.child("func", value.func);
         for child in value.args {
             visitor.child("args", child);
@@ -387,67 +396,67 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, FormattedValue) {
+    if kind == ast_kind.FormattedValue and isinstance(value, FormattedValue) {
         visitor.child("value", value.value);
         if value.format_spec is not None {
             visitor.child("format_spec", value.format_spec);
         }
         return;
     }
-    if isinstance(value, Interpolation) {
+    if kind == ast_kind.Interpolation and isinstance(value, Interpolation) {
         visitor.child("value", value.value);
         if value.format_spec is not None {
             visitor.child("format_spec", value.format_spec);
         }
         return;
     }
-    if isinstance(value, JoinedStr) {
+    if kind == ast_kind.JoinedStr and isinstance(value, JoinedStr) {
         for child in value.values {
             visitor.child("values", child);
         }
         return;
     }
-    if isinstance(value, TemplateStr) {
+    if kind == ast_kind.TemplateStr and isinstance(value, TemplateStr) {
         for child in value.values {
             visitor.child("values", child);
         }
         return;
     }
-    if isinstance(value, Attribute) {
+    if kind == ast_kind.Attribute and isinstance(value, Attribute) {
         visitor.child("value", value.value);
         visitor.child("ctx", value.ctx);
         return;
     }
-    if isinstance(value, Subscript) {
+    if kind == ast_kind.Subscript and isinstance(value, Subscript) {
         visitor.child("value", value.value);
         visitor.child("slice", value.slice);
         visitor.child("ctx", value.ctx);
         return;
     }
-    if isinstance(value, Starred) {
+    if kind == ast_kind.Starred and isinstance(value, Starred) {
         visitor.child("value", value.value);
         visitor.child("ctx", value.ctx);
         return;
     }
-    if isinstance(value, Name) {
+    if kind == ast_kind.Name and isinstance(value, Name) {
         visitor.child("ctx", value.ctx);
         return;
     }
-    if isinstance(value, List) {
+    if kind == ast_kind.List and isinstance(value, List) {
         for child in value.elts {
             visitor.child("elts", child);
         }
         visitor.child("ctx", value.ctx);
         return;
     }
-    if isinstance(value, Tuple) {
+    if kind == ast_kind.Tuple and isinstance(value, Tuple) {
         for child in value.elts {
             visitor.child("elts", child);
         }
         visitor.child("ctx", value.ctx);
         return;
     }
-    if isinstance(value, Slice) {
+    if kind == ast_kind.Slice and isinstance(value, Slice) {
         if value.lower is not None {
             visitor.child("lower", value.lower);
         }
@@ -459,7 +468,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, comprehension) {
+    if kind == ast_kind.comprehension and isinstance(value, comprehension) {
         visitor.child("target", value.target);
         visitor.child("iter", value.iter);
         for child in value.ifs {
@@ -476,7 +485,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, ExceptHandler) {
+    if kind == ast_kind.ExceptHandler and isinstance(value, ExceptHandler) {
         if value.type is not None {
             visitor.child("type", value.type);
         }
@@ -485,7 +494,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, arguments) {
+    if kind == ast_kind.arguments and isinstance(value, arguments) {
         for child in value.posonlyargs {
             visitor.child("posonlyargs", child);
         }
@@ -512,24 +521,24 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, arg) {
+    if kind == ast_kind.arg and isinstance(value, arg) {
         if value.annotation is not None {
             visitor.child("annotation", value.annotation);
         }
         return;
     }
-    if isinstance(value, keyword) {
+    if kind == ast_kind.keyword and isinstance(value, keyword) {
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, withitem) {
+    if kind == ast_kind.withitem and isinstance(value, withitem) {
         visitor.child("context_expr", value.context_expr);
         if value.optional_vars is not None {
             visitor.child("optional_vars", value.optional_vars);
         }
         return;
     }
-    if isinstance(value, match_case) {
+    if kind == ast_kind.match_case and isinstance(value, match_case) {
         visitor.child("pattern", value.pattern);
         if value.guard is not None {
             visitor.child("guard", value.guard);
@@ -539,17 +548,17 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, MatchValue) {
+    if kind == ast_kind.MatchValue and isinstance(value, MatchValue) {
         visitor.child("value", value.value);
         return;
     }
-    if isinstance(value, MatchSequence) {
+    if kind == ast_kind.MatchSequence and isinstance(value, MatchSequence) {
         for child in value.patterns {
             visitor.child("patterns", child);
         }
         return;
     }
-    if isinstance(value, MatchMapping) {
+    if kind == ast_kind.MatchMapping and isinstance(value, MatchMapping) {
         for child in value.keys {
             visitor.child("keys", child);
         }
@@ -558,7 +567,7 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, MatchClass) {
+    if kind == ast_kind.MatchClass and isinstance(value, MatchClass) {
         visitor.child("cls", value.cls);
         for child in value.patterns {
             visitor.child("patterns", child);
@@ -568,19 +577,19 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, MatchAs) {
+    if kind == ast_kind.MatchAs and isinstance(value, MatchAs) {
         if value.pattern is not None {
             visitor.child("pattern", value.pattern);
         }
         return;
     }
-    if isinstance(value, MatchOr) {
+    if kind == ast_kind.MatchOr and isinstance(value, MatchOr) {
         for child in value.patterns {
             visitor.child("patterns", child);
         }
         return;
     }
-    if isinstance(value, TypeVar) {
+    if kind == ast_kind.TypeVar and isinstance(value, TypeVar) {
         if value.bound is not None {
             visitor.child("bound", value.bound);
         }
@@ -589,13 +598,13 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
         }
         return;
     }
-    if isinstance(value, ParamSpec) {
+    if kind == ast_kind.ParamSpec and isinstance(value, ParamSpec) {
         if value.default_value is not None {
             visitor.child("default_value", value.default_value);
         }
         return;
     }
-    if isinstance(value, TypeVarTuple) {
+    if kind == ast_kind.TypeVarTuple and isinstance(value, TypeVarTuple) {
         if value.default_value is not None {
             visitor.child("default_value", value.default_value);
         }
@@ -604,24 +613,18 @@ def visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
     return;
 }
 
-# A typed visitor can rewrite child fields without Python getattr/setattr.
-# The explicit base reserves a dispatch slot when this module is compiled
-# independently of the modules declaring concrete visitors.
-obj ast_visitor {}
-
-obj ast_rewriter(ast_visitor) {
-    def transform(value: ast_node) -> ast_node {
-        return value;
-    }
-
-    def visit_field(owner: ast_node, field: str) -> bool {
-        return True;
-    }
+impl ast_rewriter.transform(value: ast_node) -> ast_node {
+    return value;
 }
 
-def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
+impl ast_rewriter.visit_field(owner: ast_node, field: str) -> bool {
+    return True;
+}
+
+impl rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
+    kind = value.kind();
     child: expr | None = None;
-    if isinstance(value, Module) {
+    if kind == ast_kind.Module and isinstance(value, Module) {
         if visitor.visit_field(value, "body") {
             for index in range(len(value.body)) {
                 value.body[index] = visitor.transform(value.body[index]) as stmt;
@@ -636,7 +639,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Interactive) {
+    if kind == ast_kind.Interactive and isinstance(value, Interactive) {
         if visitor.visit_field(value, "body") {
             for index in range(len(value.body)) {
                 value.body[index] = visitor.transform(value.body[index]) as stmt;
@@ -644,13 +647,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Expression) {
+    if kind == ast_kind.Expression and isinstance(value, Expression) {
         if visitor.visit_field(value, "body") {
             value.body = visitor.transform(value.body) as expr;
         }
         return;
     }
-    if isinstance(value, FunctionType) {
+    if kind == ast_kind.FunctionType and isinstance(value, FunctionType) {
         if visitor.visit_field(value, "argtypes") {
             for index in range(len(value.argtypes)) {
                 value.argtypes[index] = visitor.transform(
@@ -663,7 +666,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, FunctionDef) {
+    if kind == ast_kind.FunctionDef and isinstance(value, FunctionDef) {
         if visitor.visit_field(value, "args") {
             value.args = visitor.transform(value.args) as arguments;
         }
@@ -693,7 +696,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, AsyncFunctionDef) {
+    if kind == ast_kind.AsyncFunctionDef and isinstance(value, AsyncFunctionDef) {
         if visitor.visit_field(value, "args") {
             value.args = visitor.transform(value.args) as arguments;
         }
@@ -723,7 +726,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, ClassDef) {
+    if kind == ast_kind.ClassDef and isinstance(value, ClassDef) {
         if visitor.visit_field(value, "bases") {
             for index in range(len(value.bases)) {
                 value.bases[index] = visitor.transform(value.bases[index]) as expr;
@@ -757,7 +760,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Return) {
+    if kind == ast_kind.Return and isinstance(value, Return) {
         if visitor.visit_field(value, "value") {
             if value.value is not None {
                 value.value = visitor.transform(value.value) as expr;
@@ -765,7 +768,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Delete) {
+    if kind == ast_kind.Delete and isinstance(value, Delete) {
         if visitor.visit_field(value, "targets") {
             for index in range(len(value.targets)) {
                 value.targets[index] = visitor.transform(value.targets[index]) as expr;
@@ -773,7 +776,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Assign) {
+    if kind == ast_kind.Assign and isinstance(value, Assign) {
         if visitor.visit_field(value, "targets") {
             for index in range(len(value.targets)) {
                 value.targets[index] = visitor.transform(value.targets[index]) as expr;
@@ -784,7 +787,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, TypeAlias) {
+    if kind == ast_kind.TypeAlias and isinstance(value, TypeAlias) {
         if visitor.visit_field(value, "name") {
             value.name = visitor.transform(value.name) as expr;
         }
@@ -800,7 +803,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, AugAssign) {
+    if kind == ast_kind.AugAssign and isinstance(value, AugAssign) {
         if visitor.visit_field(value, "target") {
             value.target = visitor.transform(value.target) as expr;
         }
@@ -812,7 +815,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, AnnAssign) {
+    if kind == ast_kind.AnnAssign and isinstance(value, AnnAssign) {
         if visitor.visit_field(value, "target") {
             value.target = visitor.transform(value.target) as expr;
         }
@@ -826,7 +829,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, For) {
+    if kind == ast_kind.For and isinstance(value, For) {
         if visitor.visit_field(value, "target") {
             value.target = visitor.transform(value.target) as expr;
         }
@@ -845,7 +848,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, AsyncFor) {
+    if kind == ast_kind.AsyncFor and isinstance(value, AsyncFor) {
         if visitor.visit_field(value, "target") {
             value.target = visitor.transform(value.target) as expr;
         }
@@ -864,7 +867,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, While) {
+    if kind == ast_kind.While and isinstance(value, While) {
         if visitor.visit_field(value, "test") {
             value.`test = visitor.transform(value.`test) as expr;
         }
@@ -880,7 +883,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, If) {
+    if kind == ast_kind.If and isinstance(value, If) {
         if visitor.visit_field(value, "test") {
             value.`test = visitor.transform(value.`test) as expr;
         }
@@ -896,7 +899,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, With) {
+    if kind == ast_kind.With and isinstance(value, With) {
         if visitor.visit_field(value, "items") {
             for index in range(len(value.items)) {
                 value.items[index] = visitor.transform(value.items[index]) as withitem;
@@ -909,7 +912,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, AsyncWith) {
+    if kind == ast_kind.AsyncWith and isinstance(value, AsyncWith) {
         if visitor.visit_field(value, "items") {
             for index in range(len(value.items)) {
                 value.items[index] = visitor.transform(value.items[index]) as withitem;
@@ -922,7 +925,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Match) {
+    if kind == ast_kind.Match and isinstance(value, Match) {
         if visitor.visit_field(value, "subject") {
             value.subject = visitor.transform(value.subject) as expr;
         }
@@ -935,7 +938,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Raise) {
+    if kind == ast_kind.Raise and isinstance(value, Raise) {
         if visitor.visit_field(value, "exc") {
             if value.exc is not None {
                 value.exc = visitor.transform(value.exc) as expr;
@@ -948,7 +951,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Try) {
+    if kind == ast_kind.Try and isinstance(value, Try) {
         if visitor.visit_field(value, "body") {
             for index in range(len(value.body)) {
                 value.body[index] = visitor.transform(value.body[index]) as stmt;
@@ -975,7 +978,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, TryStar) {
+    if kind == ast_kind.TryStar and isinstance(value, TryStar) {
         if visitor.visit_field(value, "body") {
             for index in range(len(value.body)) {
                 value.body[index] = visitor.transform(value.body[index]) as stmt;
@@ -1002,7 +1005,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Assert) {
+    if kind == ast_kind.Assert and isinstance(value, Assert) {
         if visitor.visit_field(value, "test") {
             value.`test = visitor.transform(value.`test) as expr;
         }
@@ -1013,7 +1016,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Import) {
+    if kind == ast_kind.Import and isinstance(value, Import) {
         if visitor.visit_field(value, "names") {
             for index in range(len(value.names)) {
                 value.names[index] = visitor.transform(value.names[index]) as alias;
@@ -1021,7 +1024,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, ImportFrom) {
+    if kind == ast_kind.ImportFrom and isinstance(value, ImportFrom) {
         if visitor.visit_field(value, "names") {
             for index in range(len(value.names)) {
                 value.names[index] = visitor.transform(value.names[index]) as alias;
@@ -1029,13 +1032,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Expr) {
+    if kind == ast_kind.Expr and isinstance(value, Expr) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
         return;
     }
-    if isinstance(value, BoolOp) {
+    if kind == ast_kind.BoolOp and isinstance(value, BoolOp) {
         if visitor.visit_field(value, "op") {
             value.op = visitor.transform(value.op) as boolop;
         }
@@ -1046,7 +1049,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, NamedExpr) {
+    if kind == ast_kind.NamedExpr and isinstance(value, NamedExpr) {
         if visitor.visit_field(value, "target") {
             value.target = visitor.transform(value.target) as expr;
         }
@@ -1055,7 +1058,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, BinOp) {
+    if kind == ast_kind.BinOp and isinstance(value, BinOp) {
         if visitor.visit_field(value, "left") {
             value.left = visitor.transform(value.left) as expr;
         }
@@ -1067,7 +1070,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, UnaryOp) {
+    if kind == ast_kind.UnaryOp and isinstance(value, UnaryOp) {
         if visitor.visit_field(value, "op") {
             value.op = visitor.transform(value.op) as unaryop;
         }
@@ -1076,7 +1079,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Lambda) {
+    if kind == ast_kind.Lambda and isinstance(value, Lambda) {
         if visitor.visit_field(value, "args") {
             value.args = visitor.transform(value.args) as arguments;
         }
@@ -1085,7 +1088,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, IfExp) {
+    if kind == ast_kind.IfExp and isinstance(value, IfExp) {
         if visitor.visit_field(value, "test") {
             value.`test = visitor.transform(value.`test) as expr;
         }
@@ -1097,7 +1100,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Dict) {
+    if kind == ast_kind.Dict and isinstance(value, Dict) {
         if visitor.visit_field(value, "keys") {
             for index in range(len(value.keys)) {
                 child = value.keys[index];
@@ -1114,7 +1117,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Set) {
+    if kind == ast_kind.Set and isinstance(value, Set) {
         if visitor.visit_field(value, "elts") {
             for index in range(len(value.elts)) {
                 value.elts[index] = visitor.transform(value.elts[index]) as expr;
@@ -1122,7 +1125,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, ListComp) {
+    if kind == ast_kind.ListComp and isinstance(value, ListComp) {
         if visitor.visit_field(value, "elt") {
             value.elt = visitor.transform(value.elt) as expr;
         }
@@ -1135,7 +1138,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, SetComp) {
+    if kind == ast_kind.SetComp and isinstance(value, SetComp) {
         if visitor.visit_field(value, "elt") {
             value.elt = visitor.transform(value.elt) as expr;
         }
@@ -1148,7 +1151,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, DictComp) {
+    if kind == ast_kind.DictComp and isinstance(value, DictComp) {
         if visitor.visit_field(value, "key") {
             value.key = visitor.transform(value.key) as expr;
         }
@@ -1164,7 +1167,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, GeneratorExp) {
+    if kind == ast_kind.GeneratorExp and isinstance(value, GeneratorExp) {
         if visitor.visit_field(value, "elt") {
             value.elt = visitor.transform(value.elt) as expr;
         }
@@ -1177,13 +1180,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Await) {
+    if kind == ast_kind.Await and isinstance(value, Await) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
         return;
     }
-    if isinstance(value, Yield) {
+    if kind == ast_kind.Yield and isinstance(value, Yield) {
         if visitor.visit_field(value, "value") {
             if value.value is not None {
                 value.value = visitor.transform(value.value) as expr;
@@ -1191,13 +1194,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, YieldFrom) {
+    if kind == ast_kind.YieldFrom and isinstance(value, YieldFrom) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
         return;
     }
-    if isinstance(value, Compare) {
+    if kind == ast_kind.Compare and isinstance(value, Compare) {
         if visitor.visit_field(value, "left") {
             value.left = visitor.transform(value.left) as expr;
         }
@@ -1215,7 +1218,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Call) {
+    if kind == ast_kind.Call and isinstance(value, Call) {
         if visitor.visit_field(value, "func") {
             value.func = visitor.transform(value.func) as expr;
         }
@@ -1233,7 +1236,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, FormattedValue) {
+    if kind == ast_kind.FormattedValue and isinstance(value, FormattedValue) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
@@ -1244,7 +1247,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Interpolation) {
+    if kind == ast_kind.Interpolation and isinstance(value, Interpolation) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
@@ -1255,7 +1258,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, JoinedStr) {
+    if kind == ast_kind.JoinedStr and isinstance(value, JoinedStr) {
         if visitor.visit_field(value, "values") {
             for index in range(len(value.values)) {
                 value.values[index] = visitor.transform(value.values[index]) as expr;
@@ -1263,7 +1266,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, TemplateStr) {
+    if kind == ast_kind.TemplateStr and isinstance(value, TemplateStr) {
         if visitor.visit_field(value, "values") {
             for index in range(len(value.values)) {
                 value.values[index] = visitor.transform(value.values[index]) as expr;
@@ -1271,7 +1274,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Attribute) {
+    if kind == ast_kind.Attribute and isinstance(value, Attribute) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
@@ -1280,7 +1283,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Subscript) {
+    if kind == ast_kind.Subscript and isinstance(value, Subscript) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
@@ -1292,7 +1295,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Starred) {
+    if kind == ast_kind.Starred and isinstance(value, Starred) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
@@ -1301,13 +1304,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Name) {
+    if kind == ast_kind.Name and isinstance(value, Name) {
         if visitor.visit_field(value, "ctx") {
             value.ctx = visitor.transform(value.ctx) as expr_context;
         }
         return;
     }
-    if isinstance(value, List) {
+    if kind == ast_kind.List and isinstance(value, List) {
         if visitor.visit_field(value, "elts") {
             for index in range(len(value.elts)) {
                 value.elts[index] = visitor.transform(value.elts[index]) as expr;
@@ -1318,7 +1321,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Tuple) {
+    if kind == ast_kind.Tuple and isinstance(value, Tuple) {
         if visitor.visit_field(value, "elts") {
             for index in range(len(value.elts)) {
                 value.elts[index] = visitor.transform(value.elts[index]) as expr;
@@ -1329,7 +1332,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, Slice) {
+    if kind == ast_kind.Slice and isinstance(value, Slice) {
         if visitor.visit_field(value, "lower") {
             if value.lower is not None {
                 value.lower = visitor.transform(value.lower) as expr;
@@ -1347,7 +1350,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, comprehension) {
+    if kind == ast_kind.comprehension and isinstance(value, comprehension) {
         if visitor.visit_field(value, "target") {
             value.target = visitor.transform(value.target) as expr;
         }
@@ -1374,7 +1377,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, ExceptHandler) {
+    if kind == ast_kind.ExceptHandler and isinstance(value, ExceptHandler) {
         if visitor.visit_field(value, "type") {
             if value.type is not None {
                 value.type = visitor.transform(value.type) as expr;
@@ -1387,7 +1390,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, arguments) {
+    if kind == ast_kind.arguments and isinstance(value, arguments) {
         if visitor.visit_field(value, "posonlyargs") {
             for index in range(len(value.posonlyargs)) {
                 value.posonlyargs[index] = visitor.transform(
@@ -1435,7 +1438,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, arg) {
+    if kind == ast_kind.arg and isinstance(value, arg) {
         if visitor.visit_field(value, "annotation") {
             if value.annotation is not None {
                 value.annotation = visitor.transform(value.annotation) as expr;
@@ -1443,13 +1446,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, keyword) {
+    if kind == ast_kind.keyword and isinstance(value, keyword) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
         return;
     }
-    if isinstance(value, withitem) {
+    if kind == ast_kind.withitem and isinstance(value, withitem) {
         if visitor.visit_field(value, "context_expr") {
             value.context_expr = visitor.transform(value.context_expr) as expr;
         }
@@ -1460,7 +1463,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, match_case) {
+    if kind == ast_kind.match_case and isinstance(value, match_case) {
         if visitor.visit_field(value, "pattern") {
             value.pattern = visitor.transform(value.pattern) as pattern;
         }
@@ -1476,13 +1479,13 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, MatchValue) {
+    if kind == ast_kind.MatchValue and isinstance(value, MatchValue) {
         if visitor.visit_field(value, "value") {
             value.value = visitor.transform(value.value) as expr;
         }
         return;
     }
-    if isinstance(value, MatchSequence) {
+    if kind == ast_kind.MatchSequence and isinstance(value, MatchSequence) {
         if visitor.visit_field(value, "patterns") {
             for index in range(len(value.patterns)) {
                 value.patterns[index] = visitor.transform(
@@ -1492,7 +1495,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, MatchMapping) {
+    if kind == ast_kind.MatchMapping and isinstance(value, MatchMapping) {
         if visitor.visit_field(value, "keys") {
             for index in range(len(value.keys)) {
                 value.keys[index] = visitor.transform(value.keys[index]) as expr;
@@ -1507,7 +1510,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, MatchClass) {
+    if kind == ast_kind.MatchClass and isinstance(value, MatchClass) {
         if visitor.visit_field(value, "cls") {
             value.cls = visitor.transform(value.cls) as expr;
         }
@@ -1527,7 +1530,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, MatchAs) {
+    if kind == ast_kind.MatchAs and isinstance(value, MatchAs) {
         if visitor.visit_field(value, "pattern") {
             if value.pattern is not None {
                 value.pattern = visitor.transform(value.pattern) as pattern;
@@ -1535,7 +1538,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, MatchOr) {
+    if kind == ast_kind.MatchOr and isinstance(value, MatchOr) {
         if visitor.visit_field(value, "patterns") {
             for index in range(len(value.patterns)) {
                 value.patterns[index] = visitor.transform(
@@ -1545,7 +1548,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, TypeVar) {
+    if kind == ast_kind.TypeVar and isinstance(value, TypeVar) {
         if visitor.visit_field(value, "bound") {
             if value.bound is not None {
                 value.bound = visitor.transform(value.bound) as expr;
@@ -1558,7 +1561,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, ParamSpec) {
+    if kind == ast_kind.ParamSpec and isinstance(value, ParamSpec) {
         if visitor.visit_field(value, "default_value") {
             if value.default_value is not None {
                 value.default_value = visitor.transform(value.default_value) as expr;
@@ -1566,7 +1569,7 @@ def rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
         }
         return;
     }
-    if isinstance(value, TypeVarTuple) {
+    if kind == ast_kind.TypeVarTuple and isinstance(value, TypeVarTuple) {
         if visitor.visit_field(value, "default_value") {
             if value.default_value is not None {
                 value.default_value = visitor.transform(value.default_value) as expr;

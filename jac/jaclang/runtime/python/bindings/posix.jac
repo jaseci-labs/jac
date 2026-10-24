@@ -1,16 +1,4 @@
-"""The posix module: the generated clinic tables, the DirEntry and
-ScandirIterator types, the constants, configuration tables, environ,
-_have_functions and the module state, as posixmodule_exec() sets them up.
-
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
-The functions a target compiles are the METHODS of its posix_constants
-table (each clinic macro's guard evaluated against the target's
-pyconfig.h); the glue's per-target tables add the one definition each
-target has of getgrouplist, initgroups and sendfile.
-"""
-
 import from c {
-    # os_sched_param_reduce_method, added to sched_param after it is made.
     glob:priv sched_param_reduce_method: PyMethodDef = PyMethodDef(
              ml_name=ptr[u8]("__reduce__"),
              ml_meth=ptr(sched_param_reduce),
@@ -74,15 +62,39 @@ glob:priv dir_entry_type = TypeDefinition(
          )
      );
 
-# sched_param's tp_new: the glue's os_sched_param_new.
 def:priv sched_param_new(
+    type_object: ptr[TypeLayout], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv add_confname_table(
+    module: ptr[PyObject], entries: list[tuple[str, i64]], name: str
+) -> bool;
+
+def:priv have_functions -> list[tuple[str, bool]];
+
+def:priv add_have_functions(module: ptr[PyObject]) -> bool;
+
+def:priv finish_sched_param(module: ptr[PyObject]) -> bool;
+
+def:priv add_scandir_types(module: ptr[PyObject]) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+def:priv methods -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "posix", POSIX_DOC, methods(), ModuleHooks(execute=execute), STATE_COUNT
+     );
+
+def:pub PyInit_posix -> ptr[PyObject];
+
+impl sched_param_new(
     type_object: ptr[TypeLayout], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return os_sched_param_new(ptr[PyObject](type_object), args, kwargs);
 }
 
-# setup_confname_table(): a {name: value} dict published as `name`.
-def:priv add_confname_table(
+impl add_confname_table(
     module: ptr[PyObject], entries: list[tuple[str, i64]], name: str
 ) -> bool {
     table = PyDict_New();
@@ -95,7 +107,7 @@ def:priv add_confname_table(
             jacpy_release(table);
             return False;
         }
-        status = PyDict_SetItemString(table, key, number);
+        status = dict_set_text(table, key, number);
         jacpy_release(number);
         if status < 0 {
             jacpy_release(table);
@@ -105,10 +117,7 @@ def:priv add_confname_table(
     return add_owned(module, name, table);
 }
 
-# have_functions[]: the HAVE_* labels os.py reads, a label with a run-time
-# probe present only where the function exists (mkfifoat and mknodat are
-# macOS 13 functions; every other probe holds on the supported targets).
-def:priv have_functions -> list[tuple[str, bool]] {
+impl have_functions -> list[tuple[str, bool]] {
     return [
         ("HAVE_EVENTFD", bool(HAVE_EVENTFD)),
         ("HAVE_TIMERFD_CREATE", bool(HAVE_TIMERFD_CREATE)),
@@ -147,7 +156,7 @@ def:priv have_functions -> list[tuple[str, bool]] {
     ];
 }
 
-def:priv add_have_functions(module: ptr[PyObject]) -> bool {
+impl add_have_functions(module: ptr[PyObject]) -> bool {
     labels = PyList_New(0);
     if not labels {
         return False;
@@ -156,7 +165,7 @@ def:priv add_have_functions(module: ptr[PyObject]) -> bool {
         if not present {
             continue;
         }
-        text = PyUnicode_FromString(label);
+        text = jacpy_unicode_from_text(label);
         if not text {
             jacpy_release(labels);
             return False;
@@ -171,8 +180,7 @@ def:priv add_have_functions(module: ptr[PyObject]) -> bool {
     return add_owned(module, "_have_functions", labels);
 }
 
-# sched_param's tp_new and __reduce__, set once the process area made it.
-def:priv finish_sched_param(module: ptr[PyObject]) -> bool {
+impl finish_sched_param(module: ptr[PyObject]) -> bool {
     sched_type = state_object(module, STATE_SCHED_PARAM_TYPE);
     if not sched_type {
         return True;
@@ -186,7 +194,7 @@ def:priv finish_sched_param(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv add_scandir_types(module: ptr[PyObject]) -> bool {
+impl add_scandir_types(module: ptr[PyObject]) -> bool {
     iterator_type = scandir_iterator_type.create(module);
     if not iterator_type {
         return False;
@@ -198,7 +206,7 @@ def:priv add_scandir_types(module: ptr[PyObject]) -> bool {
     );
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" or len(METHODS) == 0 {
         object_error(
             PyExc_ImportError,
@@ -247,7 +255,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     }
     jacpy_binding_state_set(module, i64(STATE_BILLION), billion);
     jacpy_release(billion);
-    st_mode = PyUnicode_InternFromString("st_mode");
+    st_mode = PyUnicode_InternFromString(ptr[u8]("st_mode"));
     if not st_mode {
         return i32(-1);
     }
@@ -256,8 +264,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0) if add_have_functions(module) else i32(-1);
 }
 
-# posix_methods[]: the functions this target compiles.
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     per_target = module_methods_darwin
         if PLATFORM == "darwin"
         else (module_methods_linux if PLATFORM == "linux" else []);
@@ -269,10 +276,6 @@ def:priv methods -> list[MethodDefinition] {
     ];
 }
 
-glob:priv definition = ModuleDefinition(
-         "posix", POSIX_DOC, methods(), ModuleHooks(execute=execute), STATE_COUNT
-     );
-
-def:pub PyInit_posix -> ptr[PyObject] {
+impl PyInit_posix -> ptr[PyObject] {
     return definition.initialize();
 }

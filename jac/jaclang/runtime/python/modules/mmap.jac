@@ -1,12 +1,3 @@
-"""Memory-mapped files.
-
-Derived from CPython 3.14.6 Modules/mmapmodule.c; see ../LICENSE.cpython.
-This is the POSIX implementation: the Windows-only methods the clinic glue
-names (__sizeof__ over a tag name, _protect) are never published. The
-record of fstat() comes from stat_records.<os>[.<arch>].jac, mremap() from
-mmap_platform.<os>.jac and the constants from mmap_constants.<os>[.<arch>].jac.
-"""
-
 import from c {
     def close(fd: i32) -> i32;  def munmap(address: ptr, length: u64) -> i32;  def mmap(
         address: ptr, length: u64, prot: i32, flags: i32, fd: i32, offset: i64
@@ -38,10 +29,6 @@ glob:priv ACCESS_DEFAULT: int = 0,
 
 glob mmap_token = ClassToken();
 
-# mmap_object without its PyObject header: the mapping (NULL once closed),
-# the position relative to the start of the mapping, the file offset, the
-# buffer exports, the descriptor it keeps when tracking the file, and the
-# mmap() flags and access mode.
 obj MmapState(NativeState) {
     has data: ptr[u8] = ptr[u8](),
         size: i64 = 0,
@@ -53,14 +40,140 @@ obj MmapState(NativeState) {
         flags: i32 = 0,
         access: int = 0;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
 }
 
-def mmap_of(instance: ptr[PyObject]) -> (MmapState | None) {
+def mmap_of(instance: ptr[PyObject]) -> (MmapState | None);
+
+def:priv valid(state: MmapState) -> bool;
+
+def:priv open_state(instance: ptr[PyObject]) -> (MmapState | None);
+
+def:priv os_error -> ptr[PyObject];
+
+def:priv as_ssize(value: ptr[PyObject]) -> i64;
+
+def:priv failed(value: i64) -> bool;
+
+def:priv release_mapping(state: MmapState);
+
+def mmap_release(instance: ptr[PyObject]);
+
+def mmap_mmap_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv bytes_at(address: ptr[u8], count: i64) -> ptr[PyObject];
+
+def mmap_mmap_read_byte_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap_readline_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap_read_impl(receiver: ptr[PyObject], num_bytes: i64) -> ptr[PyObject];
+
+def:priv gfind(
+    receiver: ptr[PyObject],
+    view: BufferArgument,
+    start_obj: ptr[PyObject],
+    end_obj: ptr[PyObject],
+    reverse: bool
+) -> ptr[PyObject];
+
+def mmap_mmap_find_impl(
+    receiver: ptr[PyObject],
+    view: BufferArgument,
+    start: ptr[PyObject],
+    end: ptr[PyObject]
+) -> ptr[PyObject];
+
+def mmap_mmap_rfind_impl(
+    receiver: ptr[PyObject],
+    view: BufferArgument,
+    start: ptr[PyObject],
+    end: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv is_writable(state: MmapState) -> bool;
+
+def:priv is_resizeable(state: MmapState) -> bool;
+
+def mmap_mmap_write_impl(
+    receiver: ptr[PyObject], data: BufferArgument
+) -> ptr[PyObject];
+
+def mmap_mmap_write_byte_impl(receiver: ptr[PyObject], value: u8) -> ptr[PyObject];
+
+def mmap_mmap_size_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap_resize_impl(receiver: ptr[PyObject], new_size: i64) -> ptr[PyObject];
+
+def mmap_mmap_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap_flush_impl(
+    receiver: ptr[PyObject], offset: i64, size_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def mmap_mmap_seek_impl(receiver: ptr[PyObject], dist: i64, how: i32) -> ptr[PyObject];
+
+def mmap_mmap_seekable_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap_move_impl(
+    receiver: ptr[PyObject], dest: i64, src: i64, cnt: i64
+) -> ptr[PyObject];
+
+def mmap_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def mmap_mmap___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap___exit___impl(
+    receiver: ptr[PyObject],
+    exc_type: ptr[PyObject],
+    exc_value: ptr[PyObject],
+    traceback: ptr[PyObject]
+) -> ptr[PyObject];
+
+def mmap_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap___sizeof___impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_mmap__protect_impl(
+    receiver: ptr[PyObject], flNewProtect: u32, start: i64, length: i64
+) -> ptr[PyObject];
+
+def mmap_mmap_madvise_impl(
+    receiver: ptr[PyObject], option: i32, start: i64, length_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def mmap_getbuffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32;
+
+def mmap_releasebuffer(instance: ptr[PyObject], view: ptr[Py_buffer]);
+
+def mmap_length(instance: ptr[PyObject]) -> i64;
+
+def mmap_item(instance: ptr[PyObject], i: i64) -> ptr[PyObject];
+
+def mmap_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject];
+
+def mmap_ass_item(instance: ptr[PyObject], i: i64, v: ptr[PyObject]) -> i32;
+
+def mmap_ass_subscript(
+    instance: ptr[PyObject], item: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def:priv audit_new(fd: i32, map_size: i64, access: int, offset: i64) -> bool;
+
+def mmap_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def page_size -> i64;
+
+impl MmapState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
+
+impl MmapState.clear {}
+
+impl mmap_of(instance: ptr[PyObject]) -> (MmapState | None) {
     if jacpy_binding_native_present(instance, mmap_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, mmap_token.handle);
         if isinstance(state, MmapState) {
@@ -71,8 +184,7 @@ def mmap_of(instance: ptr[PyObject]) -> (MmapState | None) {
     return None;
 }
 
-# CHECK_VALID()
-def:priv valid(state: MmapState) -> bool {
+impl valid(state: MmapState) -> bool {
     if state.data.is_null() {
         object_error(PyExc_ValueError, "mmap closed or invalid");
         return False;
@@ -80,8 +192,7 @@ def:priv valid(state: MmapState) -> bool {
     return True;
 }
 
-# The mmap object's state when it is open; None with ValueError otherwise.
-def:priv open_state(instance: ptr[PyObject]) -> (MmapState | None) {
+impl open_state(instance: ptr[PyObject]) -> (MmapState | None) {
     state = mmap_of(instance);
     if state is None or not valid(state) {
         return None;
@@ -89,13 +200,12 @@ def:priv open_state(instance: ptr[PyObject]) -> (MmapState | None) {
     return state;
 }
 
-def:priv os_error -> ptr[PyObject] {
+impl os_error -> ptr[PyObject] {
     PyErr_SetFromErrno(PyExc_OSError);
     return NULL;
 }
 
-# _As_Py_ssize_t(): -1 with an exception set on failure.
-def:priv as_ssize(value: ptr[PyObject]) -> i64 {
+impl as_ssize(value: ptr[PyObject]) -> i64 {
     index = _PyNumber_Index(value);
     if not index {
         return -1;
@@ -105,12 +215,11 @@ def:priv as_ssize(value: ptr[PyObject]) -> i64 {
     return result;
 }
 
-def:priv failed(value: i64) -> bool {
+impl failed(value: i64) -> bool {
     return value == -1 and bool(PyErr_Occurred());
 }
 
-# Unmap and close whatever the state still holds, with threads released.
-def:priv release_mapping(state: MmapState) {
+impl release_mapping(state: MmapState) {
     fd = state.fd;
     data = state.data;
     state.fd = i32(-1);
@@ -125,8 +234,7 @@ def:priv release_mapping(state: MmapState) {
     PyEval_RestoreThread(thread);
 }
 
-# mmap_object_dealloc()'s unmapping; the payload is disposed by the binding.
-def mmap_release(instance: ptr[PyObject]) {
+impl mmap_release(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, mmap_token.handle) != 0 {
         state = mmap_of(instance);
         if state is not None {
@@ -135,7 +243,7 @@ def mmap_release(instance: ptr[PyObject]) {
     }
 }
 
-def mmap_mmap_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = mmap_of(receiver);
     if state is None {
         return NULL;
@@ -148,11 +256,11 @@ def mmap_mmap_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_none());
 }
 
-def:priv bytes_at(address: ptr[u8], count: i64) -> ptr[PyObject] {
+impl bytes_at(address: ptr[u8], count: i64) -> ptr[PyObject] {
     return jacpy_bytes_from_memory(ptr(address), count);
 }
 
-def mmap_mmap_read_byte_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap_read_byte_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
@@ -166,7 +274,7 @@ def mmap_mmap_read_byte_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(dest));
 }
 
-def mmap_mmap_readline_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap_readline_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
@@ -190,12 +298,12 @@ def mmap_mmap_readline_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def mmap_mmap_read_impl(receiver: ptr[PyObject], num_bytes: i64) -> ptr[PyObject] {
+impl mmap_mmap_read_impl(receiver: ptr[PyObject], num_bytes: i64) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
     }
-    # Out-of-range requests are silently adjusted.
+
     remaining = state.size - state.pos if state.pos < state.size else i64(0);
     count = num_bytes;
     if count < 0 or count > remaining {
@@ -208,8 +316,7 @@ def mmap_mmap_read_impl(receiver: ptr[PyObject], num_bytes: i64) -> ptr[PyObject
     return result;
 }
 
-# mmap_gfind_lock_held(): find() and rfind() over [start, end).
-def:priv gfind(
+impl gfind(
     receiver: ptr[PyObject],
     view: BufferArgument,
     start_obj: ptr[PyObject],
@@ -250,7 +357,7 @@ def:priv gfind(
     } elif end > state.size {
         end = state.size;
     }
-    # __index__ may have closed the map.
+
     if not valid(state) {
         return NULL;
     }
@@ -266,7 +373,7 @@ def:priv gfind(
     return PyLong_FromSsize_t(index);
 }
 
-def mmap_mmap_find_impl(
+impl mmap_mmap_find_impl(
     receiver: ptr[PyObject],
     view: BufferArgument,
     start: ptr[PyObject],
@@ -275,7 +382,7 @@ def mmap_mmap_find_impl(
     return gfind(receiver, view, start, end, False);
 }
 
-def mmap_mmap_rfind_impl(
+impl mmap_mmap_rfind_impl(
     receiver: ptr[PyObject],
     view: BufferArgument,
     start: ptr[PyObject],
@@ -284,7 +391,7 @@ def mmap_mmap_rfind_impl(
     return gfind(receiver, view, start, end, True);
 }
 
-def:priv is_writable(state: MmapState) -> bool {
+impl is_writable(state: MmapState) -> bool {
     if state.access != ACCESS_READ {
         return True;
     }
@@ -292,7 +399,7 @@ def:priv is_writable(state: MmapState) -> bool {
     return False;
 }
 
-def:priv is_resizeable(state: MmapState) -> bool {
+impl is_resizeable(state: MmapState) -> bool {
     if state.exports > 0 {
         object_error(
             PyExc_BufferError, "mmap can't resize with extant buffers exported."
@@ -312,7 +419,7 @@ def:priv is_resizeable(state: MmapState) -> bool {
     return False;
 }
 
-def mmap_mmap_write_impl(
+impl mmap_mmap_write_impl(
     receiver: ptr[PyObject], data: BufferArgument
 ) -> ptr[PyObject] {
     state = open_state(receiver);
@@ -332,7 +439,7 @@ def mmap_mmap_write_impl(
     return PyLong_FromSsize_t(length);
 }
 
-def mmap_mmap_write_byte_impl(receiver: ptr[PyObject], value: u8) -> ptr[PyObject] {
+impl mmap_mmap_write_byte_impl(receiver: ptr[PyObject], value: u8) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None or not is_writable(state) {
         return NULL;
@@ -346,7 +453,7 @@ def mmap_mmap_write_byte_impl(receiver: ptr[PyObject], value: u8) -> ptr[PyObjec
     return Py_NewRef(borrowed_none());
 }
 
-def mmap_mmap_size_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap_size_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
@@ -358,9 +465,7 @@ def mmap_mmap_size_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(status.st_size);
 }
 
-# This assumes the whole file is mapped and the resized map should cover
-# the file at its new size.
-def mmap_mmap_resize_impl(receiver: ptr[PyObject], new_size: i64) -> ptr[PyObject] {
+impl mmap_mmap_resize_impl(receiver: ptr[PyObject], new_size: i64) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None or not is_resizeable(state) {
         return NULL;
@@ -396,7 +501,7 @@ def mmap_mmap_resize_impl(receiver: ptr[PyObject], new_size: i64) -> ptr[PyObjec
     return Py_NewRef(borrowed_none());
 }
 
-def mmap_mmap_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
@@ -404,7 +509,7 @@ def mmap_mmap_tell_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSize_t(u64(state.pos));
 }
 
-def mmap_mmap_flush_impl(
+impl mmap_mmap_flush_impl(
     receiver: ptr[PyObject], offset: i64, size_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = mmap_of(receiver);
@@ -434,7 +539,9 @@ def mmap_mmap_flush_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def mmap_mmap_seek_impl(receiver: ptr[PyObject], dist: i64, how: i32) -> ptr[PyObject] {
+impl mmap_mmap_seek_impl(
+    receiver: ptr[PyObject], dist: i64, how: i32
+) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
@@ -466,11 +573,11 @@ def mmap_mmap_seek_impl(receiver: ptr[PyObject], dist: i64, how: i32) -> ptr[PyO
     return PyLong_FromSsize_t(state.pos);
 }
 
-def mmap_mmap_seekable_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap_seekable_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(borrowed_true());
 }
 
-def mmap_mmap_move_impl(
+impl mmap_mmap_move_impl(
     receiver: ptr[PyObject], dest: i64, src: i64, cnt: i64
 ) -> ptr[PyObject] {
     state = open_state(receiver);
@@ -489,7 +596,7 @@ def mmap_mmap_move_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def mmap_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl mmap_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = mmap_of(instance);
     if state is None {
         return NULL;
@@ -497,7 +604,7 @@ def mmap_closed_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return Py_NewRef(borrowed_true() if state.data.is_null() else borrowed_false());
 }
 
-def mmap_mmap___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = open_state(receiver);
     if state is None {
         return NULL;
@@ -505,7 +612,7 @@ def mmap_mmap___enter___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(receiver);
 }
 
-def mmap_mmap___exit___impl(
+impl mmap_mmap___exit___impl(
     receiver: ptr[PyObject],
     exc_type: ptr[PyObject],
     exc_value: ptr[PyObject],
@@ -514,34 +621,33 @@ def mmap_mmap___exit___impl(
     return mmap_mmap_close_impl(receiver);
 }
 
-def mmap_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = mmap_of(instance);
     if state is None {
         return NULL;
     }
     name = type_name(instance);
     if state.data.is_null() {
-        return PyUnicode_FromString(f"<{name} closed=True>");
+        return jacpy_unicode_from_text(f"<{name} closed=True>");
     }
-    return PyUnicode_FromString(
+    return jacpy_unicode_from_text(
         f"<{name} closed=False, access={ACCESS_NAMES[state.access]}, length={state.size}, pos={state.pos}, offset={state.offset}>"
     );
 }
 
-# __sizeof__ and _protect exist on Windows only; nothing publishes these.
-def mmap_mmap___sizeof___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_mmap___sizeof___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     object_error(PyExc_SystemError, "mmap.__sizeof__ is Windows-only");
     return NULL;
 }
 
-def mmap_mmap__protect_impl(
+impl mmap_mmap__protect_impl(
     receiver: ptr[PyObject], flNewProtect: u32, start: i64, length: i64
 ) -> ptr[PyObject] {
     object_error(PyExc_SystemError, "mmap._protect is Windows-only");
     return NULL;
 }
 
-def mmap_mmap_madvise_impl(
+impl mmap_mmap_madvise_impl(
     receiver: ptr[PyObject], option: i32, start: i64, length_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = open_state(receiver);
@@ -581,9 +687,7 @@ def mmap_mmap_madvise_impl(
     return Py_NewRef(borrowed_none());
 }
 
-# ------------------------------------------------ buffer, sequence, mapping
-
-def mmap_getbuffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
+impl mmap_getbuffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
     state = open_state(instance);
     if state is None {
         return i32(-1);
@@ -601,7 +705,7 @@ def mmap_getbuffer(instance: ptr[PyObject], view: ptr[Py_buffer], flags: i32) ->
     return status;
 }
 
-def mmap_releasebuffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
+impl mmap_releasebuffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
     state = mmap_of(instance);
     if state is not None {
         state.exports -= 1;
@@ -609,7 +713,7 @@ def mmap_releasebuffer(instance: ptr[PyObject], view: ptr[Py_buffer]) {
     jacpy_binding_buffer_dispose(view);
 }
 
-def mmap_length(instance: ptr[PyObject]) -> i64 {
+impl mmap_length(instance: ptr[PyObject]) -> i64 {
     state = open_state(instance);
     if state is None {
         return -1;
@@ -617,7 +721,7 @@ def mmap_length(instance: ptr[PyObject]) -> i64 {
     return state.size;
 }
 
-def mmap_item(instance: ptr[PyObject], i: i64) -> ptr[PyObject] {
+impl mmap_item(instance: ptr[PyObject], i: i64) -> ptr[PyObject] {
     state = open_state(instance);
     if state is None {
         return NULL;
@@ -629,7 +733,7 @@ def mmap_item(instance: ptr[PyObject], i: i64) -> ptr[PyObject] {
     return bytes_at(state.data + i, 1);
 }
 
-def mmap_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+impl mmap_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     state = open_state(instance);
     if state is None {
         return NULL;
@@ -671,8 +775,7 @@ def mmap_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject
         if result_buf.is_null() {
             return PyErr_NoMemory();
         }
-        # Each position is computed directly: one step past the last element
-        # can overflow when the step is huge.
+
         target = result_buf.view(int(slicelen));
         for i in range(int(slicelen)) {
             target[i] = (state.data + (bounds.start + i * bounds.step)).view(1)[0];
@@ -685,7 +788,7 @@ def mmap_subscript(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject
     return NULL;
 }
 
-def mmap_ass_item(instance: ptr[PyObject], i: i64, v: ptr[PyObject]) -> i32 {
+impl mmap_ass_item(instance: ptr[PyObject], i: i64, v: ptr[PyObject]) -> i32 {
     state = open_state(instance);
     if state is None {
         return i32(-1);
@@ -709,7 +812,7 @@ def mmap_ass_item(instance: ptr[PyObject], i: i64, v: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def mmap_ass_subscript(
+impl mmap_ass_subscript(
     instance: ptr[PyObject], item: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     state = open_state(instance);
@@ -789,9 +892,7 @@ def mmap_ass_subscript(
     return i32(-1);
 }
 
-# ------------------------------------------------------------- constructor
-
-def:priv audit_new(fd: i32, map_size: i64, access: int, offset: i64) -> bool {
+impl audit_new(fd: i32, map_size: i64, access: int, offset: i64) -> bool {
     arguments = owned_tuple(
         [
             PyLong_FromLong(i64(fd)),
@@ -808,9 +909,7 @@ def:priv audit_new(fd: i32, map_size: i64, access: int, offset: i64) -> bool {
     return status >= 0;
 }
 
-# new_mmap_object(): mmap(fileno, length, flags=MAP_SHARED,
-# prot=PROT_WRITE|PROT_READ, access=ACCESS_DEFAULT, offset=0, *, trackfd=True).
-def mmap_new(
+impl mmap_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     values: list[ArgumentValue] = [];
@@ -856,7 +955,6 @@ def mmap_new(
         flags = int(MAP_PRIVATE);
         prot = int(PROT_READ | PROT_WRITE);
     } elif access == ACCESS_DEFAULT {
-        # Map the protection to an access mode.
         if (prot & PROT_READ) != 0 and (prot & PROT_WRITE) != 0 {
             access = ACCESS_DEFAULT;
         } elif (prot & PROT_WRITE) != 0 {
@@ -871,7 +969,7 @@ def mmap_new(
     if not audit_new(fd, map_size, access, offset) {
         return NULL;
     }
-    # macOS: fsync() is not enough to force the data to disk (issue #11277).
+
     if FULLFSYNC_BEFORE_MAP and fd != -1 {
         fcntl(fd, i32(F_FULLFSYNC));
     }
@@ -909,7 +1007,6 @@ def mmap_new(
         return NULL;
     }
     if fd == -1 {
-        # Anonymous memory, as mmap.mmap(-1, size) maps on Windows too.
         state.fd = i32(-1);
         flags = flags | int(MAP_ANONYMOUS);
     } elif trackfd {
@@ -936,7 +1033,6 @@ def mmap_new(
     return instance;
 }
 
-# The page size, which is also the allocation granularity on POSIX.
-def page_size -> i64 {
+impl page_size -> i64 {
     return sysconf(i32(_SC_PAGESIZE));
 }

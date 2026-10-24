@@ -1,13 +1,3 @@
-"""The t-string Interpolation type: Objects/interpolationobject.c in native Jac.
-
-`_PyInterpolation_Type` (string.templatelib.Interpolation) is C data Jac
-defines under its C name, and `_PyInterpolation_Build` (which the evaluator's
-BUILD_INTERPOLATION calls), `_PyInterpolation_GetValueRef` and
-`_PyInterpolation_InitTypes` are C functions under theirs. `__new__` parses
-its arguments as Objects/clinic/interpolationobject.c.h does. The object
-layout, `interpolationobject`, comes from layouts.jac. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob:priv interpolation_members: list[PyMemberDef] = [
              PyMemberDef(
@@ -89,83 +79,17 @@ glob:priv interpolation_new_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-def interpolation_of(op: ptr[PyObject]) -> ptr[interpolationobject] {
-    return ptr[interpolationobject](op);
-}
+def interpolation_of(op: ptr[PyObject]) -> ptr[interpolationobject];
 
-"""_PyInterpolation_CheckExact."""
-def interpolation_check_exact(op: ptr[PyObject]) -> bool {
-    return object_type(op) == addressof(_PyInterpolation_Type);
-}
+def interpolation_check_exact(op: ptr[PyObject]) -> bool;
 
-# Interpolation(value, expression="", conversion=None, format_spec=""), as
-# Argument Clinic parses it.
 def interpolation_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke(
-        interpolation_new_signature,
-        args,
-        kwargs,
-        interpolation_new_bound,
-        ptr[PyObject](_type)
-    );
-}
+) -> ptr[PyObject];
 
-def interpolation_new_bound(args: BoundArguments) -> ptr[PyObject] {
-    value = args.values[0];
-    expression = args.values[1];
-    conversion = args.values[2];
-    format_spec = args.values[3];
-    if not expression {
-        expression = Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
-    } elif jacpy_is_unicode(expression) == 0 {
-        _PyArg_BadArgument("Interpolation", "argument 'expression'", "str", expression);
-        return NULL;
-    }
-    if not conversion {
-        conversion = Py_None;
-    } elif not conversion_converter(conversion) {
-        return NULL;
-    }
-    if not format_spec {
-        format_spec = Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
-    } elif jacpy_is_unicode(format_spec) == 0 {
-        _PyArg_BadArgument(
-            "Interpolation", "argument 'format_spec'", "str", format_spec
-        );
-        return NULL;
-    }
-    return interpolation_new_impl(
-        ptr[PyTypeObject](args.context), value, expression, conversion, format_spec
-    );
-}
+def interpolation_new_bound(args: BoundArguments) -> ptr[PyObject];
 
-# _conversion_converter: None, or one of the strings "s", "a" and "r".
-def conversion_converter(arg: ptr[PyObject]) -> bool {
-    if arg == Py_None {
-        return True;
-    }
-    if jacpy_is_unicode(arg) == 0 {
-        PyErr_Format(
-            PyExc_TypeError,
-            "Interpolation() argument 'conversion' must be str, not %T",
-            arg
-        );
-        return False;
-    }
-    length = i64(0);
-    text = PyUnicode_AsUTF8AndSize(arg, &mut length);
-    code = text.view(1)[0] if text and length == 1 else u8(0);
-    if length != 1 or not (code == 97 or code == 114 or code == 115) {
-        PyErr_SetString(
-            PyExc_ValueError,
-            "Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'"
-        );
-        return False;
-    }
-    return True;
-}
+def conversion_converter(arg: ptr[PyObject]) -> bool;
 
 def interpolation_new_impl(
     _type: ptr[PyTypeObject],
@@ -173,81 +97,17 @@ def interpolation_new_impl(
     expression: ptr[PyObject],
     conversion: ptr[PyObject],
     format_spec: ptr[PyObject]
-) -> ptr[PyObject] {
-    op = _PyObject_GC_New(ptr[PyObject](_type));
-    if not op {
-        return NULL;
-    }
-    item = interpolation_of(op);
-    item.view(1)[0].value = Py_NewRef(value);
-    item.view(1)[0].expression = Py_NewRef(expression);
-    item.view(1)[0].conversion = Py_NewRef(conversion);
-    item.view(1)[0].format_spec = Py_NewRef(format_spec);
-    object_gc_track(op);
-    return op;
-}
+) -> ptr[PyObject];
 
-def interpolation_dealloc(op: ptr[PyObject]) {
-    object_gc_untrack(op);
-    object_type(op).view(1)[0].tp_clear(op);
-    object_type(op).view(1)[0].tp_free(ptr(op));
-}
+def interpolation_dealloc(op: ptr[PyObject]);
 
-def interpolation_clear(op: ptr[PyObject]) -> i32 {
-    item = interpolation_of(op);
-    value = item.view(1)[0].value;
-    item.view(1)[0].value = NULL;
-    jacpy_release(value);
-    expression = item.view(1)[0].expression;
-    item.view(1)[0].expression = NULL;
-    jacpy_release(expression);
-    conversion = item.view(1)[0].conversion;
-    item.view(1)[0].conversion = NULL;
-    jacpy_release(conversion);
-    format_spec = item.view(1)[0].format_spec;
-    item.view(1)[0].format_spec = NULL;
-    jacpy_release(format_spec);
-    return i32(0);
-}
+def interpolation_clear(op: ptr[PyObject]) -> i32;
 
-def interpolation_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    item = interpolation_of(op);
-    status = visit_reference(item.view(1)[0].value, visitor, arg);
-    if status == 0 {
-        status = visit_reference(item.view(1)[0].expression, visitor, arg);
-    }
-    if status == 0 {
-        status = visit_reference(item.view(1)[0].conversion, visitor, arg);
-    }
-    if status == 0 {
-        status = visit_reference(item.view(1)[0].format_spec, visitor, arg);
-    }
-    return status;
-}
+def interpolation_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
 
-def interpolation_repr(op: ptr[PyObject]) -> ptr[PyObject] {
-    item = interpolation_of(op);
-    return PyUnicode_FromFormat(
-        "%s(%R, %R, %R, %R)",
-        _PyType_Name(ptr[PyObject](object_type(op))),
-        item.view(1)[0].value,
-        item.view(1)[0].expression,
-        item.view(1)[0].conversion,
-        item.view(1)[0].format_spec
-    );
-}
+def interpolation_repr(op: ptr[PyObject]) -> ptr[PyObject];
 
-def interpolation_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    item = interpolation_of(op);
-    return Py_BuildValue(
-        "(O(OOOO))",
-        object_type(op),
-        item.view(1)[0].value,
-        item.view(1)[0].expression,
-        item.view(1)[0].conversion,
-        item.view(1)[0].format_spec
-    );
-}
+def interpolation_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
 
 import from c {
     def _PyInterpolation_InitTypes(_interp: ptr[PyInterpreterState]) -> PyStatus {
@@ -257,7 +117,7 @@ import from c {
         if tuple {
             dict = _PyType_GetDict(ptr[PyObject](addressof(_PyInterpolation_Type)));
             if dict {
-                status = PyDict_SetItemString(dict, "__match_args__", tuple);
+                status = PyDict_SetItemString(dict, ptr[u8]("__match_args__"), tuple);
                 jacpy_release(tuple);
                 if status >= 0 {
                     return PyStatus(
@@ -313,4 +173,160 @@ import from c {
     }  def _PyInterpolation_GetValueRef(op: ptr[PyObject]) -> ptr[PyObject] {
         return Py_NewRef(interpolation_of(op).view(1)[0].value);
     }
+}
+
+impl interpolation_of(op: ptr[PyObject]) -> ptr[interpolationobject] {
+    return ptr[interpolationobject](op);
+}
+
+impl interpolation_check_exact(op: ptr[PyObject]) -> bool {
+    return object_type(op) == addressof(_PyInterpolation_Type);
+}
+
+impl interpolation_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke(
+        interpolation_new_signature,
+        args,
+        kwargs,
+        interpolation_new_bound,
+        ptr[PyObject](_type)
+    );
+}
+
+impl interpolation_new_bound(args: BoundArguments) -> ptr[PyObject] {
+    value = args.values[0];
+    expression = args.values[1];
+    conversion = args.values[2];
+    format_spec = args.values[3];
+    if not expression {
+        expression = Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
+    } elif jacpy_is_unicode(expression) == 0 {
+        _PyArg_BadArgument("Interpolation", "argument 'expression'", "str", expression);
+        return NULL;
+    }
+    if not conversion {
+        conversion = Py_None;
+    } elif not conversion_converter(conversion) {
+        return NULL;
+    }
+    if not format_spec {
+        format_spec = Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
+    } elif jacpy_is_unicode(format_spec) == 0 {
+        _PyArg_BadArgument(
+            "Interpolation", "argument 'format_spec'", "str", format_spec
+        );
+        return NULL;
+    }
+    return interpolation_new_impl(
+        ptr[PyTypeObject](args.context), value, expression, conversion, format_spec
+    );
+}
+
+impl conversion_converter(arg: ptr[PyObject]) -> bool {
+    if arg == Py_None {
+        return True;
+    }
+    if jacpy_is_unicode(arg) == 0 {
+        PyErr_Format(
+            PyExc_TypeError,
+            "Interpolation() argument 'conversion' must be str, not %T",
+            arg
+        );
+        return False;
+    }
+    length = i64(0);
+    text = PyUnicode_AsUTF8AndSize(arg, &mut length);
+    code = text.view(1)[0] if text and length == 1 else u8(0);
+    if length != 1 or not (code == 97 or code == 114 or code == 115) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'"
+        );
+        return False;
+    }
+    return True;
+}
+
+impl interpolation_new_impl(
+    _type: ptr[PyTypeObject],
+    value: ptr[PyObject],
+    expression: ptr[PyObject],
+    conversion: ptr[PyObject],
+    format_spec: ptr[PyObject]
+) -> ptr[PyObject] {
+    op = _PyObject_GC_New(ptr[PyObject](_type));
+    if not op {
+        return NULL;
+    }
+    item = interpolation_of(op);
+    item.view(1)[0].value = Py_NewRef(value);
+    item.view(1)[0].expression = Py_NewRef(expression);
+    item.view(1)[0].conversion = Py_NewRef(conversion);
+    item.view(1)[0].format_spec = Py_NewRef(format_spec);
+    object_gc_track(op);
+    return op;
+}
+
+impl interpolation_dealloc(op: ptr[PyObject]) {
+    object_gc_untrack(op);
+    object_type(op).view(1)[0].tp_clear(op);
+    object_type(op).view(1)[0].tp_free(ptr(op));
+}
+
+impl interpolation_clear(op: ptr[PyObject]) -> i32 {
+    item = interpolation_of(op);
+    value = item.view(1)[0].value;
+    item.view(1)[0].value = NULL;
+    jacpy_release(value);
+    expression = item.view(1)[0].expression;
+    item.view(1)[0].expression = NULL;
+    jacpy_release(expression);
+    conversion = item.view(1)[0].conversion;
+    item.view(1)[0].conversion = NULL;
+    jacpy_release(conversion);
+    format_spec = item.view(1)[0].format_spec;
+    item.view(1)[0].format_spec = NULL;
+    jacpy_release(format_spec);
+    return i32(0);
+}
+
+impl interpolation_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+    item = interpolation_of(op);
+    status = visit_reference(item.view(1)[0].value, visitor, arg);
+    if status == 0 {
+        status = visit_reference(item.view(1)[0].expression, visitor, arg);
+    }
+    if status == 0 {
+        status = visit_reference(item.view(1)[0].conversion, visitor, arg);
+    }
+    if status == 0 {
+        status = visit_reference(item.view(1)[0].format_spec, visitor, arg);
+    }
+    return status;
+}
+
+impl interpolation_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+    item = interpolation_of(op);
+    return PyUnicode_FromFormat(
+        "%s(%R, %R, %R, %R)",
+        _PyType_Name(ptr[PyObject](object_type(op))),
+        item.view(1)[0].value,
+        item.view(1)[0].expression,
+        item.view(1)[0].conversion,
+        item.view(1)[0].format_spec
+    );
+}
+
+impl interpolation_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+    item = interpolation_of(op);
+    return Py_BuildValue(
+        "(O(OOOO))",
+        object_type(op),
+        item.view(1)[0].value,
+        item.view(1)[0].expression,
+        item.view(1)[0].conversion,
+        item.view(1)[0].format_spec
+    );
 }

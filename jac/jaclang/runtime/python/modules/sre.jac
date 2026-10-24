@@ -1,20 +1,7 @@
-"""The _sre module: Secret Labs' Regular Expression Engine.
-
-Modules/_sre/sre.c and sre.h in native Jac: the Pattern, Match, Scanner and
-Template objects, laid out as sre.h lays them out (a pattern's code and a
-match's marks inside the object), the matching state, the code validator and
-the module functions. The engine is modules/sre_engine.jac and the
-per-width matchers modules/sre_ucs{1,2,4}.jac. The module state is the
-binding layer's reference slots, indexed by the STATE_* constants. See
-../LICENSE.cpython.
-"""
-
 import from c {
     def memset(target: ptr, value: i32, size: u64) -> ptr;  def memcmp(
         left: ptr, right: ptr, size: u64
-    ) -> i32;  def memchr(source: ptr, value: i32, size: u64) -> ptr;
-    # PatternObject: `code` is the first of `codesize` code words.
-    obj PatternObject {
+    ) -> i32;  def memchr(source: ptr, value: i32, size: u64) -> ptr;  obj PatternObject {
         has ob_base: PyVarObject,
             groups: i64,
             groupindex: ptr[PyObject],
@@ -25,9 +12,7 @@ import from c {
             isbytes: i32,
             codesize: i64,
             code: u32;
-    }
-    # MatchObject: `mark` is the first of 2 * `groups` marks.
-    obj MatchObject {
+    }  obj MatchObject {
         has ob_base: PyVarObject,
             string: ptr[PyObject],
             regs: ptr[PyObject],
@@ -37,9 +22,7 @@ import from c {
             lastindex: i64,
             groups: i64,
             mark: i64;
-    }
-    # TemplateObject; its Py_SIZE items (TemplateItem) follow the header.
-    obj TemplateObject {
+    }  obj TemplateObject {
         has ob_base: PyVarObject,
             chunks: i64,
             literal: ptr[PyObject];
@@ -54,8 +37,6 @@ import from c {
     }
 }
 
-# The objects' sizes, the offsets of their variable parts and of the fields
-# their member descriptors publish.
 glob PATTERN_SIZE: Final[int] = 96,
      PATTERN_GROUPS: Final[int] = 24,
      PATTERN_PATTERN: Final[int] = 48,
@@ -73,16 +54,13 @@ glob PATTERN_SIZE: Final[int] = 96,
      SCANNER_SIZE: Final[int] = 264,
      SCANNER_PATTERN: Final[int] = 16,
      SCANNER_STATE: Final[int] = 24,
-     # offsetof(SRE_STATE, buffer)
      STATE_BUFFER: Final[int] = 40;
 
 glob PY_SSIZE_T_MAX: Final[i64] = 9223372036854775807,
-     # SRE_MAXGROUPS on a 64-bit build: (SRE_CODE)INT32_MAX / 2.
      SRE_MAXGROUPS: Final[int] = 1073741823,
      SRE_CODE_SIZE: Final[int] = 4,
      COPYRIGHT: str = " SRE 2.2.2 Copyright (c) 1997-2002 by Secret Labs AB ";
 
-# The module state slots (_sremodulestate).
 glob STATE_PATTERN_TYPE: Final[int] = 0,
      STATE_MATCH_TYPE: Final[int] = 1,
      STATE_SCANNER_TYPE: Final[int] = 2,
@@ -90,111 +68,484 @@ glob STATE_PATTERN_TYPE: Final[int] = 0,
      STATE_COMPILE_TEMPLATE: Final[int] = 4,
      STATE_COUNT: Final[int] = 5;
 
-# The classes whose methods take defining_class; the binding points them at
-# the created types' specs.
 glob SRE_Pattern_token = ClassToken(),
      SRE_Scanner_token = ClassToken();
 
-# ------------------------------------------------------------------ access
+def pattern_record(op: ptr[PyObject]) -> ptr[PatternObject];
 
-def pattern_record(op: ptr[PyObject]) -> ptr[PatternObject] {
+def match_record(op: ptr[PyObject]) -> ptr[MatchObject];
+
+def template_record(op: ptr[PyObject]) -> ptr[TemplateObject];
+
+def scanner_record(op: ptr[PyObject]) -> ptr[ScannerObject];
+
+def pattern_code(op: ptr[PyObject]) -> ptr[u32];
+
+def match_marks(op: ptr[PyObject]) -> ptr[i64];
+
+def template_items(op: ptr[PyObject]) -> ptr[TemplateItem];
+
+def scanner_state(op: ptr[PyObject]) -> ptr[SreState];
+
+def type_object(op: ptr[PyObject]) -> ptr[PyObject];
+
+def tp_name(op: ptr[PyObject]) -> ptr[u8];
+
+def module_slot(cls: ptr[PyObject], slot: int) -> ptr[PyObject];
+
+def free_object(op: ptr[PyObject]);
+
+def _sre_getcodesize_impl(module: ptr[PyObject]) -> i32;
+
+def:priv as_code(character: i32) -> u32;
+
+def:priv as_int(value: u32) -> i32;
+
+def _sre_ascii_iscased_impl(module: ptr[PyObject], character: i32) -> i32;
+
+def _sre_unicode_iscased_impl(module: ptr[PyObject], character: i32) -> i32;
+
+def _sre_ascii_tolower_impl(module: ptr[PyObject], character: i32) -> i32;
+
+def _sre_unicode_tolower_impl(module: ptr[PyObject], character: i32) -> i32;
+
+def state_reset(state: ptr[SreState]);
+
+def getstring(string: ptr[PyObject], view: ptr[Py_buffer]) -> ptr;
+
+def string_length(string: ptr[PyObject], view: ptr[Py_buffer]) -> i64;
+
+def string_charsize(string: ptr[PyObject]) -> i32;
+
+def new_view -> ptr[Py_buffer];
+
+def free_view(view: ptr[Py_buffer]);
+
+def state_new(pattern: ptr[PyObject]) -> ptr[SreState];
+
+def state_init(
+    state: ptr[SreState],
+    pattern: ptr[PyObject],
+    string: ptr[PyObject],
+    start: i64,
+    end: i64,
+    inline_marks: bool
+) -> ptr[PyObject];
+
+def:priv state_init_failed(state: ptr[SreState], inline_marks: bool);
+
+def state_fini(state: ptr[SreState], inline_marks: bool);
+
+def state_offset(state: ptr[SreState], member: ptr) -> i64;
+
+def getslice(
+    isbytes: i32, data: ptr, string: ptr[PyObject], start: i64, end: i64
+) -> ptr[PyObject];
+
+def state_getslice(
+    state: ptr[SreState], index: i64, string: ptr[PyObject], empty: bool
+) -> ptr[PyObject];
+
+def pattern_error(status: i64);
+
+def sre_match(state: ptr[SreState], pattern: ptr[u32]) -> i64;
+
+def sre_search(state: ptr[SreState], pattern: ptr[u32]) -> i64;
+
+def pattern_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def pattern_clear(op: ptr[PyObject]) -> i32;
+
+def pattern_dealloc(op: ptr[PyObject]);
+
+def:priv pattern_run(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64,
+    kind: int
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_match_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_fullmatch_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_search_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_findall_impl(
+    self: ptr[PyObject], string: ptr[PyObject], pos: i64, endpos: i64
+) -> ptr[PyObject];
+
+def:priv findall_into(
+    self: ptr[PyObject],
+    state: ptr[SreState],
+    string: ptr[PyObject],
+    list: ptr[PyObject]
+) -> bool;
+
+def _sre_SRE_Pattern_finditer_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_scanner_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_split_impl(
+    self: ptr[PyObject], string: ptr[PyObject], maxsplit: i64
+) -> ptr[PyObject];
+
+def:priv split_into(
+    self: ptr[PyObject],
+    state: ptr[SreState],
+    string: ptr[PyObject],
+    maxsplit: i64,
+    list: ptr[PyObject]
+) -> bool;
+
+def:priv append_owned(list: ptr[PyObject], item: ptr[PyObject]) -> bool;
+
+def compile_template(
+    module: ptr[PyObject], pattern: ptr[PyObject], template: ptr[PyObject]
+) -> ptr[PyObject];
+
+import from c {
+    obj TemplateArguments {
+        has pattern: ptr[PyObject],
+            template: ptr[PyObject];
+    }
+}
+
+def:priv call_template_compiler(
+    func: ptr[PyObject], pattern: ptr[PyObject], template: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv is_exact_unicode(value: ptr[PyObject]) -> bool;
+
+def:priv set_module_slot(module: ptr[PyObject], slot: int, value: ptr[PyObject]);
+
+def pattern_subx(
+    module: ptr[PyObject],
+    self: ptr[PyObject],
+    ptemplate: ptr[PyObject],
+    string: ptr[PyObject],
+    count: i64,
+    subn: bool
+) -> ptr[PyObject];
+
+def:priv subx_run(
+    module: ptr[PyObject],
+    self: ptr[PyObject],
+    state: ptr[SreState],
+    filter: ptr[PyObject],
+    filter_type: int,
+    string: ptr[PyObject],
+    count: i64,
+    subn: bool
+) -> ptr[PyObject];
+
+import from c {
+    obj OneArgument {
+        has value: ptr[PyObject];
+    }
+}
+
+def call_one(callable: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_sub_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    repl: ptr[PyObject],
+    string: ptr[PyObject],
+    count: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern_subn_impl(
+    self: ptr[PyObject],
+    cls: ptr[PyObject],
+    repl: ptr[PyObject],
+    string: ptr[PyObject],
+    count: i64
+) -> ptr[PyObject];
+
+def _sre_SRE_Pattern___copy___impl(self: ptr[PyObject]) -> ptr[PyObject];
+
+def _sre_SRE_Pattern___deepcopy___impl(
+    self: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv FLAG_NAMES: list[tuple[str, int]] = [
+         ("re.IGNORECASE", SRE_FLAG_IGNORECASE),
+         ("re.LOCALE", SRE_FLAG_LOCALE),
+         ("re.MULTILINE", SRE_FLAG_MULTILINE),
+         ("re.DOTALL", SRE_FLAG_DOTALL),
+         ("re.UNICODE", SRE_FLAG_UNICODE),
+         ("re.VERBOSE", SRE_FLAG_VERBOSE),
+         ("re.DEBUG", SRE_FLAG_DEBUG),
+         ("re.ASCII", SRE_FLAG_ASCII)
+     ];
+
+def pattern_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def pattern_groupindex(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def pattern_hash(op: ptr[PyObject]) -> i64;
+
+def pattern_richcompare(
+    lefto: ptr[PyObject], righto: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def _sre_compile_impl(
+    module: ptr[PyObject],
+    pattern: ptr[PyObject],
+    flags: i32,
+    code: ptr[PyObject],
+    groups: i64,
+    groupindex: ptr[PyObject],
+    indexgroup: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _sre_template_impl(
+    module: ptr[PyObject], pattern: ptr[PyObject], template: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj:priv CodeCursor {
+    has code: ptr[u32],
+        end: ptr[u32],
+        op: u32 = 0,
+        arg: u32 = 0,
+        skip_count: u32 = 0;
+
+    def get_op -> bool;
+    def get_arg -> bool;
+    def get_skip(adj: int = 0) -> bool;
+}
+
+def:priv validate_charset(code: ptr[u32], end: ptr[u32]) -> int;
+
+def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int;
+
+def:priv exceeds(count: i64, distance: i64) -> bool;
+
+def:priv validate_info(cursor: CodeCursor) -> int;
+
+def:priv validate_branch(cursor: CodeCursor, groups: i64) -> int;
+
+def:priv validate_outer(code: ptr[u32], end: ptr[u32], groups: i64) -> int;
+
+def validate(self: ptr[PyObject]) -> bool;
+
+def match_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def match_clear(op: ptr[PyObject]) -> i32;
+
+def match_dealloc(op: ptr[PyObject]);
+
+def match_getslice_by_index(
+    self: ptr[PyObject], index: i64, default_value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def match_getindex(self: ptr[PyObject], index: ptr[PyObject]) -> i64;
+
+def match_getslice(
+    self: ptr[PyObject], index: ptr[PyObject], default_value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _sre_SRE_Match_expand_impl(
+    self: ptr[PyObject], template: ptr[PyObject]
+) -> ptr[PyObject];
+
+def match_group(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def match_getitem(self: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject];
+
+def _sre_SRE_Match_groups_impl(
+    self: ptr[PyObject], default_value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _sre_SRE_Match_groupdict_impl(
+    self: ptr[PyObject], default_value: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _sre_SRE_Match_start_impl(self: ptr[PyObject], group: ptr[PyObject]) -> i64;
+
+def _sre_SRE_Match_end_impl(self: ptr[PyObject], group: ptr[PyObject]) -> i64;
+
+def pair(i1: i64, i2: i64) -> ptr[PyObject];
+
+def _sre_SRE_Match_span_impl(
+    self: ptr[PyObject], group: ptr[PyObject]
+) -> ptr[PyObject];
+
+def match_regs(self: ptr[PyObject]) -> ptr[PyObject];
+
+def _sre_SRE_Match___copy___impl(self: ptr[PyObject]) -> ptr[PyObject];
+
+def _sre_SRE_Match___deepcopy___impl(
+    self: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def match_lastindex_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def match_lastgroup_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def match_regs_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def match_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def pattern_new_match(
+    match_type: ptr[PyObject], pattern: ptr[PyObject], state: ptr[SreState], status: i64
+) -> ptr[PyObject];
+
+def scanner_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def scanner_clear(op: ptr[PyObject]) -> i32;
+
+def scanner_dealloc(op: ptr[PyObject]);
+
+def:priv scanner_begin(self: ptr[PyObject]) -> bool;
+
+def:priv scanner_end(self: ptr[PyObject]);
+
+def:priv scanner_next(
+    self: ptr[PyObject], cls: ptr[PyObject], search: bool
+) -> ptr[PyObject];
+
+def _sre_SRE_Scanner_match_impl(
+    self: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _sre_SRE_Scanner_search_impl(
+    self: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def pattern_scanner(
+    scanner_type: ptr[PyObject],
+    self: ptr[PyObject],
+    string: ptr[PyObject],
+    pos: i64,
+    endpos: i64
+) -> ptr[PyObject];
+
+def template_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def template_clear(op: ptr[PyObject]) -> i32;
+
+def template_dealloc(op: ptr[PyObject]);
+
+def expand_template(self: ptr[PyObject], match_object: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv visit_one(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+impl pattern_record(op: ptr[PyObject]) -> ptr[PatternObject] {
     return ptr[PatternObject](op);
 }
 
-def match_record(op: ptr[PyObject]) -> ptr[MatchObject] {
+impl match_record(op: ptr[PyObject]) -> ptr[MatchObject] {
     return ptr[MatchObject](op);
 }
 
-def template_record(op: ptr[PyObject]) -> ptr[TemplateObject] {
+impl template_record(op: ptr[PyObject]) -> ptr[TemplateObject] {
     return ptr[TemplateObject](op);
 }
 
-def scanner_record(op: ptr[PyObject]) -> ptr[ScannerObject] {
+impl scanner_record(op: ptr[PyObject]) -> ptr[ScannerObject] {
     return ptr[ScannerObject](op);
 }
 
-# PatternObject_GetCode
-def pattern_code(op: ptr[PyObject]) -> ptr[u32] {
+impl pattern_code(op: ptr[PyObject]) -> ptr[u32] {
     return ptr[u32](ptr[u8](op) + PATTERN_CODE);
 }
 
-# The match's mark array.
-def match_marks(op: ptr[PyObject]) -> ptr[i64] {
+impl match_marks(op: ptr[PyObject]) -> ptr[i64] {
     return ptr[i64](ptr[u8](op) + MATCH_MARK);
 }
 
-# The template's items.
-def template_items(op: ptr[PyObject]) -> ptr[TemplateItem] {
+impl template_items(op: ptr[PyObject]) -> ptr[TemplateItem] {
     return ptr[TemplateItem](ptr[u8](op) + TEMPLATE_SIZE);
 }
 
-# The scanner's embedded matching state.
-def scanner_state(op: ptr[PyObject]) -> ptr[SreState] {
+impl scanner_state(op: ptr[PyObject]) -> ptr[SreState] {
     return ptr[SreState](ptr[u8](op) + SCANNER_STATE);
 }
 
-def type_object(op: ptr[PyObject]) -> ptr[PyObject] {
+impl type_object(op: ptr[PyObject]) -> ptr[PyObject] {
     return ptr[PyObject](object_type(op));
 }
 
-def tp_name(op: ptr[PyObject]) -> ptr[u8] {
+impl tp_name(op: ptr[PyObject]) -> ptr[u8] {
     return object_type(op).view(1)[0].tp_name;
 }
 
-# get_sre_module_state_by_class(cls)->slot (borrowed).
-def module_slot(cls: ptr[PyObject], slot: int) -> ptr[PyObject] {
+impl module_slot(cls: ptr[PyObject], slot: int) -> ptr[PyObject] {
     return jacpy_binding_state_get(PyType_GetModule(cls), i64(slot));
 }
 
-# Py_TYPE(op)->tp_free(op); Py_DECREF(Py_TYPE(op)) for these GC heap types.
-def free_object(op: ptr[PyObject]) {
+impl free_object(op: ptr[PyObject]) {
     tp = type_object(op);
     PyObject_GC_Del(op);
     jacpy_release(tp);
 }
 
-# ------------------------------------------------------------------ helpers
-
-# _sre.getcodesize() -> int
-def _sre_getcodesize_impl(module: ptr[PyObject]) -> i32 {
+impl _sre_getcodesize_impl(module: ptr[PyObject]) -> i32 {
     return i32(SRE_CODE_SIZE);
 }
 
-# The code point C reads as `(unsigned int)character`.
-def:priv as_code(character: i32) -> u32 {
+impl as_code(character: i32) -> u32 {
     return u32(i64(character) & 0xFFFFFFFF);
 }
 
-# The int C returns for an unsigned int result.
-def:priv as_int(value: u32) -> i32 {
+impl as_int(value: u32) -> i32 {
     wide = i64(value);
     return i32(wide - 4294967296 if wide > 2147483647 else wide);
 }
 
-# _sre.ascii_iscased(character, /) -> bool
-def _sre_ascii_iscased_impl(module: ptr[PyObject], character: i32) -> i32 {
+impl _sre_ascii_iscased_impl(module: ptr[PyObject], character: i32) -> i32 {
     ch = as_code(character);
     return i32(ch < 128 and ascii_is_alpha(ch));
 }
 
-# _sre.unicode_iscased(character, /) -> bool
-def _sre_unicode_iscased_impl(module: ptr[PyObject], character: i32) -> i32 {
+impl _sre_unicode_iscased_impl(module: ptr[PyObject], character: i32) -> i32 {
     ch = as_code(character);
     return i32(ch != sre_lower_unicode(ch) or ch != sre_upper_unicode(ch));
 }
 
-# _sre.ascii_tolower(character, /) -> int
-def _sre_ascii_tolower_impl(module: ptr[PyObject], character: i32) -> i32 {
+impl _sre_ascii_tolower_impl(module: ptr[PyObject], character: i32) -> i32 {
     return as_int(sre_lower_ascii(as_code(character)));
 }
 
-# _sre.unicode_tolower(character, /) -> int
-def _sre_unicode_tolower_impl(module: ptr[PyObject], character: i32) -> i32 {
+impl _sre_unicode_tolower_impl(module: ptr[PyObject], character: i32) -> i32 {
     return as_int(sre_lower_unicode(as_code(character)));
 }
 
-def state_reset(state: ptr[SreState]) {
-    # state->mark will be set to 0 in SRE_OP_MARK dynamically.
+impl state_reset(state: ptr[SreState]) {
     st = state.view(1);
     st[0].lastmark = -1;
     st[0].lastindex = -1;
@@ -202,17 +553,11 @@ def state_reset(state: ptr[SreState]) {
     data_stack_dealloc(state);
 }
 
-# getstring(): the data of `string`, or NULL with the exception set. A str's
-# length and character size are its own; any other object is exported
-# through the buffer protocol into `view` (whose `buf` is then non-NULL),
-# which the caller releases, and its characters are bytes.
-def getstring(string: ptr[PyObject], view: ptr[Py_buffer]) -> ptr {
-    # Unicode objects do not support the buffer API. So, get the data
-    # directly instead.
+impl getstring(string: ptr[PyObject], view: ptr[Py_buffer]) -> ptr {
     if jacpy_is_unicode(string) != 0 {
         return jacpy_unicode_data(string);
     }
-    # get pointer to byte string buffer
+
     if PyObject_GetBuffer(string, view, PyBUF_SIMPLE) != 0 {
         PyErr_Format(
             PyExc_TypeError,
@@ -230,24 +575,21 @@ def getstring(string: ptr[PyObject], view: ptr[Py_buffer]) -> ptr {
     return view.view(1)[0].buf;
 }
 
-# The length in characters of `string` after getstring().
-def string_length(string: ptr[PyObject], view: ptr[Py_buffer]) -> i64 {
+impl string_length(string: ptr[PyObject], view: ptr[Py_buffer]) -> i64 {
     if jacpy_is_unicode(string) != 0 {
         return jacpy_unicode_size(string);
     }
     return view.view(1)[0].length;
 }
 
-# The character size of `string` after getstring().
-def string_charsize(string: ptr[PyObject]) -> i32 {
+impl string_charsize(string: ptr[PyObject]) -> i32 {
     if jacpy_is_unicode(string) != 0 {
         return i32(jacpy_unicode_kind(string));
     }
     return i32(1);
 }
 
-# A zeroed Py_buffer for getstring(); NULL with MemoryError.
-def new_view -> ptr[Py_buffer] {
+impl new_view -> ptr[Py_buffer] {
     view = ptr[Py_buffer](PyMem_Calloc(1, 80));
     if not view {
         PyErr_NoMemory();
@@ -255,17 +597,14 @@ def new_view -> ptr[Py_buffer] {
     return view;
 }
 
-# Release the buffer getstring() exported into `view`, if any, and free it.
-def free_view(view: ptr[Py_buffer]) {
+impl free_view(view: ptr[Py_buffer]) {
     if view.view(1)[0].buf {
         PyBuffer_Release(view);
     }
     PyMem_Free(view);
 }
 
-# A matching state for `pattern`, with its marks in the same allocation;
-# NULL with MemoryError.
-def state_new(pattern: ptr[PyObject]) -> ptr[SreState] {
+impl state_new(pattern: ptr[PyObject]) -> ptr[SreState] {
     groups = pattern_record(pattern).view(1)[0].groups;
     state = ptr[SreState](PyMem_Malloc(u64(SRE_STATE_SIZE + groups * 16)));
     if not state {
@@ -274,10 +613,7 @@ def state_new(pattern: ptr[PyObject]) -> ptr[SreState] {
     return state;
 }
 
-# state_init(): prepare `state` to match `pattern` against string[start:end].
-# The marks live after the state when `inline_marks`, otherwise in their own
-# allocation. `string`, or NULL with the exception set.
-def state_init(
+impl state_init(
     state: ptr[SreState],
     pattern: ptr[PyObject],
     string: ptr[PyObject],
@@ -322,7 +658,7 @@ def state_init(
         state_init_failed(state, inline_marks);
         return NULL;
     }
-    # adjust boundaries
+
     if start < 0 {
         start = 0;
     } elif start > length {
@@ -348,7 +684,7 @@ def state_init(
     return string;
 }
 
-def:priv state_init_failed(state: ptr[SreState], inline_marks: bool) {
+impl state_init_failed(state: ptr[SreState], inline_marks: bool) {
     st = state.view(1);
     if not inline_marks {
         PyMem_Free(st[0].mark);
@@ -360,8 +696,7 @@ def:priv state_init_failed(state: ptr[SreState], inline_marks: bool) {
     }
 }
 
-# state_fini(): release what state_init() and the matcher acquired.
-def state_fini(state: ptr[SreState], inline_marks: bool) {
+impl state_fini(state: ptr[SreState], inline_marks: bool) {
     st = state.view(1);
     view = ptr[Py_buffer](ptr[u8](state) + STATE_BUFFER);
     if view.view(1)[0].buf {
@@ -373,19 +708,16 @@ def state_fini(state: ptr[SreState], inline_marks: bool) {
         PyMem_Free(st[0].mark);
     }
     st[0].mark = ptr[ptr]();
-    # SRE_REPEAT pool
+
     repeat_pool_clear(state);
 }
 
-# STATE_OFFSET: the offset of `member` from the start of the string, in
-# characters.
-def state_offset(state: ptr[SreState], member: ptr) -> i64 {
+impl state_offset(state: ptr[SreState], member: ptr) -> i64 {
     st = state.view(1);
     return (ptr[u8](member) - ptr[u8](st[0].beginning)) // i64(st[0].charsize);
 }
 
-# getslice(): string[start:end], the object itself for a whole bytes.
-def getslice(
+impl getslice(
     isbytes: i32, data: ptr, string: ptr[PyObject], start: i64, end: i64
 ) -> ptr[PyObject] {
     if isbytes != 0 {
@@ -399,9 +731,7 @@ def getslice(
     return PyUnicode_Substring(string, start, end);
 }
 
-# state_getslice(): group `index` of the state's match; an empty slice
-# instead of None for an unmatched group when `empty`.
-def state_getslice(
+impl state_getslice(
     state: ptr[SreState], index: i64, string: ptr[PyObject], empty: bool
 ) -> ptr[PyObject] {
     st = state.view(1);
@@ -418,7 +748,6 @@ def state_getslice(
     } else {
         i = state_offset(state, (st[0].mark + index).view(1)[0]);
         j = state_offset(state, (st[0].mark + (index + 1)).view(1)[0]);
-        # check wrong span
         if i > j {
             PyErr_SetString(
                 PyExc_SystemError,
@@ -430,25 +759,21 @@ def state_getslice(
     return getslice(st[0].isbytes, st[0].beginning, string, i, j);
 }
 
-def pattern_error(status: i64) {
+impl pattern_error(status: i64) {
     if status == SRE_ERROR_RECURSION_LIMIT {
-        # This error code seems to be unused.
         PyErr_SetString(PyExc_RecursionError, "maximum recursion limit exceeded");
     } elif status == SRE_ERROR_MEMORY {
         PyErr_NoMemory();
     } elif status == SRE_ERROR_INTERRUPTED {
-        # An exception has already been raised, so let it fly
         return;
     } else {
-        # other error codes indicate compiler/engine bugs
         PyErr_SetString(
             PyExc_RuntimeError, "internal error in regular expression engine"
         );
     }
 }
 
-# sre_match() and sre_search(): the matcher for the state's character size.
-def sre_match(state: ptr[SreState], pattern: ptr[u32]) -> i64 {
+impl sre_match(state: ptr[SreState], pattern: ptr[u32]) -> i64 {
     charsize = state.view(1)[0].charsize;
     if charsize == 1 {
         return ucs1_match(state, pattern, i32(1));
@@ -459,7 +784,7 @@ def sre_match(state: ptr[SreState], pattern: ptr[u32]) -> i64 {
     return ucs4_match(state, pattern, i32(1));
 }
 
-def sre_search(state: ptr[SreState], pattern: ptr[u32]) -> i64 {
+impl sre_search(state: ptr[SreState], pattern: ptr[u32]) -> i64 {
     charsize = state.view(1)[0].charsize;
     if charsize == 1 {
         return ucs1_search(state, pattern);
@@ -470,9 +795,7 @@ def sre_search(state: ptr[SreState], pattern: ptr[u32]) -> i64 {
     return ucs4_search(state, pattern);
 }
 
-# ------------------------------------------------------------------ Pattern
-
-def pattern_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl pattern_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     p = pattern_record(op).view(1);
     result = visit_one(type_object(op), visitor, context);
     if result == 0 {
@@ -487,7 +810,7 @@ def pattern_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return result;
 }
 
-def pattern_clear(op: ptr[PyObject]) -> i32 {
+impl pattern_clear(op: ptr[PyObject]) -> i32 {
     p = pattern_record(op).view(1);
     groupindex = p[0].groupindex;
     p[0].groupindex = NULL;
@@ -501,7 +824,7 @@ def pattern_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def pattern_dealloc(op: ptr[PyObject]) {
+impl pattern_dealloc(op: ptr[PyObject]) {
     PyObject_GC_UnTrack(op);
     if pattern_record(op).view(1)[0].weakreflist {
         PyObject_ClearWeakRefs(op);
@@ -510,9 +833,7 @@ def pattern_dealloc(op: ptr[PyObject]) {
     free_object(op);
 }
 
-# Run `matcher` (match, fullmatch or search) over string[pos:endpos] and
-# build its Match object.
-def:priv pattern_run(
+impl pattern_run(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     string: ptr[PyObject],
@@ -549,8 +870,7 @@ def:priv pattern_run(
     return match_object;
 }
 
-# _sre.SRE_Pattern.match(cls, /, string, pos=0, endpos=sys.maxsize)
-def _sre_SRE_Pattern_match_impl(
+impl _sre_SRE_Pattern_match_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     string: ptr[PyObject],
@@ -560,8 +880,7 @@ def _sre_SRE_Pattern_match_impl(
     return pattern_run(self, cls, string, pos, endpos, 0);
 }
 
-# _sre.SRE_Pattern.fullmatch(cls, /, string, pos=0, endpos=sys.maxsize)
-def _sre_SRE_Pattern_fullmatch_impl(
+impl _sre_SRE_Pattern_fullmatch_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     string: ptr[PyObject],
@@ -571,8 +890,7 @@ def _sre_SRE_Pattern_fullmatch_impl(
     return pattern_run(self, cls, string, pos, endpos, 1);
 }
 
-# _sre.SRE_Pattern.search(cls, /, string, pos=0, endpos=sys.maxsize)
-def _sre_SRE_Pattern_search_impl(
+impl _sre_SRE_Pattern_search_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     string: ptr[PyObject],
@@ -582,8 +900,7 @@ def _sre_SRE_Pattern_search_impl(
     return pattern_run(self, cls, string, pos, endpos, 2);
 }
 
-# _sre.SRE_Pattern.findall(string, pos=0, endpos=sys.maxsize)
-def _sre_SRE_Pattern_findall_impl(
+impl _sre_SRE_Pattern_findall_impl(
     self: ptr[PyObject], string: ptr[PyObject], pos: i64, endpos: i64
 ) -> ptr[PyObject] {
     state = state_new(self);
@@ -604,7 +921,7 @@ def _sre_SRE_Pattern_findall_impl(
     return result;
 }
 
-def:priv findall_into(
+impl findall_into(
     self: ptr[PyObject],
     state: ptr[SreState],
     string: ptr[PyObject],
@@ -626,7 +943,7 @@ def:priv findall_into(
             pattern_error(status);
             return False;
         }
-        # don't bother to build a match object
+
         item = NULL;
         if groups == 0 {
             b = state_offset(state, st[0].start);
@@ -665,8 +982,7 @@ def:priv findall_into(
     return True;
 }
 
-# _sre.SRE_Pattern.finditer(cls, /, string, pos=0, endpos=sys.maxsize)
-def _sre_SRE_Pattern_finditer_impl(
+impl _sre_SRE_Pattern_finditer_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     string: ptr[PyObject],
@@ -679,7 +995,7 @@ def _sre_SRE_Pattern_finditer_impl(
     if not scanner {
         return NULL;
     }
-    search = PyObject_GetAttrString(scanner, "search");
+    search = PyObject_GetAttrString(scanner, ptr[u8]("search"));
     jacpy_release(scanner);
     if not search {
         return NULL;
@@ -689,8 +1005,7 @@ def _sre_SRE_Pattern_finditer_impl(
     return iterator;
 }
 
-# _sre.SRE_Pattern.scanner(cls, /, string, pos=0, endpos=sys.maxsize)
-def _sre_SRE_Pattern_scanner_impl(
+impl _sre_SRE_Pattern_scanner_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     string: ptr[PyObject],
@@ -702,8 +1017,7 @@ def _sre_SRE_Pattern_scanner_impl(
     );
 }
 
-# _sre.SRE_Pattern.split(string, maxsplit=0)
-def _sre_SRE_Pattern_split_impl(
+impl _sre_SRE_Pattern_split_impl(
     self: ptr[PyObject], string: ptr[PyObject], maxsplit: i64
 ) -> ptr[PyObject] {
     state = state_new(self);
@@ -724,7 +1038,7 @@ def _sre_SRE_Pattern_split_impl(
     return result;
 }
 
-def:priv split_into(
+impl split_into(
     self: ptr[PyObject],
     state: ptr[SreState],
     string: ptr[PyObject],
@@ -749,7 +1063,7 @@ def:priv split_into(
             pattern_error(status);
             return False;
         }
-        # get segment before this match
+
         item = getslice(
             st[0].isbytes,
             st[0].beginning,
@@ -760,7 +1074,7 @@ def:priv split_into(
         if not append_owned(list, item) {
             return False;
         }
-        # add groups (if any)
+
         for i in range(groups) {
             item = state_getslice(state, i + 1, string, False);
             if not append_owned(list, item) {
@@ -772,16 +1086,14 @@ def:priv split_into(
         st[0].start = st[0].position;
         last = st[0].start;
     }
-    # get segment following last match (even if empty)
+
     item = getslice(
         st[0].isbytes, st[0].beginning, string, state_offset(state, last), st[0].endpos
     );
     return append_owned(list, item);
 }
 
-# PyList_Append of a new reference, which it releases; False on failure
-# (also when `item` is NULL).
-def:priv append_owned(list: ptr[PyObject], item: ptr[PyObject]) -> bool {
+impl append_owned(list: ptr[PyObject], item: ptr[PyObject]) -> bool {
     if not item {
         return False;
     }
@@ -790,9 +1102,7 @@ def:priv append_owned(list: ptr[PyObject], item: ptr[PyObject]) -> bool {
     return status >= 0;
 }
 
-# compile_template(): delegate compiling the replacement `template` to
-# re._compile_template, imported once.
-def compile_template(
+impl compile_template(
     module: ptr[PyObject], pattern: ptr[PyObject], template: ptr[PyObject]
 ) -> ptr[PyObject] {
     func = jacpy_binding_state_get(module, i64(STATE_COMPILE_TEMPLATE));
@@ -801,15 +1111,13 @@ def compile_template(
         if not imported {
             return NULL;
         }
-        # the state keeps it
+
         set_module_slot(module, STATE_COMPILE_TEMPLATE, imported);
         jacpy_release(imported);
         func = imported;
     }
     result = call_template_compiler(func, pattern, template);
     if not result and PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
-        # If the replacement string is unhashable (e.g. bytearray), convert
-        # it to the basic type (str or bytes) and repeat.
         if jacpy_is_unicode(template) != 0 and not is_exact_unicode(template) {
             PyErr_Clear();
             template = _PyUnicode_Copy(template);
@@ -839,14 +1147,7 @@ def compile_template(
     return result;
 }
 
-import from c {
-    obj TemplateArguments {
-        has pattern: ptr[PyObject],
-            template: ptr[PyObject];
-    }
-}
-
-def:priv call_template_compiler(
+impl call_template_compiler(
     func: ptr[PyObject], pattern: ptr[PyObject], template: ptr[PyObject]
 ) -> ptr[PyObject] {
     arguments = ptr[TemplateArguments](PyMem_Malloc(16));
@@ -861,17 +1162,15 @@ def:priv call_template_compiler(
     return result;
 }
 
-def:priv is_exact_unicode(value: ptr[PyObject]) -> bool {
+impl is_exact_unicode(value: ptr[PyObject]) -> bool {
     return object_type(value) == object_type(PyUnicode_New(0, 0));
 }
 
-def:priv set_module_slot(module: ptr[PyObject], slot: int, value: ptr[PyObject]) {
+impl set_module_slot(module: ptr[PyObject], slot: int, value: ptr[PyObject]) {
     jacpy_binding_state_set(module, i64(slot), value);
 }
 
-# pattern_subx(): sub() and subn() over `ptemplate` (a replacement string,
-# template or callable).
-def pattern_subx(
+impl pattern_subx(
     module: ptr[PyObject],
     self: ptr[PyObject],
     ptemplate: ptr[PyObject],
@@ -879,15 +1178,12 @@ def pattern_subx(
     count: i64,
     subn: bool
 ) -> ptr[PyObject] {
-    # 0: LITERAL, 1: TEMPLATE, 2: CALLABLE
     filter_type = 0;
     filter = NULL;
     if PyCallable_Check(ptemplate) != 0 {
-        # sub/subn takes either a function or a template
         filter = Py_NewRef(ptemplate);
         filter_type = 2;
     } else {
-        # if not callable, check if it's a literal string
         literal = False;
         view = new_view();
         if not view {
@@ -908,7 +1204,6 @@ def pattern_subx(
         if literal {
             filter = Py_NewRef(ptemplate);
         } else {
-            # not a literal; hand it over to the template compiler
             filter = compile_template(module, self, ptemplate);
             if not filter {
                 return NULL;
@@ -939,7 +1234,7 @@ def pattern_subx(
     return result;
 }
 
-def:priv subx_run(
+impl subx_run(
     module: ptr[PyObject],
     self: ptr[PyObject],
     state: ptr[SreState],
@@ -976,7 +1271,6 @@ def:priv subx_run(
         b = state_offset(state, st[0].start);
         e = state_offset(state, st[0].position);
         if i < b {
-            # get segment before this match
             if not append_owned(
                 list, getslice(st[0].isbytes, st[0].beginning, string, i, b)
             ) {
@@ -986,7 +1280,6 @@ def:priv subx_run(
         }
         item = NULL;
         if filter_type != 0 {
-            # pass match object through filter
             match_object = pattern_new_match(match_type, self, state, 1);
             if not match_object {
                 jacpy_release(list);
@@ -1003,10 +1296,9 @@ def:priv subx_run(
                 return NULL;
             }
         } else {
-            # filter is literal string
             item = Py_NewRef(filter);
         }
-        # add to list
+
         if item != Py_None {
             if not append_owned(list, item) {
                 jacpy_release(list);
@@ -1020,7 +1312,7 @@ def:priv subx_run(
         st[0].must_advance = i32(st[0].position == st[0].start);
         st[0].start = st[0].position;
     }
-    # get segment following last match
+
     if i < st[0].endpos {
         if not append_owned(
             list, getslice(st[0].isbytes, st[0].beginning, string, i, st[0].endpos)
@@ -1029,7 +1321,7 @@ def:priv subx_run(
             return NULL;
         }
     }
-    # convert list to single string (also removes list)
+
     joiner = getslice(st[0].isbytes, st[0].beginning, string, 0, 0);
     if not joiner {
         jacpy_release(list);
@@ -1069,14 +1361,7 @@ def:priv subx_run(
     return result;
 }
 
-import from c {
-    obj OneArgument {
-        has value: ptr[PyObject];
-    }
-}
-
-# PyObject_CallOneArg(callable, value)
-def call_one(callable: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+impl call_one(callable: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     arguments = ptr[OneArgument](PyMem_Malloc(8));
     if not arguments {
         PyErr_NoMemory();
@@ -1088,8 +1373,7 @@ def call_one(callable: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# _sre.SRE_Pattern.sub(cls, /, repl, string, count=0)
-def _sre_SRE_Pattern_sub_impl(
+impl _sre_SRE_Pattern_sub_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     repl: ptr[PyObject],
@@ -1099,8 +1383,7 @@ def _sre_SRE_Pattern_sub_impl(
     return pattern_subx(PyType_GetModule(cls), self, repl, string, count, False);
 }
 
-# _sre.SRE_Pattern.subn(cls, /, repl, string, count=0)
-def _sre_SRE_Pattern_subn_impl(
+impl _sre_SRE_Pattern_subn_impl(
     self: ptr[PyObject],
     cls: ptr[PyObject],
     repl: ptr[PyObject],
@@ -1110,31 +1393,20 @@ def _sre_SRE_Pattern_subn_impl(
     return pattern_subx(PyType_GetModule(cls), self, repl, string, count, True);
 }
 
-def _sre_SRE_Pattern___copy___impl(self: ptr[PyObject]) -> ptr[PyObject] {
+impl _sre_SRE_Pattern___copy___impl(self: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-def _sre_SRE_Pattern___deepcopy___impl(
+impl _sre_SRE_Pattern___deepcopy___impl(
     self: ptr[PyObject], memo: ptr[PyObject]
 ) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-glob:priv FLAG_NAMES: list[tuple[str, int]] = [
-         ("re.IGNORECASE", SRE_FLAG_IGNORECASE),
-         ("re.LOCALE", SRE_FLAG_LOCALE),
-         ("re.MULTILINE", SRE_FLAG_MULTILINE),
-         ("re.DOTALL", SRE_FLAG_DOTALL),
-         ("re.UNICODE", SRE_FLAG_UNICODE),
-         ("re.VERBOSE", SRE_FLAG_VERBOSE),
-         ("re.DEBUG", SRE_FLAG_DEBUG),
-         ("re.ASCII", SRE_FLAG_ASCII)
-     ];
-
-def pattern_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl pattern_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     p = pattern_record(self).view(1);
     flags = int(p[0].flags);
-    # Omit re.UNICODE for valid string patterns.
+
     if p[0].isbytes == 0
         and (flags & (SRE_FLAG_LOCALE | SRE_FLAG_UNICODE | SRE_FLAG_ASCII))
             == SRE_FLAG_UNICODE {
@@ -1148,7 +1420,7 @@ def pattern_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     failed = False;
     for (name, value) in FLAG_NAMES {
         if (flags & value) != 0 {
-            if not append_owned(flag_items, PyUnicode_FromString(name)) {
+            if not append_owned(flag_items, jacpy_unicode_from_text(name)) {
                 failed = True;
                 break;
             }
@@ -1160,7 +1432,7 @@ def pattern_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     }
     if not failed {
         if PyList_Size(flag_items) > 0 {
-            sep = PyUnicode_FromString("|");
+            sep = PyUnicode_FromString(ptr[u8]("|"));
             if sep {
                 flags_result = PyUnicode_Join(sep, flag_items);
                 jacpy_release(sep);
@@ -1179,8 +1451,7 @@ def pattern_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# PatternObject's 'groupindex' getter.
-def pattern_groupindex(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl pattern_groupindex(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     groupindex = pattern_record(op).view(1)[0].groupindex;
     if not groupindex {
         return PyDict_New();
@@ -1188,7 +1459,7 @@ def pattern_groupindex(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyDictProxy_New(groupindex);
 }
 
-def pattern_hash(op: ptr[PyObject]) -> i64 {
+impl pattern_hash(op: ptr[PyObject]) -> i64 {
     p = pattern_record(op).view(1);
     hash = PyObject_Hash(p[0].pattern);
     if hash == -1 {
@@ -1205,7 +1476,7 @@ def pattern_hash(op: ptr[PyObject]) -> i64 {
     return hash;
 }
 
-def pattern_richcompare(
+impl pattern_richcompare(
     lefto: ptr[PyObject], righto: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if op != Py_EQ and op != Py_NE {
@@ -1216,7 +1487,6 @@ def pattern_richcompare(
         return Py_NewRef(Py_NotImplemented);
     }
     if lefto == righto {
-        # a pattern is equal to itself
         return PyBool_FromLong(i64(op == Py_EQ));
     }
     left = pattern_record(lefto).view(1);
@@ -1225,10 +1495,6 @@ def pattern_richcompare(
         and left[0].isbytes == right[0].isbytes
         and left[0].codesize == right[0].codesize;
     if cmp {
-        # Compare the code and the pattern because the same pattern can
-        # produce different codes depending on the locale used to compile
-        # the pattern when the re.LOCALE flag is used. Don't compare groups,
-        # indexgroup nor groupindex: they are derivated from the pattern.
         cmp = memcmp(
             pattern_code(lefto),
             pattern_code(righto),
@@ -1249,8 +1515,7 @@ def pattern_richcompare(
     return PyBool_FromLong(i64(cmp));
 }
 
-# _sre.compile(pattern, flags, code, groups, groupindex, indexgroup)
-def _sre_compile_impl(
+impl _sre_compile_impl(
     module: ptr[PyObject],
     pattern: ptr[PyObject],
     flags: i32,
@@ -1259,7 +1524,6 @@ def _sre_compile_impl(
     groupindex: ptr[PyObject],
     indexgroup: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # "compile" pattern descriptor to pattern object
     pattern_type = jacpy_binding_state_get(module, i64(STATE_PATTERN_TYPE));
     n = PyList_Size(code);
     self = _PyObject_GC_NewVar(pattern_type, n);
@@ -1325,13 +1589,9 @@ def _sre_compile_impl(
     return self;
 }
 
-# _sre.template(pattern, template, /)
-def _sre_template_impl(
+impl _sre_template_impl(
     module: ptr[PyObject], pattern: ptr[PyObject], template: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # template is a list containing interleaved literal strings (str or
-    # bytes) and group indices (int), as returned by
-    # _parser.parse_template: [literal1, group1, literal2, ..., literalN].
     template_type = jacpy_binding_state_get(module, i64(STATE_TEMPLATE_TYPE));
     n = PyList_Size(template);
     if (n & 1) == 0 or n < 1 {
@@ -1363,7 +1623,7 @@ def _sre_template_impl(
         item = (items + i).view(1);
         item[0].index = index;
         literal = PyList_GetItem(template, 2 * i + 2);
-        # Skip empty literals.
+
         if (jacpy_is_unicode(literal) != 0 and jacpy_unicode_size(literal) == 0)
             or (jacpy_is_bytes(literal) != 0 and object_size(literal) == 0) {
             literal = NULL;
@@ -1375,56 +1635,38 @@ def _sre_template_impl(
     return self;
 }
 
-# ------------------------------------------------------------ validation
-
-# The code validator (_validate): the code that re's compiler generates is
-# position-independent, all jumps are relative jumps forward, and jumps don't
-# cross each other. These check the code array for conformance with the code
-# patterns Lib/re/_compiler.py generates. A failure is -1.
-
-obj:priv CodeCursor {
-    has code: ptr[u32],
-        end: ptr[u32],
-        op: u32 = 0,
-        arg: u32 = 0,
-        skip_count: u32 = 0;
-
-    # GET_OP
-    def get_op -> bool {
-        if self.code >= self.end {
-            return False;
-        }
-        self.op = self.code.view(1)[0];
-        self.code += 1;
-        return True;
+impl CodeCursor.get_op -> bool {
+    if self.code >= self.end {
+        return False;
     }
-
-    # GET_ARG
-    def get_arg -> bool {
-        if self.code >= self.end {
-            return False;
-        }
-        self.arg = self.code.view(1)[0];
-        self.code += 1;
-        return True;
-    }
-
-    # GET_SKIP_ADJ(adj)
-    def get_skip(adj: int = 0) -> bool {
-        if self.code >= self.end {
-            return False;
-        }
-        self.skip_count = self.code.view(1)[0];
-        # skip_count - adj as the C's unsigned SRE_CODE arithmetic computes it
-        if ((i64(self.skip_count) - adj) & 0xFFFFFFFF) > self.end - self.code {
-            return False;
-        }
-        self.code += 1;
-        return True;
-    }
+    self.op = self.code.view(1)[0];
+    self.code += 1;
+    return True;
 }
 
-def:priv validate_charset(code: ptr[u32], end: ptr[u32]) -> int {
+impl CodeCursor.get_arg -> bool {
+    if self.code >= self.end {
+        return False;
+    }
+    self.arg = self.code.view(1)[0];
+    self.code += 1;
+    return True;
+}
+
+impl CodeCursor.get_skip(adj: int = 0) -> bool {
+    if self.code >= self.end {
+        return False;
+    }
+    self.skip_count = self.code.view(1)[0];
+
+    if ((i64(self.skip_count) - adj) & 0xFFFFFFFF) > self.end - self.code {
+        return False;
+    }
+    self.code += 1;
+    return True;
+}
+
+impl validate_charset(code: ptr[u32], end: ptr[u32]) -> int {
     cursor = CodeCursor(code=code, end=end);
     while cursor.code < cursor.end {
         if not cursor.get_op() {
@@ -1442,21 +1684,17 @@ def:priv validate_charset(code: ptr[u32], end: ptr[u32]) -> int {
                 return -1;
             }
         } elif op == SRE_OP_CHARSET {
-            # 256-bit bitmap
             if 8 > cursor.end - cursor.code {
                 return -1;
             }
             cursor.code += 8;
         } elif op == SRE_OP_BIGCHARSET {
-            # Number of blocks
             if not cursor.get_arg() {
                 return -1;
             }
-            # 256-byte table
             if 64 > cursor.end - cursor.code {
                 return -1;
             }
-            # Make sure that each byte points to a valid block
             table = ptr[u8](cursor.code);
             for i in range(256) {
                 if u32((table + i).view(1)[0]) >= cursor.arg {
@@ -1464,7 +1702,6 @@ def:priv validate_charset(code: ptr[u32], end: ptr[u32]) -> int {
                 }
             }
             cursor.code += 64;
-            # 256-bit bitmap times arg
             offset = i64(cursor.arg) * 8;
             if offset > cursor.end - cursor.code {
                 return -1;
@@ -1484,8 +1721,7 @@ def:priv validate_charset(code: ptr[u32], end: ptr[u32]) -> int {
     return 0;
 }
 
-# Returns 0 on success, -1 on failure, and 1 if the last op is JUMP.
-def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
+impl validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
     if code > end {
         return -1;
     }
@@ -1496,9 +1732,6 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
         }
         op = int(cursor.op);
         if op == SRE_OP_MARK {
-            # We don't check whether marks are properly nested; the
-            # sre_match() code is robust even if they don't, and the worst
-            # you can get is nonsensical match results.
             if not cursor.get_arg() or i64(cursor.arg) >= 2 * groups {
                 return -1;
             }
@@ -1510,19 +1743,16 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
             or op == SRE_OP_NOT_LITERAL_UNI_IGNORE
             or op == SRE_OP_LITERAL_LOC_IGNORE
             or op == SRE_OP_NOT_LITERAL_LOC_IGNORE {
-            # The arg is just a character, nothing to check
             if not cursor.get_arg() {
                 return -1;
             }
         } elif op == SRE_OP_SUCCESS or op == SRE_OP_FAILURE {
-            # Nothing to check; these normally end the matching process
             continue;
         } elif op == SRE_OP_AT {
             if not cursor.get_arg() or cursor.arg > 11 {
                 return -1;
             }
         } elif op == SRE_OP_ANY or op == SRE_OP_ANY_ALL {
-            # These have no operands
             continue;
         } elif op == SRE_OP_IN
             or op == SRE_OP_IN_IGNORE
@@ -1531,7 +1761,6 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
             if not cursor.get_skip() {
                 return -1;
             }
-            # Stop 1 before the end; we check the FAILURE below
             skip_count = int(cursor.skip_count);
             if validate_charset(cursor.code, cursor.code + (skip_count - 2)) != 0 {
                 return -1;
@@ -1627,9 +1856,6 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
                 return -1;
             }
         } elif op == SRE_OP_GROUPREF_EXISTS {
-            # The regex syntax for this is: '(?(group)then|else)', where
-            # 'group' is either an integer group number or a group name,
-            # 'then' and 'else' are sub-regexes, and 'else' is optional.
             if not cursor.get_arg() or i64(cursor.arg) >= groups {
                 return -1;
             }
@@ -1637,17 +1863,11 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
                 return -1;
             }
             skip_count = int(cursor.skip_count);
-            # The skip_count is relative to the first arg!
             cursor.code -= 1;
-            # If there is both a 'then' part and an 'else' part, the 'then'
-            # part ends with a JUMP to after the 'else' part; there is no
-            # direct way to decide which it is, so look for a JUMP opcode
-            # preceding our skip_count target.
             rc = validate_inner(
                 cursor.code + 1, cursor.code + (skip_count - 1), groups
             );
             if rc == 1 {
-                # Position after JUMP, at <skipno>
                 cursor.code += skip_count - 2;
                 if not cursor.get_skip() {
                     return -1;
@@ -1666,13 +1886,10 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
                 return -1;
             }
             skip_count = int(cursor.skip_count);
-            # 0 for lookahead, width for lookbehind
             if not cursor.get_arg() {
                 return -1;
             }
-            # Back up over arg to simplify math below
             cursor.code -= 1;
-            # Stop 1 before the end; we check the SUCCESS below
             if validate_inner(cursor.code + 1, cursor.code + (skip_count - 2), groups)
                 != 0 {
                 return -1;
@@ -1693,15 +1910,11 @@ def:priv validate_inner(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
     return 0;
 }
 
-# `count > (uintptr_t)distance`: a negative distance is a huge unsigned one.
-def:priv exceeds(count: i64, distance: i64) -> bool {
+impl exceeds(count: i64, distance: i64) -> bool {
     return distance >= 0 and count > distance;
 }
 
-# An INFO block. A minimal info field is
-# <INFO> <1=skip_count> <2=flags> <3=min> <4=max>; if SRE_INFO_PREFIX or
-# SRE_INFO_CHARSET is in the flags, more follows.
-def:priv validate_info(cursor: CodeCursor) -> int {
+impl validate_info(cursor: CodeCursor) -> int {
     if not cursor.get_skip() {
         return -1;
     }
@@ -1713,19 +1926,19 @@ def:priv validate_info(cursor: CodeCursor) -> int {
     if not cursor.get_arg() or not cursor.get_arg() {
         return -1;
     }
-    # Check that only valid flags are present
+
     if (flags & ~(SRE_INFO_PREFIX | SRE_INFO_LITERAL | SRE_INFO_CHARSET)) != 0 {
         return -1;
     }
-    # PREFIX and CHARSET are mutually exclusive
+
     if (flags & SRE_INFO_PREFIX) != 0 and (flags & SRE_INFO_CHARSET) != 0 {
         return -1;
     }
-    # LITERAL implies PREFIX
+
     if (flags & SRE_INFO_LITERAL) != 0 and (flags & SRE_INFO_PREFIX) == 0 {
         return -1;
     }
-    # Validate the prefix
+
     if (flags & SRE_INFO_PREFIX) != 0 {
         if not cursor.get_arg() {
             return -1;
@@ -1734,16 +1947,16 @@ def:priv validate_info(cursor: CodeCursor) -> int {
         if not cursor.get_arg() {
             return -1;
         }
-        # Here comes the prefix string
+
         if exceeds(prefix_len, newcode - cursor.code) {
             return -1;
         }
         cursor.code += prefix_len;
-        # And here comes the overlap table
+
         if exceeds(prefix_len, newcode - cursor.code) {
             return -1;
         }
-        # Each overlap value should be < prefix_len
+
         for i in range(prefix_len) {
             if i64((cursor.code + i).view(1)[0]) >= prefix_len {
                 return -1;
@@ -1751,7 +1964,7 @@ def:priv validate_info(cursor: CodeCursor) -> int {
         }
         cursor.code += prefix_len;
     }
-    # Validate the charset
+
     if (flags & SRE_INFO_CHARSET) != 0 {
         if validate_charset(cursor.code, newcode - 1) != 0 {
             return -1;
@@ -1766,8 +1979,7 @@ def:priv validate_info(cursor: CodeCursor) -> int {
     return 0;
 }
 
-# A BRANCH: each alternative ends with a JUMP to the same target.
-def:priv validate_branch(cursor: CodeCursor, groups: i64) -> int {
+impl validate_branch(cursor: CodeCursor, groups: i64) -> int {
     target = ptr[u32]();
     while True {
         if not cursor.get_skip() {
@@ -1777,13 +1989,12 @@ def:priv validate_branch(cursor: CodeCursor, groups: i64) -> int {
         if skip_count == 0 {
             break;
         }
-        # Stop 2 before the end; we check the JUMP below
+
         if validate_inner(cursor.code, cursor.code + (skip_count - 3), groups) != 0 {
             return -1;
         }
         cursor.code += skip_count - 3;
-        # Check that it ends with a JUMP, and that each JUMP has the same
-        # target
+
         if not cursor.get_op() or cursor.op != u32(SRE_OP_JUMP) {
             return -1;
         }
@@ -1803,7 +2014,7 @@ def:priv validate_branch(cursor: CodeCursor, groups: i64) -> int {
     return 0;
 }
 
-def:priv validate_outer(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
+impl validate_outer(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
     if groups < 0
         or groups > SRE_MAXGROUPS
         or code >= end
@@ -1813,7 +2024,7 @@ def:priv validate_outer(code: ptr[u32], end: ptr[u32], groups: i64) -> int {
     return validate_inner(code, end - 1, groups);
 }
 
-def validate(self: ptr[PyObject]) -> bool {
+impl validate(self: ptr[PyObject]) -> bool {
     p = pattern_record(self).view(1);
     code = pattern_code(self);
     if validate_outer(code, code + p[0].codesize, p[0].groups) != 0 {
@@ -1823,9 +2034,7 @@ def validate(self: ptr[PyObject]) -> bool {
     return True;
 }
 
-# ------------------------------------------------------------------ Match
-
-def match_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl match_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     m = match_record(op).view(1);
     result = visit_one(type_object(op), visitor, context);
     if result == 0 {
@@ -1840,7 +2049,7 @@ def match_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return result;
 }
 
-def match_clear(op: ptr[PyObject]) -> i32 {
+impl match_clear(op: ptr[PyObject]) -> i32 {
     m = match_record(op).view(1);
     string = m[0].string;
     m[0].string = NULL;
@@ -1854,15 +2063,13 @@ def match_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def match_dealloc(op: ptr[PyObject]) {
+impl match_dealloc(op: ptr[PyObject]) {
     PyObject_GC_UnTrack(op);
     match_clear(op);
     free_object(op);
 }
 
-# match_getslice_by_index(): group `index` of the match, `default` (a new
-# reference) when it or the string is undefined.
-def match_getslice_by_index(
+impl match_getslice_by_index(
     self: ptr[PyObject], index: i64, default_value: ptr[PyObject]
 ) -> ptr[PyObject] {
     m = match_record(self).view(1);
@@ -1871,7 +2078,6 @@ def match_getslice_by_index(
     string = m[0].string;
     i = (marks + index).view(1)[0];
     if string == Py_None or i < 0 {
-        # return default value if the string or group is undefined
         return Py_NewRef(default_value);
     }
     j = (marks + (index + 1)).view(1)[0];
@@ -1898,11 +2104,8 @@ def match_getslice_by_index(
     return result;
 }
 
-# match_getindex(): the group number `index` (an int or a group name)
-# names; -1 with IndexError when there is no such group.
-def match_getindex(self: ptr[PyObject], index: ptr[PyObject]) -> i64 {
+impl match_getindex(self: ptr[PyObject], index: ptr[PyObject]) -> i64 {
     if not index {
-        # Default value
         return 0;
     }
     m = match_record(self).view(1);
@@ -1919,7 +2122,6 @@ def match_getindex(self: ptr[PyObject], index: ptr[PyObject]) -> i64 {
         }
     }
     if i < 0 or i >= m[0].groups {
-        # raise IndexError if we were given a bad group number
         if not PyErr_Occurred() {
             PyErr_SetString(PyExc_IndexError, "no such group");
         }
@@ -1928,7 +2130,7 @@ def match_getindex(self: ptr[PyObject], index: ptr[PyObject]) -> i64 {
     return i;
 }
 
-def match_getslice(
+impl match_getslice(
     self: ptr[PyObject], index: ptr[PyObject], default_value: ptr[PyObject]
 ) -> ptr[PyObject] {
     i = match_getindex(self, index);
@@ -1938,8 +2140,7 @@ def match_getslice(
     return match_getslice_by_index(self, i, default_value);
 }
 
-# _sre.SRE_Match.expand(template)
-def _sre_SRE_Match_expand_impl(
+impl _sre_SRE_Match_expand_impl(
     self: ptr[PyObject], template: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = PyType_GetModule(type_object(self));
@@ -1952,8 +2153,7 @@ def _sre_SRE_Match_expand_impl(
     return result;
 }
 
-# group([group1, ...]): the subgroup(s) of the match by indices or names.
-def match_group(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl match_group(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     size = PyTuple_Size(args);
     if size == 0 {
         return match_getslice_by_index(self, 0, Py_None);
@@ -1961,7 +2161,7 @@ def match_group(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if size == 1 {
         return match_getslice(self, tuple_get_item(args, 0), Py_None);
     }
-    # fetch multiple items
+
     result = PyTuple_New(size);
     if not result {
         return NULL;
@@ -1977,12 +2177,11 @@ def match_group(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def match_getitem(self: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
+impl match_getitem(self: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     return match_getslice(self, name, Py_None);
 }
 
-# _sre.SRE_Match.groups(default=None)
-def _sre_SRE_Match_groups_impl(
+impl _sre_SRE_Match_groups_impl(
     self: ptr[PyObject], default_value: ptr[PyObject]
 ) -> ptr[PyObject] {
     groups = match_record(self).view(1)[0].groups;
@@ -2001,8 +2200,7 @@ def _sre_SRE_Match_groups_impl(
     return result;
 }
 
-# _sre.SRE_Match.groupdict(default=None)
-def _sre_SRE_Match_groupdict_impl(
+impl _sre_SRE_Match_groupdict_impl(
     self: ptr[PyObject], default_value: ptr[PyObject]
 ) -> ptr[PyObject] {
     result = PyDict_New();
@@ -2034,27 +2232,25 @@ def _sre_SRE_Match_groupdict_impl(
     return result;
 }
 
-# _sre.SRE_Match.start(group=0, /) -> Py_ssize_t
-def _sre_SRE_Match_start_impl(self: ptr[PyObject], group: ptr[PyObject]) -> i64 {
+impl _sre_SRE_Match_start_impl(self: ptr[PyObject], group: ptr[PyObject]) -> i64 {
     index = match_getindex(self, group);
     if index < 0 {
         return -1;
     }
-    # mark is -1 if group is undefined
+
     return (match_marks(self) + index * 2).view(1)[0];
 }
 
-# _sre.SRE_Match.end(group=0, /) -> Py_ssize_t
-def _sre_SRE_Match_end_impl(self: ptr[PyObject], group: ptr[PyObject]) -> i64 {
+impl _sre_SRE_Match_end_impl(self: ptr[PyObject], group: ptr[PyObject]) -> i64 {
     index = match_getindex(self, group);
     if index < 0 {
         return -1;
     }
-    # mark is -1 if group is undefined
+
     return (match_marks(self) + (index * 2 + 1)).view(1)[0];
 }
 
-def pair(i1: i64, i2: i64) -> ptr[PyObject] {
+impl pair(i1: i64, i2: i64) -> ptr[PyObject] {
     result = PyTuple_New(2);
     if not result {
         return NULL;
@@ -2074,20 +2270,19 @@ def pair(i1: i64, i2: i64) -> ptr[PyObject] {
     return result;
 }
 
-# _sre.SRE_Match.span(group=0, /)
-def _sre_SRE_Match_span_impl(
+impl _sre_SRE_Match_span_impl(
     self: ptr[PyObject], group: ptr[PyObject]
 ) -> ptr[PyObject] {
     index = match_getindex(self, group);
     if index < 0 {
         return NULL;
     }
-    # marks are -1 if group is undefined
+
     marks = match_marks(self);
     return pair((marks + index * 2).view(1)[0], (marks + (index * 2 + 1)).view(1)[0]);
 }
 
-def match_regs(self: ptr[PyObject]) -> ptr[PyObject] {
+impl match_regs(self: ptr[PyObject]) -> ptr[PyObject] {
     m = match_record(self).view(1);
     marks = match_marks(self);
     regs = PyTuple_New(m[0].groups);
@@ -2108,17 +2303,17 @@ def match_regs(self: ptr[PyObject]) -> ptr[PyObject] {
     return regs;
 }
 
-def _sre_SRE_Match___copy___impl(self: ptr[PyObject]) -> ptr[PyObject] {
+impl _sre_SRE_Match___copy___impl(self: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-def _sre_SRE_Match___deepcopy___impl(
+impl _sre_SRE_Match___deepcopy___impl(
     self: ptr[PyObject], memo: ptr[PyObject]
 ) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-def match_lastindex_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl match_lastindex_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     lastindex = match_record(op).view(1)[0].lastindex;
     if lastindex >= 0 {
         return PyLong_FromSsize_t(lastindex);
@@ -2126,7 +2321,7 @@ def match_lastindex_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def match_lastgroup_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl match_lastgroup_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     m = match_record(op).view(1);
     indexgroup = pattern_record(m[0].pattern).view(1)[0].indexgroup;
     if indexgroup
@@ -2137,7 +2332,7 @@ def match_lastgroup_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def match_regs_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl match_regs_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     regs = match_record(op).view(1)[0].regs;
     if regs {
         return Py_NewRef(regs);
@@ -2145,7 +2340,7 @@ def match_regs_get(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return match_regs(op);
 }
 
-def match_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl match_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     group0 = match_getslice_by_index(self, 0, Py_None);
     if not group0 {
         return NULL;
@@ -2162,14 +2357,12 @@ def match_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# pattern_new_match(): the Match object of a successful match (status > 0),
-# None for no match (0), NULL with the exception set for an error (< 0).
-def pattern_new_match(
+impl pattern_new_match(
     match_type: ptr[PyObject], pattern: ptr[PyObject], state: ptr[SreState], status: i64
 ) -> ptr[PyObject] {
     if status > 0 {
         groups = pattern_record(pattern).view(1)[0].groups;
-        # create match object (with room for extra group marks)
+
         match_object = _PyObject_GC_NewVar(match_type, 2 * (groups + 1));
         if not match_object {
             return NULL;
@@ -2180,7 +2373,7 @@ def pattern_new_match(
         m[0].string = Py_NewRef(st[0].string);
         m[0].regs = NULL;
         m[0].groups = groups + 1;
-        # fill in group slices
+
         base = ptr[u8](st[0].beginning);
         n = i64(st[0].charsize);
         marks = match_marks(match_object);
@@ -2196,7 +2389,7 @@ def pattern_new_match(
                 last = (ptr[u8](end) - base) // n;
                 (marks + (j + 2)).view(1)[0] = first;
                 (marks + (j + 3)).view(1)[0] = last;
-                # check wrong span
+
                 if first > last {
                     PyErr_SetString(
                         PyExc_SystemError,
@@ -2206,7 +2399,6 @@ def pattern_new_match(
                     return NULL;
                 }
             } else {
-                # undefined
                 (marks + (j + 2)).view(1)[0] = -1;
                 (marks + (j + 3)).view(1)[0] = -1;
             }
@@ -2217,17 +2409,14 @@ def pattern_new_match(
         PyObject_GC_Track(match_object);
         return match_object;
     } elif status == 0 {
-        # no match
         return Py_NewRef(Py_None);
     }
-    # internal error
+
     pattern_error(status);
     return NULL;
 }
 
-# ---------------------------------------------------------------- Scanner
-
-def scanner_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl scanner_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     result = visit_one(type_object(op), visitor, context);
     if result != 0 {
         return result;
@@ -2235,7 +2424,7 @@ def scanner_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return visit_one(scanner_record(op).view(1)[0].pattern, visitor, context);
 }
 
-def scanner_clear(op: ptr[PyObject]) -> i32 {
+impl scanner_clear(op: ptr[PyObject]) -> i32 {
     s = scanner_record(op).view(1);
     pattern = s[0].pattern;
     s[0].pattern = NULL;
@@ -2243,14 +2432,14 @@ def scanner_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def scanner_dealloc(op: ptr[PyObject]) {
+impl scanner_dealloc(op: ptr[PyObject]) {
     PyObject_GC_UnTrack(op);
     state_fini(scanner_state(op), False);
     scanner_clear(op);
     free_object(op);
 }
 
-def:priv scanner_begin(self: ptr[PyObject]) -> bool {
+impl scanner_begin(self: ptr[PyObject]) -> bool {
     s = scanner_record(self).view(1);
     was_executing = s[0].executing;
     s[0].executing = 1;
@@ -2263,11 +2452,11 @@ def:priv scanner_begin(self: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv scanner_end(self: ptr[PyObject]) {
+impl scanner_end(self: ptr[PyObject]) {
     scanner_record(self).view(1)[0].executing = 0;
 }
 
-def:priv scanner_next(
+impl scanner_next(
     self: ptr[PyObject], cls: ptr[PyObject], search: bool
 ) -> ptr[PyObject] {
     if not scanner_begin(self) {
@@ -2304,28 +2493,25 @@ def:priv scanner_next(
     return match_object;
 }
 
-# _sre.SRE_Scanner.match(cls, /)
-def _sre_SRE_Scanner_match_impl(
+impl _sre_SRE_Scanner_match_impl(
     self: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return scanner_next(self, cls, False);
 }
 
-# _sre.SRE_Scanner.search(cls, /)
-def _sre_SRE_Scanner_search_impl(
+impl _sre_SRE_Scanner_search_impl(
     self: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return scanner_next(self, cls, True);
 }
 
-def pattern_scanner(
+impl pattern_scanner(
     scanner_type: ptr[PyObject],
     self: ptr[PyObject],
     string: ptr[PyObject],
     pos: i64,
     endpos: i64
 ) -> ptr[PyObject] {
-    # create scanner object
     scanner = _PyObject_GC_New(scanner_type);
     if not scanner {
         return NULL;
@@ -2333,9 +2519,8 @@ def pattern_scanner(
     s = scanner_record(scanner).view(1);
     s[0].pattern = NULL;
     s[0].executing = 0;
-    # create search state object
+
     if not state_init(scanner_state(scanner), self, string, pos, endpos, False) {
-        # state_fini() of the scanner's dealloc finds nothing to release.
         memset(scanner_state(scanner), 0, u64(SRE_STATE_SIZE));
         jacpy_release(scanner);
         return NULL;
@@ -2345,9 +2530,7 @@ def pattern_scanner(
     return scanner;
 }
 
-# --------------------------------------------------------------- Template
-
-def template_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl template_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     result = visit_one(type_object(op), visitor, context);
     if result != 0 {
         return result;
@@ -2366,7 +2549,7 @@ def template_traverse(op: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return i32(0);
 }
 
-def template_clear(op: ptr[PyObject]) -> i32 {
+impl template_clear(op: ptr[PyObject]) -> i32 {
     t = template_record(op).view(1);
     literal = t[0].literal;
     t[0].literal = NULL;
@@ -2381,21 +2564,22 @@ def template_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def template_dealloc(op: ptr[PyObject]) {
+impl template_dealloc(op: ptr[PyObject]) {
     PyObject_GC_UnTrack(op);
     template_clear(op);
     free_object(op);
 }
 
-# expand_template(): the replacement a compiled template gives for `match`.
-def expand_template(self: ptr[PyObject], match_object: ptr[PyObject]) -> ptr[PyObject] {
+impl expand_template(
+    self: ptr[PyObject], match_object: ptr[PyObject]
+) -> ptr[PyObject] {
     t = template_record(self).view(1);
     size = object_size(self);
     if size == 0 {
         return Py_NewRef(t[0].literal);
     }
     unicode = jacpy_is_unicode(t[0].literal) != 0;
-    # the non-empty chunks
+
     out = ptr[ptr[PyObject]](PyMem_Malloc(u64(t[0].chunks * 8)));
     if not out {
         PyErr_NoMemory();
@@ -2465,7 +2649,6 @@ def expand_template(self: ptr[PyObject], match_object: ptr[PyObject]) -> ptr[PyO
     return result;
 }
 
-# Py_VISIT
-def:priv visit_one(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl visit_one(value: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     return visit_reference(value, visitor, context);
 }

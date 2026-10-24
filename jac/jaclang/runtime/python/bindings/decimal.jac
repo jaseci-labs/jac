@@ -1,404 +1,224 @@
-"""The _decimal module: the C decimal arithmetic module over libmpdec.
-
-Modules/_decimal/_decimal.c's module definition in native Jac: the Decimal,
-Context, SignalDictMixin and ContextManager type specs and their method,
-attribute and slot tables (heap types, each spec its type's token), the
-module functions, and the exec hook that sets libmpdec's allocator hooks,
-creates the types, the signal and condition exception hierarchy, the
-context templates and the constants. The implementation is in
-modules/decimal_*.jac and the libmpdec interface in modules/mpdecimal.jac;
-the docstrings are Modules/_decimal/docstrings.h's. See ../LICENSE.cpython.
-"""
-
-# ---------------------------------------------------------------------------
-# Method wrappers: each binds a libmpdec operation to its method family.
-
 def dec_mpd_qexp(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_EXP);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qln(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_LN);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qlog10(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_LOG10);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qnext_minus(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_NEXT_MINUS);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qnext_plus(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_NEXT_PLUS);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qreduce(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_REDUCE);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qsqrt(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_SQRT);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qcompare(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_COMPARE);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qcompare_signal(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_COMPARE_SIGNAL);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qmax(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_MAX);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qmax_mag(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_MAX_MAG);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qmin(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_MIN);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qmin_mag(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_MIN_MAG);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qnext_toward(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_NEXT_TOWARD);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qrem_near(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_REM_NEAR);
-}
+) -> ptr[PyObject];
 
-def dec_mpd_iscanonical(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_CANONICAL);
-}
+def dec_mpd_iscanonical(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_isfinite(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_FINITE);
-}
+def dec_mpd_isfinite(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_isinfinite(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_INFINITE);
-}
+def dec_mpd_isinfinite(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_isnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_NAN);
-}
+def dec_mpd_isnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_isqnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_QNAN);
-}
+def dec_mpd_isqnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_issnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_SNAN);
-}
+def dec_mpd_issnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_issigned(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_SIGNED);
-}
+def dec_mpd_issigned(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
-def dec_mpd_iszero(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return dec_bool(self, OP_IS_ZERO);
-}
+def dec_mpd_iszero(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
 def dec_mpd_isnormal(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_bool_va(self, args, kwds, OP_IS_NORMAL);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_issubnormal(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_bool_va(self, args, kwds, OP_IS_SUBNORMAL);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qlogb(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_LOGB);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qinvert(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_unary_va(self, args, kwds, OP_INVERT);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_compare_total(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_total_va(self, args, kwds, OP_COMPARE_TOTAL);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_compare_total_mag(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_total_va(self, args, kwds, OP_COMPARE_TOTAL_MAG);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qand(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_AND);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qor(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_OR);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qxor(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_XOR);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qrotate(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_ROTATE);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qscaleb(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_SCALEB);
-}
+) -> ptr[PyObject];
 
 def dec_mpd_qshift(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
-) -> ptr[PyObject] {
-    return dec_binary_va(self, args, kwds, OP_SHIFT);
-}
+) -> ptr[PyObject];
 
-def ctx_mpd_qabs(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_ABS);
-}
+def ctx_mpd_qabs(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qexp(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_EXP);
-}
+def ctx_mpd_qexp(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qln(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_LN);
-}
+def ctx_mpd_qln(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qlog10(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_LOG10);
-}
+def ctx_mpd_qlog10(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qminus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_MINUS);
-}
+def ctx_mpd_qminus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qnext_minus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_NEXT_MINUS);
-}
+def ctx_mpd_qnext_minus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qnext_plus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_NEXT_PLUS);
-}
+def ctx_mpd_qnext_plus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qreduce(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_REDUCE);
-}
+def ctx_mpd_qreduce(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qplus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_PLUS);
-}
+def ctx_mpd_qplus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qround_to_int(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_ROUND_TO_INT);
-}
+def ctx_mpd_qround_to_int(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qround_to_intx(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_ROUND_TO_INTX);
-}
+def ctx_mpd_qround_to_intx(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qsqrt(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_SQRT);
-}
+def ctx_mpd_qsqrt(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qadd(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_ADD);
-}
+def ctx_mpd_qadd(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qcompare(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_COMPARE);
-}
+def ctx_mpd_qcompare(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
 def ctx_mpd_qcompare_signal(
     context: ptr[PyObject], args: ptr[PyObject]
-) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_COMPARE_SIGNAL);
-}
+) -> ptr[PyObject];
 
-def ctx_mpd_qdiv(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_DIV);
-}
+def ctx_mpd_qdiv(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qdivint(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_DIVINT);
-}
+def ctx_mpd_qdivint(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qmax(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_MAX);
-}
+def ctx_mpd_qmax(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qmax_mag(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_MAX_MAG);
-}
+def ctx_mpd_qmax_mag(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qmin(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_MIN);
-}
+def ctx_mpd_qmin(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qmin_mag(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_MIN_MAG);
-}
+def ctx_mpd_qmin_mag(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qmul(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_MUL);
-}
+def ctx_mpd_qmul(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qnext_toward(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_NEXT_TOWARD);
-}
+def ctx_mpd_qnext_toward(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qquantize(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_QUANTIZE);
-}
+def ctx_mpd_qquantize(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qrem(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_REM);
-}
+def ctx_mpd_qrem(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qrem_near(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_REM_NEAR);
-}
+def ctx_mpd_qrem_near(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qsub(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_SUB);
-}
+def ctx_mpd_qsub(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_isfinite(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_FINITE);
-}
+def ctx_mpd_isfinite(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_isinfinite(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_INFINITE);
-}
+def ctx_mpd_isinfinite(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_isnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_NAN);
-}
+def ctx_mpd_isnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_isnormal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_NORMAL);
-}
+def ctx_mpd_isnormal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_isqnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_QNAN);
-}
+def ctx_mpd_isqnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_issigned(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_SIGNED);
-}
+def ctx_mpd_issigned(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_issnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_SNAN);
-}
+def ctx_mpd_issnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_issubnormal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_SUBNORMAL);
-}
+def ctx_mpd_issubnormal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_iszero(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_bool(context, v, OP_IS_ZERO);
-}
+def ctx_mpd_iszero(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qlogb(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_LOGB);
-}
+def ctx_mpd_qlogb(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qinvert(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_unary(context, v, OP_INVERT);
-}
+def ctx_mpd_qinvert(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
 
 def ctx_mpd_compare_total(
     context: ptr[PyObject], args: ptr[PyObject]
-) -> ptr[PyObject] {
-    return ctx_total(context, args, OP_COMPARE_TOTAL);
-}
+) -> ptr[PyObject];
 
 def ctx_mpd_compare_total_mag(
     context: ptr[PyObject], args: ptr[PyObject]
-) -> ptr[PyObject] {
-    return ctx_total(context, args, OP_COMPARE_TOTAL_MAG);
-}
+) -> ptr[PyObject];
 
-def ctx_mpd_qand(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_AND);
-}
+def ctx_mpd_qand(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qor(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_OR);
-}
+def ctx_mpd_qor(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qxor(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_XOR);
-}
+def ctx_mpd_qxor(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qrotate(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_ROTATE);
-}
+def ctx_mpd_qrotate(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qscaleb(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_SCALEB);
-}
+def ctx_mpd_qscaleb(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
-def ctx_mpd_qshift(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    return ctx_binary(context, args, OP_SHIFT);
-}
-
-# ---------------------------------------------------------------------------
-# Type specs.
+def ctx_mpd_qshift(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
 
 import from c {
     glob:priv dec_methods: list[PyMethodDef] = [
@@ -1628,9 +1448,6 @@ import from c {
              ),
              slots=addressof(ctxmanager_slots)
          ),
-         # libmpdec's allocator and trap handler hooks: Python's allocator,
-         # libmpdec's own calloc on top of it, and a trap handler that does
-         # nothing (the module raises from the status instead).
          mpd_hooks: list[ptr] = [
              ptr(PyMem_Malloc),
              ptr(PyMem_Realloc),
@@ -1640,370 +1457,43 @@ import from c {
          ];
 }
 
-"""The trap handler libmpdec calls on a trapped condition: nothing, since the
-module raises the exception from the status."""
-def dec_traphandler(ctx: ptr[mpd_context_t]) {
-    return;
-}
+def dec_traphandler(ctx: ptr[mpd_context_t]);
 
-# ---------------------------------------------------------------------------
-# Module initialization.
+import from c { glob:priv minalloc_is_set: i32 = 0; }
 
-import from c {
-    # libmpdec keeps its minimum allocation process-wide; it is set once.
-    glob:priv minalloc_is_set: i32 = 0;
-}
+def:priv cfunc_noargs(type: ptr[PyTypeObject], name: str) -> int;
 
-"""cfunc_noargs: the METH_NOARGS C function of method `name` in `type`'s
-method table, as an address; 0 with RuntimeError when there is none."""
-def:priv cfunc_noargs(type: ptr[PyTypeObject], name: str) -> int {
-    methods = type.view(1)[0].tp_methods;
-    if methods {
-        index = 0;
-        while True {
-            method = (methods + index).view(1)[0];
-            if not method.ml_name {
-                break;
-            }
-            if c_string_equals(method.ml_name, name) {
-                if (method.ml_flags & METH_NOARGS) == 0 {
-                    break;
-                }
-                return int(method.ml_meth);
-            }
-            index += 1;
-        }
-    }
-    PyErr_Format(PyExc_RuntimeError, "internal error: could not find method %s", name);
-    return 0;
-}
+def:priv c_string_equals(text: ptr[u8], name: str) -> bool;
 
-"""Whether the NUL-terminated C string at `text` is `name`."""
-def:priv c_string_equals(text: ptr[u8], name: str) -> bool {
-    encoded = name.encode("utf-8");
-    for i in range(len(encoded)) {
-        if int((text + i).view(1)[0]) != encoded[i] {
-            return False;
-        }
-    }
-    return (text + len(encoded)).view(1)[0] == u8(0);
-}
+def:priv init_libmpdec -> bool;
 
-"""Install libmpdec's hooks and the process-wide constants the module uses."""
-def:priv init_libmpdec -> bool {
-    hooks = ptr[ptr](addressof(mpd_hooks)).view(5);
-    mpd_mallocfunc = hooks[0];
-    mpd_reallocfunc = hooks[1];
-    mpd_callocfunc = hooks[2];
-    mpd_free = hooks[3];
-    mpd_traphandler = hooks[4];
-    # Suppress the warning caused by multi-phase initialization
-    if minalloc_is_set == 0 {
-        mpd_setminalloc(i64(PY_DEC_MINALLOC));
-        minalloc_is_set = 1;
-    }
-    mpd_maxcontext(addressof(max_context));
-    mpd_maxcontext(addressof(hash_context));
-    work = addressof(hash_context).view(1);
-    work[0].prec = MPD_MAX_PREC + 21;
-    work[0].emax = MPD_MAX_EMAX + 21;
-    work[0].emin = MPD_MIN_EMIN - 21;
-    float_ratio = cfunc_noargs(addressof(PyFloat_Type), "as_integer_ratio");
-    if float_ratio == 0 {
-        return False;
-    }
-    bit_length = cfunc_noargs(addressof(PyLong_Type), "bit_length");
-    if bit_length == 0 {
-        return False;
-    }
-    methods = addressof(builtin_methods).view(1);
-    methods[0].float_as_integer_ratio = float_ratio;
-    methods[0].long_bit_length = bit_length;
-    return True;
-}
+def:priv set_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -> bool;
 
-"""Store a new reference (consumed) in state slot `index`."""
-def:priv set_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -> bool {
-    if not value {
-        return False;
-    }
-    jacpy_binding_state_set(module, i64(index), value);
-    jacpy_release(value);
-    return True;
-}
+def:priv state(module: ptr[PyObject], index: int) -> ptr[PyObject];
 
-def:priv state(module: ptr[PyObject], index: int) -> ptr[PyObject] {
-    return jacpy_binding_state_get(module, i64(index));
-}
-
-"""PyType_FromMetaclass(NULL, module, spec, NULL) into state slot `index`."""
 def:priv create_type(
     module: ptr[PyObject], index: int, spec: ptr[PyType_Spec]
-) -> bool {
-    return set_state(module, index, PyType_FromMetaclass(NULL, module, spec, NULL));
-}
+) -> bool;
 
-"""type.__module__ = "decimal"."""
-def:priv set_module_name(type: ptr[PyObject]) -> bool {
-    name = PyUnicode_FromString("decimal");
-    if not name {
-        return False;
-    }
-    status = PyDict_SetItemString(PyType_GetDict(type), "__module__", name);
-    jacpy_release(name);
-    return status >= 0;
-}
+def:priv set_module_name(type: ptr[PyObject]) -> bool;
 
-"""Decimal is a numbers.Number; numbers.Rational is kept for comparisons."""
-def:priv register_numbers(module: ptr[PyObject]) -> bool {
-    numbers = PyImport_ImportModule("numbers");
-    if not numbers {
-        return False;
-    }
-    number = PyObject_GetAttrString(numbers, "Number");
-    ok = bool(number);
-    if ok {
-        registered = PyObject_CallMethod(
-            number, "register", "(O)", state(module, STATE_DEC_TYPE)
-        );
-        ok = bool(registered);
-        jacpy_release(registered);
-        jacpy_release(number);
-    }
-    ok = ok
-        and set_state(
-            module, STATE_RATIONAL, PyObject_GetAttrString(numbers, "Rational")
-        );
-    jacpy_release(numbers);
-    return ok;
-}
+def:priv register_numbers(module: ptr[PyObject]) -> bool;
 
-"""DecimalTuple = collections.namedtuple("DecimalTuple", "sign digits
-exponent"), in module decimal."""
-def:priv create_decimal_tuple(module: ptr[PyObject]) -> bool {
-    collections = PyImport_ImportModule("collections");
-    if not collections {
-        return False;
-    }
-    tuple_type = PyObject_CallMethod(
-        collections, "namedtuple", "(ss)", "DecimalTuple", "sign digits exponent"
-    );
-    jacpy_release(collections);
-    if not tuple_type {
-        return False;
-    }
-    if jacpy_is_type(tuple_type) == 0 {
-        jacpy_release(tuple_type);
-        PyErr_SetString(PyExc_TypeError, "type is expected from namedtuple call");
-        return False;
-    }
-    return set_state(module, STATE_DECIMAL_TUPLE, tuple_type)
-        and set_module_name(state(module, STATE_DECIMAL_TUPLE));
-}
+def:priv create_decimal_tuple(module: ptr[PyObject]) -> bool;
 
-"""SignalDict = type("SignalDict", (SignalDictMixin, MutableMapping), {})."""
-def:priv create_signal_dict(module: ptr[PyObject]) -> bool {
-    collections_abc = PyImport_ImportModule("collections.abc");
-    if not collections_abc {
-        return False;
-    }
-    mutable_mapping = PyObject_GetAttrString(collections_abc, "MutableMapping");
-    jacpy_release(collections_abc);
-    if not mutable_mapping {
-        return False;
-    }
-    signal_dict = PyObject_CallFunction(
-        ptr[PyObject](addressof(PyType_Type)),
-        "s(OO){}",
-        "SignalDict",
-        state(module, STATE_SIGNAL_DICT_MIXIN_TYPE),
-        mutable_mapping
-    );
-    jacpy_release(mutable_mapping);
-    return set_state(module, STATE_SIGNAL_DICT_TYPE, signal_dict);
-}
+def:priv create_signal_dict(module: ptr[PyObject]) -> bool;
 
-"""The bases of the exception of signal `index`."""
-def:priv signal_bases(module: ptr[PyObject], index: int) -> ptr[PyObject] {
-    flag = SIGNAL_FLAGS[index];
-    decimal_exception = state(module, STATE_DECIMAL_EXCEPTION);
-    if flag == MPD_Float_operation {
-        return PyTuple_Pack(2, decimal_exception, PyExc_TypeError);
-    }
-    if flag == MPD_Division_by_zero {
-        return PyTuple_Pack(2, decimal_exception, PyExc_ZeroDivisionError);
-    }
-    if flag == MPD_Overflow {
-        return PyTuple_Pack(
-            2, signal_exception(module, INEXACT), signal_exception(module, ROUNDED)
-        );
-    }
-    if flag == MPD_Underflow {
-        return PyTuple_Pack(
-            3,
-            signal_exception(module, INEXACT),
-            signal_exception(module, ROUNDED),
-            signal_exception(module, SUBNORMAL)
-        );
-    }
-    return PyTuple_Pack(1, decimal_exception);
-}
+def:priv signal_bases(module: ptr[PyObject], index: int) -> ptr[PyObject];
 
-"""The exception hierarchy: DecimalException, the signals (created last to
-first, since Overflow and Underflow derive from later ones) and the
-conditions that derive from InvalidOperation."""
-def:priv create_exceptions(module: ptr[PyObject]) -> bool {
-    if not set_state(
-        module,
-        STATE_DECIMAL_EXCEPTION,
-        PyErr_NewException("decimal.DecimalException", PyExc_ArithmeticError, NULL)
-    )
-        or PyModule_AddType(module, state(module, STATE_DECIMAL_EXCEPTION)) < 0 {
-        return False;
-    }
-    signal_tuple = PyTuple_New(i64(SIGNAL_MAP_LEN));
-    if not set_state(module, STATE_SIGNAL_TUPLE, signal_tuple) {
-        return False;
-    }
-    signal_tuple = state(module, STATE_SIGNAL_TUPLE);
-    index = SIGNAL_MAP_LEN - 1;
-    while index >= 0 {
-        base = signal_bases(module, index);
-        if not base {
-            return False;
-        }
-        ex = PyErr_NewException("decimal." + SIGNAL_NAMES[index], base, NULL);
-        jacpy_release(base);
-        if not set_state(module, STATE_SIGNAL_EXCEPTIONS + index, ex) {
-            return False;
-        }
-        ex = state(module, STATE_SIGNAL_EXCEPTIONS + index);
-        if PyModule_AddObjectRef(module, SIGNAL_NAMES[index], ex) < 0 {
-            return False;
-        }
-        PyTuple_SetItem(signal_tuple, i64(index), Py_NewRef(ex));
-        index -= 1;
-    }
-    # InvalidOperation is a signal that comprises several conditions,
-    # including InvalidOperation; the other conditions inherit from it.
-    invalid_operation = signal_exception(module, 0);
-    for index in range(1, len(CONDITION_NAMES)) {
-        base: ptr[PyObject] = NULL;
-        if CONDITION_FLAGS[index] == MPD_Division_undefined {
-            base = PyTuple_Pack(2, invalid_operation, PyExc_ZeroDivisionError);
-        } else {
-            base = PyTuple_Pack(1, invalid_operation);
-        }
-        if not base {
-            return False;
-        }
-        ex = PyErr_NewException("decimal." + CONDITION_NAMES[index], base, NULL);
-        jacpy_release(base);
-        if not set_state(module, STATE_CONDITION_EXCEPTIONS + index - 1, ex)
-            or PyModule_AddObjectRef(
-                module,
-                CONDITION_NAMES[index],
-                state(module, STATE_CONDITION_EXCEPTIONS + index - 1)
-            )
-                < 0 {
-            return False;
-        }
-    }
-    return True;
-}
+def:priv create_exceptions(module: ptr[PyObject]) -> bool;
 
-"""A new Context from Context() into state slot `index`, added to the
-module as `name`."""
-def:priv create_context_template(module: ptr[PyObject], index: int, name: str) -> bool {
-    return set_state(
-        module, index, PyObject_CallObject(state(module, STATE_CONTEXT_TYPE), NULL)
-    )
-        and PyModule_AddObjectRef(module, name, state(module, index)) >= 0;
-}
+def:priv create_context_template(module: ptr[PyObject], index: int, name: str) -> bool;
 
-"""The contexts: DefaultContext (the template of new threads' contexts and of
-Context()), the contextvar, BasicContext and ExtendedContext."""
-def:priv create_contexts(module: ptr[PyObject]) -> bool {
-    if not create_context_template(
-        module, STATE_DEFAULT_CONTEXT_TEMPLATE, "DefaultContext"
-    ) {
-        return False;
-    }
-    if not set_state(
-        module, STATE_CURRENT_CONTEXT_VAR, PyContextVar_New("decimal_context", NULL)
-    )
-        or PyModule_AddObjectRef(module, "HAVE_CONTEXTVAR", py_true()) < 0
-        or PyModule_AddObjectRef(module, "HAVE_THREADS", py_true()) < 0 {
-        return False;
-    }
-    if not create_context_template(
-        module, STATE_BASIC_CONTEXT_TEMPLATE, "BasicContext"
-    ) {
-        return False;
-    }
-    init_basic_context(state(module, STATE_BASIC_CONTEXT_TEMPLATE));
-    if not create_context_template(
-        module, STATE_EXTENDED_CONTEXT_TEMPLATE, "ExtendedContext"
-    ) {
-        return False;
-    }
-    init_extended_context(state(module, STATE_EXTENDED_CONTEXT_TEMPLATE));
-    return True;
-}
+def:priv create_contexts(module: ptr[PyObject]) -> bool;
 
-"""The constants: the limits, IEEE_CONTEXT_MAX_BITS, the rounding names,
-__version__ and __libmpdec_version__."""
-def:priv add_constants(module: ptr[PyObject]) -> bool {
-    if PyModule_Add(module, "MAX_PREC", PyLong_FromSsize_t(MPD_MAX_PREC)) < 0
-        or PyModule_Add(module, "MAX_EMAX", PyLong_FromSsize_t(MPD_MAX_EMAX)) < 0
-        or PyModule_Add(module, "MIN_EMIN", PyLong_FromSsize_t(MPD_MIN_EMIN)) < 0
-        or PyModule_Add(module, "MIN_ETINY", PyLong_FromSsize_t(MPD_MIN_ETINY)) < 0
-        or PyModule_AddIntConstant(
-            module, "IEEE_CONTEXT_MAX_BITS", i64(MPD_IEEE_CONTEXT_MAX_BITS)
-        )
-            < 0 {
-        return False;
-    }
-    names = ptr[ptr[u8]](addressof(mpd_round_string));
-    for i in range(PY_DEC_ROUND_GUARD) {
-        name = (names + i).view(1)[0];
-        if not set_state(
-            module, STATE_ROUND_MAP + i, PyUnicode_InternFromString(name)
-        ) {
-            return False;
-        }
-        if PyModule_AddObjectRef(module, name, state(module, STATE_ROUND_MAP + i))
-            < 0 {
-            return False;
-        }
-    }
-    return PyModule_AddStringConstant(module, "__version__", "1.70") >= 0
-        and PyModule_AddStringConstant(module, "__libmpdec_version__", mpd_version())
-            >= 0;
-}
+def:priv add_constants(module: ptr[PyObject]) -> bool;
 
-def:priv decimal_exec(module: ptr[PyObject]) -> i32 {
-    decimal_module_token.handle = definition.handle;
-    ok = init_libmpdec()
-        and create_type(module, STATE_DEC_TYPE, addressof(dec_spec))
-        and create_type(module, STATE_CONTEXT_TYPE, addressof(context_spec))
-        and create_type(module, STATE_CONTEXT_MANAGER_TYPE, addressof(ctxmanager_spec))
-        and create_type(
-            module, STATE_SIGNAL_DICT_MIXIN_TYPE, addressof(signaldict_spec)
-        )
-        and set_module_name(state(module, STATE_DEC_TYPE))
-        and set_module_name(state(module, STATE_CONTEXT_TYPE))
-        and register_numbers(module)
-        and create_decimal_tuple(module)
-        and create_signal_dict(module)
-        and PyModule_AddType(module, state(module, STATE_DEC_TYPE)) >= 0
-        and PyModule_AddType(module, state(module, STATE_CONTEXT_TYPE)) >= 0
-        and PyModule_AddType(module, state(module, STATE_DECIMAL_TUPLE)) >= 0
-        and create_exceptions(module)
-        and create_contexts(module)
-        and add_constants(module);
-    return i32(0 if ok else -1);
-}
+def:priv decimal_exec(module: ptr[PyObject]) -> i32;
 
 glob:priv METHOD_NOARGS: i64 = 4,
      METHOD_O: i64 = 8,
@@ -2042,6 +1532,727 @@ glob:priv definition = ModuleDefinition(
          STATE_COUNT
      );
 
-def:pub PyInit__decimal -> ptr[PyObject] {
+def:pub PyInit__decimal -> ptr[PyObject];
+
+impl dec_mpd_qexp(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_EXP);
+}
+
+impl dec_mpd_qln(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_LN);
+}
+
+impl dec_mpd_qlog10(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_LOG10);
+}
+
+impl dec_mpd_qnext_minus(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_NEXT_MINUS);
+}
+
+impl dec_mpd_qnext_plus(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_NEXT_PLUS);
+}
+
+impl dec_mpd_qreduce(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_REDUCE);
+}
+
+impl dec_mpd_qsqrt(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_SQRT);
+}
+
+impl dec_mpd_qcompare(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_COMPARE);
+}
+
+impl dec_mpd_qcompare_signal(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_COMPARE_SIGNAL);
+}
+
+impl dec_mpd_qmax(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_MAX);
+}
+
+impl dec_mpd_qmax_mag(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_MAX_MAG);
+}
+
+impl dec_mpd_qmin(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_MIN);
+}
+
+impl dec_mpd_qmin_mag(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_MIN_MAG);
+}
+
+impl dec_mpd_qnext_toward(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_NEXT_TOWARD);
+}
+
+impl dec_mpd_qrem_near(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_REM_NEAR);
+}
+
+impl dec_mpd_iscanonical(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_CANONICAL);
+}
+
+impl dec_mpd_isfinite(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_FINITE);
+}
+
+impl dec_mpd_isinfinite(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_INFINITE);
+}
+
+impl dec_mpd_isnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_NAN);
+}
+
+impl dec_mpd_isqnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_QNAN);
+}
+
+impl dec_mpd_issnan(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_SNAN);
+}
+
+impl dec_mpd_issigned(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_SIGNED);
+}
+
+impl dec_mpd_iszero(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return dec_bool(self, OP_IS_ZERO);
+}
+
+impl dec_mpd_isnormal(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_bool_va(self, args, kwds, OP_IS_NORMAL);
+}
+
+impl dec_mpd_issubnormal(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_bool_va(self, args, kwds, OP_IS_SUBNORMAL);
+}
+
+impl dec_mpd_qlogb(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_LOGB);
+}
+
+impl dec_mpd_qinvert(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_unary_va(self, args, kwds, OP_INVERT);
+}
+
+impl dec_mpd_compare_total(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_total_va(self, args, kwds, OP_COMPARE_TOTAL);
+}
+
+impl dec_mpd_compare_total_mag(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_total_va(self, args, kwds, OP_COMPARE_TOTAL_MAG);
+}
+
+impl dec_mpd_qand(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_AND);
+}
+
+impl dec_mpd_qor(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_OR);
+}
+
+impl dec_mpd_qxor(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_XOR);
+}
+
+impl dec_mpd_qrotate(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_ROTATE);
+}
+
+impl dec_mpd_qscaleb(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_SCALEB);
+}
+
+impl dec_mpd_qshift(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return dec_binary_va(self, args, kwds, OP_SHIFT);
+}
+
+impl ctx_mpd_qabs(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_ABS);
+}
+
+impl ctx_mpd_qexp(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_EXP);
+}
+
+impl ctx_mpd_qln(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_LN);
+}
+
+impl ctx_mpd_qlog10(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_LOG10);
+}
+
+impl ctx_mpd_qminus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_MINUS);
+}
+
+impl ctx_mpd_qnext_minus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_NEXT_MINUS);
+}
+
+impl ctx_mpd_qnext_plus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_NEXT_PLUS);
+}
+
+impl ctx_mpd_qreduce(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_REDUCE);
+}
+
+impl ctx_mpd_qplus(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_PLUS);
+}
+
+impl ctx_mpd_qround_to_int(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_ROUND_TO_INT);
+}
+
+impl ctx_mpd_qround_to_intx(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_ROUND_TO_INTX);
+}
+
+impl ctx_mpd_qsqrt(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_SQRT);
+}
+
+impl ctx_mpd_qadd(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_ADD);
+}
+
+impl ctx_mpd_qcompare(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_COMPARE);
+}
+
+impl ctx_mpd_qcompare_signal(
+    context: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_COMPARE_SIGNAL);
+}
+
+impl ctx_mpd_qdiv(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_DIV);
+}
+
+impl ctx_mpd_qdivint(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_DIVINT);
+}
+
+impl ctx_mpd_qmax(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_MAX);
+}
+
+impl ctx_mpd_qmax_mag(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_MAX_MAG);
+}
+
+impl ctx_mpd_qmin(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_MIN);
+}
+
+impl ctx_mpd_qmin_mag(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_MIN_MAG);
+}
+
+impl ctx_mpd_qmul(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_MUL);
+}
+
+impl ctx_mpd_qnext_toward(
+    context: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_NEXT_TOWARD);
+}
+
+impl ctx_mpd_qquantize(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_QUANTIZE);
+}
+
+impl ctx_mpd_qrem(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_REM);
+}
+
+impl ctx_mpd_qrem_near(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_REM_NEAR);
+}
+
+impl ctx_mpd_qsub(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_SUB);
+}
+
+impl ctx_mpd_isfinite(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_FINITE);
+}
+
+impl ctx_mpd_isinfinite(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_INFINITE);
+}
+
+impl ctx_mpd_isnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_NAN);
+}
+
+impl ctx_mpd_isnormal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_NORMAL);
+}
+
+impl ctx_mpd_isqnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_QNAN);
+}
+
+impl ctx_mpd_issigned(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_SIGNED);
+}
+
+impl ctx_mpd_issnan(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_SNAN);
+}
+
+impl ctx_mpd_issubnormal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_SUBNORMAL);
+}
+
+impl ctx_mpd_iszero(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_bool(context, v, OP_IS_ZERO);
+}
+
+impl ctx_mpd_qlogb(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_LOGB);
+}
+
+impl ctx_mpd_qinvert(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_unary(context, v, OP_INVERT);
+}
+
+impl ctx_mpd_compare_total(
+    context: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
+    return ctx_total(context, args, OP_COMPARE_TOTAL);
+}
+
+impl ctx_mpd_compare_total_mag(
+    context: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
+    return ctx_total(context, args, OP_COMPARE_TOTAL_MAG);
+}
+
+impl ctx_mpd_qand(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_AND);
+}
+
+impl ctx_mpd_qor(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_OR);
+}
+
+impl ctx_mpd_qxor(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_XOR);
+}
+
+impl ctx_mpd_qrotate(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_ROTATE);
+}
+
+impl ctx_mpd_qscaleb(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_SCALEB);
+}
+
+impl ctx_mpd_qshift(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return ctx_binary(context, args, OP_SHIFT);
+}
+
+impl dec_traphandler(ctx: ptr[mpd_context_t]) {
+    return;
+}
+
+impl cfunc_noargs(type: ptr[PyTypeObject], name: str) -> int {
+    methods = type.view(1)[0].tp_methods;
+    if methods {
+        index = 0;
+        while True {
+            method = (methods + index).view(1)[0];
+            if not method.ml_name {
+                break;
+            }
+            if c_string_equals(method.ml_name, name) {
+                if (method.ml_flags & METH_NOARGS) == 0 {
+                    break;
+                }
+                return int(method.ml_meth);
+            }
+            index += 1;
+        }
+    }
+    PyErr_Format(PyExc_RuntimeError, "internal error: could not find method %s", name);
+    return 0;
+}
+
+impl c_string_equals(text: ptr[u8], name: str) -> bool {
+    encoded = name.encode("utf-8");
+    for i in range(len(encoded)) {
+        if int((text + i).view(1)[0]) != encoded[i] {
+            return False;
+        }
+    }
+    return (text + len(encoded)).view(1)[0] == u8(0);
+}
+
+impl init_libmpdec -> bool {
+    hooks = ptr[ptr](addressof(mpd_hooks)).view(5);
+    mpd_mallocfunc = hooks[0];
+    mpd_reallocfunc = hooks[1];
+    mpd_callocfunc = hooks[2];
+    mpd_free = hooks[3];
+    mpd_traphandler = hooks[4];
+
+    if minalloc_is_set == 0 {
+        mpd_setminalloc(i64(PY_DEC_MINALLOC));
+        minalloc_is_set = 1;
+    }
+    mpd_maxcontext(addressof(max_context));
+    mpd_maxcontext(addressof(hash_context));
+    work = addressof(hash_context).view(1);
+    work[0].prec = MPD_MAX_PREC + 21;
+    work[0].emax = MPD_MAX_EMAX + 21;
+    work[0].emin = MPD_MIN_EMIN - 21;
+    float_ratio = cfunc_noargs(addressof(PyFloat_Type), "as_integer_ratio");
+    if float_ratio == 0 {
+        return False;
+    }
+    bit_length = cfunc_noargs(addressof(PyLong_Type), "bit_length");
+    if bit_length == 0 {
+        return False;
+    }
+    methods = addressof(builtin_methods).view(1);
+    methods[0].float_as_integer_ratio = float_ratio;
+    methods[0].long_bit_length = bit_length;
+    return True;
+}
+
+impl set_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -> bool {
+    if not value {
+        return False;
+    }
+    jacpy_binding_state_set(module, i64(index), value);
+    jacpy_release(value);
+    return True;
+}
+
+impl state(module: ptr[PyObject], index: int) -> ptr[PyObject] {
+    return jacpy_binding_state_get(module, i64(index));
+}
+
+impl create_type(module: ptr[PyObject], index: int, spec: ptr[PyType_Spec]) -> bool {
+    return set_state(module, index, PyType_FromMetaclass(NULL, module, spec, NULL));
+}
+
+impl set_module_name(type: ptr[PyObject]) -> bool {
+    name = PyUnicode_FromString(ptr[u8]("decimal"));
+    if not name {
+        return False;
+    }
+    status = PyDict_SetItemString(PyType_GetDict(type), ptr[u8]("__module__"), name);
+    jacpy_release(name);
+    return status >= 0;
+}
+
+impl register_numbers(module: ptr[PyObject]) -> bool {
+    numbers = PyImport_ImportModule("numbers");
+    if not numbers {
+        return False;
+    }
+    number = PyObject_GetAttrString(numbers, ptr[u8]("Number"));
+    ok = bool(number);
+    if ok {
+        registered = PyObject_CallMethod(
+            number, "register", "(O)", state(module, STATE_DEC_TYPE)
+        );
+        ok = bool(registered);
+        jacpy_release(registered);
+        jacpy_release(number);
+    }
+    ok = ok
+        and set_state(
+            module, STATE_RATIONAL, PyObject_GetAttrString(numbers, ptr[u8]("Rational"))
+        );
+    jacpy_release(numbers);
+    return ok;
+}
+
+impl create_decimal_tuple(module: ptr[PyObject]) -> bool {
+    collections = PyImport_ImportModule("collections");
+    if not collections {
+        return False;
+    }
+    tuple_type = PyObject_CallMethod(
+        collections, "namedtuple", "(ss)", "DecimalTuple", "sign digits exponent"
+    );
+    jacpy_release(collections);
+    if not tuple_type {
+        return False;
+    }
+    if jacpy_is_type(tuple_type) == 0 {
+        jacpy_release(tuple_type);
+        PyErr_SetString(PyExc_TypeError, "type is expected from namedtuple call");
+        return False;
+    }
+    return set_state(module, STATE_DECIMAL_TUPLE, tuple_type)
+        and set_module_name(state(module, STATE_DECIMAL_TUPLE));
+}
+
+impl create_signal_dict(module: ptr[PyObject]) -> bool {
+    collections_abc = PyImport_ImportModule("collections.abc");
+    if not collections_abc {
+        return False;
+    }
+    mutable_mapping = PyObject_GetAttrString(
+        collections_abc, ptr[u8]("MutableMapping")
+    );
+    jacpy_release(collections_abc);
+    if not mutable_mapping {
+        return False;
+    }
+    signal_dict = PyObject_CallFunction(
+        ptr[PyObject](addressof(PyType_Type)),
+        "s(OO){}",
+        "SignalDict",
+        state(module, STATE_SIGNAL_DICT_MIXIN_TYPE),
+        mutable_mapping
+    );
+    jacpy_release(mutable_mapping);
+    return set_state(module, STATE_SIGNAL_DICT_TYPE, signal_dict);
+}
+
+impl signal_bases(module: ptr[PyObject], index: int) -> ptr[PyObject] {
+    flag = SIGNAL_FLAGS[index];
+    decimal_exception = state(module, STATE_DECIMAL_EXCEPTION);
+    if flag == MPD_Float_operation {
+        return PyTuple_Pack(2, decimal_exception, PyExc_TypeError);
+    }
+    if flag == MPD_Division_by_zero {
+        return PyTuple_Pack(2, decimal_exception, PyExc_ZeroDivisionError);
+    }
+    if flag == MPD_Overflow {
+        return PyTuple_Pack(
+            2, signal_exception(module, INEXACT), signal_exception(module, ROUNDED)
+        );
+    }
+    if flag == MPD_Underflow {
+        return PyTuple_Pack(
+            3,
+            signal_exception(module, INEXACT),
+            signal_exception(module, ROUNDED),
+            signal_exception(module, SUBNORMAL)
+        );
+    }
+    return PyTuple_Pack(1, decimal_exception);
+}
+
+impl create_exceptions(module: ptr[PyObject]) -> bool {
+    if not set_state(
+        module,
+        STATE_DECIMAL_EXCEPTION,
+        PyErr_NewException("decimal.DecimalException", PyExc_ArithmeticError, NULL)
+    )
+        or PyModule_AddType(module, state(module, STATE_DECIMAL_EXCEPTION)) < 0 {
+        return False;
+    }
+    signal_tuple = PyTuple_New(i64(SIGNAL_MAP_LEN));
+    if not set_state(module, STATE_SIGNAL_TUPLE, signal_tuple) {
+        return False;
+    }
+    signal_tuple = state(module, STATE_SIGNAL_TUPLE);
+    index = SIGNAL_MAP_LEN - 1;
+    while index >= 0 {
+        base = signal_bases(module, index);
+        if not base {
+            return False;
+        }
+        ex = PyErr_NewException("decimal." + SIGNAL_NAMES[index], base, NULL);
+        jacpy_release(base);
+        if not set_state(module, STATE_SIGNAL_EXCEPTIONS + index, ex) {
+            return False;
+        }
+        ex = state(module, STATE_SIGNAL_EXCEPTIONS + index);
+        if PyModule_AddObjectRef(module, SIGNAL_NAMES[index], ex) < 0 {
+            return False;
+        }
+        PyTuple_SetItem(signal_tuple, i64(index), Py_NewRef(ex));
+        index -= 1;
+    }
+
+    invalid_operation = signal_exception(module, 0);
+    for index in range(1, len(CONDITION_NAMES)) {
+        base: ptr[PyObject] = NULL;
+        if CONDITION_FLAGS[index] == MPD_Division_undefined {
+            base = PyTuple_Pack(2, invalid_operation, PyExc_ZeroDivisionError);
+        } else {
+            base = PyTuple_Pack(1, invalid_operation);
+        }
+        if not base {
+            return False;
+        }
+        ex = PyErr_NewException("decimal." + CONDITION_NAMES[index], base, NULL);
+        jacpy_release(base);
+        if not set_state(module, STATE_CONDITION_EXCEPTIONS + index - 1, ex)
+            or PyModule_AddObjectRef(
+                module,
+                CONDITION_NAMES[index],
+                state(module, STATE_CONDITION_EXCEPTIONS + index - 1)
+            )
+                < 0 {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl create_context_template(module: ptr[PyObject], index: int, name: str) -> bool {
+    return set_state(
+        module, index, PyObject_CallObject(state(module, STATE_CONTEXT_TYPE), NULL)
+    )
+        and PyModule_AddObjectRef(module, name, state(module, index)) >= 0;
+}
+
+impl create_contexts(module: ptr[PyObject]) -> bool {
+    if not create_context_template(
+        module, STATE_DEFAULT_CONTEXT_TEMPLATE, "DefaultContext"
+    ) {
+        return False;
+    }
+    if not set_state(
+        module, STATE_CURRENT_CONTEXT_VAR, PyContextVar_New("decimal_context", NULL)
+    )
+        or PyModule_AddObjectRef(module, "HAVE_CONTEXTVAR", py_true()) < 0
+        or PyModule_AddObjectRef(module, "HAVE_THREADS", py_true()) < 0 {
+        return False;
+    }
+    if not create_context_template(
+        module, STATE_BASIC_CONTEXT_TEMPLATE, "BasicContext"
+    ) {
+        return False;
+    }
+    init_basic_context(state(module, STATE_BASIC_CONTEXT_TEMPLATE));
+    if not create_context_template(
+        module, STATE_EXTENDED_CONTEXT_TEMPLATE, "ExtendedContext"
+    ) {
+        return False;
+    }
+    init_extended_context(state(module, STATE_EXTENDED_CONTEXT_TEMPLATE));
+    return True;
+}
+
+impl add_constants(module: ptr[PyObject]) -> bool {
+    if PyModule_Add(module, "MAX_PREC", PyLong_FromSsize_t(MPD_MAX_PREC)) < 0
+        or PyModule_Add(module, "MAX_EMAX", PyLong_FromSsize_t(MPD_MAX_EMAX)) < 0
+        or PyModule_Add(module, "MIN_EMIN", PyLong_FromSsize_t(MPD_MIN_EMIN)) < 0
+        or PyModule_Add(module, "MIN_ETINY", PyLong_FromSsize_t(MPD_MIN_ETINY)) < 0
+        or PyModule_AddIntConstant(
+            module, "IEEE_CONTEXT_MAX_BITS", i64(MPD_IEEE_CONTEXT_MAX_BITS)
+        )
+            < 0 {
+        return False;
+    }
+    names = ptr[ptr[u8]](addressof(mpd_round_string));
+    for i in range(PY_DEC_ROUND_GUARD) {
+        name = (names + i).view(1)[0];
+        if not set_state(
+            module, STATE_ROUND_MAP + i, PyUnicode_InternFromString(name)
+        ) {
+            return False;
+        }
+        if PyModule_AddObjectRef(module, name, state(module, STATE_ROUND_MAP + i))
+            < 0 {
+            return False;
+        }
+    }
+    return PyModule_AddStringConstant(module, "__version__", "1.70") >= 0
+        and PyModule_AddStringConstant(module, "__libmpdec_version__", mpd_version())
+            >= 0;
+}
+
+impl decimal_exec(module: ptr[PyObject]) -> i32 {
+    decimal_module_token.handle = definition.handle;
+    ok = init_libmpdec()
+        and create_type(module, STATE_DEC_TYPE, addressof(dec_spec))
+        and create_type(module, STATE_CONTEXT_TYPE, addressof(context_spec))
+        and create_type(module, STATE_CONTEXT_MANAGER_TYPE, addressof(ctxmanager_spec))
+        and create_type(
+            module, STATE_SIGNAL_DICT_MIXIN_TYPE, addressof(signaldict_spec)
+        )
+        and set_module_name(state(module, STATE_DEC_TYPE))
+        and set_module_name(state(module, STATE_CONTEXT_TYPE))
+        and register_numbers(module)
+        and create_decimal_tuple(module)
+        and create_signal_dict(module)
+        and PyModule_AddType(module, state(module, STATE_DEC_TYPE)) >= 0
+        and PyModule_AddType(module, state(module, STATE_CONTEXT_TYPE)) >= 0
+        and PyModule_AddType(module, state(module, STATE_DECIMAL_TUPLE)) >= 0
+        and create_exceptions(module)
+        and create_contexts(module)
+        and add_constants(module);
+    return i32(0 if ok else -1);
+}
+
+impl PyInit__decimal -> ptr[PyObject] {
     return definition.initialize();
 }

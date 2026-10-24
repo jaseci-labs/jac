@@ -1,21 +1,10 @@
-"""The bool type, a subtype of int: Objects/boolobject.c in native Jac.
-
-`PyBool_Type`, `_Py_FalseStruct` and `_Py_TrueStruct` are C data Jac defines
-under their C names, statically allocated and immortal exactly as
-`PyVarObject_HEAD_INIT` and `PyObject_HEAD_INIT` make them, so `Py_True` and
-`Py_False` in C are the addresses of these objects. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob PyType_Type: PyTypeObject,
          PyLong_Type: PyTypeObject,
-         PyExc_DeprecationWarning: ptr[PyObject];
-    # Arithmetic methods -- only so we can override &, |, ^.
-    glob:priv bool_as_number: PyNumberMethods = PyNumberMethods(
+         PyExc_DeprecationWarning: ptr[PyObject]; glob:priv bool_as_number:
+             PyNumberMethods = PyNumberMethods(
              nb_invert=bool_invert, nb_and=bool_and, nb_xor=bool_xor, nb_or=bool_or
-         );
-    # The type object for bool. Note that this cannot be subclassed!
-    glob PyBool_Type: PyTypeObject = PyTypeObject(
+         ); glob PyBool_Type: PyTypeObject = PyTypeObject(
              ob_base=PyVarObject(
                  ob_base=_object(
                      ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
@@ -40,7 +29,6 @@ import from c {
              tp_new=bool_new,
              tp_vectorcall=bool_vectorcall
          ),
-         # The objects representing bool values False and True.
          _Py_FalseStruct: PyLongObject = PyLongObject(
              ob_base=_object(
                  ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
@@ -57,36 +45,57 @@ import from c {
          );
 }
 
-"""Py_True."""
-def py_true -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_TrueStruct));
-}
+def py_true -> ptr[PyObject];
 
-"""Py_False."""
-def py_false -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_FalseStruct));
-}
+def py_false -> ptr[PyObject];
 
-"""PyBool_Check."""
-def bool_check(op: ptr[PyObject]) -> bool {
-    return object_is_type(op, addressof(PyBool_Type));
-}
+def bool_check(op: ptr[PyObject]) -> bool;
 
-# We define bool_repr to return "False" or "True": the interpreter's static
-# identifier strings, which interning returns.
-def bool_repr(self: ptr[PyObject]) -> ptr[PyObject] {
-    return PyUnicode_InternFromString("True" if self == py_true() else "False");
-}
+def bool_repr(self: ptr[PyObject]) -> ptr[PyObject];
 
-# Function to return a bool from a C long.
 import from c {
     def PyBool_FromLong(ok: i64) -> ptr[PyObject] {
         return py_true() if ok != 0 else py_false();
     }
 }
 
-# We define bool_new to always return either Py_True or Py_False.
 def bool_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def bool_vectorcall(
+    _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def bool_invert(v: ptr[PyObject]) -> ptr[PyObject];
+
+def bool_and(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def bool_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def bool_xor(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def long_number -> ptr[PyNumberMethods];
+
+def bool_dealloc(boolean: ptr[PyObject]);
+
+impl py_true -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_TrueStruct));
+}
+
+impl py_false -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_FalseStruct));
+}
+
+impl bool_check(op: ptr[PyObject]) -> bool {
+    return object_is_type(op, addressof(PyBool_Type));
+}
+
+impl bool_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_unicode_intern_text("True" if self == py_true() else "False");
+}
+
+impl bool_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     x = py_false();
@@ -103,7 +112,7 @@ def bool_new(
     return PyBool_FromLong(i64(ok));
 }
 
-def bool_vectorcall(
+impl bool_vectorcall(
     _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     ok: i64 = 0;
@@ -123,8 +132,7 @@ def bool_vectorcall(
     return PyBool_FromLong(ok);
 }
 
-# Arithmetic operations redefined to return bool if both args are bool.
-def bool_invert(v: ptr[PyObject]) -> ptr[PyObject] {
+impl bool_invert(v: ptr[PyObject]) -> ptr[PyObject] {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
         "Bitwise inversion '~' on bool is deprecated and will be removed in "
@@ -141,35 +149,31 @@ def bool_invert(v: ptr[PyObject]) -> ptr[PyObject] {
     return long_number().view(1)[0].nb_invert(v);
 }
 
-def bool_and(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl bool_and(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     if not bool_check(a) or not bool_check(b) {
         return long_number().view(1)[0].nb_and(a, b);
     }
     return PyBool_FromLong(i64((a == py_true()) and (b == py_true())));
 }
 
-def bool_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl bool_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     if not bool_check(a) or not bool_check(b) {
         return long_number().view(1)[0].nb_or(a, b);
     }
     return PyBool_FromLong(i64((a == py_true()) or (b == py_true())));
 }
 
-def bool_xor(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl bool_xor(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     if not bool_check(a) or not bool_check(b) {
         return long_number().view(1)[0].nb_xor(a, b);
     }
     return PyBool_FromLong(i64((a == py_true()) != (b == py_true())));
 }
 
-# PyLong_Type.tp_as_number, the int slots bool defers to.
-def long_number -> ptr[PyNumberMethods] {
+impl long_number -> ptr[PyNumberMethods] {
     return addressof(PyLong_Type).view(1)[0].tp_as_number;
 }
 
-# This should never get called, but we also don't want to SEGV if we
-# accidentally decref Booleans out of existence. Instead, since bools are
-# immortal, re-set the reference count.
-def bool_dealloc(boolean: ptr[PyObject]) {
+impl bool_dealloc(boolean: ptr[PyObject]) {
     _Py_SetImmortal(boolean);
 }

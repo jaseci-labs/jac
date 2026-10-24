@@ -1,16 +1,4 @@
-"""The decimal.Context, SignalDictMixin and ContextManager types of _decimal.
-
-Modules/_decimal/_decimal.c's context objects in native Jac: the signal
-dictionaries that view a context's traps and status words, the Context
-attributes, constructor, representation and pickling, the Context arithmetic
-methods, the context manager of localcontext(), and the module functions
-getcontext(), setcontext(), localcontext() and IEEEContext(). See
-../LICENSE.cpython.
-"""
-
 import from c {
-    # The condition names libmpdec's mpd_lsnprint_signals() prints for each
-    # status flag, in flag order.
     glob:priv dec_signal_string: list[ptr[u8]] = [
              ptr[u8]("Clamped"),
              ptr[u8]("InvalidOperation"),
@@ -27,10 +15,7 @@ import from c {
              ptr[u8]("Rounded"),
              ptr[u8]("Subnormal"),
              ptr[u8]("Underflow")
-         ];
-    # The default context: prec=28, Emax=999999, Emin=-999999, traps on
-    # InvalidOperation, DivisionByZero and Overflow, ROUND_HALF_EVEN.
-    glob dflt_ctx: mpd_context_t = mpd_context_t(
+         ]; glob dflt_ctx: mpd_context_t = mpd_context_t(
              prec=28,
              emax=999999,
              emin=-999999,
@@ -46,26 +31,218 @@ import from c {
 glob:priv INT_MIN: Final[int] = -2147483648,
      INT_MAX: Final[int] = 2147483647;
 
-# ---------------------------------------------------------------------------
-# SignalDict: a MutableMapping over a context's traps or status word. When a
-# context is created, context.traps and context.flags are new SignalDicts
-# tied to it; they cannot be deleted.
-
 def signaldict_init(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> i32;
+
+def signaldict_len(self: ptr[PyObject]) -> i64;
+
+def signaldict_iter(self: ptr[PyObject]) -> ptr[PyObject];
+
+def signaldict_getitem(self: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject];
+
+def signaldict_setitem(
+    self: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def signaldict_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def signaldict_dealloc(self: ptr[PyObject]);
+
+def signaldict_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def signaldict_richcompare(
+    v: ptr[PyObject], w: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def signaldict_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def context_getprec(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def context_getemax(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def context_getemin(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def context_getclamp(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def context_getround(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def context_getcapitals(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def context_getetiny(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def context_getetop(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+obj SsizeValue {
+    has value: i64 = 0,
+        ok: bool = True;
+}
+
+def ssize_value(value: ptr[PyObject]) -> SsizeValue;
+
+def context_setprec(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32;
+
+def context_setemin(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32;
+
+def context_setemax(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32;
+
+def context_setround(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32;
+
+def context_setcapitals(
+    self: ptr[PyObject], value: ptr[PyObject], closure: ptr
+) -> i32;
+
+def context_settraps_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32;
+
+def context_settraps_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32;
+
+def context_setstatus_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32;
+
+def context_setstatus_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32;
+
+def context_setclamp(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32;
+
+def context_getattr(self: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject];
+
+def context_setattr(
+    self: ptr[PyObject], name: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def context_setattrs(
+    self: ptr[PyObject],
+    prec: ptr[PyObject],
+    rounding: ptr[PyObject],
+    emin: ptr[PyObject],
+    emax: ptr[PyObject],
+    capitals: ptr[PyObject],
+    clamp: ptr[PyObject],
+    status: ptr[PyObject],
+    traps: ptr[PyObject]
+) -> i32;
+
+def context_clear_traps(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def context_clear_flags(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def context_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def context_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def context_clear(op: ptr[PyObject]) -> i32;
+
+def context_dealloc(self: ptr[PyObject]);
+
+def context_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32;
+
+def round_string(round: i32) -> ptr[u8];
+
+def signal_list_text(flags: u32) -> ptr[u8];
+
+def context_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def init_basic_context(v: ptr[PyObject]);
+
+def init_extended_context(v: ptr[PyObject]);
+
+def ieee_context(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def context_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_unary(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject];
+
+obj ContextOperands {
+    has a: ptr[PyObject] = NULL,
+        b: ptr[PyObject] = NULL,
+        ok: bool = False;
+}
+
+def context_operands(context: ptr[PyObject], args: ptr[PyObject]) -> ContextOperands;
+
+def ctx_binary(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObject];
+
+def ctx_total(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObject];
+
+def ctx_bool(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject];
+
+def ctx_mpd_qdivmod(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_qpow(
+    context: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ctx_mpd_qfma(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_radix(context: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_iscanonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_apply(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_canonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_copy_with(
+    context: ptr[PyObject], v: ptr[PyObject], negate: bool
+) -> ptr[PyObject];
+
+def ctx_mpd_qcopy_abs(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_qcopy_negate(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_copy_decimal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_class(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_to_string(
+    context: ptr[PyObject], v: ptr[PyObject], engineering: bool
+) -> ptr[PyObject];
+
+def ctx_mpd_to_sci(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_to_eng(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_qcopy_sign(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_mpd_same_quantum(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_create_decimal(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def ctx_from_float(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_getcontext(module: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_setcontext(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject];
+
+def ctxmanager_new(
+    module: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ctxmanager_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def ctxmanager_clear(op: ptr[PyObject]) -> i32;
+
+def ctxmanager_dealloc(self: ptr[PyObject]);
+
+def ctxmanager_set_local(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def ctxmanager_restore_global(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+impl signaldict_init(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> i32 {
     ptr[PyDecSignalDictObject](self).view(1)[0].flags = ptr[u32]();
     return i32(0);
 }
 
-def signaldict_len(self: ptr[PyObject]) -> i64 {
+impl signaldict_len(self: ptr[PyObject]) -> i64 {
     if not signal_dict_flags(self) {
         return i64(value_error_int(INVALID_SIGNALDICT_ERROR_MSG));
     }
     return i64(SIGNAL_MAP_LEN);
 }
 
-def signaldict_iter(self: ptr[PyObject]) -> ptr[PyObject] {
+impl signaldict_iter(self: ptr[PyObject]) -> ptr[PyObject] {
     if not signal_dict_flags(self) {
         return value_error_ptr(INVALID_SIGNALDICT_ERROR_MSG);
     }
@@ -73,7 +250,7 @@ def signaldict_iter(self: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_GetIter(state_value(module, STATE_SIGNAL_TUPLE));
 }
 
-def signaldict_getitem(self: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
+impl signaldict_getitem(self: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
     if not signal_dict_flags(self) {
         return value_error_ptr(INVALID_SIGNALDICT_ERROR_MSG);
     }
@@ -85,7 +262,7 @@ def signaldict_getitem(self: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject]
     return bool_object((signal_dict_flags(self).view(1)[0] & flag) != u32(0));
 }
 
-def signaldict_setitem(
+impl signaldict_setitem(
     self: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if not signal_dict_flags(self) {
@@ -112,18 +289,18 @@ def signaldict_setitem(
     return i32(0);
 }
 
-def signaldict_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl signaldict_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(ptr[PyObject](object_type(self)), visitor, arg);
 }
 
-def signaldict_dealloc(self: ptr[PyObject]) {
+impl signaldict_dealloc(self: ptr[PyObject]) {
     tp = object_type(self);
     PyObject_GC_UnTrack(ptr(self));
     tp.view(1)[0].tp_free(ptr(self));
     jacpy_release(ptr[PyObject](tp));
 }
 
-def signaldict_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl signaldict_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     if not signal_dict_flags(self) {
         return value_error_ptr(INVALID_SIGNALDICT_ERROR_MSG);
     }
@@ -133,10 +310,10 @@ def signaldict_repr(self: ptr[PyObject]) -> ptr[PyObject] {
         value = "True" if (flags & SIGNAL_FLAGS[index]) != u32(0) else "False";
         parts.append(f"<class 'decimal.{SIGNAL_NAMES[index]}'>:{value}");
     }
-    return PyUnicode_FromString("{" + ", ".join(parts) + "}");
+    return jacpy_unicode_from_text("{" + ", ".join(parts) + "}");
 }
 
-def signaldict_richcompare(
+impl signaldict_richcompare(
     v: ptr[PyObject], w: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     module = module_of_type(ptr[PyObject](object_type(v)));
@@ -153,7 +330,6 @@ def signaldict_richcompare(
             flags = dict_as_flags(module, w);
             if (flags & DEC_ERRORS) != u32(0) {
                 if (flags & u32(0x8000)) != u32(0) {
-                    # non-comparable: NotImplemented
                     PyErr_Clear();
                 } else {
                     return NULL;
@@ -166,7 +342,7 @@ def signaldict_richcompare(
     return Py_NewRef(res);
 }
 
-def signaldict_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl signaldict_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if not signal_dict_flags(self) {
         return value_error_ptr(INVALID_SIGNALDICT_ERROR_MSG);
     }
@@ -174,49 +350,40 @@ def signaldict_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] 
     return flags_as_dict(module, signal_dict_flags(self).view(1)[0]);
 }
 
-# ---------------------------------------------------------------------------
-# Context attributes.
-
-def context_getprec(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl context_getprec(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromSsize_t(mpd_getprec(ctx_of(self)));
 }
 
-def context_getemax(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl context_getemax(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromSsize_t(mpd_getemax(ctx_of(self)));
 }
 
-def context_getemin(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl context_getemin(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromSsize_t(mpd_getemin(ctx_of(self)));
 }
 
-def context_getclamp(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl context_getclamp(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromSsize_t(i64(mpd_getclamp(ctx_of(self))));
 }
 
-def context_getround(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl context_getround(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     i = int(mpd_getround(ctx_of(self)));
     return Py_NewRef(state_value(module_of_context(self), STATE_ROUND_MAP + i));
 }
 
-def context_getcapitals(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl context_getcapitals(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(i64(ctx_caps(self)));
 }
 
-def context_getetiny(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl context_getetiny(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(mpd_etiny(ctx_of(self)));
 }
 
-def context_getetop(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl context_getetop(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(mpd_etop(ctx_of(self)));
 }
 
-"""A Py_ssize_t attribute value; `ok` False with the error set."""
-obj SsizeValue {
-    has value: i64 = 0,
-        ok: bool = True;
-}
-
-def ssize_value(value: ptr[PyObject]) -> SsizeValue {
+impl ssize_value(value: ptr[PyObject]) -> SsizeValue {
     x = PyLong_AsSsize_t(value);
     if x == -1 and PyErr_Occurred() {
         return SsizeValue(ok=False);
@@ -224,7 +391,7 @@ def ssize_value(value: ptr[PyObject]) -> SsizeValue {
     return SsizeValue(value=x);
 }
 
-def context_setprec(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
+impl context_setprec(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     x = ssize_value(value);
     if not x.ok {
         return i32(-1);
@@ -235,7 +402,7 @@ def context_setprec(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> 
     return i32(0);
 }
 
-def context_setemin(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
+impl context_setemin(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     x = ssize_value(value);
     if not x.ok {
         return i32(-1);
@@ -246,7 +413,7 @@ def context_setemin(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> 
     return i32(0);
 }
 
-def context_setemax(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
+impl context_setemax(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     x = ssize_value(value);
     if not x.ok {
         return i32(-1);
@@ -257,7 +424,7 @@ def context_setemax(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> 
     return i32(0);
 }
 
-def context_setround(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
+impl context_setround(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     x = getround(module_of_context(self), value);
     if x == -1 {
         return i32(-1);
@@ -268,7 +435,7 @@ def context_setround(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) ->
     return i32(0);
 }
 
-def context_setcapitals(
+impl context_setcapitals(
     self: ptr[PyObject], value: ptr[PyObject], closure: ptr
 ) -> i32 {
     x = ssize_value(value);
@@ -282,7 +449,7 @@ def context_setcapitals(
     return i32(0);
 }
 
-def context_settraps_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
+impl context_settraps_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     flags = list_as_flags(module_of_context(self), value);
     if (flags & DEC_ERRORS) != u32(0) {
         return i32(-1);
@@ -293,7 +460,7 @@ def context_settraps_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def context_settraps_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
+impl context_settraps_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     module = module_of_context(self);
     flags: u32 = 0;
     if signal_dict_check(module, value) {
@@ -310,7 +477,7 @@ def context_settraps_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def context_setstatus_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
+impl context_setstatus_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     flags = list_as_flags(module_of_context(self), value);
     if (flags & DEC_ERRORS) != u32(0) {
         return i32(-1);
@@ -321,7 +488,7 @@ def context_setstatus_list(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def context_setstatus_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
+impl context_setstatus_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     module = module_of_context(self);
     flags: u32 = 0;
     if signal_dict_check(module, value) {
@@ -338,13 +505,13 @@ def context_setstatus_dict(self: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def context_setclamp(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
+impl context_setclamp(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     x = ssize_value(value);
     if not x.ok {
         return i32(-1);
     }
     clamp = x.value;
-    # BOUNDS_CHECK(x, INT_MIN, INT_MAX)
+
     if clamp < INT_MIN or INT_MAX < clamp {
         clamp = INT_MAX;
     }
@@ -354,19 +521,19 @@ def context_setclamp(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) ->
     return i32(0);
 }
 
-def context_getattr(self: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
+impl context_getattr(self: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(name) != 0 {
-        if PyUnicode_CompareWithASCIIString(name, "traps") == 0 {
+        if PyUnicode_CompareWithASCIIString(name, ptr[u8]("traps")) == 0 {
             return Py_NewRef(context_record(self).view(1)[0].traps);
         }
-        if PyUnicode_CompareWithASCIIString(name, "flags") == 0 {
+        if PyUnicode_CompareWithASCIIString(name, ptr[u8]("flags")) == 0 {
             return Py_NewRef(context_record(self).view(1)[0].flags);
         }
     }
     return PyObject_GenericGetAttr(self, name);
 }
 
-def context_setattr(
+impl context_setattr(
     self: ptr[PyObject], name: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if not value {
@@ -374,18 +541,17 @@ def context_setattr(
         return i32(-1);
     }
     if jacpy_is_unicode(name) != 0 {
-        if PyUnicode_CompareWithASCIIString(name, "traps") == 0 {
+        if PyUnicode_CompareWithASCIIString(name, ptr[u8]("traps")) == 0 {
             return context_settraps_dict(self, value);
         }
-        if PyUnicode_CompareWithASCIIString(name, "flags") == 0 {
+        if PyUnicode_CompareWithASCIIString(name, ptr[u8]("flags")) == 0 {
             return context_setstatus_dict(self, value);
         }
     }
     return PyObject_GenericSetAttr(self, name, value);
 }
 
-"""Set the given attributes (None leaves one unchanged)."""
-def context_setattrs(
+impl context_setattrs(
     self: ptr[PyObject],
     prec: ptr[PyObject],
     rounding: ptr[PyObject],
@@ -433,20 +599,17 @@ def context_setattrs(
     return i32(0);
 }
 
-def context_clear_traps(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl context_clear_traps(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     ctx_of(self).view(1)[0].traps = 0;
     return Py_NewRef(Py_None);
 }
 
-def context_clear_flags(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl context_clear_flags(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     ctx_of(self).view(1)[0].status = 0;
     return Py_NewRef(Py_None);
 }
 
-# ---------------------------------------------------------------------------
-# Context lifecycle.
-
-def context_new(
+impl context_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_type(ptr[PyObject](type));
@@ -497,7 +660,7 @@ def context_new(
     return self;
 }
 
-def context_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl context_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     status = visit_reference(ptr[PyObject](object_type(op)), visitor, arg);
     if status != 0 {
         return status;
@@ -510,7 +673,7 @@ def context_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(record[0].flags, visitor, arg);
 }
 
-def context_clear(op: ptr[PyObject]) -> i32 {
+impl context_clear(op: ptr[PyObject]) -> i32 {
     record = context_record(op).view(1);
     traps = record[0].traps;
     record[0].traps = NULL;
@@ -521,7 +684,7 @@ def context_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def context_dealloc(self: ptr[PyObject]) {
+impl context_dealloc(self: ptr[PyObject]) {
     tp = object_type(self);
     PyObject_GC_UnTrack(ptr(self));
     context_clear(self);
@@ -529,7 +692,9 @@ def context_dealloc(self: ptr[PyObject]) {
     jacpy_release(ptr[PyObject](tp));
 }
 
-def context_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
+impl context_init(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> i32 {
     values = parse_keywords(
         args,
         kwds,
@@ -556,13 +721,11 @@ def context_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) 
     );
 }
 
-"""The rounding name of mode `round` (mpd_round_string)."""
-def round_string(round: i32) -> ptr[u8] {
+impl round_string(round: i32) -> ptr[u8] {
     return (ptr[ptr[u8]](addressof(mpd_round_string)) + int(round)).view(1)[0];
 }
 
-"""The flags in `flags` as "[Inexact, Rounded]", or NULL with an error."""
-def signal_list_text(flags: u32) -> ptr[u8] {
+impl signal_list_text(flags: u32) -> ptr[u8] {
     buffer = ptr[u8](PyMem_Malloc(u64(MPD_MAX_SIGNAL_LIST)));
     if not buffer {
         PyErr_NoMemory();
@@ -582,7 +745,7 @@ def signal_list_text(flags: u32) -> ptr[u8] {
     return buffer;
 }
 
-def context_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl context_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     ctx = ctx_of(self).view(1);
     flags = signal_list_text(ctx[0].status);
     if not flags {
@@ -609,8 +772,7 @@ def context_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""BasicContext: prec=9, ROUND_HALF_UP, Underflow and Clamped trapped too."""
-def init_basic_context(v: ptr[PyObject]) {
+impl init_basic_context(v: ptr[PyObject]) {
     copy_mpd_context(ctx_of(v), addressof(dflt_ctx));
     ctx = ctx_of(v).view(1);
     ctx[0].prec = 9;
@@ -619,8 +781,7 @@ def init_basic_context(v: ptr[PyObject]) {
     context_record(v).view(1)[0].capitals = 1;
 }
 
-"""ExtendedContext: prec=9 and no traps."""
-def init_extended_context(v: ptr[PyObject]) {
+impl init_extended_context(v: ptr[PyObject]) {
     copy_mpd_context(ctx_of(v), addressof(dflt_ctx));
     ctx = ctx_of(v).view(1);
     ctx[0].prec = 9;
@@ -628,8 +789,7 @@ def init_extended_context(v: ptr[PyObject]) {
     context_record(v).view(1)[0].capitals = 1;
 }
 
-"""IEEEContext(bits): a context for an IEEE interchange format."""
-def ieee_context(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ieee_context(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     bits = PyLong_AsSsize_t(v);
     if bits == -1 and PyErr_Occurred() {
         return NULL;
@@ -656,7 +816,7 @@ def ieee_context(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return context;
 }
 
-def context_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl context_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of_context(self);
     ctx = ctx_of(self).view(1);
     flags = signals_as_list(module, ctx[0].status);
@@ -685,11 +845,7 @@ def context_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Context arithmetic: the operands are converted, raising TypeError.
-
-"""DecCtx_UnaryFunc."""
-def ctx_unary(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl ctx_unary(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject] {
     a = convert_op(True, v, context);
     if not a {
         return NULL;
@@ -708,15 +864,7 @@ def ctx_unary(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject
     return result;
 }
 
-"""The two operands of a binary Context method (positional only), or `ok`
-False with the error set."""
-obj ContextOperands {
-    has a: ptr[PyObject] = NULL,
-        b: ptr[PyObject] = NULL,
-        ok: bool = False;
-}
-
-def context_operands(context: ptr[PyObject], args: ptr[PyObject]) -> ContextOperands {
+impl context_operands(context: ptr[PyObject], args: ptr[PyObject]) -> ContextOperands {
     operands = ContextOperands();
     values = parse_tuple(args, "OO");
     if values is None {
@@ -737,8 +885,7 @@ def context_operands(context: ptr[PyObject], args: ptr[PyObject]) -> ContextOper
     return operands;
 }
 
-"""DecCtx_BinaryFunc."""
-def ctx_binary(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl ctx_binary(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObject] {
     operands = context_operands(context, args);
     if not operands.ok {
         return NULL;
@@ -761,8 +908,7 @@ def ctx_binary(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyOb
     return result;
 }
 
-"""DecCtx_BinaryFunc_NO_CTX: the context is only used for conversion."""
-def ctx_total(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl ctx_total(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObject] {
     operands = context_operands(context, args);
     if not operands.ok {
         return NULL;
@@ -779,8 +925,7 @@ def ctx_total(context: ptr[PyObject], args: ptr[PyObject], op: int) -> ptr[PyObj
     return result;
 }
 
-"""DecCtx_BoolFunc and DecCtx_BoolFunc_NO_CTX."""
-def ctx_bool(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl ctx_bool(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject] {
     a = convert_op(True, v, context);
     if not a {
         return NULL;
@@ -790,7 +935,7 @@ def ctx_bool(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObject]
     return ret;
 }
 
-def ctx_mpd_qdivmod(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_qdivmod(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     operands = context_operands(context, args);
     if not operands.ok {
         return NULL;
@@ -798,8 +943,7 @@ def ctx_mpd_qdivmod(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     return divmod_operands(module_of_context(context), operands.a, operands.b, context);
 }
 
-"""power(a, b, modulo=None)."""
-def ctx_mpd_qpow(
+impl ctx_mpd_qpow(
     context: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "OO|O", ["a", "b", "modulo"]);
@@ -828,7 +972,7 @@ def ctx_mpd_qpow(
     return power_operands(module_of_context(context), a, b, c, context);
 }
 
-def ctx_mpd_qfma(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_qfma(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     values = parse_tuple(args, "OOO");
     if values is None {
         return NULL;
@@ -866,11 +1010,11 @@ def ctx_mpd_qfma(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def ctx_mpd_radix(context: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_radix(context: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return dec_mpd_radix_of(module_of_context(context));
 }
 
-def ctx_iscanonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_iscanonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     if not dec_check(module_of_context(context), v) {
         PyErr_SetString(PyExc_TypeError, "argument must be a Decimal");
         return NULL;
@@ -878,8 +1022,7 @@ def ctx_iscanonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return bool_object(mpd_iscanonical(mpd(v)) != 0);
 }
 
-"""_apply(v): v converted and rounded to the context."""
-def ctx_apply(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_apply(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     a = convert_op(True, v, context);
     if not a {
         return NULL;
@@ -889,7 +1032,7 @@ def ctx_apply(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def ctx_canonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_canonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     if not dec_check(module_of_context(context), v) {
         PyErr_SetString(PyExc_TypeError, "argument must be a Decimal");
         return NULL;
@@ -897,8 +1040,7 @@ def ctx_canonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(v);
 }
 
-"""copy_abs and copy_negate."""
-def ctx_copy_with(
+impl ctx_copy_with(
     context: ptr[PyObject], v: ptr[PyObject], negate: bool
 ) -> ptr[PyObject] {
     a = convert_op(True, v, context);
@@ -924,19 +1066,19 @@ def ctx_copy_with(
     return result;
 }
 
-def ctx_mpd_qcopy_abs(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_qcopy_abs(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return ctx_copy_with(context, v, False);
 }
 
-def ctx_mpd_qcopy_negate(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_qcopy_negate(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return ctx_copy_with(context, v, True);
 }
 
-def ctx_copy_decimal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_copy_decimal(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return convert_op(True, v, context);
 }
 
-def ctx_mpd_class(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_class(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     a = convert_op(True, v, context);
     if not a {
         return NULL;
@@ -946,8 +1088,7 @@ def ctx_mpd_class(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return c_string_text(cp);
 }
 
-"""to_sci_string and to_eng_string."""
-def ctx_to_string(
+impl ctx_to_string(
     context: ptr[PyObject], v: ptr[PyObject], engineering: bool
 ) -> ptr[PyObject] {
     a = convert_op(True, v, context);
@@ -971,15 +1112,15 @@ def ctx_to_string(
     return result;
 }
 
-def ctx_mpd_to_sci(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_to_sci(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return ctx_to_string(context, v, False);
 }
 
-def ctx_mpd_to_eng(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_to_eng(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return ctx_to_string(context, v, True);
 }
 
-def ctx_mpd_qcopy_sign(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_qcopy_sign(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     operands = context_operands(context, args);
     if not operands.ok {
         return NULL;
@@ -1001,7 +1142,9 @@ def ctx_mpd_qcopy_sign(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     return result;
 }
 
-def ctx_mpd_same_quantum(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_mpd_same_quantum(
+    context: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
     operands = context_operands(context, args);
     if not operands.ok {
         return NULL;
@@ -1012,8 +1155,7 @@ def ctx_mpd_same_quantum(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyO
     return result;
 }
 
-"""create_decimal(num="0"): num rounded to the context."""
-def ctx_create_decimal(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_create_decimal(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     values = parse_tuple(args, "|O");
     if values is None {
         return NULL;
@@ -1021,28 +1163,19 @@ def ctx_create_decimal(context: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     return dec_from_object(values[0].object if values[0].given else NULL, context);
 }
 
-"""create_decimal_from_float(f)."""
-def ctx_from_float(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl ctx_from_float(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return dec_type_from_float(dec_type(module_of_context(context)), v, context);
 }
 
-# ---------------------------------------------------------------------------
-# Module functions and the context manager.
-
-"""getcontext(): the current context."""
-def dec_getcontext(module: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_getcontext(module: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return current_context(module);
 }
 
-"""setcontext(context)."""
-def dec_setcontext(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_setcontext(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     return set_current_context(module, v);
 }
 
-"""localcontext(ctx=None, **kwargs): a context manager that owns one
-reference to the global (outer) context and one to the local (inner)
-copy."""
-def ctxmanager_new(
+impl ctxmanager_new(
     module: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     outer = current_context_borrowed(module);
@@ -1110,7 +1243,7 @@ def ctxmanager_new(
     return self;
 }
 
-def ctxmanager_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl ctxmanager_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     status = visit_reference(ptr[PyObject](object_type(op)), visitor, arg);
     if status != 0 {
         return status;
@@ -1123,7 +1256,7 @@ def ctxmanager_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(record[0].outer, visitor, arg);
 }
 
-def ctxmanager_clear(op: ptr[PyObject]) -> i32 {
+impl ctxmanager_clear(op: ptr[PyObject]) -> i32 {
     record = ptr[PyDecContextManagerObject](op).view(1);
     inner = record[0].inner;
     record[0].inner = NULL;
@@ -1134,7 +1267,7 @@ def ctxmanager_clear(op: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def ctxmanager_dealloc(self: ptr[PyObject]) {
+impl ctxmanager_dealloc(self: ptr[PyObject]) {
     tp = object_type(self);
     PyObject_GC_UnTrack(ptr(self));
     ctxmanager_clear(self);
@@ -1142,8 +1275,7 @@ def ctxmanager_dealloc(self: ptr[PyObject]) {
     jacpy_release(ptr[PyObject](tp));
 }
 
-"""__enter__: install the local context and return it."""
-def ctxmanager_set_local(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl ctxmanager_set_local(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     inner = ptr[PyDecContextManagerObject](op).view(1)[0].inner;
     ret = set_current_context(PyType_GetModule(ptr[PyObject](object_type(op))), inner);
     if not ret {
@@ -1153,8 +1285,9 @@ def ctxmanager_set_local(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObjec
     return Py_NewRef(inner);
 }
 
-"""__exit__: put the global context back."""
-def ctxmanager_restore_global(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl ctxmanager_restore_global(
+    op: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
     outer = ptr[PyDecContextManagerObject](op).view(1)[0].outer;
     ret = set_current_context(PyType_GetModule(ptr[PyObject](object_type(op))), outer);
     if not ret {

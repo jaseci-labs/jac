@@ -1,21 +1,4 @@
-"""The object layouts, module state and Future machinery of the native
-_asyncio module.
-
-Derived from CPython 3.14.6 Modules/_asynciomodule.c; see ../LICENSE.cpython.
-A Future or Task is the C module's FutureObj or TaskObj in place: the same
-fields at the same offsets, the flag bitfields being the byte at
-FUT_BITS_OFFSET (object_api.c asserts the layout against the C structs), so
-profilers that read a task through Py_AsyncioModuleDebugOffsets see a Jac
-task as they see a C one. The running loop and task of a thread and the
-task lists live in the thread and interpreter states, reached through
-object_api.c helpers. The module state is the binding layer's reference
-slots, indexed by the STATE_* constants, with the task name counter as
-native state. The free-threaded build's critical sections and
-stop-the-world pauses have no counterpart: every JacPython build has a GIL.
-"""
-
 import from c {
-    # FutureObj: FutureObj_HEAD(fut).
     obj FutureObj {
         has ob_base: _object,
             fut_loop: ptr[PyObject],
@@ -32,14 +15,9 @@ import from c {
             fut_state: i32,
             fut_is_task: i8,
             fut_awaited_by_is_set: i8,
-            # The unsigned bitfields fut_log_tb, fut_blocking and TaskObj's
-            # task_must_cancel and task_log_destroy_pending share this byte.
             fut_bits: u8,
             fut_bits_pad: u8;
-    }
-    # TaskObj: FutureObj_HEAD(task) and the task fields; task_node is the
-    # struct llist_node {next, prev} of the task lists.
-    obj TaskObj {
+    }  obj TaskObj {
         has base: FutureObj,
             task_num_cancels_requested: i32,
             task_fut_waiter: ptr[PyObject],
@@ -58,9 +36,7 @@ import from c {
     }  obj LlistNode {
         has next: ptr,
             prev: ptr;
-    }
-    # A vectorcall argument array with room for PY_VECTORCALL_ARGUMENTS_OFFSET.
-    obj CallStack {
+    }  obj CallStack {
         has slot0: ptr[PyObject],
             slot1: ptr[PyObject],
             slot2: ptr[PyObject],
@@ -69,28 +45,23 @@ import from c {
     }
 }
 
-# The sizes and offsets object_api.c asserts against the C structs.
 glob FUTURE_OBJECT_SIZE: Final[int] = 112,
      TASK_OBJECT_SIZE: Final[int] = 168,
      TASK_STEP_WRAPPER_SIZE: Final[int] = 32,
      FUTURE_ITER_SIZE: Final[int] = 24,
      TASK_NODE_OFFSET: Final[int] = 152;
 
-# fut_state
 glob STATE_PENDING: Final[int] = 0,
      STATE_CANCELLED: Final[int] = 1,
      STATE_FINISHED: Final[int] = 2;
 
-# The bits of fut_bits.
 glob BIT_LOG_TB: Final[int] = 1,
      BIT_BLOCKING: Final[int] = 2,
      BIT_MUST_CANCEL: Final[int] = 4,
      BIT_LOG_DESTROY_PENDING: Final[int] = 8;
 
-# PY_VECTORCALL_ARGUMENTS_OFFSET
 glob ARGUMENTS_OFFSET: Final[u64] = 0x8000000000000000;
 
-# The module state slots.
 glob STATE_FUTURE_ITER_TYPE: Final[int] = 0,
      STATE_TASK_STEP_WRAPPER_TYPE: Final[int] = 1,
      STATE_FUTURE_TYPE: Final[int] = 2,
@@ -111,27 +82,19 @@ glob STATE_FUTURE_ITER_TYPE: Final[int] = 0,
      STATE_TRACEBACK_EXTRACT_STACK: Final[int] = 17,
      STATE_COUNT: Final[int] = 18;
 
-# The ModuleDefinition handle of _asyncio, set when the module executes, for
-# PyType_GetModuleByDef().
 obj ModuleToken {
     has handle: ptr = ptr();
 }
 
 glob asyncio_module_token: ModuleToken = ModuleToken();
 
-"""The module state that is not a reference: the task name counter."""
 obj AsyncioState(NativeState) {
     has task_name_counter: int = 0;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
 }
 
-"""The interned identifiers the C module names with _Py_ID(); interned once
-per process, like the runtime's static strings."""
 obj Identifiers {
     has ready: bool = False,
         call_soon: ptr[PyObject] = NULL,
@@ -165,8 +128,115 @@ obj Identifiers {
 
 glob ids = Identifiers();
 
-"""Intern the identifiers; False with the error set."""
-def intern_identifiers -> bool {
+def intern_identifiers -> bool;
+
+def fut_of(op: ptr[PyObject]) -> ptr[FutureObj];
+
+def task_of(op: ptr[PyObject]) -> ptr[TaskObj];
+
+def has_bit(op: ptr[PyObject], bit: int) -> bool;
+
+def set_bit(op: ptr[PyObject], bit: int, value: bool);
+
+def state_ref(module: ptr[PyObject], index: int) -> ptr[PyObject];
+
+def module_of_type(type: ptr[PyObject]) -> ptr[PyObject];
+
+def module_of(op: ptr[PyObject]) -> ptr[PyObject];
+
+def native_state(module: ptr[PyObject]) -> AsyncioState | None;
+
+def type_check(op: ptr[PyObject], type: ptr[PyObject]) -> bool;
+
+def future_check_exact(module: ptr[PyObject], op: ptr[PyObject]) -> bool;
+
+def task_check_exact(module: ptr[PyObject], op: ptr[PyObject]) -> bool;
+
+def task_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool;
+
+def task_or_future_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool;
+
+def exception_class_check(op: ptr[PyObject]) -> bool;
+
+def exception_instance_check(op: ptr[PyObject]) -> bool;
+
+def release(value: ptr[PyObject]);
+
+def running_loop_slot -> ptr[ptr[PyObject]];
+
+def running_task_slot -> ptr[ptr[PyObject]];
+
+def running_loop -> ptr[PyObject];
+
+def:priv is_coroutine_slow(module: ptr[PyObject], coro: ptr[PyObject]) -> int;
+
+def is_coroutine(module: ptr[PyObject], coro: ptr[PyObject]) -> int;
+
+def get_future_loop(module: ptr[PyObject], fut: ptr[PyObject]) -> ptr[PyObject];
+
+def get_event_loop(module: ptr[PyObject]) -> ptr[PyObject];
+
+def call_soon(
+    module: ptr[PyObject],
+    loop: ptr[PyObject],
+    func: ptr[PyObject],
+    arg: ptr[PyObject],
+    ctx: ptr[PyObject]
+) -> int;
+
+def future_is_alive(op: ptr[PyObject]) -> bool;
+
+def future_ensure_alive(op: ptr[PyObject]) -> int;
+
+def register_task(op: ptr[PyObject]);
+
+def unregister_task(op: ptr[PyObject]);
+
+def enter_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int;
+
+def leave_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int;
+
+def swap_current_task(loop: ptr[PyObject], task: ptr[PyObject]) -> ptr[PyObject];
+
+def future_schedule_callbacks(module: ptr[PyObject], op: ptr[PyObject]) -> int;
+
+def clear_future_fields(op: ptr[PyObject]);
+
+def future_init(op: ptr[PyObject], loop: ptr[PyObject]) -> int;
+
+def future_awaited_by_add(op: ptr[PyObject], thing: ptr[PyObject]) -> int;
+
+def future_awaited_by_discard(op: ptr[PyObject], thing: ptr[PyObject]) -> int;
+
+def future_set_result(
+    module: ptr[PyObject], op: ptr[PyObject], res: ptr[PyObject]
+) -> ptr[PyObject];
+
+def future_set_exception(
+    module: ptr[PyObject], op: ptr[PyObject], exc: ptr[PyObject]
+) -> ptr[PyObject];
+
+def create_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject];
+
+def future_set_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]);
+
+def future_get_result(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject];
+
+def future_add_done_callback(
+    module: ptr[PyObject], op: ptr[PyObject], arg: ptr[PyObject], ctx: ptr[PyObject]
+) -> ptr[PyObject];
+
+def future_cancel(
+    module: ptr[PyObject], op: ptr[PyObject], msg: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl AsyncioState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
+
+impl AsyncioState.clear {}
+
+impl intern_identifiers -> bool {
     if ids.ready {
         return True;
     }
@@ -201,7 +271,7 @@ def intern_identifiers -> bool {
     ];
     values: list[ptr[PyObject]] = [];
     for name in names {
-        value = PyUnicode_InternFromString(name);
+        value = jacpy_unicode_intern_text(name);
         if not value {
             for made in values {
                 jacpy_release(made);
@@ -241,43 +311,37 @@ def intern_identifiers -> bool {
     return True;
 }
 
-# ---------------------------------------------------------------------------
-# Object and state access.
-
-def fut_of(op: ptr[PyObject]) -> ptr[FutureObj] {
+impl fut_of(op: ptr[PyObject]) -> ptr[FutureObj] {
     return ptr[FutureObj](op);
 }
 
-def task_of(op: ptr[PyObject]) -> ptr[TaskObj] {
+impl task_of(op: ptr[PyObject]) -> ptr[TaskObj] {
     return ptr[TaskObj](op);
 }
 
-def has_bit(op: ptr[PyObject], bit: int) -> bool {
+impl has_bit(op: ptr[PyObject], bit: int) -> bool {
     return (int(ptr[FutureObj](op).view(1)[0].fut_bits) & bit) != 0;
 }
 
-def set_bit(op: ptr[PyObject], bit: int, value: bool) {
+impl set_bit(op: ptr[PyObject], bit: int, value: bool) {
     record = ptr[FutureObj](op).view(1);
     bits = int(record[0].fut_bits);
     record[0].fut_bits = u8((bits | bit) if value else (bits & ~bit & 0xFF));
 }
 
-"""A reference of the module state (borrowed)."""
-def state_ref(module: ptr[PyObject], index: int) -> ptr[PyObject] {
+impl state_ref(module: ptr[PyObject], index: int) -> ptr[PyObject] {
     return jacpy_binding_state_get(module, i64(index));
 }
 
-"""get_asyncio_state_by_def() and get_asyncio_state_by_cls(): the _asyncio
-module of an object's or a class's type (borrowed)."""
-def module_of_type(type: ptr[PyObject]) -> ptr[PyObject] {
+impl module_of_type(type: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_owner(type, asyncio_module_token.handle);
 }
 
-def module_of(op: ptr[PyObject]) -> ptr[PyObject] {
+impl module_of(op: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_owner(Py_TYPE(op), asyncio_module_token.handle);
 }
 
-def native_state(module: ptr[PyObject]) -> AsyncioState | None {
+impl native_state(module: ptr[PyObject]) -> AsyncioState | None {
     if jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
         if isinstance(state, AsyncioState) {
@@ -287,25 +351,23 @@ def native_state(module: ptr[PyObject]) -> AsyncioState | None {
     return None;
 }
 
-"""PyObject_TypeCheck()."""
-def type_check(op: ptr[PyObject], type: ptr[PyObject]) -> bool {
+impl type_check(op: ptr[PyObject], type: ptr[PyObject]) -> bool {
     return Py_TYPE(op) == type or PyType_IsSubtype(Py_TYPE(op), type) != 0;
 }
 
-def future_check_exact(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
+impl future_check_exact(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
     return Py_TYPE(op) == state_ref(module, STATE_FUTURE_TYPE);
 }
 
-def task_check_exact(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
+impl task_check_exact(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
     return Py_TYPE(op) == state_ref(module, STATE_TASK_TYPE);
 }
 
-def task_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
+impl task_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
     return type_check(op, state_ref(module, STATE_TASK_TYPE));
 }
 
-"""TaskOrFuture_Check(): exact types first, then subclasses."""
-def task_or_future_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
+impl task_or_future_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
     type = Py_TYPE(op);
     future_type = state_ref(module, STATE_FUTURE_TYPE);
     task_type = state_ref(module, STATE_TASK_TYPE);
@@ -315,45 +377,33 @@ def task_or_future_check(module: ptr[PyObject], op: ptr[PyObject]) -> bool {
         or PyType_IsSubtype(type, task_type) != 0;
 }
 
-"""PyExceptionClass_Check()."""
-def exception_class_check(op: ptr[PyObject]) -> bool {
+impl exception_class_check(op: ptr[PyObject]) -> bool {
     return jacpy_is_type(op) != 0 and PyType_IsSubtype(op, PyExc_BaseException) != 0;
 }
 
-"""PyExceptionInstance_Check()."""
-def exception_instance_check(op: ptr[PyObject]) -> bool {
+impl exception_instance_check(op: ptr[PyObject]) -> bool {
     return PyType_IsSubtype(Py_TYPE(op), PyExc_BaseException) != 0;
 }
 
-"""Py_XSETREF(slot, value) for a field read and written through `get`/`put`
-is spelled out at each site; this releases an old reference."""
-def release(value: ptr[PyObject]) {
+impl release(value: ptr[PyObject]) {
     if value {
         jacpy_release(value);
     }
 }
 
-# ---------------------------------------------------------------------------
-# The running loop and task of this thread.
-
-def running_loop_slot -> ptr[ptr[PyObject]] {
+impl running_loop_slot -> ptr[ptr[PyObject]] {
     return jacpy_asyncio_running_loop();
 }
 
-def running_task_slot -> ptr[ptr[PyObject]] {
+impl running_task_slot -> ptr[ptr[PyObject]] {
     return jacpy_asyncio_running_task();
 }
 
-def running_loop -> ptr[PyObject] {
+impl running_loop -> ptr[PyObject] {
     return jacpy_asyncio_running_loop().view(1)[0];
 }
 
-# ---------------------------------------------------------------------------
-# Helpers of the Future machinery.
-
-"""_is_coroutine(): asyncio.iscoroutine() for a coroutine other than a
-native one, caching up to 100 positive types."""
-def:priv is_coroutine_slow(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
+impl is_coroutine_slow(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
     res = PyObject_CallOneArg(state_ref(module, STATE_ISCOROUTINE_FUNC), coro);
     if not res {
         return -1;
@@ -365,7 +415,6 @@ def:priv is_coroutine_slow(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
     }
     typecache = state_ref(module, STATE_ISCOROUTINE_TYPECACHE);
     if PySet_Size(typecache) < 100 {
-        # Just in case we don't want to cache more than 100 positive types.
         if PySet_Add(typecache, Py_TYPE(coro)) != 0 {
             return -1;
         }
@@ -373,13 +422,11 @@ def:priv is_coroutine_slow(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
     return 1;
 }
 
-"""is_coroutine(): 1 when `coro` is a coroutine, 0 when not, -1 on error."""
-def is_coroutine(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
+impl is_coroutine(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
     if Py_TYPE(coro) == addressof(PyCoro_Type) {
         return 1;
     }
-    # Check if type(coro) is in the cache: that makes this almost as fast as
-    # the exact check for non-native coroutine-like objects.
+
     has_it = int(
         PySet_Contains(state_ref(module, STATE_ISCOROUTINE_TYPECACHE), Py_TYPE(coro))
     );
@@ -389,8 +436,7 @@ def is_coroutine(module: ptr[PyObject], coro: ptr[PyObject]) -> int {
     return has_it;
 }
 
-"""get_future_loop(): asyncio.futures._get_loop (a new reference)."""
-def get_future_loop(module: ptr[PyObject], fut: ptr[PyObject]) -> ptr[PyObject] {
+impl get_future_loop(module: ptr[PyObject], fut: ptr[PyObject]) -> ptr[PyObject] {
     if future_check_exact(module, fut) or task_check_exact(module, fut) {
         return Py_NewRef(fut_of(fut).view(1)[0].fut_loop);
     }
@@ -406,8 +452,7 @@ def get_future_loop(module: ptr[PyObject], fut: ptr[PyObject]) -> ptr[PyObject] 
     return PyObject_GetAttr(fut, ids.loop_attr);
 }
 
-"""get_event_loop(): the running loop, else the policy's loop."""
-def get_event_loop(module: ptr[PyObject]) -> ptr[PyObject] {
+impl get_event_loop(module: ptr[PyObject]) -> ptr[PyObject] {
     loop = running_loop();
     if loop {
         return Py_NewRef(loop);
@@ -421,8 +466,7 @@ def get_event_loop(module: ptr[PyObject]) -> ptr[PyObject] {
     return loop;
 }
 
-"""call_soon(): loop.call_soon(func[, arg][, context=ctx]); -1 on error."""
-def call_soon(
+impl call_soon(
     module: ptr[PyObject],
     loop: ptr[PyObject],
     func: ptr[PyObject],
@@ -437,7 +481,6 @@ def call_soon(
             ids.call_soon, args, u64(3) | ARGUMENTS_OFFSET, NULL
         );
     } else {
-        # All references on the stack are borrowed.
         nargs = 2;
         if arg {
             nargs = 3;
@@ -458,12 +501,11 @@ def call_soon(
     return 0;
 }
 
-def future_is_alive(op: ptr[PyObject]) -> bool {
+impl future_is_alive(op: ptr[PyObject]) -> bool {
     return bool(fut_of(op).view(1)[0].fut_loop);
 }
 
-"""future_ensure_alive(): -1 with RuntimeError for an uninitialized future."""
-def future_ensure_alive(op: ptr[PyObject]) -> int {
+impl future_ensure_alive(op: ptr[PyObject]) -> int {
     if not future_is_alive(op) {
         PyErr_SetString(PyExc_RuntimeError, "Future object is not initialized.");
         return -1;
@@ -471,14 +513,9 @@ def future_ensure_alive(op: ptr[PyObject]) -> int {
     return 0;
 }
 
-# ---------------------------------------------------------------------------
-# The task lists.
-
-"""register_task(): link the task into this thread's list."""
-def register_task(op: ptr[PyObject]) {
+impl register_task(op: ptr[PyObject]) {
     record = task_of(op).view(1);
     if record[0].task_node_next {
-        # Already registered.
         return;
     }
     head = ptr[LlistNode](jacpy_asyncio_tasks_head());
@@ -490,12 +527,10 @@ def register_task(op: ptr[PyObject]) {
     head.view(1)[0].prev = link;
 }
 
-"""unregister_task(): unlink a registered task."""
-def unregister_task(op: ptr[PyObject]) {
+impl unregister_task(op: ptr[PyObject]) {
     record = task_of(op).view(1);
     next = record[0].task_node_next;
     if not next {
-        # Not registered.
         return;
     }
     prev = record[0].task_node_prev;
@@ -505,9 +540,7 @@ def unregister_task(op: ptr[PyObject]) {
     record[0].task_node_next = ptr();
 }
 
-"""enter_task(): -1 with RuntimeError when `loop` is not running here or
-another task is."""
-def enter_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
+impl enter_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
     if running_loop() != loop {
         PyErr_Format(PyExc_RuntimeError, "loop %R is not the running loop", loop);
         return -1;
@@ -526,8 +559,7 @@ def enter_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
     return 0;
 }
 
-"""leave_task()."""
-def leave_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
+impl leave_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
     if running_loop() != loop {
         PyErr_Format(PyExc_RuntimeError, "loop %R is not the running loop", loop);
         return -1;
@@ -548,15 +580,13 @@ def leave_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
     return 0;
 }
 
-"""swap_current_task(): install `task` (None for none) and return the
-previous task, or None (a new reference)."""
-def swap_current_task(loop: ptr[PyObject], task: ptr[PyObject]) -> ptr[PyObject] {
+impl swap_current_task(loop: ptr[PyObject], task: ptr[PyObject]) -> ptr[PyObject] {
     if running_loop() != loop {
         PyErr_Format(PyExc_RuntimeError, "loop %R is not the running loop", loop);
         return NULL;
     }
     slot = running_task_slot().view(1);
-    # Transfer ownership to avoid redundant reference counting.
+
     prev_task = slot[0];
     slot[0] = Py_NewRef(task) if task != Py_None else NULL;
     if not prev_task {
@@ -565,19 +595,12 @@ def swap_current_task(loop: ptr[PyObject], task: ptr[PyObject]) -> ptr[PyObject]
     return prev_task;
 }
 
-# ---------------------------------------------------------------------------
-# The Future machinery.
-
-"""future_schedule_callbacks(): schedule every callback of a done future."""
-def future_schedule_callbacks(module: ptr[PyObject], op: ptr[PyObject]) -> int {
+impl future_schedule_callbacks(module: ptr[PyObject], op: ptr[PyObject]) -> int {
     if task_check(module, op) {
-        # Remove the task from the linked list of tasks, as it is finished.
         unregister_task(op);
     }
     record = fut_of(op).view(1);
     if record[0].fut_callback0 {
-        # There's a first callback. Transfer its ownership so that an evil
-        # call_soon cannot alter fut_callback0 or fut_context0.
         fut_callback0 = record[0].fut_callback0;
         record[0].fut_callback0 = NULL;
         fut_context0 = record[0].fut_context0;
@@ -586,8 +609,6 @@ def future_schedule_callbacks(module: ptr[PyObject], op: ptr[PyObject]) -> int {
         release(fut_callback0);
         release(fut_context0);
         if ret != 0 {
-            # If an error occurs in the pure-Python implementation, all
-            # callbacks are cleared.
             callbacks = record[0].fut_callbacks;
             record[0].fut_callbacks = NULL;
             release(callbacks);
@@ -595,11 +616,9 @@ def future_schedule_callbacks(module: ptr[PyObject], op: ptr[PyObject]) -> int {
         }
     }
     if not record[0].fut_callbacks {
-        # No more callbacks.
         return 0;
     }
-    # Transfer the ownership of the callbacks list so that external code
-    # cannot mutate it during the iteration.
+
     callbacks = record[0].fut_callbacks;
     record[0].fut_callbacks = NULL;
     n = PyList_Size(callbacks);
@@ -616,8 +635,7 @@ def future_schedule_callbacks(module: ptr[PyObject], op: ptr[PyObject]) -> int {
     return 0;
 }
 
-"""Clear every reference field of a FutureObj (FutureObj_clear()'s fields)."""
-def clear_future_fields(op: ptr[PyObject]) {
+impl clear_future_fields(op: ptr[PyObject]) {
     record = fut_of(op).view(1);
     for index in range(11) {
         slot = ptr[ptr[PyObject]](ptr(op) + 16 + 8 * index).view(1);
@@ -629,8 +647,7 @@ def clear_future_fields(op: ptr[PyObject]) {
     }
 }
 
-"""future_init()."""
-def future_init(op: ptr[PyObject], loop: ptr[PyObject]) -> int {
+impl future_init(op: ptr[PyObject], loop: ptr[PyObject]) -> int {
     clear_future_fields(op);
     record = fut_of(op).view(1);
     record[0].fut_state = i32(STATE_PENDING);
@@ -657,9 +674,6 @@ def future_init(op: ptr[PyObject], loop: ptr[PyObject]) -> int {
         return -1;
     }
     if is_true and _Py_IsInterpreterFinalizing(PyInterpreterState_Get()) == 0 {
-        # Only try to capture the traceback if the interpreter is not being
-        # finalized: a Future created in a __del__ during shutdown finds the
-        # traceback module unloaded.
         source_tb = PyObject_CallNoArgs(
             state_ref(module_of(op), STATE_TRACEBACK_EXTRACT_STACK)
         );
@@ -671,9 +685,7 @@ def future_init(op: ptr[PyObject], loop: ptr[PyObject]) -> int {
     return 0;
 }
 
-"""future_awaited_by_add(): record that `thing` awaits the future; a single
-awaiter is kept alone, more in a set."""
-def future_awaited_by_add(op: ptr[PyObject], thing: ptr[PyObject]) -> int {
+impl future_awaited_by_add(op: ptr[PyObject], thing: ptr[PyObject]) -> int {
     record = fut_of(op).view(1);
     if not record[0].fut_awaited_by {
         record[0].fut_awaited_by = Py_NewRef(thing);
@@ -698,8 +710,7 @@ def future_awaited_by_add(op: ptr[PyObject], thing: ptr[PyObject]) -> int {
     return 0;
 }
 
-"""future_awaited_by_discard(): as set.discard(), no error when absent."""
-def future_awaited_by_discard(op: ptr[PyObject], thing: ptr[PyObject]) -> int {
+impl future_awaited_by_discard(op: ptr[PyObject], thing: ptr[PyObject]) -> int {
     record = fut_of(op).view(1);
     awaited_by = record[0].fut_awaited_by;
     if not awaited_by {
@@ -718,8 +729,7 @@ def future_awaited_by_discard(op: ptr[PyObject], thing: ptr[PyObject]) -> int {
     return 0;
 }
 
-"""future_set_result()."""
-def future_set_result(
+impl future_set_result(
     module: ptr[PyObject], op: ptr[PyObject], res: ptr[PyObject]
 ) -> ptr[PyObject] {
     if future_ensure_alive(op) != 0 {
@@ -738,8 +748,7 @@ def future_set_result(
     return Py_NewRef(Py_None);
 }
 
-"""future_set_exception()."""
-def future_set_exception(
+impl future_set_exception(
     module: ptr[PyObject], op: ptr[PyObject], exc: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = fut_of(op).view(1);
@@ -769,7 +778,9 @@ def future_set_exception(
     }
     if PyErr_GivenExceptionMatches(exc_val, PyExc_StopIteration) != 0 {
         message = PyUnicode_FromString(
-            "StopIteration interacts badly with generators and cannot be raised into a Future"
+            ptr[u8](
+                "StopIteration interacts badly with generators and cannot be raised into a Future"
+            )
         );
         if not message {
             jacpy_release(exc_val);
@@ -796,12 +807,9 @@ def future_set_exception(
     return Py_NewRef(Py_None);
 }
 
-"""create_cancelled_error(): the stored CancelledError, else a new one with
-the cancel message (a new reference)."""
-def create_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
+impl create_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
     record = fut_of(op).view(1);
     if record[0].fut_cancelled_exc {
-        # Transfer ownership.
         exc = record[0].fut_cancelled_exc;
         record[0].fut_cancelled_exc = NULL;
         return exc;
@@ -814,8 +822,7 @@ def create_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyOb
     return PyObject_CallOneArg(cancelled_error, msg);
 }
 
-"""future_set_cancelled_error()."""
-def future_set_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) {
+impl future_set_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) {
     exc = create_cancelled_error(module, op);
     if not exc {
         return;
@@ -824,9 +831,7 @@ def future_set_cancelled_error(module: ptr[PyObject], op: ptr[PyObject]) {
     jacpy_release(exc);
 }
 
-"""future_get_result(): a new reference to the result, or to the exception
-when the future's fut_exception is set; NULL with the error set."""
-def future_get_result(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
+impl future_get_result(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject] {
     record = fut_of(op).view(1);
     state = int(record[0].fut_state);
     if state == STATE_CANCELLED {
@@ -857,9 +862,7 @@ def future_get_result(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject]
     return Py_NewRef(record[0].fut_result);
 }
 
-"""future_add_done_callback(): schedule `arg` now for a done future, else
-keep it (the first in fut_callback0, the rest in fut_callbacks)."""
-def future_add_done_callback(
+impl future_add_done_callback(
     module: ptr[PyObject], op: ptr[PyObject], arg: ptr[PyObject], ctx: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not future_is_alive(op) {
@@ -868,12 +871,10 @@ def future_add_done_callback(
     }
     record = fut_of(op).view(1);
     if int(record[0].fut_state) != STATE_PENDING {
-        # The future is done or cancelled: schedule the callback right away.
         if call_soon(module, record[0].fut_loop, arg, op, ctx) != 0 {
             return NULL;
         }
     } elif not record[0].fut_callbacks and not record[0].fut_callback0 {
-        # The first callback.
         record[0].fut_callback0 = Py_NewRef(arg);
         record[0].fut_context0 = Py_NewRef(ctx);
     } else {
@@ -902,8 +903,7 @@ def future_add_done_callback(
     return Py_NewRef(Py_None);
 }
 
-"""future_cancel()."""
-def future_cancel(
+impl future_cancel(
     module: ptr[PyObject], op: ptr[PyObject], msg: ptr[PyObject]
 ) -> ptr[PyObject] {
     set_bit(op, BIT_LOG_TB, False);

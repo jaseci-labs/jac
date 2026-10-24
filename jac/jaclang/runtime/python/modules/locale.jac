@@ -1,12 +1,3 @@
-"""POSIX locale support; derived from CPython 3.14.6 Modules/_localemodule.c.
-
-See ../LICENSE.cpython. The C library's locale state is process-wide; these
-functions read and change it with setlocale(), localeconv(), nl_langinfo(),
-the wide-character collation functions and, where the C library has them,
-the gettext message catalogs (modules/locale_platform.<os>.jac). The module
-state holds locale.Error.
-"""
-
 import from c {
     def setlocale(category: i32, locale: ptr[u8]) -> ptr[u8];  def localeconv -> ptr[
         lconv
@@ -17,29 +8,97 @@ import from c {
     ) -> i32;  def wcsxfrm(ws1: ptr[i32], ws2: ptr[i32], n: u64) -> u64;
 }
 
-# The module state reference holding locale.Error.
 glob ERROR: int = 0;
 
 glob:priv PyUnicode_4BYTE_KIND: i32 = 4,
      SIZEOF_WCHAR_T: i64 = 4;
 
-def:priv locale_error(module: ptr[PyObject], message: str) {
+def:priv locale_error(module: ptr[PyObject], message: str);
+
+def:priv byte_at(text: ptr[u8], index: int) -> int;
+
+def:priv char_value(byte: int) -> int;
+
+def:priv copy_grouping(text: ptr[u8]) -> ptr[PyObject];
+
+def _locale_setlocale_impl(
+    module: ptr[PyObject], category: i32, locale: ptr[u8]
+) -> ptr[PyObject];
+
+def:priv locale_is_ascii(text: ptr[u8]) -> bool;
+
+def:priv is_all_ascii(text: ptr[u8]) -> bool;
+
+def:priv set_decoded(dict_: ptr[PyObject], key: str, text: ptr[u8]) -> bool;
+
+def:priv set_owned(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool;
+
+def:priv locale_decode_monetary(dict_: ptr[PyObject], lc: ptr[lconv]) -> i32;
+
+def:priv set_char(dict_: ptr[PyObject], key: str, byte: u8) -> bool;
+
+def:priv fill_localeconv(result: ptr[PyObject], lc: ptr[lconv]) -> bool;
+
+def _locale_localeconv_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def _locale_strcoll_impl(
+    module: ptr[PyObject], os1: ptr[PyObject], os2: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv transformed_key(buf: ptr[i32], n2: int) -> ptr[PyObject];
+
+def:priv strxfrm_of(s: ptr[i32], length: i64) -> ptr[PyObject];
+
+def _locale_strxfrm_impl(module: ptr[PyObject], str_: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv change_locale(category: i64) -> tuple[i32, ptr[u8]];
+
+def:priv restore_locale(oldloc: ptr[u8]);
+
+def:priv decode_strings(result: ptr[u8], max_count: int) -> ptr[PyObject];
+
+def:priv langinfo_category(name: str) -> i64;
+
+def:priv langinfo_value(item: i32, category: i64) -> ptr[PyObject];
+
+def _locale_nl_langinfo_impl(module: ptr[PyObject], item: i32) -> ptr[PyObject];
+
+def _locale_gettext_impl(module: ptr[PyObject], in_: str) -> ptr[PyObject];
+
+def _locale_dgettext_impl(
+    module: ptr[PyObject], domain: ptr[u8], in_: str
+) -> ptr[PyObject];
+
+def _locale_dcgettext_impl(
+    module: ptr[PyObject], domain: ptr[u8], msgid: str, category: i32
+) -> ptr[PyObject];
+
+def _locale_textdomain_impl(module: ptr[PyObject], domain: ptr[u8]) -> ptr[PyObject];
+
+def _locale_bindtextdomain_impl(
+    module: ptr[PyObject], domain: str, dirname_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _locale_bind_textdomain_codeset_impl(
+    module: ptr[PyObject], domain: str, codeset: ptr[u8]
+) -> ptr[PyObject];
+
+def _locale_getencoding_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+impl locale_error(module: ptr[PyObject], message: str) {
     PyErr_SetString(jacpy_binding_state_get(module, i64(ERROR)), message);
 }
 
-def:priv byte_at(text: ptr[u8], index: int) -> int {
+impl byte_at(text: ptr[u8], index: int) -> int {
     return int((text + index).view(1)[0]);
 }
 
-"""A C `char` read as a byte, sign-extended where the target's char is signed."""
-def:priv char_value(byte: int) -> int {
+impl char_value(byte: int) -> int {
     return byte - 256 if jacpy_char_max() == 127 and byte > 127 else byte;
 }
 
-"""copy_grouping(): the grouping is terminated by either 0 or CHAR_MAX."""
-def:priv copy_grouping(text: ptr[u8]) -> ptr[PyObject] {
+impl copy_grouping(text: ptr[u8]) -> ptr[PyObject] {
     if byte_at(text, 0) == 0 {
-        # empty string: no grouping at all
         return PyList_New(0);
     }
     char_max = int(jacpy_char_max());
@@ -62,20 +121,18 @@ def:priv copy_grouping(text: ptr[u8]) -> ptr[PyObject] {
     return result;
 }
 
-def _locale_setlocale_impl(
+impl _locale_setlocale_impl(
     module: ptr[PyObject], category: i32, locale: ptr[u8]
 ) -> ptr[PyObject] {
     if locale {
-        # set locale
         result = setlocale(category, locale);
         if not result {
-            # operation failed, no setting was changed
             locale_error(module, "unsupported locale setting");
             return NULL;
         }
         return PyUnicode_DecodeLocale(result, ptr[u8]());
     }
-    # get locale
+
     result = setlocale(category, ptr[u8]());
     if not result {
         locale_error(module, "locale query failed");
@@ -84,11 +141,11 @@ def _locale_setlocale_impl(
     return PyUnicode_DecodeLocale(result, ptr[u8]());
 }
 
-def:priv locale_is_ascii(text: ptr[u8]) -> bool {
+impl locale_is_ascii(text: ptr[u8]) -> bool {
     return strlen(text) == u64(1) and byte_at(text, 0) <= 127;
 }
 
-def:priv is_all_ascii(text: ptr[u8]) -> bool {
+impl is_all_ascii(text: ptr[u8]) -> bool {
     index = 0;
     while byte_at(text, index) != 0 {
         if byte_at(text, index) > 127 {
@@ -99,33 +156,31 @@ def:priv is_all_ascii(text: ptr[u8]) -> bool {
     return True;
 }
 
-def:priv set_decoded(dict_: ptr[PyObject], key: str, text: ptr[u8]) -> bool {
+impl set_decoded(dict_: ptr[PyObject], key: str, text: ptr[u8]) -> bool {
     value = PyUnicode_DecodeLocale(text, ptr[u8]());
     if not value {
         return False;
     }
-    status = PyDict_SetItemString(dict_, key, value);
+    status = dict_set_text(dict_, key, value);
     jacpy_release(value);
     return status >= 0;
 }
 
-def:priv set_owned(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool {
+impl set_owned(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> bool {
     if not value {
         return False;
     }
-    status = PyDict_SetItemString(dict_, key, value);
+    status = dict_set_text(dict_, key, value);
     jacpy_release(value);
     return status >= 0;
 }
 
-"""The monetary strings, decoded with LC_CTYPE temporarily set to the
-LC_MONETARY locale when the two differ and one of them is not ASCII."""
-def:priv locale_decode_monetary(dict_: ptr[PyObject], lc: ptr[lconv]) -> i32 {
+impl locale_decode_monetary(dict_: ptr[PyObject], lc: ptr[lconv]) -> i32 {
     change_locale = not locale_is_ascii(lc.view(1)[0].int_curr_symbol)
         or not locale_is_ascii(lc.view(1)[0].currency_symbol)
         or not locale_is_ascii(lc.view(1)[0].mon_decimal_point)
         or not locale_is_ascii(lc.view(1)[0].mon_thousands_sep);
-    # Keep a copy of the LC_CTYPE locale
+
     oldloc = ptr[u8]();
     loc = ptr[u8]();
     if change_locale {
@@ -161,12 +216,11 @@ def:priv locale_decode_monetary(dict_: ptr[PyObject], lc: ptr[lconv]) -> i32 {
     return res;
 }
 
-def:priv set_char(dict_: ptr[PyObject], key: str, byte: u8) -> bool {
+impl set_char(dict_: ptr[PyObject], key: str, byte: u8) -> bool {
     return set_owned(dict_, key, PyLong_FromLong(i64(char_value(int(byte)))));
 }
 
-def:priv fill_localeconv(result: ptr[PyObject], lc: ptr[lconv]) -> bool {
-    # Monetary information: LC_MONETARY encoding
+impl fill_localeconv(result: ptr[PyObject], lc: ptr[lconv]) -> bool {
     if locale_decode_monetary(result, lc) < 0
         or not set_owned(
             result, "mon_grouping", copy_grouping(lc.view(1)[0].mon_grouping)
@@ -183,7 +237,7 @@ def:priv fill_localeconv(result: ptr[PyObject], lc: ptr[lconv]) -> bool {
         or not set_char(result, "n_sign_posn", lc.view(1)[0].n_sign_posn) {
         return False;
     }
-    # Numeric information: LC_NUMERIC encoding
+
     decimal_point: ptr[PyObject] = NULL;
     thousands_sep: ptr[PyObject] = NULL;
     if _Py_GetLocaleconvNumeric(lc, &mut decimal_point, &mut thousands_sep) < 0 {
@@ -199,12 +253,12 @@ def:priv fill_localeconv(result: ptr[PyObject], lc: ptr[lconv]) -> bool {
         and set_owned(result, "grouping", copy_grouping(lc.view(1)[0].grouping));
 }
 
-def _locale_localeconv_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _locale_localeconv_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     result = PyDict_New();
     if not result {
         return NULL;
     }
-    # if LC_NUMERIC is different in the C library, use saved value
+
     lc = localeconv();
     if not fill_localeconv(result, lc) {
         jacpy_release(result);
@@ -213,30 +267,26 @@ def _locale_localeconv_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def _locale_strcoll_impl(
+impl _locale_strcoll_impl(
     module: ptr[PyObject], os1: ptr[PyObject], os2: ptr[PyObject]
 ) -> ptr[PyObject] {
     result: ptr[PyObject] = NULL;
-    # Convert the unicode strings to wchar[].
+
     ws1 = PyUnicode_AsWideCharString(os1, None);
     ws2 = ptr[i32]();
     if ws1 {
         ws2 = PyUnicode_AsWideCharString(os2, None);
         if ws2 {
-            # Collate the strings.
             result = PyLong_FromLong(i64(wcscoll(ws1, ws2)));
         }
     }
-    # Deallocate everything.
+
     PyMem_Free(ws1);
     PyMem_Free(ws2);
     return result;
 }
 
-"""Codes above 0xFFFF are not all code points, so each becomes the pair
-0x1xxxx (the high 16 bits) and 0x0xxxx (the low 16 bits), which keeps the
-order of the keys."""
-def:priv transformed_key(buf: ptr[i32], n2: int) -> ptr[PyObject] {
+impl transformed_key(buf: ptr[i32], n2: int) -> ptr[PyObject] {
     codes = buf.view(n2);
     n3 = 0;
     for i in range(n2) {
@@ -270,15 +320,14 @@ def:priv transformed_key(buf: ptr[i32], n2: int) -> ptr[PyObject] {
     return result;
 }
 
-def:priv strxfrm_of(s: ptr[i32], length: i64) -> ptr[PyObject] {
+impl strxfrm_of(s: ptr[i32], length: i64) -> ptr[PyObject] {
     if wcslen(s) != u64(length) {
         object_error(PyExc_ValueError, "embedded null character");
         return NULL;
     }
-    # assume no change in size, first
+
     n1 = length + 1;
-    # Yet another +1 is needed to work around a platform bug in wcsxfrm()
-    # on macOS. See gh-130567.
+
     buf = ptr[i32](PyMem_Malloc(u64(n1 + 1) * u64(SIZEOF_WCHAR_T)));
     if not buf {
         return PyErr_NoMemory();
@@ -291,7 +340,6 @@ def:priv strxfrm_of(s: ptr[i32], length: i64) -> ptr[PyObject] {
         return PyErr_SetFromErrno(PyExc_OSError);
     }
     if n2 >= u64(n1) {
-        # more space needed
         new_buf = ptr[i32](PyMem_Realloc(buf, (n2 + u64(1)) * u64(SIZEOF_WCHAR_T)));
         if not new_buf {
             PyMem_Free(buf);
@@ -305,14 +353,13 @@ def:priv strxfrm_of(s: ptr[i32], length: i64) -> ptr[PyObject] {
             return PyErr_SetFromErrno(PyExc_OSError);
         }
     }
-    # The result is just a sequence of integers, they are not necessary
-    # Unicode code points, so PyUnicode_FromWideChar() cannot be used here.
+
     result = transformed_key(buf, int(n2));
     PyMem_Free(buf);
     return result;
 }
 
-def _locale_strxfrm_impl(module: ptr[PyObject], str_: ptr[PyObject]) -> ptr[PyObject] {
+impl _locale_strxfrm_impl(module: ptr[PyObject], str_: ptr[PyObject]) -> ptr[PyObject] {
     n1: i64 = 0;
     s = PyUnicode_AsWideCharString(str_, &mut n1);
     if not s {
@@ -323,11 +370,7 @@ def _locale_strxfrm_impl(module: ptr[PyObject], str_: ptr[PyObject]) -> ptr[PyOb
     return result;
 }
 
-"""change_locale(): make the LC_CTYPE locale temporarily the same as the locale
-of category. Returns the status (-1 error, 0 unchanged, 1 changed) and a copy
-of the previous LC_CTYPE locale to restore, NULL when unchanged."""
-def:priv change_locale(category: i64) -> tuple[i32, ptr[u8]] {
-    # Keep a copy of the LC_CTYPE locale
+impl change_locale(category: i64) -> tuple[i32, ptr[u8]] {
     oldloc = setlocale(i32(LC_CTYPE), ptr[u8]());
     if not oldloc {
         object_error(PyExc_RuntimeError, "failed to get LC_CTYPE locale");
@@ -338,7 +381,7 @@ def:priv change_locale(category: i64) -> tuple[i32, ptr[u8]] {
         PyErr_NoMemory();
         return (i32(-1), ptr[u8]());
     }
-    # Set a new locale if it is different.
+
     loc = setlocale(i32(category), ptr[u8]());
     if not loc or strcmp(loc, oldloc) == 0 {
         PyMem_Free(oldloc);
@@ -348,17 +391,14 @@ def:priv change_locale(category: i64) -> tuple[i32, ptr[u8]] {
     return (i32(1), oldloc);
 }
 
-"""restore_locale(): restore the old LC_CTYPE locale."""
-def:priv restore_locale(oldloc: ptr[u8]) {
+impl restore_locale(oldloc: ptr[u8]) {
     if oldloc {
         setlocale(i32(LC_CTYPE), oldloc);
         PyMem_Free(oldloc);
     }
 }
 
-"""decode_strings(): glibc's NUL-separated list of at most max_count strings
-as one string with semicolon-separated items, as POSIX specifies."""
-def:priv decode_strings(result: ptr[u8], max_count: int) -> ptr[PyObject] {
+impl decode_strings(result: ptr[u8], max_count: int) -> ptr[PyObject] {
     size = 0;
     count = 0;
     while count < max_count and byte_at(result, size) != 0 {
@@ -374,7 +414,7 @@ def:priv decode_strings(result: ptr[u8], max_count: int) -> ptr[PyObject] {
     for i in range(size) {
         target[i] = source[i];
     }
-    # Replace all NULs but the last with semicolons.
+
     index = 0;
     count -= 1;
     while count > 0 {
@@ -388,8 +428,7 @@ def:priv decode_strings(result: ptr[u8], max_count: int) -> ptr[PyObject] {
     return pyresult;
 }
 
-"""The category a langinfo constant belongs to, as CPython's table has it."""
-def:priv langinfo_category(name: str) -> i64 {
+impl langinfo_category(name: str) -> i64 {
     if name == "RADIXCHAR" or name == "THOUSEP" {
         return LC_NUMERIC;
     }
@@ -405,15 +444,13 @@ def:priv langinfo_category(name: str) -> i64 {
     return LC_TIME;
 }
 
-def:priv langinfo_value(item: i32, category: i64) -> ptr[PyObject] {
-    # Check NULL as a workaround for GNU libc's returning NULL instead of an
-    # empty string for nl_langinfo(ERA).
+impl langinfo_value(item: i32, category: i64) -> ptr[PyObject] {
     result = nl_langinfo(item);
     if not result or byte_at(result, 0) == 0 {
-        return PyUnicode_FromString("");
+        return PyUnicode_FromString(ptr[u8](""));
     }
     oldloc = ptr[u8]();
-    # gh-133740: glibc always changes the locale for ALT_DIGITS and ERA.
+
     if category != LC_CTYPE
         and (
             (GLIBC and (i64(item) == ALT_DIGITS or i64(item) == ERA))
@@ -425,8 +462,7 @@ def:priv langinfo_value(item: i32, category: i64) -> ptr[PyObject] {
         }
     }
     pyresult: ptr[PyObject] = NULL;
-    # According to the POSIX specification the result must be a sequence of
-    # semicolon-separated strings. But in glibc they are NUL-separated.
+
     if GLIBC and i64(item) == ALT_DIGITS {
         pyresult = decode_strings(result, 100);
     } elif GLIBC and i64(item) == ERA {
@@ -438,10 +474,7 @@ def:priv langinfo_value(item: i32, category: i64) -> ptr[PyObject] {
     return pyresult;
 }
 
-def _locale_nl_langinfo_impl(module: ptr[PyObject], item: i32) -> ptr[PyObject] {
-    # Check whether this is a supported constant. GNU libc sometimes returns
-    # numeric values in the char* return value, which would crash
-    # PyUnicode_FromString.
+impl _locale_nl_langinfo_impl(module: ptr[PyObject], item: i32) -> ptr[PyObject] {
     for (name, value) in CONSTANTS {
         if value == i64(item) and not name.startswith("LC_") {
             return langinfo_value(item, langinfo_category(name));
@@ -451,23 +484,23 @@ def _locale_nl_langinfo_impl(module: ptr[PyObject], item: i32) -> ptr[PyObject] 
     return NULL;
 }
 
-def _locale_gettext_impl(module: ptr[PyObject], in_: str) -> ptr[PyObject] {
+impl _locale_gettext_impl(module: ptr[PyObject], in_: str) -> ptr[PyObject] {
     return PyUnicode_DecodeLocale(gettext(in_), ptr[u8]());
 }
 
-def _locale_dgettext_impl(
+impl _locale_dgettext_impl(
     module: ptr[PyObject], domain: ptr[u8], in_: str
 ) -> ptr[PyObject] {
     return PyUnicode_DecodeLocale(dgettext(domain, in_), ptr[u8]());
 }
 
-def _locale_dcgettext_impl(
+impl _locale_dcgettext_impl(
     module: ptr[PyObject], domain: ptr[u8], msgid: str, category: i32
 ) -> ptr[PyObject] {
     return PyUnicode_DecodeLocale(dcgettext(domain, msgid, category), ptr[u8]());
 }
 
-def _locale_textdomain_impl(module: ptr[PyObject], domain: ptr[u8]) -> ptr[PyObject] {
+impl _locale_textdomain_impl(module: ptr[PyObject], domain: ptr[u8]) -> ptr[PyObject] {
     current = textdomain(domain);
     if not current {
         return PyErr_SetFromErrno(PyExc_OSError);
@@ -475,7 +508,7 @@ def _locale_textdomain_impl(module: ptr[PyObject], domain: ptr[u8]) -> ptr[PyObj
     return PyUnicode_DecodeLocale(current, ptr[u8]());
 }
 
-def _locale_bindtextdomain_impl(
+impl _locale_bindtextdomain_impl(
     module: ptr[PyObject], domain: str, dirname_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not domain {
@@ -501,7 +534,7 @@ def _locale_bindtextdomain_impl(
     return result;
 }
 
-def _locale_bind_textdomain_codeset_impl(
+impl _locale_bind_textdomain_codeset_impl(
     module: ptr[PyObject], domain: str, codeset: ptr[u8]
 ) -> ptr[PyObject] {
     current = bind_textdomain_codeset(domain, codeset);
@@ -511,6 +544,6 @@ def _locale_bind_textdomain_codeset_impl(
     return Py_NewRef(borrowed_none());
 }
 
-def _locale_getencoding_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _locale_getencoding_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return _Py_GetLocaleEncodingObject();
 }

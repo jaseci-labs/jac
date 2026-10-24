@@ -273,6 +273,7 @@ walker NaIRGenPass(CompilerPass) {
         _isa_h_fn: (ir.Function | None) = None,
         _isa_vt_fn: (ir.Function | None) = None,
         _isa_mro_fn: (ir.Function | None) = None,
+        _isa_miss_sites: int = 0,
         _isa_vtobj_fn: (ir.Function | None) = None,
         _vtable_nodes: list[ir.GlobalVariable] = [],
         _cstr_hash_fn: (ir.Function | None) = None,
@@ -771,6 +772,18 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
+    def _emit_intrinsic_c_thread_local(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _intrinsic_memory_order(
+        nd: uni.FuncCall, intr: IntrinsicEntry, arg: uni.Expr, kind: str
+    ) -> (str | None);
+
+    def _emit_intrinsic_atomic(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
     def _emit_intrinsic_call_dtor(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
@@ -1027,9 +1040,14 @@ walker NaIRGenPass(CompilerPass) {
     def _clib_detect_vtable_structs -> None;
     def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.PointerType) -> ir.Value;
     def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _c_abi_key(sig: ir.FunctionType) -> str;
     def _emit_clib_c_trampoline(
         jac_fn: ir.Function, c_fn_ty: ir.PointerType
     ) -> ir.Function;
+
+    def _emit_clib_trampoline_call(
+        tramp: ir.Function, jac_fn: ir.Function, bracket: bool
+    ) -> None;
 
     def _lower_clib_function_type(arch_name: str, fname: str, t: any) -> ir.Type;
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
@@ -1533,6 +1551,10 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_jmp_symbols -> tuple[str, str];
     def _exc_setjmp_fn -> ir.Function;
     def _exc_longjmp_fn -> ir.Function;
+    def _exc_builtin_sjlj -> bool;
+    def _native_tls_on -> bool;
+    def _native_sjlj_on -> bool;
+    def _emit_exc_arm(b: ir.IRBuilder, env: ir.Value, name: str = "") -> ir.Value;
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;
     def _emit_exc_raise_helper -> None;
@@ -2985,6 +3007,8 @@ walker NaIRGenPass(CompilerPass) {
     def _thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
     def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None;
     def _c_entry_tail_or_escape(c_entry: ir.Function, jac_fn: ir.Function) -> bool;
+    def _c_entry_escape_fn(c_entry: ir.Function, jac_fn: ir.Function) -> ir.Function;
+    def _c_entry_escape_shell(c_entry: ir.Function) -> ir.Function;
     def _tail_frame_blocker -> (str | None);
     def _tail_call_mismatch(call: ir.CallInstr, func: ir.Function) -> (str | None);
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
@@ -3236,6 +3260,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Type | None);
 
     def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
+    def _byvalue_ret_type(ret_type: ir.Type) -> ir.Type;
     def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _resolve_field_type(var: uni.UniNode) -> ir.Type;
     def _foreign_optional_field(tb: any) -> bool;
@@ -3555,6 +3580,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value;
+    def _isinstance_vtable_walk(
+        vptr: ir.Value, names: list[str], prefix: str
+    ) -> ir.Value;
+
     def _vtable_slot_certain(ty: (TypeBase | None)) -> bool;
     def _isinstance_vtable_fallback(
         hit: (ir.Value | None), vptr: ir.Value, names: list[str], prefix: str

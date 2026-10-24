@@ -226,17 +226,37 @@ _curses_panel
 readline
 SETUP
     archives=
+    jacpython_configure=
     if [ -n "$host" ]; then
+        # JacPython drops remote debugging and perf trampolines instead of
+        # porting them: configure leaves both out, _remote_debugging is a Jac
+        # module whose RemoteUnwinder reports the support missing (asyncio
+        # imports it at startup), and the interpreter objects that held them
+        # leave the build. interpreter/perf_trampoline.jac and
+        # interpreter/remote_debugging.jac define what the rest of the
+        # interpreter still calls, as the C files do in that configuration.
+        jacpython_configure=--without-remote-debug
+        sed 's/perf_trampoline=yes/perf_trampoline=no/' configure > configure.new
+        mv configure.new configure
+        chmod +x configure
+        sed -e '/Python\/perf_trampoline\.o \\$/d' \
+            -e '/Python\/perf_jit_trampoline\.o \\$/d' \
+            -e '/Python\/remote_debugging\.o \\$/d' \
+            -e '/\$(srcdir)\/Python\/remote_debug\.h \\$/d' \
+            Makefile.pre.in > Makefile.pre.in.new
+        mv Makefile.pre.in.new Makefile.pre.in
         # Setup.local is read first and its first rule wins, so a registered
-        # module's PyInit resolves from jacpython.o even when Setup.bootstrap
-        # or Setup.stdlib still names the replaced C source.
+        # module never builds from the C source Setup.bootstrap or
+        # Setup.stdlib still names. Its rule carries only linker flags: the
+        # table of built-in modules is inittab.jac's C data, which holds the
+        # module's PyInit and so links it from jacpython.o.
         registry=$recipe/jacpython-modules.txt
-        native_api=$root/jaclang/compiler/backends/py/jacpython/native_api.jac
+        inittab=$root/jaclang/runtime/python/inittab.jac
         echo '*static*' >> Modules/Setup.local
         while read -r module tests flags; do
             case "$module" in ''|'#'*) continue ;; esac
-            grep -qw "PyInit_$module" "$native_api" || {
-                echo "native_api.jac does not import PyInit_$module" >&2
+            grep -qw "PyInit_$module" "$inittab" || {
+                echo "inittab.jac has no PyInit_$module; run scripts/jacpython/gen_inittab.jac" >&2
                 exit 1
             }
             # A flag prefixed with an OS (linux:-lrt) applies only there.
@@ -278,7 +298,8 @@ SETUP
         --with-tail-call-interp "$python_lto" \
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
-        --with-system-expat --with-system-libmpdec --without-readline
+        --with-system-expat --with-system-libmpdec --without-readline \
+        $jacpython_configure
     if [ -n "$host" ]; then
         # Native Jac defines and reads objects through layouts.jac; its
         # generated asserts fail the build if this configuration disagrees.

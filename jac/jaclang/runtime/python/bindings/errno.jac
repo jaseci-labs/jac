@@ -1,14 +1,22 @@
-"""The errno module: the C library's error codes and the errorcode map.
-
-Derived from CPython 3.14.6 Modules/errnomodule.c; see ../LICENSE.cpython.
-The codes come from errno_constants.<os>.jac, generated from the target's
-<errno.h> by scripts/jacpython/gen_constants.jac.
-"""
-
 def:priv add_errcode(
     module_dict: ptr[PyObject], error_dict: ptr[PyObject], name: str, code: i64
+) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "errno",
+         "This module makes available standard errno system symbols.\n\nThe value of each symbol is the corresponding integer value,\ne.g., on most systems, errno.ENOENT equals the integer 2.\n\nThe dictionary errno.errorcode maps numeric codes to symbol names,\ne.g., errno.errorcode[2] could be the string 'ENOENT'.\n\nSymbols that are not relevant to the underlying system are not defined.\n\nTo map error codes to error messages, use the function os.strerror(),\ne.g. os.strerror(2) could return 'No such file or directory'.",
+         [],
+         ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit_errno -> ptr[PyObject];
+
+impl add_errcode(
+    module_dict: ptr[PyObject], error_dict: ptr[PyObject], name: str, code: i64
 ) -> bool {
-    text = PyUnicode_FromString(name);
+    text = jacpy_unicode_from_text(name);
     number = PyLong_FromLong(code);
     ok = bool(text)
         and bool(number)
@@ -19,7 +27,7 @@ def:priv add_errcode(
     return ok;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
             PyExc_ImportError,
@@ -35,7 +43,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not error_dict {
         return i32(-1);
     }
-    if PyDict_SetItemString(module_dict, "errorcode", error_dict) < 0 {
+    if PyDict_SetItemString(module_dict, ptr[u8]("errorcode"), error_dict) < 0 {
         jacpy_release(error_dict);
         return i32(-1);
     }
@@ -49,13 +57,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "errno",
-         "This module makes available standard errno system symbols.\n\nThe value of each symbol is the corresponding integer value,\ne.g., on most systems, errno.ENOENT equals the integer 2.\n\nThe dictionary errno.errorcode maps numeric codes to symbol names,\ne.g., errno.errorcode[2] could be the string 'ENOENT'.\n\nSymbols that are not relevant to the underlying system are not defined.\n\nTo map error codes to error messages, use the function os.strerror(),\ne.g. os.strerror(2) could return 'No such file or directory'.",
-         [],
-         ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit_errno -> ptr[PyObject] {
+impl PyInit_errno -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -1036,7 +1036,7 @@ impl NaIRGenPass._forward_declare_method(
         param_types.append(self._resolve_sig_type(p));
     }
 
-    ret_type = self._resolve_sig_type(sig.return_type)
+    ret_type = self._byvalue_ret_type(self._resolve_sig_type(sig.return_type))
         if isinstance(sig, uni.FuncSignature)
         else ir.IntType(64);
     if isinstance(sig, uni.FuncSignature) and self._ability_is_generator(method) {

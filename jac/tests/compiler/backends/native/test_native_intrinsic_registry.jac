@@ -19,6 +19,7 @@ import from tests.support { TESTS_DIR, native_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.diagnostics {
+    E5095,
     E1050,
     E1051,
     E1052,
@@ -50,14 +51,18 @@ def _native_opts(gc_mode: str | None = None) -> any {
 }
 
 """Compile a probe source in an isolated tempdir; return (prog, module)."""
-def _compile_src(source: str, gc_mode: str | None = None) -> tuple[any, ...] {
+def _compile_src(
+    source: str, gc_mode: str | None = None, engine: bool = True
+) -> tuple[any, ...] {
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "intrinsic_probe.jac");
         with open(src, "w") as f {
             f.write(source);
         }
         prog = JacProgram();
-        ir_mod = prog.compile(file_path=src, options=_native_opts(gc_mode));
+        options = _native_opts(gc_mode);
+        options.skip_native_engine = not engine;
+        ir_mod = prog.compile(file_path=src, options=options);
         return (prog, ir_mod);
     }
 }
@@ -97,7 +102,12 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
          IntrinsicDispatch.LIST_DATA: "list.data.p",
          IntrinsicDispatch.BUFFER_DATA: "buf.data.i64",
          IntrinsicDispatch.REF_ADDR: "ref.addr",
-         IntrinsicDispatch.STR_DATA: "str.data.i64"
+         IntrinsicDispatch.STR_DATA: "str.data.i64",
+         IntrinsicDispatch.ATOMIC_LOAD: "load atomic",
+         IntrinsicDispatch.ATOMIC_STORE: "store atomic",
+         IntrinsicDispatch.ATOMIC_CAS: "cmpxchg",
+         IntrinsicDispatch.ATOMIC_RMW: "atomicrmw",
+         IntrinsicDispatch.ATOMIC_FENCE: "fence seq_cst"
      };
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
@@ -175,6 +185,33 @@ def _probe_source(intr: any) -> str {
             "return x + 7 if __str_data(s) != 0 else 0; }\n"
         );
     }
+    if intr.dispatch
+        in (
+            IntrinsicDispatch.ATOMIC_LOAD,
+            IntrinsicDispatch.ATOMIC_STORE,
+            IntrinsicDispatch.ATOMIC_CAS,
+            IntrinsicDispatch.ATOMIC_RMW
+        ) {
+        width = intr.name.rsplit("_", 1)[1];
+        return (
+            RAW_MEM_IMPORTS
+            + "def probe(x: int) -> int { p = malloc(8); __mem_store_i64(p, 0); "
+            + f"__atomic_store_{width}(p, {width}(5), 3); "
+            + f"old = __atomic_cas_{width}(p, {width}(5), {width}(9), 5); "
+            + f"before = __atomic_add_{width}(p, {width}(x - 9), 4); "
+            + f"v = __atomic_load_{width}(p, 2); free(p); "
+            + "return int(v) + int(old) - int(before) + 11; }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_FENCE {
+        return "def probe(x: int) -> int { __atomic_fence(5); return x + 7; }\n";
+    }
+    if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+        return (
+            "def probe(x: int) -> int { "
+            + f"return x + 7 if {intr.name}(\"jac_probe_tls\") != 0 else 0; }}\n"
+        );
+    }
     if intr.dispatch == IntrinsicDispatch.REGION_TLS {
         return (
             "def probe(x: int) -> int { old = __jac_region_tls_get(); "
@@ -194,6 +231,20 @@ test "every registry intrinsic lowers through its registered emitter" {
     entries = INTRINSIC_REGISTRY.entries();
     assert len(entries) >= 7 , "registry lost entries";
     for intr in entries {
+        if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+            # The JIT links no initial-exec TLS reference to a host symbol;
+            # the declaration and the address it yields are the lowering.
+            (prog, ir_mod) = _compile_src(_probe_source(intr), engine=False);
+            assert not prog.errors_had , [str(e) for e in prog.errors_had];
+            ir_text = str(ir_mod.gen.llvm_ir);
+            declared = "weak thread_local(initialexec) global i64 0"
+                if intr.name == "__thread_local"
+                else "external thread_local(initialexec) global i8";
+            assert f"@\"jac_probe_tls\" = {declared}" in ir_text
+                or f"@jac_probe_tls = {declared}" in ir_text , ir_text;
+            assert "c.tls.addr" in ir_text , f"{intr.name}: the intrinsic was stranded";
+            continue;
+        }
         (prog, ir_mod) = _compile_src(_probe_source(intr), gc_mode=intr.gc_mode_gate);
         errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not errs , f"{intr.name}: compile errors: {errs}";
@@ -338,5 +389,72 @@ test "user stubs colliding with intrinsics warn W6008 and never hijack" {
         assert eng is not None;
         bits_of = _get_func(eng, "bits_of", ctypes.c_int64, ctypes.c_double);
         assert bits_of(1.5) == BITS_1_5 , "call reached the stub body";
+    }
+}
+
+test "a C thread-local is named by a string literal" {
+    with tempfile.TemporaryDirectory() as tmp {
+        src = os.path.join(tmp, "intrinsic_probe.jac");
+        with open(src, "w") as f {
+            f.write("def probe(name: str) -> int { return __c_thread_local(name); }\n");
+        }
+        prog = JacProgram();
+        options = CompileOptions(
+            force_codespace="native", native_required=True, skip_native_engine=True
+        );
+        prog.compile(file_path=src, options=options);
+    }
+    assert any(
+        e.code is E5095 and "string literal" in str(e) for e in prog.errors_had
+    ) , [str(e) for e in prog.errors_had];
+}
+
+test "atomic read-modify-write returns the old value at each width" {
+    for width in ["i8", "i16", "i32", "i64"] {
+        (prog, ir_mod) = _compile_src(
+            RAW_MEM_IMPORTS
+                + "def probe(x: int) -> int { p = malloc(8); __mem_store_i64(p, 0); "
+                + f"__atomic_store_{width}(p, {width}(12), 0); "
+                + f"a = __atomic_sub_{width}(p, {width}(2), 5); "
+                + f"o = __atomic_or_{width}(p, {width}(1), 5); "
+                + f"n = __atomic_and_{width}(p, {width}(6), 5); "
+                + f"z = __atomic_xor_{width}(p, {width}(3), 5); "
+                + f"s = __atomic_swap_{width}(p, {width}(x), 5); "
+                + f"miss = __atomic_cas_{width}(p, {width}(0), {width}(1), 5); "
+                + f"v = __atomic_load_{width}(p, 5); free(p); "
+                + "return int(a) * 1000000 + int(o) * 10000 + int(n) * 100 + int(z) "
+                + "+ int(s) - int(v) + int(miss) - int(v); }\n"
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        fn = _get_func(
+            ir_mod.gen.native_engine, "probe", ctypes.c_int64, ctypes.c_int64
+        );
+        # 12 -2-> 10 |1-> 11 &6-> 2 ^3-> 1, swapped for x = 7; the CAS misses and reads 7.
+        assert fn(7)
+            == 12 * 1000000 + 10 * 10000 + 11 * 100 + 2 + 1 - 7 + 7 - 7 , width;
+    }
+}
+
+test "a load cannot release and a memory order is a constant" {
+    for source in [
+        "def probe(p: int) -> int { return int(__atomic_load_i64(p, 3)); }\n",
+        "def probe(p: int, o: i32) -> int { return int(__atomic_load_i64(p, o)); }\n"
+    ] {
+        with tempfile.TemporaryDirectory() as tmp {
+            src = os.path.join(tmp, "intrinsic_probe.jac");
+            with open(src, "w") as f {
+                f.write(source);
+            }
+            prog = JacProgram();
+            prog.compile(
+                file_path=src,
+                options=CompileOptions(
+                    force_codespace="native",
+                    native_required=True,
+                    skip_native_engine=True
+                )
+            );
+        }
+        assert any(e.code is E5095 for e in prog.errors_had) , source;
     }
 }

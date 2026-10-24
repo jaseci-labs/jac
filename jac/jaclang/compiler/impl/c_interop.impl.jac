@@ -314,7 +314,7 @@ impl c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None) {
     return None;
 }
 
-impl c_lent_param(arg: UniNode) -> (ParamVar | None) {
+impl c_lent_param(arg: UniNode, allow_borrow: bool = False) -> (ParamVar | None) {
     call = arg.parent;
     if not isinstance(call, FuncCall) {
         return None;
@@ -340,7 +340,9 @@ impl c_lent_param(arg: UniNode) -> (ParamVar | None) {
     }
     if target is None
         or (
-            target.type_tag is not None and is_borrow_kind(target.type_tag.ownership)
+            not allow_borrow
+            and target.type_tag is not None
+            and is_borrow_kind(target.type_tag.ownership)
         ) {
         return None;
     }

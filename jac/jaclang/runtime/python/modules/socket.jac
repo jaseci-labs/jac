@@ -1,15 +1,3 @@
-"""The functions of the _socket module: host, service and protocol lookups,
-getaddrinfo() and getnameinfo(), address conversions, byte order, network
-interfaces, ancillary-data sizes and the default timeout.
-
-Derived from CPython 3.14.6 Modules/socketmodule.c; see ../LICENSE.cpython.
-The Argument Clinic functions (ntohs ... if_indextoname, socket.close and
-socket.__init__) have their _impl functions here and in socket_object; the
-glue in bindings/clinic/socket.jac parses their arguments. Where the C
-library has no gethostbyname_r() (macOS), the netdb lookups run under the
-module's lock, as USE_GETHOSTBYNAME_LOCK has them.
-"""
-
 import from c {
     obj servent {
         has s_name: ptr[u8] = ptr[u8](),
@@ -42,10 +30,8 @@ import from c {
         ptr_: ptr[if_nameindex_record]
     );  def if_nametoindex(ifname: ptr[u8]) -> u32;  def if_indextoname(
         ifindex: u32, ifname: ptr[u8]
-    ) -> ptr[u8];
-    # Serializes the non-reentrant netdb lookups where the C library has no
-    # gethostbyname_r(); process-wide, as the C module's netdb_lock is.
-    glob netdb_lock: ptr = ptr(); glob:priv getaddrinfo_keywords: list[ptr[u8]] = [
+    ) -> ptr[u8];  glob netdb_lock: ptr = ptr(); glob:priv getaddrinfo_keywords:
+             list[ptr[u8]] = [
              ptr[u8]("host"),
              ptr[u8]("port"),
              ptr[u8]("family"),
@@ -56,43 +42,121 @@ import from c {
          ];
 }
 
-glob:priv
-     # The gethostbyname_r() buffer: its size, and the size of the struct
-     # hostent it fills.
-     HOST_BUFFER_SIZE: int = 16384,
+glob:priv HOST_BUFFER_SIZE: int = 16384,
      HOSTENT_SIZE: int = 32;
 
-# ---------------------------------------------------------------------------
-# Clinic converters of this module.
-
-"""NET_IFINDEX: an unsigned int (_PyLong_UnsignedInt_Converter) outside
-Windows."""
 def convert__PyLong_NetIfindex_Converter(
+    value: ptr[PyObject], fname: str, label: str
+) -> u32;
+
+def _socket_socket_close_impl(s: ptr[PyObject]) -> ptr[PyObject];
+
+def sock_initobj_impl(
+    self: ptr[PyObject], family: i32, type: i32, proto: i32, fdobj: ptr[PyObject]
+) -> i32;
+
+def socket_gethostname(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_gethostbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def gethost_common(
+    module: ptr[PyObject], h: ptr[hostent], addr: ptr[u8], alen: int, af: int
+) -> ptr[PyObject];
+
+def:priv new_host_space -> ptr[u8];
+
+def socket_gethostbyname_ex(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_getprotobyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv socket_fd_of(value: ptr[PyObject]) -> int;
+
+def socket_close(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_dup(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def _socket_ntohs_impl(module: ptr[PyObject], x: u16) -> ptr[PyObject];
+
+def _socket_ntohl_impl(module: ptr[PyObject], x: u32) -> ptr[PyObject];
+
+def _socket_htons_impl(module: ptr[PyObject], x: u16) -> ptr[PyObject];
+
+def _socket_htonl_impl(module: ptr[PyObject], x: u32) -> ptr[PyObject];
+
+def _socket_inet_aton_impl(module: ptr[PyObject], ip_addr: str) -> ptr[PyObject];
+
+def _socket_inet_ntoa_impl(
+    module: ptr[PyObject], packed_ip: BufferArgument
+) -> ptr[PyObject];
+
+def socket_inet_pton(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_getaddrinfo(
+    self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv addrinfo_list(res0: ptr, protocol: int) -> ptr[PyObject];
+
+def socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv name_of_address(
+    module: ptr[PyObject],
+    res: ptr,
+    sa: ptr[PyObject],
+    flowinfo: u32,
+    scope_id: u32,
+    flags: i32,
+    hbuf: ptr[u8],
+    pbuf: ptr[u8]
+) -> ptr[PyObject];
+
+def socket_getdefaulttimeout(
+    self: ptr[PyObject], ignored: ptr[PyObject]
+) -> ptr[PyObject];
+
+def socket_setdefaulttimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_if_nameindex(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def _socket_if_nametoindex_impl(
+    module: ptr[PyObject], oname: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _socket_if_indextoname_impl(module: ptr[PyObject], index: u32) -> ptr[PyObject];
+
+def socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def socket_CMSG_SPACE(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+impl convert__PyLong_NetIfindex_Converter(
     value: ptr[PyObject], fname: str, label: str
 ) -> u32 {
     return convert_unsigned_int(value);
 }
 
-# ---------------------------------------------------------------------------
-# The Argument Clinic methods of the socket type.
-
-"""socket.close()."""
-def _socket_socket_close_impl(s: ptr[PyObject]) -> ptr[PyObject] {
+impl _socket_socket_close_impl(s: ptr[PyObject]) -> ptr[PyObject] {
     return sock_close(s);
 }
 
-"""socket.__init__(family=-1, type=-1, proto=-1, fileno=None)."""
-def sock_initobj_impl(
+impl sock_initobj_impl(
     self: ptr[PyObject], family: i32, type: i32, proto: i32, fdobj: ptr[PyObject]
 ) -> i32 {
     return sock_init(self, family, type, proto, fdobj);
 }
 
-# ---------------------------------------------------------------------------
-# Host names.
-
-"""gethostname() -> string."""
-def socket_gethostname(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_gethostname(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     if PySys_AuditTuple("socket.gethostname", NULL) < 0 {
         return NULL;
     }
@@ -115,9 +179,7 @@ def socket_gethostname(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObje
     return result;
 }
 
-"""sethostname(name): a str (encoded with the filesystem encoding) or a
-bytes object."""
-def socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     hnobj = NULL;
     flag = False;
     if PyArg_ParseTuple(args, "S:sethostname", &mut hnobj) == 0 {
@@ -159,8 +221,7 @@ def socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     return Py_NewRef(Py_None);
 }
 
-"""gethostbyname(host) -> address: the IPv4 address of a host."""
-def socket_gethostbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_gethostbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]();
     if PyArg_ParseTuple(args, "et:gethostbyname", ptr[u8]("idna"), &mut name) == 0 {
         return NULL;
@@ -179,13 +240,10 @@ def socket_gethostbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
     return ret;
 }
 
-"""gethost_common(): the (name, aliases, addresses) tuple of a lookup's
-struct hostent, storing its first address in `addr` (of `alen` bytes)."""
-def gethost_common(
+impl gethost_common(
     module: ptr[PyObject], h: ptr[hostent], addr: ptr[u8], alen: int, af: int
 ) -> ptr[PyObject] {
     if not h {
-        # Let's get real error message to return.
         return set_herror(module, int(host_error()));
     }
     record = h.view(1);
@@ -209,7 +267,7 @@ def gethost_common(
         return NULL;
     }
     ok = True;
-    # h_aliases can be NULL (SF #1511317).
+
     aliases = ptr[ptr[u8]](record[0].h_aliases);
     if aliases {
         index = 0;
@@ -256,7 +314,6 @@ def gethost_common(
                 jacpy_memory_copy(ptr(addr), ptr(sin), i64(SOCKADDR_IN6_SIZE));
             }
         } else {
-            # Can't happen.
             PyErr_SetString(PyExc_OSError, "unsupported address family");
             ok = False;
             break;
@@ -278,9 +335,7 @@ def gethost_common(
     return rtn_tuple;
 }
 
-"""A struct hostent and the buffer gethostbyname_r() fills it from; unused
-by the non-reentrant lookups."""
-def:priv new_host_space -> ptr[u8] {
+impl new_host_space -> ptr[u8] {
     space = ptr[u8](PyMem_Calloc(1, u64(HOSTENT_SIZE + HOST_BUFFER_SIZE)));
     if not space {
         PyErr_NoMemory();
@@ -288,8 +343,9 @@ def:priv new_host_space -> ptr[u8] {
     return space;
 }
 
-"""gethostbyname_ex(host) -> (name, aliaslist, addresslist)."""
-def socket_gethostbyname_ex(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_gethostbyname_ex(
+    self: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject] {
     name = ptr[u8]();
     if PyArg_ParseTuple(args, "et:gethostbyname_ex", ptr[u8]("idna"), &mut name) == 0 {
         return NULL;
@@ -307,7 +363,7 @@ def socket_gethostbyname_ex(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyO
         }
         h = host_by_name(name, ptr(space), space + HOSTENT_SIZE, HOST_BUFFER_SIZE - 1);
         PyEval_RestoreThread(thread);
-        # sockaddr_storage's family, read as a struct sockaddr's.
+
         ret = gethost_common(
             self, ptr[hostent](h), addr, SOCK_ADDR_SIZE, sockaddr_family(addr)
         );
@@ -321,8 +377,7 @@ def socket_gethostbyname_ex(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyO
     return ret;
 }
 
-"""gethostbyaddr(host) -> (name, aliaslist, addresslist)."""
-def socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     ip_num = ptr[u8]();
     if PyArg_ParseTuple(args, "et:gethostbyaddr", ptr[u8]("idna"), &mut ip_num) == 0 {
         return NULL;
@@ -367,11 +422,7 @@ def socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
     return ret;
 }
 
-# ---------------------------------------------------------------------------
-# Services and protocols.
-
-"""getservbyname(servicename[, protocolname]) -> port."""
-def socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]();
     proto = ptr[u8]();
     if PyArg_ParseTuple(args, "s|s:getservbyname", &mut name, &mut proto) == 0 {
@@ -390,8 +441,7 @@ def socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
     return PyLong_FromLong(i64(ntohs(int(sp.view(1)[0].s_port) & 0xFFFF)));
 }
 
-"""getservbyport(port[, protocolname]) -> service name."""
-def socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     port = i32(0);
     proto = ptr[u8]();
     if PyArg_ParseTuple(args, "i|s:getservbyport", &mut port, &mut proto) == 0 {
@@ -414,8 +464,7 @@ def socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
     return c_string_text(sp.view(1)[0].s_name);
 }
 
-"""getprotobyname(name) -> protocol number."""
-def socket_getprotobyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_getprotobyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]();
     if PyArg_ParseTuple(args, "s:getprotobyname", &mut name) == 0 {
         return NULL;
@@ -430,11 +479,7 @@ def socket_getprotobyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     return PyLong_FromLong(i64(sp.view(1)[0].p_proto));
 }
 
-# ---------------------------------------------------------------------------
-# Descriptors.
-
-"""A socket descriptor argument: PyLong_AsSocket_t(), a C int."""
-def:priv socket_fd_of(value: ptr[PyObject]) -> int {
+impl socket_fd_of(value: ptr[PyObject]) -> int {
     fd = PyLong_AsLong(value);
     if fd == -1 {
         return -1;
@@ -442,8 +487,7 @@ def:priv socket_fd_of(value: ptr[PyObject]) -> int {
     return int(c_int(int(fd)));
 }
 
-"""close(fd): close a socket descriptor; ECONNRESET is not an error."""
-def socket_close(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_close(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject] {
     fd = socket_fd_of(fdobj);
     if fd == -1 and PyErr_Occurred() {
         return NULL;
@@ -452,15 +496,14 @@ def socket_close(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject] {
     res = close(i32(fd));
     error = jacpy_errno();
     PyEval_RestoreThread(thread);
-    # bpo-30319: the peer can already have closed the connection.
+
     if res < 0 and error != ECONNRESET {
         return socket_error(int(error));
     }
     return Py_NewRef(Py_None);
 }
 
-"""dup(fd) -> fd: a non-inheritable duplicate of a socket descriptor."""
-def socket_dup(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_dup(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject] {
     fd = socket_fd_of(fdobj);
     if fd == -1 and PyErr_Occurred() {
         return NULL;
@@ -476,9 +519,7 @@ def socket_dup(self: ptr[PyObject], fdobj: ptr[PyObject]) -> ptr[PyObject] {
     return newfdobj;
 }
 
-"""socketpair([family[, type[, proto]]]) -> (socket, socket); AF_UNIX by
-default."""
-def socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     family = i32(AF_UNIX);
     type = i32(SOCK_STREAM);
     proto = i32(0);
@@ -490,7 +531,7 @@ def socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     if not sv {
         return PyErr_NoMemory();
     }
-    # Create a pair of socket descriptors.
+
     thread = PyEval_SaveThread();
     ret = i32(0);
     error = i64(0);
@@ -501,7 +542,6 @@ def socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
             if ret >= 0 {
                 sock_cloexec_works = i32(1);
             } elif error == EINVAL {
-                # Linux older than 2.6.27 does not support SOCK_CLOEXEC.
                 sock_cloexec_works = i32(0);
                 ret = socketpair(family, type, proto, sv);
                 error = jacpy_errno();
@@ -544,30 +584,23 @@ def socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     return res;
 }
 
-# ---------------------------------------------------------------------------
-# Byte order.
-
-def _socket_ntohs_impl(module: ptr[PyObject], x: u16) -> ptr[PyObject] {
+impl _socket_ntohs_impl(module: ptr[PyObject], x: u16) -> ptr[PyObject] {
     return PyLong_FromUnsignedLong(u64(ntohs(int(x))));
 }
 
-def _socket_ntohl_impl(module: ptr[PyObject], x: u32) -> ptr[PyObject] {
+impl _socket_ntohl_impl(module: ptr[PyObject], x: u32) -> ptr[PyObject] {
     return PyLong_FromUnsignedLong(u64(ntohl(int(x))));
 }
 
-def _socket_htons_impl(module: ptr[PyObject], x: u16) -> ptr[PyObject] {
+impl _socket_htons_impl(module: ptr[PyObject], x: u16) -> ptr[PyObject] {
     return PyLong_FromUnsignedLong(u64(htons(int(x))));
 }
 
-def _socket_htonl_impl(module: ptr[PyObject], x: u32) -> ptr[PyObject] {
+impl _socket_htonl_impl(module: ptr[PyObject], x: u32) -> ptr[PyObject] {
     return PyLong_FromUnsignedLong(u64(htonl(int(x))));
 }
 
-# ---------------------------------------------------------------------------
-# Address conversions.
-
-"""inet_aton(ip_addr): the 32-bit packed form of a dotted IPv4 address."""
-def _socket_inet_aton_impl(module: ptr[PyObject], ip_addr: str) -> ptr[PyObject] {
+impl _socket_inet_aton_impl(module: ptr[PyObject], ip_addr: str) -> ptr[PyObject] {
     buf = PyMem_Calloc(1, u64(4));
     if not buf {
         return PyErr_NoMemory();
@@ -582,8 +615,7 @@ def _socket_inet_aton_impl(module: ptr[PyObject], ip_addr: str) -> ptr[PyObject]
     return result;
 }
 
-"""inet_ntoa(packed_ip): the dotted form of a 32-bit packed IPv4 address."""
-def _socket_inet_ntoa_impl(
+impl _socket_inet_ntoa_impl(
     module: ptr[PyObject], packed_ip: BufferArgument
 ) -> ptr[PyObject] {
     if packed_ip.size() != 4 {
@@ -596,8 +628,7 @@ def _socket_inet_ntoa_impl(
     return c_string_text(inet_ntoa(packed_addr));
 }
 
-"""inet_pton(af, ip) -> packed IP address string."""
-def socket_inet_pton(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_inet_pton(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     af = i32(0);
     ip = ptr[u8]();
     if PyArg_ParseTuple(args, "is:inet_pton", &mut af, &mut ip) == 0 {
@@ -625,8 +656,7 @@ def socket_inet_pton(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     return result;
 }
 
-"""inet_ntop(af, packed_ip) -> string formatted IP address."""
-def socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     af = i32(0);
     packed_ip = new_view();
     if not packed_ip {
@@ -663,7 +693,7 @@ def socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
         jacpy_buffer_release(packed_ip);
         return PyErr_NoMemory();
     }
-    # inet_ntop() NUL-terminates the result.
+
     retval = inet_ntop(af, view[0].buf, ip, u32(INET6_ADDRSTRLEN));
     error = jacpy_errno();
     jacpy_buffer_release(packed_ip);
@@ -677,12 +707,7 @@ def socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# getaddrinfo() and getnameinfo().
-
-"""getaddrinfo(host, port[, family, type, proto, flags]) -> list of
-(family, type, proto, canonname, sockaddr)."""
-def socket_getaddrinfo(
+impl socket_getaddrinfo(
     self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     hobj = NULL;
@@ -711,7 +736,7 @@ def socket_getaddrinfo(
     if hobj == Py_None {
         hptr = ptr[u8]();
     } elif jacpy_is_unicode(hobj) != 0 {
-        idna = PyUnicode_AsEncodedString(hobj, "idna", ptr[u8]());
+        idna = PyUnicode_AsEncodedString(hobj, ptr[u8]("idna"), ptr[u8]());
         if not idna {
             return NULL;
         }
@@ -748,8 +773,7 @@ def socket_getaddrinfo(
         PyErr_SetString(PyExc_OSError, "Int or String expected");
         failed = True;
     }
-    # On OS X up to at least 10.8 getaddrinfo() crashes with AI_NUMERICSERV
-    # and a NULL or "0" service.
+
     if not failed
         and PLATFORM == "darwin"
         and (int(flags) & AI_NUMERICSERV) != 0
@@ -784,8 +808,7 @@ def socket_getaddrinfo(
     return all;
 }
 
-"""The (family, type, proto, canonname, sockaddr) list of an addrinfo chain."""
-def:priv addrinfo_list(res0: ptr, protocol: int) -> ptr[PyObject] {
+impl addrinfo_list(res0: ptr, protocol: int) -> ptr[PyObject] {
     all = PyList_New(0);
     if not all {
         return NULL;
@@ -825,8 +848,7 @@ def:priv addrinfo_list(res0: ptr, protocol: int) -> ptr[PyObject] {
     return all;
 }
 
-"""getnameinfo(sockaddr, flags) -> (host, port)."""
-def socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     sa = NULL;
     flags = i32(0);
     if PyArg_ParseTuple(args, "Oi:getnameinfo", &mut sa, &mut flags) == 0 {
@@ -866,7 +888,7 @@ def socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     }
     hbuf = buffers;
     pbuf = buffers + NI_MAXHOST;
-    # PyOS_snprintf(pbuf, sizeof(pbuf), "%d", port).
+
     digits = str(int(port)).encode("ascii");
     for i in range(len(digits)) {
         (pbuf + i).view(1)[0] = u8(digits[i]);
@@ -894,7 +916,7 @@ def socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     return ret;
 }
 
-def:priv name_of_address(
+impl name_of_address(
     module: ptr[PyObject],
     res: ptr,
     sa: ptr[PyObject],
@@ -940,18 +962,15 @@ def:priv name_of_address(
     return Py_BuildValue("Ns", name, pbuf);
 }
 
-# ---------------------------------------------------------------------------
-# The default timeout.
-
-"""getdefaulttimeout() -> the default timeout of new sockets, or None."""
-def socket_getdefaulttimeout(
+impl socket_getdefaulttimeout(
     self: ptr[PyObject], ignored: ptr[PyObject]
 ) -> ptr[PyObject] {
     return timeout_object(socket_state(self).defaulttimeout);
 }
 
-"""setdefaulttimeout(timeout): the default timeout of new sockets."""
-def socket_setdefaulttimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_setdefaulttimeout(
+    self: ptr[PyObject], arg: ptr[PyObject]
+) -> ptr[PyObject] {
     timeout = socket_parse_timeout(arg);
     if timeout == TIMEOUT_ERROR {
         return NULL;
@@ -960,11 +979,7 @@ def socket_setdefaulttimeout(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyO
     return Py_NewRef(Py_None);
 }
 
-# ---------------------------------------------------------------------------
-# Network interfaces.
-
-"""if_nameindex() -> [(index, name), ...]."""
-def socket_if_nameindex(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_if_nameindex(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     list = PyList_New(0);
     if not list {
         return NULL;
@@ -999,11 +1014,9 @@ def socket_if_nameindex(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject
     return list;
 }
 
-"""if_nametoindex(if_name) -> the interface's index."""
-def _socket_if_nametoindex_impl(
+impl _socket_if_nametoindex_impl(
     module: ptr[PyObject], oname: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # In case if_nametoindex() does not set errno.
     jacpy_set_errno(i64(ENODEV));
     index = if_nametoindex(ptr[u8](jacpy_bytes_address(oname)));
     error = jacpy_errno();
@@ -1013,13 +1026,12 @@ def _socket_if_nametoindex_impl(
     return PyLong_FromUnsignedLong(u64(index));
 }
 
-"""if_indextoname(if_index) -> the interface's name."""
-def _socket_if_indextoname_impl(module: ptr[PyObject], index: u32) -> ptr[PyObject] {
+impl _socket_if_indextoname_impl(module: ptr[PyObject], index: u32) -> ptr[PyObject] {
     name = ptr[u8](PyMem_Calloc(1, u64(IF_NAMESIZE + 1)));
     if not name {
         return PyErr_NoMemory();
     }
-    # In case if_indextoname() does not set errno.
+
     jacpy_set_errno(i64(ENXIO));
     result = NULL;
     if not if_indextoname(index, name) {
@@ -1031,11 +1043,7 @@ def _socket_if_indextoname_impl(module: ptr[PyObject], index: u32) -> ptr[PyObje
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Ancillary-data sizes.
-
-"""CMSG_LEN(length) -> control message length."""
-def socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     length = i64(0);
     if PyArg_ParseTuple(args, "n:CMSG_LEN", &mut length) == 0 {
         return NULL;
@@ -1048,8 +1056,7 @@ def socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSize_t(u64(result));
 }
 
-"""CMSG_SPACE(length) -> buffer size."""
-def socket_CMSG_SPACE(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl socket_CMSG_SPACE(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     length = i64(0);
     if PyArg_ParseTuple(args, "n:CMSG_SPACE", &mut length) == 0 {
         return NULL;

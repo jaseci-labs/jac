@@ -1025,12 +1025,17 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_type = self._llvm_type_str(func.function_type.return_type, pointee_names);
         ret_struct: (str | None) = None;
         ret_tuple: (NativeTupleLayout | None) = None;
-        if isinstance(func.function_type.return_type, ir.PointerType) {
-            ret_struct = struct_names.get(
-                str(func.function_type.return_type.pointee_type)
-            );
-
-            tkey = tuple_keys.get(str(func.function_type.return_type.pointee_type))
+        ret_ir = func.function_type.return_type;
+        ret_shape: (ir.Type | None) = None;
+        if isinstance(ret_ir, ir.LiteralStructType) {
+            ret_type = "Tuple";
+            ret_shape = ret_ir;
+        } elif isinstance(ret_ir, ir.PointerType) {
+            ret_shape = ret_ir.pointee_type;
+            ret_struct = struct_names.get(str(ret_shape));
+        }
+        if ret_shape is not None {
+            tkey = tuple_keys.get(str(ret_shape))
                 if ret_type.startswith("Tuple")
                 else None;
             if tkey is not None {
@@ -2408,7 +2413,21 @@ impl NaIRGenPass._ensure_clib_struct(t: any) -> (str | None) {
 impl NaIRGenPass._declare_pending_clib_abilities -> None {
     pending = self._pending_clib_abilities;
     self._pending_clib_abilities = [];
-    for ability in pending {
+    own_ids = {
+        id(a)
+        for a in pending
+        if a.find_parent_of_type(uni.Module) is self.module
+    };
+    for ability in [
+        a
+        for a in pending
+        if id(a) not in own_ids
+    ]
+        + [
+            a
+            for a in pending
+            if id(a) in own_ids
+        ] {
         self._declare_clib_ability(ability);
     }
 }

@@ -1,14 +1,3 @@
-"""The _datetime module: fast implementation of the datetime module.
-
-Modules/_datetimemodule.c's module definition in native Jac: the module
-state and exec hook, `_PyDateTime_InitTypes()` (which pylifecycle.c calls to
-ready the static types for each interpreter), the method tables of the
-static types, the IsoCalendarDate heap type spec and the datetime C API
-capsule, whose PyDateTime_CAPI record keeps Include/datetime.h's layout
-for C extensions such as _zoneinfo. The types are in modules/datetime_*.jac.
-See ../LICENSE.cpython.
-"""
-
 import from c {
     glob PyTuple_Type: PyTypeObject; glob:priv iso_calendar_date_methods:
              list[PyMethodDef] = [
@@ -57,8 +46,6 @@ import from c {
              ),
              slots=addressof(isocal_slots)
          ),
-         # The C API is process-global, as in C: the static types, the UTC
-         # singleton and the constructors, with Include/datetime.h's layout.
          capi: PyDateTime_CAPI = PyDateTime_CAPI(
              DateType=addressof(PyDateTime_DateType),
              DateTimeType=addressof(PyDateTime_DateTimeType),
@@ -76,13 +63,8 @@ import from c {
              DateTime_FromDateAndTimeAndFold=capi_datetime_from_date_and_time_and_fold,
              Time_FromTimeAndFold=capi_time_from_time_and_fold
          ),
-         # PyDateTime_CAPSULE_NAME, which the capsule keeps pointing at.
          capsule_name: ptr[u8] = ptr[u8]("datetime.datetime_CAPI");
 }
-
-# ---------------------------------------------------------------------------
-# replace() and __replace__(), parsed as Argument Clinic parses them; the
-# defaults are the fields of self.
 
 glob:priv date_replace_signature = CallSignature(
          "replace", ["year", "month", "day"], 0, 3, 0, parser=PARSE_KEYWORDS
@@ -114,89 +96,29 @@ glob:priv date_replace_signature = CallSignature(
          parser=PARSE_KEYWORDS
      );
 
-"""An int argument of replace(), or `unchanged` when it was not given."""
-def:priv int_argument(args: BoundArguments, index: int, unchanged: int) -> i32 {
-    if args.values[index] != NULL {
-        return convert_int(args.values[index]);
-    }
-    return i32(unchanged);
-}
+def:priv int_argument(args: BoundArguments, index: int, unchanged: int) -> i32;
 
-"""The tzinfo argument of replace(), or `unchanged` when it was not given."""
 def:priv object_argument(
     args: BoundArguments, index: int, unchanged: ptr[PyObject]
-) -> ptr[PyObject] {
-    if args.values[index] != NULL {
-        return args.values[index];
-    }
-    return unchanged;
-}
+) -> ptr[PyObject];
 
-def:priv date_replace_bound(args: BoundArguments) -> ptr[PyObject] {
-    self = args.context;
-    return datetime_date_replace_impl(
-        self,
-        int_argument(args, 0, get_year(self)),
-        int_argument(args, 1, get_month(self)),
-        int_argument(args, 2, get_day(self))
-    );
-}
+def:priv date_replace_bound(args: BoundArguments) -> ptr[PyObject];
 
 def date_replace(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        date_replace_signature, args, nargs, kwnames, date_replace_bound, self
-    );
-}
+) -> ptr[PyObject];
 
-def:priv time_replace_bound(args: BoundArguments) -> ptr[PyObject] {
-    self = args.context;
-    return datetime_time_replace_impl(
-        self,
-        int_argument(args, 0, time_get_hour(self)),
-        int_argument(args, 1, time_get_minute(self)),
-        int_argument(args, 2, time_get_second(self)),
-        int_argument(args, 3, time_get_microsecond(self)),
-        object_argument(args, 4, time_tzinfo_of(self)),
-        int_argument(args, 5, time_get_fold(self))
-    );
-}
+def:priv time_replace_bound(args: BoundArguments) -> ptr[PyObject];
 
 def time_replace(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        time_replace_signature, args, nargs, kwnames, time_replace_bound, self
-    );
-}
+) -> ptr[PyObject];
 
-def:priv datetime_replace_bound(args: BoundArguments) -> ptr[PyObject] {
-    self = args.context;
-    return datetime_datetime_replace_impl(
-        self,
-        int_argument(args, 0, get_year(self)),
-        int_argument(args, 1, get_month(self)),
-        int_argument(args, 2, get_day(self)),
-        int_argument(args, 3, date_get_hour(self)),
-        int_argument(args, 4, date_get_minute(self)),
-        int_argument(args, 5, date_get_second(self)),
-        int_argument(args, 6, date_get_microsecond(self)),
-        object_argument(args, 7, datetime_tzinfo_of(self)),
-        int_argument(args, 8, date_get_fold(self))
-    );
-}
+def:priv datetime_replace_bound(args: BoundArguments) -> ptr[PyObject];
 
 def datetime_replace(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
-) -> ptr[PyObject] {
-    return invoke_vector(
-        datetime_replace_signature, args, nargs, kwnames, datetime_replace_bound, self
-    );
-}
-
-# ---------------------------------------------------------------------------
-# Method tables of the static types, in the C tables' order.
+) -> ptr[PyObject];
 
 glob:priv date_method_list: list[MethodDefinition] = date_methods
          + [
@@ -591,21 +513,7 @@ glob:priv date_method_list: list[MethodDefinition] = date_methods
          )
      ];
 
-# ---------------------------------------------------------------------------
-# The static types (the datetime C API's five, and timezone through the UTC
-# singleton): readied bases first, then added to the module under their
-# names.
-
-def:priv capi_types -> list[ptr[PyTypeObject]] {
-    return [
-        addressof(PyDateTime_DateType),
-        addressof(PyDateTime_DateTimeType),
-        addressof(PyDateTime_TimeType),
-        addressof(PyDateTime_DeltaType),
-        addressof(PyDateTime_TZInfoType),
-        addressof(PyDateTime_TimeZoneType)
-    ];
-}
+def:priv capi_types -> list[ptr[PyTypeObject]];
 
 glob:priv CAPI_TYPE_NAMES: list[str] = [
          "date",
@@ -616,105 +524,23 @@ glob:priv CAPI_TYPE_NAMES: list[str] = [
          "timezone"
      ];
 
-def:priv capi_method_lists -> list[list[MethodDefinition]] {
-    return [
-        date_method_list,
-        datetime_method_list,
-        time_method_list,
-        delta_method_list,
-        tzinfo_method_list,
-        timezone_method_list
-    ];
-}
+def:priv capi_method_lists -> list[list[MethodDefinition]];
 
-"""Fill each static type's tp_methods, once per process: the tables outlive
-every interpreter, as the C module's static tables do."""
-def:priv install_method_tables -> bool {
-    types = capi_types();
-    lists = capi_method_lists();
-    for index in range(len(types)) {
-        record = types[index].view(1);
-        if record[0].tp_methods.is_null() {
-            table = method_table(lists[index]);
-            if table.is_null() {
-                return False;
-            }
-            record[0].tp_methods = table;
-        }
-    }
-    return True;
-}
+def:priv install_method_tables -> bool;
 
-"""Store `value` (a new reference, consumed) as a class attribute of a
-static type; False when it is NULL or the store fails."""
 def:priv add_type_attribute(
     type: ptr[PyTypeObject], name: str, value: ptr[PyObject]
-) -> bool {
-    if not value {
-        return False;
-    }
-    status = PyDict_SetItemString(_PyType_GetDict(ptr[PyObject](type)), name, value);
-    jacpy_release(value);
-    return status >= 0;
-}
+) -> bool;
 
 def:priv create_timezone_from_delta(
     days: int, sec: int, ms: int, normalize: int
-) -> ptr[PyObject] {
-    delta = new_delta(days, sec, ms, normalize);
-    if not delta {
-        return NULL;
-    }
-    tz = create_timezone(delta, NULL);
-    jacpy_release(delta);
-    return tz;
-}
+) -> ptr[PyObject];
 
-"""The class attributes: resolution, min and max of each type, and
-timezone.utc."""
-def:priv add_type_attributes -> bool {
-    delta = addressof(PyDateTime_DeltaType);
-    date = addressof(PyDateTime_DateType);
-    time = addressof(PyDateTime_TimeType);
-    datetime = addressof(PyDateTime_DateTimeType);
-    timezone = addressof(PyDateTime_TimeZoneType);
-    return add_type_attribute(delta, "resolution", new_delta(0, 0, 1, 0))
-        and add_type_attribute(delta, "min", new_delta(-MAX_DELTA_DAYS, 0, 0, 0))
-        and add_type_attribute(
-            delta, "max", new_delta(MAX_DELTA_DAYS, 24 * 3600 - 1, 1000000 - 1, 0)
-        )
-        and add_type_attribute(date, "min", new_date(1, 1, 1))
-        and add_type_attribute(date, "max", new_date(MAXYEAR, 12, 31))
-        and add_type_attribute(date, "resolution", new_delta(1, 0, 0, 0))
-        and add_type_attribute(time, "min", new_time(0, 0, 0, 0, Py_None, 0))
-        and add_type_attribute(time, "max", new_time(23, 59, 59, 999999, Py_None, 0))
-        and add_type_attribute(time, "resolution", new_delta(0, 0, 1, 0))
-        and add_type_attribute(
-            datetime, "min", new_datetime(1, 1, 1, 0, 0, 0, 0, Py_None, 0)
-        )
-        and add_type_attribute(
-            datetime,
-            "max",
-            new_datetime(MAXYEAR, 12, 31, 23, 59, 59, 999999, Py_None, 0)
-        )
-        and add_type_attribute(datetime, "resolution", new_delta(0, 0, 1, 0))
-        and add_type_attribute(timezone, "utc", Py_NewRef(utc()))
-        and
-        # bpo-37642: These attributes are rounded to the nearest minute for
-        # backwards compatibility, even though the constructor will accept a
-        # wider range of values. This may change in the future.
-        add_type_attribute(timezone, "min", create_timezone_from_delta(-1, 60, 0, 1))
-        and add_type_attribute(
-            timezone, "max", create_timezone_from_delta(0, (23 * 60 + 59) * 60, 0, 0)
-        );
-}
+def:priv add_type_attributes -> bool;
 
 import from c {
-    # Ready the static types for `interp` (bases first) and set their class
-    # attributes; pylifecycle.c calls this while initializing the core types.
     def _PyDateTime_InitTypes(interp: ptr[PyInterpreterState]) -> PyStatus {
         if not install_method_tables() {
-            # _PyStatus_NO_MEMORY()
             return PyStatus(
                 _type=_PyStatus_TYPE_ERROR,
                 func=ptr[u8]("_PyDateTime_InitTypes"),
@@ -746,104 +572,17 @@ import from c {
     }
 }
 
-# ---------------------------------------------------------------------------
-# Module state lifecycle.
+def:priv set_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -> bool;
 
-"""Store a new reference (consumed) in the module state; False when NULL."""
-def:priv set_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -> bool {
-    if not value {
-        return False;
-    }
-    jacpy_binding_state_set(module, i64(index), value);
-    jacpy_release(value);
-    return True;
-}
+def:priv init_state(module: ptr[PyObject], old_module: ptr[PyObject]) -> int;
 
-"""Each module gets its own IsoCalendarDate heap type; the conversion
-factors and the epoch are shared with a previously loaded module."""
-def:priv init_state(module: ptr[PyObject], old_module: ptr[PyObject]) -> int {
-    isocal = PyType_FromModuleAndSpec(
-        module, addressof(isocal_spec), ptr[PyObject](addressof(PyTuple_Type))
-    );
-    if not set_state(module, STATE_ISOCALENDAR_DATE_TYPE, isocal) {
-        return -1;
-    }
-    if old_module {
-        for index in range(STATE_US_PER_MS, STATE_COUNT) {
-            jacpy_binding_state_set(
-                module, i64(index), jacpy_binding_state_get(old_module, i64(index))
-            );
-        }
-        return 0;
-    }
-    # us_per_hour, us_per_day and us_per_week are too big for 32-bit ints,
-    # but even us_per_week fits in 40 bits, so doubles are exact.
-    if set_state(module, STATE_US_PER_MS, PyLong_FromLong(1000))
-        and set_state(module, STATE_US_PER_SECOND, PyLong_FromLong(1000000))
-        and set_state(module, STATE_US_PER_MINUTE, PyLong_FromLong(60000000))
-        and set_state(module, STATE_SECONDS_PER_DAY, PyLong_FromLong(24 * 3600))
-        and set_state(module, STATE_US_PER_HOUR, PyLong_FromDouble(3600000000.0))
-        and set_state(module, STATE_US_PER_DAY, PyLong_FromDouble(86400000000.0))
-        and set_state(module, STATE_US_PER_WEEK, PyLong_FromDouble(604800000000.0))
-        and
-        # The interned Unix epoch datetime instance
-        set_state(
-            module, STATE_EPOCH, new_datetime(1970, 1, 1, 0, 0, 0, 0, utc(), 0)
-        ) {
-        return 0;
-    }
-    return -1;
-}
+def:priv add_capi_types(module: ptr[PyObject]) -> bool;
 
-def:priv add_capi_types(module: ptr[PyObject]) -> bool {
-    types = capi_types();
-    for index in range(len(types)) {
-        if PyModule_AddObjectRef(
-            module, CAPI_TYPE_NAMES[index], ptr[PyObject](types[index])
-        )
-            < 0 {
-            return False;
-        }
-    }
-    return True;
-}
+def:priv datetime_exec(module: ptr[PyObject]) -> i32;
 
-def:priv datetime_exec(module: ptr[PyObject]) -> i32 {
-    interp = PyInterpreterState_Get();
-    (status, old_module) = get_current_module(interp);
-    # The "current" module is set right before a successful return.
-    ready = status >= 0
-        and add_capi_types(module)
-        and init_state(module, old_module) >= 0
-        and PyModule_AddIntConstant(module, "MINYEAR", MINYEAR) >= 0
-        and PyModule_AddIntConstant(module, "MAXYEAR", MAXYEAR) >= 0
-        and PyModule_AddObjectRef(module, "UTC", utc()) >= 0
-        and
-        # At last, set up and add the encapsulated C API
-        PyModule_Add(
-            module,
-            "datetime_CAPI",
-            PyCapsule_New(ptr(addressof(capi)), capsule_name, ptr())
-        )
-            >= 0
-        and set_current_module(interp, module) >= 0;
-    if not ready {
-        clear_state(module);
-    }
-    jacpy_release(old_module);
-    return i32(0 if ready else -1);
-}
+def:priv module_clear(module: ptr[PyObject]) -> i32;
 
-def:priv module_clear(module: ptr[PyObject]) -> i32 {
-    clear_state(module);
-    clear_current_module(PyInterpreterState_Get(), module);
-    # The runtime takes care of the static types for us.
-    return i32(0);
-}
-
-def:priv module_free(module: ptr[PyObject]) {
-    module_clear(module);
-}
+def:priv module_free(module: ptr[PyObject]);
 
 glob:priv definition = ModuleDefinition(
          "_datetime",
@@ -859,6 +598,271 @@ glob:priv definition = ModuleDefinition(
          True
      );
 
-def:pub PyInit__datetime -> ptr[PyObject] {
+def:pub PyInit__datetime -> ptr[PyObject];
+
+impl int_argument(args: BoundArguments, index: int, unchanged: int) -> i32 {
+    if args.values[index] != NULL {
+        return convert_int(args.values[index]);
+    }
+    return i32(unchanged);
+}
+
+impl object_argument(
+    args: BoundArguments, index: int, unchanged: ptr[PyObject]
+) -> ptr[PyObject] {
+    if args.values[index] != NULL {
+        return args.values[index];
+    }
+    return unchanged;
+}
+
+impl date_replace_bound(args: BoundArguments) -> ptr[PyObject] {
+    self = args.context;
+    return datetime_date_replace_impl(
+        self,
+        int_argument(args, 0, get_year(self)),
+        int_argument(args, 1, get_month(self)),
+        int_argument(args, 2, get_day(self))
+    );
+}
+
+impl date_replace(
+    self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        date_replace_signature, args, nargs, kwnames, date_replace_bound, self
+    );
+}
+
+impl time_replace_bound(args: BoundArguments) -> ptr[PyObject] {
+    self = args.context;
+    return datetime_time_replace_impl(
+        self,
+        int_argument(args, 0, time_get_hour(self)),
+        int_argument(args, 1, time_get_minute(self)),
+        int_argument(args, 2, time_get_second(self)),
+        int_argument(args, 3, time_get_microsecond(self)),
+        object_argument(args, 4, time_tzinfo_of(self)),
+        int_argument(args, 5, time_get_fold(self))
+    );
+}
+
+impl time_replace(
+    self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        time_replace_signature, args, nargs, kwnames, time_replace_bound, self
+    );
+}
+
+impl datetime_replace_bound(args: BoundArguments) -> ptr[PyObject] {
+    self = args.context;
+    return datetime_datetime_replace_impl(
+        self,
+        int_argument(args, 0, get_year(self)),
+        int_argument(args, 1, get_month(self)),
+        int_argument(args, 2, get_day(self)),
+        int_argument(args, 3, date_get_hour(self)),
+        int_argument(args, 4, date_get_minute(self)),
+        int_argument(args, 5, date_get_second(self)),
+        int_argument(args, 6, date_get_microsecond(self)),
+        object_argument(args, 7, datetime_tzinfo_of(self)),
+        int_argument(args, 8, date_get_fold(self))
+    );
+}
+
+impl datetime_replace(
+    self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    return invoke_vector(
+        datetime_replace_signature, args, nargs, kwnames, datetime_replace_bound, self
+    );
+}
+
+impl capi_types -> list[ptr[PyTypeObject]] {
+    return [
+        addressof(PyDateTime_DateType),
+        addressof(PyDateTime_DateTimeType),
+        addressof(PyDateTime_TimeType),
+        addressof(PyDateTime_DeltaType),
+        addressof(PyDateTime_TZInfoType),
+        addressof(PyDateTime_TimeZoneType)
+    ];
+}
+
+impl capi_method_lists -> list[list[MethodDefinition]] {
+    return [
+        date_method_list,
+        datetime_method_list,
+        time_method_list,
+        delta_method_list,
+        tzinfo_method_list,
+        timezone_method_list
+    ];
+}
+
+impl install_method_tables -> bool {
+    types = capi_types();
+    lists = capi_method_lists();
+    for index in range(len(types)) {
+        record = types[index].view(1);
+        if record[0].tp_methods.is_null() {
+            table = method_table(lists[index]);
+            if table.is_null() {
+                return False;
+            }
+            record[0].tp_methods = table;
+        }
+    }
+    return True;
+}
+
+impl add_type_attribute(
+    type: ptr[PyTypeObject], name: str, value: ptr[PyObject]
+) -> bool {
+    if not value {
+        return False;
+    }
+    status = dict_set_text(_PyType_GetDict(ptr[PyObject](type)), name, value);
+    jacpy_release(value);
+    return status >= 0;
+}
+
+impl create_timezone_from_delta(
+    days: int, sec: int, ms: int, normalize: int
+) -> ptr[PyObject] {
+    delta = new_delta(days, sec, ms, normalize);
+    if not delta {
+        return NULL;
+    }
+    tz = create_timezone(delta, NULL);
+    jacpy_release(delta);
+    return tz;
+}
+
+impl add_type_attributes -> bool {
+    delta = addressof(PyDateTime_DeltaType);
+    date = addressof(PyDateTime_DateType);
+    time = addressof(PyDateTime_TimeType);
+    datetime = addressof(PyDateTime_DateTimeType);
+    timezone = addressof(PyDateTime_TimeZoneType);
+    return add_type_attribute(delta, "resolution", new_delta(0, 0, 1, 0))
+        and add_type_attribute(delta, "min", new_delta(-MAX_DELTA_DAYS, 0, 0, 0))
+        and add_type_attribute(
+            delta, "max", new_delta(MAX_DELTA_DAYS, 24 * 3600 - 1, 1000000 - 1, 0)
+        )
+        and add_type_attribute(date, "min", new_date(1, 1, 1))
+        and add_type_attribute(date, "max", new_date(MAXYEAR, 12, 31))
+        and add_type_attribute(date, "resolution", new_delta(1, 0, 0, 0))
+        and add_type_attribute(time, "min", new_time(0, 0, 0, 0, Py_None, 0))
+        and add_type_attribute(time, "max", new_time(23, 59, 59, 999999, Py_None, 0))
+        and add_type_attribute(time, "resolution", new_delta(0, 0, 1, 0))
+        and add_type_attribute(
+            datetime, "min", new_datetime(1, 1, 1, 0, 0, 0, 0, Py_None, 0)
+        )
+        and add_type_attribute(
+            datetime,
+            "max",
+            new_datetime(MAXYEAR, 12, 31, 23, 59, 59, 999999, Py_None, 0)
+        )
+        and add_type_attribute(datetime, "resolution", new_delta(0, 0, 1, 0))
+        and add_type_attribute(timezone, "utc", Py_NewRef(utc()))
+        and add_type_attribute(
+            timezone, "min", create_timezone_from_delta(-1, 60, 0, 1)
+        )
+        and add_type_attribute(
+            timezone, "max", create_timezone_from_delta(0, (23 * 60 + 59) * 60, 0, 0)
+        );
+}
+
+impl set_state(module: ptr[PyObject], index: int, value: ptr[PyObject]) -> bool {
+    if not value {
+        return False;
+    }
+    jacpy_binding_state_set(module, i64(index), value);
+    jacpy_release(value);
+    return True;
+}
+
+impl init_state(module: ptr[PyObject], old_module: ptr[PyObject]) -> int {
+    isocal = PyType_FromModuleAndSpec(
+        module, addressof(isocal_spec), ptr[PyObject](addressof(PyTuple_Type))
+    );
+    if not set_state(module, STATE_ISOCALENDAR_DATE_TYPE, isocal) {
+        return -1;
+    }
+    if old_module {
+        for index in range(STATE_US_PER_MS, STATE_COUNT) {
+            jacpy_binding_state_set(
+                module, i64(index), jacpy_binding_state_get(old_module, i64(index))
+            );
+        }
+        return 0;
+    }
+
+    if set_state(module, STATE_US_PER_MS, PyLong_FromLong(1000))
+        and set_state(module, STATE_US_PER_SECOND, PyLong_FromLong(1000000))
+        and set_state(module, STATE_US_PER_MINUTE, PyLong_FromLong(60000000))
+        and set_state(module, STATE_SECONDS_PER_DAY, PyLong_FromLong(24 * 3600))
+        and set_state(module, STATE_US_PER_HOUR, PyLong_FromDouble(3600000000.0))
+        and set_state(module, STATE_US_PER_DAY, PyLong_FromDouble(86400000000.0))
+        and set_state(module, STATE_US_PER_WEEK, PyLong_FromDouble(604800000000.0))
+        and set_state(
+            module, STATE_EPOCH, new_datetime(1970, 1, 1, 0, 0, 0, 0, utc(), 0)
+        ) {
+        return 0;
+    }
+    return -1;
+}
+
+impl add_capi_types(module: ptr[PyObject]) -> bool {
+    types = capi_types();
+    for index in range(len(types)) {
+        if PyModule_AddObjectRef(
+            module, CAPI_TYPE_NAMES[index], ptr[PyObject](types[index])
+        )
+            < 0 {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl datetime_exec(module: ptr[PyObject]) -> i32 {
+    interp = PyInterpreterState_Get();
+    (status, old_module) = get_current_module(interp);
+
+    ready = status >= 0
+        and add_capi_types(module)
+        and init_state(module, old_module) >= 0
+        and PyModule_AddIntConstant(module, "MINYEAR", MINYEAR) >= 0
+        and PyModule_AddIntConstant(module, "MAXYEAR", MAXYEAR) >= 0
+        and PyModule_AddObjectRef(module, "UTC", utc()) >= 0
+        and PyModule_Add(
+            module,
+            "datetime_CAPI",
+            PyCapsule_New(ptr(addressof(capi)), capsule_name, ptr())
+        )
+            >= 0
+        and set_current_module(interp, module) >= 0;
+    if not ready {
+        clear_state(module);
+    }
+    jacpy_release(old_module);
+    return i32(0 if ready else -1);
+}
+
+impl module_clear(module: ptr[PyObject]) -> i32 {
+    clear_state(module);
+    clear_current_module(PyInterpreterState_Get(), module);
+
+    return i32(0);
+}
+
+impl module_free(module: ptr[PyObject]) {
+    module_clear(module);
+}
+
+impl PyInit__datetime -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -1,15 +1,4 @@
-"""typing.Union, e.g. Union[int, str] and int | str: Objects/unionobject.c in
-native Jac.
-
-`_PyUnion_Type` is C data Jac defines under its C name, and
-`_Py_union_type_or` (the `|` of types), `_Py_union_args` and
-`_Py_union_from_tuple` are C functions under theirs. The object layout,
-`unionobject`, comes from layouts.jac. The parameter substitution it shares
-with types.GenericAlias is genericalias.jac's. See ../LICENSE.cpython.
-"""
-
 import from c {
-    # Defined by genericalias.jac, which imports this module.
     glob Py_GenericAliasType: PyTypeObject; def _Py_make_parameters(
         args: ptr[PyObject]
     ) -> ptr[PyObject];  def _Py_subs_parameters(
@@ -96,125 +85,25 @@ import from c {
          );
 }
 
-def union_of(op: ptr[PyObject]) -> ptr[unionobject] {
-    return ptr[unionobject](op);
-}
+def union_of(op: ptr[PyObject]) -> ptr[unionobject];
 
-"""_PyUnion_Check."""
-def union_check(op: ptr[PyObject]) -> bool {
-    return object_is_type(op, addressof(_PyUnion_Type));
-}
+def union_check(op: ptr[PyObject]) -> bool;
 
-def unionobject_dealloc(op: ptr[PyObject]) {
-    alias = union_of(op);
-    object_gc_untrack(op);
-    if alias.view(1)[0].weakreflist {
-        PyObject_ClearWeakRefs(op);
-    }
-    jacpy_release(alias.view(1)[0].args);
-    jacpy_release(alias.view(1)[0].hashable_args);
-    jacpy_release(alias.view(1)[0].unhashable_args);
-    jacpy_release(alias.view(1)[0].parameters);
-    object_type(op).view(1)[0].tp_free(ptr(op));
-}
+def unionobject_dealloc(op: ptr[PyObject]);
 
-def union_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    alias = union_of(op);
-    status = visit_reference(alias.view(1)[0].args, visitor, arg);
-    if status == 0 {
-        status = visit_reference(alias.view(1)[0].hashable_args, visitor, arg);
-    }
-    if status == 0 {
-        status = visit_reference(alias.view(1)[0].unhashable_args, visitor, arg);
-    }
-    if status == 0 {
-        status = visit_reference(alias.view(1)[0].parameters, visitor, arg);
-    }
-    return status;
-}
+def union_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
 
-def union_hash(op: ptr[PyObject]) -> i64 {
-    alias = union_of(op);
-    # If there are any unhashable args, treat this union as unhashable.
-    # Otherwise, two unions might compare equal but have different hashes.
-    unhashable = alias.view(1)[0].unhashable_args;
-    if unhashable {
-        # Attempt to get an error from one of the values.
-        n = object_size(unhashable);
-        for i in range(n) {
-            if PyObject_Hash(tuple_get_item(unhashable, i64(i))) == -1 {
-                return -1;
-            }
-        }
-        # The unhashable values somehow became hashable again. Still raise an
-        # error.
-        PyErr_Format(PyExc_TypeError, "union contains %zd unhashable elements", n);
-        return -1;
-    }
-    return PyObject_Hash(alias.view(1)[0].hashable_args);
-}
+def union_hash(op: ptr[PyObject]) -> i64;
 
-# Whether every item of `left` is in `right`: 1, 0, or -1 on error.
-def all_contained(left: ptr[PyObject], right: ptr[PyObject]) -> i32 {
-    for i in range(object_size(left)) {
-        result = PySequence_Contains(right, tuple_get_item(left, i64(i)));
-        if result != 1 {
-            return result;
-        }
-    }
-    return i32(1);
-}
+def all_contained(left: ptr[PyObject], right: ptr[PyObject]) -> i32;
 
-def unions_equal(a: ptr[unionobject], b: ptr[unionobject]) -> i32 {
-    result = PyObject_RichCompareBool(
-        a.view(1)[0].hashable_args, b.view(1)[0].hashable_args, Py_EQ
-    );
-    if result != 1 {
-        return result;
-    }
-    ua = a.view(1)[0].unhashable_args;
-    ub = b.view(1)[0].unhashable_args;
-    if ua and ub {
-        if object_size(ua) != object_size(ub) {
-            return i32(0);
-        }
-        result = all_contained(ua, ub);
-        if result != 1 {
-            return result;
-        }
-        return all_contained(ub, ua);
-    } elif ua or ub {
-        return i32(0);
-    }
-    return i32(1);
-}
+def unions_equal(a: ptr[unionobject], b: ptr[unionobject]) -> i32;
 
-def py_bool(value: bool) -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_TrueStruct))
-        if value
-        else ptr[PyObject](addressof(_Py_FalseStruct));
-}
+def py_bool(value: bool) -> ptr[PyObject];
 
-def union_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
-    if not union_check(b) or (op != Py_EQ and op != Py_NE) {
-        return Py_NewRef(Py_NotImplemented);
-    }
-    equal = unions_equal(union_of(a), union_of(b));
-    if equal == -1 {
-        return NULL;
-    }
-    return py_bool((equal != 0) == (op == Py_EQ));
-}
-
-# unionobject.c's unionbuilder, held in the caller's locals so building a
-# union allocates nothing but the union: `args` (list) and `hashable_args`
-# (set) are created up front and filled in place, and `unhashable_args` (a
-# list, NULL until an unhashable arg arrives) is lent to the adders with
-# `&mut`, which is why they are C definitions.
+def union_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject];
 
 import from c {
-    # Create the builder's list and set into `args` / `hashable_args`; False
-    # with the error set.
     def unionbuilder_new(
         args: ptr[ptr[PyObject]], hashable_args: ptr[ptr[PyObject]]
     ) -> bool {
@@ -235,11 +124,7 @@ import from c {
 
 def unionbuilder_finalize(
     args: ptr[PyObject], hashable_args: ptr[PyObject], unhashable_args: ptr[PyObject]
-) {
-    jacpy_release(args);
-    jacpy_release(hashable_args);
-    jacpy_release(unhashable_args);
-}
+);
 
 import from c {
     def unionbuilder_add_single_unchecked(
@@ -290,7 +175,7 @@ import from c {
         arg: ptr[PyObject]
     ) -> bool {
         if arg == Py_None {
-            arg = ptr[PyObject](addressof(_PyNone_Type));  # immortal
+            arg = ptr[PyObject](addressof(_PyNone_Type));
         } elif union_check(arg) {
             return unionbuilder_add_tuple(
                 args,
@@ -336,7 +221,189 @@ import from c {
     }
 }
 
-def is_unionable(op: ptr[PyObject]) -> bool {
+def is_unionable(op: ptr[PyObject]) -> bool;
+
+def union_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def union_init_parameters(alias: ptr[unionobject]) -> i32;
+
+def union_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject];
+
+def union_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def union_name(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def union_origin(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def union_nb_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def union_of_pair(
+    a: ptr[PyObject], b: ptr[PyObject], is_checked: bool
+) -> ptr[PyObject];
+
+def union_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject];
+
+def call_typing_type_check(
+    arg: ptr[PyObject], message: ptr[PyObject]
+) -> ptr[PyObject];
+
+def type_check(arg: ptr[PyObject], msg: str) -> ptr[PyObject];
+
+def union_class_getitem(_cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def union_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject];
+
+def make_union(
+    builder_args: ptr[PyObject],
+    builder_hashable: ptr[PyObject],
+    builder_unhashable: ptr[PyObject]
+) -> ptr[PyObject];
+
+import from c {
+    def _Py_union_type_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+        if not is_unionable(a) or not is_unionable(b) {
+            return Py_NewRef(Py_NotImplemented);
+        }
+
+        return union_of_pair(a, b, False);
+    }  def _Py_union_args(op: ptr[PyObject]) -> ptr[PyObject] {
+        return union_of(op).view(1)[0].args;
+    }  def _Py_union_from_tuple(args: ptr[PyObject]) -> ptr[PyObject] {
+        builder_args: ptr[PyObject] = NULL;
+        hashable_args: ptr[PyObject] = NULL;
+        unhashable_args: ptr[PyObject] = NULL;
+        if not unionbuilder_new(&mut builder_args, &mut hashable_args) {
+            return NULL;
+        }
+        added = unionbuilder_add_tuple(
+            builder_args, hashable_args, &mut unhashable_args, True, args
+        )
+            if jacpy_is_exact_tuple(args) != 0
+            else unionbuilder_add_single(
+                builder_args, hashable_args, &mut unhashable_args, True, args
+            );
+        if not added {
+            unionbuilder_finalize(builder_args, hashable_args, unhashable_args);
+            return NULL;
+        }
+        return make_union(builder_args, hashable_args, unhashable_args);
+    }
+}
+
+impl union_of(op: ptr[PyObject]) -> ptr[unionobject] {
+    return ptr[unionobject](op);
+}
+
+impl union_check(op: ptr[PyObject]) -> bool {
+    return object_is_type(op, addressof(_PyUnion_Type));
+}
+
+impl unionobject_dealloc(op: ptr[PyObject]) {
+    alias = union_of(op);
+    object_gc_untrack(op);
+    if alias.view(1)[0].weakreflist {
+        PyObject_ClearWeakRefs(op);
+    }
+    jacpy_release(alias.view(1)[0].args);
+    jacpy_release(alias.view(1)[0].hashable_args);
+    jacpy_release(alias.view(1)[0].unhashable_args);
+    jacpy_release(alias.view(1)[0].parameters);
+    object_type(op).view(1)[0].tp_free(ptr(op));
+}
+
+impl union_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+    alias = union_of(op);
+    status = visit_reference(alias.view(1)[0].args, visitor, arg);
+    if status == 0 {
+        status = visit_reference(alias.view(1)[0].hashable_args, visitor, arg);
+    }
+    if status == 0 {
+        status = visit_reference(alias.view(1)[0].unhashable_args, visitor, arg);
+    }
+    if status == 0 {
+        status = visit_reference(alias.view(1)[0].parameters, visitor, arg);
+    }
+    return status;
+}
+
+impl union_hash(op: ptr[PyObject]) -> i64 {
+    alias = union_of(op);
+
+    unhashable = alias.view(1)[0].unhashable_args;
+    if unhashable {
+        n = object_size(unhashable);
+        for i in range(n) {
+            if PyObject_Hash(tuple_get_item(unhashable, i64(i))) == -1 {
+                return -1;
+            }
+        }
+
+        PyErr_Format(PyExc_TypeError, "union contains %zd unhashable elements", n);
+        return -1;
+    }
+    return PyObject_Hash(alias.view(1)[0].hashable_args);
+}
+
+impl all_contained(left: ptr[PyObject], right: ptr[PyObject]) -> i32 {
+    for i in range(object_size(left)) {
+        result = PySequence_Contains(right, tuple_get_item(left, i64(i)));
+        if result != 1 {
+            return result;
+        }
+    }
+    return i32(1);
+}
+
+impl unions_equal(a: ptr[unionobject], b: ptr[unionobject]) -> i32 {
+    result = PyObject_RichCompareBool(
+        a.view(1)[0].hashable_args, b.view(1)[0].hashable_args, Py_EQ
+    );
+    if result != 1 {
+        return result;
+    }
+    ua = a.view(1)[0].unhashable_args;
+    ub = b.view(1)[0].unhashable_args;
+    if ua and ub {
+        if object_size(ua) != object_size(ub) {
+            return i32(0);
+        }
+        result = all_contained(ua, ub);
+        if result != 1 {
+            return result;
+        }
+        return all_contained(ub, ua);
+    } elif ua or ub {
+        return i32(0);
+    }
+    return i32(1);
+}
+
+impl py_bool(value: bool) -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_TrueStruct))
+        if value
+        else ptr[PyObject](addressof(_Py_FalseStruct));
+}
+
+impl union_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
+    if not union_check(b) or (op != Py_EQ and op != Py_NE) {
+        return Py_NewRef(Py_NotImplemented);
+    }
+    equal = unions_equal(union_of(a), union_of(b));
+    if equal == -1 {
+        return NULL;
+    }
+    return py_bool((equal != 0) == (op == Py_EQ));
+}
+
+impl unionbuilder_finalize(
+    args: ptr[PyObject], hashable_args: ptr[PyObject], unhashable_args: ptr[PyObject]
+) {
+    jacpy_release(args);
+    jacpy_release(hashable_args);
+    jacpy_release(unhashable_args);
+}
+
+impl is_unionable(op: ptr[PyObject]) -> bool {
     return op == Py_None
         or jacpy_is_type(op) != 0
         or object_type_check(op, addressof(Py_GenericAliasType))
@@ -344,17 +411,17 @@ def is_unionable(op: ptr[PyObject]) -> bool {
         or object_is_type(op, ptr[PyTypeObject](addressof(_PyTypeAlias_Type)));
 }
 
-def union_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl union_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     args = union_of(op).view(1)[0].args;
     length = object_size(args);
-    # Shortest type name "int" (3 chars) + " | " (3 chars) separator
+
     estimate = length * 6 if length <= i64.MAX // 6 else length;
     writer = PyUnicodeWriter_Create(estimate);
     if not writer {
         return NULL;
     }
     for i in range(length) {
-        if (i > 0 and PyUnicodeWriter_WriteASCII(writer, " | ", 3) < 0)
+        if (i > 0 and PyUnicodeWriter_WriteASCII(writer, ptr[u8](" | "), 3) < 0)
             or _Py_typing_type_repr(writer, tuple_get_item(args, i64(i))) < 0 {
             PyUnicodeWriter_Discard(writer);
             return NULL;
@@ -363,8 +430,7 @@ def union_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicodeWriter_Finish(writer);
 }
 
-# Populate __parameters__ if needed; -1 with the error set.
-def union_init_parameters(alias: ptr[unionobject]) -> i32 {
+impl union_init_parameters(alias: ptr[unionobject]) -> i32 {
     if not alias.view(1)[0].parameters {
         alias.view(1)[0].parameters = _Py_make_parameters(alias.view(1)[0].args);
         if not alias.view(1)[0].parameters {
@@ -374,7 +440,7 @@ def union_init_parameters(alias: ptr[unionobject]) -> i32 {
     return i32(0);
 }
 
-def union_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+impl union_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     alias = union_of(op);
     if union_init_parameters(alias) < 0 {
         return NULL;
@@ -390,7 +456,7 @@ def union_getitem(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def union_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl union_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     alias = union_of(op);
     if union_init_parameters(alias) < 0 {
         return NULL;
@@ -398,20 +464,19 @@ def union_parameters(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(alias.view(1)[0].parameters);
 }
 
-def union_name(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
-    return PyUnicode_FromString("Union");
+impl union_name(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+    return PyUnicode_FromString(ptr[u8]("Union"));
 }
 
-def union_origin(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl union_origin(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(ptr[PyObject](addressof(_PyUnion_Type)));
 }
 
-def union_nb_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl union_nb_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     return union_of_pair(a, b, True);
 }
 
-# The union of `a` and `b`, as union_nb_or and _Py_union_type_or build it.
-def union_of_pair(
+impl union_of_pair(
     a: ptr[PyObject], b: ptr[PyObject], is_checked: bool
 ) -> ptr[PyObject] {
     args: ptr[PyObject] = NULL;
@@ -432,24 +497,22 @@ def union_of_pair(
     return make_union(args, hashable_args, unhashable_args);
 }
 
-def union_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
-    # "__module__" is required for compatibility with typing module
+impl union_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(name) != 0
-        and _PyUnicode_EqualToASCIIString(name, "__module__") != 0 {
+        and _PyUnicode_EqualToASCIIString(name, ptr[u8]("__module__")) != 0 {
         return PyObject_GetAttr(ptr[PyObject](object_type(op)), name);
     }
     return PyObject_GenericGetAttr(op, name);
 }
 
-# typing._type_check(arg, msg), as a new reference.
-def call_typing_type_check(
+impl call_typing_type_check(
     arg: ptr[PyObject], message: ptr[PyObject]
 ) -> ptr[PyObject] {
     typing = PyImport_ImportModule("typing");
     if not typing {
         return NULL;
     }
-    func = PyObject_GetAttrString(typing, "_type_check");
+    func = PyObject_GetAttrString(typing, ptr[u8]("_type_check"));
     if not func {
         jacpy_release(typing);
         return NULL;
@@ -460,16 +523,15 @@ def call_typing_type_check(
     return result;
 }
 
-def type_check(arg: ptr[PyObject], msg: str) -> ptr[PyObject] {
+impl type_check(arg: ptr[PyObject], msg: str) -> ptr[PyObject] {
     if arg == Py_None {
-        # NoneType is immortal, so don't need an INCREF
         return ptr[PyObject](object_type(arg));
     }
-    # Fast path to avoid calling into typing.py
+
     if is_unionable(arg) {
         return Py_NewRef(arg);
     }
-    message = PyUnicode_FromString(msg);
+    message = jacpy_unicode_from_text(msg);
     if not message {
         return NULL;
     }
@@ -478,17 +540,16 @@ def type_check(arg: ptr[PyObject], msg: str) -> ptr[PyObject] {
     return result;
 }
 
-def union_class_getitem(_cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl union_class_getitem(_cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return _Py_union_from_tuple(args);
 }
 
-def union_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
+impl union_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_Format(PyExc_TypeError, "Cannot subclass %R", op);
     return NULL;
 }
 
-# The union of a builder's args (consuming the builder), or its only arg.
-def make_union(
+impl make_union(
     builder_args: ptr[PyObject],
     builder_hashable: ptr[PyObject],
     builder_unhashable: ptr[PyObject]
@@ -531,35 +592,4 @@ def make_union(
     created.view(1)[0].weakreflist = NULL;
     object_gc_track(op);
     return op;
-}
-
-import from c {
-    def _Py_union_type_or(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
-        if not is_unionable(a) or not is_unionable(b) {
-            return Py_NewRef(Py_NotImplemented);
-        }
-        # unchecked because is_unionable() already checked them
-        return union_of_pair(a, b, False);
-    }  def _Py_union_args(op: ptr[PyObject]) -> ptr[PyObject] {
-        return union_of(op).view(1)[0].args;
-    }  def _Py_union_from_tuple(args: ptr[PyObject]) -> ptr[PyObject] {
-        builder_args: ptr[PyObject] = NULL;
-        hashable_args: ptr[PyObject] = NULL;
-        unhashable_args: ptr[PyObject] = NULL;
-        if not unionbuilder_new(&mut builder_args, &mut hashable_args) {
-            return NULL;
-        }
-        added = unionbuilder_add_tuple(
-            builder_args, hashable_args, &mut unhashable_args, True, args
-        )
-            if jacpy_is_exact_tuple(args) != 0
-            else unionbuilder_add_single(
-                builder_args, hashable_args, &mut unhashable_args, True, args
-            );
-        if not added {
-            unionbuilder_finalize(builder_args, hashable_args, unhashable_args);
-            return NULL;
-        }
-        return make_union(builder_args, hashable_args, unhashable_args);
-    }
 }
