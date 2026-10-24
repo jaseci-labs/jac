@@ -5232,7 +5232,8 @@ impl Parser.parse_import_items(
         TokenKind.KW_ASYNC,
         TokenKind.STRING,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_HAS
+        TokenKind.KW_HAS,
+        TokenKind.DECOR_OP
     )
         and (is_clib_import or not self.check(TokenKind.STRING)) {
         while not self.check(TokenKind.RBRACE) and not self.at_end() {

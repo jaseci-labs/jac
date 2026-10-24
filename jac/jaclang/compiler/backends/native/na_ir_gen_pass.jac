@@ -5,7 +5,8 @@ glob GEN_PENDING_FLAG_OFF: int = 8,
      GEN_PENDING_TYPE_OFF: int = 16,
      GEN_PENDING_OBJ_OFF: int = 24,
      GEN_PENDING_MSG_OFF: int = 32,
-     GEN_FRAME_HEADER: int = 40;
+     GEN_FRAME_HEADER: int = 40,
+     CALLING_CONVENTIONS: dict[str, str] = {"__preserve_none": "preserve_nonecc"};
 
 def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None);
 
@@ -759,6 +760,8 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
+    def _calling_convention_of(decorators: (list | None)) -> str;
+    def _field_call_convention(nd: uni.FuncCall) -> str;
     def _emit_intrinsic_c_thread_local(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);

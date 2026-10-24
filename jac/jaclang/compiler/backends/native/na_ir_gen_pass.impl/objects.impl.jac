@@ -2986,7 +2986,12 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                         _cargs.append(_pv);
                     }
                 }
-                _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                _r = self.builder.call(
+                    _fnp,
+                    _cargs,
+                    name=f"icall.{method_name}",
+                    cconv=self._field_call_convention(nd) or None
+                );
                 if isinstance(_fn_ty.return_type, ir.VoidType) {
                     return None;
                 }

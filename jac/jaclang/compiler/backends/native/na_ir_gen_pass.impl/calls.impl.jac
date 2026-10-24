@@ -4435,7 +4435,9 @@ impl NaIRGenPass._codegen_callable_value(
     for (name, slot) in captures {
         coerced.append(self.builder.load(slot, name=f"cap.{name}"));
     }
-    result = self.builder.call(value, coerced, name="icall");
+    result = self.builder.call(
+        value, coerced, name="icall", cconv=self._field_call_convention(nd) or None
+    );
     for arg in args {
         if isinstance(arg.type, ir.PointerType) and self._is_owned(arg) {
             self._emit_rc_release_simple(arg, op="icall_arg", loc="");
@@ -4589,4 +4591,16 @@ impl NaIRGenPass._emit_intrinsic_atomic(
     return b.atomic_rmw(
         "xchg" if op == "swap" else op, slot, val, ordering=order, name="atomic.rmw"
     );
+}
+
+impl NaIRGenPass._field_call_convention(nd: uni.FuncCall) -> str {
+    target = nd.target;
+    if not isinstance(target, uni.AtomTrailer) or not target.is_attr {
+        return "";
+    }
+    arch = foreign_struct_of_type(target.target.type) if target.target else None;
+    if arch is None {
+        return "";
+    }
+    return self._calling_convention_of(arch.decorators);
 }

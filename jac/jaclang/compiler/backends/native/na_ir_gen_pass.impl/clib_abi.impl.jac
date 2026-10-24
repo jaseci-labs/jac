@@ -624,7 +624,12 @@ impl NaIRGenPass._c_entry_escape_fn(
         target = jac_fn
             if cty == jac_fn.function_type
             else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
-        result = b.call(target, list(esc.args), name="cdef.call");
+        result = b.call(
+            target,
+            list(esc.args),
+            name="cdef.call",
+            cconv=c_entry.calling_convention or None
+        );
         b.call(self._region_kernel_fn("__jac_region_restore"), [depth]);
         if isinstance(cty.return_type, ir.VoidType) {
             b.ret_void();
@@ -657,7 +662,12 @@ impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> No
     target = jac_fn
         if cty == jty
         else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
-    call = b.call(target, list(cfunc.args), name="cdef.call");
+    call = b.call(
+        target,
+        list(cfunc.args),
+        name="cdef.call",
+        cconv=cfunc.calling_convention or None
+    );
     call.tail = "musttail";
     if isinstance(cty.return_type, ir.VoidType) {
         b.ret_void();
