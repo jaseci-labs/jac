@@ -774,6 +774,26 @@ one vendored as a git submodule. There is no environment variable for it.
 When the source is in use, every command prints
 `[dev] jac dev mode - using compiler source at <path>`.
 
+### [database]
+
+The project's own graph store. (`[scale.database]` is a different table: the
+connection a process or a deploy uses.)
+
+```toml
+[database]
+indexes = { Post = ["at", "published"] }   # promote these fields to indexed columns
+retention_days = 30          # drop databases unused this long when the embedded cluster starts
+postgres_version = "18"      # the embedded Postgres major to provision
+postgres_dist = "vendor/pg"  # a Postgres distribution to use instead of downloading one
+```
+
+- `indexes` names, per archetype, the fields that filters (`[?:Post, at > 3]`)
+  and orderings (`[?:Post, -at]`) read; the compiler reads a promoted column
+  instead of the jsonb path. Correctness never depends on it.
+- `retention_days` is unset (never) by default; `JAC_DB_RETENTION_DAYS`
+  overrides it.
+- `postgres_dist` is relative to `jac.toml`.
+
 ### [network]
 
 ```toml
