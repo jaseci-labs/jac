@@ -400,6 +400,7 @@ impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir
         global_str.global_constant = True;
         global_str.initializer = struct_val;
         self._interned_strs[_key] = global_str;
+        self._str_literal_text[id(global_str)] = text;
     }
 
     gep = self.builder.gep(
@@ -910,6 +911,18 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     _fstr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
+    if not self._nogc_headerless() {
+        self._set_rc_ctx("fstring", _fstr_loc);
+        _direct = self._fstring_direct(fmt_parts, args);
+        self._clear_rc_ctx();
+        if _direct is not None {
+            for _obj_s in obj_strs {
+                self._emit_rc_release_typed(_obj_s, op="fstr_obj_tmp", loc="");
+            }
+            self._mark_owned(_direct);
+            return _direct;
+        }
+    }
     snprintf_fn = self._get_or_declare_extern(
         "snprintf",
         ir.IntType(32),
@@ -1888,6 +1901,169 @@ impl NaIRGenPass._bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Va
     );
 }
 
+impl NaIRGenPass._get_fmt_int_fn -> ir.Function {
+    """`__jac_fmt_i64(v, out, unsigned) -> len`: `v` in decimal at `out` (24 bytes), no NUL.
+
+    `str(int)`, an int's repr and f-strings went through musl's `vsnprintf`,
+    whose format parsing, padding and per-call `FILE` setup (a `memset`) cost
+    far more than the digits. The digits go backwards into a stack buffer by
+    division by 10, a sign in front, and are copied to `out`. The magnitude
+    is taken unsigned, so the most negative value prints right.
+    """;
+    if self._fmt_int_fn is not None {
+        return self._fmt_int_fn;
+    }
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [i64, i8p, i1]), name="__jac_fmt_i64"
+    );
+    fn.linkage = "private";
+    (v, out, unsigned) = (fn.args[0], fn.args[1], fn.args[2]);
+    v.name = "v";
+    out.name = "out";
+    unsigned.name = "unsigned";
+    head_bb = fn.append_basic_block("entry");
+    loop = fn.append_basic_block("digits");
+    sign = fn.append_basic_block("sign");
+    copy = fn.append_basic_block("copy");
+    b = ir.IRBuilder(head_bb);
+    tmp = b.alloca(ir.ArrayType(i8, 24), name="fi.tmp");
+    base = b.gep(tmp, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)]);
+    neg = b.and_(
+        b.not_(unsigned, name="fi.signed"),
+        b.icmp_signed("<", v, ir.Constant(i64, 0), name="fi.lt0"),
+        name="fi.neg"
+    );
+    mag0 = b.select(neg, b.sub(ir.Constant(i64, 0), v, name="fi.negv"), v, name="fi.mag");
+    b.branch(loop);
+    b = ir.IRBuilder(loop);
+    mag = b.phi(i64, name="fi.m");
+    pos = b.phi(i64, name="fi.pos");
+    mag.add_incoming(mag0, head_bb);
+    pos.add_incoming(ir.Constant(i64, 24), head_bb);
+    q = b.udiv(mag, ir.Constant(i64, 10), name="fi.q");
+    digit = b.sub(mag, b.mul(q, ir.Constant(i64, 10)), name="fi.d");
+    npos = b.sub(pos, ir.Constant(i64, 1), name="fi.npos");
+    b.store(
+        b.trunc(b.add(digit, ir.Constant(i64, 48)), i8, name="fi.ch"),
+        b.gep(base, [npos])
+    );
+    mag.add_incoming(q, loop);
+    pos.add_incoming(npos, loop);
+    b.cbranch(b.icmp_unsigned("!=", q, ir.Constant(i64, 0), name="fi.more"), loop, sign);
+    b = ir.IRBuilder(sign);
+    spos = b.sub(npos, ir.Constant(i64, 1), name="fi.spos");
+    signed_bb = fn.append_basic_block("minus");
+    b.cbranch(neg, signed_bb, copy);
+    b = ir.IRBuilder(signed_bb);
+    b.store(ir.Constant(i8, 45), b.gep(base, [spos]));
+    b.branch(copy);
+    b = ir.IRBuilder(copy);
+    start = b.phi(i64, name="fi.start");
+    start.add_incoming(npos, sign);
+    start.add_incoming(spos, signed_bb);
+    length = b.sub(ir.Constant(i64, 24), start, name="fi.len");
+    memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    b.call(memcpy, [out, b.gep(base, [start]), length]);
+    b.ret(length);
+    self._fmt_int_fn = fn;
+    return fn;
+}
+
+impl NaIRGenPass._emit_fmt_int(
+    b: ir.IRBuilder, val: ir.Value, out: ir.Value, unsigned: bool
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    if val.type != i64 {
+        val = b.zext(val, i64) if unsigned or val.type == ir.IntType(1) else b.sext(val, i64);
+    }
+    return b.call(
+        self._get_fmt_int_fn(),
+        [val, out, ir.Constant(ir.IntType(1), 1 if unsigned else 0)],
+        name="fi.len"
+    );
+}
+
+impl NaIRGenPass._fstring_direct(
+    fmt_parts: list[str], args: list[ir.Value]
+) -> (ir.Value | None) {
+    """An f-string of plain `{str}` and `{int}` pieces, assembled without `snprintf`.
+
+    The f-string ran `snprintf` twice, once to measure and once to write. When
+    every piece is literal text, a string (`%s`) or an int (`%lld`/`%llu`)
+    with no width, precision or fill, the ints are formatted into stack
+    buffers, the strings measured, and the pieces copied into one buffer of
+    the exact size. Any other directive keeps `snprintf` (returns None).
+    """;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    pieces: list[tuple[str, any, bool]] = [];
+    k = 0;
+    for part in fmt_parts {
+        if part in ("%s", "%lld", "%llu") {
+            if k >= len(args) {
+                return None;
+            }
+            pieces.append((part, args[k], part == "%llu"));
+            k += 1;
+            continue;
+        }
+        if "%" in part.replace("%%", "") {
+            return None;
+        }
+        if part {
+            pieces.append(("lit", part.replace("%%", "%"), False));
+        }
+    }
+    if k != len(args) {
+        return None;
+    }
+    b = self.builder;
+    strlen = self._get_or_declare_extern("strlen", i64, [i8p]);
+    memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    null_text: (ir.Value | None) = None;
+    sources: list[tuple[ir.Value, ir.Value]] = [];
+    total: ir.Value = ir.Constant(i64, 0);
+    for (kind, value, unsigned) in pieces {
+        src: ir.Value;
+        n: ir.Value;
+        if kind == "lit" {
+            src = self._make_global_string(value, name_prefix=".fstr.lit");
+            n = ir.Constant(i64, len(value.encode("utf8")));
+        } elif kind == "%s" {
+            if null_text is None {
+                null_text = self._make_global_string("(null)", name_prefix=".fstr.null");
+            }
+            text = b.bitcast(value, i8p) if value.type != i8p else value;
+            src = b.select(
+                b.icmp_unsigned("==", text, ir.Constant(i8p, None), name="fd.null"),
+                null_text,
+                text,
+                name="fd.str"
+            );
+            n = b.call(strlen, [src], name="fd.slen");
+        } else {
+            digits = self._entry_alloca(ir.ArrayType(i8, 24), "fd.digits");
+            src = b.bitcast(digits, i8p, name="fd.dp");
+            n = self._emit_fmt_int(b, value, src, unsigned);
+        }
+        sources.append((src, n));
+        total = b.add(total, n, name="fd.total");
+    }
+    buf = self._str_alloc(b, b.add(total, ir.Constant(i64, 1), name="fd.size"), name="fstr.buf");
+    at: ir.Value = ir.Constant(i64, 0);
+    for (src, n) in sources {
+        b.call(memcpy, [b.gep(buf, [at], name="fd.at"), src, n]);
+        at = b.add(at, n, name="fd.next");
+    }
+    self._str_finish(b, buf, total);
+    return buf;
+}
+
 impl NaIRGenPass._int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value {
     i64 = ir.IntType(64);
     if val.type == i64 {
@@ -2151,28 +2327,216 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     }
 
     b.position_at_end(setup_bb);
+    if not self._nogc_headerless() {
+        # Fast path: |d| < 1e15 with at most six decimals. A double below 1e15
+        # has one decimal of at most 15 significant digits that reads back as
+        # it, so the first k (0..6) for which N = round(|d| * 10^k) divided by
+        # 10^k gives |d| back (IEEE division rounds correctly, as reading
+        # the text would) yields the shortest repr: N's digits with a point k
+        # from the end. No printf and no strtod.
+        slow_bb = fn.append_basic_block("fr.slow");
+        negative = b.icmp_signed(
+            "<", b.bitcast(d, i64, name="fr.bits"), ir.Constant(i64, 0), name="fr.neg"
+        );
+        mag = b.select(negative, b.fneg(d, name="fr.negd"), d, name="fr.mag");
+        emit_bb = fn.append_basic_block("fr.fast.emit");
+        is_zero = b.fcmp_ordered("==", mag, ir.Constant(f64, 0.0), name="fr.zero");
+        zero_bb = fn.append_basic_block("fr.fast.zero");
+        range_bb = fn.append_basic_block("fr.fast.range");
+        b.cbranch(is_zero, zero_bb, range_bb);
+        b.position_at_end(zero_bb);
+        b.ret(
+            b.select(
+                negative,
+                self._make_global_string("-0.0", name_prefix=".frepr.nz"),
+                self._make_global_string("0.0", name_prefix=".frepr.z"),
+                name="fr.zs"
+            )
+        );
+        b.position_at_end(range_bb);
+        in_range = b.and_(
+            b.fcmp_ordered(">=", mag, ir.Constant(f64, 0.0001), name="fr.lo.ok"),
+            b.fcmp_ordered("<", mag, ir.Constant(f64, 1e15), name="fr.hi.ok"),
+            name="fr.inrange"
+        );
+        try_bb = fn.append_basic_block("fr.fast.k0");
+        b.cbranch(in_range, try_bb, slow_bb);
+        found: list[tuple[ir.Block, ir.Value, int]] = [];
+        for k in range(7) {
+            b.position_at_end(try_bb);
+            scale = ir.Constant(f64, float(10 ** k));
+            scaled = b.fmul(mag, scale, name=f"fr.s{k}");
+            fits = b.fcmp_ordered("<", scaled, ir.Constant(f64, 1e15), name=f"fr.fit{k}");
+            n = b.fptoui(
+                b.fadd(scaled, ir.Constant(f64, 0.5), name=f"fr.r{k}"), i64, name=f"fr.n{k}"
+            );
+            back = b.fdiv(b.uitofp(n, f64, name=f"fr.nf{k}"), scale, name=f"fr.b{k}");
+            hit = b.and_(
+                fits, b.fcmp_ordered("==", back, mag, name=f"fr.eq{k}"), name=f"fr.hit{k}"
+            );
+            next_bb = fn.append_basic_block(f"fr.fast.k{k + 1}") if k < 6 else slow_bb;
+            here = b.block;
+            b.cbranch(hit, emit_bb, next_bb);
+            found.append((here, n, k));
+            try_bb = next_bb;
+        }
+        b.position_at_end(emit_bb);
+        n_phi = b.phi(i64, name="fr.N");
+        k_phi = b.phi(i64, name="fr.k");
+        p_phi = b.phi(i64, name="fr.p10");
+        for (blk, n, k) in found {
+            n_phi.add_incoming(n, blk);
+            k_phi.add_incoming(ir.Constant(i64, k), blk);
+            p_phi.add_incoming(ir.Constant(i64, 10 ** k), blk);
+        }
+        out = self._str_alloc(b, ir.Constant(i64, 48), name="fr.fast.buf");
+        start = b.zext(negative, i64, name="fr.signlen");
+        sign_bb = fn.append_basic_block("fr.fast.sign");
+        int_bb = fn.append_basic_block("fr.fast.int");
+        b.cbranch(negative, sign_bb, int_bb);
+        b.position_at_end(sign_bb);
+        b.store(ir.Constant(i8, 45), out);
+        b.branch(int_bb);
+        b.position_at_end(int_bb);
+        whole = b.udiv(n_phi, p_phi, name="fr.whole");
+        part = b.urem(n_phi, p_phi, name="fr.part");
+        wlen = self._emit_fmt_int(b, whole, b.gep(out, [start]), True);
+        dot = b.add(start, wlen, name="fr.dot");
+        b.store(ir.Constant(i8, 46), b.gep(out, [dot]));
+        first = b.add(dot, ir.Constant(i64, 1), name="fr.first");
+        k_zero = b.icmp_unsigned("==", k_phi, ir.Constant(i64, 0), name="fr.k0");
+        tail0_bb = fn.append_basic_block("fr.fast.tail0");
+        digits_bb = fn.append_basic_block("fr.fast.digits");
+        done_bb = fn.append_basic_block("fr.fast.done");
+        b.cbranch(k_zero, tail0_bb, digits_bb);
+        b.position_at_end(tail0_bb);
+        b.store(ir.Constant(i8, 48), b.gep(out, [first]));
+        end0 = b.add(first, ir.Constant(i64, 1), name="fr.end0");
+        b.branch(done_bb);
+        # (the k decimals, last first, zero-padded on the left)
+        b.position_at_end(digits_bb);
+        j = b.phi(i64, name="fr.j");
+        rest = b.phi(i64, name="fr.rest");
+        j.add_incoming(k_phi, int_bb);
+        rest.add_incoming(part, int_bb);
+        j1 = b.sub(j, ir.Constant(i64, 1), name="fr.j1");
+        q = b.udiv(rest, ir.Constant(i64, 10), name="fr.q");
+        digit = b.sub(rest, b.mul(q, ir.Constant(i64, 10)), name="fr.dg");
+        b.store(
+            b.trunc(b.add(digit, ir.Constant(i64, 48)), i8, name="fr.ch"),
+            b.gep(out, [b.add(first, j1)])
+        );
+        j.add_incoming(j1, digits_bb);
+        rest.add_incoming(q, digits_bb);
+        endk = b.add(first, k_phi, name="fr.endk");
+        b.cbranch(b.icmp_unsigned("==", j1, ir.Constant(i64, 0), name="fr.jdone"), done_bb, digits_bb);
+        b.position_at_end(done_bb);
+        end = b.phi(i64, name="fr.end");
+        end.add_incoming(end0, tail0_bb);
+        end.add_incoming(endk, digits_bb);
+        self._str_finish(b, out, end);
+        b.ret(out);
+        b.position_at_end(slow_bb);
+    }
     cap = ir.Constant(i64, 64);
     tmp = self._str_alloc(b, cap, name="fr.tmp");
     endptr = b.alloca(i8p, name="fr.endptr");
-    pvar = b.alloca(i32, name="fr.p");
-    b.store(ir.Constant(i32, 0), pvar);
-    loop_cond = fn.append_basic_block("fr.cond");
-    loop_inc = fn.append_basic_block("fr.inc");
+    # 15 significant digits first: a double has at most one decimal of 15
+    # digits that reads back as it, so if that rounding does, it is the
+    # shortest once its trailing zeros go; else 16, then 17, which always do.
+    # (a subnormal has fewer than 53 bits, so several 15-digit decimals read
+    # back as it: it keeps the search from one digit up)
+    try15 = fn.append_basic_block("fr.p15");
+    try16 = fn.append_basic_block("fr.p16");
     loop_done = fn.append_basic_block("fr.done");
-    b.branch(loop_cond);
-    b.position_at_end(loop_cond);
-    pv = b.load(pvar, name="fr.pv");
-    elen32 = b.call(snprintf, [tmp, cap, fmt_e, pv, d], name="fr.elen32");
-    parsed = b.call(strtod, [tmp, endptr], name="fr.parsed");
-    eq = b.fcmp_ordered("==", parsed, d, name="fr.eq");
-    at_max = b.icmp_signed(">=", pv, ir.Constant(i32, 17), name="fr.atmax");
-    b.cbranch(b.or_(eq, at_max, name="fr.stop"), loop_done, loop_inc);
-    b.position_at_end(loop_inc);
-    b.store(b.add(pv, ir.Constant(i32, 1)), pvar);
-    b.branch(loop_cond);
-
+    sub_cond = fn.append_basic_block("fr.sub.cond");
+    sub_inc = fn.append_basic_block("fr.sub.inc");
+    sub_done = fn.append_basic_block("fr.sub.done");
+    subnormal = b.fcmp_ordered(
+        "<",
+        b.select(
+            b.fcmp_ordered("<", d, ir.Constant(f64, 0.0), name="fr.dneg"),
+            b.fneg(d, name="fr.dabs.n"),
+            d,
+            name="fr.dabs"
+        ),
+        ir.Constant(f64, 2.2250738585072014e-308),
+        name="fr.subnormal"
+    );
+    sub_entry = b.block;
+    b.cbranch(subnormal, sub_cond, try15);
+    b.position_at_end(sub_cond);
+    sub_p = b.phi(i32, name="fr.sub.p");
+    sub_p.add_incoming(ir.Constant(i32, 0), sub_entry);
+    b.call(snprintf, [tmp, cap, fmt_e, sub_p, d], name="fr.sub.e");
+    sub_eq = b.fcmp_ordered(
+        "==", b.call(strtod, [tmp, endptr], name="fr.sub.parsed"), d, name="fr.sub.eq"
+    );
+    b.cbranch(
+        b.or_(
+            sub_eq, b.icmp_signed(">=", sub_p, ir.Constant(i32, 16), name="fr.sub.max"),
+            name="fr.sub.stop"
+        ),
+        sub_done,
+        sub_inc
+    );
+    b.position_at_end(sub_inc);
+    sub_p.add_incoming(b.add(sub_p, ir.Constant(i32, 1), name="fr.sub.p1"), sub_inc);
+    b.branch(sub_cond);
+    b.position_at_end(sub_done);
+    sub_p64 = b.zext(sub_p, i64, name="fr.sub.p64");
+    b.branch(loop_done);
+    tried: list[tuple[ir.Block, any]] = [(sub_done, sub_p64)];
+    for (blk, prec, nxt) in ((try15, 14, try16), (try16, 15, None)) {
+        b.position_at_end(blk);
+        b.call(snprintf, [tmp, cap, fmt_e, ir.Constant(i32, prec), d], name=f"fr.e{prec}");
+        parsed = b.call(strtod, [tmp, endptr], name=f"fr.parsed{prec}");
+        eq = b.fcmp_ordered("==", parsed, d, name=f"fr.eq{prec}");
+        if nxt is not None {
+            b.cbranch(eq, loop_done, nxt);
+        } else {
+            try17 = fn.append_basic_block("fr.p17");
+            b.cbranch(eq, loop_done, try17);
+            tried.append((b.block, prec));
+            b.position_at_end(try17);
+            b.call(snprintf, [tmp, cap, fmt_e, ir.Constant(i32, 16), d], name="fr.e16");
+            b.branch(loop_done);
+            tried.append((b.block, 16));
+            break;
+        }
+        tried.append((b.block, prec));
+    }
     b.position_at_end(loop_done);
-    pfin = b.load(pvar, name="fr.pfin");
+    pmax = b.phi(i64, name="fr.pmax");
+    for (blk, prec) in tried {
+        pmax.add_incoming(
+            prec if isinstance(prec, ir.Value) else ir.Constant(i64, prec), blk
+        );
+    }
+    # (trailing zeros of the mantissa, just before the 'e')
+    epos0 = b.call(strchr, [tmp, ir.Constant(i32, 101)], name="fr.epos0");
+    strip_bb = fn.append_basic_block("fr.strip");
+    strip_next = fn.append_basic_block("fr.strip.next");
+    stripped_bb = fn.append_basic_block("fr.stripped");
+    pre_strip = b.block;
+    b.branch(strip_bb);
+    b.position_at_end(strip_bb);
+    zeros = b.phi(i64, name="fr.zeros");
+    zeros.add_incoming(ir.Constant(i64, 0), pre_strip);
+    at_ch = b.load(
+        b.gep(epos0, [b.sub(ir.Constant(i64, -1), zeros, name="fr.zoff")]), name="fr.zch"
+    );
+    more = b.and_(
+        b.icmp_unsigned("==", at_ch, ir.Constant(i8, 48), name="fr.iszero"),
+        b.icmp_unsigned("<", zeros, pmax, name="fr.zroom"),
+        name="fr.zmore"
+    );
+    b.cbranch(more, strip_next, stripped_bb);
+    b.position_at_end(strip_next);
+    zeros.add_incoming(b.add(zeros, ir.Constant(i64, 1), name="fr.z1"), strip_next);
+    b.branch(strip_bb);
+    b.position_at_end(stripped_bb);
+    pfin = b.trunc(b.sub(pmax, zeros, name="fr.pfin64"), i32, name="fr.pfin");
     ndig = b.add(b.zext(pfin, i64), ir.Constant(i64, 1), name="fr.ndig");
     epos = b.call(strchr, [tmp, ir.Constant(i32, 101)], name="fr.epos");
     eptr = b.gep(epos, [ir.Constant(i64, 1)], name="fr.eptr");
@@ -2186,6 +2550,7 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     b.cbranch(use_exp, exp_bb, fixed_bb);
 
     b.position_at_end(exp_bb);
+    elen32 = b.call(snprintf, [tmp, cap, fmt_e, pfin, d], name="fr.elen32");
     self._str_finish(b, tmp, b.sext(elen32, i64, name="fr.elen"));
     b.ret(tmp);
 

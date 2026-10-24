@@ -5131,7 +5131,19 @@ impl NaIRGenPass._emit_comparison(
         }
 
         if left.type == i8_ptr and right.type == i8_ptr {
-            cmp_result = self._call_str_cmp(self.builder, left, right, name="strcmp");
+            _lit_r = self._one_byte_literal(right);
+            _lit_l = self._one_byte_literal(left) if _lit_r is None else None;
+            if _lit_r is not None {
+                cmp_result = self._emit_str_cmp_one_byte(left, _lit_r);
+            } elif _lit_l is not None {
+                cmp_result = self.builder.sub(
+                    ir.Constant(ir.IntType(32), 0),
+                    self._emit_str_cmp_one_byte(right, _lit_l),
+                    name="s1.flip"
+                );
+            } else {
+                cmp_result = self._call_str_cmp(self.builder, left, right, name="strcmp");
+            }
             zero = ir.Constant(ir.IntType(32), 0);
             if op == Tok.EE or op == Tok.NE {
                 _sym = "==" if op == Tok.EE else "!=";

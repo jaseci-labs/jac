@@ -167,6 +167,7 @@ walker NaIRGenPass(CompilerPass) {
         native_tests: list[tuple[str, str, str, int]] = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
         _interned_strs: dict[str, ir.GlobalVariable] = {},
+        _str_literal_text: dict[int, str] = {},
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
         clib_extern_fns: dict[str, ir.Function] = {},
@@ -276,6 +277,7 @@ walker NaIRGenPass(CompilerPass) {
         _isa_vtobj_fn: (ir.Function | None) = None,
         _vtable_nodes: list[ir.GlobalVariable] = [],
         _cstr_hash_fn: (ir.Function | None) = None,
+        _fmt_int_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _class_ctor_lookup_fn: (ir.Function | None) = None,
         _class_record_lookup_fn: (ir.Function | None) = None,
@@ -575,6 +577,9 @@ walker NaIRGenPass(CompilerPass) {
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
     def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
+    def _get_fmt_int_fn -> ir.Function;
+    def _emit_fmt_int(b: ir.IRBuilder, val: ir.Value, out: ir.Value, unsigned: bool) -> ir.Value;
+    def _fstring_direct(fmt_parts: list[str], args: list[ir.Value]) -> (ir.Value | None);
     def _emit_value_repr(
         val: ir.Value, type_node: (uni.UniNode | None)
     ) -> (ir.Value | None);
@@ -2585,6 +2590,8 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_str_cmp_helper -> None;
+    def _one_byte_literal(val: ir.Value) -> (int | None);
+    def _emit_str_cmp_one_byte(val: ir.Value, byte: int) -> ir.Value;
     def _call_str_cmp(
         b: ir.IRBuilder, lhs: ir.Value, rhs: ir.Value, name: str = "s.cmp"
     ) -> ir.Value;
@@ -2981,6 +2988,8 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None);
     def _codegen_assignment(nd: uni.Assignment) -> None;
+    def _codegen_dict_counter_update(nd: uni.Assignment) -> bool;
+    def _same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool;
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
     def _codegen_for_indexed(
