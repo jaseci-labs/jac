@@ -9,6 +9,7 @@ import tempfile;
 import time;
 import uuid;
 import shutil;
+import signal;
 import requests;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
@@ -1313,6 +1314,22 @@ def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
+"""SIGKILL a started server's whole process group, workers included.
+
+Worker children inherit the harness's stdout and stderr pipes, so killing
+only the master orphans the workers: they keep running and hold the pipes
+open, and any later communicate() blocks on an EOF that never comes. The
+server is launched in its own session, so the group kill reaches every
+worker. Falls back to the single-process kill when the group is gone.
+"""
+def _kill_process_group(server: subprocess.Popen) -> None {
+    try {
+        os.killpg(server.pid, signal.SIGKILL);
+    } except OSError {
+        server.kill();
+    }
+}
+
 def setup_dev_mode_server -> subprocess.Popen {
     if not dm_test_file.exists() {
         raise FileNotFoundError(f"Test fixture not found: {dm_test_file}");
@@ -1337,12 +1354,16 @@ def setup_dev_mode_server -> subprocess.Popen {
     # A server that never comes up is killed mid-preparation and says nothing
     # about where it was. With this set, a preparation that runs long writes
     # its stack to stderr, which the failure below prints.
+    # Own session so _kill_process_group can take the worker children down
+    # with the master (they inherit these pipes; orphans holding them make a
+    # later communicate() wait on EOF forever).
     server_process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env={** os.environ, "JAC_KERNEL_TIMING": "1"}
+        env={** os.environ, "JAC_KERNEL_TIMING": "1"},
+        start_new_session=True
     );
 
     max_attempts = 60;
@@ -1350,7 +1371,8 @@ def setup_dev_mode_server -> subprocess.Popen {
 
     for _ in range(max_attempts) {
         if server_process.poll() is not None {
-            (stdout, stderr) = server_process.communicate();
+            _kill_process_group(server_process);
+            (stdout, stderr) = server_process.communicate(timeout=30);
             raise RuntimeError(
                 f"Server process terminated unexpectedly.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
@@ -1376,8 +1398,8 @@ def setup_dev_mode_server -> subprocess.Popen {
         try {
             (stdout, stderr) = server_process.communicate(timeout=2);
         } except subprocess.TimeoutExpired {
-            server_process.kill();
-            (stdout, stderr) = server_process.communicate();
+            _kill_process_group(server_process);
+            (stdout, stderr) = server_process.communicate(timeout=5);
         }
         raise RuntimeError(
             f"Server failed to start in dev mode after {max_attempts} attempts.\n"
@@ -1991,12 +2013,15 @@ theme_color = "#000000"
         );
         # A [client.pwa] table is what makes this a PWA; there is no
         # separate PWA client target or --client flag.
+        # Own session so the finally can take worker children down with the
+        # master instead of leaving pipe-holding orphans behind.
         server = subprocess.Popen(
             [jac_executable(), "run", "--serve", "-p", str(port), "main.jac"],
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            start_new_session=True
         );
         try {
             for _ in range(30) {
@@ -2013,7 +2038,12 @@ theme_color = "#000000"
             }
 
             server.terminate();
-            (stdout, stderr) = server.communicate(timeout=5);
+            try {
+                (stdout, stderr) = server.communicate(timeout=5);
+            } except subprocess.TimeoutExpired {
+                _kill_process_group(server);
+                (stdout, stderr) = server.communicate(timeout=5);
+            }
             raise AssertionError(
                 f"Server did not start or jac-scale not detected.\nSTDOUT: {stdout}\nSTDERR: {stderr}"
             );
@@ -2022,7 +2052,8 @@ theme_color = "#000000"
             try {
                 server.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
-                server.kill();
+                _kill_process_group(server);
+                server.`wait(timeout=5);
             }
         }
     }
