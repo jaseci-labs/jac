@@ -3246,10 +3246,12 @@ impl NativeListEmitter._emit_key_sort(
 
     The key sort was a bubble sort that called the key twice per comparison,
     quadratic in the length. Now each element's key goes into an array once,
-    a stable merge sort orders the positions 0..n-1 by those keys (a tie keeps
-    the earlier position first, which keeps `reverse=True` stable as well),
-    and the elements are rearranged by the sorted positions. Keys the key
-    function handed over owned are released once the order is known.
+    in element order, a stable merge sort orders the positions 0..n-1 by
+    those keys (a tie keeps the earlier position first, which keeps
+    `reverse=True` stable as well), and the elements are rearranged by the
+    sorted positions, through a copy of the data. A key the call returns is
+    owned, as a call expression's result is, and keys handed over owned are
+    released once the order is known.
     """;
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
@@ -3322,7 +3324,9 @@ impl NativeListEmitter._emit_key_sort(
     keys_raw = b.call(
         malloc, [b.mul(length, ir.Constant(i64, keysize))], name="ksort.keys.raw"
     );
-    perm_raw = b.call(malloc, [b.mul(length, ir.Constant(i64, 16))], name="ksort.perm.raw");
+    perm_raw = b.call(
+        malloc, [b.mul(length, ir.Constant(i64, 16))], name="ksort.perm.raw"
+    );
     p._emit_runtime_raise(
         b.or_(
             b.icmp_unsigned("==", keys_raw, ir.Constant(i8p, None)),
@@ -3337,13 +3341,12 @@ impl NativeListEmitter._emit_key_sort(
     b.store(zero, index_slot);
     b.branch(key_loop);
 
-    # Each key once, in element order; the positions start as 0..n-1.
     b.position_at_start(key_loop);
     i = b.load(index_slot, name="ksort.i");
     b.cbranch(b.icmp_unsigned("<", i, length), key_body, outer);
     b.position_at_start(key_body);
     elem = b.call(helpers["get"], [target, i], name="ksort.elem");
-    # (a call hands its result over owned, as a call expression's is)
+
     key = p._mark_reference_owned(
         b.call(key_fn, [p._coerce_type(elem, key_fn.args[0].type)], name="ksort.key")
     );
@@ -3404,12 +3407,19 @@ impl NativeListEmitter._emit_key_sort(
     after: (ir.Value | None) = None;
     if before is not None and reverse is not None {
         after = p._emit_comparison(
-            Tok.LT, left_key, right_key, cmp_float, unsigned=cmp_unsigned, key_ret=key_ret
+            Tok.LT,
+            left_key,
+            right_key,
+            cmp_float,
+            unsigned=cmp_unsigned,
+            key_ret=key_ret
         );
     }
     if before is None or (reverse is not None and after is None) {
         if len(p.ctx.errors_had) == sort_errs {
-            p.ctx.emit(E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG);
+            p.ctx.emit(
+                E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG
+            );
         }
         return None;
     }
@@ -3436,7 +3446,6 @@ impl NativeListEmitter._emit_key_sort(
     b.store(b.mul(width, ir.Constant(i64, 2)), width_slot);
     b.branch(merge_pass);
 
-    # Rearrange the elements by the sorted positions, through a copy.
     b.position_at_start(publish);
     data = b.load(
         b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]), name="ksort.data"
@@ -3458,9 +3467,7 @@ impl NativeListEmitter._emit_key_sort(
     j = b.load(index_slot, name="ksort.j");
     b.cbranch(b.icmp_unsigned("<", j, length), place_body, drop_keys);
     b.position_at_start(place_body);
-    b.store(
-        b.load(b.gep(copy, [b.load(b.gep(order, [j]))])), b.gep(data, [j])
-    );
+    b.store(b.load(b.gep(copy, [b.load(b.gep(order, [j]))])), b.gep(data, [j]));
     b.store(b.add(j, one), index_slot);
     b.branch(place);
 

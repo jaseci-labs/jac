@@ -66,12 +66,18 @@ test "a key sort releases the keys it was handed" {
                 timeout=900
             );
             assert comp.returncode == 0 , comp.stderr[-1500:];
-            proc = subprocess.run([binary], capture_output=True, text=True, timeout=120);
+            proc = subprocess.run(
+                [binary], capture_output=True, text=True, timeout=120
+            );
             assert proc.returncode == 0 , proc.stderr[-800:];
         }
         assert proc.stdout.splitlines()[0] == "10" , proc.stdout[:400];
         assert "RC LIVE OBJECTS at exit" in proc.stdout , proc.stdout[-400:];
-        leaks = [line for line in proc.stdout.splitlines() if "<- LEAK" in line];
+        leaks = [
+            line
+            for line in proc.stdout.splitlines()
+            if "<- LEAK" in line
+        ];
         assert not leaks , f"{memory}: {leaks[:5]}";
     }
 }
