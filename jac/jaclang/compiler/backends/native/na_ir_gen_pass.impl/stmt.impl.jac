@@ -4888,6 +4888,14 @@ impl NaIRGenPass._codegen_for_indexed(
     body_bb = func.append_basic_block(name="for.body");
     incr_bb = func.append_basic_block(name="for.incr");
     (else_bb, end_bb) = self._loop_exit_blocks(func, nd, "for");
+
+    _outer_anchors = self._list_anchors;
+    if kind == "range"
+        and self._gen_ctx is None
+        and isinstance(nd.body, (list, tuple)) {
+        self._list_anchors = dict(_outer_anchors);
+        self._emit_list_anchors(list(nd.body));
+    }
     self.builder.branch(cond_bb);
     self.builder.position_at_end(cond_bb);
     if _gen_stop_slot is not None {
@@ -5072,6 +5080,7 @@ impl NaIRGenPass._codegen_for_indexed(
 
     _for_prebody = set(self.local_vars.keys());
     self._codegen_pass_body(nd);
+    self._list_anchors = _outer_anchors;
     if not self.builder.block.is_terminated {
         self._emit_loop_iter_cleanup(
             [

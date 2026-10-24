@@ -644,12 +644,50 @@ impl NaIRGenPass._codegen_index(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
+    anchor = self._list_anchor_of(target_val, helpers["elem_type"]);
+    fast_bb: (ir.Block | None) = None;
+    fast_val: (ir.Value | None) = None;
+    join_bb: (ir.Block | None) = None;
+    if anchor is not None {
+        fn = self.builder.function;
+        fast_bb = fn.append_basic_block("list.get.fast");
+        slow_bb = fn.append_basic_block("list.get.slow");
+        join_bb = fn.append_basic_block("list.get.join");
+        self.builder.cbranch(
+            self.builder.icmp_unsigned("<", index_val, anchor[0], name="list.get.inb"),
+            fast_bb,
+            slow_bb
+        ).set_weights(
+            [2000, 1]
+        );
+        self.builder.position_at_end(fast_bb);
+        fast_val = self.builder.load(
+            self.builder.gep(anchor[1], [index_val], name="list.get.at"),
+            name="list.get.v"
+        );
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(slow_bb);
+    }
 
-    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
+    _slow_attrs = ["noinline"] if anchor is not None else None;
+    len_val = self.builder.call(
+        helpers["len"], [target_val], name="list.len.chk", attrs=_slow_attrs
+    );
     index_val = self._emit_list_index_check(
         index_val, len_val, "list index out of range", [target_val], "idx"
     );
-    _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
+    _got = self.builder.call(
+        helpers["get"], [target_val, index_val], name="list.get", attrs=_slow_attrs
+    );
+    if anchor is not None and fast_bb is not None and join_bb is not None {
+        slow_end = self.builder.block;
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(join_bb);
+        merged = self.builder.phi(_got.type, name="list.get.m");
+        merged.add_incoming(fast_val, fast_bb);
+        merged.add_incoming(_got, slow_end);
+        _got = merged;
+    }
     if elem_type_name == "u8" {
         return self.builder.zext(_got, i64, name="ba.get.zext");
     }
@@ -717,12 +755,34 @@ impl NaIRGenPass._codegen_index_set(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
+    elem_type = helpers["elem_type"];
+    anchor = self._list_anchor_of(target_val, elem_type);
+    set_join: (ir.Block | None) = None;
+    if anchor is not None and self._elem_kind(value.type) == "raw" {
+        fn = self.builder.function;
+        fast_bb = fn.append_basic_block("list.set.fast");
+        slow_bb = fn.append_basic_block("list.set.slow");
+        set_join = fn.append_basic_block("list.set.join");
+        self.builder.cbranch(
+            self.builder.icmp_unsigned("<", index_val, anchor[0], name="list.set.inb"),
+            fast_bb,
+            slow_bb
+        ).set_weights(
+            [2000, 1]
+        );
+        self.builder.position_at_end(fast_bb);
+        self.builder.store(
+            self._coerce_type(value, elem_type),
+            self.builder.gep(anchor[1], [index_val], name="list.set.at")
+        );
+        self.builder.branch(set_join);
+        self.builder.position_at_end(slow_bb);
+    }
 
     len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
     index_val = self._emit_list_index_check(
         index_val, len_val, "list assignment index out of range", [], "setidx"
     );
-    elem_type = helpers["elem_type"];
 
     _lset_ctx_loc = value.jac_loc;
 
@@ -739,6 +799,10 @@ impl NaIRGenPass._codegen_index_set(
         loc=_lset_ctx_loc
     );
     self._release_after_store(value, op="list_set");
+    if set_join is not None {
+        self.builder.branch(set_join);
+        self.builder.position_at_end(set_join);
+    }
 }
 
 impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
@@ -989,4 +1053,300 @@ impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
         return type_tag_borrows(_p.type_tag);
     }
     return False;
+}
+
+impl NaIRGenPass._tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any {
+    """The access tag of scalar TBAA type `name` under the module's root.""";
+    found = cache.get(name);
+    if found is not None {
+        return found;
+    }
+    i64 = ir.IntType(64);
+    type_node = self.llvm_module.add_metadata([name, tbaa_root, ir.Constant(i64, 0)]);
+    tag = self.llvm_module.add_metadata([type_node, type_node, ir.Constant(i64, 0)]);
+    cache[name] = tag;
+    return tag;
+}
+
+impl NaIRGenPass._tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None) {
+    """Which header field (0 len, 1 cap, 2 data) of a list `gep` addresses, if any.""";
+    base_ty: any = gep.pointer.type;
+    if not isinstance(base_ty, ir.PointerType) or id(base_ty.pointee) not in list_tys {
+        return None;
+    }
+    idx = list(gep.indices);
+    if len(idx) != 2
+        or not isinstance(idx[0], ir.Constant)
+        or not isinstance(idx[1], ir.Constant) {
+        return None;
+    }
+    if idx[0].constant != 0 or idx[1].constant not in (0, 1, 2) {
+        return None;
+    }
+    return int(idx[1].constant);
+}
+
+impl NaIRGenPass._apply_list_tbaa -> None {
+    """Tell LLVM that list headers and list elements never overlap.
+
+    The IR carried no alias information, so a store into a list element might
+    have changed any list's length or data pointer as far as LLVM knew: a loop
+    over `c[j] += a * b[j]` reloaded both lengths and both data pointers after
+    every store, and the bounds checks could not leave the loop. Each load and
+    store of a list header field (`len`, `cap`, `data`, by field index, the same
+    for every list type) now gets its own TBAA tag, and so does each element
+    access whose address indexes a `data` pointer loaded right there, by the
+    element's type (all pointers share one tag). Everything else stays untagged,
+    which TBAA treats as possibly aliasing anything, so no access is ever told
+    apart from memory it might share. `JAC_NO_TBAA=1` turns this off.
+    """;
+    import os;
+    if os.environ.get("JAC_NO_TBAA") or not self.list_types {
+        return;
+    }
+    list_tys: set[int] = set();
+    for lt in self.list_types.values() {
+        list_tys.add(id(lt));
+    }
+    cache: dict[str, any] = {};
+    tbaa_root = self.llvm_module.add_metadata(["jac.tbaa"]);
+    header = {0: "jac.list.len", 1: "jac.list.cap", 2: "jac.list.data"};
+    for fn_value in self.llvm_module.functions {
+        fn: any = fn_value;
+        if fn.is_declaration {
+            continue;
+        }
+        data_loads: set[int] = set();
+        elem_sites: list[tuple[any, any]] = [];
+        for blk in fn.blocks {
+            for inst_value in blk.instructions {
+                inst: any = inst_value;
+                is_load = isinstance(inst, ir.LoadInstr);
+                if not is_load and not isinstance(inst, ir.StoreInstr) {
+                    continue;
+                }
+                ptr = inst.operands[0] if is_load else inst.operands[1];
+                if not isinstance(ptr, ir.GEPInstr) {
+                    continue;
+                }
+                field = self._tbaa_list_field(ptr, list_tys);
+                if field is not None {
+                    inst.set_metadata(
+                        "tbaa", self._tbaa_tag(tbaa_root, cache, header[field])
+                    );
+                    if is_load and field == 2 {
+                        data_loads.add(id(inst));
+                    }
+                    continue;
+                }
+                if len(list(ptr.indices)) == 1 {
+                    elem_sites.append((inst, ptr));
+                }
+            }
+        }
+        for (inst, gep) in elem_sites {
+            if id(gep.pointer) not in data_loads {
+                continue;
+            }
+            vt = inst.type if isinstance(inst, ir.LoadInstr) else inst.operands[0].type;
+            kind = "ptr" if isinstance(vt, ir.PointerType) else str(vt);
+            inst.set_metadata(
+                "tbaa", self._tbaa_tag(tbaa_root, cache, f"jac.list.elem.{kind}")
+            );
+        }
+    }
+}
+
+impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
+    """Can nothing in `body` change a list's length or data pointer?
+
+    Only an operation on the list itself (append, pop, a slice store, `del`)
+    or code the body runs out of sight (a call, a spawn, a context manager, a
+    generator step) can; element stores cannot. Calls to a few builtins that
+    touch no list are allowed.
+    """;
+    allowed = (
+        "range",
+        "len",
+        "abs",
+        "min",
+        "max",
+        "int",
+        "float",
+        "bool",
+        "ord",
+        "chr"
+    );
+    for stmt in body {
+        nodes: list[uni.UniNode] = list(stmt.flatten());
+        for nd in nodes {
+            kind = type(nd).__name__;
+            if kind
+                in (
+                    "DeleteStmt",
+                    "YieldExpr",
+                    "AwaitExpr",
+                    "LambdaExpr",
+                    "WithStmt",
+                    "SpawnExpr",
+                    "ConnectOp",
+                    "DisconnectOp",
+                    "VisitStmt",
+                    "ReportStmt",
+                    "GlobalStmt",
+                    "NonLocalStmt",
+                    "Ability"
+                ) {
+                return False;
+            }
+            if isinstance(nd, uni.FuncCall) {
+                if not isinstance(nd.target, uni.Name)
+                    or nd.target.value not in allowed {
+                    return False;
+                }
+            }
+            if isinstance(nd, uni.AtomTrailer)
+                and isinstance(nd.right, uni.IndexSlice)
+                and nd.right.is_range {
+                return False;
+            }
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
+    """Load each indexed list's length and data pointer once, before a range loop.
+
+    A list access loaded the list's length and data pointer anew each time,
+    after the bounds check of the access before it, where LLVM could not lift
+    them out of the loop (a failing check leaves the loop, so the loads behind
+    it might not run). When nothing in the body can change a list header,
+    every list local the body indexes gets both read here, before the loop,
+    and its scalar element reads and writes in the body check against and
+    index through them; anything out of range takes the old path, which
+    raises as before. A local that holds no list yet reads as an empty one.
+    """;
+    import os;
+    if os.environ.get("JAC_NO_LIST_ANCHORS")
+        or not self._body_keeps_list_headers(body) {
+        return;
+    }
+    list_tys: set[int] = set();
+    for lt in self.list_types.values() {
+        list_tys.add(id(lt));
+    }
+    assigned: set[str] = set();
+    indexed: list[str] = [];
+    for stmt in body {
+        nodes: list[uni.UniNode] = list(stmt.flatten());
+        for nd in nodes {
+            bound: list[any] = [];
+            if isinstance(nd, uni.Assignment) {
+                bound = list(nd.target);
+            } elif isinstance(nd, uni.InForStmt) {
+                bound = [nd.target];
+            } elif isinstance(nd, uni.BinaryExpr)
+                and isinstance(nd.op, uni.Token)
+                and nd.op.name == Tok.WALRUS_EQ {
+                bound = [nd.left];
+            } elif type(nd).__name__ in ("MatchAs", "MatchStar") {
+                _match_name: any = nd?.name;
+                if _match_name is not None {
+                    bound = [_match_name];
+                }
+            }
+
+            while bound {
+                tgt: any = bound.pop();
+                if isinstance(tgt, uni.Name) {
+                    assigned.add(tgt.value);
+                } elif isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
+                    for item in (tgt.values or []) {
+                        bound.append(item);
+                    }
+                } elif isinstance(tgt, uni.UnaryExpr) {
+                    bound.append(tgt.operand);
+                }
+            }
+            if isinstance(nd, uni.AtomTrailer)
+                and isinstance(nd.right, uni.IndexSlice)
+                and isinstance(nd.target, uni.Name)
+                and nd.target.value not in indexed {
+                indexed.append(nd.target.value);
+            }
+        }
+    }
+    i32 = ir.IntType(32);
+    for name in indexed {
+        if name in assigned or name in self.closure_cell_handles {
+            continue;
+        }
+        slot = self.local_vars.get(name);
+        if slot is None or id(slot) in self._list_anchors {
+            continue;
+        }
+        slot_ty: any = slot.type;
+        if not isinstance(slot_ty, ir.PointerType) {
+            continue;
+        }
+        held: any = slot_ty.pointee;
+        if not isinstance(held, ir.PointerType) or id(held.pointee) not in list_tys {
+            continue;
+        }
+        lv = self.builder.load(slot, name=f"{name}.anchor");
+        empty = self.llvm_module.globals.get("__jac_empty_list_header");
+        if empty is None {
+            arr = ir.ArrayType(ir.IntType(64), 4);
+            empty = ir.GlobalVariable(
+                self.llvm_module, arr, name="__jac_empty_list_header"
+            );
+            empty.linkage = "weak";
+            empty.initializer = ir.Constant(arr, None);
+        }
+        held_list = self.builder.select(
+            self.builder.icmp_unsigned(
+                "!=", lv, ir.Constant(lv.type, None), name=f"{name}.anchor.set"
+            ),
+            lv,
+            self.builder.bitcast(empty, lv.type),
+            name=f"{name}.anchor.list"
+        );
+        alen = self.builder.load(
+            self.builder.gep(held_list, [ir.Constant(i32, 0), ir.Constant(i32, 0)]),
+            name=f"{name}.anchor.len"
+        );
+        adata = self.builder.load(
+            self.builder.gep(held_list, [ir.Constant(i32, 0), ir.Constant(i32, 2)]),
+            name=f"{name}.anchor.data"
+        );
+        self._list_anchors[id(slot)] = (alen, adata);
+    }
+}
+
+impl NaIRGenPass._list_anchor_of(
+    target_val: ir.Value, elem_type: ir.Type
+) -> (tuple[ir.Value, ir.Value] | None) {
+    """The anchored (length, data) of the list `target_val` was loaded from, for a scalar element.""";
+    if not self._list_anchors or self._elem_kind(elem_type) != "raw" {
+        return None;
+    }
+    if not isinstance(target_val, ir.LoadInstr) {
+        return None;
+    }
+    found = self._list_anchors.get(id(target_val.operands[0]));
+    if found is None {
+        return None;
+    }
+
+    anchor_inst: any = found[0];
+    if anchor_inst.parent is None
+        or anchor_inst.parent.parent is not self.builder.function {
+        return None;
+    }
+    data_ty: any = found[1].type;
+    if not isinstance(data_ty, ir.PointerType) or data_ty.pointee != elem_type {
+        return None;
+    }
+    return found;
 }

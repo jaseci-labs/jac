@@ -373,6 +373,7 @@ walker NaIRGenPass(CompilerPass) {
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
         rc_safe_free_fn: (ir.Function | None) = None,
+        _list_anchors: dict[int, tuple[ir.Value, ir.Value]] = {},
         str_len_fn: (ir.Function | None) = None,
         str_truthy_fn: (ir.Function | None) = None,
         str_stamp_fn: (ir.Function | None) = None,
@@ -3625,6 +3626,14 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_exc_push(b: ir.IRBuilder, state: ir.Value) -> None;
     def _emit_exc_pop(b: ir.IRBuilder) -> None;
     def _volatilize_setjmp_locals -> None;
+    def _apply_list_tbaa -> None;
+    def _body_keeps_list_headers(body: list[uni.UniNode]) -> bool;
+    def _emit_list_anchors(body: list[uni.UniNode]) -> None;
+    def _list_anchor_of(
+        target_val: ir.Value, elem_type: ir.Type
+    ) -> (tuple[ir.Value, ir.Value] | None);
+    def _tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any;
+    def _tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None);
     def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
     def _block_successors(block: ir.Block) -> list[ir.Block];
     def _push_exception_handler(
