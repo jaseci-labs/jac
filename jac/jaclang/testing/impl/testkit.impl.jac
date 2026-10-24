@@ -323,3 +323,11 @@ impl _build_multipart(files: any, data: any = None) -> tuple[bytes, str] {
     body = b''.join(parts) + f"--{boundary}--\r\n".encode('utf-8');
     return (body, f"multipart/form-data; boundary={boundary}");
 }
+
+impl TestResponse.text.getter -> str {
+    return self.content.decode('utf-8', errors='replace');
+}
+
+impl TestResponse.ok.getter -> bool {
+    return 200 <= self.status_code < 300;
+}

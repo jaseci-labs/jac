@@ -207,14 +207,6 @@ class CGlobal {
     def address(self: CGlobal) -> JacPtr;
 }
 
-impl CGlobal.value.getter -> any {
-    return self.get();
-}
-
-impl CGlobal.value.setter(value: any) {
-    self.set(value);
-}
-
 def jac_addressof(symbol: any) -> JacPtr;
 
 def c_function_ptr(fn: any, spec_json: str, scope: any) -> JacPtr;

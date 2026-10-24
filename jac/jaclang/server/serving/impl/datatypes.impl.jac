@@ -298,3 +298,28 @@ impl parse_query_string(query: str) -> dict[str, list[str]] {
     }
     return parse_qs(query, keep_blank_values=True);
 }
+
+impl UploadFile.size.getter -> int {
+    return self._size;
+}
+
+impl UploadFile.file.getter -> any {
+    if self._file is None {
+        import io;
+        self._file = io.BytesIO(b'');
+    }
+    return self._file;
+}
+
+impl UploadFile.body.getter -> bytes {
+    handle = self.file;
+    try {
+        here = handle.tell();
+    } except Exception {
+        here = 0;
+    }
+    handle.seek(0);
+    data = handle.read();
+    handle.seek(here);
+    return data;
+}

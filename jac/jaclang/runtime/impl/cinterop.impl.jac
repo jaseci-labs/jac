@@ -1018,3 +1018,11 @@ impl _ChainScope.__getitem__(self: _ChainScope, key: str) -> any {
     }
     return found;
 }
+
+impl CGlobal.value.getter -> any {
+    return self.get();
+}
+
+impl CGlobal.value.setter(value: any) {
+    self.set(value);
+}
