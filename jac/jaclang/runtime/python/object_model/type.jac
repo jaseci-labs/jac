@@ -212,6 +212,7 @@ import from c {
 }
 
 glob:priv STACKREF_NULL: u64 = u64(1),
+     MANAGED_STATIC_INTERP_COUNT: Final[i64] = 8,
      MANAGED_DICT_OFFSET: i64 = -24,
      MANAGED_WEAKREF_OFFSET: i64 = -32,
      TPFLAGS_PREHEADER: u64 = Py_TPFLAGS_MANAGED_WEAKREF | Py_TPFLAGS_MANAGED_DICT,
@@ -4432,7 +4433,9 @@ impl static_ext_type_lookup(
     interp: ptr[u8], index: i64
 ) -> tuple[ptr[PyTypeObject], i64] {
     full_index = index + _Py_MAX_MANAGED_STATIC_BUILTIN_TYPES;
-    interp_count = managed_static_entry(full_index).view(1)[0].interp_count;
+    interp_count = __atomic_load_i64(
+        int(managed_static_entry(full_index)) + MANAGED_STATIC_INTERP_COUNT, 5
+    );
     type = ext_state_at(interp, index).view(1)[0].type;
     return (type, interp_count);
 }
@@ -4479,7 +4482,7 @@ impl managed_static_type_state_init(
         full_index = index + _Py_MAX_MANAGED_STATIC_BUILTIN_TYPES;
     }
     rt_entry = managed_static_entry(full_index);
-    rt_entry.view(1)[0].interp_count = rt_entry.view(1)[0].interp_count + 1;
+    __atomic_add_i64(int(rt_entry) + MANAGED_STATIC_INTERP_COUNT, 1, 5);
     if initial != 0 {
         rt_entry.view(1)[0].type = self_;
     }
@@ -4513,7 +4516,7 @@ impl managed_static_type_state_clear(
     state.view(1)[0].type = ptr[PyTypeObject]();
 
     rt_entry = managed_static_entry(full_index);
-    rt_entry.view(1)[0].interp_count = rt_entry.view(1)[0].interp_count - 1;
+    __atomic_sub_i64(int(rt_entry) + MANAGED_STATIC_INTERP_COUNT, 1, 5);
     if final != 0 {
         rt_entry.view(1)[0].type = ptr[PyTypeObject]();
         managed_static_type_index_clear(self_);
@@ -4940,13 +4943,17 @@ impl type_mro_modified(type: ptr[PyTypeObject], bases: ptr[PyObject]) {
 }
 
 impl next_global_version_tag -> u32 {
-    slot = ptr[u32](runtime_at(_PyRuntimeState_TYPES_NEXT_VERSION_TAG));
-    old = slot.view(1)[0];
-    if old >= _Py_MAX_GLOBAL_TYPE_VERSION_TAG {
-        return u32(0);
+    slot = int(runtime_at(_PyRuntimeState_TYPES_NEXT_VERSION_TAG));
+    while True {
+        old = __atomic_load_i32(slot, 0);
+        if u32.wrap(old) >= _Py_MAX_GLOBAL_TYPE_VERSION_TAG {
+            return u32(0);
+        }
+        if __atomic_cas_i32(slot, old, old + i32(1), 5) == old {
+            return u32.wrap(old) + u32(1);
+        }
     }
-    slot.view(1)[0] = old + u32(1);
-    return old + u32(1);
+    return u32(0);
 }
 
 impl assign_version_tag(interp: ptr[u8], type: ptr[PyTypeObject]) -> i32 {
