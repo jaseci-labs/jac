@@ -142,13 +142,27 @@ impl NaIRGenPass._maybe_declare_ability(
     } else {
         _def_m = nd.find_parent_of_type(uni.Module);
         _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
-        func = ir.Function(
-            self.llvm_module,
-            fnty,
-            name=symbol
-                if symbol is not None
-                else self._symbol_for(name, _def_m, _is_pub)
-        );
+        _emit_name = symbol
+            if symbol is not None
+            else self._symbol_for(name, _def_m, _is_pub);
+        if _emit_name == name and symbol is None {
+            for gv in self.llvm_module.global_values {
+                if isinstance(gv, ir.Function)
+                    and gv.name == name
+                    and (gv.is_declaration or name in self.clib_extern_names) {
+                    if _def_m is not None {
+                        import from jaclang.compiler.frontend.codeinfo {
+                            native_safe_sym
+                        }
+                        _emit_name = f"{name}.__jacp_{native_safe_sym(
+                            os.path.realpath(_def_m.source.file_path)
+                        )}";
+                    }
+                    break;
+                }
+            }
+        }
+        func = ir.Function(self.llvm_module, fnty, name=_emit_name);
     }
 
     for (i, p) in enumerate(c_params) {
