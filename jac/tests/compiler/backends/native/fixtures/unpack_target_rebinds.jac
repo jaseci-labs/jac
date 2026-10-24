@@ -72,6 +72,14 @@ def trimmed(name: str) -> str {
     return stem.upper();
 }
 
+def popped_on_one_path(pool: list[any], take: bool) -> int {
+    handle = 5;
+    if take and len(pool) > 0 {
+        handle = pool.pop();
+    }
+    return handle + 1;
+}
+
 with entry {
     print(rebound());
     print(kept());
@@ -81,4 +89,5 @@ with entry {
     );
     print(narrowed_optional(True), narrowed_optional(False));
     print(trimmed("gfx/ttl_main"), trimmed("gfx/inter"));
+    print(popped_on_one_path([3], True), popped_on_one_path([3], False));
 }

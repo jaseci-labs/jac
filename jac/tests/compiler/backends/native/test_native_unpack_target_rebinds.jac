@@ -23,4 +23,8 @@ test "names rebound to another type by a loop or an assignment agree with Python
     # A string reassigned on one path keeps its one slot: only a change of
     # kind (int, float, reference) rebinds.
     assert lines[5] == "MAIN INTER" , out;
+    # An `any` value (a pop from list[any]) assigned on one path is unboxed
+    # into the int slot; a slot of its own would leave the other path reading
+    # an uninitialized value.
+    assert lines[6] == "4 6" , out;
 }

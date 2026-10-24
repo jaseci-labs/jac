@@ -271,6 +271,8 @@ impl NaIRGenPass._rebinds_slot(
 ) -> bool {
     if target_type is None
         or slot_type == self.jacval_type
+        or target_type == self.jacval_type
+        or value_type == self.jacval_type
         or target_type == slot_type
         or value_type == slot_type
         or self._opt_payload_of(slot_type) is not None {
