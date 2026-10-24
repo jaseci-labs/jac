@@ -179,3 +179,154 @@ test "remote desktop staging needs no local program in build or dev" {
         shutil.rmtree(d, ignore_errors=True);
     }
 }
+
+
+"""Raise the ValueError a bad `[desktop]` backend choice must raise, or fail."""
+def _rejects(d: str, app: str, table: str, needle: str) {
+    toml = Path(d) / "jac.toml";
+    toml.write_text(_TOML + table);
+    _target(d, app);
+    raised = "";
+    try {
+        get_desktop_config(project_dir=Path(d)).validate();
+    } except ValueError as e {
+        raised = str(e);
+    }
+    assert needle in raised , (table, raised);
+}
+
+
+test "[desktop] backends names a runtime choice that builds every backend it lists" {
+    d = _workspace();
+    try {
+        toml = Path(d) / "jac.toml";
+        toml.write_text(
+            _TOML
+                + "\n[apps.kiosk.desktop.backends]\nlocal = \"embedded\"\nweb = \"https://kiosk.example/\"\n"
+        );
+        _target(d, "kiosk");
+        cfg = get_desktop_config(project_dir=Path(d));
+        assert cfg.get_backends()
+            == {"local": "embedded", "web": "https://kiosk.example"};
+        assert cfg.get_default_backend() == "ask";
+        assert cfg.get_build_backend() == "embedded";
+        cfg.validate();
+
+        toml.write_text(
+            toml.read_text() + "\n[apps.kiosk.desktop]\ndefault_backend = \"web\"\n"
+        );
+        _target(d, "kiosk");
+        assert get_desktop_config(project_dir=Path(d)).get_default_backend() == "web";
+
+        toml.write_text(
+            _TOML
+                + "\n[apps.kiosk.desktop.backends]\neu = \"https://eu.example\"\nus = \"https://us.example\"\n"
+        );
+        _target(d, "kiosk");
+        cfg = get_desktop_config(project_dir=Path(d));
+        assert cfg.get_build_backend() == "https://eu.example";
+
+        _target(d, "shell");
+        cfg = get_desktop_config(project_dir=Path(d));
+        assert cfg.get_backends() == {};
+        assert cfg.get_default_backend() == "";
+        assert cfg.get_build_backend() == "embedded";
+    } finally {
+        reset_desktop_config();
+        set_config(None);
+        Jac.set_full_target_path("");
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "[desktop] backends rejects a choice the host could not offer" {
+    d = _workspace();
+    try {
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop]\nbackend = \"https://a.example\"\n\n[apps.kiosk.desktop.backends]\na = \"embedded\"\nb = \"https://b.example\"\n",
+            "not both"
+        );
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop.backends]\nonly = \"embedded\"\n",
+            "at least two"
+        );
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop.backends]\na = \"embedded\"\nb = \"embedded\"\n",
+            "only once"
+        );
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop.backends]\na = \"embedded\"\nb = \"ftp://b.example\"\n",
+            "backends.b"
+        );
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop.backends]\nask = \"embedded\"\nb = \"https://b.example\"\n",
+            "not 'ask'"
+        );
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop]\ndefault_backend = \"cloud\"\n\n[apps.kiosk.desktop.backends]\na = \"embedded\"\nb = \"https://b.example\"\n",
+            "one of a, b"
+        );
+        _rejects(
+            d,
+            "kiosk",
+            "\n[apps.kiosk.desktop]\ndefault_backend = \"a\"\n",
+            "needs a [desktop] backends table"
+        );
+    } finally {
+        reset_desktop_config();
+        set_config(None);
+        Jac.set_full_target_path("");
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "a backend choice stages the assets a remote pick serves and seals the local app" {
+    import from jaclang.client.targets.desktop.desktop_build { stage_program }
+    import from unittest.mock { patch }
+    import jaclang.dist.seal as seal;
+    d = _workspace();
+    try {
+        base = Path(d);
+        assets = base / "shell" / "assets";
+        assets.mkdir();
+        (assets / "logo.svg").write_text("<svg>desktop</svg>");
+        sealed: list[any] = [];
+        def fake_seal(config: any, out: Path, **kwargs: any) -> Path {
+            sealed.append(out);
+            return out;
+        }
+        _target(d, "shell");
+        with patch.object(seal, "build_jab", side_effect=fake_seal) {
+            program = stage_program(
+                base / "shell" / "main.jac",
+                base,
+                base / "out",
+                "embedded",
+                base / "dist",
+                serves_remote=True
+            );
+        }
+        assert program == {"jab": "app.jab"} , program;
+        assert sealed == [base / "out" / "app.jab"] , sealed;
+        assert (base / "out" / "dist" / "assets" / "logo.svg").read_text()
+            == "<svg>desktop</svg>";
+    } finally {
+        set_config(None);
+        Jac.set_full_target_path("");
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}

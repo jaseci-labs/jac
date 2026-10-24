@@ -57,8 +57,13 @@ def stage_program(
     project_dir: Path,
     image_dir: Path,
     backend: str,
-    dist_dir: (Path | None)
+    dist_dir: (Path | None),
+    serves_remote: bool = False
 ) -> dict[str, str];
+
+def inject_backend_script(index_html: Path);
+
+glob BACKEND_SCRIPT_TAG: str = '<script src="/__jac/backend.js"></script>';
 
 def stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str;
 
@@ -376,20 +381,19 @@ impl stage_program(
     project_dir: Path,
     image_dir: Path,
     backend: str,
-    dist_dir: (Path | None)
+    dist_dir: (Path | None),
+    serves_remote: bool = False
 ) -> dict[str, str] {
-    if backend != "embedded" {
-        if dist_dir is not None {
-            import from jaclang.project.client_paths { client_assets_dir }
-            import from jaclang.project.config { get_config_for_dir }
-            config = get_config_for_dir(str(project_dir));
-            assets = client_assets_dir(config, project_dir, str(entry_file));
-            if assets.is_dir() {
-                shutil.copytree(
-                    assets, image_dir / "dist" / "assets", dirs_exist_ok=True
-                );
-            }
+    if (backend != "embedded" or serves_remote) and dist_dir is not None {
+        import from jaclang.project.client_paths { client_assets_dir }
+        import from jaclang.project.config { get_config_for_dir }
+        config = get_config_for_dir(str(project_dir));
+        assets = client_assets_dir(config, project_dir, str(entry_file));
+        if assets.is_dir() {
+            shutil.copytree(assets, image_dir / "dist" / "assets", dirs_exist_ok=True);
         }
+    }
+    if backend != "embedded" {
         return {};
     }
     if dist_dir is None {
@@ -407,6 +411,21 @@ impl stage_program(
     );
     build_jab(config, image_dir / "app.jab", app=app, bake_client=False);
     return {"jab": "app.jab"};
+}
+
+impl inject_backend_script(index_html: Path) {
+    html = index_html.read_text(encoding="utf-8");
+    if BACKEND_SCRIPT_TAG in html {
+        return;
+    }
+    if "<head>" not in html {
+        raise RuntimeError(
+            f"jac-desktop: {index_html} has no <head>; the backend script cannot load before the bundle"
+        );
+    }
+    index_html.write_text(
+        html.replace("<head>", "<head>\n    " + BACKEND_SCRIPT_TAG, 1), encoding="utf-8"
+    );
 }
 
 def desktop_storage_identifier(

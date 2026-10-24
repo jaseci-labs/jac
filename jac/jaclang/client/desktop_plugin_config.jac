@@ -77,7 +77,16 @@ impl desktop_sdk_path -> str {
 }
 
 impl desktop_sdk_exports -> list[str] {
-    return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
+    return [
+        'app_window',
+        'backend',
+        'clipboard',
+        'dialog',
+        'fs',
+        'notification',
+        'path',
+        'shell'
+    ];
 }
 
 impl ConfigOptionSpec._default_value -> object {
@@ -178,6 +187,13 @@ impl _desktop_config_schema -> PluginConfigSchema {
             "backend": schema_str_option(
                 "embedded",
                 "Where the app's server runs: 'embedded' (in the desktop process, from the sealed image shipped with the binary) or the URL of a remote server the bundle talks to"
+            ),
+            "backends": schema_dict_option(
+                "A choice of backends the user picks between at run time, instead of one fixed `backend`: each key names a backend, each value is 'embedded' or a server URL. The choice persists per user; switching relaunches the app"
+            ),
+            "default_backend": schema_str_option(
+                "ask",
+                "With `backends`: the backend a first launch uses, or 'ask' to leave the choice to the app's UI"
             ),
             "window": schema_dict_option(
                 "Window geometry: title, width, height, min_width, min_height, resizable.",

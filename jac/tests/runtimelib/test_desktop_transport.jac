@@ -10,7 +10,7 @@ that a broker is there. These pin that with `fetch` mocked, so no host is
 needed.
 """
 
-import from "@jac/runtime" { __jacCallFunction, __setLocalStorage }
+import from "@jac/runtime" { __getLocalStorage, __jacCallFunction, __setLocalStorage }
 
 """A minimal mock `fetch` Response carrying `body` from `.json()`."""
 def _resp(body: dict[str, any], status: int = 200) -> dict[str, any] {
@@ -67,4 +67,50 @@ test "a function call in the desktop shell is an HTTP fetch to its route" {
     assert out == 42;
     assert str(seen[0]["url"]).endswith("/api/web/function/add") , seen[0]["url"];
     _clear_desktop();
+}
+
+"""A desktop app with a backend choice: `/__jac/backend.js` sets the globals."""
+def _install_choice(active: str, base: str) {
+    globalThis.__JAC_BACKEND__ = {
+        "active": active,
+        "default": "ask",
+        "backends": [
+            {"name": "local", "kind": "embedded", "url": ""},
+            {"name": "web", "kind": "remote", "url": "https://web.example"}
+        ]
+    };
+    globalThis.__JAC_API_BASE_URL__ = base;
+}
+
+def _clear_choice {
+    globalThis.__JAC_BACKEND__ = undefined;
+    globalThis.__JAC_API_BASE_URL__ = undefined;
+}
+
+test "a remote pick sends calls to that server with that server's token" {
+    seen = _install_desktop();
+    _install_choice("web", "https://web.example");
+    __setLocalStorage("jac_token", "tok-web");
+    out = await __jacCallFunction(
+        "add", {"a": 1, "b": 2}, {"app": "web", "route": "/api/web"}
+    );
+    assert out == 42;
+    assert str(seen[0]["url"]) == "https://web.example/api/web/function/add" , seen[0][
+        "url"
+    ];
+    assert seen[0]["init"]["headers"]["Authorization"] == "Bearer tok-web";
+    _clear_choice();
+    _clear_desktop();
+}
+
+test "each backend keeps its own token" {
+    _install_choice("web", "https://web.example");
+    __setLocalStorage("jac_token", "tok-web");
+    _install_choice("local", "");
+    assert __getLocalStorage("jac_token") == "" , "the local backend must not see the web token";
+    __setLocalStorage("jac_token", "tok-local");
+    _install_choice("web", "https://web.example");
+    assert __getLocalStorage("jac_token") == "tok-web";
+    _clear_choice();
+    assert __getLocalStorage("jac_token") != "tok-web" , "a single-backend app keeps the plain key";
 }

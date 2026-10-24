@@ -23,11 +23,17 @@ import from jaclang.client.targets.desktop.native.broker_extension {
     DesktopBrokerExtension
 }
 import from jaclang.client.targets.desktop.native.oauth_broker { SessionStore }
+import from jaclang.client.targets.desktop.native.backend_choice { BackendChoice }
 
 
 obj _FakeHost {
     has calls: list[any] = [],
-        subscribers: list[any] = [];
+        subscribers: list[any] = [],
+        closed: int = 0;
+
+    def close_window {
+        self.closed += 1;
+    }
 
     def dispatch(req_json: str) -> str {
         self.calls.append(req_json);
@@ -53,7 +59,7 @@ glob _counter: list[int] = [0];
 
 
 def _server(
-    tmp: str, opened: list[any], host: _FakeHost
+    tmp: str, opened: list[any], host: _FakeHost, choice: (BackendChoice | None) = None
 ) -> tuple[TestClient, SessionStore] {
     _counter[0] += 1;
     mod = f"broker_app_{_counter[0]}";
@@ -70,7 +76,9 @@ def _server(
         opened.append(url);
         return True;
     }
-    ext = DesktopBrokerExtension(store=store, host=host, opener=fake_open);
+    ext = DesktopBrokerExtension(
+        store=store, host=host, opener=fake_open, choice=choice, relaunch_delay_s=0.0
+    );
     srv = JacAPIServer(module_name=mod, port=0, base_path=tmp, extensions=[ext]);
     srv.load_module();
     srv._ensure_internal_users();
@@ -256,6 +264,73 @@ test "the broker refuses a foreign host and a cross-site caller" {
             "/walker/Ping", json={}, headers={"Host": "evil.example:80"}
         );
         assert pong.status_code == 200 , pong.text;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "a backend choice is served as a script and switched through the broker" {
+    import time;
+    (tmp, opened, host) = _setup();
+    try {
+        path = os.path.join(tmp, "data", "backend.json");
+        backends = {"local": "embedded", "web": "https://web.example"};
+        choice = BackendChoice.load(backends, "ask", path);
+        (client, _store) = _server(tmp, opened, host, choice);
+
+        script = client.get("/__jac/backend.js", headers=LOOPBACK);
+        assert script.status_code == 200 , script.text;
+        assert "javascript" in script.headers["content-type"];
+        assert script.headers["cache-control"] == "no-store";
+        assert 'window.__JAC_BACKEND__={"active": ""' in script.text , script.text;
+        assert "__JAC_API_BASE_URL__" not in script.text , script.text;
+        info = client.get("/__jac/backend", headers=LOOPBACK).json();
+        assert info["active"] == "" and info["default"] == "ask" , info;
+        assert info["backends"]
+            == [
+                {"name": "local", "kind": "embedded", "url": ""},
+                {"name": "web", "kind": "remote", "url": "https://web.example"}
+            ] , info;
+
+        bad = client.post("/__jac/backend", json={"name": "cloud"}, headers=LOOPBACK);
+        assert bad.status_code == 400 and "unknown backend" in bad.text , bad.text;
+        assert not os.path.exists(path);
+
+        ok = client.post("/__jac/backend", json={"name": "web"}, headers=LOOPBACK);
+        assert ok.json() == {"ok": True, "relaunch": True} , ok.text;
+        deadline = time.time() + 5;
+        while host.closed == 0 and time.time() < deadline {
+            time.sleep(0.02);
+        }
+        assert host.closed == 1 , "a switch closes the window so the host relaunches";
+        assert choice.relaunch;
+
+        again = BackendChoice.load(backends, "ask", path);
+        assert again.active == "web" and again.api_base() == "https://web.example";
+        assert 'window.__JAC_API_BASE_URL__="https://web.example";' in again.script();
+        assert BackendChoice.load(backends, "local", path).active == "web" , "a saved choice beats the default";
+        assert BackendChoice.load(backends, "local", path + ".none").active == "local";
+        assert BackendChoice.load(
+            {"a": "embedded", "b": "https://b.example"}, "ask", path
+        ).active
+            == "" , "a saved name the build no longer has falls back to the default";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "a single-backend broker serves an empty script and refuses a switch" {
+    (tmp, opened, host) = _setup();
+    try {
+        (client, _store) = _server(tmp, opened, host);
+        script = client.get("/__jac/backend.js", headers=LOOPBACK);
+        assert script.status_code == 200 and script.text == "" , script.text;
+        assert client.get("/__jac/backend", headers=LOOPBACK).json()["backends"] == [];
+        refused = client.post("/__jac/backend", json={"name": "web"}, headers=LOOPBACK);
+        assert refused.status_code == 404 , refused.text;
+        assert host.closed == 0;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }

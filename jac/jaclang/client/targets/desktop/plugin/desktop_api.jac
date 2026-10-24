@@ -168,3 +168,41 @@ obj path {
         return r["path"];
     }
 }
+
+
+obj backend {
+    static def choices -> list[dict[str, any]] {
+        info: any = globalThis.__JAC_BACKEND__;
+        return info["backends"] if info else [];
+    }
+
+    static def current -> dict[str, any] | None {
+        info: any = globalThis.__JAC_BACKEND__;
+        if not info or not info["active"] {
+            return None;
+        }
+        for option in info["backends"] {
+            if option["name"] == info["active"] {
+                return option;
+            }
+        }
+        return None;
+    }
+
+    static async def use(name: str) -> bool {
+        broker = globalThis.__JAC_BROKER__ or "/__jac";
+        resp = await fetch(
+            f"{broker}/backend",
+            {
+                "method": "POST",
+                "headers": {"Content-Type": "application/json"},
+                "body": JSON.stringify({"name": name})
+            }
+        );
+        parsed = await resp.json();
+        if not parsed["ok"] {
+            raise Exception(str(parsed["error"]));
+        }
+        return bool(parsed["relaunch"]);
+    }
+}

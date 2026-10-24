@@ -20,15 +20,18 @@ impl DesktopTarget.build(
 ) -> Path {
     import os;
 
-    backend = get_desktop_config(project_dir).get_backend();
+    cfg = get_desktop_config(project_dir);
+    choosable = bool(cfg.get_backends());
+    baked = "" if choosable else cfg.get_backend();
+    baked = "" if baked == "embedded" else baked;
     prior = os.environ.get(API_BASE_URL_ENV_VAR);
-    if backend != "embedded" {
-        os.environ[API_BASE_URL_ENV_VAR] = backend;
+    if baked {
+        os.environ[API_BASE_URL_ENV_VAR] = baked;
     }
     try {
         web_bundle = super.build(entry_file, project_dir, platform);
     } finally {
-        if backend != "embedded" {
+        if baked {
             if prior is None {
                 os.environ.pop(API_BASE_URL_ENV_VAR, None);
             } else {
