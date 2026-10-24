@@ -84,4 +84,5 @@ test "a runtime build's handlers jump straight in and its views are unchecked" {
     # A C entry outside the handler convention still escapes an open region.
     assert "centry.region.open" in plain , plain;
     assert "c.view.null" not in text , text;
+    assert "null.field.chk" not in handler , handler;
 }

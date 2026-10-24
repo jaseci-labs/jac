@@ -2064,7 +2064,7 @@ impl stackref_is_heap_safe(bits: u64) -> bool {
 }
 
 impl reftracer_track(op: ptr[PyObject], operation: i32) {
-    runtime = int(addressof(_PyRuntime));
+    runtime = ptr[u8](addressof(_PyRuntime));
     tracer = ptr[ptr](runtime + _PyRuntimeState_REF_TRACER_FUNC).view(1)[0];
     if not tracer {
         return;

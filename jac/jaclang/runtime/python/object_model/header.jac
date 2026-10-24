@@ -78,7 +78,7 @@ impl object_incref(op: ptr[PyObject]) {
     if (full & 0xFFFFFFFF) >= _Py_IMMORTAL_INITIAL_REFCNT {
         return;
     }
-    header.view(1)[0].ob_refcnt_full = full + 1;
+    header.view(1)[0].ob_refcnt_full = wrapping_add(full, 1);
 }
 
 impl object_new_ref(op: ptr[PyObject]) -> ptr[PyObject] {
@@ -92,7 +92,7 @@ impl object_decref(op: ptr[PyObject]) {
     if (full & 0x80000000) != 0 {
         return;
     }
-    full -= 1;
+    full = wrapping_sub(full, 1);
     header.view(1)[0].ob_refcnt_full = full;
     if (full & 0xFFFFFFFF) == 0 {
         _Py_Dealloc(op);

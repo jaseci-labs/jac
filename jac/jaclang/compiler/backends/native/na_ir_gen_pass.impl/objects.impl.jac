@@ -4124,6 +4124,9 @@ impl NaIRGenPass._narrow_receiver_ptr(
     }
 
     if isinstance(obj_val.type, ir.PointerType) {
+        if type_name in self.clib_struct_names and self._unchecked_views_on() {
+            return obj_val;
+        }
         null_ptr = ir.Constant(obj_val.type, None);
         is_null = self.builder.icmp_unsigned(
             "==", obj_val, null_ptr, name="null.field.chk"

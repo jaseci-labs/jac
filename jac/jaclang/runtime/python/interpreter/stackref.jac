@@ -80,12 +80,14 @@ impl sr_refcount_on_object(ref: u64) -> bool {
 
 impl sr_incref_mortal(op: ptr[PyObject]) {
     header = ptr[_object](op);
-    header.view(1)[0].ob_refcnt_full = header.view(1)[0].ob_refcnt_full + 1;
+    header.view(1)[0].ob_refcnt_full = wrapping_add(
+        header.view(1)[0].ob_refcnt_full, 1
+    );
 }
 
 impl sr_decref_mortal(op: ptr[PyObject]) {
     header = ptr[_object](op);
-    full = header.view(1)[0].ob_refcnt_full - 1;
+    full = wrapping_sub(header.view(1)[0].ob_refcnt_full, 1);
     header.view(1)[0].ob_refcnt_full = full;
     if (full & 0xFFFFFFFF) == 0 {
         _Py_Dealloc(op);
@@ -115,7 +117,7 @@ impl sr_close_long(ref: u64) {
     if (ref & SR_TAG_REFCNT) == u64(0) {
         op = ptr[PyObject](i64.wrap(ref));
         header = ptr[_object](op);
-        full = header.view(1)[0].ob_refcnt_full - 1;
+        full = wrapping_sub(header.view(1)[0].ob_refcnt_full, 1);
         header.view(1)[0].ob_refcnt_full = full;
         if (full & 0xFFFFFFFF) == 0 {
             reftracer_track(op, 1);
@@ -150,7 +152,7 @@ impl sr_new(op: ptr[PyObject]) -> u64 {
     if (full & 0x80000000) != 0 {
         return u64(int(op)) | SR_TAG_REFCNT;
     }
-    ptr[_object](op).view(1)[0].ob_refcnt_full = full + 1;
+    ptr[_object](op).view(1)[0].ob_refcnt_full = wrapping_add(full, 1);
     return u64(int(op));
 }
 
