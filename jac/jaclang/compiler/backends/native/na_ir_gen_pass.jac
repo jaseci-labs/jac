@@ -1544,6 +1544,8 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_builtin_sjlj -> bool;
     def _native_tls_on -> bool;
     def _native_sjlj_on -> bool;
+    def _unchecked_views_on -> bool;
+    def _direct_c_entries -> bool;
     def _emit_exc_arm(b: ir.IRBuilder, env: ir.Value, name: str = "") -> ir.Value;
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;

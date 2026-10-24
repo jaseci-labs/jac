@@ -58,3 +58,25 @@ test "a tail call to a C function returning a pointer takes the caller's prototy
     assert "bitcast i8* (i8*, i8*, i32)* @\"c_handler\" to i64 (i64, i64, i32)*"
         in text , text;
 }
+
+test "a runtime build's C entries jump straight in and its views are unchecked" {
+    options = CompileOptions(
+        aot_mode=True,
+        default_codespace="native",
+        skip_native_engine=True,
+        native_required=True,
+        memory_profile="rc",
+        no_ir_cache=True,
+        native_target="x86_64-unknown-linux-gnu",
+        native_tls=True,
+        native_sjlj=True,
+        native_unchecked_views=True,
+        native_direct_c_entries=True
+    );
+    text = str(
+        compile_native_ir("clib_preserve_none.jac", options=options).gen.llvm_ir
+    );
+    assert "centry.region.open" not in text , text;
+    assert "c.view.null" not in text , text;
+    assert 'define preserve_nonecc i64 @"pn_count"(' in text , text;
+}

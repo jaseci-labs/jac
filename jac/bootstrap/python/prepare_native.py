@@ -6,6 +6,7 @@ object contains the native Jac compiler and its native runtime support.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -57,6 +58,11 @@ options = CompileOptions(
     # libpython is linked by the system linker, which takes TLS relocations,
     # and every frame arms through LLVM's builtin setjmp.
     native_tls=True, native_sjlj=True,
+    # The runtime reads C memory through pointer views on every path, and the
+    # interpreter enters Jac through a C entry per instruction: views are not
+    # null-checked and C entries jump straight into their bodies, which holds
+    # because nothing in the object opens a region (checked below).
+    native_unchecked_views=True, native_direct_c_entries=True,
 )
 plan = build_link_plan(program, [str(entry) for entry in entries], options)
 if program.errors_had:
@@ -74,6 +80,10 @@ native_fallbacks_in_ir(compiled_ir).require()
 for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "native_sjlj")):
     if getattr(options, option) and symbol in compiled_ir:
         raise RuntimeError(f"a JacPython unit was lowered without {option}")
+if re.search(r'call [^\n]*@"?__jac_region_enter"?\(', compiled_ir):
+    raise RuntimeError(
+        "a JacPython unit opens a region, so C entries cannot skip the region escape"
+    )
 internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )

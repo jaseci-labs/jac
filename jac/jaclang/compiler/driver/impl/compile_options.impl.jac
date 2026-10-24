@@ -89,7 +89,9 @@ impl CompileOptions.effective_triple -> str {
 
 impl CompileOptions.native_options_identity -> str {
     return ("tls=1;" if self.native_tls else "")
-        + ("sjlj=1;" if self.native_sjlj else "");
+        + ("sjlj=1;" if self.native_sjlj else "")
+        + ("rawview=1;" if self.native_unchecked_views else "")
+        + ("directc=1;" if self.native_direct_c_entries else "");
 }
 
 impl CompileOptions.codegen_identity -> str {
@@ -232,6 +234,8 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         native_target=self.native_target,
         native_tls=self.native_tls,
         native_sjlj=self.native_sjlj,
+        native_unchecked_views=self.native_unchecked_views,
+        native_direct_c_entries=self.native_direct_c_entries,
         native_debug=self.native_debug,
         opt_level=self.opt_level,
         dump_ir_path=self.dump_ir_path,

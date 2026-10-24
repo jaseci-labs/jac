@@ -435,6 +435,11 @@ impl NaIRGenPass._codegen_c_interop_call(
         }
         count = self._coerce_type(count, i64);
         b = self.builder;
+        if self._unchecked_views_on() {
+            empty_view: ir.Value = ir.Constant(self._ptr_view_type(), None);
+            addr_view = b.insert_value(empty_view, addr, 0, name="c.view.addr");
+            return (True, b.insert_value(addr_view, count, 1, name="c.view.n"));
+        }
         negative = b.icmp_signed("<", count, ir.Constant(i64, 0), name="c.view.nneg");
         self._emit_runtime_raise(
             negative, "ValueError", "PtrView length must not be negative"

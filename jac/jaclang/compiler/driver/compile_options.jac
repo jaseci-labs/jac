@@ -34,6 +34,8 @@ obj CompileOptions {
         native_target: (str | None) = None,
         native_tls: bool = False,
         native_sjlj: bool = False,
+        native_unchecked_views: bool = False,
+        native_direct_c_entries: bool = False,
         native_debug: (bool | None) = None,
         opt_level: (int | None) = None,
         dump_ir_path: (str | None) = None,

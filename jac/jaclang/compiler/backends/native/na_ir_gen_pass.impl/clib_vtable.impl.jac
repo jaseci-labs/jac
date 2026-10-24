@@ -36,7 +36,7 @@ impl NaIRGenPass._clib_coerce_callback(
         }
     }
     if isinstance(val, ir.Function) {
-        if val.function_type == c_fn_ty.pointee and self._is_kernel_unit() {
+        if val.function_type == c_fn_ty.pointee and self._direct_c_entries() {
             return self.builder.bitcast(val, c_fn_ty, name="clibcb.direct");
         }
         if self.clib_extern_fns.get(val.name) is val {
@@ -117,7 +117,7 @@ impl NaIRGenPass._emit_clib_c_trampoline(
         self.clib_trampoline_funcs[key] = tramp;
         return tramp;
     }
-    if self._is_kernel_unit() or not self._thunk_tail_callable(tramp, tramp) {
+    if self._direct_c_entries() or not self._thunk_tail_callable(tramp, tramp) {
         self._emit_clib_trampoline_call(tramp, jac_fn, True);
     } else {
         opened = self._region_open_test();

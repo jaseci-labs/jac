@@ -151,7 +151,7 @@ impl NaIRGenPass._region_open_test -> ir.Value {
 }
 
 impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
-    if self._is_kernel_unit() {
+    if self._direct_c_entries() {
         return None;
     }
     b = self.builder;
