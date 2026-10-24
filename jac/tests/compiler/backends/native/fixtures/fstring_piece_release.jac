@@ -13,10 +13,12 @@ def shout(w: str) -> str {
     return f"<{w.upper()}>";
 }
 
+glob mode = sys.argv[1];
 with entry {
-    mode = sys.argv[1];
     steps = int(sys.argv[2]);
-    w = "hello world";
+}
+glob w = "hello world";
+with entry {
     total = 0;
     if mode == "slice" {
         for i in range(steps) {
