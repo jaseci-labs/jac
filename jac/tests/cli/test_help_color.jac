@@ -13,10 +13,14 @@ surfaces read as one system. Coloring is gated through `JacConsole.use_color`
      so columns stay aligned).
 """
 
+import io;
 import re;
+import from contextlib { redirect_stdout }
 import from jaclang.cli.console { _get_console }
 import from jaclang.cli.command { CommandSpec }
+import from jaclang.cli.manifest { iter_command_meta }
 import from jaclang.cli.manifest_help { format_curated_help, format_verbose_help }
+import from jaclang.cli.manifest_route { handle_manifest_route }
 
 
 # ANSI roles the formatter uses (mirrors argparse's 3.14 theme).
@@ -103,4 +107,53 @@ test "curated (bare jac) help colors headers/commands/prog and stays plain when 
     assert _strip_ansi(on) == off , f"curated coloring changed layout; stripped={_strip_ansi(
         on
     )!r} plain={off!r}";
+}
+
+
+def _hidden_names -> list[str] {
+    return sorted(
+        [
+            m.name
+            for m in iter_command_meta(include_hidden=True)
+            if m.hidden
+        ]
+    );
+}
+
+
+def _route_output(argv: list[str]) -> str {
+    buf = io.StringIO();
+    with redirect_stdout(buf) {
+        _with_color(False, lambda { handle_manifest_route(argv); });
+    }
+    return buf.getvalue();
+}
+
+
+test "main help lists hidden commands only when asked" {
+    hidden = _hidden_names();
+    assert hidden , "expected at least one hidden command in the manifest";
+    plain = _with_color(False, lambda { format_verbose_help(prog="jac"); });
+    full = _with_color(
+        False, lambda { format_verbose_help(prog="jac", include_hidden=True); }
+    );
+    assert "Hidden:" not in plain , f"default help shows a Hidden section; captured={plain!r}";
+    assert "Hidden:" in full , f"--all help has no Hidden section; captured={full!r}";
+    for name in hidden {
+        assert f"    {name} " not in plain , f"hidden command {name!r} leaked into default help";
+        assert f"    {name} " in full , f"hidden command {name!r} missing from --all help";
+    }
+}
+
+
+test "jac --help --all routes to the full listing in either order" {
+    hidden = _hidden_names();
+    for argv in (['--help', '--all'], ['--all', '--help'], ['-h', '--all']) {
+        out = _route_output(argv);
+        assert "Hidden:" in out , f"{argv} did not list hidden commands; captured={out!r}";
+        for name in hidden {
+            assert f"    {name} " in out , f"{argv} omitted hidden command {name!r}";
+        }
+    }
+    assert "Hidden:" not in _route_output(['--help']) , "plain --help listed hidden commands";
 }

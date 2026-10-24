@@ -61,7 +61,10 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     );
     console.print("  Build (iOS):     jac build --platform ios <app>", style="muted");
     console.print("  Build (browser): jac build --platform web <app>", style="muted");
-    console.print("  Dev:             jac run --dev <app>", style="muted");
+    console.print(
+        "  On your phone:   jac run <app>  (scan the QR code with Expo Go)",
+        style="muted"
+    );
     console.print(
         f"  EAS Build:       cd {rn_dir} && npx eas build --platform android",
         style="muted"
@@ -209,14 +212,12 @@ impl MobileTarget.dev(
         requested_api, "API", reserved=[metro_port]
     );
 
+    tunnel = os.environ.get(JAC_RN_TUNNEL_ENV, "") == "1";
+    requested_plat = os.environ.get("JAC_MOBILE_PLATFORM", "").strip().lower();
+    device_plat = requested_plat if requested_plat in ("android", "ios") else "";
     host_override = os.environ.get(JAC_RN_DEV_HOST_ENV, "").strip();
-    visible_host: str;
-    if host_override {
-        visible_host = host_override;
-    } else {
-        lan = detect_lan_ipv4();
-        visible_host = lan or "127.0.0.1";
-    }
+    packager_host = "" if tunnel else (host_override or detect_lan_ipv4() or "");
+    visible_host = "Expo tunnel" if tunnel else (packager_host or "127.0.0.1");
 
     console.print(
         f"\nReact Native dev (Expo + Metro Fast Refresh) — host {visible_host}",
@@ -234,8 +235,21 @@ impl MobileTarget.dev(
     stage_native_image_assets(rn_dir / "jac-src", rn_dir);
     write_native_entry(rn_dir);
 
-    dev_api_url = f"http://{visible_host}:{api_eff}";
-    original_app_json = inject_dev_api_base_url(rn_dir, dev_api_url);
+    api_proxy = "";
+    if tunnel {
+        if not refresh_metro_config(rn_dir) {
+            console.warning(
+                "  metro.config.js is user-edited, so API calls over the tunnel "
+                f"need its {METRO_API_PREFIX} proxy; regenerate it with `jac setup`."
+            );
+        }
+        api_proxy = f"http://127.0.0.1:{api_eff}";
+        dev_api_url = f"<tunnel>{METRO_API_PREFIX} → {api_proxy}";
+        original_app_json = inject_metro_api_base(rn_dir);
+    } else {
+        dev_api_url = f"http://{visible_host}:{api_eff}";
+        original_app_json = inject_dev_api_base_url(rn_dir, dev_api_url);
+    }
 
     setup_android_port_reverse(metro_port, api_eff);
 
@@ -273,15 +287,29 @@ impl MobileTarget.dev(
             watcher_p.start();
         }
 
+        metro_line = (
+            "via the Expo tunnel (URL printed by Expo below)"
+                if tunnel
+                else f"http://{visible_host}:{metro_port}"
+        );
         console.print(
-            f"\n📱 React Native dev ready.\n"
-            f"   Metro     : http://{visible_host}:{metro_port}\n"
+            "\n📱 React Native dev ready.\n"
+            f"   Metro     : {metro_line}\n"
             f"   API       : {dev_api_url}\n"
-            f"   Edit client .jac files — Metro will Fast Refresh on save.\n",
+            "   Edit client .jac files — Metro will Fast Refresh on save.\n"
+            "   Scan the QR code below with Expo Go (Android) or the Camera app (iOS).\n",
             style="bold green"
         );
 
-        rc = run_expo_start(rn_dir, metro_port, clear_cache=True);
+        rc = run_expo_start(
+            rn_dir,
+            metro_port,
+            clear_cache=True,
+            platform=device_plat,
+            tunnel=tunnel,
+            packager_host=packager_host,
+            api_proxy=api_proxy
+        );
         if rc != 0 {
             console.warning(
                 f"  expo start exited with code {rc} — see Metro output above."
