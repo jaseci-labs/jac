@@ -620,12 +620,12 @@ test "a kernel compile that misses only native stdlib answers defers to the host
     assert not native_stdlib_misses([inside, "resolve_module: 0 | sys | /tmp/x.jac"]);
     import from jaclang.compiler.frontend.kernel_analyze { ANALYSIS_CRASHED }
     import from jaclang.project.kernel_snapshot { host_deferred }
-    assert host_deferred(
+    assert not host_deferred(
         AnalysisReport(
             status=ANALYSIS_CRASHED,
-            message=": integer overflow (in TypeCheckPass at /tmp/x.jac:67:17)"
+            message="OverflowError: integer overflow (in TypeCheckPass at /tmp/x.jac:67:17)"
         )
-    ) , "a literal past a native int is the host's to check";
+    ) , "a kernel crash is the kernel's error, never the host's to redo";
     assert not host_deferred(
         AnalysisReport(status=ANALYSIS_CRASHED, message="KeyError: 'code'")
     );
@@ -661,9 +661,7 @@ test "a kernel compile that misses only native stdlib answers defers to the host
                 in_process=True
             );
         }
-        placed = deferred.analysis.module(entry_file);
-        assert placed is not None and placed.native;
-        assert not deferred.units;
+        assert deferred is None , "a host-only miss hands the compile to the host";
     }
 }
 
@@ -832,6 +830,7 @@ test "a kernel compile asks the host for what it lacks and runs once" {
         assert len(runs) == 1 , runs;
         assert "resolve_module" in asked , asked;
         assert "compile_module" in asked , asked;
+        assert outcome is not None;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         emitted = outcome.unit(entry_file);
@@ -935,6 +934,7 @@ test "a dependency outside the project compiles in the same kernel run" {
                 );
             }
         }
+        assert outcome is not None;
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
@@ -986,6 +986,7 @@ test "a module importing another copy of the compiler is handed to the host" {
             );
         }
         assert not runs , runs;
+        assert outcome is not None;
         assert not outcome.units;
         placed = outcome.analysis.module(entry_file);
         assert placed is not None and placed.native , outcome.analysis.modules;
@@ -1026,6 +1027,7 @@ test "each unit of a kernel session carries only its own module's MTIR" {
             in_process=True,
             emit_closure=True
         );
+        assert outcome is not None;
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         alpha = outcome.unit(str(pkg / 'module_alpha.jac'));
         beta = outcome.unit(str(pkg / 'module_beta.jac'));
@@ -1062,6 +1064,7 @@ test "an empty package init compiles in the session that reaches it" {
             in_process=True,
             emit_closure=True
         );
+        assert outcome is not None;
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         named = sorted(os.path.relpath(u.path, str(base)) for u in outcome.units);
         assert named == ["main.jac", "pkg/__init__.jac", "pkg/util.jac"] , named;
@@ -1109,6 +1112,7 @@ test "a typed third-party package reaches the kernel as interfaces" {
         } finally {
             sys.path.remove(str(site));
         }
+        assert outcome is not None;
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
