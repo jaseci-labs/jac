@@ -68,6 +68,15 @@ def rebind(xs: list[int], ys: list[int]) -> int {
     return total;
 }
 
+def swap_rebind(a: list[int], b: list[int]) -> int {
+    total = 0;
+    for j in range(4) {
+        total += a[j];
+        (a, b) = (b, a);
+    }
+    return total;
+}
+
 def negative(xs: list[int]) -> int {
     total = 0;
     for j in range(1, 4) {
@@ -118,6 +127,7 @@ with entry {
     m = matmul([[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]);
     print(m);
     print(grow([1, 2, 3, 4, 5]), rebind([1, 2, 3, 4], [10, 20, 30, 40]));
+    print(swap_rebind([1, 2, 3, 4], [10, 20, 30, 40]));
     print(negative([1, 2, 3, 4, 5]), out_of_range([1.0, 2.0, 3.0]));
     print(unset(0), unset(3));
 }

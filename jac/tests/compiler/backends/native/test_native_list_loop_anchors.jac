@@ -1,10 +1,16 @@
-"""List loops: alias tags for list headers and elements.
+"""List loops: alias tags for list headers and elements, headers read before the loop.
 
 The IR carried no alias information, so a store into a list element might
 have changed any list's length or data pointer, and LLVM reloaded both after
 every store. List header fields and list elements now carry TBAA tags of
-their own. The fixture prints what the Python backend prints under rc and
-managed.
+their own. And a range loop whose body cannot change a list header (no calls
+but a few builtins, no reassignment of the list, no slice store, no `del`)
+reads each indexed list's length and data pointer once before the loop; its
+scalar element reads and writes check against and index through them, and
+anything out of range takes the old path, which raises as before.
+
+The fixture prints what the Python backend prints under rc and managed, and
+the loops that may change a list keep the old access.
 """
 
 import os;
@@ -37,6 +43,18 @@ test "list headers and elements carry alias tags" {
     assert '!{ !"jac.tbaa" }' in text or '!{!"jac.tbaa"}' in text , "no TBAA root";
     axpy = body_of(text, "axpy");
     assert "!tbaa" in axpy;
+}
+
+test "loops that cannot change a list read its header once" {
+    text = fixture_ir();
+    for name in ["axpy", "copy_into", "reverse", "matmul"] {
+        assert "anchor.len" in body_of(text, name) , f"{name} has no anchored list";
+    }
+    assert "anchor.len" not in body_of(text, "grow") , "grow appends in its loop";
+    assert "cur.anchor" not in body_of(text, "rebind") , "rebind reassigns the list";
+    assert "a.anchor" not in body_of(text, "swap_rebind") , (
+        "swap_rebind reassigns the list by unpacking"
+    );
 }
 
 test "the program prints what the Python backend prints under rc and managed" {
