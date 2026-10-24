@@ -454,18 +454,32 @@ impl lint(
                 (formatted_code, float_target, float_text) = _float_impls_to_annex(
                     prog, str(path_obj), str(path_obj), formatted_code
                 );
+                float_prog: (JacProgram | None) = None;
+                if float_target {
+                    float_prog = JacProgram.jac_str_formatter(
+                        float_text, float_target, auto_lint=True
+                    );
+                    if float_prog.errors_had or not float_prog.mod.main.gen.jac {
+                        for error in float_prog.errors_had {
+                            console.error(f"{error}");
+                        }
+                        console.error(
+                            f"Left '{file_path}' unchanged: its impl annex "
+                            f"'{float_target}' could not be formatted"
+                        );
+                        err_count = len(float_prog.errors_had) or 1;
+                        return (False, err_count, err_count);
+                    }
+                }
                 backups: dict[str, (bytes | None)] = {};
                 try {
-                    if float_target {
-                        float_prog = JacProgram.jac_str_formatter(
-                            float_text, float_target, auto_lint=True
-                        );
+                    if float_target and float_prog is not None {
                         backups[float_target] = _snapshot_file(float_target);
                         os.makedirs(
                             os.path.dirname(float_target) or ".", exist_ok=True
                         );
                         with open(float_target, 'w', encoding='utf-8') as f {
-                            f.write(float_prog.mod.main.gen.jac or float_text);
+                            f.write(float_prog.mod.main.gen.jac);
                         }
                     }
                     changed = formatted_code != original_code;
@@ -1963,6 +1977,7 @@ impl _format_single_file_worker(
 
             if lintfix {
                 float_done = False;
+                float_ok = False;
                 for annex_path in annex_paths {
                     is_float_target = bool(float_target)
                         and os.path.realpath(annex_path)
@@ -1973,12 +1988,14 @@ impl _format_single_file_worker(
                         continue;
                     }
                     annex_logical = annex_logical_map.get(annex_path, annex_path);
+                    if is_float_target {
+                        float_done = True;
+                    }
                     try {
                         if is_float_target {
                             annex_prog = JacProgram.jac_str_formatter(
                                 float_text, annex_logical, auto_lint=True
                             );
-                            float_done = True;
                         } elif logical_path {
                             annex_src = read_file_with_encoding(annex_path);
                             annex_prog = JacProgram.jac_str_formatter(
@@ -2009,6 +2026,12 @@ impl _format_single_file_worker(
                         annex_ok = False;
                         annex_error_count += 1;
                     }
+                    if is_float_target {
+                        float_ok = bool(annex_formatted) and not annex_prog.errors_had;
+                        if not float_ok {
+                            continue;
+                        }
+                    }
                     annex_formatted_map[annex_path] = (
                         annex_formatted if annex_formatted is not None else ""
                     );
@@ -2037,14 +2060,29 @@ impl _format_single_file_worker(
                         annex_ok = False;
                         annex_error_count += 1;
                     }
-                    result['changed'] = True;
-                    if not check {
-                        result['impl_results'].append(
-                            (float_target, new_prog.mod.main.gen.jac or float_text)
-                        );
+                    float_ok = bool(new_prog.mod.main.gen.jac)
+                        and not new_prog.errors_had;
+                    if float_ok {
+                        result['changed'] = True;
+                        if not check {
+                            result['impl_results'].append(
+                                (float_target, new_prog.mod.main.gen.jac)
+                            );
+                        }
                     }
                 }
-                if float_target {
+                if float_target and not float_ok {
+                    result['success'] = False;
+                    result['changed'] = False;
+                    result['formatted_code'] = None;
+                    result['impl_results'] = [];
+                    result['errors'] = annex_error_count + 1;
+                    result['syntax_errors'] = [
+                        f"Left '{file_path}' unchanged: its impl annex "
+                        f"'{float_target}' could not be formatted"
+                    ];
+                    return result;
+                } elif float_target {
                     result['floated_annexes'] = [float_target];
                 }
             }

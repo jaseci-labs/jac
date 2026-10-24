@@ -15,6 +15,7 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.STAR_MUL: '*',
          Tok.DIV: '/',
          Tok.MOD: '%',
+         Tok.STAR_POW: '**',
          Tok.BW_AND: '&',
          Tok.BW_OR: '|',
          Tok.BW_XOR: '^',
@@ -167,6 +168,13 @@ obj CallArgSlot {
         value: (es.Expression | es.SpreadElement | None);
 }
 
+obj NullSafeLink {
+    has guard: es.Expression,
+        recv: es.Expression,
+        ref: es.Expression,
+        lowered: es.Expression;
+}
+
 walker EsastGenPass(TreePass) {
     static has contract: PassContract = PassContract();
     has _ct_only_names: (set[str] | None) = None,
@@ -180,7 +188,6 @@ walker EsastGenPass(TreePass) {
         _jsx_processor: EsJsxProcessor | None = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
-        component_export_names: set[str] = set(),
         shared_arch_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
@@ -195,6 +202,7 @@ walker EsastGenPass(TreePass) {
         _view_branch_base: dict[(int, int)] = {},
         _view_slot_loops: set[int] = set(),
         _loop_label_stack: list[str] = [],
+        _loop_labels: dict[int, str] = {},
         _loop_label_savepoints: list[list[str]] = [],
         _used_loop_labels: set[str] = set(),
         _loop_label_seq: int = 0,
@@ -213,7 +221,8 @@ walker EsastGenPass(TreePass) {
         _builtin_emitter: PrimitiveEmitter[(str, ESEmitCtx)] = ESBuiltinEmitter(),
         _poly_methods: (set[str] | None) = None,
         loop_links: LoopLinks = LoopLinks(),
-        _native_links: dict[int, bool] = {};
+        _native_links: dict[int, bool] = {},
+        _null_safe_links: dict[int, NullSafeLink] = {};
 
     has resolved_backend: FrameworkBackend {
         getter {
@@ -243,6 +252,10 @@ walker EsastGenPass(TreePass) {
     ) -> es.Expression;
 
     def _fw_to_number(expr: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _floor_div(
+        left: es.Expression, right: es.Expression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _fw_binary(
         nd: uni.Expr, op: str, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
@@ -604,6 +617,10 @@ walker EsastGenPass(TreePass) {
         new_expr: es.NewExpression, jac_node: uni.UniNode
     ) -> es.Expression;
 
+    def _null_safe_link_of(expr: (es.Node | None)) -> (NullSafeLink | None);
+    def _open_null_safe_chain(target: uni.Expr) -> list[NullSafeLink];
+    def _close_null_safe_chain(links: list[NullSafeLink], nd: uni.Expr) -> None;
+    def _null_safe_unguarded(expr: es.Node, jac_node: uni.UniNode) -> es.Node;
     def _bind_once(
         param: es.Identifier,
         body: es.Expression,
@@ -611,13 +628,34 @@ walker EsastGenPass(TreePass) {
         jac_node: uni.UniNode
     ) -> es.Expression;
 
-    def _awaits_in_place(jac_node: uni.UniNode) -> bool;
+    def _bind_once_delegated(
+        param: es.Identifier,
+        body: es.Expression,
+        value: es.Expression,
+        awaits: bool,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _unbox_first(boxed: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _suspends_in_place(jac_node: uni.UniNode, kind: type[uni.UniNode]) -> bool;
     def _strip_optional_chain(expr: (es.Node | None)) -> None;
     can exit_binary_expr with uni.BinaryExpr exit;
     can exit_cfg_expr with uni.CfgExpr exit;
     can exit_bool_expr with uni.BoolExpr exit;
     can exit_compare_expr with uni.CompareExpr exit;
     can exit_unary_expr with uni.UnaryExpr exit;
+    def _aug_target_once(
+        target: es.Expression, jac_node: uni.UniNode
+    ) -> tuple[es.Expression, list[tuple[es.Identifier, es.Expression]]];
+
+    def _rereads_safely(expr: es.Expression) -> bool;
+    def _assign_once(
+        target: es.Expression,
+        value: es.Expression,
+        binds: list[tuple[es.Identifier, es.Expression]],
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _convert_assignment_target(
         target: uni.UniNode
     ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)];
@@ -627,6 +665,7 @@ walker EsastGenPass(TreePass) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_route_role(rt: uni.Expr) -> (str | None);
+    def _client_linkable(nd: uni.AstAccessNode) -> bool;
     def _component_pascal_name(nd: uni.Ability) -> (str | None);
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(
@@ -721,11 +760,13 @@ walker EsastGenPass(TreePass) {
 
     def _bind_client_value_refs(nd: uni.Module) -> list[es.Statement];
     can exit_func_call with uni.FuncCall exit;
+    def _lower_func_call(here: uni.FuncCall) -> None;
     def _place_accessors(place: es.Expression) -> es.Expression | None;
     def _lower_place_builtin(nd: uni.FuncCall) -> es.Expression | None;
     can exit_index_slice with uni.IndexSlice exit;
     can exit_special_var_ref with uni.SpecialVarRef exit;
     can exit_atom_trailer with uni.AtomTrailer exit;
+    def _lower_atom_trailer(here: uni.AtomTrailer) -> None;
     can enter_lambda_expr with uni.LambdaExpr entry;
     can exit_lambda_expr with uni.LambdaExpr exit;
     can exit_atom_unit with uni.AtomUnit exit;

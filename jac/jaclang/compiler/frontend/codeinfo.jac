@@ -15,7 +15,10 @@ obj ClientManifest {
         server_imports: list[str] = [],
         server_import_routes: dict[(str, dict[(str, str)])] = {},
         page_export: (str | None) = None,
-        layout_export: (str | None) = None;
+        layout_export: (str | None) = None,
+        linkable: list[str] = [],
+        components: list[str] = [],
+        forwards: dict[str, list[str]] = {};
 }
 
 obj ClientArtifact {

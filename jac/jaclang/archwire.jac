@@ -88,10 +88,12 @@ graph import {
         client.js_runtime._engine | compiler.backends.native.native_link.musl_lib_dir {
             resolve
         },
+        client.targets.desktop.native.host_boot._enter_embedded_env
+            | project.kernel_snapshot.require_stub_catalog { forget },
+        client.targets.desktop.native.host_boot._leave_embedded_env { forget },
         compiler.backends.native.kernel_resolve.build_kernel { publish },
         compiler.types.stubcat.build.build_catalog { building },
         project.kernel_snapshot.build_stub_catalog { artifact_named, build, forget },
-        project.kernel_snapshot.require_stub_catalog { forget },
     ]
     artifacts.router --> [
         compiler.driver.toolchain.native_pipeline_available { resolve },
@@ -360,6 +362,7 @@ graph import {
     comptime client.cli ++> cli.manifest { SPEC_SETUP }
     client.client_bundle ++> [
         compiler.driver.client_graph.collect_client_graph
+            | dist.publish.npm_sources._link_modules
             | server.hmr.HotReloader._recompile_client_unified { ClientBundleError },
         compiler.tests.test_client_codegen_facts {
             _client_target_module,
@@ -671,9 +674,18 @@ graph import {
         cli.commands.analysis.precommit { discover_annex_files },
         testing.test_runner._suite_source { discover_base_file },
     ]
-    compiler.driver.client_graph ++> client.jac_client_compiler.JacClientCompiler.emit_dependencies {
-        collect_client_graph
-    }
+    compiler.driver.client_graph ++> [
+        client.jac_client_compiler.JacClientCompiler._module_text { append_link },
+        client.jac_client_compiler.JacClientCompiler.emit_dependencies
+            | dist.publish.npm_sources._link_modules { collect_client_graph },
+        dist.publish.npm_sources.collect_npm_sources {
+            ClientLink,
+            append_link,
+            link_tail
+        },
+    ]
+    type compiler.driver.client_graph ++> client.jac_client_compiler
+        | dist.publish.npm_sources { ClientLink }
     compiler.driver.compilation_context ++> [
         dist.precompile_bytecode._application_sources { bind_options },
         dist.precompile_bytecode.precompile_context { bind_options, context_program },
@@ -1020,6 +1032,7 @@ graph import {
             | dist.precompiled._pkg_dir { jaclang_pkg_root },
         client.vite_client_bundle { ClientArtifact },
         dist.precompile_bytecode._compiler_kernel_units { kernel_unit_paths },
+        dist.publish.npm_sources._link_modules { ClientArtifact, ClientManifest },
         dist.publish.runtime_vendor._runtime_module_options {
             is_native_by_location,
             is_shared_runtime_module
@@ -1483,8 +1496,9 @@ graph import {
             | runtime.builtin._get_archetype_alias.factory.decorator
             | server.endpoints.walkers
             | server.server
-            | server.session.Session._load_edges { Serializer },
+            | server.session.Session._expired { Serializer },
         server.session { frozen_fields },
+        server.session.Session._load_edges { Serializer },
         server.session.Session._materialize { Serializer },
         server.session.Session._serialize { Serializer },
         server.session.Session._unflushed { Serializer },
@@ -1846,7 +1860,6 @@ graph import {
         client.cli.setup { kind_has_client },
         compiler.placement.placement.project_has_server
             | compiler.placement.placement_pins { kind_codespace },
-        dist.seal.build_serve_manifest { kind_has_server },
         dist.source.project.export_project { kind_has_client, kind_has_server },
     ]
     project.app_kinds --> [
@@ -2364,6 +2377,7 @@ graph import {
             | dist.precompile_bytecode._application_sources
             | server.session.project_database { workspace_for_path },
         compiler.driver.application._warn_private_declarations { app_for_path },
+        dist.precompile_bytecode.sealable_sources { workspace_for_path },
     ]
     project.workspace --> lsp.server.engine.JacLangServer.type_check_file {
         workspace_for_path
@@ -4782,10 +4796,9 @@ graph import cli {
 
 graph import cli.commands {
     analysis --> build.build { check }
-    build --> execution._build_plan { build }
     cli_helpers ++> execution | tools { proc_file as _proc_file }
     native_build --> [
-        build._build_app | execution._build_plan { native_build },
+        build._build_app { native_build },
         build.build { native_build },
     ]
     project --> [
@@ -5046,7 +5059,10 @@ graph import client {
     targets.node_tooling_common ++> vite_bundler._build_vite_command {
         resolve_node_tool_entry
     }
-    targets.react_native.dev --> cli.run_client_start { JAC_RN_DEV_HOST_ENV }
+    targets.react_native.dev --> cli.run_client_start {
+        JAC_RN_DEV_HOST_ENV,
+        JAC_RN_TUNNEL_ENV
+    }
     targets.react_native.html_tag_map ++> client_runtime_native {
         RN_HTML_TEXT_TAGS as _TEXT_TAGS,
         RN_HTML_VIEW_TAGS as _VIEW_TAGS
@@ -5161,7 +5177,10 @@ graph import client.targets {
     }
     react_native.dev ++> mobile_target {
         JAC_RN_DEV_HOST_ENV,
+        JAC_RN_TUNNEL_ENV,
+        METRO_API_PREFIX,
         inject_dev_api_base_url,
+        inject_metro_api_base,
         resolve_metro_port,
         restore_app_json,
         rn_hmr_on_jac_changed,
@@ -5170,6 +5189,7 @@ graph import client.targets {
     }
     react_native.scaffold ++> mobile_target {
         ensure_native_deps_installed,
+        refresh_metro_config,
         write_expo_scaffold
     }
     register --> registry.get_target_registry { register_targets }
@@ -6049,6 +6069,7 @@ graph import compiler {
             scope_path_of,
             wiring_for_path
         },
+        types.stubcat.writer.CatalogWriter.encode_symbol { is_arch_file },
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
@@ -6536,7 +6557,7 @@ graph import compiler {
             | driver.nativecache { CodeGenTarget },
         backends.native.na_ir_gen_pass { NativeModuleLayout },
         driver.boundary_classify { InteropManifest },
-        driver.client_graph { ClientArtifact },
+        driver.client_graph { ClientArtifact, ClientManifest },
         driver.compiler { CodeGenTarget, NativeModuleLayout },
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
@@ -6858,7 +6879,6 @@ graph import compiler {
             E0052,
             E0055,
             E0058,
-            E0059,
             E0063,
             E0065,
             E0066,
@@ -7336,7 +7356,8 @@ graph import compiler {
             binding_sites,
             binds_target,
             confined_to,
-            enclosing_loop
+            enclosing_loop,
+            in_loop_else
         },
         backends.native.na_ir_gen_pass {
             LoopLinks,
@@ -7345,7 +7366,9 @@ graph import compiler {
             enclosing_loop,
             frame_owns
         },
-        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink },
+        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
+        passes.ast_validation_pass { in_loop_else },
+        passes.cfg_build_pass { enclosing_loop },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
@@ -10213,7 +10236,7 @@ graph import compiler {
         },
     ]
     type_registry --> [
-        backends.es.esast_gen_pass.EsastGenPass.exit_func_call
+        backends.es.esast_gen_pass.EsastGenPass._lower_func_call
             | passes.ownership_check_pass.OwnershipCheckPass._handled_by_enclosing_try
             | types.type_evaluator.TypeEvaluator._assign_class { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass.exit_try_stmt { JAC_TYPE_REGISTRY },
@@ -10733,7 +10756,7 @@ graph import compiler.backends.es {
         esast_gen_pass.EsastGenPass._try_primitive_op
             | jac_runtime_js._build_types_runtime_js { JSCodeGenerator },
     ]
-    es_unparse --> esast_gen_pass.EsastGenPass.exit_func_call { JSCodeGenerator }
+    es_unparse --> esast_gen_pass.EsastGenPass._lower_func_call { JSCodeGenerator }
     type esast_gen_pass ++> jsx_processor { EsastGenPass }
     estree as es ++> backends.react
         | backends.solid
@@ -15301,6 +15324,7 @@ graph import runtime {
         },
         runtime.JacBuiltin.log_report { _current_scope, osp_report },
         runtime.JacGraph.clear_edges { osp_forget },
+        runtime.JacWalker.async_spawn_call { _current_scope },
         runtime.JacWalker.disengage { osp_disengage },
         runtime.JacWalker.spawn_call { osp_spawn },
         runtime.JacWalker.visit { osp_visit, scope_of },
@@ -15354,7 +15378,7 @@ graph import runtime {
             | osp_kernel_sv._sv_on_complete
             | prepared_loader.PreparedFinder.find_spec { JacRuntime },
         archetype.NodeAnchor.all_edges { JacRuntimeInterface },
-        archetype.Root.__getattr__ { JacRuntime },
+        archetype.Root.__getattr__ | osp_kernel_sv._sv_settle { JacRuntime },
         archetype._dirty_delattr { JacRuntime },
         archetype._dirty_setattr { JacRuntime },
         interop_bridge._pyb_import_module { JacModule },

@@ -50,12 +50,16 @@ test "iter-protocol for else covers lists and strings" {
     assert h() is True , "string for exhaustion must fall into the else block";
 }
 
-test "break inside a nested loop's else exits only that loop" {
+test "break and continue in a nested loop's else belong to the outer loop" {
     (_eng, _ir) = compile_native("loop_else.jac");
-    f = get_func(_eng, "inner_else_break_stays_inner", ctypes.c_bool);
+    f = get_func(_eng, "inner_else_break_leaves_outer", ctypes.c_bool);
     assert f() is True , (
-        "break in the inner else must skip only the inner loop and its else"
+        "break in the inner else must leave the outer loop and skip its else"
     );
+    g = get_func(_eng, "inner_else_continue_skips_rest", ctypes.c_int64);
+    assert g() == 4 , "continue in the inner else skips the rest of that pass: 1 + 3";
+    h = get_func(_eng, "iter_for_else_continue_steps", ctypes.c_int64);
+    assert h() == 3 , "continue in the inner else still runs the iter-for step";
 }
 
 test "flow-for else runs with sequential lowering" {

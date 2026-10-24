@@ -179,6 +179,72 @@ test "a wire-bound name resolves to the provider's declaration" {
         );
         assert sym.decl is not None
             and sym.decl.find_parent_of_type(Archetype) is not None , sym.decl;
+
+        import from jaclang.compiler.types.stubcat.writer { build_module_iface }
+        def svc_iface -> bytes {
+            prog = JacProgram();
+            mod = prog.compile(
+                os.path.join(base, "core/svc.jac"),
+                options=CompileOptions(no_cgen=True, need_full_ast=True)
+            );
+            return build_module_iface(mod, prog.get_type_evaluator(), base);
+        }
+        before = svc_iface();
+        _write(base, "archwire.jac", "\n\n\n" + _read(base, "archwire.jac"));
+        assert svc_iface() == before;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "moving a wire changes its consumer's wiring digest, editing another wire does not" {
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    import from jaclang.compiler.frontend.unitree { Name }
+    base = _standard();
+    svc = os.path.join(base, "core/svc.jac");
+    def wire_line -> int {
+        lines = _read(base, "archwire.jac").splitlines();
+        return 1
+            + [
+                i
+                for (i, line) in enumerate(lines)
+                if line.strip() == "util ++> svc { now }"
+            ][0];
+    }
+    def import_line -> int {
+        prog = JacProgram();
+        mod = prog.compile(svc, options=CompileOptions(no_cgen=True));
+        assert _errors(prog) == [] , _errors(prog);
+        names = [
+            n
+            for n in mod.get_all_sub_nodes(Name)
+            if n.sym_name == "now" and n.loc.mod_path.endswith("archwire.jac")
+        ];
+        assert names , "the wired import of `now` was not found";
+        return names[0].loc.first_line;
+    }
+    try {
+        before = wiring_digest_for(svc);
+        assert import_line() == wire_line();
+
+        _write(base, "archwire.jac", _ARCH.replace("now as when }", "now as clock }"));
+        _write(base, "app/main.jac", _MAIN.replace("when()", "clock()"));
+        assert wiring_digest_for(svc) == before , (
+            "editing another consumer's wire in place must keep svc's digest"
+        );
+
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace("now as when }", "now as clock }").replace(
+                "\ngraph import core {", "\n\ngraph import core {"
+            )
+        );
+        assert wiring_digest_for(svc) != before , (
+            "svc's wire moved down a line, so its generated import moved too"
+        );
+        assert import_line() == wire_line();
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

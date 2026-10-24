@@ -1,12 +1,13 @@
 import time;
 
-test "only tutorials not yet verified on this jac are swept" {
+test "only tutorials not yet verified or checked on this jac are swept" {
     items = sweep_items(
         [
-            ("current", "a", "published", "0.38.0"),
-            ("older", "b", "published", "0.37.0"),
-            ("stale", "c", "stale", "0.37.0"),
-            ("gone", "d", "removed", "0.37.0")
+            ("current", "a", "published", "0.38.0", ""),
+            ("older", "b", "published", "0.37.0", ""),
+            ("stale", "c", "stale", "0.37.0", ""),
+            ("gone", "d", "removed", "0.37.0", ""),
+            ("checked", "e", "stale", "0.37.0", "0.38.0")
         ],
         "0.38.0"
     );

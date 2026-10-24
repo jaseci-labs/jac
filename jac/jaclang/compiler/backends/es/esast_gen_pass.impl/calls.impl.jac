@@ -1052,6 +1052,12 @@ impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] 
 }
 
 impl EsastGenPass.exit_func_call with uni.FuncCall exit {
+    links = self._open_null_safe_chain(here.target);
+    self._lower_func_call(here);
+    self._close_null_safe_chain(links, here);
+}
+
+impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
     place_op = self._lower_place_builtin(here);
     if place_op is not None {
         here.gen.es_ast = place_op;
@@ -1379,7 +1385,8 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
             );
             call_args = ordered_args if ordered_args is not None else [args_obj];
         } else {
-            call_args = [args_obj];
+            call_args = args + [args_obj];
+            use_kwargs_temp = False;
         }
     }
 

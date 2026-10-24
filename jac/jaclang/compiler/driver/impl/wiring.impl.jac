@@ -419,6 +419,9 @@ impl WiringSpec.digest_for(consumer: str) -> str {
         provider = self.import_name(wire.provider);
         for scope_parts in self.consumer_scopes(consumer, wire) {
             scope = ".".join(scope_parts);
+            for (line0, col, text) in self._wire_pieces(wire) {
+                rows.append("\x1f".join([scope, "@", str(line0), str(col), text]));
+            }
             for binding in wire.bindings() {
                 rows.append(
                     "\x1f".join(
