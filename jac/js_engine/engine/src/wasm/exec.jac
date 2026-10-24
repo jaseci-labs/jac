@@ -33,6 +33,7 @@ import from engine.src.wasm.compile {
     WElem,
     WData,
     WTable,
+    wasm_op_words,
     f32_bits_to_f64,
     f64_to_f32_bits,
     SIGN64,
@@ -965,10 +966,10 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 fp + __mem_load_i64(pc + 8),
                 __mem_load_i64(fp + __mem_load_i64(pc + 16))
             );
-            pc = pc + 24;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 10 {  # CONST dst v
             __mem_store_i64(fp + __mem_load_i64(pc + 8), __mem_load_i64(pc + 16));
-            pc = pc + 24;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 106 {  # i32.add
             __mem_store_i64(
                 fp + __mem_load_i64(pc + 8),
@@ -979,18 +980,18 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     )
                 )
             );
-            pc = pc + 32;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 3 {  # BR_IF c tgt
             if __mem_load_i64(fp + __mem_load_i64(pc + 8)) != 0 {
                 pc = __mem_load_i64(pc + 16);
             } else {
-                pc = pc + 24;
+                pc = pc + wasm_op_words(op, 0) * 8;
             }
         } elif op == 4 {  # BR_UNLESS c tgt
             if __mem_load_i64(fp + __mem_load_i64(pc + 8)) == 0 {
                 pc = __mem_load_i64(pc + 16);
             } else {
-                pc = pc + 24;
+                pc = pc + wasm_op_words(op, 0) * 8;
             }
         } elif op == 2 {  # JMP
             pc = __mem_load_i64(pc + 8);
@@ -998,7 +999,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
             ea: int = (__mem_load_i64(fp + __mem_load_i64(pc + 16)) & M32)
                 + __mem_load_i64(pc + 24);
             dst: int = fp + __mem_load_i64(pc + 8);
-            pc = pc + 32;
+            pc = pc + wasm_op_words(op, 0) * 8;
             if op == 40 {
                 if ea + 4 > ms {
                     return _trap("out of bounds memory access");
@@ -1057,7 +1058,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
             ea2: int = (__mem_load_i64(fp + __mem_load_i64(pc + 8)) & M32)
                 + __mem_load_i64(pc + 24);
             v: int = __mem_load_i64(fp + __mem_load_i64(pc + 16));
-            pc = pc + 32;
+            pc = pc + wasm_op_words(op, 0) * 8;
             if op == 54 or op == 62 {
                 if ea2 + 4 > ms {
                     return _trap("out of bounds memory access");
@@ -1092,10 +1093,10 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 # i32 ops (and i64/float compares)
                 if op == 69 {
                     __mem_store_i64(d, 1 if a == 0 else 0);
-                    pc = pc + 24;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                 } elif op <= 79 {
                     b: int = __mem_load_i64(fp + __mem_load_i64(pc + 24));
-                    pc = pc + 32;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     r: bool = False;
                     if op == 70 {
                         r = a == b;
@@ -1121,10 +1122,10 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     __mem_store_i64(d, 1 if r else 0);
                 } elif op == 80 {
                     __mem_store_i64(d, 1 if a == 0 else 0);
-                    pc = pc + 24;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                 } elif op <= 90 {
                     b2: int = __mem_load_i64(fp + __mem_load_i64(pc + 24));
-                    pc = pc + 32;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     r2: bool = False;
                     if op == 81 {
                         r2 = a == b2;
@@ -1153,7 +1154,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     y: float = __bits_float(
                         __mem_load_i64(fp + __mem_load_i64(pc + 24))
                     );
-                    pc = pc + 32;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     oo: int = op;
                     if oo >= 97 {
                         oo = oo - 6;
@@ -1186,10 +1187,10 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     } else {
                         __mem_store_i64(d, _popcnt64(u));
                     }
-                    pc = pc + 24;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                 } else {
                     b3: int = __mem_load_i64(fp + __mem_load_i64(pc + 24));
-                    pc = pc + 32;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     if op == 107 {
                         __mem_store_i64(d, int(i32.wrap(a - b3)));
                     } elif op == 108 {
@@ -1253,10 +1254,10 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     } else {
                         __mem_store_i64(d, _popcnt64(a));
                     }
-                    pc = pc + 24;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                 } else {
                     b4: int = __mem_load_i64(fp + __mem_load_i64(pc + 24));
-                    pc = pc + 32;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     if op == 124 {
                         __mem_store_i64(d, wrapping_add(a, b4));
                     } elif op == 125 {
@@ -1328,7 +1329,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 x2: float = __bits_float(a);
                 res: float = 0.0;
                 if oo2 <= 145 {
-                    pc = pc + 24;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     if oo2 == 139 {
                         __mem_store_i64(d, a & 9223372036854775807);
                         continue;
@@ -1352,7 +1353,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     }
                 } else {
                     bb: int = __mem_load_i64(fp + __mem_load_i64(pc + 24));
-                    pc = pc + 32;
+                    pc = pc + wasm_op_words(op, 0) * 8;
                     y2: float = __bits_float(bb);
                     if oo2 == 146 {
                         res = x2 + y2;
@@ -1377,7 +1378,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 __mem_store_i64(d, __float_bits(res));
             } else {
                 # conversions 167..196
-                pc = pc + 24;
+                pc = pc + wasm_op_words(op, 0) * 8;
                 _TRUNC_ERR = "";
                 cv: int = 0;
                 xf: float = __bits_float(a);
@@ -1451,7 +1452,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
             if op == 7 {
                 callee = __mem_load_i64(funcs + __mem_load_i64(pc + 8) * 8);
                 argoff = __mem_load_i64(pc + 16);
-                pc = pc + 24;
+                pc = pc + wasm_op_words(op, 0) * 8;
             } else {
                 tab: int = __mem_load_i64(
                     __mem_load_i64(inst + 24) + __mem_load_i64(pc + 8) * 8
@@ -1461,7 +1462,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 );
                 argoff = __mem_load_i64(pc + 24);
                 ei: int = __mem_load_i64(fp + __mem_load_i64(pc + 32)) & M32;
-                pc = pc + 40;
+                pc = pc + wasm_op_words(op, 0) * 8;
                 if ei >= __mem_load_i64(tab + 8) {
                     return _trap("undefined element");
                 }
@@ -1571,27 +1572,27 @@ def _run(entry_f: int, entry_fp: int) -> int {
                     __mem_load_i64(fp + __mem_load_i64(pc + 24))
                 );
             }
-            pc = pc + 40;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 12 {  # GLOBAL_GET dst g
             cell: int = __mem_load_i64(
                 __mem_load_i64(inst + 16) + __mem_load_i64(pc + 16) * 8
             );
             __mem_store_i64(fp + __mem_load_i64(pc + 8), __mem_load_i64(cell));
-            pc = pc + 24;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 13 {  # GLOBAL_SET g src
             cell2: int = __mem_load_i64(
                 __mem_load_i64(inst + 16) + __mem_load_i64(pc + 8) * 8
             );
             __mem_store_i64(cell2, __mem_load_i64(fp + __mem_load_i64(pc + 16)));
-            pc = pc + 24;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 0 {
             return _trap("unreachable");
         } elif op == 18 {  # MEM_SIZE
             __mem_store_i64(fp + __mem_load_i64(pc + 8), __mem_load_i64(mem + 24));
-            pc = pc + 16;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 19 {  # MEM_GROW
             gd: int = fp + __mem_load_i64(pc + 8);
-            pc = pc + 16;
+            pc = pc + wasm_op_words(op, 0) * 8;
             # A successful grow calls JavaScript to detach stale ArrayBuffers. That callback
             # can invoke another Wasm export, so reserve the active interpreter frame
             # and return-frame stack before crossing the VM boundary.
@@ -1621,7 +1622,7 @@ def _run(entry_f: int, entry_fp: int) -> int {
             __mem_store_i64(
                 fp + __mem_load_i64(pc + 8), __mem_load_i64(__mem_load_i64(tg) + ti * 8)
             );
-            pc = pc + 32;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 15 {  # TABLE_SET t i v
             ts: int = __mem_load_i64(
                 __mem_load_i64(inst + 24) + __mem_load_i64(pc + 8) * 8
@@ -1634,25 +1635,25 @@ def _run(entry_f: int, entry_fp: int) -> int {
                 __mem_load_i64(ts) + tsi * 8,
                 __mem_load_i64(fp + __mem_load_i64(pc + 24))
             );
-            pc = pc + 32;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 16 {  # REF_IS_NULL
             __mem_store_i64(
                 fp + __mem_load_i64(pc + 8),
                 1 if __mem_load_i64(fp + __mem_load_i64(pc + 16)) == 0 else 0
             );
-            pc = pc + 24;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op == 17 {  # REF_FUNC dst fidx
             __mem_store_i64(
                 fp + __mem_load_i64(pc + 8),
                 __mem_load_i64(funcs + __mem_load_i64(pc + 16) * 8)
             );
-            pc = pc + 24;
+            pc = pc + wasm_op_words(op, 0) * 8;
         } elif op >= 224 {
             rc: int = _exec_fc(op - 224, pc, fp, inst, mem);
             if rc != 0 {
                 return 1;
             }
-            pc = pc + _fc_words(op - 224) * 8;
+            pc = pc + wasm_op_words(op, 0) * 8;
             if mem != 0 {
                 mb = __mem_load_i64(mem);
                 ms = __mem_load_i64(mem + 8);
@@ -1662,22 +1663,6 @@ def _run(entry_f: int, entry_fp: int) -> int {
         }
     }
     return 0;
-}
-
-def _fc_words(sub: int) -> int {
-    if sub <= 7 {
-        return 3;
-    }
-    if sub == 8 {
-        return 5;
-    }
-    if sub == 9 or sub == 10 or sub == 11 or sub == 13 {
-        return 2;
-    }
-    if sub == 12 or sub == 14 or sub == 15 {
-        return 4;
-    }
-    return 3;
 }
 
 def _slot(fp: int, pc: int, k: int) -> int {

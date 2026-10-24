@@ -188,6 +188,7 @@ glob _ERR: str = "",
 def:pub wasm_compile_error -> str {
     return _ERR;
 }
+
 def:pub wasm_compile_error_pos -> int {
     return _ERR_POS;
 }
@@ -422,6 +423,7 @@ def _reftype -> int {
 def _is_num(t: int) -> bool {
     return t == 127 or t == 126 or t == 125 or t == 124;
 }
+
 def _is_ref(t: int) -> bool {
     return t == 112 or t == 111;
 }
@@ -1736,7 +1738,11 @@ def _relocate(code: int) {
     while i < n {
         op: int = _C[i];
         __mem_store_i64(code + i * 8, op);
-        w: int = _op_words(op, i);
+        branch_count: int = 0;
+        if op == OP_BR_TABLE {
+            branch_count = _C[i + 2];
+        }
+        w: int = wasm_op_words(op, branch_count);
         if op == OP_JMP {
             __mem_store_i64(code + (i + 1) * 8, code + _C[i + 1] * 8);
         } elif op == OP_BR_IF or op == OP_BR_UNLESS {
@@ -1761,8 +1767,13 @@ def _relocate(code: int) {
     }
 }
 
-"""Words occupied by the instruction at word index i (op included)."""
-def _op_words(op: int, i: int) -> int {
+"""Words occupied by one encoded instruction, including its opcode.
+
+`branch_count` is the BR_TABLE target count and is ignored for other ops.
+Used by both relocation and the interpreter so instruction widths have one
+source of truth.
+"""
+def:pub wasm_op_words(op: int, branch_count: int) -> int {
     if op == OP_UNREACHABLE {
         return 1;
     }
@@ -1773,7 +1784,7 @@ def _op_words(op: int, i: int) -> int {
         return 3;
     }
     if op == OP_BR_TABLE {
-        return 4 + _C[i + 2];
+        return 4 + branch_count;
     }
     if op == OP_RET
         or op == OP_CALL

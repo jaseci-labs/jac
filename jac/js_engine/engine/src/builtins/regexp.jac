@@ -3377,9 +3377,9 @@ def:pub js_str_replace_re(
         r7 = js_to_string_prim(repl3);
     }
     slen7: int = str_nbytes(s7);
-    _DM_ASCII = _dm_subject_ascii(s_val3);
 
     if not re10.flag_g {
+        _DM_ASCII = _dm_subject_ascii(s_val3);
         res7: list[int] = _do_match(re10, s7, 0);
         if res7[0] < 0 {
             return _re_input_value(s_val3, s7);
@@ -3391,7 +3391,20 @@ def:pub js_str_replace_re(
                 + str_substr(s7, res7[1], slen7)
         );
     }
-    return _mk_jstr(_re_replace_global_build(re10, s7, r7, _DM_ASCII));
+    # @@replace reads the observable `unicode` property for AdvanceStringIndex;
+    # it is not necessarily the RegExp's internal `u` flag (e.g. a user may
+    # redefine `unicode` as in test262's coerce-unicode.js).
+    full_unicode: bool = jsv_coerce_to_bool(
+        js_object_get_observable(search3, str_intern("unicode"), search3)
+    );
+    if vm_has_native_exc() {
+        return js_undefined();
+    }
+    # The observable getter above may execute another RegExp operation and
+    # replace the process-wide subject cache. Restore this call's subject only
+    # after all user code has run, before the first match.
+    _DM_ASCII = _dm_subject_ascii(s_val3);
+    return _mk_jstr(_re_replace_global_build(re10, s7, r7, _DM_ASCII, full_unicode));
 }
 
 """Global regexp replace body: one PCRE2 scan per match, pieces joined once

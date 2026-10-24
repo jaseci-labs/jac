@@ -328,6 +328,7 @@ def:pub wasm_module_valid(ptr: int, length: int) -> bool {
     # The module is only inspected, never instantiated: release its copied
     # bytes and compiled bodies instead of leaking them on every validate.
     free_module_buffers(m);
+    _set_err("", WASM_ERRCLASS_NONE);
     return True;
 }
 
