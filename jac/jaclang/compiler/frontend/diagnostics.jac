@@ -20,66 +20,13 @@ obj DiagnosticInfo {
         url_slug: str | None = None,
         blocks_codegen: bool = False;
 
-    def format_message(**kwargs: object) -> str {
-        filled = _fill_template(self.message_template, kwargs);
-        if filled is None {
-            return f"{self.message_template} (missing key)";
-        }
-        return filled;
-    }
-
-    def format_help(**kwargs: object) -> (str | None) {
-        if self.help_text is None {
-            return None;
-        }
-        filled = _fill_template(self.help_text, kwargs);
-        if filled is None {
-            return self.help_text;
-        }
-        return filled;
-    }
+    def format_message(**kwargs: object) -> str;
+    def format_help(**kwargs: object) -> (str | None);
 }
 
-def _placeholder_name(text: str) -> bool {
-    if not text {
-        return False;
-    }
-    for ch in text {
-        if not (ch.isalnum() or ch == "_") {
-            return False;
-        }
-    }
-    return True;
-}
+def _placeholder_name(text: str) -> bool;
 
-def _fill_template(template: str, kwargs: dict[str, object]) -> (str | None) {
-    out: list[str] = [];
-    i = 0;
-    n = len(template);
-    while i < n {
-        ch = template[i];
-        if (ch == "{" or ch == "}") and i + 1 < n and template[i + 1] == ch {
-            out.append(ch);
-            i += 2;
-            continue;
-        }
-        if ch == "{" {
-            close = template.find("}", i + 1);
-            if close > i and _placeholder_name(template[i + 1:close]) {
-                key = template[i + 1:close];
-                if key not in kwargs {
-                    return None;
-                }
-                out.append(str(kwargs[key]));
-                i = close + 1;
-                continue;
-            }
-        }
-        out.append(ch);
-        i += 1;
-    }
-    return "".join(out);
-}
+def _fill_template(template: str, kwargs: dict[str, object]) -> (str | None);
 
 glob DIAGNOSTICS: dict[str, DiagnosticInfo] = {};
 
@@ -90,32 +37,7 @@ def _reg(
     template: str,
     help_text: str | None = None,
     blocks_codegen: bool = False
-) -> DiagnosticInfo {
-    sitting = DIAGNOSTICS.get(code);
-    if sitting is not None {
-        raise ValueError(
-            f"diagnostic code {code} is claimed twice. It is already "
-            f"registered as {sitting.severity.value}/{sitting.category.value} "
-            f"'{sitting.message_template}' and is registered again as "
-            f"{severity.value}/{category.value} '{template}'. A code names "
-            "exactly one diagnostic: the second registration would shadow "
-            "the first everywhere it is referenced, and the native link "
-            "refuses this module on the duplicate symbol. Give the later "
-            "claimant a code of its own and move its pins."
-        );
-    }
-    info = DiagnosticInfo(
-        code=code,
-        severity=severity,
-        category=category,
-        message_template=template,
-        help_text=help_text,
-        url_slug=code.lower(),
-        blocks_codegen=blocks_codegen
-    );
-    DIAGNOSTICS[code] = info;
-    return info;
-}
+) -> DiagnosticInfo;
 
 def _err(
     code: str,
@@ -123,15 +45,11 @@ def _err(
     tmpl: str,
     help: str | None = None,
     blocks_codegen: bool = False
-) -> DiagnosticInfo {
-    return _reg(code, Severity.ERROR, cat, tmpl, help, blocks_codegen);
-}
+) -> DiagnosticInfo;
 
 def _warn(
     code: str, cat: Category, tmpl: str, help: str | None = None
-) -> DiagnosticInfo {
-    return _reg(code, Severity.WARNING, cat, tmpl, help);
-}
+) -> DiagnosticInfo;
 
 glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"),
      E0002 = _err("E0002", Category.SYNTAX, "Missing '{token}'"),
@@ -407,7 +325,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0094 = _err(
          "E0094",
          Category.SYNTAX,
-         "Expected a wire ('provider --> consumer') or an edge rule here",
+         "Expected a wire ('provider ++> consumer') or an edge rule here",
          help="A `graph import` block holds wires and `edge Name:` rules only."
      ),
      E0095 = _err(
@@ -872,22 +790,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " the edge's endpoints as `any --> any` if it is meant to start from any"
          " node."
      ),
-     W2083 = _warn(
-         "W2083",
-         Category.SEMANTIC,
-         "Edge rule '{name}': {what} matches no module",
-         help="A pattern that matches nothing constrains nothing. Check the"
-         " spelling, or remove the rule if the modules it governed are gone."
-     ),
-     W2084 = _warn(
-         "W2084",
-         Category.SEMANTIC,
-         "'{name}' is not a module under this archwire.jac, so {what} is inert",
-         help="Wiring only reaches modules that exist below the archwire.jac, so a"
-         " name that matches none generates nothing and checks nothing. Fix the"
-         " spelling, or remove the wiring if the modules are gone; a distribution"
-         " that leaves them out on purpose can ignore this."
-     ),
      E1119 = _err(
          "E1119",
          Category.TYPE,
@@ -1119,12 +1021,22 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1144 = _err(
          "E1144",
          Category.IMPORT,
-         "Import of '{module}' is not declared by archwire.jac for '{consumer}'",
-         help="'{consumer}' sits under an archwire.jac, so every import it makes of a"
-         " module below that archwire.jac must be a wire. Add `{wire}` to archwire.jac,"
-         " or run `jac arch sync` to add every missing wire. An inline"
-         " suppression does not silence this; changing the boundary is a change"
-         " to archwire.jac."
+         "Import of '{module}' is written in '{consumer}'; under archwire.jac it is a wire",
+         help="'{consumer}' sits under an archwire.jac, which is the only place its"
+         " imports of the modules below it are declared: every one is generated"
+         " from a wire. {fix} An inline suppression does not silence this;"
+         " changing the boundary is a change to archwire.jac."
+     ),
+     E1146 = _err(
+         "E1146",
+         Category.IMPORT,
+         "'{name}' is wired into '{consumer}', which never uses it",
+         help="archwire.jac is the import mechanism for '{consumer}', so the wire at"
+         " line {line} is the import itself and a name the module never uses is a"
+         " false fact there. Remove '{name}' from that wire, and from the written"
+         " import if the module keeps one. A name that is part of the module's"
+         " public surface belongs in its `__all__`; names are not re-exported"
+         " otherwise, so other modules import them from where they are defined."
      ),
      E1145 = _err(
          "E1145",
@@ -1694,6 +1606,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'.",
          help="An `impl` must use the same parameter names as its declaration: callers bind keyword arguments by the declared names, and the server, bridge stubs and tool schemas are generated from the declaration."
      ),
+     E2030 = _err(
+         "E2030",
+         Category.SEMANTIC,
+         "Type parameter mismatch: declaration has [{decl_params}] but implementation has [{impl_params}].",
+         help="An `impl` that restates type parameters must restate the declaration's, in order: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Leave the brackets off to inherit them."
+     ),
      W2014 = _warn(
          "W2014",
          Category.SEMANTIC,
@@ -1916,6 +1834,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " type's default value. Write the implementation, mark the declaration"
          " `abst` if a subclass is meant to supply it, or delete the declaration."
      ),
+     E1147 = _err(
+         "E1147",
+         Category.IMPORT,
+         "'{name}' is declared into '{consumer}' by a '-->' wire, but '{consumer}' does"
+         " not write that import where it runs",
+         help="A '-->' wire declares an import its consumer writes in place because it"
+         " must run there: inside an if, try, loop or with block, or after other"
+         " statements. archwire.jac line {line} declares one '{consumer}' does not"
+         " write that way: inject it with '++>' if the module needs it, or remove the"
+         " wire."
+     ),
      E2088 = _err(
          "E2088",
          Category.SEMANTIC,
@@ -1930,8 +1859,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2089",
          Category.SEMANTIC,
          "archwire.jac declares wiring only; this {kind} does not belong here",
-         help="archwire.jac holds `graph import { ... }` blocks and nothing else."
-         " Move this statement into a module."
+         help="archwire.jac holds `graph import { ... }` blocks and nothing else, so"
+         " every line in it is a fact that generates an import or a rule that"
+         " checks one. Move statements into a module, and drop comments and"
+         " docstrings: `jac fmt` keeps the file in one canonical layout."
      ),
      E2090 = _err(
          "E2090",
@@ -1969,13 +1900,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2094 = _err(
          "E2094",
          Category.SEMANTIC,
-         "Import of '{module}' inside '{scope}' is not declared by archwire.jac for"
-         " '{consumer}'",
+         "Import of '{module}' inside '{scope}' is written in '{consumer}'; under"
+         " archwire.jac it is a scoped wire",
          help="A module under an archwire.jac takes its imports of the modules below"
-         " it from wires. A wire whose consumer"
-         " continues past the module into a class, function or method"
-         " (`pkg.mod.Class.method`) lands its import in that body, so the import"
-         " stays lazy. {fix} An inline suppression does not silence this."
+         " it from wires. A wire whose consumer continues past the module into a"
+         " class, function or method (`pkg.mod.Class.method`) lands its import in"
+         " that body, so the import stays lazy. {fix} An inline suppression does"
+         " not silence this."
      ),
      E2095 = _err(
          "E2095",
@@ -1993,6 +1924,39 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="A package lists the modules other code may import under [project]"
          " exports in its jac.toml ({exports}). Import one of those modules, or"
          " ask the package to export this one."
+     ),
+     E2097 = _err(
+         "E2097",
+         Category.SEMANTIC,
+         "'{name}' is not a module under this archwire.jac, so {what} names nothing",
+         help="archwire.jac is the import mechanism for the modules below it, so"
+         " wiring that matches no module is a false fact. Fix the spelling, or"
+         " remove the wiring if the module is gone. A subtree that ships"
+         " separately keeps its wiring in its own archwire.jac."
+     ),
+     E2098 = _err(
+         "E2098",
+         Category.SEMANTIC,
+         "Edge rule '{name}': {what} matches no module",
+         help="A pattern that matches nothing constrains nothing. Fix the spelling,"
+         " or remove the pattern (or the rule) if the modules it governed are gone."
+     ),
+     E2099 = _err(
+         "E2099",
+         Category.SEMANTIC,
+         "'{provider} --> {consumer}' crosses from top-level package '{source}' into"
+         " '{target}', and no rule admits it; add `{rule}`",
+         help="Under archwire.jac every import between top-level packages is"
+         " admitted by an edge rule, so each dependency between packages is a"
+         " stated decision. Add the rule to the root block (or a target to a rule"
+         " naming '{source}'); `jac arch sync` adds it to the rule it proposes."
+     ),
+     E2100 = _err(
+         "E2100",
+         Category.SEMANTIC,
+         "Edge rule '{name}': the bare '*' {side} states no architecture",
+         help="A rule admits a flow between named parts of the project. Name the"
+         " package the rule governs, as in `core.*`, instead of every module."
      ),
      W3001 = _warn(
          "W3001",
@@ -2138,24 +2102,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W3050",
          Category.LINT,
          "Comment can be removed [strip-comments]",
-         help="Opt-in 'deslop' rule. Enable by adding \"strip-comments\" to "
-         "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
-         "all comments; it never fires under select = [\"all\"] or [\"default\"]."
+         help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
+         "when \"strip-comments\" is named in [check.lint] select. "
+         "`jac fmt --lintfix` then removes all comments."
      ),
      W3051 = _warn(
          "W3051",
          Category.LINT,
          "Docstring can be removed [strip-docstrings]",
-         help="Opt-in 'deslop' rule. Enable by adding \"strip-docstrings\" to "
-         "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
-         "all docstrings; it never fires under select = [\"all\"] or [\"default\"]."
-     ),
-     W3052 = _warn(
-         "W3052",
-         Category.LINT,
-         "This wire is already declared by an earlier wire [remove-duplicate-wire]",
-         help="Two wires give '{consumer}' the same binding from '{provider}'."
-         " `jac fmt --lintfix` removes the later one."
+         help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
+         "when \"strip-docstrings\" is named in [check.lint] select. "
+         "`jac fmt --lintfix` then removes all docstrings."
      ),
      W3053 = _warn(
          "W3053",
@@ -2165,6 +2122,24 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="archwire.jac wires this binding into the module, so the written import"
          " is redundant. `jac fmt --lintfix` removes it; `jac arch sync` does"
          " the same for every covered module."
+     ),
+     W3054 = _warn(
+         "W3054",
+         Category.LINT,
+         "Import of '{name}' from '{module}' is neither wired nor read"
+         " [remove-dead-import]",
+         help="Under archwire.jac a written import of a module below it is a wire;"
+         " this one has no wire and nothing reads it, so it is dead."
+         " `jac fmt --lintfix` removes it, and so does `jac arch sync --prune`."
+     ),
+     W3055 = _warn(
+         "W3055",
+         Category.LINT,
+         "Body of '{name}' belongs in a separate impl [separate-impls]",
+         help="On under select = [\"all\"] (not [\"default\"]) or when "
+         "\"separate-impls\" is named in [check.lint] select. "
+         "`jac fmt --lintfix` leaves the declaration in place and moves its body"
+         " into an `impl` at the bottom of the module."
      ),
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -2197,8 +2172,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "property-to-native": "W3043",
          "strip-comments": "W3050",
          "strip-docstrings": "W3051",
-         "remove-duplicate-wire": "W3052",
-         "remove-wired-import": "W3053"
+         "remove-wired-import": "W3053",
+         "remove-dead-import": "W3054",
+         "separate-impls": "W3055"
      },
      E5001 = _err(
          "E5001",

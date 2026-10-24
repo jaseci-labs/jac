@@ -94,20 +94,20 @@ glob __all__ = [
          'interpolate_env_vars': 'jaclang.project.config',
          'is_in_project': 'jaclang.project.config',
          'set_config': 'jaclang.project.config',
-         'KIND_SPECS': 'jaclang.project.kinds',
-         'KindSpec': 'jaclang.project.kinds',
+         'KIND_SPECS': 'jaclang.project.app_kinds',
+         'KindSpec': 'jaclang.project.app_kinds',
          'RunPlan': 'jaclang.project.kinds',
-         'VALID_KINDS': 'jaclang.project.kinds',
-         'is_valid_kind': 'jaclang.project.kinds',
-         'kind_entry': 'jaclang.project.kinds',
-         'kind_spec': 'jaclang.project.kinds',
+         'VALID_KINDS': 'jaclang.project.app_kinds',
+         'is_valid_kind': 'jaclang.project.app_kinds',
+         'kind_entry': 'jaclang.project.app_kinds',
+         'kind_spec': 'jaclang.project.app_kinds',
          'plan_app_run': 'jaclang.project.kinds',
          'plan_workspace': 'jaclang.project.kinds',
          'resolve_entry': 'jaclang.project.kinds',
          'resolve_app_kind': 'jaclang.project.kinds',
-         'kind_ui': 'jaclang.project.kinds',
-         'kind_has_client': 'jaclang.project.kinds',
-         'kind_is_mobui': 'jaclang.project.kinds',
+         'kind_ui': 'jaclang.project.app_kinds',
+         'kind_has_client': 'jaclang.project.app_kinds',
+         'kind_is_mobui': 'jaclang.project.app_kinds',
          'AppConfig': 'jaclang.project.apps',
          'implicit_app': 'jaclang.project.apps',
          'parse_apps': 'jaclang.project.apps',
@@ -151,13 +151,4 @@ glob __all__ = [
          'scaffold_app': 'jaclang.project.template_loader'
      };
 
-def __getattr__(name: str) -> object {
-    mod_path = _LAZY_EXPORTS.get(name);
-    if mod_path is None {
-        raise AttributeError(f"module 'jaclang.project' has no attribute {name!r}");
-    }
-    import importlib;
-    value = getattr(importlib.import_module(mod_path), name);
-    globals()[name] = value;
-    return value;
-}
+def __getattr__(name: str) -> object;

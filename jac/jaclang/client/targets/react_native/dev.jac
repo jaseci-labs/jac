@@ -8,7 +8,30 @@ glob JAC_RN_METRO_PORT_ENV: str = "JAC_RN_METRO_PORT",
      JAC_RN_DEV_HOST_ENV: str = "JAC_RN_DEV_HOST",
      DEFAULT_METRO_PORT: int = 8081;
 
-def resolve_metro_port(cli_port: int = DEFAULT_METRO_PORT) -> int {
+def resolve_metro_port(cli_port: int = DEFAULT_METRO_PORT) -> int;
+
+def setup_android_port_reverse(metro_port: int, api_port: int);
+
+def inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str];
+
+def restore_app_json(rn_dir: Path, original: Optional[str]) -> None;
+
+def rn_hmr_on_jac_changed(
+    event: FileChangeEvent,
+    compiler: any,
+    entry_file: Path,
+    project_dir: Path,
+    rn_dir: Path,
+    entry_module: str
+) -> None;
+
+def build_expo_start_argv(
+    rn_dir: Path, metro_port: int, clear_cache: bool = True
+) -> list[str];
+
+def run_expo_start(rn_dir: Path, metro_port: int, clear_cache: bool = True) -> int;
+
+impl resolve_metro_port(cli_port: int = DEFAULT_METRO_PORT) -> int {
     raw = os.environ.get(JAC_RN_METRO_PORT_ENV, "");
     if raw and str(raw).strip() {
         try {
@@ -20,7 +43,7 @@ def resolve_metro_port(cli_port: int = DEFAULT_METRO_PORT) -> int {
     return cli_port;
 }
 
-def setup_android_port_reverse(metro_port: int, api_port: int) {
+impl setup_android_port_reverse(metro_port: int, api_port: int) {
     ports = [metro_port];
     if api_port != metro_port {
         ports.append(api_port);
@@ -28,7 +51,7 @@ def setup_android_port_reverse(metro_port: int, api_port: int) {
     setup_android_port_reverse_common(ports);
 }
 
-def inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str] {
+impl inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str] {
     config_path = rn_dir / "app.json";
     if not config_path.exists() {
         console.warning(
@@ -58,7 +81,7 @@ def inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str] {
     return original;
 }
 
-def restore_app_json(rn_dir: Path, original: Optional[str]) -> None {
+impl restore_app_json(rn_dir: Path, original: Optional[str]) -> None {
     if original is None {
         return;
     }
@@ -71,7 +94,7 @@ def restore_app_json(rn_dir: Path, original: Optional[str]) -> None {
     }
 }
 
-def rn_hmr_on_jac_changed(
+impl rn_hmr_on_jac_changed(
     event: FileChangeEvent,
     compiler: any,
     entry_file: Path,
@@ -126,7 +149,7 @@ def rn_hmr_on_jac_changed(
     }
 }
 
-def build_expo_start_argv(
+impl build_expo_start_argv(
     rn_dir: Path, metro_port: int, clear_cache: bool = True
 ) -> list[str] {
     argv: list[str] = resolve_node_tool(rn_dir, "expo")
@@ -137,7 +160,7 @@ def build_expo_start_argv(
     return argv;
 }
 
-def run_expo_start(rn_dir: Path, metro_port: int, clear_cache: bool = True) -> int {
+impl run_expo_start(rn_dir: Path, metro_port: int, clear_cache: bool = True) -> int {
     argv = build_expo_start_argv(rn_dir, metro_port, clear_cache=clear_cache);
     console.print(f"  Running: {' '.join(argv)}", style="muted");
     console.print("  (Press Ctrl+C to stop)\n", style="muted");

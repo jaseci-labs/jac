@@ -1,160 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from .tokens {
-    LexToken,
-    TokenKind,
-    SourceLoc,
-    SrcDiag,
-    CommentData,
-    is_builtin_type_kind,
-    is_reserved_kind,
-    is_special_var_kind
-}
-import from .lexer { tokenize_full }
-
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    AstDocNode,
-    ArchHas,
-    Archetype,
-    AssignCompr,
-    Assignment,
-    AtomTrailer,
-    AtomUnit,
-    AwaitExpr,
-    AwaitingClause,
-    BinaryExpr,
-    Bool,
-    BoolExpr,
-    BuiltinType,
-    CastExpr,
-    CfgExpr,
-    CodeBlockStmt,
-    CompareExpr,
-    ConcurrentExpr,
-    ConnectOp,
-    ContextAwareNode,
-    CtrlStmt,
-    DeleteStmt,
-    DictCompr,
-    DictVal,
-    DisconnectOp,
-    DisengageStmt,
-    EdgeOpRef,
-    EdgeRefTrailer,
-    ElseIf,
-    ElseStmt,
-    ElementStmt,
-    EmptyToken,
-    Enum,
-    EventSignature,
-    Except,
-    Expr,
-    ExprAsItem,
-    ExprStmt,
-    FString,
-    FilterCompr,
-    FinallyStmt,
-    Float,
-    ForeverStmt,
-    FormattedValue,
-    FuncCall,
-    FuncSignature,
-    GenCompr,
-    GlobalVars,
-    GraphExpr,
-    HasVar,
-    IfElseExpr,
-    IfStmt,
-    ImplDef,
-    GraphImport,
-    Import,
-    ImportRule,
-    ImportWire,
-    InForStmt,
-    IndexSlice,
-    InnerCompr,
-    Int,
-    IterForStmt,
-    JsxAttribute,
-    JsxChild,
-    JsxComment,
-    JsxElement,
-    JsxElementName,
-    JsxExpression,
-    JsxNormalAttribute,
-    JsxSlot,
-    JsxSpreadAttribute,
-    JsxText,
-    KVPair,
-    KWPair,
-    LambdaExpr,
-    ListCompr,
-    ListVal,
-    MatchArch,
-    MatchAs,
-    MatchCase,
-    MatchKVPair,
-    MatchMapping,
-    MatchOr,
-    MatchPattern,
-    MatchSequence,
-    MatchSingleton,
-    MatchStar,
-    MatchStmt,
-    MatchValue,
-    MatchWild,
-    Module,
-    ModuleCode,
-    ModuleItem,
-    ModulePath,
-    ModulePattern,
-    MultiString,
-    Name,
-    NameAtom,
-    Null,
-    OpenStmt,
-    ParamVar,
-    PyInlineCode,
-    RaiseStmt,
-    ReportStmt,
-    ReturnStmt,
-    SemDef,
-    Semi,
-    SetCompr,
-    SetVal,
-    Slice,
-    Source,
-    SpecialVarRef,
-    String,
-    SubTag,
-    SwitchCase,
-    SwitchStmt,
-    Test,
-    Token,
-    TryStmt,
-    TupleVal,
-    TypeAlias,
-    TypeParam,
-    TypedCtxBlock,
-    UnaryExpr,
-    UniNode,
-    VisitStmt,
-    WireItem,
-    WhileStmt,
-    WithStmt,
-    YieldExpr,
-    AssertStmt
-}
-import from jaclang.compiler.frontend.unitree { Ellipsis as EllipsisLit }
-
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant {
-    Tokens as Tok,
-    CodeContext,
-    OwnershipKind,
-    ParamKind
-}
-
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,
          TokenKind.HEX: Tok.HEX.value,
@@ -342,47 +185,9 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.EOF: "EOF"
      };
 
-def _string_lit_text(raw: str) -> str {
-    v = raw;
-    while v and v[0] in "rbfRBF" {
-        v = v[1:];
-    }
-    if len(v) >= 6 and v.startswith('"""') and v.endswith('"""') {
-        return v[3:-3];
-    }
-    if len(v) >= 6 and v.startswith("'''") and v.endswith("'''") {
-        return v[3:-3];
-    }
-    if len(v) >= 2 and (v[0] == "'" or v[0] == '"') and v[-1] == v[0] {
-        return v[1:-1];
-    }
-    return v;
-}
+def _string_lit_text(raw: str) -> str;
 
-def _test_ident_from_desc(desc_text: str) -> str {
-    ident_chars: list[str] = [];
-    prev_sep = False;
-    for ch in desc_text {
-        is_word = ("a" <= ch and ch <= "z")
-            or ("A" <= ch and ch <= "Z")
-            or ("0" <= ch and ch <= "9");
-        if is_word {
-            ident_chars.append(ch);
-            prev_sep = False;
-        } elif not prev_sep {
-            ident_chars.append("_");
-            prev_sep = True;
-        }
-    }
-    ident: str = str("".join(ident_chars));
-    if ident.startswith("_") {
-        ident = ident[1:];
-    }
-    if ident.endswith("_") {
-        ident = ident[:-1];
-    }
-    return ident.lower();
-}
+def _test_ident_from_desc(desc_text: str) -> str;
 
 obj Parser {
     has tokens: list[LexToken],
@@ -608,10 +413,12 @@ obj Parser {
     def parse_import_wire -> ImportWire | None;
     def parse_module_pattern -> ModulePattern;
     def parse_wire_module_path(context: str) -> ModulePath;
+    def parse_wire_target(is_absorb: bool, provider: ModulePath) -> WireTarget | None;
     def parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireItem];
     def _expect_wire_arrow(kid: list[UniNode]) -> bool;
+    def _expect_rule_arrow(kid: list[UniNode]) -> None;
     def _wire_path_ahead -> bool;
-    def _skip_wiring_stmt -> None;
+    def _skip_wiring_stmt(open_lists: int = 0) -> None;
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
     def parse_type_params -> tuple[(list[TypeParam], list[Token])];
@@ -619,34 +426,9 @@ obj Parser {
 
 def parse_program(
     source: str, file_path: str
-) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)] {
-    (tokens, comments, lex_diags, lex_error_count) = tokenize_full(source, file_path);
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
-    mod = parser.parse();
-    return (
-        mod,
-        parser.error_count,
-        parser.diags,
-        comments,
-        lex_diags,
-        lex_error_count
-    );
-}
+) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)];
 
 
 def parse_expression(
     source: str, file_path: str = "<input>"
-) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]] {
-    (tokens, _comments, lex_diags, lex_errors) = tokenize_full(source, file_path);
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
-    expression = parser.parse_expression();
-    if not parser.at_end() {
-        parser.error("Unexpected token after expression");
-    }
-    return (
-        expression,
-        lex_errors > 0 or parser.error_count > 0,
-        parser.diags,
-        lex_diags
-    );
-}
+) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]];

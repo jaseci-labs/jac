@@ -6,35 +6,6 @@ under their C names, statically allocated and immortal exactly as
 `Py_False` in C are the addresses of these objects. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    _Py_SetImmortal,
-    _PyArg_CheckPositional,
-    _PyArg_NoKeywords,
-    _PyArg_NoKwnames,
-    PyArg_UnpackTuple,
-    PyErr_WarnEx,
-    PyObject,
-    PyObject_IsTrue,
-    PyUnicode_InternFromString,
-    PyVectorcall_NARGS
-}
-import from jaclang.runtime.python.layouts {
-    PyLongObject,
-    PyLong_DIGITS_OFFSET,
-    PyLong_DIGIT_SIZE,
-    PyNumberMethods,
-    PyTypeObject,
-    PyVarObject,
-    Py_TPFLAGS_DEFAULT,
-    _PyLongValue,
-    _PyLong_FALSE_TAG,
-    _PyLong_TRUE_TAG,
-    _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
-    _object
-}
-import from jaclang.runtime.python.object_model.header { object_is_type }
-
 import from c {
     glob PyType_Type: PyTypeObject,
          PyLong_Type: PyTypeObject,

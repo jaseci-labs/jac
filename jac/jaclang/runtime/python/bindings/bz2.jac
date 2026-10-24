@@ -1,43 +1,5 @@
 """The _bz2 module: BZ2Compressor and BZ2Decompressor over the generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    jacpy_binding_record
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.bz2 {
-    BZ2Compressor_methods,
-    BZ2Decompressor_methods,
-    BZ2Compressor_doc,
-    BZ2Decompressor_doc,
-    BZ2Decompressor_eof__doc__,
-    BZ2Decompressor_needs_input_doc,
-    BZ2Decompressor_unused_data__doc__,
-    _bz2_BZ2Compressor_new,
-    _bz2_BZ2Decompressor_new
-}
-import from jaclang.runtime.python.modules.bz2 {
-    BZ2Compressor_token,
-    BZ2Decompressor_token
-}
-import from jaclang.runtime.python.bindings.members {
-    MemberField,
-    MemberType,
-    record_clear
-}
-
 def:priv compressor_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, BZ2Compressor_token.handle);
 }

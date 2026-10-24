@@ -1,17 +1,5 @@
 """The _codecs_iso2022 module: getcodec() and the module's map capsules."""
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.bindings.module {
-    MethodCallbacks,
-    MethodDefinition,
-    ModuleDefinition,
-    ModuleHooks
-}
-import from jaclang.runtime.python.modules.codecs_iso2022 {
-    codecs_iso2022_exec,
-    codecs_iso2022_getcodec
-}
-
 def:priv execute(module: ptr[PyObject]) -> i32 {
     return codecs_iso2022_exec(module);
 }

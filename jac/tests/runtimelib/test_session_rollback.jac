@@ -69,6 +69,10 @@ node RShelved {
     has shelf: RShelf = RShelf.FULL;
 }
 
+node RVary {
+    has v: (str | list[int]) = "x";
+}
+
 edge RLink: any --> any {
     has w: int = 0;
 }
@@ -796,6 +800,39 @@ test "loading anchors hashes only those whose fields can change in place" {
 }
 
 
+test "frozen_value accepts exactly the immutable value kinds" {
+    import from decimal { Decimal }
+    import from datetime { date, datetime, time, timedelta }
+    import from jaclang.data.serializer { frozen_value }
+    import from jaclang.data.store { TxnIsolation }
+    frozen = [
+        None,
+        True,
+        0,
+        1.5,
+        complex(0, 2),
+        "s",
+        bytes([98]),
+        Decimal("1.0"),
+        UUID(int=1),
+        date(2026, 1, 1),
+        datetime(2026, 1, 1),
+        time(1),
+        timedelta(1),
+        TxnIsolation.SERIALIZABLE,
+        (1, "a", (None, 2)),
+        frozenset({1, 2})
+    ];
+    thawed = [[1], {"a": 1}, {1}, object(), (1, [2]), bytearray(3)];
+    for v in frozen {
+        assert frozen_value(v) , f"{v!r} should count as immutable";
+    }
+    for v in thawed {
+        assert not frozen_value(v) , f"{v!r} can change in place";
+    }
+}
+
+
 test "a commit re-hashes only loaded anchors whose fields can change in place" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
@@ -868,6 +905,56 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
             ctx.mem.commit();
             assert _stored(ctx, shelf_id, "shelf") == "[1, 2]" , (
                 "an enum whose value is a list can change in place; it must be scanned"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
+test "a loaded anchor's frozen verdict ends at its next field write" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        ids: list[UUID] = [];
+        try {
+            for _ in range(2) {
+                vary: NodeAnchor = _as_any(RVary()).__jac__;
+                vary.persistent = True;
+                seed.mem.put(vary);
+                ids.append(vary.ensure_id());
+            }
+            seed.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            _ = ctx.user_root;
+            ctx.mem.commit();
+            loaded = ctx.mem.batch_get(ids);
+            assert len(loaded) == 2 , loaded;
+            ctx.mem.commit();
+            tracked = _as_any(loaded[ids[0]].archetype);
+            tracked.v = [1];
+            ctx.mem.commit();
+            tracked.v.append(2);
+            ctx.mem.commit();
+            assert _stored(ctx, ids[0], "v") == "[1, 2]" , (
+                "a field that now holds a list must be scanned for in-place changes"
+            );
+            untracked = loaded[ids[1]];
+            untracked.persistent = False;
+            _as_any(untracked.archetype).v = [3];
+            untracked.persistent = True;
+            ctx.mem.commit();
+            assert _stored(ctx, ids[1], "v") == "[3]" , (
+                "a write made while the anchor was not persistent must still be found"
             );
         } finally {
             JacRuntime.exec_ctx = old;

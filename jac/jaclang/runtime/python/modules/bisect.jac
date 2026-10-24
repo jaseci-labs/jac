@@ -5,29 +5,6 @@ orchestration execute here, without converting the sequence to a Jac list.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_ValueError,
-    PyList_Insert,
-    PyObject,
-    PyObject_CallMethod,
-    PyObject_CallOneArg,
-    PyObject_IsTrue,
-    PySequence_Size,
-    Py_LeaveRecursiveCall,
-    Py_NewRef,
-    Py_None,
-    Py_NotImplemented,
-    jacpy_comparison_slot,
-    jacpy_is_exact_list,
-    jacpy_less,
-    jacpy_recursion_enter,
-    jacpy_release,
-    jacpy_same_type,
-    jacpy_sequence_slot
-}
-import from jaclang.runtime.python.capi { object_error }
-
 # The type slots bisect calls directly: sq_item (ssizeargfunc) and
 # tp_richcompare (richcmpfunc).
 import from c {

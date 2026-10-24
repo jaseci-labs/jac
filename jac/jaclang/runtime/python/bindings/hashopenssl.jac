@@ -2,63 +2,6 @@
 clinic tables, and the module's execution slots in Modules/_hashopenssl.c's
 order."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyLong_FromLong,
-    PyModule_Add,
-    PyModule_AddIntConstant,
-    PyObject,
-    Py_TYPE,
-    jacpy_release
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned,
-    jacpy_binding_module_native_set,
-    jacpy_binding_state_get,
-    jacpy_binding_state_set
-}
-import from jaclang.runtime.python.bindings.type {
-    PropertyCallbacks,
-    PropertyDefinition,
-    TypeDefinition,
-    TypeFlags,
-    TypeHooks
-}
-import from jaclang.runtime.python.bindings.payload { dispose_payload }
-import from jaclang.runtime.python.bindings.clinic.hashopenssl {
-    HASHXOF_methods,
-    HASH_methods,
-    HMAC_methods,
-    module_methods
-}
-import from jaclang.runtime.python.modules.hashlib { HASHLIB_GIL_MINSIZE }
-import from jaclang.runtime.python.modules.hashopenssl {
-    HASH_token,
-    HMAC_token,
-    STATE_CONSTRUCTS,
-    STATE_COUNT,
-    STATE_EVPXOF_TYPE,
-    STATE_EVP_TYPE,
-    STATE_HMAC_TYPE,
-    STATE_UNSUPPORTED_DIGESTMOD_ERROR,
-    add_object,
-    dict_proxy,
-    evp_block_size,
-    evp_digest_size,
-    evp_name,
-    evp_repr,
-    hashlib_exception,
-    hashlib_init_constructors,
-    hashlib_md_meth_names,
-    hashlib_state_new,
-    hmac_get_block_size,
-    hmac_get_digest_size,
-    hmac_get_name,
-    hmac_repr
-}
-
 def:priv evp_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, HASH_token.definition_of(Py_TYPE(instance)));
 }

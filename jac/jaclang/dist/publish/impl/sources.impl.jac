@@ -1,67 +1,13 @@
 import fnmatch;
 import from pathlib { Path }
 
-def _is_excluded(file_path: Path, pkg_root: Path) -> bool {
-    if pkg_root.name.endswith(".egg-info") {
-        return True;
-    }
+def _is_excluded(file_path: Path, pkg_root: Path) -> bool;
 
-    try {
-        rel = file_path.relative_to(pkg_root);
-    } except ValueError {
-        return False;
-    }
-    for part in rel.parts[:-1] {
-        if part in EXCLUDED_DIRS {
-            return True;
-        }
-
-        if part.endswith(".egg-info") {
-            return True;
-        }
-    }
-
-    for suffix in EXCLUDED_SUFFIXES {
-        if file_path.name.endswith(suffix) {
-            return True;
-        }
-    }
-    return False;
-}
-
-def _make_recursive(pattern: str) -> str {
-    if "/" not in pattern and not pattern.startswith("**") {
-        return f"**/{pattern}";
-    }
-    return pattern;
-}
+def _make_recursive(pattern: str) -> str;
 
 def _collect_from_dir(
     pkg_dir: Path, proj_root: Path, patterns: list[str], seen: set[str],
-) -> list[SourceFile] {
-    result: list[SourceFile] = [];
-
-    for pattern in patterns {
-        effective = _make_recursive(pattern);
-        for file_path in sorted(pkg_dir.`glob(effective)) {
-            if not file_path.is_file() {
-                continue;
-            }
-            if _is_excluded(file_path, pkg_dir) {
-                continue;
-            }
-
-            wheel_path = str(file_path.relative_to(proj_root)).replace("\\", "/");
-            if wheel_path in seen {
-                continue;
-            }
-            seen.add(wheel_path);
-            result.append(SourceFile(wheel_path=wheel_path, source_path=file_path));
-        }
-    }
-
-    return result;
-}
+) -> list[SourceFile];
 
 impl read_source_file(sf: SourceFile) -> bytes {
     if sf.content is not None {
@@ -154,6 +100,68 @@ impl collect_source_files(
         if result and init_py not in seen and init_jac not in seen {
             seen.add(init_py);
             result.append(SourceFile(wheel_path=init_py, content=b""));
+        }
+    }
+
+    return result;
+}
+
+impl _is_excluded(file_path: Path, pkg_root: Path) -> bool {
+    if pkg_root.name.endswith(".egg-info") {
+        return True;
+    }
+
+    try {
+        rel = file_path.relative_to(pkg_root);
+    } except ValueError {
+        return False;
+    }
+    for part in rel.parts[:-1] {
+        if part in EXCLUDED_DIRS {
+            return True;
+        }
+
+        if part.endswith(".egg-info") {
+            return True;
+        }
+    }
+
+    for suffix in EXCLUDED_SUFFIXES {
+        if file_path.name.endswith(suffix) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl _make_recursive(pattern: str) -> str {
+    if "/" not in pattern and not pattern.startswith("**") {
+        return f"**/{pattern}";
+    }
+    return pattern;
+}
+
+impl _collect_from_dir(
+    pkg_dir: Path, proj_root: Path, patterns: list[str], seen: set[str],
+) -> list[SourceFile] {
+    result: list[SourceFile] = [];
+
+    for pattern in patterns {
+        effective = _make_recursive(pattern);
+        for file_path in sorted(pkg_dir.`glob(effective)) {
+            if not file_path.is_file() {
+                continue;
+            }
+            if _is_excluded(file_path, pkg_dir) {
+                continue;
+            }
+
+            wheel_path = str(file_path.relative_to(proj_root)).replace("\\", "/");
+            if wheel_path in seen {
+                continue;
+            }
+            seen.add(wheel_path);
+            result.append(SourceFile(wheel_path=wheel_path, source_path=file_path));
         }
     }
 

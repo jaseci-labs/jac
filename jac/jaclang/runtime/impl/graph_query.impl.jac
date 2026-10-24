@@ -281,3 +281,36 @@ impl GraphQuery.repr -> str {
     }
     return f"GraphQuery(|origin|={len(self.origin)} {hops}{tail})";
 }
+
+impl filter_query_nodes(
+    nodes: list[any], nd: (type | tuple[type, ...] | None), preds: list[QPred]
+) -> list[any] {
+    if nd is not None {
+        node_types = nd if isinstance(nd, tuple) else (nd, );
+        for cls in node_types {
+            nodes = [
+                node
+                for node in nodes
+                if isinstance(node, cls)
+            ];
+        }
+    }
+    for pred in preds {
+        matches_pred = pred.matches;
+        field = pred.field;
+        if isinstance(field, str) {
+            nodes = [
+                node
+                for node in nodes
+                if matches_pred(getattr(node, field, None))
+            ];
+        } else {
+            nodes = [
+                node
+                for node in nodes
+                if matches_pred(tuple(getattr(node, name, None) for name in field))
+            ];
+        }
+    }
+    return nodes;
+}

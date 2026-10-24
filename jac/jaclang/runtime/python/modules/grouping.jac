@@ -5,21 +5,6 @@ operands and publish state before releasing Python references.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyIter_Next,
-    PyObject,
-    PyObject_CallOneArg,
-    PyObject_GetIter,
-    PyObject_RichCompareBool,
-    PyTuple_New,
-    Py_NewRef,
-    Py_None,
-    jacpy_release,
-    jacpy_tuple_set_owned
-}
-import from jaclang.runtime.python.capi { required, checked, boundary_failure }
-
 obj group_state {
     has make_group: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
         source: ptr[PyObject] = NULL,

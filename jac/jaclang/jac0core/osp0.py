@@ -17,6 +17,7 @@ connect time) become EdgeAnchors in `edges`.
 
 from __future__ import annotations
 
+import weakref
 from typing import Any, Callable
 
 from jaclang.runtime.archetype import (
@@ -265,6 +266,9 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
                 lst = d.get(edge) if d else None
                 if not lst:
                     return []
+                if isinstance(lst, weakref.ref):
+                    one = lst()
+                    return [one] if one is not None else []
                 out: list = []
                 for ref in lst:
                     arch = ref()

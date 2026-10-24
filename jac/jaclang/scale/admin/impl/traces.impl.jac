@@ -5,153 +5,30 @@ import time;
 glob logger = logging.getLogger(__name__);
 
 
-def _tempo_base_url -> str {
-    return service_base_url("TEMPO_URL", "tempo-service", 3200);
-}
+def _tempo_base_url -> str;
 
 
-def _trace_services -> list[str] {
-    try {
-        import from jaclang.scale.runtime.fleet { fleet_member_names }
-        return ["gateway"] + sorted(fleet_member_names());
-    } except Exception {
-        return [];
-    }
-}
+def _trace_services -> list[str];
 
 
-def _normalize_trace_id(raw: str) -> str {
-    hex_str = (raw or "").replace("-", "").strip().lower();
-    if not hex_str {
-        return "";
-    }
-    try {
-        int(hex_str, 16);
-    } except ValueError {
-        return "";
-    }
-    return hex_str;
-}
+def _normalize_trace_id(raw: str) -> str;
 
 
-def _build_traceql(service: str, status: str, min_duration_ms: int) -> str {
-    clauses: list[str] = [];
-    if service {
-        safe = service.replace("\"", "");
-        clauses.append(f"resource.service.name = \"{safe}\"");
-    }
-    if status == "error" {
-        clauses.append("status = error");
-    }
-    if min_duration_ms > 0 {
-        clauses.append(f"duration > {min_duration_ms}ms");
-    }
-    if not clauses {
-        return "{ }";
-    }
-    return "{ " + " && ".join(clauses) + " }";
-}
+def _build_traceql(service: str, status: str, min_duration_ms: int) -> str;
 
 
 async def _tempo_request(
     path: str, params: dict[str, str], accept_json: bool = False
-) -> dict[str, any] {
-    base = _tempo_base_url();
-    url = base + path;
-    headers: dict[str, str] = {};
-    if accept_json {
-        headers["Accept"] = "application/json";
-    }
-    try {
-        resp = await arequest("GET", url, headers=headers, params=params, timeout=8.0);
-    } except ClientConnectionError as e {
-        raise ConnectionError(f"Tempo unreachable: {e}");
-    }
-    if not resp.ok() {
-        raise ConnectionError(f"Tempo returned {resp.status_code}");
-    }
-    return resp.json();
-}
+) -> dict[str, any];
 
 
-def _otlp_value(value: dict[str, any]) -> any {
-    if "stringValue" in value {
-        return value["stringValue"];
-    }
-    if "intValue" in value {
-        return value["intValue"];
-    }
-    if "boolValue" in value {
-        return value["boolValue"];
-    }
-    if "doubleValue" in value {
-        return value["doubleValue"];
-    }
-    return "";
-}
+def _otlp_value(value: dict[str, any]) -> any;
 
 
-def _otlp_attrs(attrs: list[dict[str, any]]) -> dict[str, any] {
-    out: dict[str, any] = {};
-    for a in (attrs or []) {
-        k = a.get("key", "");
-        if k {
-            out[k] = _otlp_value(a.get("value", {}));
-        }
-    }
-    return out;
-}
+def _otlp_attrs(attrs: list[dict[str, any]]) -> dict[str, any];
 
 
-def _flatten_tempo_trace(payload: dict[str, any]) -> dict[str, any] {
-    spans: list[dict[str, any]] = [];
-    min_start: int = 0;
-    max_end: int = 0;
-    batches: any = payload.get("batches", []) or [];
-    for batch in batches {
-        resource: dict[str, any] = batch.get("resource", {}) or {};
-        res_attrs = _otlp_attrs(resource.get("attributes", []));
-        service = str(res_attrs.get("service.name", "unknown"));
-        scope_spans: any = batch.get("scopeSpans", []) or [];
-        for scope in scope_spans {
-            for span in (scope.get("spans", []) or []) {
-                start_ns = int(span.get("startTimeUnixNano", 0) or 0);
-                end_ns = int(span.get("endTimeUnixNano", 0) or 0);
-                if start_ns and (min_start == 0 or start_ns < min_start) {
-                    min_start = start_ns;
-                }
-                if end_ns > max_end {
-                    max_end = end_ns;
-                }
-                status: any = span.get("status", {}) or {};
-                spans.append(
-                    {
-                        "span_id": span.get("spanId", ""),
-                        "parent_span_id": span.get("parentSpanId", ""),
-                        "name": span.get("name", ""),
-                        "service": service,
-                        "kind": span.get("kind", ""),
-                        "start_ns": start_ns,
-                        "duration_ms": (end_ns - start_ns) / 1_000_000.0
-                            if end_ns >= start_ns
-                            else 0,
-                        "status": str(status.get("code", "")),
-                        "attributes": _otlp_attrs(span.get("attributes", []))
-                    }
-                );
-            }
-        }
-    }
-
-    spans.sort(key=lambda (s) { s.get("start_ns", 0); });
-    total_ms = (max_end - min_start) / 1_000_000.0 if (max_end and min_start) else 0;
-    return {
-        "spans": spans,
-        "count": len(spans),
-        "start_ns": min_start,
-        "total_ms": total_ms
-    };
-}
+def _flatten_tempo_trace(payload: dict[str, any]) -> dict[str, any];
 
 
 impl JacAPIServerTraces.register_traces_endpoints -> None {
@@ -338,4 +215,152 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
     );
 
     logger.info("Trace query endpoints registered: /admin/traces/{,services,{id}}");
+}
+
+impl _tempo_base_url -> str {
+    return service_base_url("TEMPO_URL", "tempo-service", 3200);
+}
+
+
+impl _trace_services -> list[str] {
+    try {
+        import from jaclang.scale.runtime.fleet { fleet_member_names }
+        return ["gateway"] + sorted(fleet_member_names());
+    } except Exception {
+        return [];
+    }
+}
+
+
+impl _normalize_trace_id(raw: str) -> str {
+    hex_str = (raw or "").replace("-", "").strip().lower();
+    if not hex_str {
+        return "";
+    }
+    try {
+        int(hex_str, 16);
+    } except ValueError {
+        return "";
+    }
+    return hex_str;
+}
+
+
+impl _build_traceql(service: str, status: str, min_duration_ms: int) -> str {
+    clauses: list[str] = [];
+    if service {
+        safe = service.replace("\"", "");
+        clauses.append(f"resource.service.name = \"{safe}\"");
+    }
+    if status == "error" {
+        clauses.append("status = error");
+    }
+    if min_duration_ms > 0 {
+        clauses.append(f"duration > {min_duration_ms}ms");
+    }
+    if not clauses {
+        return "{ }";
+    }
+    return "{ " + " && ".join(clauses) + " }";
+}
+
+
+impl _tempo_request(
+    path: str, params: dict[str, str], accept_json: bool = False
+) -> dict[str, any] {
+    base = _tempo_base_url();
+    url = base + path;
+    headers: dict[str, str] = {};
+    if accept_json {
+        headers["Accept"] = "application/json";
+    }
+    try {
+        resp = await arequest("GET", url, headers=headers, params=params, timeout=8.0);
+    } except ClientConnectionError as e {
+        raise ConnectionError(f"Tempo unreachable: {e}");
+    }
+    if not resp.ok() {
+        raise ConnectionError(f"Tempo returned {resp.status_code}");
+    }
+    return resp.json();
+}
+
+
+impl _otlp_value(value: dict[str, any]) -> any {
+    if "stringValue" in value {
+        return value["stringValue"];
+    }
+    if "intValue" in value {
+        return value["intValue"];
+    }
+    if "boolValue" in value {
+        return value["boolValue"];
+    }
+    if "doubleValue" in value {
+        return value["doubleValue"];
+    }
+    return "";
+}
+
+
+impl _otlp_attrs(attrs: list[dict[str, any]]) -> dict[str, any] {
+    out: dict[str, any] = {};
+    for a in (attrs or []) {
+        k = a.get("key", "");
+        if k {
+            out[k] = _otlp_value(a.get("value", {}));
+        }
+    }
+    return out;
+}
+
+
+impl _flatten_tempo_trace(payload: dict[str, any]) -> dict[str, any] {
+    spans: list[dict[str, any]] = [];
+    min_start: int = 0;
+    max_end: int = 0;
+    batches: any = payload.get("batches", []) or [];
+    for batch in batches {
+        resource: dict[str, any] = batch.get("resource", {}) or {};
+        res_attrs = _otlp_attrs(resource.get("attributes", []));
+        service = str(res_attrs.get("service.name", "unknown"));
+        scope_spans: any = batch.get("scopeSpans", []) or [];
+        for scope in scope_spans {
+            for span in (scope.get("spans", []) or []) {
+                start_ns = int(span.get("startTimeUnixNano", 0) or 0);
+                end_ns = int(span.get("endTimeUnixNano", 0) or 0);
+                if start_ns and (min_start == 0 or start_ns < min_start) {
+                    min_start = start_ns;
+                }
+                if end_ns > max_end {
+                    max_end = end_ns;
+                }
+                status: any = span.get("status", {}) or {};
+                spans.append(
+                    {
+                        "span_id": span.get("spanId", ""),
+                        "parent_span_id": span.get("parentSpanId", ""),
+                        "name": span.get("name", ""),
+                        "service": service,
+                        "kind": span.get("kind", ""),
+                        "start_ns": start_ns,
+                        "duration_ms": (end_ns - start_ns) / 1_000_000.0
+                            if end_ns >= start_ns
+                            else 0,
+                        "status": str(status.get("code", "")),
+                        "attributes": _otlp_attrs(span.get("attributes", []))
+                    }
+                );
+            }
+        }
+    }
+
+    spans.sort(key=lambda (s) { s.get("start_ns", 0); });
+    total_ms = (max_end - min_start) / 1_000_000.0 if (max_end and min_start) else 0;
+    return {
+        "spans": spans,
+        "count": len(spans),
+        "start_ns": min_start,
+        "total_ms": total_ms
+    };
 }

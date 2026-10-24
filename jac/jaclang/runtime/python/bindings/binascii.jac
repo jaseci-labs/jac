@@ -1,17 +1,5 @@
 """The binascii module: its clinic-generated functions and exception types."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyExc_ValueError, PyObject }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned,
-    jacpy_binding_exception
-}
-import from jaclang.runtime.python.bindings.clinic.binascii {
-    doc_binascii,
-    module_methods
-}
-
 # binascii_exec(): Error (a ValueError) and Incomplete, in state slots 0 and 1.
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_state_owned(

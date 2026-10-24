@@ -5,24 +5,6 @@ see ../LICENSE.cpython. A codec writes into the current block through a cursor
 and a free count; finish() joins the used bytes, reusing a lone full block.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyBytes_AsString,
-    PyBytes_Size,
-    PyExc_MemoryError,
-    PyExc_SystemError,
-    PyList_Append,
-    PyList_GetItem,
-    PyList_New,
-    PyList_Size,
-    PyObject,
-    Py_NewRef,
-    jacpy_buffer_new,
-    jacpy_memory_copy,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error }
-
 glob:priv KB: i64 = 1024,
      MB: i64 = 1024 * 1024,
      BLOCK_SIZES: list[i64] = [

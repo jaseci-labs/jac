@@ -38,7 +38,23 @@ import from "libc.so.6" {
     ) -> int;  def abort -> None;
 }
 
-def _subprocess_bootstrap {
+def _subprocess_bootstrap;
+
+glob g_app: cef_app_t = cef_app_t(
+         size=80,
+         add_ref=cef_stub_add_ref,
+         release=cef_stub_release,
+         has_one_ref=cef_stub_has_one_ref,
+         has_at_least_one_ref=cef_stub_has_at_least_one_ref,
+     );
+
+def _subprocess_main;
+
+with entry {
+    _subprocess_main();
+}
+
+impl _subprocess_bootstrap {
     setenv("NO_AT_BRIDGE", "1", 0);
     buf: int = calloc(1, 4096);
     n: int = readlink("/proc/self/exe", buf, 4095);
@@ -63,15 +79,7 @@ def _subprocess_bootstrap {
     free(buf);
 }
 
-glob g_app: cef_app_t = cef_app_t(
-         size=80,
-         add_ref=cef_stub_add_ref,
-         release=cef_stub_release,
-         has_one_ref=cef_stub_has_one_ref,
-         has_at_least_one_ref=cef_stub_has_at_least_one_ref,
-     );
-
-def _subprocess_main {
+impl _subprocess_main {
     _assert_cef_abi();
     _subprocess_bootstrap();
     args: int = cef_main_args_create();
@@ -79,8 +87,4 @@ def _subprocess_main {
     if code >= 0 {
         sys.`exit(code);
     }
-}
-
-with entry {
-    _subprocess_main();
 }

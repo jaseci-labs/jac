@@ -52,7 +52,7 @@ impl NaIRGenPass._osp_edge_descriptor(
         );
         return None;
     }
-    lookup = self.func_symtab.get("osp_edge_type");
+    lookup = self.scope.function("osp_edge_type");
     value = self._codegen_expr(expr);
     if lookup is None or value is None {
         self.emit(
@@ -77,13 +77,13 @@ impl NaIRGenPass._osp_edge_descriptor(
 
 impl NaIRGenPass._osp_edge_factory(name: str) -> ir.Function {
     symbol = f"__osp_edge_new.{name}";
-    existing = self.func_symtab.get(symbol);
+    existing = self.scope.function(symbol);
     if existing is not None {
         return existing;
     }
     fn = self._define_function(symbol, ir.FunctionType(ir.IntType(64), []));
     fn.linkage = "internal";
-    self.func_symtab[symbol] = fn;
+    self.scope.bind_function(symbol, fn);
     return fn;
 }
 

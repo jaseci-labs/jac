@@ -2,26 +2,6 @@ import asyncio;
 import json;
 import from urllib.parse { urlparse, parse_qs }
 import from unittest.mock { patch, AsyncMock }
-import from jaclang.server.serving.datatypes {
-    Request,
-    QueryParams,
-    URL,
-    Headers,
-    RedirectResponse
-}
-import from jaclang.server.serving.endpoint { JEndPoint }
-import from jaclang.server.server { EndpointHost }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.scale.sso.sso_auth { SSOAuth }
-import from jaclang.scale.sso.provider { SSOUserInfo }
-import from jaclang.scale.sso.github { GithubSSOProvider }
-import from jaclang.scale.sso.google { GoogleSSOProvider }
-import from jaclang.scale.sso.apple { AppleSSOProvider }
-import from jaclang.scale.server.sso_ext { SSOExtension, resolve_sso_client_redirect }
-import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
-import from .oauth_fixtures { FakeTokens, fake_users }
 
 obj RecordingHost(EndpointHost) {
     has users: UserManager,

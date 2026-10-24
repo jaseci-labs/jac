@@ -4,19 +4,6 @@ import tarfile;
 import tempfile;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.scale.injector.bundle { pack_jab }
-import from jaclang.dist.sanitize { sanitized_jac_toml }
-import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
-import from jaclang.scale.injector.pvc_injector {
-    PvcInjector,
-    build_bundle_pvc,
-    build_loader_pod,
-    BUNDLE_MOUNT_PATH,
-    RUNTIME_UID,
-    RUNTIME_GID,
-    build_pvc_init_container,
-    bundle_keys_from_pod_spec
-}
 
 
 glob _JAC_BIN: Path = pod_binary();

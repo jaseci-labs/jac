@@ -6,42 +6,6 @@ references are visible to its cycle collector through the borrowed-item ABI.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_SetNone,
-    PyExc_SystemError,
-    PyExc_ValueError,
-    PyObject,
-    PyType_GetModule,
-    PyThread_release_lock,
-    Py_MakePendingCalls,
-    Py_NewRef,
-    Py_None,
-    _PyDeadline_Get,
-    _PyDeadline_Init,
-    jacpy_error_pending,
-    jacpy_lock_free,
-    jacpy_lock_new,
-    jacpy_lock_wait,
-    jacpy_release,
-    jacpy_timeout_ns
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module {
-    jacpy_binding_state_get,
-    visit_reference
-}
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_present,
-    jacpy_binding_native_set
-}
-
-import from jaclang.runtime.python.modules.object_ring { object_ring }
-
 obj queue_state(NativeState) {
     has lock: ptr,
         items: object_ring = object_ring(),

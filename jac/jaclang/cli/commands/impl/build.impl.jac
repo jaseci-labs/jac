@@ -2,47 +2,11 @@ import os;
 
 import from pathlib { Path }
 
-def _is_file_target(target: str) -> bool {
-    if not target {
-        return False;
-    }
-    if "/" in target or "\\" in target {
-        return True;
-    }
-    return target.lower().endswith((".jac", ".py"));
-}
+def _is_file_target(target: str) -> bool;
 
-def _build_target(cfg: any, target: str) -> tuple[AppConfig | None, str, int] {
-    if _is_file_target(target) {
-        abs_file = os.path.abspath(target);
-        return (cfg.app_for_path(abs_file), abs_file, 0);
-    }
-    if target {
-        app = cfg.app(target);
-        if app is not None {
-            return (app, "", 0);
-        }
-        if os.path.isfile(target) {
-            abs_file = os.path.abspath(target);
-            return (cfg.app_for_path(abs_file), abs_file, 0);
-        }
-        console.error(
-            f"No app named '{target}' in {cfg.toml_path}, and no such file.",
-            hint=f"Apps: {', '.join(cfg.apps.keys())}"
-        );
-        return (None, "", 2);
-    }
-    try {
-        return (cfg.resolve_app(""), "", 0);
-    } except ValueError as e {
-        console.error(str(e));
-        return (None, "", 2);
-    }
-}
+def _build_target(cfg: any, target: str) -> tuple[AppConfig | None, str, int];
 
-def _entry_stem(entry_path: str) -> str {
-    return os.path.splitext(os.path.basename(entry_path))[0].split(".")[0];
-}
+def _entry_stem(entry_path: str) -> str;
 
 def _build_app(
     cfg: any,
@@ -55,121 +19,7 @@ def _build_app(
     entry_override: str,
     place: bool,
     allow_drop_client: bool = False
-) -> int {
-    plan = None;
-    if app is not None {
-        try {
-            plan = plan_app_run(cfg, project_root, app, entry_override=entry_override);
-        } except ValueError as e {
-            if not entry_override and projection not in ("wheel", "sdist", "npm") {
-                console.error(str(e));
-                return 2;
-            }
-        }
-    }
-    entry_path = entry_override or (plan.entry_path if plan is not None else "");
-    kind_builds = plan is not None and plan.action == "build";
-    plan_flags: dict[str, any] = plan.flags if plan is not None else {};
-    plan_verb = plan.verb if plan is not None else "";
-    spec = plan.spec if plan is not None else None;
-    client_artifact = projection == "client"
-        or (
-            spec is not None
-            and bool(spec.ui)
-            and not spec.has_server
-            and "as" not in spec.flags
-        );
-
-    if projection == "source" {
-        import from jaclang.dist.source.project { export_project }
-        destination = Path(output)
-            if output != "dist"
-            else Path(project_root) / 'dist' / 'source';
-        try {
-            result = export_project(
-                cfg, app.name if app is not None else "", destination, entry_override
-            );
-        } except (OSError, ValueError, RuntimeError) as error {
-            console.error(str(error));
-            return 1;
-        }
-        console.success(f'Exported source project: {result}');
-        return 0;
-    }
-
-    if client_artifact {
-        import from jaclang.project.kinds { kind_has_client }
-        if app is None {
-            console.error(
-                "A client build needs an app: no jac.toml app claims this file.",
-                hint="Name the app instead: jac build <app>"
-            );
-            return 1;
-        }
-        resolved = cfg.resolved_kind(app);
-        import from jaclang.client.cli { run_client_build }
-        return run_client_build(
-            app,
-            platform,
-            entry_override,
-            output if place else "",
-            kind=resolved if kind_has_client(resolved) else "web-app"
-        );
-    }
-
-    if kind_builds and plan_verb == "native" {
-        import from jaclang.cli.commands.native_build { native_build }
-        if not entry_path or not os.path.isfile(entry_path) {
-            console.error(
-                f"No entry file for app '{app.name}'.",
-                hint="Set the app's entry-point, or pass one: jac build main.jac --as native"
-            );
-            return 1;
-        }
-        plan_out = str(plan_flags.get("output", "") or "");
-        out = (
-            os.path.join(output, os.path.basename(plan_out or _entry_stem(entry_path)))
-                if place or not plan_out
-                else plan_out
-        );
-        out_dir = os.path.dirname(out);
-        if out_dir {
-            os.makedirs(out_dir, exist_ok=True);
-        }
-        return native_build(
-            filename=entry_path, output=out, lib=bool(plan_flags.get("shared", False))
-        );
-    }
-
-    if fat and projection not in ["jab", "binary"] {
-        console.error(
-            f"--fat is not supported for the '{projection}' projection.",
-            hint="Vendoring applies to 'jab' and 'binary' bundles only."
-        );
-        return 1;
-    }
-    if (
-        projection == "jab"
-        and kind_builds
-        and plan_verb == "build"
-        and plan_flags.get("as") in ("wheel", "npm")
-    ) {
-        projection = str(plan_flags["as"]);
-    }
-
-    if projection in ["jab", "sealed", "binary", "wheel", "npm"] {
-        import from jaclang.cli.commands.project { bundle }
-        return bundle(
-            output=output,
-            target=projection,
-            fat=fat,
-            app=(app.name if app is not None else ""),
-            allow_drop_client=allow_drop_client
-        );
-    }
-    console.error(f"Unknown projection: '{projection}'");
-    return 1;
-}
+) -> int;
 
 impl build(
     target: str = "",
@@ -290,4 +140,173 @@ impl build(
         False,
         allow_drop_client
     );
+}
+
+impl _is_file_target(target: str) -> bool {
+    if not target {
+        return False;
+    }
+    if "/" in target or "\\" in target {
+        return True;
+    }
+    return target.lower().endswith((".jac", ".py"));
+}
+
+impl _build_target(cfg: any, target: str) -> tuple[AppConfig | None, str, int] {
+    if _is_file_target(target) {
+        abs_file = os.path.abspath(target);
+        return (cfg.app_for_path(abs_file), abs_file, 0);
+    }
+    if target {
+        app = cfg.app(target);
+        if app is not None {
+            return (app, "", 0);
+        }
+        if os.path.isfile(target) {
+            abs_file = os.path.abspath(target);
+            return (cfg.app_for_path(abs_file), abs_file, 0);
+        }
+        console.error(
+            f"No app named '{target}' in {cfg.toml_path}, and no such file.",
+            hint=f"Apps: {', '.join(cfg.apps.keys())}"
+        );
+        return (None, "", 2);
+    }
+    try {
+        return (cfg.resolve_app(""), "", 0);
+    } except ValueError as e {
+        console.error(str(e));
+        return (None, "", 2);
+    }
+}
+
+impl _entry_stem(entry_path: str) -> str {
+    return os.path.splitext(os.path.basename(entry_path))[0].split(".")[0];
+}
+
+impl _build_app(
+    cfg: any,
+    project_root: str,
+    app: any,
+    projection: str,
+    output: str,
+    platform: str | None,
+    fat: bool,
+    entry_override: str,
+    place: bool,
+    allow_drop_client: bool = False
+) -> int {
+    plan = None;
+    if app is not None {
+        try {
+            plan = plan_app_run(cfg, project_root, app, entry_override=entry_override);
+        } except ValueError as e {
+            if not entry_override and projection not in ("wheel", "sdist", "npm") {
+                console.error(str(e));
+                return 2;
+            }
+        }
+    }
+    entry_path = entry_override or (plan.entry_path if plan is not None else "");
+    kind_builds = plan is not None and plan.action == "build";
+    plan_flags: dict[str, any] = plan.flags if plan is not None else {};
+    plan_verb = plan.verb if plan is not None else "";
+    spec = plan.spec if plan is not None else None;
+    client_artifact = projection == "client"
+        or (
+            spec is not None
+            and bool(spec.ui)
+            and not spec.has_server
+            and "as" not in spec.flags
+        );
+
+    if projection == "source" {
+        import from jaclang.dist.source.project { export_project }
+        destination = Path(output)
+            if output != "dist"
+            else Path(project_root) / 'dist' / 'source';
+        try {
+            result = export_project(
+                cfg, app.name if app is not None else "", destination, entry_override
+            );
+        } except (OSError, ValueError, RuntimeError) as error {
+            console.error(str(error));
+            return 1;
+        }
+        console.success(f'Exported source project: {result}');
+        return 0;
+    }
+
+    if client_artifact {
+        import from jaclang.project.app_kinds { kind_has_client }
+        if app is None {
+            console.error(
+                "A client build needs an app: no jac.toml app claims this file.",
+                hint="Name the app instead: jac build <app>"
+            );
+            return 1;
+        }
+        resolved = cfg.resolved_kind(app);
+        import from jaclang.client.cli { run_client_build }
+        return run_client_build(
+            app,
+            platform,
+            entry_override,
+            output if place else "",
+            kind=resolved if kind_has_client(resolved) else "web-app"
+        );
+    }
+
+    if kind_builds and plan_verb == "native" {
+        import from jaclang.cli.commands.native_build { native_build }
+        if not entry_path or not os.path.isfile(entry_path) {
+            console.error(
+                f"No entry file for app '{app.name}'.",
+                hint="Set the app's entry-point, or pass one: jac build main.jac --as native"
+            );
+            return 1;
+        }
+        plan_out = str(plan_flags.get("output", "") or "");
+        out = (
+            os.path.join(output, os.path.basename(plan_out or _entry_stem(entry_path)))
+                if place or not plan_out
+                else plan_out
+        );
+        out_dir = os.path.dirname(out);
+        if out_dir {
+            os.makedirs(out_dir, exist_ok=True);
+        }
+        return native_build(
+            filename=entry_path, output=out, lib=bool(plan_flags.get("shared", False))
+        );
+    }
+
+    if fat and projection not in ["jab", "binary"] {
+        console.error(
+            f"--fat is not supported for the '{projection}' projection.",
+            hint="Vendoring applies to 'jab' and 'binary' bundles only."
+        );
+        return 1;
+    }
+    if (
+        projection == "jab"
+        and kind_builds
+        and plan_verb == "build"
+        and plan_flags.get("as") in ("wheel", "npm")
+    ) {
+        projection = str(plan_flags["as"]);
+    }
+
+    if projection in ["jab", "sealed", "binary", "wheel", "npm"] {
+        import from jaclang.cli.commands.project { bundle }
+        return bundle(
+            output=output,
+            target=projection,
+            fat=fat,
+            app=(app.name if app is not None else ""),
+            allow_drop_client=allow_drop_client
+        );
+    }
+    console.error(f"Unknown projection: '{projection}'");
+    return 1;
 }

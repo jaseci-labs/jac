@@ -1,49 +1,5 @@
 """Compiler constants and code objects become retained CPython values."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_code_new,
-    jacpy_long_from_bytes,
-    jacpy_release,
-    jacpy_set_new,
-    jacpy_tuple_set_owned,
-    NULL,
-    Py_Ellipsis,
-    Py_NewRef,
-    Py_None,
-    PyFloat_FromDouble,
-    PyLong_FromLongLong,
-    PyNumber_Negative,
-    PyObject,
-    PyTuple_New,
-    PyComplex_FromDoubles,
-    PyBool_FromLong,
-    PySlice_New
-}
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyNoneType,
-    PyEllipsis,
-    PyBool,
-    PyInt,
-    PyFloat,
-    PyComplex,
-    PyStr,
-    PyBytes,
-    PyTuple,
-    PySet,
-    PySlice,
-    PyCode
-}
-import from jaclang.runtime.python.compiler_integer { PyBigInt }
-import from jaclang.runtime.python.constant_keys { constant_key }
-import from jaclang.runtime.python.opcode_meta {
-    CO_OPTIMIZED,
-    CO_FAST_HIDDEN,
-    CO_FAST_LOCAL,
-    CO_FAST_CELL,
-    CO_FAST_FREE
-}
-import from jaclang.runtime.python.capi { checked, required, text_object, write_buffer }
 def constant_object(constant: PyObj) -> ptr[PyObject] {
     writer = constant_writer();
     try {

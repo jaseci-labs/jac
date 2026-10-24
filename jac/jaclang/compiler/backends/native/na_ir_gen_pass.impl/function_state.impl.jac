@@ -62,9 +62,7 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
     state = NativeFunctionState(
         bindings=self._enter_bindings(),
         _builder=self._builder,
-        func_symtab=self.func_symtab,
-        nested_captures=self.nested_captures,
-        lambda_captures=self.lambda_captures,
+        scope=self.scope,
         region_open_stack=self.region_open_stack,
         loop_stack=self.loop_stack,
         _self_owned=self._self_owned,
@@ -77,9 +75,7 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
         _caught_error_stack=self._caught_error_stack
     );
     self._builder = ir.IRBuilder(func.append_basic_block("entry"));
-    self.func_symtab = self.func_symtab.copy();
-    self.nested_captures = self.nested_captures.copy();
-    self.lambda_captures = self.lambda_captures.copy();
+    self.scope = self.scope.child();
     self.region_open_stack = [];
     self.loop_stack = [];
     self._self_owned = False;
@@ -118,9 +114,7 @@ impl NaIRGenPass._leave_function(state: NativeFunctionState) -> None {
     self._register_unwind_cleanup();
     self._leave_bindings(state.bindings);
     self._builder = state._builder;
-    self.func_symtab = state.func_symtab;
-    self.nested_captures = state.nested_captures;
-    self.lambda_captures = state.lambda_captures;
+    self.scope = state.scope;
     self.region_open_stack = state.region_open_stack;
     self.loop_stack = state.loop_stack;
     self._self_owned = state._self_owned;

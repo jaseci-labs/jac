@@ -349,7 +349,7 @@ comptime SPEC_TEST: CommandSpec = CommandSpec(
              Arg.create(
                  "test_name",
                  `default="",
-                 help="Run specific test (without test_ prefix)",
+                 help="Run tests whose name contains every word given (case-insensitive)",
                  short="t"
              ),
              Arg.create(

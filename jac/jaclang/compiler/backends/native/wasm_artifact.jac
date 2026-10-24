@@ -1,43 +1,33 @@
 import json;
 
-def wasm_import_map(wasm_bytes: bytes) -> dict[str, list[str]] {
-    out: dict[str, list[str]] = {};
-    o = 8;
-    while o < len(wasm_bytes) {
-        sid = wasm_bytes[o];
-        o += 1;
-        (size, o) = read_uleb128(wasm_bytes, o);
-        end = o + size;
-        if sid == 2 {
-            (cnt, o) = read_uleb128(wasm_bytes, o);
-            ci = 0;
-            while ci < cnt and o < end {
-                (mod_nm, o) = read_leb_name(wasm_bytes, o);
-                (fld, o) = read_leb_name(wasm_bytes, o);
-                kind = wasm_bytes[o];
-                o += 1;
-                if kind == 0 {
-                    (_t, o) = read_uleb128(wasm_bytes, o);
-                    out.setdefault(mod_nm, []).append(fld);
-                } else {
-                    break;
-                }
-                ci += 1;
-            }
-            break;
-        }
-        o = end;
-    }
-    for k in out {
-        out[k].sort();
-    }
-    return out;
-}
+glob WASM_MEMORY_PAGES: int = 256,
+     WASM_STACK_BYTES: int = 1 << 18,
+     WASM_GLOBAL_BASE: int = 1024;
 
-def wasm_assets(stem: str, content: bytes) -> dict[str, bytes] {
-    manifest = {'abi': WASM_HOST_MODULE, 'imports': wasm_import_map(content)};
-    return {
-        f'{stem}.wasm': content,
-        f'{stem}.wasm.imports.json': json.dumps(manifest, indent=2).encode('utf-8')
-    };
-}
+def wasm_ld_args(
+    output_path: str,
+    inputs: list[str],
+    export_funcs: list[str],
+    allow_file: str = "",
+    memory_pages: int = WASM_MEMORY_PAGES
+) -> list[str];
+
+def wasm_object_functions(obj_bytes: bytes) -> list[str];
+
+def _symbol_table_functions(b: bytes, p: int) -> list[str];
+
+def write_allowed_imports(path: str, names: list[str]);
+
+def read_uleb128(b: bytes, o: int) -> tuple[int, int];
+
+def encode_uleb128(v: int) -> bytes;
+
+def read_leb_name(b: bytes, o: int) -> tuple[str, int];
+
+def _name_bytes(name: str) -> bytes;
+
+def rename_wasm_imports(wasm_bytes: bytes, names: set[str], module: str) -> bytes;
+
+def wasm_import_map(wasm_bytes: bytes) -> dict[str, list[str]];
+
+def wasm_assets(stem: str, content: bytes) -> dict[str, bytes];

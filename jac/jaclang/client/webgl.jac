@@ -34,144 +34,220 @@ obj:pub WebGLHost {
         on_lock_change: Callable[[Event], None] | None = None,
         on_blur: Callable[[Event], None] | None = None;
 
-    def InitWindow(w: int, h: int, title: str) {}
-    def WindowShouldClose -> bool {
-        return bool(0);
-    }
+    def InitWindow(w: int, h: int, title: str);
+    def WindowShouldClose -> bool;
+    def CloseWindow;
+    def SetTargetFPS(f: int);
+    def BeginDrawing;
+    def EndDrawing;
+    def EndMode3D;
+    def GetFrameTime -> float;
+    def GetTime -> float;
+    def DrawFPS(x: int, y: int);
+    def IsKeyDown(k: int) -> bool;
+    def IsKeyPressed(k: int) -> bool;
+    def GetMouseX -> int;
+    def GetMouseY -> int;
+    def IsMouseButtonPressed(b: int) -> bool;
+    def DisableCursor;
+    def EnableCursor;
+    def rlClearColor(r: int, g: int, b: int, a: int);
+    def rlClearScreenBuffers;
+    def rlEnableDepthTest;
+    def rlDisableDepthTest;
+    def rlMatrixMode(m: int);
+    def rlLoadIdentity;
+    def rlPushMatrix;
+    def rlPopMatrix;
+    def rlTranslatef(x: float, y: float, z: float);
+    def rlRotatef(a: float, x: float, y: float, z: float);
+    def rlFrustum(l: float, r: float, b: float, t: float, n: float, f: float);
+    def rlOrtho(l: float, r: float, b: float, t: float, n: float, f: float);
+    def rlBegin(m: int);
+    def rlEnd;
+    def rlVertex3f(x: float, y: float, z: float);
+    def rlColor4ub(r: int, g: int, b: int, a: int);
+    def rlSetLineWidth(w: float);
+}
 
-    def CloseWindow {}
-    def SetTargetFPS(f: int) {}
-    def BeginDrawing {
-        self.gl.viewport(0, 0, 960, 600);
-    }
+def:pub _m_ident -> list[float];
 
-    def EndDrawing {}
-    def EndMode3D {
-        _flush(self);
-    }
+def _m_mul(a: list[float], b: list[float]) -> list[float];
 
-    def GetFrameTime -> float {
-        return self.dt;
-    }
+def _m_translate(x: float, y: float, z: float) -> list[float];
 
-    def GetTime -> float {
-        return self.time;
-    }
+def _m_rotate(ang: float, x: float, y: float, z: float) -> list[float];
 
-    def DrawFPS(x: int, y: int) {}
-    def IsKeyDown(k: int) -> bool {
-        return bool(self.keys.get(k, 0));
-    }
+def _m_frustum(
+    l: float, r: float, b: float, t: float, n: float, f: float
+) -> list[float];
 
-    def IsKeyPressed(k: int) -> bool {
-        return bool(self.pressed.get(k, 0));
-    }
+def _m_ortho(
+    l: float, r: float, b: float, t: float, n: float, f: float
+) -> list[float];
 
-    def GetMouseX -> int {
-        return int(self.mouseX);
-    }
+def _cur(sh: WebGLHost) -> list[float];
 
-    def GetMouseY -> int {
-        return int(self.mouseY);
-    }
+def _setcur(sh: WebGLHost, m: list[float]);
 
-    def IsMouseButtonPressed(b: int) -> bool {
-        return bool(self.mpressed.get(b, 0));
-    }
 
-    def DisableCursor {
-        self.canvas.requestPointerLock();
-    }
+def _flush(sh: WebGLHost) -> None;
 
-    def EnableCursor {
-        document.exitPointerLock();
-    }
 
-    def rlClearColor(r: int, g: int, b: int, a: int) {
-        self.gl.clearColor(float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0);
-    }
+def _compile_shader(gl: any, kind: int, source: str) -> any;
 
-    def rlClearScreenBuffers {
-        self.gl.clear(16384 | 256);
-    }
+def:pub _init_gl(sh: WebGLHost);
 
-    def rlEnableDepthTest {
-        self.gl.enable(self.gl.DEPTH_TEST);
-    }
+def _keymap(code: str) -> int;
 
-    def rlDisableDepthTest {
-        self.gl.disable(self.gl.DEPTH_TEST);
-    }
+def _engaged(sh: WebGLHost) -> bool;
 
-    def rlMatrixMode(m: int) {
-        self.mode = m;
-    }
+def:pub _install_input(sh: WebGLHost);
 
-    def rlLoadIdentity {
-        _setcur(self, _m_ident());
-    }
+def:pub _remove_input(sh: WebGLHost);
 
-    def rlPushMatrix {
-        if self.mode == 0x1701 {
-            self.pstack.append(self.proj);
-        } else {
-            self.mvstack.append(self.mv);
-        }
-    }
+impl WebGLHost.InitWindow(w: int, h: int, title: str) {}
 
-    def rlPopMatrix {
-        if self.mode == 0x1701 {
-            self.proj = self.pstack.pop();
-        } else {
-            self.mv = self.mvstack.pop();
-        }
-    }
+impl WebGLHost.WindowShouldClose -> bool {
+    return bool(0);
+}
 
-    def rlTranslatef(x: float, y: float, z: float) {
-        _setcur(self, _m_mul(_cur(self), _m_translate(x, y, z)));
-    }
+impl WebGLHost.CloseWindow {}
 
-    def rlRotatef(a: float, x: float, y: float, z: float) {
-        _setcur(self, _m_mul(_cur(self), _m_rotate(a, x, y, z)));
-    }
+impl WebGLHost.SetTargetFPS(f: int) {}
 
-    def rlFrustum(l: float, r: float, b: float, t: float, n: float, f: float) {
-        _setcur(self, _m_mul(_cur(self), _m_frustum(l, r, b, t, n, f)));
-    }
+impl WebGLHost.BeginDrawing {
+    self.gl.viewport(0, 0, 960, 600);
+}
 
-    def rlOrtho(l: float, r: float, b: float, t: float, n: float, f: float) {
-        _setcur(self, _m_mul(_cur(self), _m_ortho(l, r, b, t, n, f)));
-    }
+impl WebGLHost.EndDrawing {}
 
-    def rlBegin(m: int) {
-        self.bmode = m;
-        self.verts = [];
-    }
+impl WebGLHost.EndMode3D {
+    _flush(self);
+}
 
-    def rlEnd {
-        _flush(self);
-    }
+impl WebGLHost.GetFrameTime -> float {
+    return self.dt;
+}
 
-    def rlVertex3f(x: float, y: float, z: float) {
-        self.verts.append(x);
-        self.verts.append(y);
-        self.verts.append(z);
-        self.verts.append(self.color[0]);
-        self.verts.append(self.color[1]);
-        self.verts.append(self.color[2]);
-        self.verts.append(self.color[3]);
-    }
+impl WebGLHost.GetTime -> float {
+    return self.time;
+}
 
-    def rlColor4ub(r: int, g: int, b: int, a: int) {
-        self.color = [float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0];
-    }
+impl WebGLHost.DrawFPS(x: int, y: int) {}
 
-    def rlSetLineWidth(w: float) {
-        self.gl.lineWidth(w);
+impl WebGLHost.IsKeyDown(k: int) -> bool {
+    return bool(self.keys.get(k, 0));
+}
+
+impl WebGLHost.IsKeyPressed(k: int) -> bool {
+    return bool(self.pressed.get(k, 0));
+}
+
+impl WebGLHost.GetMouseX -> int {
+    return int(self.mouseX);
+}
+
+impl WebGLHost.GetMouseY -> int {
+    return int(self.mouseY);
+}
+
+impl WebGLHost.IsMouseButtonPressed(b: int) -> bool {
+    return bool(self.mpressed.get(b, 0));
+}
+
+impl WebGLHost.DisableCursor {
+    self.canvas.requestPointerLock();
+}
+
+impl WebGLHost.EnableCursor {
+    document.exitPointerLock();
+}
+
+impl WebGLHost.rlClearColor(r: int, g: int, b: int, a: int) {
+    self.gl.clearColor(float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0);
+}
+
+impl WebGLHost.rlClearScreenBuffers {
+    self.gl.clear(16384 | 256);
+}
+
+impl WebGLHost.rlEnableDepthTest {
+    self.gl.enable(self.gl.DEPTH_TEST);
+}
+
+impl WebGLHost.rlDisableDepthTest {
+    self.gl.disable(self.gl.DEPTH_TEST);
+}
+
+impl WebGLHost.rlMatrixMode(m: int) {
+    self.mode = m;
+}
+
+impl WebGLHost.rlLoadIdentity {
+    _setcur(self, _m_ident());
+}
+
+impl WebGLHost.rlPushMatrix {
+    if self.mode == 0x1701 {
+        self.pstack.append(self.proj);
+    } else {
+        self.mvstack.append(self.mv);
     }
 }
 
-def:pub _m_ident -> list[float] {
+impl WebGLHost.rlPopMatrix {
+    if self.mode == 0x1701 {
+        self.proj = self.pstack.pop();
+    } else {
+        self.mv = self.mvstack.pop();
+    }
+}
+
+impl WebGLHost.rlTranslatef(x: float, y: float, z: float) {
+    _setcur(self, _m_mul(_cur(self), _m_translate(x, y, z)));
+}
+
+impl WebGLHost.rlRotatef(a: float, x: float, y: float, z: float) {
+    _setcur(self, _m_mul(_cur(self), _m_rotate(a, x, y, z)));
+}
+
+impl WebGLHost.rlFrustum(l: float, r: float, b: float, t: float, n: float, f: float) {
+    _setcur(self, _m_mul(_cur(self), _m_frustum(l, r, b, t, n, f)));
+}
+
+impl WebGLHost.rlOrtho(l: float, r: float, b: float, t: float, n: float, f: float) {
+    _setcur(self, _m_mul(_cur(self), _m_ortho(l, r, b, t, n, f)));
+}
+
+impl WebGLHost.rlBegin(m: int) {
+    self.bmode = m;
+    self.verts = [];
+}
+
+impl WebGLHost.rlEnd {
+    _flush(self);
+}
+
+impl WebGLHost.rlVertex3f(x: float, y: float, z: float) {
+    self.verts.append(x);
+    self.verts.append(y);
+    self.verts.append(z);
+    self.verts.append(self.color[0]);
+    self.verts.append(self.color[1]);
+    self.verts.append(self.color[2]);
+    self.verts.append(self.color[3]);
+}
+
+impl WebGLHost.rlColor4ub(r: int, g: int, b: int, a: int) {
+    self.color = [float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0];
+}
+
+impl WebGLHost.rlSetLineWidth(w: float) {
+    self.gl.lineWidth(w);
+}
+
+impl _m_ident -> list[float] {
     return [
         1.0,
         0.0,
@@ -192,7 +268,7 @@ def:pub _m_ident -> list[float] {
     ];
 }
 
-def _m_mul(a: list[float], b: list[float]) -> list[float] {
+impl _m_mul(a: list[float], b: list[float]) -> list[float] {
     c = [
         0.0,
         0.0,
@@ -229,7 +305,7 @@ def _m_mul(a: list[float], b: list[float]) -> list[float] {
     return c;
 }
 
-def _m_translate(x: float, y: float, z: float) -> list[float] {
+impl _m_translate(x: float, y: float, z: float) -> list[float] {
     m = _m_ident();
     m[12] = x;
     m[13] = y;
@@ -237,7 +313,7 @@ def _m_translate(x: float, y: float, z: float) -> list[float] {
     return m;
 }
 
-def _m_rotate(ang: float, x: float, y: float, z: float) -> list[float] {
+impl _m_rotate(ang: float, x: float, y: float, z: float) -> list[float] {
     a = ang * 3.141592653589793 / 180.0;
     c = Math.cos(a);
     s = Math.sin(a);
@@ -269,7 +345,7 @@ def _m_rotate(ang: float, x: float, y: float, z: float) -> list[float] {
     ];
 }
 
-def _m_frustum(
+impl _m_frustum(
     l: float, r: float, b: float, t: float, n: float, f: float
 ) -> list[float] {
     return [
@@ -292,7 +368,7 @@ def _m_frustum(
     ];
 }
 
-def _m_ortho(
+impl _m_ortho(
     l: float, r: float, b: float, t: float, n: float, f: float
 ) -> list[float] {
     return [
@@ -315,11 +391,11 @@ def _m_ortho(
     ];
 }
 
-def _cur(sh: WebGLHost) -> list[float] {
+impl _cur(sh: WebGLHost) -> list[float] {
     return sh.proj if sh.mode == 0x1701 else sh.mv;
 }
 
-def _setcur(sh: WebGLHost, m: list[float]) {
+impl _setcur(sh: WebGLHost, m: list[float]) {
     if sh.mode == 0x1701 {
         sh.proj = m;
     } else {
@@ -328,7 +404,7 @@ def _setcur(sh: WebGLHost, m: list[float]) {
 }
 
 
-def _flush(sh: WebGLHost) -> None {
+impl _flush(sh: WebGLHost) -> None {
     if len(sh.verts) == 0 {
         return;
     }
@@ -348,7 +424,7 @@ def _flush(sh: WebGLHost) -> None {
 }
 
 
-def _compile_shader(gl: any, kind: int, source: str) -> any {
+impl _compile_shader(gl: any, kind: int, source: str) -> any {
     shader = gl.createShader(kind);
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
@@ -360,7 +436,7 @@ def _compile_shader(gl: any, kind: int, source: str) -> any {
     return shader;
 }
 
-def:pub _init_gl(sh: WebGLHost) {
+impl _init_gl(sh: WebGLHost) {
     gl = sh.gl;
     vs = "attribute vec3 aPos; attribute vec4 aCol; uniform mat4 uMVP; varying vec4 vCol; void main(){ gl_Position = uMVP * vec4(aPos,1.0); vCol = aCol; }";
     fs = "precision mediump float; varying vec4 vCol; void main(){ gl_FragColor = vCol; }";
@@ -391,7 +467,7 @@ def:pub _init_gl(sh: WebGLHost) {
     gl.disable(gl.CULL_FACE);
 }
 
-def _keymap(code: str) -> int {
+impl _keymap(code: str) -> int {
     m = {
         "KeyW": 87,
         "KeyA": 65,
@@ -407,11 +483,11 @@ def _keymap(code: str) -> int {
     return m.get(code, 0);
 }
 
-def _engaged(sh: WebGLHost) -> bool {
+impl _engaged(sh: WebGLHost) -> bool {
     return sh.locked or document.activeElement == sh.canvas;
 }
 
-def:pub _install_input(sh: WebGLHost) {
+impl _install_input(sh: WebGLHost) {
     sh.on_key_down = lambda (e: KeyboardEvent) {
         if not _engaged(sh) {
             return;
@@ -463,7 +539,7 @@ def:pub _install_input(sh: WebGLHost) {
     document.addEventListener("pointerlockchange", sh.on_lock_change);
 }
 
-def:pub _remove_input(sh: WebGLHost) {
+impl _remove_input(sh: WebGLHost) {
     window.removeEventListener("blur", sh.on_blur);
     window.removeEventListener("keydown", sh.on_key_down);
     window.removeEventListener("keyup", sh.on_key_up);

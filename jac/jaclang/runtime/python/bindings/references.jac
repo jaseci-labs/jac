@@ -1,17 +1,5 @@
 """Shared ownership and cycle-collector visibility for Python reference fields."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    jacpy_tuple_set_owned,
-    NULL,
-    PyObject,
-    PyObject_Call,
-    PyObject_GetAttrString,
-    PyTuple_New
-}
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { visit_reference }
-
 obj ReferenceState(NativeState) {
     has references: list[ptr[PyObject]];
 

@@ -3,30 +3,6 @@
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_MemoryError,
-    PyExc_OverflowError,
-    PyObject,
-    PySequence_Tuple,
-    PyTuple_New,
-    PyTuple_Size,
-    Py_NewRef,
-    jacpy_release,
-    jacpy_tuple_exchange,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned
-}
-import from jaclang.runtime.python.modules.iterators { reusable_tuple }
-import from jaclang.runtime.python.capi {
-    jac_heap_size,
-    jac_list_heap_size,
-    required,
-    checked,
-    boundary_failure,
-    object_error
-}
-
 enum combination_kind {
     PRODUCT = 14,
     COMBINATIONS = 15,

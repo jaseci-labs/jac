@@ -700,15 +700,8 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
             if isinstance(base_type, TypeVarType) and base_type.is_self {
-                _sf_arch: Archetype | Enum | None = expr.find_parent_of_type(Archetype);
-                if _sf_arch is None {
-                    _sf_impl = expr.find_parent_of_type(ImplDef);
-                    if _sf_impl is not None
-                        and isinstance(_sf_impl.decl_link, Ability) {
-                        _sf_arch = _sf_impl.decl_link.method_owner;
-                    }
-                }
-                if isinstance(_sf_arch, Archetype) {
+                _sf_arch = expr.enclosing_decl(Archetype);
+                if _sf_arch is not None {
                     _sf_cls = self.get_type_of_class(_sf_arch);
                     if isinstance(_sf_cls, ClassType) {
                         base_type = _sf_cls
@@ -2130,7 +2123,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     field = symbol.decl.name_of;
                     if field.type_tag is not None
                         and expr.find_parent_of_type(SubTag) is field.type_tag {
-                        owner = field.find_parent_of_type(Archetype);
+                        owner = field.enclosing_decl(Archetype);
                         if owner is not None
                             and owner.sym_tab.parent_scope is not None {
                             symbol = lookup_symtab(
@@ -2150,8 +2143,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                     and expr.find_parent_of_type(FuncSignature)
                         is symbol.decl.name_of.find_parent_of_type(FuncSignature)
                 ) {
-                    _ann_fn = symbol.decl.name_of.find_parent_of_type(Ability);
-                    _use_fn = expr.find_parent_of_type(Ability);
+                    _ann_fn = symbol.decl.name_of.enclosing_decl(Ability);
+                    _use_fn = expr.enclosing_decl(Ability);
                     if (
                         _ann_fn is not None
                         and _use_fn is not None
@@ -2172,7 +2165,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     and isinstance(symbol.parent_tab, (Archetype, Enum))
                     and not (
                         symbol.decl is not None
-                        and isinstance(symbol.decl.name_of, (TypeParam, HasVar))
+                        and isinstance(symbol.decl.name_of, TypeParam)
                     )
                     and expr.expr_ctx == ExprCtx.LOAD
                     and expr.value
@@ -2227,7 +2220,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     import from jaclang.compiler.types.type_utils {
                         synthesize_self_type_var
                     }
-                    if expr.find_parent_of_type(Archetype) is not None {
+                    if expr.enclosing_decl(Archetype) is not None {
                         expr.type = synthesize_self_type_var();
                         return expr.type;
                     }
@@ -3010,14 +3003,8 @@ impl TypeEvaluator._get_enum_member_type_for_decl(
     if node_ not in assignment.target {
         return None;
     }
-    container = assignment.parent;
-    enum_node: Enum | None = None;
-    if isinstance(container, Enum) {
-        enum_node = container;
-    } elif isinstance(container, ImplDef) and isinstance(container.decl_link, Enum) {
-        enum_node = container.decl_link;
-    }
-    if enum_node is None {
+    enum_node = assignment.decl_parent;
+    if not isinstance(enum_node, Enum) {
         return None;
     }
     enum_type = self.get_type_of_enum(enum_node);
@@ -4440,11 +4427,11 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
             classify_cross_app_import,
             is_client_native_edge_import
         }
-        import from jaclang.compiler.symbol_utils {
+        import from jaclang.compiler.driver.boundary_classify {
             ClientImportVerdict,
-            classify_client_import_item,
-            resolve_import_source_module
+            classify_client_import_item
         }
+        import from jaclang.compiler.symbol_utils { resolve_import_source_module }
         client_tops: dict[str, bool] = {};
         for imp in mod.get_all_sub_nodes(Import) {
             kind = classify_cross_app_import(imp, None);
@@ -4507,7 +4494,7 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
     return id(tgt.sym) in syms;
 }
 
-impl TypeEvaluator._prefetch_types{
+impl TypeEvaluator._prefetch_types {
     def get_types_class(type_name: str) -> ClassType | None {
         return self._get_class_from_module(self.types_module, type_name);
     }
@@ -4739,7 +4726,8 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
 
     self.ambient_typing_names_by_module = raw_groups;
     self.ambient_typing_names_by_module["typing"] = typing_ambient_flat;
-    for typing_name in typing_ambient_flat {
+
+    for typing_name in sorted(typing_ambient_flat) {
         typing_sym = typing_mod.names_in_scope.get(typing_name);
         if typing_sym is None {
             continue;
@@ -4762,16 +4750,7 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
 
 glob FLOW_QUERY_DEPTH: int = 48;
 
-def _find_cfg_node_for(at_node: UniNode) -> UniCFGNode | None {
-    cur: UniNode | None = at_node;
-    while cur is not None {
-        if isinstance(cur, UniCFGNode) and not isinstance(cur, InnerCompr) {
-            return cur;
-        }
-        cur = cur.parent;
-    }
-    return None;
-}
+def _find_cfg_node_for(at_node: UniNode) -> UniCFGNode | None;
 
 impl TypeEvaluator.flow_pred_never_returns(pred: UniCFGNode) -> bool {
     if not isinstance(pred, ExprStmt) {
@@ -5058,7 +5037,7 @@ impl TypeEvaluator._get_type_from_flow_node(
         if isinstance(pred, Assignment)
             and pred.value
             and not self._node_encloses(pred, flow_node) {
-            import from jaclang.compiler.symbol_utils {
+            import from jaclang.compiler.expr_keys {
                 collect_assignment_target_keys,
                 find_destructure_index_path,
             }
@@ -5196,21 +5175,16 @@ impl TypeEvaluator._get_type_from_flow_node(
         }
     }
 
-    reached_types = [
+    incoming_types = [
         t
         for t in incoming_types
         if not isinstance(t, NeverType)
     ];
-    only_never = bool(incoming_types) and not reached_types;
-    incoming_types = reached_types;
 
     result: TypeBase | None = None;
-    if has_unnarrowed_pred {
+    if len(incoming_types) == 0 {
         result = None;
-    } elif only_never {
-        result = NeverType();
-    } elif len(incoming_types) == 0 {
-        result = None;
+    } elif has_unnarrowed_pred {
         result = None;
     } elif len(incoming_types) == 1 {
         result = incoming_types[0];
@@ -5375,7 +5349,7 @@ impl TypeEvaluator.create_key_for_reference(expr: Expr) -> str | None {
         }
     }
     if isinstance(expr, AtomTrailer) and not expr.is_attr {
-        import from jaclang.compiler.symbol_utils { int_subscript_suffix }
+        import from jaclang.compiler.expr_keys { int_subscript_suffix }
         base_key = self.create_key_for_reference(expr.target);
         if base_key and isinstance(expr.right, IndexSlice) {
             suffix = int_subscript_suffix(expr.right);
@@ -5812,8 +5786,7 @@ impl TypeEvaluator._find_predicate_for(
                     } else {
                         check_type = target.declared_type;
                     }
-                    if self._union_contains_none(check_type)
-                        or self.is_none_type(check_type) {
+                    if self._union_contains_none(check_type) {
                         none_inst = self._convert_to_instance(
                             self.prefetch.none_type_class
                         );
@@ -6810,4 +6783,15 @@ impl TypeEvaluator._scope_is_current(scope: UniScopeNode) -> bool {
         return False;
     }
     return self.program.find_module(self.program.hub_key(mod.loc.mod_path)) is mod;
+}
+
+impl _find_cfg_node_for(at_node: UniNode) -> UniCFGNode | None {
+    cur: UniNode | None = at_node;
+    while cur is not None {
+        if isinstance(cur, UniCFGNode) and not isinstance(cur, InnerCompr) {
+            return cur;
+        }
+        cur = cur.parent;
+    }
+    return None;
 }

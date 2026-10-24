@@ -13,15 +13,6 @@ import subprocess;
 import sys;
 import time;
 import unittest.mock;
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceEntry,
-    ServiceRegistry
-}
-import from jaclang.scale.runtime.orchestrator.process_manager {
-    ServiceProcessManager,
-    _owns_group,
-    _signal_group
-}
 
 def _sleeper(new_session: bool) -> subprocess.Popen {
     return subprocess.Popen(

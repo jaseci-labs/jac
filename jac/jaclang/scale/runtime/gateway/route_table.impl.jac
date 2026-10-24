@@ -91,3 +91,78 @@ impl ServiceRouteTable._reindex -> None {
     pairs.sort(key=lambda (p) { -len(p[0]); });
     self._by_length = pairs;
 }
+
+impl literal_prefix(template: str) -> str {
+    kept: list[str] = [];
+    for segment in template.strip("/").split("/") {
+        if not segment or "{" in segment or "*" in segment {
+            break;
+        }
+        kept.append(segment);
+    }
+    if not kept {
+        return "";
+    }
+    return "/" + "/".join(kept);
+}
+
+impl learn_service_routes(
+    registry: ServiceRegistry, table: ServiceRouteTable, now: float, max_age: float
+) -> int {
+    import asyncio;
+
+    due: list[tuple[str, ServiceEntry]] = [
+        (name, `entry)
+        for (name, `entry) in registry.entries.items()
+        if `entry.is_routable() and table.spec_due(`entry, now, max_age)
+    ];
+    if not due {
+        return 0;
+    }
+    due.sort(
+        key=lambda (pair: tuple[str, ServiceEntry]) { 0 if pair[1].is_root else 1; }
+    );
+    answers: dict[str, SpecFetch] = {};
+
+    async def ask(name: str, service_entry: ServiceEntry) {
+        answers[name] = await fetch_service_spec(
+            service_entry, timeout=_SPEC_PROBE_TIMEOUT_SECONDS
+        );
+    }
+    await asyncio.gather(
+        *[ask(name, service_entry) for (name, service_entry) in due],
+        return_exceptions=True
+    );
+
+    for (name, `entry) in due {
+        got: SpecFetch | None = answers.get(name);
+        if got is None or not got.answered() {
+            _rt_logger.debug(
+                f"service '{name}' did not answer /openapi.json yet "
+                f"(status={`entry.status.value}); it stays due"
+            );
+            continue;
+        }
+        table.mark_spec_seen(`entry, now);
+        if got.doc is None {
+            if `entry.status != ServiceStatus.HEALTHY {
+                continue;
+            }
+            table.unlearn(name);
+            _rt_logger.warning(
+                f"service '{name}' publishes no readable /openapi.json "
+                f"(HTTP {got.status}); its routes cannot be learned, so its "
+                f"walkers are reached by discovery instead of ownership"
+            );
+            continue;
+        }
+        clashes = table.learn(name, list((got.doc.get("paths") or {}).keys()));
+        if clashes {
+            _rt_logger.warning(
+                f"service '{name}' declares {clashes}, already claimed by another "
+                f"service; reach them under '{`entry.prefix}' instead"
+            );
+        }
+    }
+    return len(due);
+}

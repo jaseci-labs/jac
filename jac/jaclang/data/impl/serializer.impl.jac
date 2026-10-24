@@ -475,9 +475,11 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
 }
 
 impl Serializer.repair(
-    data: dict[str, object], cls: type
+    data: dict[str, object], cls: type, mode: (str | None) = None
 ) -> tuple[dict[str, object], list[str]] {
-    mode = repair_mode();
+    if mode is None {
+        mode = repair_mode();
+    }
     if mode == 'off' {
         return (data, []);
     }
@@ -510,11 +512,14 @@ impl Serializer.repair(
 }
 
 impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] {
+    if type(val) is target_type {
+        return (val, True);
+    }
     if target_type is None or isinstance(target_type, str) {
         return (val, False);
     }
 
-    (origin, args) = (get_origin(target_type), get_args(target_type));
+    (origin, args) = _type_shape(target_type);
     if origin is Union or origin is UnionType {
         non_none = [
             a
@@ -796,15 +801,10 @@ impl Serializer._resolve_class_by_import(
     return cast(type, found);
 }
 
-def _import_retry_window(attempts: int) -> float {
-    doublings = min(max(attempts - 1, 0), _IMPORT_RETRY_MAX_DOUBLINGS);
-    return min(_IMPORT_RETRY_SECONDS * (2 ** doublings), _IMPORT_RETRY_CEILING_SECONDS);
-}
+def _import_retry_window(attempts: int) -> float;
 
 
-def _import_retry_due(failure: ImportFailure) -> bool {
-    return monotonic() - failure.failed_at >= _import_retry_window(failure.attempts);
-}
+def _import_retry_due(failure: ImportFailure) -> bool;
 
 
 impl Serializer._import_allowed(module_name: str) -> bool {
@@ -929,27 +929,10 @@ impl Serializer._id_to_stub(anchor_cls: type[Anchor], id_str: str) -> (Anchor | 
     }
 }
 
-def _new_anchor(type_name: object) -> Anchor {
-    if type_name == 'NodeAnchor' {
-        return NodeAnchor.__new__(NodeAnchor);
-    }
-    if type_name == 'EdgeAnchor' {
-        return EdgeAnchor.__new__(EdgeAnchor);
-    }
-    return Anchor.__new__(Anchor);
-}
+def _new_anchor(type_name: object) -> Anchor;
 
 
-def _node_stub(raw_id: object, role: str) -> NodeAnchor {
-    if not isinstance(raw_id, str) or not raw_id {
-        raise TypeError(f"anchor payload '{role}' is not a string id");
-    }
-    stub = Serializer._id_to_stub(NodeAnchor, raw_id);
-    if not isinstance(stub, NodeAnchor) {
-        raise ValueError(f"anchor payload '{role}' is not a usable id: {raw_id}");
-    }
-    return stub;
-}
+def _node_stub(raw_id: object, role: str) -> NodeAnchor;
 
 
 impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) {
@@ -1127,7 +1110,7 @@ impl Serializer._deserialize_archetype(
     }
     cls = cast(type[object], resolved);
     mode = repair_mode();
-    (data, repair_steps) = Serializer.repair(data, cls);
+    (data, repair_steps) = Serializer.repair(data, cls, mode);
     try {
         arch: object = cls.__new__(cls);
         field_types = get_field_types(cls);
@@ -1156,8 +1139,7 @@ impl Serializer._deserialize_archetype(
             (coerced, ok) = Serializer.coerce(deser_v, target);
             if not ok {
                 field_key = f"{module_name}.{type_name}.{k}";
-                origin = get_origin(target);
-                args = get_args(target);
+                (origin, args) = _type_shape(target);
                 is_optional = (
                     (origin is Union or origin is UnionType) and NoneType in args
                 );
@@ -1242,7 +1224,7 @@ impl Serializer._deserialize_archetype(
             }
         }
 
-        for fd in fields(cls) {
+        for fd in _class_fields(cls) {
             if fd.name in assigned {
                 continue;
             }
@@ -1354,30 +1336,10 @@ impl Serializer.stored_hash(
 
 
 impl frozen_value(value: any) -> bool {
-    import datetime;
-    import decimal;
-    import enum;
-    import uuid;
-    if value is None
-        or isinstance(
-            value,
-            (
-                bool,
-                int,
-                float,
-                complex,
-                str,
-                bytes,
-                decimal.Decimal,
-                uuid.UUID,
-                datetime.date,
-                datetime.time,
-                datetime.timedelta
-            )
-        ) {
+    if type(value) in _FROZEN_EXACT or isinstance(value, _FROZEN_SCALARS) {
         return True;
     }
-    if isinstance(value, enum.Enum) {
+    if isinstance(value, Enum) {
         return frozen_value(value.value);
     }
     if isinstance(value, (tuple, frozenset)) {
@@ -1388,8 +1350,12 @@ impl frozen_value(value: any) -> bool {
 
 
 impl frozen_fields(anchor: Anchor) -> bool {
-    if anchor.__dict__.get('_field_written') {
+    state = anchor.__dict__;
+    if state.get('_field_written') {
         return False;
+    }
+    if state.get('_frozen') {
+        return True;
     }
     arch = anchor.archetype;
     if not type(arch).__dict__.get('__jac_tracked__', False) {
@@ -1404,5 +1370,68 @@ impl frozen_fields(anchor: Anchor) -> bool {
             return False;
         }
     }
+    state['_frozen'] = True;
     return True;
+}
+
+
+impl _class_fields(cls: type) -> tuple[any, ...] {
+    hit = _CLASS_FIELDS.get(id(cls));
+    if hit is not None and hit[0] is cls {
+        return hit[1];
+    }
+    found = tuple(fields(cls));
+    if len(_CLASS_FIELDS) >= _TYPE_SHAPES_LIMIT {
+        _CLASS_FIELDS.clear();
+    }
+    _CLASS_FIELDS[id(cls)] = (cls, found);
+    return found;
+}
+
+
+impl _type_shape(target_type: object) -> tuple[object, tuple[object, ...]] {
+    hit = _TYPE_SHAPES.get(id(target_type));
+    if hit is not None and hit[0] is target_type {
+        return (hit[1], hit[2]);
+    }
+    origin = get_origin(target_type);
+    args = get_args(target_type);
+    if len(_TYPE_SHAPES) >= _TYPE_SHAPES_LIMIT {
+        _TYPE_SHAPES.clear();
+    }
+    _TYPE_SHAPES[id(target_type)] = (target_type, origin, args);
+    return (origin, args);
+}
+
+impl _import_retry_window(attempts: int) -> float {
+    doublings = min(max(attempts - 1, 0), _IMPORT_RETRY_MAX_DOUBLINGS);
+    return min(_IMPORT_RETRY_SECONDS * (2 ** doublings), _IMPORT_RETRY_CEILING_SECONDS);
+}
+
+
+impl _import_retry_due(failure: ImportFailure) -> bool {
+    return monotonic() - failure.failed_at >= _import_retry_window(failure.attempts);
+}
+
+
+impl _new_anchor(type_name: object) -> Anchor {
+    if type_name == 'NodeAnchor' {
+        return NodeAnchor.__new__(NodeAnchor);
+    }
+    if type_name == 'EdgeAnchor' {
+        return EdgeAnchor.__new__(EdgeAnchor);
+    }
+    return Anchor.__new__(Anchor);
+}
+
+
+impl _node_stub(raw_id: object, role: str) -> NodeAnchor {
+    if not isinstance(raw_id, str) or not raw_id {
+        raise TypeError(f"anchor payload '{role}' is not a string id");
+    }
+    stub = Serializer._id_to_stub(NodeAnchor, raw_id);
+    if not isinstance(stub, NodeAnchor) {
+        raise ValueError(f"anchor payload '{role}' is not a usable id: {raw_id}");
+    }
+    return stub;
 }

@@ -7,54 +7,6 @@ An `errors` or `encoding` argument is C's `const char *`, NULL when omitted.
 The Windows-only mbcs, oem and code_page codecs are not built on POSIX.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_buffer_new,
-    jacpy_bytes_from_memory,
-    NULL,
-    Py_NewRef,
-    PyBytes_AsString,
-    PyBytes_DecodeEscape,
-    _PyBytes_Resize,
-    PyBytes_Size,
-    PyCodec_Decode,
-    PyCodec_Encode,
-    _PyCodec_Lookup,
-    PyCodec_LookupError,
-    PyCodec_Register,
-    PyCodec_RegisterError,
-    PyCodec_Unregister,
-    _PyCodec_UnregisterError,
-    PyExc_OverflowError,
-    PyLong_FromLong,
-    PyLong_FromSsize_t,
-    PyObject,
-    _PyUnicode_AsASCIIString,
-    _PyUnicode_AsLatin1String,
-    PyUnicode_AsRawUnicodeEscapeString,
-    PyUnicode_AsUnicodeEscapeString,
-    _PyUnicode_AsUTF8String,
-    PyUnicode_BuildEncodingMap,
-    PyUnicode_DecodeASCII,
-    PyUnicode_DecodeCharmap,
-    PyUnicode_DecodeLatin1,
-    _PyUnicode_DecodeRawUnicodeEscapeStateful,
-    _PyUnicode_DecodeUnicodeEscapeStateful,
-    PyUnicode_DecodeUTF16Stateful,
-    PyUnicode_DecodeUTF32Stateful,
-    PyUnicode_DecodeUTF7Stateful,
-    PyUnicode_DecodeUTF8Stateful,
-    _PyUnicode_EncodeCharmap,
-    _PyUnicode_EncodeUTF16,
-    _PyUnicode_EncodeUTF32,
-    _PyUnicode_EncodeUTF7,
-    PyUnicode_GetDefaultEncoding,
-    PyUnicode_GetLength
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.bindings.references { owned_tuple }
-
 glob:priv PY_SSIZE_T_MAX: i64 = 0x7FFFFFFFFFFFFFFF,
      HEX_DIGITS: str = "0123456789abcdef";
 

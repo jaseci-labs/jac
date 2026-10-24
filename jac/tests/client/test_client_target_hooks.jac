@@ -43,7 +43,8 @@ test "every client kind maps onto a registered target" {
         get_target_registry,
         target_for_kind
     }
-    import from jaclang.project.kinds { KIND_SPECS, kind_has_client }
+    import from jaclang.project.kinds { KIND_SPECS }
+    import from jaclang.project.app_kinds { kind_has_client }
     import from pathlib { Path }
 
     registry = get_target_registry();
@@ -194,10 +195,10 @@ target that flips `requires_setup` gets lazy provisioning without further
 wiring. The explicit `jac setup` path stays on `target.setup(...)`."""
 test "the client dispatcher calls ensure_ready before build, dev and start" {
     content = _cli_jac.read_text().replace("\r\n", "\n");
-    build_section = content.split("def run_client_build(")[1].split(
-        "def run_client_start("
+    build_section = content.split("impl run_client_build(")[1].split(
+        "impl run_client_start("
     )[0];
-    start_section = content.split("def run_client_start(")[1].split("def get_config")[
+    start_section = content.split("impl run_client_start(")[1].split("impl get_config")[
         0
     ];
     for (label, section, dispatch) in [
@@ -213,8 +214,8 @@ test "the client dispatcher calls ensure_ready before build, dev and start" {
             f"run_client_{label}: ensure_ready must run before {dispatch}"
         );
     }
-    setup_section = content.split("def run_client_setup(")[1].split(
-        "def _place_bundle("
+    setup_section = content.split("impl run_client_setup(")[1].split(
+        "impl _place_bundle("
     )[0];
     assert "target_obj.setup(project_dir)" in setup_section , (
         "jac setup stays the explicit pre-provision entry"

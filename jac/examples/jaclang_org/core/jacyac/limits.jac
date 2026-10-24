@@ -6,7 +6,9 @@ obj PostingDenied {
         retry_after_seconds: int;
 }
 
-def:protect posting_limit(actor: str) -> PostingDenied | None {
+def:protect posting_limit(actor: str) -> PostingDenied | None;
+
+impl posting_limit(actor: str) -> PostingDenied | None {
     for (scope, cap, seconds) in [
         (
             "jacyac-post-burst",

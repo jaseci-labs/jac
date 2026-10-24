@@ -1,14 +1,14 @@
-impl KEDAAutoscaler._trigger_key{
+impl KEDAAutoscaler._trigger_key {
     return trigger.name or f"{trigger.type}-{trigger_index}";
 }
 
-impl KEDAAutoscaler._trigger_auth_name{
+impl KEDAAutoscaler._trigger_auth_name {
     key = f"{app_name}/{self._trigger_key(trigger, trigger_index)}";
     short_hash = hashlib.sha256(key.encode()).hexdigest()[:8];
     return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
 }
 
-impl KEDAAutoscaler._validate_triggers{
+impl KEDAAutoscaler._validate_triggers {
     seen: dict[str, int] = {};
     for (i, trigger) in enumerate(spec.triggers) {
         key = self._trigger_key(trigger, i);
@@ -25,7 +25,7 @@ impl KEDAAutoscaler._validate_triggers{
     }
 }
 
-impl KEDAAutoscaler._get_cluster_key{
+impl KEDAAutoscaler._get_cluster_key {
     try {
         import from kubernetes.client { Configuration }
         return Configuration.get_default_copy().host or "default";
@@ -34,7 +34,7 @@ impl KEDAAutoscaler._get_cluster_key{
     }
 }
 
-impl KEDAAutoscaler.preflight{
+impl KEDAAutoscaler.preflight {
     install_warning = [
         "KEDA CRDs not found on cluster. "
         "Install KEDA from the official docs, then redeploy: "
@@ -70,7 +70,7 @@ impl KEDAAutoscaler.preflight{
     }
 }
 
-impl KEDAAutoscaler._build_trigger{
+impl KEDAAutoscaler._build_trigger {
     if trigger.type == "cpu" {
         value = trigger.metadata.get(
             "averageUtilization", str(DEFAULT_CPU_UTILIZATION_TARGET)
@@ -105,18 +105,18 @@ impl KEDAAutoscaler._build_trigger{
     return keda_trigger;
 }
 
-impl KEDAAutoscaler._owner_label_value{
+impl KEDAAutoscaler._owner_label_value {
     if len(name) <= 63 {
         return name;
     }
     return f"so-{hashlib.sha256(name.encode()).hexdigest()[:16]}";
 }
 
-impl KEDAAutoscaler._scaled_object_name{
+impl KEDAAutoscaler._scaled_object_name {
     return spec.autoscaler_name or self.resource_name_for(app_name);
 }
 
-impl KEDAAutoscaler._build_manifests{
+impl KEDAAutoscaler._build_manifests {
     app_name = spec.app_name or spec.scale_target_name;
     self._validate_triggers(spec, app_name);
     scaled_obj_name = self._scaled_object_name(spec, app_name);
@@ -183,7 +183,7 @@ impl KEDAAutoscaler._build_manifests{
     return manifests;
 }
 
-impl KEDAAutoscaler._build_trigger_auth_manifest{
+impl KEDAAutoscaler._build_trigger_auth_manifest {
     if not trigger.auth {
         return None;
     }
@@ -220,7 +220,7 @@ impl KEDAAutoscaler._build_trigger_auth_manifest{
     };
 }
 
-impl KEDAAutoscaler._apply_custom_object{
+impl KEDAAutoscaler._apply_custom_object {
     try {
         api.get_namespaced_custom_object(
             group=group, version=version, namespace=namespace, plural=plural, name=name
@@ -248,7 +248,7 @@ impl KEDAAutoscaler._apply_custom_object{
     }
 }
 
-impl KEDAAutoscaler.apply{
+impl KEDAAutoscaler.apply {
     app_name = spec.app_name or spec.scale_target_name;
     manifests = self._build_manifests(spec);
     warnings = self.preflight();
@@ -311,7 +311,7 @@ impl KEDAAutoscaler.apply{
     return True;
 }
 
-impl KEDAAutoscaler._prune_orphan_trigger_auths{
+impl KEDAAutoscaler._prune_orphan_trigger_auths {
     selector = f"jac-scale/owner={self._owner_label_value(owner)},managed=jac-scale";
     try {
         existing = api.list_namespaced_custom_object(
@@ -348,7 +348,7 @@ impl KEDAAutoscaler._prune_orphan_trigger_auths{
     }
 }
 
-impl KEDAAutoscaler.destroy{
+impl KEDAAutoscaler.destroy {
     api = self._custom_api or client.CustomObjectsApi();
     scaled_object_name = self.resource_name_for(app_name);
     selector = f"jac-scale/owner={self._owner_label_value(
@@ -402,7 +402,7 @@ impl KEDAAutoscaler.destroy{
     }
 }
 
-impl KEDAAutoscaler.destroy_collection{
+impl KEDAAutoscaler.destroy_collection {
     api = self._custom_api or client.CustomObjectsApi();
     for (group, version, plural) in [
         ("keda.sh", "v1alpha1", "scaledobjects"),
@@ -459,11 +459,11 @@ impl KEDAAutoscaler.destroy_collection{
     }
 }
 
-impl KEDAAutoscaler.resource_name_for{
+impl KEDAAutoscaler.resource_name_for {
     return f"{target}-scaledobject";
 }
 
-impl KEDAAutoscaler._read_scaled_object{
+impl KEDAAutoscaler._read_scaled_object {
     """The live ScaledObject for a target, whichever of its names exists.
 
     A target is scaled either by the METRIC ScaledObject or by the HTTP
@@ -504,7 +504,7 @@ impl KEDAAutoscaler._read_scaled_object{
     return None;
 }
 
-impl KEDAAutoscaler._read_hpa{
+impl KEDAAutoscaler._read_hpa {
     """The HPA KEDA created for a ScaledObject, by the name KEDA reports.
 
     Never rebuilt from a naming convention: KEDA owns that name and publishes
@@ -528,7 +528,7 @@ impl KEDAAutoscaler._read_hpa{
     }
 }
 
-impl KEDAAutoscaler.get_runtime_status{
+impl KEDAAutoscaler.get_runtime_status {
     """The target's state from the ScaledObject, its HPA and the workload.
 
     Three things this reads that the Deployment cannot say. The live
@@ -601,7 +601,7 @@ impl KEDAAutoscaler.get_runtime_status{
     return self._apply_autoscaler_view(out);
 }
 
-impl KEDAAutoscaler._apply_autoscaler_view{
+impl KEDAAutoscaler._apply_autoscaler_view {
     """Let the autoscaler's own signals override the workload verdict.
 
     Two things the Deployment cannot say. A scaler that cannot reach its metric
@@ -636,14 +636,14 @@ impl KEDAAutoscaler._apply_autoscaler_view{
     return status;
 }
 
-impl KEDAAutoscaler._target_of{
+impl KEDAAutoscaler._target_of {
     ref: dict[str, any] = dict(
         dict(scaled_object.get("spec", {}) or {}).get("scaleTargetRef", {}) or {}
     );
     return str(ref.get("name") or "");
 }
 
-impl KEDAAutoscaler._list_scale_targets{
+impl KEDAAutoscaler._list_scale_targets {
     """Every ScaledObject's target in the namespace, plus the list's version.
 
     The returned resourceVersion is the list's, not any object's: that is the
@@ -674,7 +674,7 @@ impl KEDAAutoscaler._list_scale_targets{
     return (targets, version);
 }
 
-impl KEDAAutoscaler._transition_for_event{
+impl KEDAAutoscaler._transition_for_event {
     """One watch event turned into a transition, or None when nothing changed.
 
     Split out of the stream loop so the decision that matters, whether an event
@@ -701,7 +701,7 @@ impl KEDAAutoscaler._transition_for_event{
     return transition_from(status, target, namespace, previous);
 }
 
-impl KEDAAutoscaler.watch_scale_targets{
+impl KEDAAutoscaler.watch_scale_targets {
     """Deduplicated transitions for the namespace's KEDA-scaled targets.
 
     Watches the ScaledObject rather than the Deployment because the trigger and
@@ -788,15 +788,15 @@ impl KEDAAutoscaler.watch_scale_targets{
     }
 }
 
-impl KEDAAutoscaler.interceptor_route_name_for{
+impl KEDAAutoscaler.interceptor_route_name_for {
     return f"{target}-http-route";
 }
 
-impl KEDAAutoscaler.http_scaled_object_name_for{
+impl KEDAAutoscaler.http_scaled_object_name_for {
     return f"{target}-http-scaledobject";
 }
 
-impl KEDAAutoscaler.apply_http_activation{
+impl KEDAAutoscaler.apply_http_activation {
     self._validate_http_activation_spec(spec);
 
     caps = self.discover_capabilities();
@@ -941,7 +941,7 @@ impl KEDAAutoscaler.apply_http_activation{
     return True;
 }
 
-impl KEDAAutoscaler.destroy_http_activation{
+impl KEDAAutoscaler.destroy_http_activation {
     api = self._custom_api or client.CustomObjectsApi();
 
     interceptor_error: (ApiException | None) = None;
@@ -985,7 +985,7 @@ impl KEDAAutoscaler.destroy_http_activation{
     }
 }
 
-impl KEDAAutoscaler._build_routing_rules{
+impl KEDAAutoscaler._build_routing_rules {
     result: list[dict[str, any]] = [];
     for rule in rules {
         header_matches: list[dict[str, any]] = [];
@@ -1015,7 +1015,7 @@ impl KEDAAutoscaler._build_routing_rules{
     return result;
 }
 
-impl KEDAAutoscaler._build_interceptor_route{
+impl KEDAAutoscaler._build_interceptor_route {
     route_name = self.interceptor_route_name_for(spec.scale_target_name);
 
     target: dict[str, any] = {"service": spec.target.service};
@@ -1107,7 +1107,7 @@ impl KEDAAutoscaler._build_interceptor_route{
     };
 }
 
-impl KEDAAutoscaler._build_http_scaled_object{
+impl KEDAAutoscaler._build_http_scaled_object {
     scaled_obj_name = self.http_scaled_object_name_for(spec.scale_target_name);
 
     trigger_metadata: dict[str, any] = {
@@ -1153,7 +1153,7 @@ impl KEDAAutoscaler._build_http_scaled_object{
     };
 }
 
-impl KEDAAutoscaler._validate_http_activation_spec{
+impl KEDAAutoscaler._validate_http_activation_spec {
     if spec.scale_target_kind == "Pod" {
         raise ValueError(
             f"HTTP activation requires a target exposing Kubernetes' /scale "
@@ -1179,7 +1179,7 @@ impl KEDAAutoscaler._validate_http_activation_spec{
     }
 }
 
-impl KEDAAutoscaler._check_service_address{
+impl KEDAAutoscaler._check_service_address {
     (host, _, __) = address.partition(":");
     parts = host.split(".");
     name = parts[0];
@@ -1202,7 +1202,7 @@ impl KEDAAutoscaler._check_service_address{
     }
 }
 
-impl KEDAAutoscaler._capabilities_cache_key{
+impl KEDAAutoscaler._capabilities_cache_key {
     return (
         f"{self._get_cluster_key()}::{self.http_scaler_address}"
         f"::{self.interceptor_service_address}::{id(self._custom_api)}"
@@ -1210,7 +1210,7 @@ impl KEDAAutoscaler._capabilities_cache_key{
     );
 }
 
-impl KEDAAutoscaler.discover_capabilities{
+impl KEDAAutoscaler.discover_capabilities {
     cluster_key = self._capabilities_cache_key();
     if not refresh and cluster_key in self._capabilities_cache {
         return self._capabilities_cache[cluster_key];
@@ -1329,11 +1329,11 @@ impl KEDAAutoscaler.discover_capabilities{
     return caps;
 }
 
-impl KEDAAutoscaler.invalidate_capabilities{
+impl KEDAAutoscaler.invalidate_capabilities {
     self._capabilities_cache.pop(self._capabilities_cache_key(), None);
 }
 
-impl KEDAAutoscaler.format_capabilities{
+impl KEDAAutoscaler.format_capabilities {
     if caps.core_available and caps.http_addon_available and not caps.errors {
         return "KEDA HTTP Add-on capabilities ready: core and HTTP Add-on both available.";
     }

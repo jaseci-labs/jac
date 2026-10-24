@@ -1,4 +1,22 @@
-def:pub fmean[T](data: list[T]) -> float {
+def:pub fmean[T](data: list[T]) -> float;
+
+def:pub mean[T](data: list[T]) -> float;
+
+def:pub median[T](data: list[T]) -> float;
+
+def:pub median_low[T](data: list[T]) -> float;
+
+def:pub median_high[T](data: list[T]) -> float;
+
+def:pub pvariance[T](data: list[T]) -> float;
+
+def:pub variance[T](data: list[T]) -> float;
+
+def:pub pstdev[T](data: list[T]) -> float;
+
+def:pub stdev[T](data: list[T]) -> float;
+
+impl fmean[T](data: list[T]) -> float {
     n = len(data);
     if n == 0 {
         raise ValueError("fmean requires at least one data point");
@@ -10,7 +28,7 @@ def:pub fmean[T](data: list[T]) -> float {
     return s / float(n);
 }
 
-def:pub mean[T](data: list[T]) -> float {
+impl mean[T](data: list[T]) -> float {
     n = len(data);
     if n == 0 {
         raise ValueError("mean requires at least one data point");
@@ -22,7 +40,7 @@ def:pub mean[T](data: list[T]) -> float {
     return s / float(n);
 }
 
-def:pub median[T](data: list[T]) -> float {
+impl median[T](data: list[T]) -> float {
     n = len(data);
     if n == 0 {
         raise ValueError("no median for empty data");
@@ -35,7 +53,7 @@ def:pub median[T](data: list[T]) -> float {
     return (float(xs[m - 1]) + float(xs[m])) / 2.0;
 }
 
-def:pub median_low[T](data: list[T]) -> float {
+impl median_low[T](data: list[T]) -> float {
     n = len(data);
     if n == 0 {
         raise ValueError("no median for empty data");
@@ -47,7 +65,7 @@ def:pub median_low[T](data: list[T]) -> float {
     return float(xs[n // 2 - 1]);
 }
 
-def:pub median_high[T](data: list[T]) -> float {
+impl median_high[T](data: list[T]) -> float {
     n = len(data);
     if n == 0 {
         raise ValueError("no median for empty data");
@@ -56,7 +74,7 @@ def:pub median_high[T](data: list[T]) -> float {
     return float(xs[n // 2]);
 }
 
-def:pub pvariance[T](data: list[T]) -> float {
+impl pvariance[T](data: list[T]) -> float {
     n = len(data);
     if n < 1 {
         raise ValueError("pvariance requires at least one data point");
@@ -74,7 +92,7 @@ def:pub pvariance[T](data: list[T]) -> float {
     return ss / float(n);
 }
 
-def:pub variance[T](data: list[T]) -> float {
+impl variance[T](data: list[T]) -> float {
     n = len(data);
     if n < 2 {
         raise ValueError("variance requires at least two data points");
@@ -92,10 +110,10 @@ def:pub variance[T](data: list[T]) -> float {
     return ss / float(n - 1);
 }
 
-def:pub pstdev[T](data: list[T]) -> float {
+impl pstdev[T](data: list[T]) -> float {
     return pvariance(data) ** 0.5;
 }
 
-def:pub stdev[T](data: list[T]) -> float {
+impl stdev[T](data: list[T]) -> float {
     return variance(data) ** 0.5;
 }

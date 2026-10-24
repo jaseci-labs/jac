@@ -58,7 +58,8 @@ obj MkPayloadOpts {
         layer_cache: str | None = None,
         seal: bool = False,
         debug_src: bool = False,
-        stubcat_out: str | None = None;
+        stubcat_out: str | None = None,
+        kernel_dir: str | None = None;
 }
 
 obj FoundLib {
@@ -74,6 +75,7 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
+def ship_wiring(package_root: str, site_package: str);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
 def strip_kernel_best_effort(site: str);
 def write_dist_info(repo_root: str, site: str);
@@ -81,7 +83,14 @@ def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpt
 def run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
 def run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool;
 def cached_stubcat(pkg_dir: str) -> str;
-def precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool);
+def precompile(
+    py: str,
+    python_dir: str,
+    site: str,
+    seal: bool,
+    debug_src: bool,
+    kernel_dir: (str | None) = None
+);
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];
 def stage_python_bin(python_dir: str, stage: str);

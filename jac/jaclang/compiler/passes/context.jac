@@ -1,16 +1,3 @@
-import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
-import from jaclang.compiler.frontend.diagnostics {
-    DiagnosticInfo,
-    E9001,
-    LINT_ALIASES,
-    Severity
-}
-import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.frontend.unitree { Module, Source, TreeWalker, UniNode }
-import from jaclang.compiler.driver.compile_options { CancelToken }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import type from jaclang.compiler.driver.program { JacProgram }
-
 obj Alert {
     has msg: str,
         loc: Span,
@@ -27,7 +14,14 @@ obj Alert {
     def pretty_print(*, colors: bool = False) -> str;
 }
 
-glob INLINE_LOCKED_CODES: set[str] = {"E1144", "E2090", "E2091", "E2094"};
+glob INLINE_LOCKED_CODES: set[str] = {
+         "E1144",
+         "E1146",
+         "E2090",
+         "E2091",
+         "E2094",
+         "E2099"
+     };
 
 obj DiagnosticPolicy {
     has suppress_codes: list[str] = [],
@@ -81,9 +75,7 @@ obj CompileContext {
     def walk_subtree(nd: UniNode, walk: Walker) -> None;
     def enter_node(nd: UniNode) -> None;
     def exit_node(nd: UniNode) -> None;
-    def is_canceled -> bool {
-        return self.cancel_requested;
-    }
+    def is_canceled -> bool;
 }
 
 walker CompilerPass {
@@ -93,17 +85,16 @@ walker CompilerPass {
 
     has prog: JacProgram { getter; }
 
-    def release {}
+    def release;
 }
 
 type PassSchedule = list[type[CompilerPass]];
 
 walker TreePass(CompilerPass, TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
+    has _decl_bodies: list[ImplDef] = [];
 
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
+    can enter_walk with UniNode entry;
+    can exit_walk with UniNode exit;
+    def walk_decl_body(decl: UniNode) -> None;
+    def reached_by_syntax(nd: UniNode) -> bool;
 }

@@ -4,11 +4,12 @@ import from pathlib { Path }
 
 glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E0077": "jac-impl-files",
-         "W2084": "jac-arch-wiring",
          "E1141": "jac-arch-wiring",
          "E1142": "jac-arch-wiring",
          "E1143": "jac-arch-wiring",
          "E1144": "jac-arch-wiring",
+         "E1146": "jac-arch-wiring",
+         "E1147": "jac-arch-wiring",
          "E2088": "jac-arch-wiring",
          "E2089": "jac-arch-wiring",
          "E2090": "jac-arch-wiring",
@@ -16,9 +17,12 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E2092": "jac-arch-wiring",
          "E2093": "jac-arch-wiring",
          "E2094": "jac-arch-wiring",
-         "W2083": "jac-arch-wiring",
-         "W3052": "jac-arch-wiring",
+         "E2097": "jac-arch-wiring",
+         "E2098": "jac-arch-wiring",
+         "E2099": "jac-arch-wiring",
+         "E2100": "jac-arch-wiring",
          "W3053": "jac-arch-wiring",
+         "W3054": "jac-arch-wiring",
          "E0033": "jac-comptime",
          "E0108": "jac-comptime",
          "E0109": "jac-comptime",
@@ -226,87 +230,13 @@ impl list_guides -> list[Guide] {
     return guides;
 }
 
-def _clean_markdown(text: str) -> str {
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text);
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text);
-    text = re.sub(r"[*_`]", "", text);
-    text = re.sub(r"\s*\{#[^}]*\}", "", text);
-    return " ".join(text.split());
-}
+def _clean_markdown(text: str) -> str;
 
-def _derive_description(body: str) -> str {
-    title = "";
-    para: list[str] = [];
-    in_fence = False;
+def _derive_description(body: str) -> str;
 
-    for raw in body.splitlines() {
-        stripped = raw.strip();
-        if stripped.startswith("```") {
-            if para {
-                break;
-            }
-            in_fence = not in_fence;
-            continue;
-        }
-        if in_fence {
-            continue;
-        }
-        if not stripped {
-            if para {
-                break;
-            }
-            continue;
-        }
-        if stripped.startswith("#") {
-            if para {
-                break;
-            }
-            if not title {
-                title = stripped.lstrip("#").strip();
-            }
-            continue;
-        }
+def _doc_name(rel: Path) -> str;
 
-        if stripped.startswith(("!!!", "???", "===", "<", "|", "---", "- ", "* ")) {
-            if para {
-                break;
-            }
-            continue;
-        }
-        if re.`match(r"^\d+\. ", stripped) or raw.startswith(("    ", "\t")) {
-            if para {
-                break;
-            }
-            continue;
-        }
-        para.append(stripped);
-    }
-    text = _clean_markdown(" ".join(para)) or _clean_markdown(title);
-    if len(text) > _DOC_DESCRIPTION_MAX {
-        cut = text[:_DOC_DESCRIPTION_MAX + 1];
-        text = cut[:cut.rfind(" ")].rstrip(" ,;:") + " ...";
-    }
-    return text;
-}
-
-def _doc_name(rel: Path) -> str {
-    parts = list(rel.parts);
-    parts[-1] = rel.stem;
-
-    if parts[-1] == "index" and len(parts) > 2 {
-        parts.pop();
-    }
-    return "/".join(parts);
-}
-
-def _load_doc(path: Path, name: str) -> Guide | None {
-    g = parse_guide(path);
-    if g is None {
-        return None;
-    }
-    description = g.description or _derive_description(g.body);
-    return Guide(name=name, description=description, body=g.body, path=g.path);
-}
+def _load_doc(path: Path, name: str) -> Guide | None;
 
 impl list_docs -> list[Guide] {
     ddir = docs_dir();
@@ -348,8 +278,8 @@ impl corpus_blurb(ns: str) -> str {
     return _DOC_CORPUS_BLURBS.get(ns, "");
 }
 
-impl nav_manifest -> dict[str, any] {
-    path = docs_dir() / "nav.json";
+impl nav_manifest(docs_root: Path | None = None) -> dict[str, any] {
+    path = (docs_root or docs_dir()) / "nav.json";
     if not path.is_file() {
         return {};
     }
@@ -361,7 +291,7 @@ impl nav_manifest -> dict[str, any] {
     return loaded if isinstance(loaded, dict) else {};
 }
 
-impl nav_pages -> list[NavPage] {
+impl nav_pages(docs_root: Path | None = None) -> list[NavPage] {
     pages: list[NavPage] = [];
 
     def walk(items: list[object], trail: list[str]) {
@@ -384,21 +314,11 @@ impl nav_pages -> list[NavPage] {
             }
         }
     }
-    walk(nav_manifest().get("nav", []) as list[object], []);
+    walk(nav_manifest(docs_root).get("nav", []) as list[object], []);
     return pages;
 }
 
-def _resolve_by_suffix(clean: str) -> Guide | None {
-    matches = [
-        g
-        for g in (list_guides() + list_docs())
-        if g.name == clean or g.name.endswith("/" + clean)
-    ];
-    if len(matches) == 1 {
-        return matches[0];
-    }
-    return None;
-}
+def _resolve_by_suffix(clean: str) -> Guide | None;
 
 impl get_guide(name: str) -> Guide | None {
     clean = name.strip().strip("/");
@@ -516,46 +436,7 @@ impl grep_guides(
     return _doc_level_hits(terms);
 }
 
-def _doc_level_hits(terms: list[str]) -> list[GrepHit] {
-    if len(terms) < 2 {
-        return [];
-    }
-    scored: list[tuple[int, float, str]] = [];
-
-    for g in (list_guides() + list_docs()) {
-        text = f"{g.name}\n{g.description}\n{g.body}".lower();
-        matched = len(
-            [
-                t
-                for t in terms
-                if t in text
-            ]
-        );
-        if matched >= 2 {
-            density = sum([text.count(t) for t in terms]) / max(len(text), 1);
-            scored.append((-matched, -density, g.name));
-        }
-    }
-    scored.sort();
-    out: list[GrepHit] = [];
-
-    for (neg, _density, name) in scored[:10] {
-        matched = -neg;
-        if matched == len(terms) {
-            detail = (
-                f"all {matched} terms appear in this doc "
-                f"(no single line has them all) -- open: jac guide {name}"
-            );
-        } else {
-            detail = (
-                f"{matched}/{len(terms)} terms appear in this doc -- "
-                f"open: jac guide {name}"
-            );
-        }
-        out.append(GrepHit(guide=name, line_no=0, text=detail));
-    }
-    return out;
-}
+def _doc_level_hits(terms: list[str]) -> list[GrepHit];
 
 impl guide_for_diagnostic(code: str, category: str = "") -> str | None {
     name = _CODE_GUIDE_MAP.get(code);
@@ -639,4 +520,139 @@ impl guide_sections(g: Guide) -> list[GuideSection] {
         );
     }
     return sections;
+}
+
+impl _clean_markdown(text: str) -> str {
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text);
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text);
+    text = re.sub(r"[*_`]", "", text);
+    text = re.sub(r"\s*\{#[^}]*\}", "", text);
+    return " ".join(text.split());
+}
+
+impl _derive_description(body: str) -> str {
+    title = "";
+    para: list[str] = [];
+    in_fence = False;
+
+    for raw in body.splitlines() {
+        stripped = raw.strip();
+        if stripped.startswith("```") {
+            if para {
+                break;
+            }
+            in_fence = not in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        if not stripped {
+            if para {
+                break;
+            }
+            continue;
+        }
+        if stripped.startswith("#") {
+            if para {
+                break;
+            }
+            if not title {
+                title = stripped.lstrip("#").strip();
+            }
+            continue;
+        }
+
+        if stripped.startswith(("!!!", "???", "===", "<", "|", "---", "- ", "* ")) {
+            if para {
+                break;
+            }
+            continue;
+        }
+        if re.`match(r"^\d+\. ", stripped) or raw.startswith(("    ", "\t")) {
+            if para {
+                break;
+            }
+            continue;
+        }
+        para.append(stripped);
+    }
+    text = _clean_markdown(" ".join(para)) or _clean_markdown(title);
+    if len(text) > _DOC_DESCRIPTION_MAX {
+        cut = text[:_DOC_DESCRIPTION_MAX + 1];
+        text = cut[:cut.rfind(" ")].rstrip(" ,;:") + " ...";
+    }
+    return text;
+}
+
+impl _doc_name(rel: Path) -> str {
+    parts = list(rel.parts);
+    parts[-1] = rel.stem;
+
+    if parts[-1] == "index" and len(parts) > 2 {
+        parts.pop();
+    }
+    return "/".join(parts);
+}
+
+impl _load_doc(path: Path, name: str) -> Guide | None {
+    g = parse_guide(path);
+    if g is None {
+        return None;
+    }
+    description = g.description or _derive_description(g.body);
+    return Guide(name=name, description=description, body=g.body, path=g.path);
+}
+
+impl _resolve_by_suffix(clean: str) -> Guide | None {
+    matches = [
+        g
+        for g in (list_guides() + list_docs())
+        if g.name == clean or g.name.endswith("/" + clean)
+    ];
+    if len(matches) == 1 {
+        return matches[0];
+    }
+    return None;
+}
+
+impl _doc_level_hits(terms: list[str]) -> list[GrepHit] {
+    if len(terms) < 2 {
+        return [];
+    }
+    scored: list[tuple[int, float, str]] = [];
+
+    for g in (list_guides() + list_docs()) {
+        text = f"{g.name}\n{g.description}\n{g.body}".lower();
+        matched = len(
+            [
+                t
+                for t in terms
+                if t in text
+            ]
+        );
+        if matched >= 2 {
+            density = sum([text.count(t) for t in terms]) / max(len(text), 1);
+            scored.append((-matched, -density, g.name));
+        }
+    }
+    scored.sort();
+    out: list[GrepHit] = [];
+
+    for (neg, _density, name) in scored[:10] {
+        matched = -neg;
+        if matched == len(terms) {
+            detail = (
+                f"all {matched} terms appear in this doc "
+                f"(no single line has them all) -- open: jac guide {name}"
+            );
+        } else {
+            detail = (
+                f"{matched}/{len(terms)} terms appear in this doc -- "
+                f"open: jac guide {name}"
+            );
+        }
+        out.append(GrepHit(guide=name, line_no=0, text=detail));
+    }
+    return out;
 }

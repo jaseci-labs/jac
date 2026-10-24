@@ -9,26 +9,6 @@ modules/sre_ucs{1,2,4}.jac, with its own copies of the helpers it runs on
 every step. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyMem_Free,
-    PyMem_Realloc,
-    PyObject,
-    Py_buffer,
-    _PyUnicode_IsAlpha,
-    _PyUnicode_IsDecimalDigit,
-    _PyUnicode_IsDigit,
-    _PyUnicode_IsLinebreak,
-    _PyUnicode_IsNumeric,
-    _PyUnicode_IsWhitespace,
-    _PyUnicode_ToLowercase,
-    _PyUnicode_ToUppercase
-}
-import from jaclang.runtime.python.modules.sre_locale {
-    sre_isalnum,
-    sre_tolower,
-    sre_toupper
-}
-
 import from c {
     # SRE_REPEAT: a REPEAT operator's context. `pattern` points at the
     # operator's arguments; the pool links chain the used and unused records.

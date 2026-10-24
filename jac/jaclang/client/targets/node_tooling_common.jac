@@ -3,7 +3,17 @@ import hashlib;
 import json;
 import from pathlib { Path }
 
-def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
+def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None);
+
+def resolve_node_tool(project_dir: Path, tool: str) -> list[str];
+
+def run_manifest_install(project_dir: Path);
+
+def _deps_current(project_dir: Path, stamp: Path, signature: str) -> bool;
+
+def manifest_signature(project_dir: Path) -> str;
+
+impl resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
     shim = project_dir / "node_modules" / ".bin" / tool;
     if not shim.exists() {
         return None;
@@ -11,7 +21,7 @@ def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
     return shim.resolve();
 }
 
-def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
+impl resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
     bun = js_runtime_path();
     `entry = resolve_node_tool_entry(project_dir, tool);
     if `entry is None {
@@ -24,7 +34,7 @@ def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
     return [bun, str(`entry)];
 }
 
-def run_manifest_install(project_dir: Path) {
+impl run_manifest_install(project_dir: Path) {
     with FileLock(project_dir / ".jac-dependencies.lock") {
         stamp = project_dir / ".jac-dependencies.sha256";
         current = _deps_current(project_dir, stamp, manifest_signature(project_dir));
@@ -53,7 +63,7 @@ def run_manifest_install(project_dir: Path) {
     }
 }
 
-def _deps_current(project_dir: Path, stamp: Path, signature: str) -> bool {
+impl _deps_current(project_dir: Path, stamp: Path, signature: str) -> bool {
     if not stamp.is_file() or stamp.read_text() != signature {
         return False;
     }
@@ -67,7 +77,7 @@ def _deps_current(project_dir: Path, stamp: Path, signature: str) -> bool {
     return all((project_dir / "node_modules" / str(name)).exists() for name in names);
 }
 
-def manifest_signature(project_dir: Path) -> str {
+impl manifest_signature(project_dir: Path) -> str {
     digest = hashlib.sha256();
     for name in ["package.json", "bun.lock", "bun.lockb"] {
         path = project_dir / name;

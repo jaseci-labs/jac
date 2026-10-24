@@ -1,58 +1,7 @@
 import shutil;
 
 
-def _install_ws_catchall(gw: MicroserviceGateway) {
-    async def ws_proxy(websocket: WebSocket) -> None {
-        ws_path: str = websocket.path_params.get('ws_path', '');
-        if gw.drain.draining {
-            await websocket.close(code=1012);
-            return;
-        }
-        full_path: str = "/" + ws_path;
-        matched = gw.registry.match_route(full_path);
-        if not matched {
-            await gw.refresh_app_routes();
-            matched = gw.registry.entries.get(gw.route_table.owner(full_path));
-        }
-        page_base: str = "";
-        if not matched {
-            matched = gw.root_member();
-            if matched is not None and matched.owns_root() {
-                page_base = matched.page_url;
-            }
-        }
-        if not matched or not (page_base or matched.url) {
-            await websocket.accept();
-            await websocket.close(code=1008);
-            return;
-        }
-        if matched.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
-            await websocket.accept();
-            await websocket.close(code=1013);
-            return;
-        }
-        remaining: str = full_path;
-        if not matched.is_root and full_path.startswith(matched.prefix) {
-            remaining = full_path[len(matched.prefix):];
-        }
-        remaining = remaining or "/";
-        query: str = str(websocket.url.query);
-        target_http: str = f"{page_base or matched.url}{remaining}";
-        if query {
-            target_http = f"{target_http}?{query}";
-        }
-
-        async def _accept_as_upstream_did(selected: str) {
-            await websocket.accept(subprotocol=selected);
-        }
-        req_headers: dict[str, str] = dict(websocket.headers.items());
-        logger.debug(f"ws proxy: {full_path} -> {target_http}");
-        await websocket_forward(
-            websocket, target_http, req_headers, on_upstream=_accept_as_upstream_did
-        );
-    }
-    gw.app.add_ws_endpoint(WSEndPoint(path="/{ws_path:path}", handler=ws_proxy));
-}
+def _install_ws_catchall(gw: MicroserviceGateway);
 
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
     import jaclang;
@@ -195,12 +144,15 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
         return;
     }
     logger.info(
-        "No staged admin console; the first request to /admin builds it from source."
+        "No staged admin console; the first request to /admin starts a background build from source."
     );
 }
 
 impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
-    admin_dist = Path(self.admin_dist_dir);
+    admin_dist = resolve_console(Path(self.admin_dist_dir), self.admin_console);
+    if isinstance(admin_dist, Response) {
+        return admin_dist;
+    }
 
     if not asset_path or asset_path == "/" {
         target = admin_dist / "index.html";
@@ -1013,9 +965,7 @@ impl MicroserviceGateway.setup -> ServingApp {
     return self.app;
 }
 
-def _log_gateway_ready(host: str, bound: int) {
-    logger.info(f"Gateway starting on {host}:{bound}");
-}
+def _log_gateway_ready(host: str, bound: int);
 
 
 impl MicroserviceGateway.start(on_ready: any = None) -> None {
@@ -1088,4 +1038,62 @@ impl MicroserviceGateway._install_admin_api -> None {
         "Gateway-owned identity installed "
         "(/user/register, /user/login, /user/me served by the gateway)"
     );
+}
+
+impl _install_ws_catchall(gw: MicroserviceGateway) {
+    async def ws_proxy(websocket: WebSocket) -> None {
+        ws_path: str = websocket.path_params.get('ws_path', '');
+        if gw.drain.draining {
+            await websocket.close(code=1012);
+            return;
+        }
+        full_path: str = "/" + ws_path;
+        matched = gw.registry.match_route(full_path);
+        if not matched {
+            await gw.refresh_app_routes();
+            matched = gw.registry.entries.get(gw.route_table.owner(full_path));
+        }
+        page_base: str = "";
+        if not matched {
+            matched = gw.root_member();
+            if matched is not None and matched.owns_root() {
+                page_base = matched.page_url;
+            }
+        }
+        if not matched or not (page_base or matched.url) {
+            await websocket.accept();
+            await websocket.close(code=1008);
+            return;
+        }
+        if matched.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
+            await websocket.accept();
+            await websocket.close(code=1013);
+            return;
+        }
+        remaining: str = full_path;
+        if not matched.is_root and full_path.startswith(matched.prefix) {
+            remaining = full_path[len(matched.prefix):];
+        }
+        remaining = remaining or "/";
+        query: str = str(websocket.url.query);
+        target_http: str = f"{page_base or matched.url}{remaining}";
+        if query {
+            target_http = f"{target_http}?{query}";
+        }
+
+        async def _accept_as_upstream_did(selected: str) {
+            await websocket.accept(subprotocol=selected);
+        }
+        req_headers: dict[str, str] = dict(websocket.headers.items());
+        logger.debug(f"ws proxy: {full_path} -> {target_http}");
+        await websocket_forward(
+            websocket, target_http, req_headers, on_upstream=_accept_as_upstream_did
+        );
+    }
+    gw.app.add_ws_endpoint(WSEndPoint(path="/{ws_path:path}", handler=ws_proxy));
+}
+
+
+impl _log_gateway_ready(host: str, bound: int) {
+    logger.info(f"Gateway starting on {host}:{bound}");
 }

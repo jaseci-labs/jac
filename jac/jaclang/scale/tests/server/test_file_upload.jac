@@ -1,11 +1,6 @@
 """Test file upload functionality in jac-scale serve."""
 
 import io;
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data
-}
 
 """Create a test file-like object for upload."""
 def _create_test_file(

@@ -2,39 +2,6 @@
 encodings, big5 and cp950) in native Jac. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.modules.cjkcodecs {
-    DecodeWriter,
-    MBERR_EXCEPTION,
-    MBERR_TOOFEW,
-    MBERR_TOOSMALL,
-    MultibyteCodec,
-    MultibyteCodec_State,
-    NOCHAR,
-    UNIINV,
-    getcodec,
-    inbyte,
-    inchar,
-    map_decode,
-    map_encode,
-    next_in,
-    next_inchar,
-    next_out,
-    no_codec_init,
-    no_decode_reset,
-    no_encode_reset,
-    no_state_init,
-    outbyte,
-    outchar,
-    register_maps
-}
-import from jaclang.runtime.python.modules.cjkcodecs_mappings_tw {
-    CJK_TW_MAPPINGS,
-    cjk_big5_map,
-    cjk_cp950ext_map,
-    cjk_tw_mappings
-}
-
 # BIG5 codec
 
 def big5_encode(

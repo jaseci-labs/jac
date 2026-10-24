@@ -9,74 +9,12 @@ import from pathlib { Path }
 glob _VENDOR_DIRNAME: str = "_jac_vendor";
 
 
-def _module_is_client_source(source_path: Path) -> bool {
-    try {
-        mod = JacProgramRt().compile(
-            str(source_path), options=CompileOptions(symtab_ir_only=True)
-        );
-        return mod is not None
-            and mod.declares_codespace(CodeContext.CLIENT, path_hint=str(source_path));
-    } except Exception {
-        return False;
-    }
-}
+def _module_is_client_source(source_path: Path) -> bool;
 
 
-def _bootstrap_shim(top: str, primary_pkg: str) -> str {
-    here = "os.path.dirname(os.path.abspath(__file__))";
-    if top == primary_pkg {
-        vendor_expr = f"os.path.join({here}, {_VENDOR_DIRNAME!r})";
-    } else {
-        vendor_expr = (
-            f"os.path.join(os.path.dirname({here}), "
-            f"{primary_pkg!r}, {_VENDOR_DIRNAME!r})"
-        );
-    }
-    return (
-        "# jac bundle: prefer a host jaclang; else use the vendored runtime.\n"
-        + "def _jac_use_vendored_runtime():\n"
-        + "    import importlib.util\n"
-        + "    import os\n"
-        + "    import sys\n"
-        + "    try:\n"
-        + "        if importlib.util.find_spec('jaclang') is not None:\n"
-        + "            return\n"
-        + "    except (ImportError, ValueError):\n"
-        + "        pass\n"
-        + "    vendor = "
-        + vendor_expr
-        + "\n"
-        + "    if os.path.isdir(vendor) and vendor not in sys.path:\n"
-        + "        sys.path.insert(0, vendor)\n"
-        + "\n"
-        + "\n"
-        + "_jac_use_vendored_runtime()\n"
-    );
-}
+def _bootstrap_shim(top: str, primary_pkg: str) -> str;
 
-def _with_bootstrap(init_source: str, shim: str) -> str {
-    tree = py_ast.parse(init_source);
-    insert_at = 1;
-    for (i, stmt) in enumerate(tree.body) {
-        is_docstring = (
-            (i == 0)
-            and isinstance(stmt, py_ast.Expr)
-            and isinstance(stmt.value, py_ast.Constant)
-            and isinstance(stmt.value.value, str)
-        );
-        is_future = (
-            isinstance(stmt, py_ast.ImportFrom) and (stmt.module == "__future__")
-        );
-        if is_docstring or is_future {
-            insert_at = stmt.end_lineno + 1;
-        } else {
-            break;
-        }
-    }
-    lines = init_source.splitlines();
-    lines[insert_at - 1:insert_at - 1] = shim.splitlines();
-    return "\n".join(lines) + "\n";
-}
+def _with_bootstrap(init_source: str, shim: str) -> str;
 
 impl WheelBuilder.postinit -> None {
     if self.project_root is None {
@@ -193,9 +131,7 @@ impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
     return src_data;
 }
 
-def _primary_package(tops: list[str], pkg_name: str) -> str {
-    return pkg_name if pkg_name in tops else tops[0];
-}
+def _primary_package(tops: list[str], pkg_name: str) -> str;
 
 impl WheelBuilder._vendor_runtime_into(
     src_data: dict[str, bytes], codes: list[str]
@@ -406,18 +342,7 @@ impl WheelBuilder._top_level_names(src_data: dict[str, bytes]) -> list[str] {
     return [self.config.project.name.replace("-", "_")];
 }
 
-def _backend_source -> str {
-    source = python_source(str(wheel_archive.__file__), JacProgramRt())[0];
-    leaked = scan_jaclang_imports(source);
-    if leaked {
-        raise RuntimeError(
-            "the sdist build backend must run without jaclang, but its Python "
-                + "imports "
-                + ", ".join(sorted(leaked))
-        );
-    }
-    return source;
-}
+def _backend_source -> str;
 
 impl WheelBuilder._build_data(src_data: dict[str, bytes]) -> str {
     spec = {
@@ -492,4 +417,90 @@ impl WheelBuilder.install_editable(src_dir: Path, site_pkgs: Path) -> Path {
     );
 
     return pth_path;
+}
+
+impl _module_is_client_source(source_path: Path) -> bool {
+    try {
+        mod = JacProgramRt().compile(
+            str(source_path), options=CompileOptions(symtab_ir_only=True)
+        );
+        return mod is not None
+            and mod.declares_codespace(CodeContext.CLIENT, path_hint=str(source_path));
+    } except Exception {
+        return False;
+    }
+}
+
+
+impl _bootstrap_shim(top: str, primary_pkg: str) -> str {
+    here = "os.path.dirname(os.path.abspath(__file__))";
+    if top == primary_pkg {
+        vendor_expr = f"os.path.join({here}, {_VENDOR_DIRNAME!r})";
+    } else {
+        vendor_expr = (
+            f"os.path.join(os.path.dirname({here}), "
+            f"{primary_pkg!r}, {_VENDOR_DIRNAME!r})"
+        );
+    }
+    return (
+        "# jac bundle: prefer a host jaclang; else use the vendored runtime.\n"
+        + "def _jac_use_vendored_runtime():\n"
+        + "    import importlib.util\n"
+        + "    import os\n"
+        + "    import sys\n"
+        + "    try:\n"
+        + "        if importlib.util.find_spec('jaclang') is not None:\n"
+        + "            return\n"
+        + "    except (ImportError, ValueError):\n"
+        + "        pass\n"
+        + "    vendor = "
+        + vendor_expr
+        + "\n"
+        + "    if os.path.isdir(vendor) and vendor not in sys.path:\n"
+        + "        sys.path.insert(0, vendor)\n"
+        + "\n"
+        + "\n"
+        + "_jac_use_vendored_runtime()\n"
+    );
+}
+
+impl _with_bootstrap(init_source: str, shim: str) -> str {
+    tree = py_ast.parse(init_source);
+    insert_at = 1;
+    for (i, stmt) in enumerate(tree.body) {
+        is_docstring = (
+            (i == 0)
+            and isinstance(stmt, py_ast.Expr)
+            and isinstance(stmt.value, py_ast.Constant)
+            and isinstance(stmt.value.value, str)
+        );
+        is_future = (
+            isinstance(stmt, py_ast.ImportFrom) and (stmt.module == "__future__")
+        );
+        if is_docstring or is_future {
+            insert_at = stmt.end_lineno + 1;
+        } else {
+            break;
+        }
+    }
+    lines = init_source.splitlines();
+    lines[insert_at - 1:insert_at - 1] = shim.splitlines();
+    return "\n".join(lines) + "\n";
+}
+
+impl _primary_package(tops: list[str], pkg_name: str) -> str {
+    return pkg_name if pkg_name in tops else tops[0];
+}
+
+impl _backend_source -> str {
+    source = python_source(str(wheel_archive.__file__), JacProgramRt())[0];
+    leaked = scan_jaclang_imports(source);
+    if leaked {
+        raise RuntimeError(
+            "the sdist build backend must run without jaclang, but its Python "
+                + "imports "
+                + ", ".join(sorted(leaked))
+        );
+    }
+    return source;
 }

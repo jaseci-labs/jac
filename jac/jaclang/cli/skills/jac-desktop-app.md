@@ -106,7 +106,7 @@ Linux ships a flat directory:
 
 macOS ships the same pieces as an application bundle (`my-app.app/Contents/MacOS/my-app` + `libwebview.dylib`, `Contents/Resources/{app.jab,dist/}`, `Contents/Info.plist` from `[desktop] name`/`identifier`/`version`, `AppIcon.icns` when `[desktop] icon` names a `.icns` or `.png`).
 
-The directory is **relocatable** - the binary finds `dist/`, the image and the webview library relative to itself. Ship the whole directory (or the `.app`). App state (graph, session) lives beside the binary on Linux and under `~/Library/Application Support/<identifier>` on macOS; `JAC_DATA_PATH` overrides both.
+The directory is **relocatable** - the binary finds `dist/`, the image and the webview library relative to itself. Ship the whole directory (or the `.app`). App state (graph, session) lives in a per-user, per-app directory: `$XDG_DATA_HOME/<identifier>` (or `~/.local/share/<identifier>`) on Linux and under `~/Library/Application Support/<identifier>` on macOS; `JAC_DATA_PATH` overrides it. An embedded app also starts its own Postgres cluster there and runs the distribution vendored into the bundle.
 
 ## Gotchas and current limits
 

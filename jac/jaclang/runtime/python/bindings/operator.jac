@@ -1,62 +1,6 @@
 """The _operator module: its clinic-generated functions, the hand-written
 call(), and the itemgetter, attrgetter and methodcaller types."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_SystemError,
-    PyExc_TypeError,
-    PyObject,
-    PyTuple_Size,
-    PyVectorcall_NARGS,
-    Py_NewRef,
-    Py_TYPE,
-    jacpy_dict_size,
-    jacpy_release
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    MethodCallbacks,
-    MethodDefinition,
-    ModuleHooks,
-    add_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyCallbacks,
-    PropertyDefinition,
-    jacpy_binding_allocate
-}
-import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_set,
-    jacpy_binding_native_present,
-    dispose_payload,
-    clear_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.references { ReferenceState }
-import from jaclang.runtime.python.bindings.arguments { check_positional }
-
-import from jaclang.runtime.python.capi { object_error, text_object, boundary_failure }
-import from jaclang.runtime.python.bindings.clinic.operator {
-    _operator_call__doc__,
-    attrgetter_doc,
-    itemgetter_doc,
-    methodcaller_doc,
-    module_methods,
-    operator_doc,
-    reduce_doc
-}
-import from jaclang.runtime.python.modules.operator {
-    jacpy_operator_call,
-    jacpy_operator_prepare,
-    jacpy_operator_apply,
-    jacpy_operator_repr,
-    jacpy_operator_reduce
-}
-
 def:priv call_call(
     module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {

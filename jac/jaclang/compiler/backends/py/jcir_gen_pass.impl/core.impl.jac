@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl JcirGenPass._get_builtin_names -> set[str] {
     return self._builtin_names;
 }
@@ -72,7 +71,8 @@ impl JcirGenPass.enter_walk with UniNode entry {
         return;
     }
     self.ctx.current_node = here;
-    if (isinstance(here, Module) and (here is not self.module)) {
+    if (isinstance(here, Module) and (here is not self.module))
+        or self.reached_by_syntax(here) {
         osp_skip_rest();
         return;
     }
@@ -83,7 +83,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
     if (
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.NATIVE)
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
         and not isinstance(here, (Import, Test))
         and not self._is_native_ext_module()
     ) {
@@ -111,7 +111,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.CLIENT)
         and not here.codespace_dual
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
     ) {
         osp_skip_rest();
         return;
@@ -137,7 +137,8 @@ impl JcirGenPass.exit_walk with UniNode exit {
         osp_skip_rest();
         return;
     }
-    if (isinstance(here, Module) and (here is not self.module)) {
+    if (isinstance(here, Module) and (here is not self.module))
+        or self.reached_by_syntax(here) {
         osp_skip_rest();
         return;
     }
@@ -150,7 +151,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.CLIENT)
         and not here.codespace_dual
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
     ) {
         osp_skip_rest();
         return;
@@ -158,7 +159,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
     if (
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.NATIVE)
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
         and not isinstance(here, (Import, Test))
         and not self._is_native_ext_module()
     ) {
@@ -258,7 +259,6 @@ impl JcirGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNo
 impl JcirGenPass.int_const_of(
     value: CtInt, jac_node: (UniNode | None) = None
 ) -> CgNode {
-    import from jaclang.compiler.types.ct_value { int_host, int_wide_bytes }
     wide = int_wide_bytes(value);
     if wide is None {
         return self.const_of(int_host(value), jac_node);

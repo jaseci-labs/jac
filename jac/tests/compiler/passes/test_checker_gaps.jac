@@ -513,6 +513,17 @@ test "gap 50 postinit assignment tracking" {
     f"All errors: {[e.pretty_print()[:100] for e in program.errors_had]}";
 }
 
+test "postinit fields assigned by a self-method postinit calls are not reported" {
+    program = compile_and_check("checker_postinit_delegated.jac");
+    unassigned = [
+        e.pretty_print()
+        for e in program.errors_had
+        if e.code and e.code.code == "E1095"
+    ];
+    assert len(unassigned) == 1 , f"expected only Shallow.count, got {unassigned}";
+    assert "'count'" in unassigned[0];
+}
+
 # =========================================================================
 # Gap #51: @property on union types returns FunctionType instead of return type
 # =========================================================================
@@ -718,17 +729,35 @@ test "gap 58 a rejected subscript index is reported at the index" {
 
 # =========================================================================
 # Gap #59: a positive `is None` check on a type that cannot hold None
-# narrowed it to NoneType, and a path whose every predecessor narrowed to
-# Never read as "not narrowed", so the join fell back to the declared type.
-# Inside an `isinstance` block the NoneType arm leaked into the join and
-# rejected a later subscript. The impossible arm is Never, a join drops it,
-# and attribute access, a call or a comparison on Never is Never. A
-# truthiness check on a value that is always None narrows its truthy arm
-# to Never too.
+# narrowed it to NoneType, so the arm reported attribute errors against
+# NoneType and the NoneType arm leaked into the join after the `if`. That
+# arm is now Never: a join drops it, and attribute access, a call or a
+# comparison on Never reports nothing.
 # =========================================================================
-test "gap 59 an is None check on a type that cannot be None narrows to Never" {
+test "gap 59 an is None check on a type that cannot be None does not leak NoneType" {
     program = compile_and_check("checker_none_check_on_non_optional.jac");
     msgs = [str(e) for e in program.errors_had];
     assert len(msgs) == 1 , f"Gap #59: expected only the still-typed error. Got: {msgs}";
     assert "Cannot assign" in msgs[0] and "int" in msgs[0] , msgs;
+}
+
+# =========================================================================
+# Gap #60: the native backend lowers from the types the checker stamps, and
+# an arm the checker considers impossible is still lowered. A receiver there
+# keeps its declared type; typing it Never left `child.gen` with no native
+# lowering and aborted the kernel seal (E5092 on EsJsxProcessor.element).
+# =========================================================================
+test "gap 60 a receiver in an impossible arm keeps its declared type" {
+    program = compile_and_check("checker_impossible_arm_receiver.jac");
+    assert not program.errors_had , [str(e) for e in program.errors_had];
+    path = os.path.join(CHECKER_FIXTURES, "checker_impossible_arm_receiver.jac");
+    mod = program.mod.hub[path];
+    receivers = [
+        trailer.target
+        for trailer in mod.get_all_sub_nodes(uni.AtomTrailer)
+        if isinstance(trailer.right, uni.Name) and trailer.right.value == "gen"
+    ];
+    assert len(receivers) == 1 , receivers;
+    stamped = str(receivers[0].type);
+    assert stamped == "Text" , f"Gap #60: impossible-arm receiver stamped {stamped}";
 }

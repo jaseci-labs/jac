@@ -1,47 +1,5 @@
 """The _zoneinfo module: the ZoneInfo type, a datetime.tzinfo subclass."""
 
-import from jaclang.runtime.python.cpython_api { PyModule_AddObjectRef, PyObject }
-
-import from jaclang.runtime.python.bindings.module {
-    MethodCallbacks,
-    MethodDefinition,
-    ModuleDefinition,
-    ModuleHooks,
-    jacpy_binding_module_native_set
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    jacpy_binding_record
-}
-import from jaclang.runtime.python.bindings.payload {
-    clear_payload,
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.zoneinfo {
-    ZoneInfo_methods,
-    zoneinfo_ZoneInfo_new
-}
-import from jaclang.runtime.python.modules.zoneinfo {
-    ZoneInfoModuleState,
-    ZoneInfo_token,
-    datetime_import,
-    module_definition,
-    populate_module_state,
-    zoneinfo_fromutc,
-    zoneinfo_init_subclass,
-    zoneinfo_reduce,
-    zoneinfo_repr,
-    zoneinfo_str
-}
-import from jaclang.runtime.python.bindings.members {
-    MemberField,
-    MemberType,
-    record_clear
-}
-
 # The record holds the state's key borrowed: zeroed before the state goes.
 def:priv zoneinfo_dealloc(instance: ptr[PyObject]) {
     record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);

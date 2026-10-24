@@ -1,133 +1,8 @@
-import from jaclang.compiler.frontend.python.syntax_error {
-    syntax_failure,
-    source_line_bytes
-}
 # P0.7 parser action helpers (PLAN.md).
 #
 # Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
 # objects. Generated parser rules call these helpers; this file is hand-written
 # and grows with each grammar profile.
-
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyInt,
-    PyBool,
-    PyStr,
-    PyBytes,
-    PyFloat,
-    PyComplex,
-    PyEllipsis,
-    PyNoneType,
-    py_none
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    ast_node,
-    expr,
-    mod,
-    stmt,
-    operator,
-    unaryop,
-    boolop,
-    cmpop,
-    expr_context,
-    Expression,
-    Module,
-    Constant,
-    Name,
-    Load,
-    Store,
-    Del,
-    Attribute,
-    Subscript,
-    Slice,
-    AugAssign,
-    Delete,
-    BinOp,
-    UnaryOp,
-    BoolOp,
-    Compare,
-    Call,
-    IfExp,
-    Starred,
-    Assign,
-    AnnAssign,
-    Expr,
-    Return,
-    Pass,
-    Tuple,
-    List,
-    Add,
-    Sub,
-    Mult,
-    Div,
-    FloorDiv,
-    Mod,
-    MatMult,
-    Pow,
-    LShift,
-    RShift,
-    BitOr,
-    BitXor,
-    BitAnd,
-    USub,
-    UAdd,
-    Invert,
-    Not,
-    And,
-    Or,
-    Eq,
-    NotEq,
-    Lt,
-    LtE,
-    Gt,
-    GtE,
-    Is,
-    IsNot,
-    In,
-    NotIn,
-    cmpop,
-    keyword,
-    Break,
-    Continue,
-    FunctionDef,
-    ClassDef,
-    AsyncFunctionDef,
-    pattern,
-    arguments,
-    alias,
-    arg,
-    comprehension,
-    excepthandler,
-    match_case,
-    type_param,
-    withitem,
-    MatchOr,
-    MatchSingleton,
-    ImportFrom,
-    JoinedStr,
-    TemplateStr,
-    Interpolation,
-    FormattedValue,
-    Lambda,
-    GeneratorExp,
-    Yield,
-    YieldFrom,
-    Await,
-    ListComp,
-    SetComp,
-    DictComp,
-    Dict,
-    Set,
-    NamedExpr,
-}
-import from jaclang.compiler.frontend.python.peg_runtime {
-    peg_parser,
-    peg_token,
-    peg_has_error,
-    peg_raise_syntax_error,
-    peg_raise_syntax_error_on_token
-}
-import from jaclang.compiler.frontend.python.token_model { mk_diag, tok_loc }
 
 # The characters a backslash may escape in a str literal, as code points.
 glob VALID_ESCAPE_POINTS: set[int] = {
@@ -284,8 +159,6 @@ def pa_check_escape(
 # non-ASCII character, spelled as a \U escape, and a backslash in front of one,
 # spelled as an escaped backslash.
 def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
-    import from jaclang.runtime.python.characters { point_width, point_at }
-    import from jaclang.runtime.python.native_services { decode_unicode }
     data = body.encode("utf-8");
     size = len(data);
     parts: list[str] = [];
@@ -323,7 +196,6 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
 def pa_decode_bytes_escape_body(
     body: str, raw: bool, tok: peg_token | None = None
 ) -> list[int] {
-    import from jaclang.runtime.python.native_services { decode_bytes }
     if not body.isascii() {
         raise syntax_failure("bytes can only contain ASCII literal characters");
     }
@@ -635,7 +507,6 @@ def _has_float_marker(s: str) -> bool {
 }
 
 def pa_py_number_from_spelling(spelling: str) -> PyObj {
-    import from jaclang.runtime.python.native_services { parse_integer, parse_float }
     if _is_prefixed_int(spelling) {
         return parse_integer(spelling);
     }

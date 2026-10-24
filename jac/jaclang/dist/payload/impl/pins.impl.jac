@@ -76,5 +76,5 @@ impl llvm_release(osarch: str) -> LlvmSlice | None {
 }
 
 impl is_libcxx(rel: LlvmSlice) -> bool {
-    return rel.triple.endswith("-libcxx");
+    return "-libcxx" in rel.triple;
 }

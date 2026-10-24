@@ -1,12 +1,5 @@
 import os;
 import tempfile;
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.runtime.fleet { fleet_of }
 
 
 def _builder(gateway: dict[str, any], project_dir: str) -> ManifestBuilder {

@@ -1,34 +1,5 @@
 """The _queue module: SimpleQueue over native FIFO state, and Empty."""
 
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
-import from jaclang.runtime.python.object_model.genericalias { Py_GenericAlias }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    MethodCallbacks,
-    MethodDefinition,
-    ModuleHooks,
-    add_state_owned,
-    jacpy_binding_exception
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    clear_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.queue {
-    SimpleQueue_doc,
-    SimpleQueue_methods,
-    queue_module_doc,
-    simplequeue_methods___class_getitem___doc,
-    simplequeue_new_new
-}
-import from jaclang.runtime.python.modules.queue { SimpleQueue_token }
-
 def:priv deallocate(instance: ptr[PyObject]) {
     dispose_payload(instance, queue_type.handle);
 }

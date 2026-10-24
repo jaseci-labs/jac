@@ -226,7 +226,11 @@ impl OwnershipCheckPass._borrow_source_owner(nd: Assignment) -> (Name | None) {
 impl OwnershipCheckPass._build_index(tree: UniNode) -> None {
     self.idx_assignments = tree.get_all_sub_nodes(Assignment);
     self.idx_names = tree.get_all_sub_nodes(Name);
-    self.idx_params = tree.get_all_sub_nodes(ParamVar);
+    self.idx_params = [
+        p
+        for p in tree.get_all_sub_nodes(ParamVar)
+        if not p.in_impl_spec
+    ];
     self.idx_returns = tree.get_all_sub_nodes(ReturnStmt);
     self.idx_concurrent = tree.get_all_sub_nodes(ConcurrentExpr);
     for name in self.idx_names {
@@ -491,7 +495,7 @@ impl OwnershipCheckPass._emit_element_space_conflicts -> None {
             }
             _site = self.borrow_created_at.get(b);
             if isinstance(_site, InForStmt) {
-                if not self._is_ancestor(_site, call) {
+                if not call.is_within(_site) {
                     continue;
                 }
             } elif b not in _active {
@@ -581,7 +585,7 @@ impl OwnershipCheckPass._region_strictly_outlives(
     if dest is region {
         return False;
     }
-    return self._is_ancestor(dest, region);
+    return region.is_within(dest);
 }
 
 impl OwnershipCheckPass._assign_kill_gen(
@@ -705,7 +709,7 @@ impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) ->
         universe
     );
     for (sid, decl) in self.linear_decl.items() {
-        scope: UniNode | None = decl.find_parent_of_type(Ability);
+        scope: UniNode | None = decl.enclosing_decl(Ability);
         if scope is None {
             scope = decl.find_parent_of_type(ModuleCode);
         }
@@ -713,9 +717,7 @@ impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) ->
             continue;
         }
         for n in cfg_nodes {
-            if n is scope
-                or not self._node_within(n, scope)
-                or not self._is_scope_exit(n) {
+            if n is scope or not n.is_within(scope) or not self._is_scope_exit(n) {
                 continue;
             }
             if sid not in self._transfer(n, must_in.get(id(n), set())) {
@@ -726,17 +728,6 @@ impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) ->
     }
 }
 
-impl OwnershipCheckPass._node_within(nd: UniNode, scope: UniNode) -> bool {
-    cur: UniNode | None = nd.parent;
-    while cur is not None {
-        if cur is scope {
-            return True;
-        }
-        cur = cur.parent;
-    }
-    return False;
-}
-
 impl OwnershipCheckPass._is_scope_exit(nd: UniCFGNode) -> bool {
     if not nd.bb_out {
         return bool(nd.bb_in);
@@ -745,7 +736,7 @@ impl OwnershipCheckPass._is_scope_exit(nd: UniCFGNode) -> bool {
         return False;
     }
     for succ in nd.bb_out {
-        if not self._node_within(succ, nd) {
+        if succ is nd or not succ.is_within(nd) {
             return False;
         }
     }
@@ -872,13 +863,13 @@ impl OwnershipCheckPass._callee_ability(call: FuncCall) -> (Ability | None) {
 
 impl OwnershipCheckPass._local_raises(ab: UniNode) -> set[str] {
     out: set[str] = set();
-    for rs in ab.get_all_sub_nodes(RaiseStmt) {
-        owner = rs.find_parent_of_type(Ability);
+    for rs in ab.element_sub_nodes(RaiseStmt) {
+        owner = rs.enclosing_decl(Ability);
         if isinstance(ab, Ability) {
             if owner is not ab {
                 continue;
             }
-        } elif owner is not None and self._node_within(owner, ab) {
+        } elif owner is not None and owner.is_within(ab) {
             continue;
         }
         exc = self._raise_type_name(rs);
@@ -887,14 +878,12 @@ impl OwnershipCheckPass._local_raises(ab: UniNode) -> set[str] {
         }
         out.add(exc);
     }
-    for call in ab.get_all_sub_nodes(FuncCall) {
-        owner = call.find_parent_of_type(Ability);
+    for call in ab.element_sub_nodes(FuncCall) {
+        owner = call.enclosing_decl(Ability);
         if isinstance(ab, Ability) and owner is not ab {
             continue;
         }
-        if not isinstance(ab, Ability)
-            and owner is not None
-            and self._node_within(owner, ab) {
+        if not isinstance(ab, Ability) and owner is not None and owner.is_within(ab) {
             continue;
         }
         callee = self._callee_ability(call);
@@ -1124,17 +1113,6 @@ impl OwnershipCheckPass._run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> No
     );
 }
 
-impl OwnershipCheckPass._is_ancestor(ancestor: UniNode, nd: UniNode) -> bool {
-    cur: UniNode | None = nd;
-    while cur is not None {
-        if cur is ancestor {
-            return True;
-        }
-        cur = cur.parent;
-    }
-    return False;
-}
-
 impl OwnershipCheckPass._classify_access(nd: Name) -> AccessKind {
     parent = nd.parent;
     if isinstance(parent, Assignment) {
@@ -1142,7 +1120,7 @@ impl OwnershipCheckPass._classify_access(nd: Name) -> AccessKind {
             if tgt is nd {
                 return AccessKind.ASSIGN_TARGET;
             }
-            if not self._is_ancestor(tgt, nd) {
+            if not nd.is_within(tgt) {
                 continue;
             }
             held = nd.parent;
@@ -1290,7 +1268,7 @@ impl OwnershipCheckPass._callee_own_param_names(call: FuncCall) -> (set[str] | N
     tgt = call.target;
     sym = tgt.sym if isinstance(tgt, Name) else None;
     decl = sym.decl if sym is not None else None;
-    ability = decl.find_parent_of_type(Ability) if decl is not None else None;
+    ability = decl.enclosing_decl(Ability) if decl is not None else None;
     sig = ability.signature if ability is not None else None;
     if not isinstance(sig, FuncSignature) {
         return None;
@@ -1340,7 +1318,7 @@ impl OwnershipCheckPass._emit_place_move_diagnostics -> None {
         }
     }
     for ret in self.idx_returns {
-        fn = ret.find_parent_of_type(Ability);
+        fn = ret.enclosing_decl(Ability);
         if fn is None
             or not isinstance(fn.signature, FuncSignature)
             or ret.expr is None {
@@ -1426,7 +1404,7 @@ impl OwnershipCheckPass._is_builtin_mutator(ability: Ability | None) -> bool {
     if _mname not in _MUTATING_CONTAINER_METHODS {
         return False;
     }
-    _arch = ability.find_parent_of_type(Archetype);
+    _arch = ability.enclosing_decl(Archetype);
     return _arch is not None
         and _arch.name.value
             in (
@@ -2025,8 +2003,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                 borrow_site = self.borrow_created_at.get(borrow_id);
                 borrow_name = self._borrow_display_name(borrow_id, "");
                 for use in self.name_uses_by_sym.get(borrow_id, []) {
-                    if self._is_read_name(use)
-                        and not self._is_ancestor(owner_scope, use) {
+                    if self._is_read_name(use) and not use.is_within(owner_scope) {
                         e1304_related = [
                             (f"borrow of '{borrow_name}' created here", borrow_site)
                         ]

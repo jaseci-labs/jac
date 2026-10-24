@@ -1,24 +1,18 @@
 import os;
+
 import types;
+
 import from pathlib { Path }
+
 import from typing { Optional, cast }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
      JAC_LANG_ID = "jac";
 
-def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
-    (base, mod) = os.path.split(str(entry_file));
-    base = base or "./";
-    if mod.endswith(JAC_FILE_EXTENSION) {
-        mod = mod[:-len(JAC_FILE_EXTENSION)];
-    }
-    return (base, mod);
-}
+def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
-def _pwa_enabled(project_dir: Path) -> bool {
-    return JacClientConfig(project_dir).is_pwa_enabled();
-}
+def _pwa_enabled(project_dir: Path) -> bool;
 
 impl WebTarget.setup(project_dir: Path) -> None {
     if _pwa_enabled(project_dir) {
@@ -130,7 +124,34 @@ impl WebTarget.build(
     return bundle_path;
 }
 
-def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
+def _get_client_function_name(loaded_mod: types.ModuleType) -> str;
+
+def _build_css_link(bundler: ViteBundler) -> str;
+
+def _get_app_meta_data -> dict[str, any];
+
+def _generate_index_html(
+    bundle_path: Path,
+    bundler: ViteBundler,
+    loaded_mod: types.ModuleType,
+    function_name: str,
+    project_dir: Path
+);
+
+impl _parse_entry_file(entry_file: Path) -> tuple[str, str] {
+    (base, mod) = os.path.split(str(entry_file));
+    base = base or "./";
+    if mod.endswith(JAC_FILE_EXTENSION) {
+        mod = mod[:-len(JAC_FILE_EXTENSION)];
+    }
+    return (base, mod);
+}
+
+impl _pwa_enabled(project_dir: Path) -> bool {
+    return JacClientConfig(project_dir).is_pwa_enabled();
+}
+
+impl _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     mod_path = loaded_mod?.__file__;
     if not mod_path {
         return DEFAULT_FUNCTION_NAME;
@@ -157,7 +178,7 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     return DEFAULT_FUNCTION_NAME;
 }
 
-def _build_css_link(bundler: ViteBundler) -> str {
+impl _build_css_link(bundler: ViteBundler) -> str {
     import hashlib;
 
     css_file = bundler.find_css();
@@ -172,7 +193,7 @@ def _build_css_link(bundler: ViteBundler) -> str {
     return '';
 }
 
-def _get_app_meta_data -> dict[str, any] {
+impl _get_app_meta_data -> dict[str, any] {
     config = get_config();
     if not config {
         return {};
@@ -182,51 +203,4 @@ def _get_app_meta_data -> dict[str, any] {
         return {};
     }
     return client_cfg.get("app_meta_data", {});
-}
-
-
-def _generate_index_html(
-    bundle_path: Path,
-    bundler: ViteBundler,
-    loaded_mod: types.ModuleType,
-    function_name: str,
-    project_dir: Path
-) {
-    import html;
-    import json;
-
-    module_name = loaded_mod.__name__;
-    dist_dir = Path(bundler.output_dir);
-    css_link = _build_css_link(bundler);
-    meta_data = _get_app_meta_data();
-    head_builder = HeaderBuilder(meta_data, function_name);
-    head_content = head_builder.build_head();
-    if css_link {
-        head_content += f"\n            {css_link}";
-    }
-    init_payload = {
-        "module": module_name,
-        "function": function_name,
-        "args": {},
-        "argOrder": [],
-        "globals": {}
-    };
-
-    init_json = json.dumps(init_payload).replace('</', '<\\/');
-    bundle_filename = bundle_path.name;
-    base_path = bundler.config_loader.get_base_path();
-
-    html_content = f'''<!DOCTYPE html>
-<html lang="en">
-  <head>
-{head_content}
-  </head>
-  <body>
-    <div id="root"></div>
-    <script id="__jac_init__" type="application/json">{init_json}</script>
-    <script type="module" src="{base_path}{bundle_filename}"></script>
-  </body>
-</html>''';
-    index_html = dist_dir / 'index.html';
-    index_html.write_text(html_content, encoding='utf-8');
 }

@@ -1,27 +1,4 @@
 import from contextlib { contextmanager }
-import from jaclang.compiler.frontend.host {
-    CheckSettings,
-    HostPlatform,
-    HostServices,
-    LintSettings,
-    PathFacts,
-    ProjectDefaults,
-    ProjectFacts
-}
-import type from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
-import type from jaclang.compiler.types.ct_value { CtEnvironment }
-import type from jaclang.compiler.frontend.unitree { Module }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-import type from jaclang.compiler.driver.native_iface { NativeIface }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
-import type from jaclang.compiler.frontend.kernel_inputs { KernelInputs }
-import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 glob UNIT_COLLECT_EVERY: int = 16,
      UNIT_COLLECT_GROWTH_MB: int = 512;
@@ -66,6 +43,8 @@ obj ProjectHost(HostServices) {
         program: JacProgram, path: str, options: CompileOptions
     ) -> (NativeIface | None);
 
+    def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_deps_deferred(program: JacProgram) -> bool;
     def held_native_iface(
         program: JacProgram, path: str, options: CompileOptions
     ) -> str;
@@ -184,74 +163,8 @@ obj ProjectHost(HostServices) {
     def default_target_triple -> str;
 }
 
-def check_settings_of(check: any) -> CheckSettings {
-    if check is None {
-        return CheckSettings();
-    }
-    lint = check.lint;
-    return CheckSettings(
-        suppress=list(check.suppress or []),
-        suppress_categories=list(check.suppress_categories or []),
-        lint_active=bool(lint),
-        lint_select=list(lint.select) if lint else [],
-        lint_ignore=list(lint.ignore) if lint else [],
-        enforce_access=bool(check.enforce_access),
-        untyped_external_error=check.untyped_external == "error",
-        warn_native_seams=bool(check.warn_native_seams)
-    );
-}
+def check_settings_of(check: any) -> CheckSettings;
 
-def project_defaults_of(cfg: any) -> ProjectDefaults {
-    native = cfg.native;
-    memory = cfg.memory;
-    return ProjectDefaults(
-        default_codespace=cfg.placement.default_codespace,
-        native_require=list(native.require),
-        native_target=native.target,
-        native_debug=native.debug,
-        native_opt=native.opt,
-        native_threads=native.threads,
-        native_link_mode=native.link_mode,
-        memory_profile=memory.profile,
-        memory_enforce=list(memory.enforce),
-        memory_exempt=list(memory.exempt),
-        check=check_settings_of(cfg.check),
-        client_framework=cfg.client.framework if cfg.client else "react"
-    );
-}
+def project_defaults_of(cfg: any) -> ProjectDefaults;
 
-def client_stub_names(path: str) -> set[str] {
-    import ast;
-    out: set[str] = set();
-    try {
-        with open(path, encoding="utf-8") as handle {
-            tree = ast.parse(handle.read());
-        }
-    } except Exception {
-        return out;
-    }
-    for node in tree.body {
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
-            out.add(node.name);
-        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
-            out.add(node.target.id);
-        } elif isinstance(node, ast.Assign) {
-            for tgt in node.targets {
-                if not isinstance(tgt, ast.Name) {
-                    continue;
-                }
-                out.add(tgt.id);
-                if tgt.id != "__all__"
-                    or not isinstance(node.value, (ast.List, ast.Tuple)) {
-                    continue;
-                }
-                for elt in node.value.elts {
-                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
-                        out.add(elt.value);
-                    }
-                }
-            }
-        }
-    }
-    return out;
-}
+def client_stub_names(path: str) -> set[str];

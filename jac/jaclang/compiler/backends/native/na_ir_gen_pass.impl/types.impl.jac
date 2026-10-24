@@ -1,16 +1,6 @@
-def _ir_struct_name(t: (ir.Type | None)) -> str {
-    return t.name if isinstance(t, ir.IdentifiedStructType) else "";
-}
+def _ir_struct_name(t: (ir.Type | None)) -> str;
 
-def _node_sem_type(nd: (uni.UniNode | None)) -> (TypeBase | None) {
-    if isinstance(nd, uni.Expr) {
-        return nd.type;
-    }
-    if isinstance(nd, uni.AstTypedVarNode) {
-        return nd.type;
-    }
-    return None;
-}
+def _node_sem_type(nd: (uni.UniNode | None)) -> (TypeBase | None);
 
 impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
@@ -3251,13 +3241,355 @@ impl NaIRGenPass._codegen_float_floor_mod(left: ir.Value, right: ir.Value) -> ir
     return self.builder.fsub(left, prod, name="fmod");
 }
 
+impl NaIRGenPass._str_concat_fresh(
+    left: ir.Value, right: ir.Value, len1: ir.Value, len2: ir.Value, total: ir.Value
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    memcpy_cc = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    buf_size = self.builder.add(total, ir.Constant(i64, 1), name="buf_size");
+    _concat_loc = left.jac_loc;
+    self._set_rc_ctx("str_concat", _concat_loc);
+    buf = self._str_alloc(self.builder, buf_size, name="concat.buf");
+    self._clear_rc_ctx();
+    self.builder.call(memcpy_cc, [buf, left, len1]);
+    _cc_dst2 = self.builder.gep(buf, [len1], name="concat.dst2");
+    self.builder.call(memcpy_cc, [_cc_dst2, right, len2]);
+    self._str_finish(self.builder, buf, total);
+    self._mark_owned(buf);
+    return buf;
+}
+
+impl NaIRGenPass._emit_str_concat_inplace(
+    left: ir.Value, right: ir.Value, slot: ir.Value
+) -> (ir.Value | None) {
+    """Append to a string in place when its buffer is uniquely owned.
+
+    The header reads are staged. The refcount word sits inside the two-word
+    header a static literal carries too, where it holds the immortal
+    sentinel; the allocation word two words further back exists only on a
+    heap block. So the refcount is read first, and the allocation word only
+    once it says the string is a uniquely owned heap block: a literal, a
+    shared string, or a null never reaches that load and takes the fresh
+    allocation instead.
+    """;
+    if self._nogc_headerless() or self._gc_mode() == "none" {
+        return None;
+    }
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    i64p = i64.as_pointer();
+    i1 = ir.IntType(1);
+    _desc_ty = self._str_desc_type() if self._str_desc_kind() == "jacstr3" else None;
+    _i8_slot = False;
+    _desc_slot = False;
+    if isinstance(slot, ir.GlobalVariable) {
+        _i8_slot = slot.value_type == i8p;
+        _desc_slot = _desc_ty is not None and slot.value_type == _desc_ty;
+    } elif isinstance(slot.type, ir.PointerType) {
+        _i8_slot = slot.pointee_type == i8p;
+        _desc_slot = _desc_ty is not None and slot.pointee_type == _desc_ty;
+    }
+    if not _i8_slot and not _desc_slot {
+        return None;
+    }
+    if _desc_slot {
+        if left.type != _desc_ty {
+            return None;
+        }
+    } elif left.type != i8p {
+        return None;
+    }
+    _rhs_desc = False;
+    if _desc_ty is not None and right.type == _desc_ty {
+        _rhs_desc = True;
+    } elif right.type != i8p {
+        return None;
+    }
+    memcpy_cc = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+
+    _root_ok: ir.Value = ir.Constant(i1, 1);
+    if _desc_slot {
+        _od_root = self.builder.extract_value(left, 0, name="ip.oroot");
+        _cand_raw = self.builder.extract_value(left, 1, name="ip.data");
+        len1 = self.builder.extract_value(left, 2, name="ip.len1");
+        _root_ok = self.builder.icmp_unsigned(
+            "==", _od_root, _cand_raw, name="ip.rootok"
+        );
+    } else {
+        _cand_raw = left;
+        len1 = self._call_str_len(self.builder, left, name="ip.len1");
+    }
+    if _rhs_desc {
+        rdata = self.builder.extract_value(right, 1, name="ip.rdata");
+        len2 = self.builder.extract_value(right, 2, name="ip.len2");
+    } else {
+        rdata = right;
+        len2 = self._call_str_len(self.builder, right, name="ip.len2");
+    }
+    total = self.builder.add(len1, len2, name="ip.total");
+
+    left = self.builder.asm(
+        ir.FunctionType(i8p, [i8p]), "", "=r,0", [_cand_raw], True, name="ip.left"
+    );
+
+    nn = self.builder.icmp_unsigned("!=", left, ir.Constant(i8p, None), name="ip.nn");
+    _left_i = self.builder.ptrtoint(left, i64, name="ip.l.i");
+    _rdiff = self.builder.sub(
+        self.builder.ptrtoint(rdata, i64, name="ip.r.i"), _left_i, name="ip.rd"
+    );
+
+    noalias = self.builder.icmp_unsigned(">", _rdiff, total, name="ip.noalias");
+    need = self.builder.add(total, ir.Constant(i64, 1), name="ip.need");
+    base = self.builder.gep(left, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="ip.base");
+    func = self.builder.function;
+    rc_bb = func.append_basic_block("cat.rc");
+    hdr_bb = func.append_basic_block("cat.hdr");
+    slow_bb = func.append_basic_block("cat.slow");
+    capgo_bb = func.append_basic_block("cat.capgo");
+    capcall_bb = func.append_basic_block("cat.capcall");
+    grow_bb = func.append_basic_block("cat.grow");
+    tail_bb = func.append_basic_block("cat.tail");
+    fresh_bb = func.append_basic_block("cat.fresh");
+    merge_bb = func.append_basic_block("cat.merge");
+    self.builder.cbranch(
+        self.builder.and_(
+            self.builder.and_(nn, _root_ok, name="ip.c0"), noalias, name="ip.c1"
+        ),
+        rc_bb,
+        fresh_bb
+    );
+
+    self.builder.position_at_end(rc_bb);
+    rc_slot = self.builder.bitcast(
+        self.builder.gep(left, [ir.Constant(i64, HDR_RC_OFF)], name="ip.rc.slot"),
+        i64p,
+        name="ip.rc.p"
+    );
+    rc = self.builder.load(rc_slot, name="ip.rc");
+    uniq = self.builder.icmp_unsigned("==", rc, ir.Constant(i64, 1), name="ip.uniq");
+    self.builder.cbranch(uniq, hdr_bb, fresh_bb);
+
+    self.builder.position_at_end(hdr_bb);
+    aw_slot = self.builder.bitcast(base, i64p, name="ip.aw.p");
+    aw = self.builder.load(aw_slot, name="ip.aw");
+    magic = self.builder.icmp_unsigned(
+        "==",
+        self.builder.and_(
+            self.builder.lshr(aw, ir.Constant(i64, 32), name="ip.mhi"),
+            ir.Constant(i64, 0xFFFF),
+            name="ip.mhi.m"
+        ),
+        ir.Constant(i64, HDR_MAGIC),
+        name="ip.mok"
+    );
+    cap_u = self.builder.lshr(aw, ir.Constant(i64, 52), name="ip.capu");
+    capf = self.builder.shl(cap_u, ir.Constant(i64, 8), name="ip.capf");
+    fitsf = self.builder.icmp_unsigned("<=", need, capf, name="ip.fitsf");
+    self.builder.cbranch(
+        self.builder.and_(magic, fitsf, name="ip.fast"), tail_bb, slow_bb
+    );
+
+    self.builder.position_at_end(slow_bb);
+    self.builder.cbranch(magic, capgo_bb, fresh_bb);
+
+    self.builder.position_at_end(capgo_bb);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned("!=", cap_u, ir.Constant(i64, 0), name="ip.hascap"),
+        grow_bb,
+        capcall_bb
+    );
+
+    self.builder.position_at_end(capcall_bb);
+    cap: ir.Value = ir.Constant(i64, 0);
+    if self._target_is_wasm() {
+        self.builder.branch(grow_bb);
+    } else {
+        usable = self._floor_call("__jac_malloc_size", i64, [base], "ip.usable");
+        cap = self.builder.sub(usable, ir.Constant(i64, HDR_TOTAL), name="ip.cap");
+        _units = self.builder.lshr(cap, ir.Constant(i64, 8), name="ip.units");
+        _clamped = self.builder.select(
+            self.builder.icmp_unsigned(
+                ">", _units, ir.Constant(i64, 4095), name="ip.uov"
+            ),
+            ir.Constant(i64, 4095),
+            _units,
+            name="ip.uc"
+        );
+        _stamp = self.builder.or_(
+            self.builder.and_(
+                aw, ir.Constant(i64, 0x000FFFFFFFFFFFFF), name="ip.awkeep"
+            ),
+            self.builder.shl(_clamped, ir.Constant(i64, 52), name="ip.ushift"),
+            name="ip.stamp"
+        );
+        self.builder.store(_stamp, aw_slot);
+        self.builder.cbranch(
+            self.builder.icmp_unsigned("<=", need, cap, name="ip.fits"),
+            tail_bb,
+            grow_bb
+        );
+    }
+
+    self.builder.position_at_end(grow_bb);
+    capin = self.builder.phi(i64, name="ip.capin");
+    capin.add_incoming(capf, capgo_bb);
+    capin.add_incoming(cap, capcall_bb);
+    dbl = self.builder.mul(capin, ir.Constant(i64, 2), name="ip.dbl");
+    want = self.builder.select(
+        self.builder.icmp_unsigned(">", dbl, need, name="ip.want.cmp"),
+        dbl,
+        need,
+        name="ip.want"
+    );
+    raw_sz = self.builder.and_(
+        self.builder.add(want, ir.Constant(i64, HDR_TOTAL + 16), name="ip.rawsz"),
+        ir.Constant(i64, -16),
+        name="ip.align"
+    );
+    newbase = self.builder.call(realloc_fn, [base, raw_sz], name="ip.realloc");
+    _gunits = self.builder.lshr(
+        self.builder.sub(raw_sz, ir.Constant(i64, HDR_TOTAL), name="ip.gcap"),
+        ir.Constant(i64, 8),
+        name="ip.gu"
+    );
+    _gclamped = self.builder.select(
+        self.builder.icmp_unsigned(
+            ">", _gunits, ir.Constant(i64, 4095), name="ip.guov"
+        ),
+        ir.Constant(i64, 4095),
+        _gunits,
+        name="ip.guc"
+    );
+    _gst = self.builder.or_(
+        self.builder.and_(aw, ir.Constant(i64, 0x000FFFFFFFFFFFFF), name="ip.nawkeep"),
+        self.builder.shl(_gclamped, ir.Constant(i64, 52), name="ip.gushift"),
+        name="ip.gstamp"
+    );
+    self.builder.store(_gst, self.builder.bitcast(newbase, i64p, name="ip.naw.slot"));
+    grown = self.builder.gep(newbase, [ir.Constant(i64, HDR_TOTAL)], name="ip.grown");
+    self.builder.branch(tail_bb);
+
+    self.builder.position_at_end(tail_bb);
+    buf = self.builder.phi(i8p, name="ip.buf");
+    buf.add_incoming(left, hdr_bb);
+    if not self._target_is_wasm() {
+        buf.add_incoming(left, capcall_bb);
+    }
+    buf.add_incoming(grown, grow_bb);
+    self.builder.call(
+        memcpy_cc, [self.builder.gep(buf, [len1], name="ip.dst"), rdata, len2]
+    );
+    self.builder.store(
+        ir.Constant(i8, 0), self.builder.gep(buf, [total], name="ip.term")
+    );
+    _len_slot = self.builder.bitcast(
+        self.builder.gep(buf, [ir.Constant(i64, HDR_DTOR_OFF)], name="ip.len.slot"),
+        i64p,
+        name="ip.len.p"
+    );
+    _old_dv = self.builder.load(_len_slot, name="ip.odv");
+    _rroot = self.builder.extract_value(right, 0, name="ip.rroot")
+        if _rhs_desc
+        else right;
+    _isa = self.builder.and_(
+        self.builder.icmp_unsigned(
+            "!=",
+            self.builder.and_(
+                _old_dv, ir.Constant(i64, STR_ASCII_TAG_BIT), name="ip.oabit"
+            ),
+            ir.Constant(i64, 0),
+            name="ip.oisa"
+        ),
+        self._call_str_isascii(self.builder, _rroot, rdata, len2, name="ip.risa"),
+        name="ip.isa"
+    );
+    self.builder.store(
+        self.builder.or_(
+            self.builder.or_(
+                self.builder.shl(
+                    total, ir.Constant(i64, STR_LEN_TAG_SHIFT), name="ip.shl"
+                ),
+                ir.Constant(i64, STR_LEN_TAG_BIT),
+                name="ip.enc0"
+            ),
+            self.builder.select(
+                _isa,
+                ir.Constant(i64, STR_ASCII_TAG_BIT),
+                ir.Constant(i64, 0),
+                name="ip.abit"
+            ),
+            name="ip.enc"
+        ),
+        _len_slot
+    );
+    ip_res: ir.Value = buf;
+    if _desc_slot {
+        if _desc_ty is None {
+            return None;
+        }
+        ip_res = self.builder.insert_value(
+            self.builder.insert_value(
+                self.builder.insert_value(
+                    ir.Constant(_desc_ty, None), buf, 0, name="ip.d0"
+                ),
+                buf,
+                1,
+                name="ip.d1"
+            ),
+            total,
+            2,
+            name="ip.d2"
+        );
+    }
+    self.builder.store(ip_res, slot);
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(fresh_bb);
+    fbuf = self._str_concat_fresh(left, rdata, len1, len2, total);
+    fr_res = fbuf;
+    if _desc_slot {
+        if self.str_wrap_fn is None {
+            self._emit_str_desc_helpers();
+        }
+        fr_res = self.builder.call(self.str_wrap_fn, [fbuf], name="ip.fdesc");
+    }
+    _oldv = self.builder.load(slot, name="ip.oldv");
+    self.builder.store(fr_res, slot);
+    self._emit_rc_release_typed(_oldv, op="overwrite", loc="");
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(merge_bb);
+    _phi_ty: ir.Type = i8p;
+    if _desc_slot {
+        if _desc_ty is None {
+            return None;
+        }
+        _phi_ty = _desc_ty;
+    }
+    res = self.builder.phi(_phi_ty, name="cat.res");
+    res.add_incoming(ip_res, tail_bb);
+    res.add_incoming(fr_res, fresh_bb);
+    self._last_inplace_handled = True;
+    return self._mark_owned(res);
+}
+
 impl NaIRGenPass._emit_binary_op(
     op: str,
     left: ir.Value,
     right: ir.Value,
     unsigned: bool = False,
-    checked: bool = False
+    checked: bool = False,
+    inplace_slot: (ir.Value | None) = None
 ) -> (ir.Value | None) {
+    if op == Tok.PLUS and inplace_slot is not None {
+        _ipr = self._emit_str_concat_inplace(left, right, inplace_slot);
+        if _ipr is not None {
+            return _ipr;
+        }
+    }
     left = self._str_view(left);
     right = self._str_view(right);
     if isinstance(left.type, ir.PointerType)
@@ -3296,7 +3628,19 @@ impl NaIRGenPass._emit_binary_op(
         self.builder.call(memcpy_cc, [buf, left, len1]);
         _cc_dst2 = self.builder.gep(buf, [len1], name="concat.dst2");
         self.builder.call(memcpy_cc, [_cc_dst2, right, len2]);
-        self._str_finish(self.builder, buf, total);
+        _cc_ascii: (ir.Value | None) = None;
+        if not self._nogc_headerless() {
+            _cc_ascii = self.builder.and_(
+                self._call_str_isascii(
+                    self.builder, left, left, len1, name="concat.isa1"
+                ),
+                self._call_str_isascii(
+                    self.builder, right, right, len2, name="concat.isa2"
+                ),
+                name="concat.isa"
+            );
+        }
+        self._str_finish(self.builder, buf, total, _cc_ascii);
 
         self._mark_owned(buf);
         return buf;
@@ -6395,4 +6739,18 @@ impl NaIRGenPass._lower_list_for_elem(elem_llvm: ir.Type) -> ir.Type {
     }
     self._emit_list_helpers(spec, _elem);
     return self.list_types[spec].as_pointer();
+}
+
+impl _ir_struct_name(t: (ir.Type | None)) -> str {
+    return t.name if isinstance(t, ir.IdentifiedStructType) else "";
+}
+
+impl _node_sem_type(nd: (uni.UniNode | None)) -> (TypeBase | None) {
+    if isinstance(nd, uni.Expr) {
+        return nd.type;
+    }
+    if isinstance(nd, uni.AstTypedVarNode) {
+        return nd.type;
+    }
+    return None;
 }

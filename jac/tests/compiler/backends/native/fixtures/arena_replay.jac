@@ -1,4 +1,4 @@
-import from sim { Game, world_new, sim_tick }
+import from sim { world_new, sim_tick }
 
 def replay {
     w = world_new();

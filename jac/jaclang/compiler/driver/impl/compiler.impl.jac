@@ -1,5 +1,3 @@
-import type from jaclang.runtime.native_library { SharedNativeEngine }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, CompilationProduct }
 impl JacCompiler.selfhost.getter -> SelfHostCache {
     cache = self._selfhost;
     if (cache is None) {
@@ -56,10 +54,6 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
 impl JacCompiler.product_program(
     full_target: str, target_program: JacProgram, execution: bool = False
 ) -> JacProgram {
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
     actual = self.selfhost.resolve(full_target, target_program, execution=execution);
     if actual.internal {
         return actual;
@@ -110,7 +104,6 @@ impl JacCompiler.get_native_layout(
 impl JacCompiler._check_native_abi(
     layout: NativeModuleLayout, full_target: str
 ) -> None {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
     stamped = layout.abi_version;
     if stamped is not None and stamped != NATIVE_ABI_VERSION {
         import logging as _abi_log;
@@ -124,10 +117,6 @@ impl JacCompiler._check_native_abi(
 impl JacCompiler.get_bytecode(
     full_target: str, target_program: JacProgram, skip_analysis: bool = False
 ) -> (types.CodeType | None) {
-    import from jaclang.compiler.driver.compilation_context {
-        compilation_scope,
-        owner_scope_options
-    }
     if full_target.endswith('.py') {
         import builtins;
         import from jaclang.project.textio { read_file_with_encoding }
@@ -339,7 +328,6 @@ impl JacCompiler._get_bytecode(
 impl JacCompiler._adopt_kernel_compile(
     full_target: str, program: JacProgram, options: CompileOptions
 ) -> tuple[bool, (bytes | None)] {
-    import from jaclang.compiler.frontend.host { active_host }
     compiled = active_host().kernel_compile(program, full_target, options);
     if compiled is None {
         return (False, None);
@@ -352,10 +340,14 @@ impl JacCompiler._adopt_kernel_compile(
     adopted: (bytes | None) = None;
     for unit in native_first(compiled.units) {
         with compile_progress.track(unit.path) {
-            bytecode = assemble_jcir(unit.jcir);
+            (bytecode, rejected) = assemble_jcir(unit.jcir, unit.path);
             if bytecode is None {
                 if not unit.jcir and unit is not target {
                     continue;
+                }
+                if rejected {
+                    program.errors_had.extend(rejected);
+                    return (True, None);
                 }
                 raise RuntimeError(
                     "the native compiler kernel emitted no assemblable JCIR for "
@@ -420,7 +412,6 @@ impl JacCompiler.native_entry_engine(
 impl JacCompiler.kernel_native_entry(
     full_target: str, target_program: JacProgram, options: (CompileOptions | None)
 ) -> tuple[bool, any] {
-    import from jaclang.project.kernel_compile { kernel_generates_native }
     path = JacProgram.hub_key(full_target);
     actual = self.selfhost.resolve(path, target_program, execution=True);
     if actual.internal or not kernel_generates_native(actual, path) {
@@ -471,7 +462,6 @@ impl JacCompiler._adopt_native_unit(
 }
 
 impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
     if is_compiler_source_path(full_target) {
         return False;
     }
@@ -487,8 +477,6 @@ impl JacCompiler._load_native_from_cache(
     target_program: JacProgram,
     cached_interop: (dict[str, any] | None)
 ) -> None {
-    import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-    import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
         full_target
     );
@@ -530,7 +518,6 @@ impl JacCompiler._load_native_from_cache(
 impl JacCompiler._sealed_native_engine(
     full_target: str
 ) -> (SharedNativeEngine | None) {
-    import from jaclang.jac0core { sealed as _sealed }
     found = _sealed.image_for_path(full_target);
     if found is None {
         return None;
@@ -601,7 +588,6 @@ impl JacCompiler._restore_sections(
 
 impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
     import from pathlib { Path as _Path }
-    import from jaclang.jac0core { sealed as _sealed }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -693,14 +679,6 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     full_target: str, allow_unsealed: bool = True
 ) -> (tuple[bytes, bytes] | None) {
     import from pathlib { Path as _Path }
-    import from jaclang.compiler.driver.jir {
-        PRECOMPILE_SENTINEL,
-        SEC_CTDEPS,
-        absolutize_ct_deps_section,
-        bundle_dir_allowed,
-        cache_mode
-    }
-    import from jaclang.jac0core { sealed as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
     if rebuild_flag or no_precompile {
         return None;
@@ -785,7 +763,6 @@ impl JacCompiler.compile(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from jaclang.compiler.driver.session_compile { compile_in_session }
     return compile_in_session(self, file_path, target_program, use_str, options);
 }
 
@@ -829,7 +806,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
 }
 
 impl JacCompiler.assemble_python(program: JacProgram, module: uni.Module) {
-    import from jaclang.compiler.driver.pipeline { require }
     require(program, module, CompilationProduct.BYTECODE);
 }
 
@@ -837,7 +813,6 @@ impl JacCompiler.assemble_native(
     program: JacProgram, module: uni.Module, checking: bool
 ) {
     import copy;
-    import from jaclang.compiler.driver.pipeline { require }
     if not checking {
         require(program, module, CompilationProduct.NATIVE_OBJECT);
         return;
@@ -905,10 +880,6 @@ impl JacCompiler.closure_options -> (CompileOptions | None) {
 impl JacCompiler._persist_module_cache(
     full_target: str, result: uni.Module, actual_program: JacProgram
 ) -> None {
-    import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
-        is_module_cache_valid
-    }
     try {
         _pmc_path = get_module_cache_path(full_target);
         if is_module_cache_valid(full_target, _pmc_path) {
@@ -1042,10 +1013,10 @@ impl JacCompiler.build(
 impl JacCompiler._prepare_tool_program(
     source_str: str, file_path: str
 ) -> tuple[JacProgram, (uni.Module | None)] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
     prog = JacProgram();
-    (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
+    (current_mod, had_error) = parse_woven(
+        source_str, file_path, prog=prog, annexes=[]
+    );
     if had_error {
         prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
         return (prog, None);
@@ -1057,23 +1028,30 @@ impl JacCompiler._prepare_tool_program(
 impl JacCompiler.jac_file_formatter(
     file_path: str, auto_lint: bool = False
 ) -> JacProgram {
-    source_str = read_file_with_encoding(file_path);
-    (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
-    if current_mod is None {
-        return prog;
-    }
-    import from jaclang.compiler.driver.pipeline { require }
-    require(
-        prog,
-        current_mod,
-        CompilationProduct.FORMAT_LINTFIX if auto_lint else CompilationProduct.FORMAT
+    return JacCompiler.jac_str_formatter(
+        read_file_with_encoding(file_path), file_path, auto_lint
     );
-    prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
-    return prog;
 }
 
 impl JacCompiler.jac_str_formatter(
     source_str: str, file_path: str, auto_lint: bool = False
+) -> JacProgram {
+    prog = JacCompiler._format_program(source_str, file_path, auto_lint);
+    if not is_arch_file(file_path) or prog.errors_had or prog.mod.main is None {
+        return prog;
+    }
+    canonical = canonical_wiring_source(source_str, file_path);
+    if canonical != source_str {
+        laid_out = JacCompiler._format_program(canonical, file_path, auto_lint);
+        if not laid_out.errors_had and laid_out.mod.main is not None {
+            prog.mod.main.gen.jac = laid_out.mod.main.gen.jac;
+        }
+    }
+    return prog;
+}
+
+impl JacCompiler._format_program(
+    source_str: str, file_path: str, auto_lint: bool
 ) -> JacProgram {
     (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
     if current_mod is None {
@@ -1131,10 +1109,6 @@ impl JacCompiler._cached_client_artifact(full_target: str) -> (ClientArtifact | 
 impl JacCompiler.last_client_artifact(
     full_target: str, target_program: JacProgram
 ) -> (ClientArtifact | None) {
-    import from jaclang.compiler.driver.compilation_context {
-        compilation_scope,
-        owner_scope_options
-    }
     actual = self.product_program(full_target, target_program);
     raw: (bytes | None) = None;
     with compilation_scope(owner_scope_options(actual)) {
@@ -1176,10 +1150,6 @@ impl JacCompiler._persist_client_artifact(
 impl JacCompiler.get_client_artifact(
     full_target: str, target_program: JacProgram
 ) -> (ClientArtifact | None) {
-    import from jaclang.compiler.driver.compilation_context {
-        compilation_scope,
-        owner_scope_options
-    }
     actual = self.product_program(full_target, target_program);
     with compilation_scope(owner_scope_options(actual)) {
         return self._get_client_artifact(full_target, actual);
@@ -1284,4 +1254,169 @@ impl JacCompiler.release_compile_state(target_program: JacProgram) -> None {
 
     import gc;
     gc.collect();
+}
+
+impl client_dep_digests(manifest: ClientManifest) -> dict[str, str] {
+    digests: dict[str, str] = {};
+    for dep_path in manifest.imports.values() {
+        dep = str(dep_path);
+        if not os.path.isfile(dep) {
+            continue;
+        }
+        try {
+            digests[dep] = compute_content_sha256(dep);
+        } except OSError {
+            continue;
+        }
+    }
+    return digests;
+}
+
+impl stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact {
+    artifact.dep_digests = client_dep_digests(artifact.manifest);
+    return artifact;
+}
+
+impl built_client_artifact(module: uni.Module) -> (ClientArtifact | None) {
+    artifact = client_artifact_of(module);
+    return stamp_client_artifact(artifact) if artifact is not None else None;
+}
+
+impl client_artifact_bytes(artifact: ClientArtifact) -> bytes {
+    return client_artifact_json(artifact).encode("utf-8");
+}
+
+impl client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
+    try {
+        text = raw.decode("utf-8");
+    } except UnicodeDecodeError {
+        return None;
+    }
+    return client_artifact_from_json(text);
+}
+
+impl cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
+    (rebuild, _no_precompile) = cache_mode();
+    if rebuild {
+        return None;
+    }
+    try {
+        cache_path = get_module_cache_path(full_target);
+        if not is_module_cache_valid(full_target, cache_path) {
+            return None;
+        }
+        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
+    } except Exception {
+        return None;
+    }
+    if raw is None {
+        return None;
+    }
+    return client_artifact_from_bytes(raw);
+}
+
+impl cached_client_pulls(full_target: str) -> str {
+    held = cached_client_artifact(full_target);
+    if held is None or not held.pulled {
+        return "";
+    }
+    import from jaclang.compiler.backends.es.backends.registry {
+        resolve_active_backend
+    }
+    if held.framework != resolve_active_backend().name()
+        or not JacCompiler._client_deps_fresh(held) {
+        return "";
+    }
+    return ",".join([str(index) for index in held.pulled]);
+}
+
+impl native_first(units: list[UnitProducts]) -> list[UnitProducts] {
+    by_path: dict[str, UnitProducts] = {os.path.realpath(u.path): u for u in units};
+    ordered: list[UnitProducts] = [];
+    placed: set[str] = set();
+    def place(unit: UnitProducts) {
+        real = os.path.realpath(unit.path);
+        if real in placed {
+            return;
+        }
+        placed.add(real);
+        for dep in unit.native_deps {
+            needed = by_path.get(os.path.realpath(dep));
+            if needed is not None {
+                place(needed);
+            }
+        }
+        ordered.append(unit);
+    }
+    for unit in units {
+        place(unit);
+    }
+    return ordered;
+}
+
+impl assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]] {
+    if not jcir {
+        return (None, []);
+    }
+    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
+    result = compile_ir(jcir);
+    if result.modules and not result.diags {
+        return (result.modules[0].bytecode, []);
+    }
+    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
+    import from jaclang.compiler.frontend.diagnostics { E5043 }
+    import from jaclang.compiler.frontend.srcloc { Span }
+    import from jaclang.compiler.passes.context { Alert }
+    return (
+        None,
+        [
+            Alert(
+                msg=E5043.format_message(error=d.message),
+                loc=Span(
+                    mod_path=d.mod_path or path,
+                    first_line=d.first_line,
+                    last_line=d.last_line,
+                    col_start=d.col_start,
+                    col_end=d.col_end
+                ),
+                from_pass=JcirBytecodeGenPass,
+                code=E5043
+            ) for d in result.diags
+        ]
+    );
+}
+
+impl unit_sections(
+    products: UnitProducts, bytecode: (bytes | None)
+) -> dict[int, bytes] {
+    sections: dict[int, bytes] = {};
+    if bytecode is not None {
+        sections[SEC_BYTECODE] = bytecode;
+    }
+    if products.mtir {
+        sections[SEC_MTIR] = products.mtir.encode("utf-8");
+    }
+    if products.interop {
+        sections[SEC_INTEROP] = products.interop.encode("utf-8");
+    }
+    if products.client {
+        artifact = client_artifact_from_json(products.client);
+        if artifact is not None {
+            sections[SEC_CLIENT] = client_artifact_bytes(
+                stamp_client_artifact(artifact)
+            );
+        }
+    }
+    if products.placement {
+        sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
+    }
+    if products.ct_file_deps or products.ct_body_deps or products.ct_def_deps {
+        seed_definition_texts(products.def_spans);
+        sections[SEC_CTDEPS] = ct_deps_section(
+            products.ct_file_deps,
+            products.ct_body_deps,
+            definitions=definition_deps(products)
+        );
+    }
+    return sections;
 }

@@ -4,18 +4,6 @@ Declarations contain no Python objects and are constructed once during native
 initialization. The immutable records can be shared by isolated interpreters.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    NULL,
-    PyCFunction_NewEx,
-    PyErr_NoMemory,
-    PyMem_RawCalloc,
-    PyMethodDef,
-    PyModule_AddObjectRef,
-    PyObject
-}
-import from jaclang.runtime.python.capi { c_string_copy }
-import from jaclang.runtime.python.bindings.state { NativeState }
 import from c {
     obj ModuleHooks {
         has execute: Callable[[ptr[PyObject]], i32] = 0,

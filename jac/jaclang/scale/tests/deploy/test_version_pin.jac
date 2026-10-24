@@ -2,24 +2,9 @@ import os;
 import json;
 import tempfile;
 import unittest.mock;
-import jaclang.scale.injector.binary as binary_mod;
-import from jaclang.scale.injector.binary { _resolve_target_version }
-import from jaclang.project.jac_version { exact_pin, version_key }
-import from jaclang.cli.manifest_route { resolve_cli_version }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import inspect;
 import io;
 import from contextlib { redirect_stderr }
-import from jaclang.scale.runtime.realizer.kubernetes_realizer {
-    DELEGATED_ENV,
-    KubernetesRealizer,
-    pinned_deploy_argv
-}
-import from jaclang.project.config { JacConfig }
 import from pathlib { Path }
 
 glob REPO: str = "jaseci-labs/jac";

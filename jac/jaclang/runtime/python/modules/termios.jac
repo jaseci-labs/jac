@@ -7,59 +7,6 @@ offset. termios.error is module state slot 0. The constants come from
 termios_constants.<os>.jac.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_bytes_from_memory,
-    jacpy_is_bytes,
-    jacpy_is_list,
-    jacpy_is_long,
-    jacpy_release,
-    NULL,
-    Py_NewRef,
-    PyBytes_AsString,
-    PyBytes_Size,
-    PyErr_NoMemory,
-    PyErr_Occurred,
-    PyErr_SetFromErrno,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_OverflowError,
-    PyExc_TypeError,
-    PyList_GetItem,
-    PyList_New,
-    PyList_SetItem,
-    PyList_Size,
-    PyLong_AsLong,
-    PyLong_FromLong,
-    PyMem_Calloc,
-    PyMem_Free,
-    PyObject,
-    PySequence_Check,
-    PySequence_GetItem,
-    PySequence_Size,
-    PyTuple_New,
-    PyTuple_SetItem
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.modules.termios_records {
-    TERMIOS_SIZE,
-    CC_OFFSET,
-    flags_of,
-    set_flags,
-    input_speed,
-    output_speed,
-    set_input_speed,
-    set_output_speed
-}
-import from jaclang.runtime.python.modules.termios_constants {
-    ICANON,
-    NCCS,
-    TIOCGWINSZ,
-    TIOCSWINSZ,
-    VMIN,
-    VTIME
-}
 import from c {
     obj winsize {
         has ws_row: u16 = 0,

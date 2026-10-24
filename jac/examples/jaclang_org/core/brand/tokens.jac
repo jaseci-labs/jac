@@ -43,11 +43,23 @@ obj Fonts {
         huge: int = 34;
 }
 
-def:pub dark_palette -> Colors {
+def:pub dark_palette -> Colors;
+
+def:pub light_palette -> Colors;
+
+def:pub spacing -> Spacing;
+
+def:pub radii -> Radii;
+
+def:pub fonts -> Fonts;
+
+def:pub font_family -> str;
+
+impl dark_palette -> Colors {
     return Colors();
 }
 
-def:pub light_palette -> Colors {
+impl light_palette -> Colors {
     return Colors(
         bg="#ffffff",
         surface="#ffffff",
@@ -61,18 +73,18 @@ def:pub light_palette -> Colors {
     );
 }
 
-def:pub spacing -> Spacing {
+impl spacing -> Spacing {
     return Spacing();
 }
 
-def:pub radii -> Radii {
+impl radii -> Radii {
     return Radii();
 }
 
-def:pub fonts -> Fonts {
+impl fonts -> Fonts {
     return Fonts();
 }
 
-def:pub font_family -> str {
+impl font_family -> str {
     return "Geist";
 }

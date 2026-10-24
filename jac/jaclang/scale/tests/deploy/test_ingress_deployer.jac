@@ -3,10 +3,6 @@ import unittest.mock;
 import from types { SimpleNamespace }
 import from kubernetes.client.exceptions { ApiException }
 import from jaclang.scale.deploy.target.kubernetes { ingress as ingress_module }
-import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
 
 def _render_rules(domain: str) -> list[any] {
     config = KubernetesConfig(app_name="myapp", namespace="test-ns", domain=domain);

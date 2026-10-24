@@ -1,17 +1,6 @@
-def _apply_litellm_config(module: any) {
-    if not _litellm_config.get("debug", False) {
-        _disable_debugging();
-    }
-    module.drop_params = _litellm_config.get("drop_params", True);
-    module.include_cost_in_streaming_usage = _litellm_config.get(
-        "include_cost_in_streaming_usage", True
-    );
-}
+def _apply_litellm_config(module: any);
 
-def _configure_litellm {
-    logging.getLogger("httpx").setLevel(logging.WARNING);
-    when_litellm_loaded(_apply_litellm_config);
-}
+def _configure_litellm;
 
 
 impl Model.postinit -> None {
@@ -69,17 +58,38 @@ impl Model.postinit -> None {
 }
 
 
-glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"];
+glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"],
+     _NO_FORCED_TOOL_MODELS: set[str] = set();
 
-def _model_lacks_tool_role(model_name: str) -> bool {
-    lowered = model_name.lower();
-    for fam in _NO_TOOL_ROLE_FAMILIES {
-        if fam in lowered {
-            return True;
-        }
-    }
-    return False;
+def _forced_tool_rejected(e: Exception) -> bool;
+
+def _without_forced_output(params: dict[str, any]) -> dict[str, any];
+
+def _forced_output_params(params: dict[str, any]) -> dict[str, any];
+
+impl _forced_tool_rejected(e: Exception) -> bool {
+    text = str(e);
+    return "tool_choice" in text and "not supported" in text;
 }
+
+impl _without_forced_output(params: dict[str, any]) -> dict[str, any] {
+    out = dict(params);
+    out.pop("response_format", None);
+    choice = out.get("tool_choice");
+    if isinstance(choice, dict) or choice in ("required", "any") {
+        out["tool_choice"] = "auto";
+    }
+    return out;
+}
+
+impl _forced_output_params(params: dict[str, any]) -> dict[str, any] {
+    if str(params.get("model", "")) in _NO_FORCED_TOOL_MODELS {
+        return _without_forced_output(params);
+    }
+    return params;
+}
+
+def _model_lacks_tool_role(model_name: str) -> bool;
 
 impl Model.invoke(mt_run: MTRuntime) -> any {
     import uuid;
@@ -182,100 +192,13 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
 
 async def _astream_with_telemetry(
     agen: AsyncGenerator[object, None], mt: MTRuntime, model_name: str, start: float
-) -> AsyncGenerator[object, None] {
-    import asyncio;
-    import contextvars;
-    import time;
-
-    invocation_id = mt._invocation_id;
-    ctx = contextvars.copy_context();
-    if invocation_id is not None {
-        ctx.run(_current_invocation_id.set, invocation_id);
-    }
-
-    _completed = False;
-    try {
-        while True {
-            try {
-                item = await asyncio.Task(agen.__anext__(), context=ctx);
-            } except StopAsyncIteration {
-                _completed = True;
-                break;
-            }
-            yield item;
-        }
-    } except Exception as inner_e {
-        _emit_agent_telemetry(
-            mt, None, model_name, (time.time() - start) * 1000, "error", inner_e
-        );
-        raise;
-    } finally {
-        if _completed {
-            _emit_agent_telemetry(
-                mt,
-                "[streaming]",
-                model_name,
-                (time.time() - start) * 1000,
-                "success",
-                None
-            );
-        }
-    }
-}
+) -> AsyncGenerator[object, None];
 
 def _stream_with_telemetry(
     gen: Iterator[object], mt: MTRuntime, model_name: str, start: float
-) -> Generator[object, None, None] {
-    import contextvars;
-    import time;
+) -> Generator[object, None, None];
 
-    invocation_id = mt._invocation_id;
-    ctx = contextvars.copy_context();
-    if invocation_id is not None {
-        ctx.run(_current_invocation_id.set, invocation_id);
-    }
-
-    _completed = False;
-    try {
-        while True {
-            try {
-                item = ctx.run(next, gen);
-            } except StopIteration {
-                _completed = True;
-                break;
-            }
-            yield item;
-        }
-    } except Exception as inner_e {
-        _emit_agent_telemetry(
-            mt, None, model_name, (time.time() - start) * 1000, "error", inner_e
-        );
-        raise;
-    } finally {
-        if _completed {
-            _emit_agent_telemetry(
-                mt,
-                "[streaming]",
-                model_name,
-                (time.time() - start) * 1000,
-                "success",
-                None
-            );
-        }
-    }
-}
-
-def _is_timeout_error(e: Exception) -> bool {
-    if isinstance(e, (litellm.Timeout, openai.APITimeoutError)) {
-        return True;
-    }
-    try {
-        import httpx;
-        return isinstance(e, httpx.TimeoutException);
-    } except ImportError {
-        return False;
-    }
-}
+def _is_timeout_error(e: Exception) -> bool;
 
 
 impl Model._raise_mapped_provider_error(e: Exception) -> None {
@@ -337,12 +260,26 @@ impl Model.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = litellm.completion(
-                api_key=self.api_key or None,
-                api_base=self.api_base or None,
-                num_retries=0,
-                **params
-            );
+            sent = _forced_output_params(params);
+            try {
+                response = litellm.completion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **sent
+                );
+            } except Exception as rejected {
+                if sent is not params or not _forced_tool_rejected(rejected) {
+                    raise;
+                }
+                _NO_FORCED_TOOL_MODELS.add(str(params.get("model", "")));
+                response = litellm.completion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **_without_forced_output(params)
+                );
+            }
         }
     } except Exception as e {
         self._raise_mapped_provider_error(e);
@@ -383,13 +320,7 @@ impl Model.model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
     return response;
 }
 
-def _body_without_timeout(payload: dict[str, any]) -> dict[str, any] {
-    return {
-        k: v
-        for (k, v) in payload.items()
-        if k != "timeout"
-    };
-}
+def _body_without_timeout(payload: dict[str, any]) -> dict[str, any];
 
 
 impl Model.model_call_http(
@@ -429,12 +360,26 @@ impl Model.model_call_no_stream_async(params: dict[str, any]) -> dict[str, any] 
             response = await async_client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = await litellm.acompletion(
-                api_key=self.api_key or None,
-                api_base=self.api_base or None,
-                num_retries=0,
-                **params
-            );
+            sent = _forced_output_params(params);
+            try {
+                response = await litellm.acompletion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **sent
+                );
+            } except Exception as rejected {
+                if sent is not params or not _forced_tool_rejected(rejected) {
+                    raise;
+                }
+                _NO_FORCED_TOOL_MODELS.add(str(params.get("model", "")));
+                response = await litellm.acompletion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    num_retries=0,
+                    **_without_forced_output(params)
+                );
+            }
         }
     } except Exception as e {
         self._raise_mapped_provider_error(e);
@@ -502,4 +447,136 @@ impl Model.model_call_http_async(
         response = await client.post(url=url, headers=headers, json=body);
     }
     return response.json();
+}
+
+impl _apply_litellm_config(module: any) {
+    if not _litellm_config.get("debug", False) {
+        _disable_debugging();
+    }
+    module.drop_params = _litellm_config.get("drop_params", True);
+    module.include_cost_in_streaming_usage = _litellm_config.get(
+        "include_cost_in_streaming_usage", True
+    );
+}
+
+impl _configure_litellm {
+    logging.getLogger("httpx").setLevel(logging.WARNING);
+    when_litellm_loaded(_apply_litellm_config);
+}
+
+
+impl _model_lacks_tool_role(model_name: str) -> bool {
+    lowered = model_name.lower();
+    for fam in _NO_TOOL_ROLE_FAMILIES {
+        if fam in lowered {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl _astream_with_telemetry(
+    agen: AsyncGenerator[object, None], mt: MTRuntime, model_name: str, start: float
+) -> AsyncGenerator[object, None] {
+    import asyncio;
+    import contextvars;
+    import time;
+
+    invocation_id = mt._invocation_id;
+    ctx = contextvars.copy_context();
+    if invocation_id is not None {
+        ctx.run(_current_invocation_id.set, invocation_id);
+    }
+
+    _completed = False;
+    try {
+        while True {
+            try {
+                item = await asyncio.Task(agen.__anext__(), context=ctx);
+            } except StopAsyncIteration {
+                _completed = True;
+                break;
+            }
+            yield item;
+        }
+    } except Exception as inner_e {
+        _emit_agent_telemetry(
+            mt, None, model_name, (time.time() - start) * 1000, "error", inner_e
+        );
+        raise;
+    } finally {
+        if _completed {
+            _emit_agent_telemetry(
+                mt,
+                "[streaming]",
+                model_name,
+                (time.time() - start) * 1000,
+                "success",
+                None
+            );
+        }
+    }
+}
+
+impl _stream_with_telemetry(
+    gen: Iterator[object], mt: MTRuntime, model_name: str, start: float
+) -> Generator[object, None, None] {
+    import contextvars;
+    import time;
+
+    invocation_id = mt._invocation_id;
+    ctx = contextvars.copy_context();
+    if invocation_id is not None {
+        ctx.run(_current_invocation_id.set, invocation_id);
+    }
+
+    _completed = False;
+    try {
+        while True {
+            try {
+                item = ctx.run(next, gen);
+            } except StopIteration {
+                _completed = True;
+                break;
+            }
+            yield item;
+        }
+    } except Exception as inner_e {
+        _emit_agent_telemetry(
+            mt, None, model_name, (time.time() - start) * 1000, "error", inner_e
+        );
+        raise;
+    } finally {
+        if _completed {
+            _emit_agent_telemetry(
+                mt,
+                "[streaming]",
+                model_name,
+                (time.time() - start) * 1000,
+                "success",
+                None
+            );
+        }
+    }
+}
+
+impl _is_timeout_error(e: Exception) -> bool {
+    if isinstance(e, (litellm.Timeout, openai.APITimeoutError)) {
+        return True;
+    }
+    try {
+        import httpx;
+        return isinstance(e, httpx.TimeoutException);
+    } except ImportError {
+        return False;
+    }
+}
+
+
+impl _body_without_timeout(payload: dict[str, any]) -> dict[str, any] {
+    return {
+        k: v
+        for (k, v) in payload.items()
+        if k != "timeout"
+    };
 }

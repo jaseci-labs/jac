@@ -1,89 +1,28 @@
 import from pathlib { Path }
 import from fnmatch { fnmatch }
 
-def _maybe_malloc_trim {
-    maybe_malloc_trim();
-}
+def _maybe_malloc_trim;
 
 glob _CHECK_STATE: dict[(str, any)] = {"prog": None, "coverage_on": False};
 
 glob _CHECK_HEAP: dict[(str, int)] = {"base_rss": -1},
      CHECK_HEAP_REGROW_MB: int = 512;
 
-def _unit_weight(unit: dict[(str, any)]) -> int {
-    import os;
+def _unit_weight(unit: dict[(str, any)]) -> int;
 
-    path = str(unit['path']);
-    try {
-        size = os.path.getsize(path);
-    } except OSError {
-        return 0;
-    }
-    try {
-        for annex in discover_annex_files(path, '.impl.jac') {
-            size += os.path.getsize(annex);
-        }
-    } except Exception {}
-    return size;
-}
+def _settle_check_heap;
 
-def _settle_check_heap {
-    import gc;
-    import os;
-    if os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
-        return;
-    }
+def _wire_list(value: any) -> list[any];
 
-    rss = worker_rss_mb();
-    if _CHECK_HEAP["base_rss"] < 0 {
-        _CHECK_HEAP["base_rss"] = rss;
-    } elif rss - _CHECK_HEAP["base_rss"] > CHECK_HEAP_REGROW_MB {
-        gc.unfreeze();
-        gc.collect();
-        maybe_malloc_trim();
-        _CHECK_HEAP["base_rss"] = worker_rss_mb();
-    }
-    gc.freeze();
-}
+def _wire_dict(value: any) -> dict[str, any];
 
-def _wire_list(value: any) -> list[any] {
-    return value if isinstance(value, list) else [];
-}
+def _message_diag(text: str, path: str) -> dict[(str, any)];
 
-def _wire_dict(value: any) -> dict[str, any] {
-    return value if isinstance(value, dict) else {};
-}
+def _diag_wire(alert: any) -> dict[(str, any)];
 
-def _message_diag(text: str, path: str) -> dict[(str, any)] {
-    return {
-        'text': text,
-        'pretty': text,
-        'code': None,
-        'category': None,
-        'mod_path': path
-    };
-}
+def _check_rss_cap_mb -> int;
 
-def _diag_wire(alert: any) -> dict[(str, any)] {
-    info = alert.code;
-    return {
-        'text': str(alert),
-        'pretty': alert.pretty_print(),
-        'code': info.code if info is not None else None,
-        'category': info.category.value if info is not None else None,
-        'mod_path': alert.loc.mod_path if alert.loc else ''
-    };
-}
-
-def _check_rss_cap_mb -> int {
-    return env_int("JAC_CHECK_RECYCLE_MB", 3072);
-}
-
-def _check_retire(served: int, rss_mb: int) -> bool {
-    return should_retire(
-        served, env_int("JAC_CHECK_RECYCLE", 0), rss_mb, _check_rss_cap_mb()
-    );
-}
+def _check_retire(served: int, rss_mb: int) -> bool;
 
 def _check_unit(
     path: str,
@@ -92,234 +31,15 @@ def _check_unit(
     target: str,
     root_dir: str,
     closure: bool = False
-) -> dict[(str, any)] {
-    return {
-        'path': path,
-        'app': app_name,
-        'kind': kind,
-        'target': target,
-        'root_dir': root_dir,
-        'label': app_name or 'shared',
-        'closure': closure
-    };
-}
+) -> dict[(str, any)];
 
-def _is_app_name(target: str) -> bool {
-    return bool(target)
-        and not target.endswith('.jac')
-        and '/' not in target
-        and '\\' not in target;
-}
+def _is_app_name(target: str) -> bool;
 
-def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
-    import os;
+def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)];
 
-    opts = _wire_dict(request.get("opts"));
-    file_path = str(request["path"]);
-    result: dict[(str, any)] = {
-        'path': file_path,
-        'success': False,
-        'errors': [],
-        'warnings': [],
-        'placements': {},
-        'coverage': {},
-        'reached': []
-    };
-    if not Path(file_path).exists() {
-        result['errors'] = [
-            _message_diag(f"File '{file_path}' does not exist.", file_path)
-        ];
-        return result;
-    }
-    prog = _CHECK_STATE["prog"];
-    if prog is None {
-        prog = JacProgram();
-        _CHECK_STATE["prog"] = prog;
-    }
-    if opts.get("native_coverage") and not _CHECK_STATE["coverage_on"] {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_begin }
-        na_coverage_begin();
-        _CHECK_STATE["coverage_on"] = True;
-    }
-    ignore_list = _wire_list(opts.get("ignore"));
-    annex_filter_path: (str | None) = None;
-    base_path = discover_base_file(file_path);
-    if base_path is not None {
-        annex_filter_path = os.path.realpath(file_path);
-        file_path = base_path;
-    }
-    try {
-        (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-        parity_view: any = None;
-        if opts.get("parse_only") {
-            import from jaclang.compiler.frontend.parser.frontend {
-                parse_diags,
-                _replay_diags
-            }
-            import from jaclang.compiler.frontend.parser.lexer { Lexer }
-            import from jaclang.compiler.frontend.parser.parser {
-                Parser as _SyntaxParser
-            }
-            import from jaclang.compiler.frontend.unitree { Source as _Src }
-            import from jaclang.project.textio { read_file_with_encoding as _read_src }
-            _src_txt = _read_src(file_path);
-            (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
-            if _pd or _ld {
-                _dsrc = _Src(_src_txt, mod_path=file_path);
-                _replay_diags(_ld, Lexer, prog, _dsrc);
-                _replay_diags(_pd, _SyntaxParser, prog, _dsrc);
-            }
-        } else {
-            compile_options = CompileOptions(
-                no_cgen=not bool(opts.get("native_coverage")),
-                native_parity=True,
-                iface_ok=True,
-                strict_dependencies=True,
-                suppress_codes=list(opts.get("suppress_codes") or []),
-                target_app=str(opts.get("target_app") or ""),
-                app_kind=str(opts.get("app_kind") or ""),
-                project_root=(
-                    str(opts["project_root"]) if opts.get("project_root") else None
-                )
-            );
-            compile_options.entry_point = file_path;
-            if opts.get('closure') {
-                import from jaclang.compiler.driver.pipeline_runner {
-                    compile_application
-                }
-                compile_application(prog, file_path, compile_options);
-            } else {
-                kernel_view: any = None;
-                if not opts.get("placements") and not opts.get("native_coverage") {
-                    import from jaclang.project.kernel_check { kernel_check }
-                    kernel_view = kernel_check(
-                        prog,
-                        file_path,
-                        compile_options,
-                        parity=bool(opts.get("kernel_parity"))
-                    );
-                }
-                adopted = kernel_view is not None and kernel_view.adopted;
-                if not adopted {
-                    prog.compile(file_path, options=compile_options);
-                    if kernel_view is not None and kernel_view.parity {
-                        parity_view = kernel_view;
-                    }
-                }
-                if opts.get("named") {
-                    project_dir = os.path.realpath(
-                        str(opts["project_root"])
-                            if opts.get("project_root")
-                            else os.path.dirname(file_path)
-                    );
-                    checked = os.path.realpath(file_path);
-                    reached_keys: list[str] = [str(key) for key in prog.mod.hub];
-                    if adopted {
-                        import from jaclang.project.kernel_check { reached_modules }
-                        reached_keys = reached_modules(kernel_view.outcome);
-                    }
-                    result['reached'] = sorted(
-                        {
-                            real
-                            for real in [os.path.realpath(key) for key in reached_keys]
-                            if real.endswith(".jac")
-                                and not real.endswith((".impl.jac", ".test.jac"))
-                                and real.startswith(project_dir + os.sep)
-                                and real != checked
-                        }
-                    );
-                }
-            }
-        }
-        if opts.get("placements") {
-            import from jaclang.compiler.placement.placement_export {
-                collect_placement_rows
-            }
-            result['placements'] = collect_placement_rows(prog);
-        }
-        if opts.get("native_coverage") {
-            import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
-            result['coverage'] = na_coverage_snapshot();
-        }
-        for m in prog.mod.hub.values() {
-            m.terminals = [];
-            m.src_terminals = [];
-        }
-        new_errors = prog.errors_had[err_start:];
-        new_warnings = prog.warnings_had[warn_start:];
+def _check_file_job_settled(request: dict[(str, any)]) -> dict[(str, any)];
 
-        def keep(issue: any) -> bool {
-            return bool(
-                issue.loc
-                    and issue.loc.mod_path
-                    and issue.loc.mod_path.endswith(".jac")
-                    and not _should_ignore(issue.loc.mod_path, ignore_list)
-                    and (
-                        annex_filter_path is None
-                        or issue.loc.mod_path == annex_filter_path
-                    )
-            );
-        }
-        if parity_view is not None {
-            import from jaclang.project.kernel_check { report_parity }
-            report_parity(
-                parity_view,
-                file_path,
-                [
-                    e
-                    for e in new_errors
-                    if keep(e)
-                ],
-                [
-                    w
-                    for w in new_warnings
-                    if keep(w)
-                ],
-                keep
-            );
-        }
-        result['errors'] = [
-            _diag_wire(e)
-            for e in new_errors
-            if keep(e)
-        ];
-        result['warnings'] = [
-            _diag_wire(w)
-            for w in new_warnings
-            if keep(w)
-        ];
-        result['success'] = len(result['errors']) == 0;
-        return result;
-    } except Exception as e {
-        result['errors'] = [
-            _message_diag(f"Error checking '{file_path}': {e}", file_path)
-        ];
-        result['success'] = False;
-        return result;
-    } finally {
-        if opts.get('closure') {
-            prog._get_compiler().release_compile_state(prog);
-            _CHECK_STATE['prog'] = None;
-        } else {
-            prog.release_compile_closure(collect=bool(request.get("collect")));
-        }
-        _maybe_malloc_trim();
-    }
-}
-
-def _check_file_job_settled(request: dict[(str, any)]) -> dict[(str, any)] {
-    result = _check_file_job(request);
-    _settle_check_heap();
-    return result;
-}
-
-def _release_check_heap {
-    import gc;
-    if _CHECK_HEAP["base_rss"] >= 0 {
-        gc.unfreeze();
-        _CHECK_HEAP["base_rss"] = -1;
-    }
-}
+def _release_check_heap;
 
 impl check(
     paths: list[str],
@@ -687,6 +407,7 @@ impl lint(
         }
     }
     def lint_fix_file(file_path: str, covered: set[str]) -> tuple[bool, int, int] {
+        import os;
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -730,16 +451,51 @@ impl lint(
             error_count = fixed_count + unfixable_count;
 
             if fixed_count > 0 {
-                changed = formatted_code != original_code;
-                if changed {
-                    with open(str(path_obj), 'w', encoding='utf-8') as f {
-                        f.write(formatted_code);
+                (formatted_code, float_target, float_text) = _float_impls_to_annex(
+                    prog, str(path_obj), str(path_obj), formatted_code
+                );
+                float_prog: (JacProgram | None) = None;
+                if float_target {
+                    float_prog = JacProgram.jac_str_formatter(
+                        float_text, float_target, auto_lint=True
+                    );
+                    if float_prog.errors_had or not float_prog.mod.main.gen.jac {
+                        for error in float_prog.errors_had {
+                            console.error(f"{error}");
+                        }
+                        console.error(
+                            f"Left '{file_path}' unchanged: its impl annex "
+                            f"'{float_target}' could not be formatted"
+                        );
+                        err_count = len(float_prog.errors_had) or 1;
+                        return (False, err_count, err_count);
                     }
+                }
+                backups: dict[str, (bytes | None)] = {};
+                try {
+                    if float_target and float_prog is not None {
+                        backups[float_target] = _snapshot_file(float_target);
+                        os.makedirs(
+                            os.path.dirname(float_target) or ".", exist_ok=True
+                        );
+                        with open(float_target, 'w', encoding='utf-8') as f {
+                            f.write(float_prog.mod.main.gen.jac);
+                        }
+                    }
+                    changed = formatted_code != original_code;
+                    if changed {
+                        backups[str(path_obj)] = _snapshot_file(str(path_obj));
+                        with open(str(path_obj), 'w', encoding='utf-8') as f {
+                            f.write(formatted_code);
+                        }
+                    }
+                } except OSError {
+                    _restore_files(backups);
+                    raise;
                 }
             }
 
             import from jaclang.compiler.driver.bccache { discover_annex_files }
-            import os;
             annex_paths = (
                 discover_annex_files(str(path_obj), '.impl.jac')
                 + discover_annex_files(str(path_obj), '.test.jac')
@@ -829,269 +585,97 @@ def _format_single_file_worker(
     cache_stamp: str = "",
     cache_anchor: str = "",
     logical_path: str = ""
-) -> dict[str, any] {
+) -> dict[str, any];
+
+def _float_impls_to_annex(
+    prog: JacProgram, file_path: str, logical: str, formatted: str
+) -> tuple[str, str, str];
+
+def _snapshot_file(path: str) -> (bytes | None);
+
+impl _snapshot_file(path: str) -> (bytes | None) {
+    return Path(path).read_bytes() if Path(path).exists() else None;
+}
+
+def _restore_files(backups: dict[str, (bytes | None)]) -> None;
+
+impl _restore_files(backups: dict[str, (bytes | None)]) -> None {
+    for (path, data) in backups.items() {
+        try {
+            if data is None {
+                Path(path).unlink(missing_ok=True);
+            } else {
+                Path(path).write_bytes(data);
+            }
+        } except OSError {}
+    }
+}
+
+impl _float_impls_to_annex(
+    prog: JacProgram, file_path: str, logical: str, formatted: str
+) -> tuple[str, str, str] {
     import os;
 
-    path_obj = Path(file_path);
-
-    effective_logical = logical_path or file_path;
-    result: dict[str, any] = {
-        'path': file_path,
-        'success': False,
-        'changed': False,
-        'errors': 0,
-        'syntax_errors': [],
-        'warnings_strs': [],
-        'errors_strs': [],
-        'formatted_code': None,
-        'impl_results': [],
-        'cache_status': 'off'
-    };
-    if not path_obj.exists() {
-        result['syntax_errors'] = [f"File '{file_path}' does not exist."];
-        return result;
+    if file_path.endswith((".impl.jac", ".test.jac")) {
+        return (formatted, "", "");
     }
-
-    fcache = None;
-    cache_key = "";
-    cfg_fp = "";
-    cfg: any = None;
-    key_logical = "";
-    annex_ok = True;
-    annex_error_count = 0;
-
-    annex_paths: list[str] = [];
-    annex_formatted_map: dict[str, str] = {};
-    annex_logical_map: dict[str, str] = {};
-    if lintfix {
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
-
-        annex_paths = (
-            discover_annex_files(file_path, '.impl.jac')
-            + discover_annex_files(file_path, '.test.jac')
-        );
-        if logical_path {
-            phys_parent = str(Path(file_path).resolve().parent);
-            log_parent = str(Path(logical_path).parent);
-            for ap in annex_paths {
-                try {
-                    rel = os.path.relpath(ap, phys_parent);
-                    annex_logical_map[ap] = str(Path(log_parent) / rel);
-                } except ValueError {
-                    annex_logical_map[ap] = ap;
-                }
-            }
+    own_path = os.path.realpath(logical);
+    floated = 0;
+    for warning in prog.warnings_had {
+        if warning.code is not None
+            and warning.code.code == "W3055"
+            and warning.loc.mod_path
+            and os.path.realpath(warning.loc.mod_path) == own_path {
+            floated += 1;
         }
     }
-    if cache_stamp {
-        try {
-            import from jaclang.cli.format_cache {
-                FormatCache,
-                config_fingerprint,
-                frame_unit,
-                canonical_logical_path,
-                default_format_cache_dir
-            }
-            import from jaclang.project.config { get_config_for_path }
-
-            cfg = get_config_for_path(Path(effective_logical));
-            if cfg is not None {
-                cache_dir = cfg.get_cache_dir();
-            } else {
-                anchor = Path(cache_anchor) if cache_anchor else path_obj;
-                cache_dir = default_format_cache_dir(anchor);
-                cfg = None;
-            }
-
-            fcache = FormatCache(cache_dir, enabled=True, formatter_stamp=cache_stamp);
-
-            unit_parts = [path_obj.read_bytes()];
-            for ap in annex_paths {
-                ap_obj = Path(ap);
-                if ap_obj.exists() {
-                    unit_parts.append(ap_obj.read_bytes());
-                }
-            }
-            unit_bytes = frame_unit(unit_parts);
-            cfg_fp = config_fingerprint(cfg, lintfix);
-            project_root = str(cfg.project_root)
-                if (cfg is not None and cfg.project_root)
-                else (cache_anchor);
-            key_logical = (
-                canonical_logical_path(effective_logical, project_root)
-                    if lintfix
-                    else ""
-            );
-            cache_key = fcache.make_key(
-                unit_bytes,
-                lintfix=lintfix,
-                config_fingerprint=cfg_fp,
-                logical_path=key_logical
-            );
-            if fcache.is_clean(cache_key) {
-                result['cache_status'] = 'hit';
-                result['success'] = True;
-                result['changed'] = False;
-                result['errors'] = 0;
-                return result;
-            }
-            result['cache_status'] = 'miss';
-        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
-            fcache = None;
-            cache_key = "";
+    if floated == 0 {
+        return (formatted, "", "");
+    }
+    reparsed = JacProgram.jac_str_formatter(formatted, logical, auto_lint=False);
+    if reparsed.errors_had {
+        return (formatted, "", "");
+    }
+    body = [
+        st
+        for st in reparsed.mod.main.body
+        if st.loc.mod_path and os.path.realpath(st.loc.mod_path) == own_path
+    ];
+    if len(body) < floated {
+        return (formatted, "", "");
+    }
+    tail = body[-floated:];
+    lines = formatted.splitlines(keepends=True);
+    for st in tail {
+        if not lines[st.loc.first_line - 1].lstrip().startswith("impl ") {
+            return (formatted, "", "");
         }
     }
-
-    try {
-        if logical_path {
-            source_str = read_file_with_encoding(str(path_obj));
-            prog = JacProgram.jac_str_formatter(
-                source_str, effective_logical, auto_lint=lintfix
-            );
-        } else {
-            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
-        }
-        if prog.errors_had {
-            has_format_error = any(
-                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
-            );
-            if has_format_error or not lintfix {
-                result['syntax_errors'] = [str(e) for e in prog.errors_had];
-                return result;
-            }
-        }
-        try {
-            formatted_code = prog.mod.main.gen.jac;
-            original_code = prog.mod.main.source.code;
-            if not formatted_code or len(formatted_code.strip()) == 0 {
-                if prog.errors_had {
-                    result['syntax_errors'] = [str(e) for e in prog.errors_had];
-                    return result;
-                }
-            }
-            changed = formatted_code != original_code;
-            result['changed'] = changed;
-
-            if changed and not check {
-                result['formatted_code'] = formatted_code;
-            }
-
-            if lintfix {
-                for annex_path in annex_paths {
-                    if covered is not None
-                        and (os.path.realpath(annex_path) in covered) {
-                        continue;
-                    }
-                    annex_logical = annex_logical_map.get(annex_path, annex_path);
-                    try {
-                        if logical_path {
-                            annex_src = read_file_with_encoding(annex_path);
-                            annex_prog = JacProgram.jac_str_formatter(
-                                annex_src, annex_logical, auto_lint=True
-                            );
-                        } else {
-                            annex_prog = JacProgram.jac_file_formatter(
-                                annex_path, auto_lint=True
-                            );
-                        }
-                        annex_formatted = annex_prog.mod.main.gen.jac;
-                        annex_original = annex_prog.mod.main.source.code;
-                    } except (OSError, ValueError, TypeError, AttributeError) as e {
-                        annex_ok = False;
-                        annex_error_count += 1;
-                        result['errors_strs'].append(
-                            f"Error formatting annex '{annex_path}': {e}"
-                        );
-                        continue;
-                    }
-                    for warning in annex_prog.warnings_had {
-                        result['warnings_strs'].append(str(warning));
-                    }
-                    for error in annex_prog.errors_had {
-                        result['errors_strs'].append(str(error));
-                        annex_ok = False;
-                        annex_error_count += 1;
-                    }
-                    annex_formatted_map[annex_path] = (
-                        annex_formatted if annex_formatted is not None else ""
-                    );
-                    if (annex_formatted and annex_formatted != annex_original) {
-                        result['changed'] = True;
-                        if not check {
-                            result['impl_results'].append(
-                                (annex_path, annex_formatted)
-                            );
-                        }
-                    }
-                }
-            }
-        } except (OSError, ValueError, TypeError, AttributeError) {
-            result['syntax_errors'] = [str(e) for e in prog.errors_had];
-            return result;
-        }
-
-        lint_errors = 0;
-        if lintfix {
-            for warning in prog.warnings_had {
-                result['warnings_strs'].append(str(warning));
-            }
-            for error in prog.errors_had {
-                result['errors_strs'].append(str(error));
-                lint_errors += 1;
-            }
-            lint_errors += annex_error_count;
-        }
-        result['success'] = True;
-        result['errors'] = lint_errors;
-
-        if (
-            fcache is not None
-            and cache_key
-            and result['success']
-            and not result['syntax_errors']
-            and result['errors'] == 0
-            and annex_ok
-        ) {
-            try {
-                import from jaclang.cli.format_cache { frame_unit }
-
-                if not result['changed'] {
-                    fcache.mark_clean(cache_key);
-                } elif not check {
-                    main_clean = (
-                        formatted_code.encode() if changed else path_obj.read_bytes()
-                    );
-                    new_parts = [main_clean];
-                    for ap in annex_paths {
-                        if ap in annex_formatted_map {
-                            new_parts.append(annex_formatted_map[ap].encode());
-                        } elif Path(ap).exists() {
-                            new_parts.append(Path(ap).read_bytes());
-                        } else {
-                            annex_ok = False;
-                            break;
-                        }
-                    }
-                    if annex_ok {
-                        new_unit = frame_unit(new_parts);
-                        fcache.mark_clean(
-                            fcache.make_key(
-                                new_unit,
-                                lintfix=lintfix,
-                                config_fingerprint=cfg_fp,
-                                logical_path=key_logical
-                            )
-                        );
-                    }
-                }
-            } except (OSError, ValueError, TypeError, AttributeError) {}
-        }
-
-        return result;
-    } except Exception as e {
-        result['syntax_errors'] = [f"Error formatting '{file_path}': {e}"];
-        return result;
+    start = tail[0].loc.first_line - 1;
+    end = tail[-1].loc.last_line;
+    if "".join(lines[end:]).strip() {
+        return (formatted, "", "");
     }
+    base = "".join(lines[:start]).rstrip() + "\n";
+    moved = "".join(lines[start:end]).strip() + "\n";
+    stem = os.path.basename(file_path)[:-len(".jac")];
+    folder = os.path.join(os.path.dirname(file_path), stem + ".impl");
+    owned = [
+        a
+        for a in discover_annex_files(file_path, ".impl.jac")
+        if os.path.basename(a) == stem + ".impl.jac"
+            or os.path.realpath(os.path.dirname(a)) == os.path.realpath(folder)
+    ];
+    if owned {
+        target = owned[0];
+    } elif "." in stem {
+        target = os.path.join(folder, stem + ".impl.jac");
+    } else {
+        target = os.path.join(os.path.dirname(file_path), "impl", stem + ".impl.jac");
+    }
+    existing = read_file_with_encoding(target) if os.path.exists(target) else "";
+    annex_text = (existing.rstrip() + "\n\n" + moved) if existing.strip() else moved;
+    return (base, target, annex_text);
 }
 
 impl format(
@@ -1252,6 +836,9 @@ impl format(
     changed_files = 0;
     total_errors = 0;
 
+    floated_annexes: set[str] = {
+        os.path.realpath(fp) for res in results for fp in res.get('floated_annexes', [])
+    };
     for res in results {
         for w in res['warnings_strs'] {
             console.warning(w);
@@ -1272,23 +859,63 @@ impl format(
                 changed_files += 1;
                 unformatted_files.append(res['path']);
             } else {
-                outputs: list[tuple[str, str]] = [];
-                if res['formatted_code'] is not None {
+                owned = {os.path.realpath(fp) for fp in res.get('floated_annexes', [])};
+                outputs: list[tuple[str, str]] = [
+                    (out_path, code)
+                    for (out_path, code) in res['impl_results']
+                    if os.path.realpath(out_path) not in floated_annexes
+                        or os.path.realpath(out_path) in owned
+                ];
+                if res['formatted_code'] is not None
+                    and (
+                        os.path.realpath(res['path']) not in floated_annexes
+                        or os.path.realpath(res['path']) in owned
+                    ) {
                     outputs.append((res['path'], res['formatted_code']));
                 }
-                outputs.extend(res['impl_results']);
                 write_errors: list[str] = [];
+                floated_failed = False;
+                backups: dict[str, (bytes | None)] = {};
                 for (out_path, code) in outputs {
+                    is_module = out_path == res['path'];
+                    if floated_failed and is_module {
+                        write_errors.append(
+                            f"Left '{out_path}' unchanged: its moved bodies could not "
+                            "be written to its impl annex"
+                        );
+                        continue;
+                    }
+                    is_owned = os.path.realpath(out_path) in owned;
                     try {
                         if to_screen {
                             console.print(code, markup=False, highlight=False);
                         } else {
+                            backups[out_path] = _snapshot_file(out_path);
+                            if is_owned {
+                                os.makedirs(
+                                    os.path.dirname(out_path) or ".", exist_ok=True
+                                );
+                            }
                             with open(out_path, 'w', encoding='utf-8') as f {
                                 f.write(code);
                             }
                         }
                     } except Exception as e {
                         write_errors.append(f"Error writing to '{out_path}': {e}");
+                        if out_path in backups {
+                            _restore_files({out_path: backups[out_path]});
+                        }
+                        if is_owned {
+                            floated_failed = True;
+                        } elif is_module {
+                            _restore_files(
+                                {
+                                    p: b
+                                    for (p, b) in backups.items()
+                                    if os.path.realpath(p) in owned
+                                }
+                            );
+                        }
                     }
                 }
                 if write_errors {
@@ -1555,116 +1182,11 @@ impl precommit(
     return 0;
 }
 
-def _staged_dirty_files(git_root: str, rel_targets: list[str]) -> list[str] {
-    import subprocess;
-    if not git_root or not rel_targets {
-        return [];
-    }
-    try {
-        out = subprocess.run(
-            ["git", "diff", "--name-only", "--"] + rel_targets,
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=git_root
-        ).stdout;
-    } except Exception {
-        return [];
-    }
-    return [
-        line.strip()
-        for line in out.splitlines()
-        if line.strip()
-    ];
-}
+def _staged_dirty_files(git_root: str, rel_targets: list[str]) -> list[str];
 
-def _install_precommit_hook(force: bool = False) -> int {
-    import os;
-    import subprocess;
-    try {
-        completed = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            capture_output=True,
-            text=True,
-            check=True
-        );
-    } except Exception as e {
-        console.error(f"Not a git repository (or git unavailable): {e}");
-        return 1;
-    }
-    git_dir = completed.stdout.strip();
-    hooks_dir = os.path.join(git_dir, "hooks");
-    os.makedirs(hooks_dir, exist_ok=True);
-    precommit_body = (
-        "#!/bin/sh\n"
-        "# Installed by `jac precommit --install`\n"
-        "exec jac precommit --verify\n"
-    );
-    commit_msg_body = (
-        "#!/bin/sh\n"
-        "# Installed by `jac precommit --install`\n"
-        "if grep -iEq 'co-authored-by:.*\\b(claude|anthropic|openai|copilot"
-        "|composer|cursor|gpt|gemini|ai|bot)\\b' \"$1\"; then\n"
-        "  echo 'commit-msg: AI co-author attribution is not allowed.' >&2\n"
-        "  exit 1\n"
-        "fi\n"
-    );
-    for pair in [("pre-commit", precommit_body), ("commit-msg", commit_msg_body)] {
-        ret = _write_git_hook(os.path.join(hooks_dir, pair[0]), pair[1], force);
-        if ret != 0 {
-            return ret;
-        }
-    }
-    console.success(f"Installed git hooks in '{hooks_dir}': pre-commit, commit-msg.");
-    console.print("commit-msg blocks AI co-author attribution lines.");
-    return 0;
-}
+def _install_precommit_hook(force: bool = False) -> int;
 
-def _write_git_hook(hook_path: str, body: str, force: bool) -> int {
-    import os;
-    import stat;
-    if os.path.exists(hook_path) {
-        try {
-            with open(hook_path, encoding="utf-8", errors="replace") as f {
-                existing = f.read();
-            }
-        } except Exception {
-            existing = "";
-        }
-        is_ours = "Installed by `jac precommit --install`" in existing;
-        is_framework = "generated by pre-commit" in existing;
-        if not (is_ours or is_framework or force) {
-            console.warning(f"A hook already exists at '{hook_path}'.");
-            console.warning(
-                "Re-run 'jac precommit --install --force' to replace it "
-                "(the old hook is kept as a .bak backup)."
-            );
-            return 1;
-        }
-        if not is_ours {
-            backup_path = hook_path + ".bak";
-            try {
-                os.replace(hook_path, backup_path);
-            } except Exception as e {
-                console.error(f"Could not back up the existing hook: {e}");
-                return 1;
-            }
-            kind = "pre-commit framework hook" if is_framework else "existing hook";
-            console.print(f"Replaced {kind} (backup at '{backup_path}').");
-        }
-    }
-    try {
-        with open(hook_path, "w", encoding="utf-8") as f {
-            f.write(body);
-        }
-        mode = os.stat(hook_path).st_mode;
-        os.chmod(hook_path, mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH);
-    } except Exception as e {
-        console.error(f"Failed to write hook: {e}");
-        return 1;
-    }
-    return 0;
-}
+def _write_git_hook(hook_path: str, body: str, force: bool) -> int;
 
 impl `test(
     target: str = "",
@@ -1882,92 +1404,17 @@ impl grammar(output: str = "", strict: bool = False) -> int {
 
 def _iter_jac_files(
     paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
-) -> tuple[list[str], bool] {
-    import os;
-    ignore_list: list[str] = ignore_list or [];
-    result: list[str] = [];
-    explicit: set[str] = set();
-    had_errors = False;
-    for path in paths {
-        path_obj = Path(path);
-        if path.endswith('.jac') {
-            if not _should_ignore(path, ignore_list) {
-                result.append(path);
-                explicit.add(os.path.realpath(path));
-            }
-        } elif path_obj.is_dir() {
-            walked: list[str] = [];
-            for jac_file in path_obj.`glob('**/*.jac') {
-                if not jac_file.is_file() {
-                    continue;
-                }
-                if not _should_ignore(str(jac_file), ignore_list) {
-                    walked.append(str(jac_file));
-                }
-            }
-            if drop_git_ignored([str(path_obj)]) {
-                result.extend(drop_git_ignored(walked));
-            } else {
-                result.extend(walked);
-            }
-        } else {
-            console.error(f"'{path}' is not a .jac file or directory.");
-            had_errors = True;
-        }
-    }
-    if not include_annex {
-        result = _drop_covered_annexes(result, explicit);
-    }
-    return (result, had_errors);
-}
+) -> tuple[list[str], bool];
 
-def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
-    import os;
+def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str];
 
-    modules = {
-        os.path.realpath(f)
-        for f in files
-        if not is_annex(f)
-    };
-    kept: list[str] = [];
-    for f in files {
-        if is_annex(f) and (os.path.realpath(f) not in explicit) {
-            base = discover_base_file(f);
-            if (base is not None) and (os.path.realpath(base) in modules) {
-                continue;
-            }
-        }
-        kept.append(f);
-    }
-    return kept;
-}
+def _normalize_ignore_patterns(ignore: list[str]) -> list[str];
 
-def _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
-    return normalize_exclude_patterns(ignore);
-}
+def _configured_check_excludes -> list[str];
 
-def _configured_check_excludes -> list[str] {
-    config = get_config();
-    return list(config.check.exclude) if config is not None else [];
-}
+def _is_project_wide_run(paths: list[str]) -> bool;
 
-def _is_project_wide_run(paths: list[str]) -> bool {
-    import os;
-
-    if not paths {
-        return True;
-    }
-    config = get_config();
-    proj = str(config.project_root) if (config and config.project_root) else "";
-    if not proj or len(paths) != 1 {
-        return False;
-    }
-    return os.path.realpath(paths[0]) == os.path.realpath(proj);
-}
-
-def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool {
-    return path_matches_exclude(file_path, ignore_patterns);
-}
+def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool;
 
 impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> int {
     import os;
@@ -2048,4 +1495,862 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
         console.print(f"  {m.group(1)}");
     }
     return 0;
+}
+
+impl _maybe_malloc_trim {
+    maybe_malloc_trim();
+}
+
+impl _unit_weight(unit: dict[(str, any)]) -> int {
+    import os;
+
+    path = str(unit['path']);
+    try {
+        size = os.path.getsize(path);
+    } except OSError {
+        return 0;
+    }
+    try {
+        for annex in discover_annex_files(path, '.impl.jac') {
+            size += os.path.getsize(annex);
+        }
+    } except Exception {}
+    return size;
+}
+
+impl _settle_check_heap {
+    import gc;
+    import os;
+    if os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
+        return;
+    }
+
+    rss = worker_rss_mb();
+    if _CHECK_HEAP["base_rss"] < 0 {
+        _CHECK_HEAP["base_rss"] = rss;
+    } elif rss - _CHECK_HEAP["base_rss"] > CHECK_HEAP_REGROW_MB {
+        gc.unfreeze();
+        gc.collect();
+        maybe_malloc_trim();
+        _CHECK_HEAP["base_rss"] = worker_rss_mb();
+    }
+    gc.freeze();
+}
+
+impl _wire_list(value: any) -> list[any] {
+    return value if isinstance(value, list) else [];
+}
+
+impl _wire_dict(value: any) -> dict[str, any] {
+    return value if isinstance(value, dict) else {};
+}
+
+impl _message_diag(text: str, path: str) -> dict[(str, any)] {
+    return {
+        'text': text,
+        'pretty': text,
+        'code': None,
+        'category': None,
+        'mod_path': path
+    };
+}
+
+impl _diag_wire(alert: any) -> dict[(str, any)] {
+    info = alert.code;
+    return {
+        'text': str(alert),
+        'pretty': alert.pretty_print(),
+        'code': info.code if info is not None else None,
+        'category': info.category.value if info is not None else None,
+        'mod_path': alert.loc.mod_path if alert.loc else ''
+    };
+}
+
+impl _check_rss_cap_mb -> int {
+    return env_int("JAC_CHECK_RECYCLE_MB", 3072);
+}
+
+impl _check_retire(served: int, rss_mb: int) -> bool {
+    return should_retire(
+        served, env_int("JAC_CHECK_RECYCLE", 0), rss_mb, _check_rss_cap_mb()
+    );
+}
+
+impl _check_unit(
+    path: str,
+    app_name: str,
+    kind: str,
+    target: str,
+    root_dir: str,
+    closure: bool = False
+) -> dict[(str, any)] {
+    return {
+        'path': path,
+        'app': app_name,
+        'kind': kind,
+        'target': target,
+        'root_dir': root_dir,
+        'label': app_name or 'shared',
+        'closure': closure
+    };
+}
+
+impl _is_app_name(target: str) -> bool {
+    return bool(target)
+        and not target.endswith('.jac')
+        and '/' not in target
+        and '\\' not in target;
+}
+
+impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
+    import os;
+
+    opts = _wire_dict(request.get("opts"));
+    file_path = str(request["path"]);
+    result: dict[(str, any)] = {
+        'path': file_path,
+        'success': False,
+        'errors': [],
+        'warnings': [],
+        'placements': {},
+        'coverage': {},
+        'reached': []
+    };
+    if not Path(file_path).exists() {
+        result['errors'] = [
+            _message_diag(f"File '{file_path}' does not exist.", file_path)
+        ];
+        return result;
+    }
+    prog = _CHECK_STATE["prog"];
+    if prog is None {
+        prog = JacProgram();
+        _CHECK_STATE["prog"] = prog;
+    }
+    if opts.get("native_coverage") and not _CHECK_STATE["coverage_on"] {
+        import from jaclang.compiler.driver.na_coverage { na_coverage_begin }
+        na_coverage_begin();
+        _CHECK_STATE["coverage_on"] = True;
+    }
+    ignore_list = _wire_list(opts.get("ignore"));
+    annex_filter_path: (str | None) = None;
+    base_path = discover_base_file(file_path);
+    if base_path is not None {
+        annex_filter_path = os.path.realpath(file_path);
+        file_path = base_path;
+    }
+    try {
+        (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
+        parity_view: any = None;
+        if opts.get("parse_only") {
+            import from jaclang.compiler.frontend.parser.frontend {
+                parse_diags,
+                _replay_diags
+            }
+            import from jaclang.compiler.frontend.parser.lexer { Lexer }
+            import from jaclang.compiler.frontend.parser.parser {
+                Parser as _SyntaxParser
+            }
+            import from jaclang.compiler.frontend.unitree { Source as _Src }
+            import from jaclang.project.textio { read_file_with_encoding as _read_src }
+            _src_txt = _read_src(file_path);
+            (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
+            if _pd or _ld {
+                _dsrc = _Src(_src_txt, mod_path=file_path);
+                _replay_diags(_ld, Lexer, prog, _dsrc);
+                _replay_diags(_pd, _SyntaxParser, prog, _dsrc);
+            }
+        } else {
+            compile_options = CompileOptions(
+                no_cgen=not bool(opts.get("native_coverage")),
+                native_parity=True,
+                iface_ok=True,
+                strict_dependencies=True,
+                suppress_codes=list(opts.get("suppress_codes") or []),
+                target_app=str(opts.get("target_app") or ""),
+                app_kind=str(opts.get("app_kind") or ""),
+                project_root=(
+                    str(opts["project_root"]) if opts.get("project_root") else None
+                )
+            );
+            compile_options.entry_point = file_path;
+            if opts.get('closure') {
+                import from jaclang.compiler.driver.pipeline_runner {
+                    compile_application
+                }
+                compile_application(prog, file_path, compile_options);
+            } else {
+                kernel_view: any = None;
+                if not opts.get("placements") and not opts.get("native_coverage") {
+                    import from jaclang.project.kernel_check { kernel_check }
+                    kernel_view = kernel_check(
+                        prog,
+                        file_path,
+                        compile_options,
+                        parity=bool(opts.get("kernel_parity"))
+                    );
+                }
+                adopted = kernel_view is not None and kernel_view.adopted;
+                if not adopted {
+                    prog.compile(file_path, options=compile_options);
+                    if kernel_view is not None and kernel_view.parity {
+                        parity_view = kernel_view;
+                    }
+                }
+                if opts.get("named") {
+                    project_dir = os.path.realpath(
+                        str(opts["project_root"])
+                            if opts.get("project_root")
+                            else os.path.dirname(file_path)
+                    );
+                    checked = os.path.realpath(file_path);
+                    reached_keys: list[str] = [str(key) for key in prog.mod.hub];
+                    if adopted {
+                        import from jaclang.project.kernel_check { reached_modules }
+                        reached_keys = reached_modules(kernel_view.outcome);
+                    }
+                    result['reached'] = sorted(
+                        {
+                            real
+                            for real in [os.path.realpath(key) for key in reached_keys]
+                            if real.endswith(".jac")
+                                and not real.endswith((".impl.jac", ".test.jac"))
+                                and real.startswith(project_dir + os.sep)
+                                and real != checked
+                        }
+                    );
+                }
+            }
+        }
+        if opts.get("placements") {
+            import from jaclang.compiler.placement.placement_export {
+                collect_placement_rows
+            }
+            result['placements'] = collect_placement_rows(prog);
+        }
+        if opts.get("native_coverage") {
+            import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
+            result['coverage'] = na_coverage_snapshot();
+        }
+        for m in prog.mod.hub.values() {
+            m.terminals = [];
+            m.src_terminals = [];
+        }
+        new_errors = prog.errors_had[err_start:];
+        new_warnings = prog.warnings_had[warn_start:];
+
+        def keep(issue: any) -> bool {
+            return bool(
+                issue.loc
+                    and issue.loc.mod_path
+                    and issue.loc.mod_path.endswith(".jac")
+                    and not _should_ignore(issue.loc.mod_path, ignore_list)
+                    and (
+                        annex_filter_path is None
+                        or issue.loc.mod_path == annex_filter_path
+                    )
+            );
+        }
+        if parity_view is not None {
+            import from jaclang.project.kernel_check { report_parity }
+            report_parity(
+                parity_view,
+                file_path,
+                [
+                    e
+                    for e in new_errors
+                    if keep(e)
+                ],
+                [
+                    w
+                    for w in new_warnings
+                    if keep(w)
+                ],
+                keep
+            );
+        }
+        result['errors'] = [
+            _diag_wire(e)
+            for e in new_errors
+            if keep(e)
+        ];
+        result['warnings'] = [
+            _diag_wire(w)
+            for w in new_warnings
+            if keep(w)
+        ];
+        result['success'] = len(result['errors']) == 0;
+        return result;
+    } except Exception as e {
+        result['errors'] = [
+            _message_diag(f"Error checking '{file_path}': {e}", file_path)
+        ];
+        result['success'] = False;
+        return result;
+    } finally {
+        if opts.get('closure') {
+            prog._get_compiler().release_compile_state(prog);
+            _CHECK_STATE['prog'] = None;
+        } else {
+            prog.release_compile_closure(collect=bool(request.get("collect")));
+        }
+        _maybe_malloc_trim();
+    }
+}
+
+impl _check_file_job_settled(request: dict[(str, any)]) -> dict[(str, any)] {
+    result = _check_file_job(request);
+    _settle_check_heap();
+    return result;
+}
+
+impl _release_check_heap {
+    import gc;
+    if _CHECK_HEAP["base_rss"] >= 0 {
+        gc.unfreeze();
+        _CHECK_HEAP["base_rss"] = -1;
+    }
+}
+
+impl _format_single_file_worker(
+    file_path: str,
+    lintfix: bool,
+    check: bool,
+    covered: (set[str] | None) = None,
+    cache_stamp: str = "",
+    cache_anchor: str = "",
+    logical_path: str = ""
+) -> dict[str, any] {
+    import os;
+
+    path_obj = Path(file_path);
+
+    effective_logical = logical_path or file_path;
+    result: dict[str, any] = {
+        'path': file_path,
+        'success': False,
+        'changed': False,
+        'errors': 0,
+        'syntax_errors': [],
+        'warnings_strs': [],
+        'errors_strs': [],
+        'formatted_code': None,
+        'impl_results': [],
+        'floated_annexes': [],
+        'cache_status': 'off'
+    };
+    if not path_obj.exists() {
+        result['syntax_errors'] = [f"File '{file_path}' does not exist."];
+        return result;
+    }
+
+    fcache = None;
+    cache_key = "";
+    cfg_fp = "";
+    cfg: any = None;
+    key_logical = "";
+    annex_ok = True;
+    annex_error_count = 0;
+
+    annex_paths: list[str] = [];
+    annex_formatted_map: dict[str, str] = {};
+    annex_logical_map: dict[str, str] = {};
+    if lintfix {
+        import from jaclang.compiler.driver.bccache { discover_annex_files }
+
+        annex_paths = (
+            discover_annex_files(file_path, '.impl.jac')
+            + discover_annex_files(file_path, '.test.jac')
+        );
+        if logical_path {
+            phys_parent = str(Path(file_path).resolve().parent);
+            log_parent = str(Path(logical_path).parent);
+            for ap in annex_paths {
+                try {
+                    rel = os.path.relpath(ap, phys_parent);
+                    annex_logical_map[ap] = str(Path(log_parent) / rel);
+                } except ValueError {
+                    annex_logical_map[ap] = ap;
+                }
+            }
+        }
+    }
+    if cache_stamp {
+        try {
+            import from jaclang.cli.format_cache {
+                FormatCache,
+                config_fingerprint,
+                frame_unit,
+                canonical_logical_path,
+                default_format_cache_dir
+            }
+            import from jaclang.project.config { get_config_for_path }
+
+            cfg = get_config_for_path(Path(effective_logical));
+            if cfg is not None {
+                cache_dir = cfg.get_cache_dir();
+            } else {
+                anchor = Path(cache_anchor) if cache_anchor else path_obj;
+                cache_dir = default_format_cache_dir(anchor);
+                cfg = None;
+            }
+
+            fcache = FormatCache(cache_dir, enabled=True, formatter_stamp=cache_stamp);
+
+            unit_parts = [path_obj.read_bytes()];
+            for ap in annex_paths {
+                ap_obj = Path(ap);
+                if ap_obj.exists() {
+                    unit_parts.append(ap_obj.read_bytes());
+                }
+            }
+            unit_bytes = frame_unit(unit_parts);
+            cfg_fp = config_fingerprint(cfg, lintfix);
+            project_root = str(cfg.project_root)
+                if (cfg is not None and cfg.project_root)
+                else (cache_anchor);
+            key_logical = (
+                canonical_logical_path(effective_logical, project_root)
+                    if lintfix
+                    else ""
+            );
+            cache_key = fcache.make_key(
+                unit_bytes,
+                lintfix=lintfix,
+                config_fingerprint=cfg_fp,
+                logical_path=key_logical
+            );
+            if fcache.is_clean(cache_key) {
+                result['cache_status'] = 'hit';
+                result['success'] = True;
+                result['changed'] = False;
+                result['errors'] = 0;
+                return result;
+            }
+            result['cache_status'] = 'miss';
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
+            fcache = None;
+            cache_key = "";
+        }
+    }
+
+    try {
+        if logical_path {
+            source_str = read_file_with_encoding(str(path_obj));
+            prog = JacProgram.jac_str_formatter(
+                source_str, effective_logical, auto_lint=lintfix
+            );
+        } else {
+            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+        }
+        if prog.errors_had {
+            has_format_error = any(
+                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
+            );
+            if has_format_error or not lintfix {
+                result['syntax_errors'] = [str(e) for e in prog.errors_had];
+                return result;
+            }
+        }
+        try {
+            formatted_code = prog.mod.main.gen.jac;
+            original_code = prog.mod.main.source.code;
+            if not formatted_code or len(formatted_code.strip()) == 0 {
+                if prog.errors_had {
+                    result['syntax_errors'] = [str(e) for e in prog.errors_had];
+                    return result;
+                }
+            }
+            float_target = "";
+            float_text = "";
+            if lintfix {
+                (formatted_code, float_target, float_text) = _float_impls_to_annex(
+                    prog, str(path_obj), effective_logical, formatted_code
+                );
+            }
+            changed = formatted_code != original_code;
+            result['changed'] = changed;
+
+            if changed and not check {
+                result['formatted_code'] = formatted_code;
+            }
+
+            if lintfix {
+                float_done = False;
+                float_ok = False;
+                for annex_path in annex_paths {
+                    is_float_target = bool(float_target)
+                        and os.path.realpath(annex_path)
+                            == os.path.realpath(float_target);
+                    if covered is not None
+                        and not is_float_target
+                        and (os.path.realpath(annex_path) in covered) {
+                        continue;
+                    }
+                    annex_logical = annex_logical_map.get(annex_path, annex_path);
+                    if is_float_target {
+                        float_done = True;
+                    }
+                    try {
+                        if is_float_target {
+                            annex_prog = JacProgram.jac_str_formatter(
+                                float_text, annex_logical, auto_lint=True
+                            );
+                        } elif logical_path {
+                            annex_src = read_file_with_encoding(annex_path);
+                            annex_prog = JacProgram.jac_str_formatter(
+                                annex_src, annex_logical, auto_lint=True
+                            );
+                        } else {
+                            annex_prog = JacProgram.jac_file_formatter(
+                                annex_path, auto_lint=True
+                            );
+                        }
+                        annex_formatted = annex_prog.mod.main.gen.jac;
+                        annex_original = read_file_with_encoding(annex_path)
+                            if is_float_target
+                            else annex_prog.mod.main.source.code;
+                    } except (OSError, ValueError, TypeError, AttributeError) as e {
+                        annex_ok = False;
+                        annex_error_count += 1;
+                        result['errors_strs'].append(
+                            f"Error formatting annex '{annex_path}': {e}"
+                        );
+                        continue;
+                    }
+                    for warning in annex_prog.warnings_had {
+                        result['warnings_strs'].append(str(warning));
+                    }
+                    for error in annex_prog.errors_had {
+                        result['errors_strs'].append(str(error));
+                        annex_ok = False;
+                        annex_error_count += 1;
+                    }
+                    if is_float_target {
+                        float_ok = bool(annex_formatted) and not annex_prog.errors_had;
+                        if not float_ok {
+                            continue;
+                        }
+                    }
+                    annex_formatted_map[annex_path] = (
+                        annex_formatted if annex_formatted is not None else ""
+                    );
+                    if (annex_formatted and annex_formatted != annex_original) {
+                        result['changed'] = True;
+                        if not check {
+                            result['impl_results'].append(
+                                (annex_path, annex_formatted)
+                            );
+                        }
+                    }
+                }
+                if float_target and not float_done {
+                    new_logical = float_target;
+                    if logical_path {
+                        new_logical = str(
+                            Path(effective_logical).parent
+                                / os.path.relpath(float_target, str(path_obj.parent))
+                        );
+                    }
+                    new_prog = JacProgram.jac_str_formatter(
+                        float_text, new_logical, auto_lint=True
+                    );
+                    for error in new_prog.errors_had {
+                        result['errors_strs'].append(str(error));
+                        annex_ok = False;
+                        annex_error_count += 1;
+                    }
+                    float_ok = bool(new_prog.mod.main.gen.jac)
+                        and not new_prog.errors_had;
+                    if float_ok {
+                        result['changed'] = True;
+                        if not check {
+                            result['impl_results'].append(
+                                (float_target, new_prog.mod.main.gen.jac)
+                            );
+                        }
+                    }
+                }
+                if float_target and not float_ok {
+                    result['success'] = False;
+                    result['changed'] = False;
+                    result['formatted_code'] = None;
+                    result['impl_results'] = [];
+                    result['errors'] = annex_error_count + 1;
+                    result['syntax_errors'] = [
+                        f"Left '{file_path}' unchanged: its impl annex "
+                        f"'{float_target}' could not be formatted"
+                    ];
+                    return result;
+                } elif float_target {
+                    result['floated_annexes'] = [float_target];
+                }
+            }
+        } except (OSError, ValueError, TypeError, AttributeError) {
+            result['syntax_errors'] = [str(e) for e in prog.errors_had];
+            return result;
+        }
+
+        lint_errors = 0;
+        if lintfix {
+            for warning in prog.warnings_had {
+                result['warnings_strs'].append(str(warning));
+            }
+            for error in prog.errors_had {
+                result['errors_strs'].append(str(error));
+                lint_errors += 1;
+            }
+            lint_errors += annex_error_count;
+        }
+        result['success'] = True;
+        result['errors'] = lint_errors;
+
+        if (
+            fcache is not None
+            and cache_key
+            and result['success']
+            and not result['syntax_errors']
+            and result['errors'] == 0
+            and annex_ok
+        ) {
+            try {
+                import from jaclang.cli.format_cache { frame_unit }
+
+                if not result['changed'] {
+                    fcache.mark_clean(cache_key);
+                } elif not check {
+                    main_clean = (
+                        formatted_code.encode() if changed else path_obj.read_bytes()
+                    );
+                    new_parts = [main_clean];
+                    for ap in annex_paths {
+                        if ap in annex_formatted_map {
+                            new_parts.append(annex_formatted_map[ap].encode());
+                        } elif Path(ap).exists() {
+                            new_parts.append(Path(ap).read_bytes());
+                        } else {
+                            annex_ok = False;
+                            break;
+                        }
+                    }
+                    if annex_ok {
+                        new_unit = frame_unit(new_parts);
+                        fcache.mark_clean(
+                            fcache.make_key(
+                                new_unit,
+                                lintfix=lintfix,
+                                config_fingerprint=cfg_fp,
+                                logical_path=key_logical
+                            )
+                        );
+                    }
+                }
+            } except (OSError, ValueError, TypeError, AttributeError) {}
+        }
+
+        return result;
+    } except Exception as e {
+        result['syntax_errors'] = [f"Error formatting '{file_path}': {e}"];
+        return result;
+    }
+}
+
+impl _staged_dirty_files(git_root: str, rel_targets: list[str]) -> list[str] {
+    import subprocess;
+    if not git_root or not rel_targets {
+        return [];
+    }
+    try {
+        out = subprocess.run(
+            ["git", "diff", "--name-only", "--"] + rel_targets,
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=git_root
+        ).stdout;
+    } except Exception {
+        return [];
+    }
+    return [
+        line.strip()
+        for line in out.splitlines()
+        if line.strip()
+    ];
+}
+
+impl _install_precommit_hook(force: bool = False) -> int {
+    import os;
+    import subprocess;
+    try {
+        completed = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            check=True
+        );
+    } except Exception as e {
+        console.error(f"Not a git repository (or git unavailable): {e}");
+        return 1;
+    }
+    git_dir = completed.stdout.strip();
+    hooks_dir = os.path.join(git_dir, "hooks");
+    os.makedirs(hooks_dir, exist_ok=True);
+    precommit_body = (
+        "#!/bin/sh\n"
+        "# Installed by `jac precommit --install`\n"
+        "exec jac precommit --verify\n"
+    );
+    commit_msg_body = (
+        "#!/bin/sh\n"
+        "# Installed by `jac precommit --install`\n"
+        "if grep -iEq 'co-authored-by:.*\\b(claude|anthropic|openai|copilot"
+        "|composer|cursor|gpt|gemini|ai|bot)\\b' \"$1\"; then\n"
+        "  echo 'commit-msg: AI co-author attribution is not allowed.' >&2\n"
+        "  exit 1\n"
+        "fi\n"
+    );
+    for pair in [("pre-commit", precommit_body), ("commit-msg", commit_msg_body)] {
+        ret = _write_git_hook(os.path.join(hooks_dir, pair[0]), pair[1], force);
+        if ret != 0 {
+            return ret;
+        }
+    }
+    console.success(f"Installed git hooks in '{hooks_dir}': pre-commit, commit-msg.");
+    console.print("commit-msg blocks AI co-author attribution lines.");
+    return 0;
+}
+
+impl _write_git_hook(hook_path: str, body: str, force: bool) -> int {
+    import os;
+    import stat;
+    if os.path.exists(hook_path) {
+        try {
+            with open(hook_path, encoding="utf-8", errors="replace") as f {
+                existing = f.read();
+            }
+        } except Exception {
+            existing = "";
+        }
+        is_ours = "Installed by `jac precommit --install`" in existing;
+        is_framework = "generated by pre-commit" in existing;
+        if not (is_ours or is_framework or force) {
+            console.warning(f"A hook already exists at '{hook_path}'.");
+            console.warning(
+                "Re-run 'jac precommit --install --force' to replace it "
+                "(the old hook is kept as a .bak backup)."
+            );
+            return 1;
+        }
+        if not is_ours {
+            backup_path = hook_path + ".bak";
+            try {
+                os.replace(hook_path, backup_path);
+            } except Exception as e {
+                console.error(f"Could not back up the existing hook: {e}");
+                return 1;
+            }
+            kind = "pre-commit framework hook" if is_framework else "existing hook";
+            console.print(f"Replaced {kind} (backup at '{backup_path}').");
+        }
+    }
+    try {
+        with open(hook_path, "w", encoding="utf-8") as f {
+            f.write(body);
+        }
+        mode = os.stat(hook_path).st_mode;
+        os.chmod(hook_path, mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH);
+    } except Exception as e {
+        console.error(f"Failed to write hook: {e}");
+        return 1;
+    }
+    return 0;
+}
+
+impl _iter_jac_files(
+    paths: list[str], ignore_list: (list[str] | None) = None, include_annex: bool = True
+) -> tuple[list[str], bool] {
+    import os;
+    ignore_list: list[str] = ignore_list or [];
+    result: list[str] = [];
+    explicit: set[str] = set();
+    had_errors = False;
+    for path in paths {
+        path_obj = Path(path);
+        if path.endswith('.jac') {
+            if not _should_ignore(path, ignore_list) {
+                result.append(path);
+                explicit.add(os.path.realpath(path));
+            }
+        } elif path_obj.is_dir() {
+            walked: list[str] = [];
+            for jac_file in path_obj.`glob('**/*.jac') {
+                if not jac_file.is_file() {
+                    continue;
+                }
+                if not _should_ignore(str(jac_file), ignore_list) {
+                    walked.append(str(jac_file));
+                }
+            }
+            if drop_git_ignored([str(path_obj)]) {
+                result.extend(drop_git_ignored(walked));
+            } else {
+                result.extend(walked);
+            }
+        } else {
+            console.error(f"'{path}' is not a .jac file or directory.");
+            had_errors = True;
+        }
+    }
+    if not include_annex {
+        result = _drop_covered_annexes(result, explicit);
+    }
+    return (result, had_errors);
+}
+
+impl _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
+    import os;
+
+    modules = {
+        os.path.realpath(f)
+        for f in files
+        if not is_annex(f)
+    };
+    kept: list[str] = [];
+    for f in files {
+        if is_annex(f) and (os.path.realpath(f) not in explicit) {
+            base = discover_base_file(f);
+            if (base is not None) and (os.path.realpath(base) in modules) {
+                continue;
+            }
+        }
+        kept.append(f);
+    }
+    return kept;
+}
+
+impl _normalize_ignore_patterns(ignore: list[str]) -> list[str] {
+    return normalize_exclude_patterns(ignore);
+}
+
+impl _configured_check_excludes -> list[str] {
+    config = get_config();
+    return list(config.check.exclude) if config is not None else [];
+}
+
+impl _is_project_wide_run(paths: list[str]) -> bool {
+    import os;
+
+    if not paths {
+        return True;
+    }
+    config = get_config();
+    proj = str(config.project_root) if (config and config.project_root) else "";
+    if not proj or len(paths) != 1 {
+        return False;
+    }
+    return os.path.realpath(paths[0]) == os.path.realpath(proj);
+}
+
+impl _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool {
+    return path_matches_exclude(file_path, ignore_patterns);
 }

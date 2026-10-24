@@ -25,6 +25,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.runtime.archetype { Anchor }
 import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.scale.server.inprocess {
     PreparedInProcessRuntime,
@@ -34,6 +35,7 @@ import from jaclang.scale.server.websocket_ext { WebSocketExtension }
 import from jaclang.scale.websocket.websocket { _ws_stream_result }
 import from jaclang.server.request_scope { RequestScope }
 import from jaclang.server.serving.datatypes { WebSocketDisconnect }
+import from jaclang.server.session { Session }
 import from jaclang.testing.testkit { ServingTestClient }
 
 # Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
@@ -180,33 +182,57 @@ def _restore_env(name: str, prior: (str | None)) {
 
 test "a websocket walker sees a user registered after the process-global session began reading" {
     prior = os.environ.get("JAC_SCALE_RUNTIME");
-    with TemporaryDirectory() as project {
-        runtime = _serve(project);
+    commits: list[bool] = [];
+    original_commit = Session.commit;
+
+    def tracking_commit(self: Session, anchor: (Anchor | None) = None) {
+        on_loop = True;
         try {
-            # Control: with nothing read through the global context yet, a
-            # new user's websocket call works.
-            early = _register_and_login(runtime, "early_user");
-            control = _ws_call(runtime, "/ws/walker/ws_notes", early, {});
-            assert control.get("ok") is True , f"websocket walker failed: {control}";
-
-            _read_through_global_context();
-            late = _register_and_login(runtime, "late_user");
-            assert _http_notes(runtime, late) == [];
-
-            first = _ws_call(runtime, "/ws/walker/ws_notes", late, {"text": "one"});
-            assert first.get("ok") is True , f"websocket walker failed: {first}";
-            assert first["data"]["reports"][0] == ["one"] , f"got {first}";
-
-            # The write is committed: HTTP sees it, and so does the next frame.
-            assert _http_notes(runtime, late) == ["one"];
-            second = _ws_call(runtime, "/ws/walker/ws_notes", late, {"text": "two"});
-            assert second.get("ok") is True , f"websocket walker failed: {second}";
-            assert second["data"]["reports"][0] == ["one", "two"] , f"got {second}";
-        } finally {
-            runtime.close();
-            _restore_env("JAC_SCALE_RUNTIME", prior);
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            on_loop = False;
         }
+        commits.append(on_loop);
+        original_commit(self, anchor);
     }
+
+    Session.commit = tracking_commit;
+    try {
+        with TemporaryDirectory() as project {
+            runtime = _serve(project);
+            try {
+                # Control: with nothing read through the global context yet, a
+                # new user's websocket call works.
+                early = _register_and_login(runtime, "early_user");
+                control = _ws_call(runtime, "/ws/walker/ws_notes", early, {});
+                assert control.get("ok") is True , f"websocket walker failed: {control}";
+
+                _read_through_global_context();
+                late = _register_and_login(runtime, "late_user");
+                assert _http_notes(runtime, late) == [];
+
+                first = _ws_call(runtime, "/ws/walker/ws_notes", late, {"text": "one"});
+                assert first.get("ok") is True , f"websocket walker failed: {first}";
+                assert first["data"]["reports"][0] == ["one"] , f"got {first}";
+
+                # The write is committed: HTTP sees it, and so does the next frame.
+                assert _http_notes(runtime, late) == ["one"];
+                second = _ws_call(
+                    runtime, "/ws/walker/ws_notes", late, {"text": "two"}
+                );
+                assert second.get("ok") is True , f"websocket walker failed: {second}";
+                assert second["data"]["reports"][0] == ["one", "two"] , f"got {second}";
+            } finally {
+                runtime.close();
+                _restore_env("JAC_SCALE_RUNTIME", prior);
+            }
+        }
+    } finally {
+        Session.commit = original_commit;
+    }
+    on_loop = commits.count(True);
+    assert commits , "nothing committed";
+    assert on_loop == 0 , f"{on_loop} of {len(commits)} commits ran on the event loop";
 }
 
 
@@ -317,6 +343,51 @@ async def _deliver(project: str, source: any, send: any) {
         try {
             await _ws_stream_result(send, stream, scope.abort);
         } except WebSocketDisconnect {}
+    }
+}
+
+
+test "a request scope cancelled while closing still closes its session and runs its effects" {
+    with TemporaryDirectory() as project {
+        (Path(project) / "app.jac").write_text("", encoding="utf-8");
+        effects: list[str] = [];
+        reset: list[bool] = [];
+        closed = threading.Event();
+        release = threading.Event();
+        original_close = Session.close;
+        def slow_close(self: Session) {
+            release.wait(5);
+            original_close(self);
+            closed.set();
+        }
+        async def request {
+            scope = _open_scope(project);
+            scope.context.on_commit(lambda { effects.append("ran"); });
+            try {
+                await scope.aclose();
+            } finally {
+                reset.append(Jac.peek_context() is Jac.exec_ctx);
+            }
+        }
+        async def cancel_mid_close {
+            task = asyncio.ensure_future(request());
+            await asyncio.sleep(0.05);
+            task.cancel();
+            await asyncio.sleep(0.05);
+            release.set();
+            try {
+                await task;
+            } except asyncio.CancelledError {}
+        }
+        Session.close = slow_close;
+        try {
+            asyncio.run(cancel_mid_close());
+        } finally {
+            Session.close = original_close;
+        }
+        assert closed.is_set() , "cancelling the scope's close dropped the session close";
+        assert effects == ["ran"] , f"the scope's on_commit effects did not run: {effects}";
+        assert reset == [True] , "the request context was not reset";
     }
 }
 

@@ -1,23 +1,5 @@
 import os;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    ManifestBuilder,
-    merge_manifest_overlay,
-    CONFIG_REVISION_ANNOTATION,
-    with_config_revision
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.config_loader {
-    JacScaleConfig,
-    get_scale_config,
-    reset_scale_config
-}
-import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler, AutoscalerSpec }
-import from jaclang.scale.runtime.fleet { fleet_of }
-import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
-import from jaclang.server.settings { ServeConfigError }
 
 
 def _builder(services: dict[str, any], project_dir: str = "") -> ManifestBuilder {

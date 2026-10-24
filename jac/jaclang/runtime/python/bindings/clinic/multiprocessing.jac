@@ -11,54 +11,6 @@ Compiled only on Windows, so absent here:
     _multiprocessing.SemLock.acquire
     _multiprocessing.SemLock.release
 """
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyMem_Free,
-    PyObject,
-    PyTuple_Size,
-    jacpy_dict_size,
-    jacpy_tuple_items
-}
-import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
-import from jaclang.runtime.python.bindings.type {
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.arguments {
-    CallSignature,
-    PARSE_FORMAT,
-    PARSE_KEYWORDS,
-    check_positional,
-    invoke_stack,
-    invoke_tuple,
-    unpack_mapping,
-    unpack_stack
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi { boundary_failure }
-import from jaclang.runtime.python.bindings.converters {
-    argument_label,
-    borrowed_none,
-    convert_bool,
-    convert_cstr,
-    convert_int,
-    convert_str
-}
-import from jaclang.runtime.python.modules.multiprocessing {
-    _multiprocessing_SemLock___enter___impl,
-    _multiprocessing_SemLock___exit___impl,
-    _multiprocessing_SemLock__after_fork_impl,
-    _multiprocessing_SemLock__count_impl,
-    _multiprocessing_SemLock__get_value_impl,
-    _multiprocessing_SemLock__is_mine_impl,
-    _multiprocessing_SemLock__is_zero_impl,
-    _multiprocessing_SemLock__rebuild_impl,
-    _multiprocessing_SemLock_acquire_impl,
-    _multiprocessing_SemLock_impl,
-    _multiprocessing_SemLock_release_impl,
-    _multiprocessing_sem_unlink_impl,
-    convert_SEM_HANDLE
-}
 
 def:priv _multiprocessing_sem_unlink_call(
     receiver: ptr[PyObject], value: ptr[PyObject]

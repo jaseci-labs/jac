@@ -1,9 +1,10 @@
 """Tests for the C-ABI shared-library build (`jac build --native --lib`).
 
-These exercise the three pure-Jac linkers' shared-object paths — ELF .so
+These exercise LLD's three shared-object paths (driven through
+`native_link.link_native`, as `link_artifact` drives them) — ELF .so
 (ET_DYN), Mach-O .dylib (MH_DYLIB), and PE .dll (IMAGE_FILE_DLL) — driven by a
 single fixture whose `:pub` symbols form the export surface. The object every
-linker receives comes from the link plan (`link_plan.build_link_plan`): the
+link receives comes from the link plan (`link_plan.build_link_plan`): the
 fixture's unit plus the glue module that synthesizes `__jac_shared_init` and
 the `jac_retain` / `jac_release` / `jac_str_new` C ABI wrappers, exactly what
 `jac build --native --lib` links.
@@ -30,12 +31,11 @@ import from jaclang.compiler.driver.compile_options {
 import from jaclang.compiler.backends.native.na_compile_pass {
     create_unit_target_machine
 }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-import from jaclang.compiler.backends.native.pe_linker { PeLinker }
-import from jaclang.compiler.backends.native.static_link {
+import from jaclang.compiler.backends.native.native_link {
+    NativeLinkJob,
     clib_needed_libs,
-    clib_symbol_lib_map
+    clib_symbol_lib_map,
+    link_native
 }
 # The link plan owns __jac_shared_init + the public RC wrappers (the glue
 # module of `link_glue`). Building through it here keeps the tests on the
@@ -48,6 +48,7 @@ import from jaclang.compiler.backends.native.link_plan {
     whole_program_module,
     internalize_native_implementation
 }
+import from jaclang.compiler.backends.native.link_glue { init_object_codegen }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
@@ -106,6 +107,7 @@ def emit_shared_object(fixture: str, triple: str) -> tuple[any, ...] {
         (_prog, plan, opts) = plan_shared(fixture, triple);
         spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(triple), False);
         (merged, glue_exports) = whole_program_module(plan, spec);
+        init_object_codegen();
         tm = create_unit_target_machine(opts);
         relobj = tm.emit_object(merged);
         assert isinstance(relobj, bytes);
@@ -132,6 +134,26 @@ def link_shared(fixture: str, triple: str, out_path: str) -> any {
     } finally {
         pop_native_target(prev);
     }
+}
+
+
+"""Link one relocatable object into a shared library at `out` for `triple`
+with LLD, exactly as `link_artifact` hands the link over."""
+def link_shared_object(
+    triple: str, relobj: bytes, out: str, exports: list[str], needed: list[str]
+) {
+    link_native(
+        NativeLinkJob(
+            platform=_platform_of(triple),
+            triple=triple,
+            output_path=out,
+            shared=True,
+            soname=os.path.basename(out),
+            objects=[relobj],
+            needed_libs=needed,
+            export_symbols=exports
+        )
+    );
 }
 
 
@@ -179,12 +201,14 @@ def _macho_info(raw: bytes) -> dict[str, any] {
             sig_off = struct.unpack_from("<I", raw, off + 8)[0];  # dataoff
         } elif cmd == 0x80000022 {  # LC_DYLD_INFO_ONLY
             export_size = struct.unpack_from("<I", raw, off + 44)[0];
+        } elif cmd == 0x80000033 {  # LC_DYLD_EXPORTS_TRIE
+            export_size = struct.unpack_from("<I", raw, off + 12)[0];
         } elif cmd == 0x19 {  # LC_SEGMENT_64
             nsects = struct.unpack_from("<I", raw, off + 64)[0];
             so = off + 72;
             for _s in range(nsects) {
                 sn = raw[so:so + 16].split(b"\x00")[0];
-                if sn == b"__mod_init_func" {
+                if sn in (b"__mod_init_func", b"__init_offsets") {
                     has_mod_init = True;
                 }
                 so += 80;
@@ -207,21 +231,14 @@ def _macho_info(raw: bytes) -> dict[str, any] {
 test "ELF shared object loads and runs through the C ABI" {
     # Pin an explicit ELF triple so the emitted object is ELF on any host (the
     # macOS native job runs this same file; its default triple is darwin, which
-    # would yield a Mach-O object that ElfLinker cannot link). Execution below
+    # would yield a Mach-O object an ELF link cannot take). Execution below
     # stays gated to a Linux x86_64 host that can actually dlopen the result.
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-unknown-linux-gnu");
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libshared_export.so");
-        ok = ElfLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["libc.so.6", "libm.so.6"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libshared_export.so"
+        link_shared_object(
+            "x86_64-unknown-linux-gnu", relobj, out, exports, ["libc.so.6", "libm.so.6"]
         );
-        assert ok , "ElfLinker.link(shared=True) returned False";
         raw = Path(out).read_bytes();
         assert raw[:4] == b"\x7fELF" , "not an ELF image";
         e_type = struct.unpack_from("<H", raw, 16)[0];
@@ -403,16 +420,9 @@ test "ELF shared object initializes a global clib struct on dlopen" {
     );
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libshared_glob_struct.so");
-        ok = ElfLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["libc.so.6"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libshared_glob_struct.so"
+        link_shared_object(
+            "x86_64-unknown-linux-gnu", relobj, out, exports, ["libc.so.6"]
         );
-        assert ok , "ElfLinker.link(shared=True) returned False";
         # Only a Linux x86_64 host can dlopen + execute the produced .so.
         if sys.platform.startswith("linux")
             and ("x86_64" in llvm.get_default_triple()) {
@@ -450,23 +460,16 @@ test "Mach-O dylib has MH_DYLIB filetype, export trie, and init section" {
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-apple-darwin");
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libshared_export.dylib");
-        ok = MachOLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["/usr/lib/libSystem.B.dylib"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libshared_export.dylib"
+        link_shared_object(
+            "x86_64-apple-darwin", relobj, out, exports, ["/usr/lib/libSystem.B.dylib"]
         );
-        assert ok , "MachOLinker.link(shared=True) returned False";
         raw = Path(out).read_bytes();
         assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
         info = _macho_info(raw);
         assert info["filetype"] == 6 , f"expected MH_DYLIB (6), got {info['filetype']}";
         assert info["has_id_dylib"] , "missing LC_ID_DYLIB";
         assert info["export_size"] > 0 , "empty export trie";
-        assert info["has_mod_init"] , "missing __mod_init_func";
+        assert info["has_mod_init"] , "missing __mod_init_func / __init_offsets";
     }
 }
 
@@ -478,16 +481,9 @@ def _build_scalar_dylib(triple: str, name: str) -> dict[str, any] {
     (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, name);
-        ok = MachOLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["/usr/lib/libSystem.B.dylib"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libshared_export_scalar.dylib"
+        link_shared_object(
+            triple, relobj, out, exports, ["/usr/lib/libSystem.B.dylib"]
         );
-        assert ok , f"MachOLinker.link(shared=True) returned False for {triple}";
         info = _macho_info(Path(out).read_bytes());
         assert info["filetype"] == 6 , f"expected MH_DYLIB (6), got {info['filetype']}";
         return info;
@@ -519,70 +515,6 @@ test "Mach-O arm64 dylib is ad-hoc signed with execSegFlags == 0" {
 }
 
 
-test "Mach-O link refuses a relocation it cannot apply" {
-    # A relocation this linker has no arm applied to be silently dropped: the
-    # instruction kept whatever immediate the assembler left in it, so the
-    # artifact linked clean and pointed at whatever else landed nearby. That
-    # is how the macos-aarch64 seal shipped an artifact whose module-init
-    # read its string constants out of a merged floor archive and aborted on
-    # an uncaught exception inside __jac_shared_init (#8313). Retype one real
-    # relocation to ARM64_RELOC_TLVP_LOAD_PAGE21 (8), which this linker does
-    # not implement, and require the link to refuse by name.
-    (relobj, exports) = emit_shared_object(
-        "shared_export_scalar.jac", "arm64-apple-darwin"
-    );
-    raw = bytearray(relobj);
-    ncmds = struct.unpack_from("<I", raw, 16)[0];
-    off = 32;
-    patched = False;
-    for _i in range(ncmds) {
-        (cmd, cmdsize) = struct.unpack_from("<II", raw, off);
-        if cmd == 0x19 and not patched {
-            nsects = struct.unpack_from("<I", raw, off + 64)[0];
-            so = off + 72;
-            for _j in range(nsects) {
-                (reloff, nreloc) = struct.unpack_from("<II", raw, so + 56);
-                if nreloc > 0 {
-                    r_info = struct.unpack_from("<I", raw, reloff + 4)[0];
-                    struct.pack_into(
-                        "<I", raw, reloff + 4, (r_info & 0x0FFFFFFF) | (8 << 28)
-                    );
-                    patched = True;
-                    break;
-                }
-                so += 80;
-            }
-        }
-        off += cmdsize;
-    }
-    assert patched , "the fixture object carries no relocation to retype";
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
-        out = os.path.join(d, "librefuse.dylib");
-        raised = "";
-        try {
-            MachOLinker.link(
-                objects=[bytes(raw)],
-                output_path=out,
-                needed_libs=["/usr/lib/libSystem.B.dylib"],
-                shared=True,
-                export_symbols=exports,
-                init_funcs=["__jac_shared_init"],
-                soname="librefuse.dylib"
-            );
-        } except Exception as exc {
-            raised = str(exc);
-        }
-        assert raised , (
-            "MachOLinker linked an object carrying a relocation it cannot "
-            "apply; that instruction ships unpatched and the artifact is "
-            "wrong at run time"
-        );
-        assert "relocation type 8" in raised , raised;
-        assert not os.path.exists(out) , "a refused link must leave no artifact";
-    }
-}
-
-
 test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host only)" {
     # The issue (#6821) reported the produced dylib "loads, codesigns" but
     # dlsym fails — a symbol-resolution symptom distinct from the load-command
@@ -598,16 +530,9 @@ test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host onl
     (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libdlopen_roundtrip.dylib");
-        ok = MachOLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["/usr/lib/libSystem.B.dylib"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libdlopen_roundtrip.dylib"
+        link_shared_object(
+            triple, relobj, out, exports, ["/usr/lib/libSystem.B.dylib"]
         );
-        assert ok , "MachOLinker.link(shared=True) returned False";
         import ctypes;
         lib = ctypes.CDLL(out);  # dlopen — fails if the load-command fix regressed
         # Resolve whichever spelling the export trie carries — bare (the linker's
@@ -647,16 +572,9 @@ test "Mach-O dylib export trie uses bare (non-underscored) :pub names (macOS hos
     (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libtrie_probe.dylib");
-        ok = MachOLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["/usr/lib/libSystem.B.dylib"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libtrie_probe.dylib"
+        link_shared_object(
+            triple, relobj, out, exports, ["/usr/lib/libSystem.B.dylib"]
         );
-        assert ok , "MachOLinker.link(shared=True) returned False";
         import ctypes;
         lib = ctypes.CDLL(out);
         bare = lib?.jadd;
@@ -671,16 +589,9 @@ test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-pc-windows-msvc");
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libshared_export.dll");
-        ok = PeLinker.link(
-            objects=[relobj],
-            output_path=out,
-            needed_libs=["msvcrt.dll"],
-            shared=True,
-            export_symbols=exports,
-            init_funcs=["__jac_shared_init"],
-            soname="libshared_export.dll"
+        link_shared_object(
+            "x86_64-pc-windows-msvc", relobj, out, exports, ["msvcrt.dll"]
         );
-        assert ok , "PeLinker.link(shared=True) returned False";
         raw = Path(out).read_bytes();
         assert raw[0:2] == b"MZ" , "missing MZ signature";
         e_lfanew = struct.unpack_from("<I", raw, 0x3C)[0];
@@ -692,6 +603,24 @@ test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
         assert entry_rva != 0 , "DllMain entry point not set";
         # Data directory 0 = export table.
         (exp_rva, exp_sz) = struct.unpack_from("<II", raw, opt + 112);
+        assert exp_sz > 0 , "no export directory";
+    }
+}
+
+
+test "a PE dll built through link_artifact keeps its entry point through optimization" {
+    # Windows links whole-program (bitcode) and optimizes; the DLL entry glue
+    # must stay external for lld-link's /entry to find it.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libshared_export.dll");
+        link_shared(FIXTURE, "x86_64-pc-windows-msvc", out);
+        raw = Path(out).read_bytes();
+        e_lfanew = struct.unpack_from("<I", raw, 0x3C)[0];
+        chars = struct.unpack_from("<H", raw, e_lfanew + 4 + 18)[0];
+        assert chars & 0x2000 , "IMAGE_FILE_DLL characteristic not set";
+        opt = e_lfanew + 4 + 20;
+        assert struct.unpack_from("<I", raw, opt + 16)[0] != 0 , "DllMain entry point not set";
+        (_exp_rva, exp_sz) = struct.unpack_from("<II", raw, opt + 112);
         assert exp_sz > 0 , "no export directory";
     }
 }
@@ -800,7 +729,7 @@ test "jac build --native --lib initialises runtime globals via __jac_shared_init
 # has, and nacompile's link two-level-bound every one of those symbols to it
 # (dyld reported libSystem): every macOS build of 0.37.3 died at first run with
 # `Symbol not found: _PyDict_GetItem`. These pin both halves of the fix in
-# linker_common, on any host.
+# native_link, on any host.
 
 test "a darwin shared build binds its C imports through the process" {
     needed: list[str] = ["/usr/lib/libSystem.B.dylib"];
@@ -920,9 +849,7 @@ test "a shared library linked on this host loads its system C library" {
     soname = ctypes.util.find_library("crypto");
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libshared_system_clib.so");
-        with patch.object(
-            link_plan, "collect_floor_archives", return_value=([], set())
-        ) {
+        with patch.object(link_plan, "floor_archives", return_value=([], set())) {
             link_shared("shared_system_clib.jac", llvm.get_default_triple(), out);
         }
         needed = _elf_needed(Path(out).read_bytes());

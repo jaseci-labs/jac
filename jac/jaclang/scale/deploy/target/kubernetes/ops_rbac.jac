@@ -57,42 +57,15 @@ glob OPS_READ_RULES: list[dict[str, any]] = [
      ];
 
 
-def ops_role_name(app_name: str) -> str {
-    return f"{app_name}-ops-console";
-}
+def ops_role_name(app_name: str) -> str;
+
+
+def ops_sa_name(app_name: str) -> str;
+
+
+def ops_sa_is_ours(labels: (dict[str, str] | None), app_name: str) -> bool;
 
 
 def build_ops_rbac(
     app_name: str, namespace: str, sa_name: str, mutations: bool
-) -> dict[str, any] {
-    name = ops_role_name(app_name);
-    rules: list[dict[str, any]] = list(OPS_READ_RULES);
-    if mutations {
-        rules = rules + list(OPS_MUTATE_RULES);
-    }
-    labels = {"app": app_name, "managed": "jac-scale"};
-    role = {
-        "apiVersion": "rbac.authorization.k8s.io/v1",
-        "kind": "Role",
-        "metadata": {"name": name, "namespace": namespace, "labels": labels},
-        "rules": rules
-    };
-    role_binding = {
-        "apiVersion": "rbac.authorization.k8s.io/v1",
-        "kind": "RoleBinding",
-        "metadata": {"name": name, "namespace": namespace, "labels": labels},
-        "roleRef": {
-            "apiGroup": "rbac.authorization.k8s.io",
-            "kind": "Role",
-            "name": name
-        },
-        "subjects": [
-            {
-                "kind": "ServiceAccount",
-                "name": sa_name or "default",
-                "namespace": namespace
-            }
-        ]
-    };
-    return {"role": role, "role_binding": role_binding};
-}
+) -> dict[str, any];

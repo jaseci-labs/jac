@@ -1,12 +1,8 @@
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 # Compiler-owned diagnostics (INTEGRATION_PLAN Phase 2).
 #
 # Internal compiler phases record structured diagnostics here. product_compile.jac
 # converts them to user-visible PyError objects at the outer seam; compiler
 # internals must not use runtime py_error as control flow.
-
-import from jaclang.runtime.python.objects { PyObj, PyInt, PyError, py_error }
-import from jaclang.compiler.frontend.python.tokenizer { tok_state }
 
 def report_token_warnings(scanner: tok_state) {
     if not scanner.warnings {
@@ -25,7 +21,6 @@ def report_token_warnings(scanner: tok_state) {
 }
 
 def syntax_warning(message: str, filename: str, lineno: int, column: int = 0) {
-    import from jaclang.runtime.python.native_services { warn }
     warn(message, filename, lineno, column);
 }
 

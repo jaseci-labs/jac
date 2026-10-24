@@ -241,10 +241,10 @@ Two rules keep the glue honest about what the units define:
   definition before the plan ever sees it.
 
 Weak cells every unit carries (the region TLS slot, the GC switches,
-`__jac_str_new`) become one cell per artifact: the Mach-O linker keeps the
+`__jac_str_new`) become one cell per artifact: the linker (LLD) keeps the
 first definition of an external name and binds later references to it,
 letting a strong definition replace a weak one, exactly as a fused module
-or a system linker would have it.
+would have it.
 
 ### Names across units
 
@@ -343,8 +343,9 @@ A pull request's kit is built without the kernel. The kernel is most of a
 kit's build time (24 to 64 minutes of a build that otherwise takes about 15),
 and it is the same compiler lowered to native code, so a pull request runs
 its lanes on the bytecode the kit precompiles: the path every kernel build
-compiles through. The seal leaves the kernel out only in a `pull_request`
-CI build (`pr_kit_omits` in `artifacts/kit.jac` reads the event), so main,
+compiles through. The seal leaves the kernel out only when the build's environment
+says so (`JAC_KIT_OMIT=kernel`, which the `setup-jac` action sets for a pull
+request; `pr_kit_omits` in `artifacts/kit.jac` reads it), so main,
 nightly and release kits always carry a kernel; the release smoke test
 asserts one is loaded. On such a kit the warm step checks that the first run
 resolves no kernel and leaves none beside the loader. A pull request that
@@ -352,9 +353,51 @@ changes what the kernel is built from can ask for the full kit with the
 `native:kernel` label; otherwise the first build with a kernel is the one on
 main.
 
-The kernel is always the host's. `kernel_options()` pins the target to the
-host whatever `JAC_NATIVE_TARGET` says, so a cross-compiled artifact's units
-parse with a kernel the process can load.
+### One builder, every target
+
+A kernel is built for a target, and the build does not depend on the host
+that runs it. `compiler/target_spec.jac` holds one `TargetSpec` per release
+target: its canonical triple (`x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0`,
+`x86_64-apple-macosx10.15.0`), osarch, object format and library naming.
+`kernel_options(spec)` compiles for that triple, so a host's own default
+triple, which carries its OS version, never reaches a kernel.
+`jac native build kernel` builds the host's kernel beside
+`native_compiler.jac`; `jac native build kernel@<osarch>` builds another
+target's into `compiler/kernels/<osarch>/`. The in-process linkers write ELF
+and Mach-O for any target and the kernel links no C archive of its target,
+so one x86 Linux runner can build every release platform's kernel.
+
+That is how releases are built. `build-binaries.yml`'s `kernel` job builds
+each leg's kernel on x86 Linux and uploads it, and each leg builds with
+`zig build -Dkernel=DIR`. mkpayload hands the directory to the seal
+(`JAC_SEAL_KERNEL_DIR`), and `adopt_kernel` copies the kernel in instead of
+building one. Adoption applies the check the kit tier applies at load: every
+unit source digest, the codegen identity, the compiler, the target and the
+Python version must match the tree being sealed, so a stale or foreign kernel
+is refused before anything is copied. A sealed image also refuses, at load, a
+kernel built for another osarch or Python.
+
+### The runtime floor
+
+Lowered code is the same for every 64-bit target: whatever a C library
+spells, lays out or numbers differently per target sits behind the
+`__jac_*` functions of the runtime floor. `posix_floor.c` defines them for
+ELF and Mach-O targets (errno, the standard streams, the platform id, stat,
+directories, `AT_FDCWD`, home directories, clock ids, sleep, malloc sizes,
+fused multiply-add and `va_list` access) and is compiled once per target
+against that target's own headers into `posix_floor_ir.jac`
+(`jac run scripts/gen_posix_floor.jac`). `win_floor.c` defines the same
+functions for Windows. The link glue of every artifact, the JIT included,
+carries its target's floor IR, so a native build needs no C toolchain.
+
+The generated code calls these functions instead of testing the triple, and
+the bundled stdlib units the kernel imports are single units over them, so
+the kernel's unit set and its IR are the same on every target apart from the
+`target triple` and `target datalayout` lines. `test_target_neutral_ir.jac`
+holds the IR to that, and `test_target_checks.jac` names the few places the
+IR generator may still read its triple (wasm, which has no floor, C library
+file names, Windows' setjmp pair and C struct passing).
 
 The toolchain units (the OSP kernel, the format kernel, the region arena)
 are ordinary native units pulled in by dependency edge. The region arena
@@ -408,14 +451,16 @@ frontend analysis, lowering visits and final code generation.
 Linux AArch64 floor libraries call outline-atomic helpers supplied by compiler-rt.
 The payload vendor builds the pinned upstream LLVM implementations into
 `libclang_rt.atomics.a`, with one helper per archive member and a separate CPU
-detection member. The ordinary archive selection code follows undefined
-symbols to select the helpers and their feature flag, without bringing in
+detection member. The link passes the archive whole and LLD loads only the
+helpers the program reaches and their feature flag, without bringing in
 unrelated libc definitions. The upstream helpers use LSE where available and
 fall back to LL/SC. No handwritten atomic ABI implementation is emitted in glue.
 
-The ELF linker preserves input constructors and their priority order for shared
-and executable artifacts, so the runtime's CPU detection runs before application
-initializers. Runtime archive bytes participate in artifact invalidation.
+Input constructors keep their priority order in shared and executable
+artifacts, so the runtime's CPU detection runs before application initializers:
+a shared library lists `__jac_shared_init` in `.init_array` after every input
+constructor, and an executable hands `__libc_start_main` an init hook that runs
+the whole array. Runtime archive bytes participate in artifact invalidation.
 
 ## Sealed applications
 

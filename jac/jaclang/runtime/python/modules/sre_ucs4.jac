@@ -15,66 +15,6 @@ and names the loop's steps S_*; gen_sre.jac expands them. See
 ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyErr_CheckSignals, PyMem_Malloc }
-import from jaclang.runtime.python.modules.sre_engine {
-    JUMP_ASSERT,
-    JUMP_ASSERT_NOT,
-    JUMP_ATOMIC_GROUP,
-    JUMP_BRANCH,
-    JUMP_MAX_UNTIL_1,
-    JUMP_MAX_UNTIL_2,
-    JUMP_MAX_UNTIL_3,
-    JUMP_MIN_REPEAT_ONE,
-    JUMP_MIN_UNTIL_1,
-    JUMP_MIN_UNTIL_2,
-    JUMP_MIN_UNTIL_3,
-    JUMP_NONE,
-    JUMP_POSS_REPEAT_1,
-    JUMP_POSS_REPEAT_2,
-    JUMP_REPEAT,
-    JUMP_REPEAT_ONE_1,
-    JUMP_REPEAT_ONE_2,
-    SRE_CONTEXT_SIZE,
-    SRE_ERROR_ILLEGAL,
-    SRE_ERROR_INTERRUPTED,
-    SRE_ERROR_MEMORY,
-    SRE_ERROR_STATE,
-    SRE_MAXREPEAT,
-    SRE_REPEAT_LAST_PTR,
-    SRE_REPEAT_SIZE,
-    SreContext,
-    SreRepeat,
-    SreState,
-    char_loc_ignore,
-    data_stack_grow,
-    sre_is_digit,
-    sre_is_linebreak,
-    sre_is_space,
-    sre_is_word,
-    sre_loc_is_word,
-    sre_lower_ascii,
-    sre_lower_locale,
-    sre_lower_unicode,
-    sre_uni_is_digit,
-    sre_uni_is_linebreak,
-    sre_uni_is_space,
-    sre_uni_is_word,
-    sre_upper_locale,
-    sre_upper_unicode
-}
-import from jaclang.runtime.python.modules.sre_constants {
-    SRE_AT_BEGINNING,
-    SRE_AT_BEGINNING_STRING,
-    SRE_INFO_CHARSET,
-    SRE_INFO_LITERAL,
-    SRE_INFO_PREFIX,
-    SRE_OP_AT,
-    SRE_OP_IN,
-    SRE_OP_INFO,
-    SRE_OP_LITERAL,
-    SRE_OP_SUCCESS
-}
-
 import from c {
     def memcpy(target: ptr, source: ptr, size: u64) -> ptr;  def memchr(
         source: ptr, value: i32, size: u64

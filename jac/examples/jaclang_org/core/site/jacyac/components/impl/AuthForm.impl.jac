@@ -1,0 +1,159 @@
+impl AuthForm(
+    isSignup: bool,
+    username: str,
+    password: str,
+    error: str,
+    loading: bool,
+    onUsernameChange: Callable[[ChangeEvent], None],
+    onPasswordChange: Callable[[ChangeEvent], None],
+    email: str = "",
+    onEmailChange: Callable[[ChangeEvent], None] = lambda (e: ChangeEvent) {},
+    onSubmit: Callable[[FormEvent], None],
+    onToggleMode: Callable[[], None],
+    githubEnabled: bool = False,
+    onGithub: Callable[[], None] = lambda {},
+) -> JsxElement {
+    <div className="flex min-h-[calc(100vh-4rem)] w-full bg-background text-foreground">
+        <div
+            className="relative hidden flex-1 items-center justify-center overflow-hidden bg-gradient-to-br from-primary/20 via-background to-background lg:flex"
+        >
+            <div
+                className="absolute -left-24 top-1/3 size-96 rounded-full bg-primary/30 blur-[120px]"
+            />
+            <div
+                className="relative flex flex-col items-center gap-6 px-12 text-center"
+            >
+                <img
+                    src="/static/assets/jacyak-logo.svg"
+                    className="size-28 drop-shadow-[0_0_40px_var(--primary)]"
+                    alt="JacYac"
+                />
+                <div>
+                    <div
+                        className="font-display text-5xl font-black tracking-tight text-foreground"
+                    >
+                        JacYac
+                    </div>
+                    <p className="mt-3 max-w-sm text-balance text-muted-foreground">
+                        A decentralized social platform built with Jac. Share thoughts, follow people, join the conversation.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6">
+            <Card className="w-full max-w-sm border-border/60 shadow-xl">
+                <CardHeader className="items-center text-center">
+                    <img
+                        src="/static/assets/jacyak-logo.svg"
+                        className="mb-2 size-12 lg:hidden"
+                        alt="JacYac"
+                    />
+                    <CardTitle className="font-display text-2xl font-extrabold">
+                        {"Create your account" if isSignup else "Welcome back"}
+                    </CardTitle>
+                    <CardDescription>
+                        {"Join the conversation on JacYac"
+                            if isSignup
+                            else "Sign in to your JacYac account"}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {if error {
+                        <div
+                            className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                        >
+                            <AlertCircle size={16}/>
+                            <span>{error}</span>
+                        </div>
+                    }}
+                    {if githubEnabled {
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="mb-4 w-full"
+                            disabled={loading}
+                            onClick={onGithub}
+                        >
+                            Continue with GitHub
+                        </Button>
+                    }}
+                    <form {onSubmit} className="flex flex-col gap-4">
+                        <Field>
+                            <FieldLabel htmlFor="lx-username">
+                                {"Username" if isSignup else "Username or email"}
+                            </FieldLabel>
+                            <Input
+                                id="lx-username"
+                                type="text"
+                                placeholder={"yourname"
+                                    if isSignup
+                                    else "yourname or you@example.com"}
+                                value={username}
+                                onChange={onUsernameChange}
+                                autoComplete="username"
+                            />
+                        </Field>
+                        {if isSignup {
+                            <Field>
+                                <FieldLabel htmlFor="lx-email">Email</FieldLabel>
+                                <Input
+                                    id="lx-email"
+                                    type="email"
+                                    placeholder="you@example.com"
+                                    value={email}
+                                    onChange={onEmailChange}
+                                    autoComplete="email"
+                                />
+                            </Field>
+                        }}
+                        <Field>
+                            <FieldLabel htmlFor="lx-password">Password</FieldLabel>
+                            <Input
+                                id="lx-password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={onPasswordChange}
+                                autoComplete={"new-password"
+                                    if isSignup
+                                    else "current-password"}
+                            />
+                        </Field>
+                        <Button
+                            type="submit"
+                            className="mt-1 w-full font-semibold"
+                            disabled={loading
+                                or not username.strip()
+                                or not password
+                                or (isSignup and not email.strip())}
+                        >
+                            {(
+                                (
+                                    "Verifying and creating account..."
+                                        if isSignup
+                                        else "Processing..."
+                                )
+                                    if loading
+                                    else ("Sign Up" if isSignup else "Log In")
+                            )}
+                        </Button>
+                    </form>
+                    <div className="mt-5 text-center text-sm text-muted-foreground">
+                        {(
+                            "Already have an account? "
+                                if isSignup
+                                else "New to JacYac? "
+                        )}
+                        <button
+                            type="button"
+                            className="font-semibold text-primary hover:underline"
+                            onClick={onToggleMode}
+                        >
+                            {"Log In" if isSignup else "Sign Up"}
+                        </button>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    </div>
+}

@@ -28,173 +28,28 @@ glob _PARALLEL_TOOL_HINT: str = (
      );
 
 
-def mark_serialize(func: any) -> any {
-    setattr(func, '_serialize', True);
-    return func;
-}
+def mark_serialize(func: any) -> any;
 
 
-def _is_async(func: any) -> bool {
-    return bool(inspect.iscoroutinefunction(func));
-}
+def _is_async(func: any) -> bool;
 
 
-def _index_by_identity(seq: list[any], item: any) -> int {
-    target_id = id(item);
-    for (i, elem) in enumerate(seq) {
-        if id(elem) == target_id {
-            return i;
-        }
-    }
-    return -1;
-}
+def _index_by_identity(seq: list[any], item: any) -> int;
 
 
-def _call_sync(tc: any, timeout: any) -> any {
-    if timeout is None {
-        return tc();
-    }
-    import threading;
-    result_box: list[any] = [None];
-    error_box: list[Exception | None] = [None];
-    def _worker {
-        try {
-            result_box[0] = tc();
-        } except Exception as e {
-            error_box[0] = e;
-        }
-    }
-
-    ctx = contextvars.copy_context();
-    t = threading.Thread(target=ctx.run, args=(_worker, ), daemon=True);
-    t.start();
-    t.join(timeout=timeout);
-    if t.is_alive() {
-        raise TimeoutError(f"Tool '{tc.tool.get_name()}' timed out after {timeout}s");
-    }
-    if error_box[0] is not None {
-        raise error_box[0];
-    }
-    return result_box[0];
-}
+def _call_sync(tc: any, timeout: any) -> any;
 
 
-def _call_async(tc: any, timeout: any) -> any {
-    async def _run -> any {
-        coro = tc.tool.func(**tc.args);
-        if timeout is not None {
-            return await asyncio.wait_for(coro, timeout=timeout);
-        }
-        return await coro;
-    }
-    result_val = asyncio.run(_run());
-    return ToolCallResultMsg(
-        content=normalize_tool_result(result_val),
-        tool_call_id=tc.call_id,
-        name=tc.tool.get_name()
-    );
-}
+def _call_async(tc: any, timeout: any) -> any;
 
 
-def _run_one(tc: any) -> tuple[any, ...] {
-    t0 = time.time();
-    timeout = tc.tool.timeout_sec;
-    try {
-        if _is_async(tc.tool.func) {
-            msg = _call_async(tc, timeout);
-        } else {
-            msg = _call_sync(tc, timeout);
-        }
-    } except (TimeoutError, asyncio.TimeoutError) as e {
-        msg = ToolCallResultMsg(
-            content=f"Tool '{tc.tool.get_name()}' timed out after {timeout}s",
-            tool_call_id=tc.call_id,
-            name=tc.tool.get_name()
-        );
-    } except Exception as e {
-        msg = ToolCallResultMsg(
-            content=f"Tool error: {e}", tool_call_id=tc.call_id, name=tc.tool.get_name()
-        );
-    }
-    ms = int((time.time() - t0) * 1000);
-    return (tc, msg, ms);
-}
+def _run_one(tc: any) -> tuple[any, ...];
 
 
-def _tool_names(tool_calls: list[any]) -> list[str] {
-    names: list[str] = [];
-    for tc in tool_calls {
-        try {
-            names.append(tc.tool.get_name());
-        } except Exception {
-            names.append("?");
-        }
-    }
-    return names;
-}
+def _tool_names(tool_calls: list[any]) -> list[str];
 
 
-def _any_serialize(tool_calls: list[any]) -> bool {
-    for tc in tool_calls {
-        if tc.tool.serialize {
-            return True;
-        }
-    }
-    return False;
-}
+def _any_serialize(tool_calls: list[any]) -> bool;
 
 
-def dispatch_batch(tool_calls: list[any]) -> any {
-    n = len(tool_calls);
-    if n == 0 {
-        return;
-    }
-    names = _tool_names(tool_calls);
-
-    if n == 1 {
-        _plog.debug("batch dispatch=inline size=1 tool=%s", names[0]);
-        yield _run_one(tool_calls[0]);
-        return;
-    }
-
-    if _any_serialize(tool_calls) {
-        _plog.info(
-            "batch dispatch=sequential reason=serialize size=%d tools=%s", n, names
-        );
-        for tc in tool_calls {
-            yield _run_one(tc);
-        }
-        return;
-    }
-
-    workers = min(n, _POOL_SIZE);
-    _plog.info(
-        "batch dispatch=parallel size=%d workers=%d tools=%s", n, workers, names
-    );
-    t_batch = time.time();
-
-    futures: dict[Future[tuple[any, ...]], any] = {};
-    for tc in tool_calls {
-        ctx = contextvars.copy_context();
-        f = _WORKER_POOL.submit(ctx.run, _run_one, tc);
-        futures[f] = tc;
-    }
-    for f in as_completed(futures) {
-        try {
-            yield f.result();
-        } except Exception as e {
-            tc_err = futures[f];
-            err_msg = ToolCallResultMsg(
-                content=f"Parallel dispatch error: {e}",
-                tool_call_id=tc_err.call_id,
-                name=tc_err.tool.get_name()
-            );
-            yield (tc_err, err_msg, 0);
-        }
-    }
-
-    wall_ms = int((time.time() - t_batch) * 1000);
-    _plog.info(
-        "batch done=parallel size=%d workers=%d wall_ms=%d", n, workers, wall_ms
-    );
-}
+def dispatch_batch(tool_calls: list[any]) -> any;

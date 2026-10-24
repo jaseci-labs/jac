@@ -86,19 +86,31 @@ glob KEYWORDS: list[str] = [
      SPECIALS: list[str] = ["root", "self", "here", "visitor", "super", "llm"],
      HIGHLIGHTED: list[str] = ["jac", "toml"];
 
-def _is_alpha(c: str) -> bool {
+def _is_alpha(c: str) -> bool;
+
+def _is_word_char(c: str) -> bool;
+
+def _is_digit(c: str) -> bool;
+
+def:pub classify(w: str, next_c: str) -> str;
+
+def:pub scan_line(line: str, mode: str = "") -> LineScan;
+
+def:pub tokenize_lines(lines: list[str], lang: str = "jac") -> list[list[Token]];
+
+impl _is_alpha(c: str) -> bool {
     return ("a" <= c and c <= "z") or ("A" <= c and c <= "Z") or c == "_";
 }
 
-def _is_word_char(c: str) -> bool {
+impl _is_word_char(c: str) -> bool {
     return _is_alpha(c) or ("0" <= c and c <= "9");
 }
 
-def _is_digit(c: str) -> bool {
+impl _is_digit(c: str) -> bool {
     return "0" <= c and c <= "9";
 }
 
-def:pub classify(w: str, next_c: str) -> str {
+impl classify(w: str, next_c: str) -> str {
     if w in KEYWORDS {
         return "kw";
     }
@@ -120,7 +132,7 @@ def:pub classify(w: str, next_c: str) -> str {
     return "plain";
 }
 
-def:pub scan_line(line: str, mode: str = "") -> LineScan {
+impl scan_line(line: str, mode: str = "") -> LineScan {
     toks: list[Token] = [];
     n = len(line);
     i = 0;
@@ -306,7 +318,7 @@ def:pub scan_line(line: str, mode: str = "") -> LineScan {
     return LineScan(tokens=toks, mode=mode);
 }
 
-def:pub tokenize_lines(lines: list[str], lang: str = "jac") -> list[list[Token]] {
+impl tokenize_lines(lines: list[str], lang: str = "jac") -> list[list[Token]] {
     out: list[list[Token]] = [];
     if lang not in HIGHLIGHTED {
         for ln in lines {

@@ -2,40 +2,6 @@
 euc_kr, cp949 and johab) in native Jac. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.modules.cjkcodecs {
-    DecodeWriter,
-    MBERR_EXCEPTION,
-    MBERR_TOOFEW,
-    MBERR_TOOSMALL,
-    MultibyteCodec,
-    MultibyteCodec_State,
-    NOCHAR,
-    UNIINV,
-    getcodec,
-    inbyte,
-    inchar,
-    map_decode,
-    map_encode,
-    next_in,
-    next_inchar,
-    next_out,
-    no_codec_init,
-    no_decode_reset,
-    no_encode_reset,
-    no_state_init,
-    outbyte,
-    outchar,
-    register_maps
-}
-import from jaclang.runtime.python.modules.cjkcodecs_mappings_kr {
-    CJK_KR_MAPPINGS,
-    cjk_cp949_map,
-    cjk_cp949ext_map,
-    cjk_kr_mappings,
-    cjk_ksx1001_map
-}
-
 # EUC-KR codec
 
 glob:priv EUCKR_JAMO_FIRSTBYTE: int = 0xA4,

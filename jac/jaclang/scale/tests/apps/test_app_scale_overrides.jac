@@ -7,26 +7,6 @@ import shutil;
 import tempfile;
 import from contextlib { redirect_stderr }
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.scale.config.config_loader {
-    APP_SCALE_KEYS,
-    JacScaleConfig,
-    app_scale_overrides,
-    get_scale_config,
-    normalize_gateway_config,
-    reset_scale_config
-}
-import from jaclang.scale.config.validation {
-    STRICT_ENV,
-    validate_app_scale_config,
-    validate_scale_config
-}
-import from jaclang.scale.runtime.fleet { fleet_from_config }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
 
 glob _TOML: str = '[project]\n'
      'name = "shop"\n'

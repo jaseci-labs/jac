@@ -108,7 +108,7 @@ test "zip method constants mirror zipfile" {
     assert ZIP_DEFLATED == zipfile.ZIP_DEFLATED;
 }
 
-test "slice_wanted selects the LLVM archives, llvm headers, and (macOS) libLTO" {
+test "slice_wanted selects the LLVM and LLD archives and headers, and (macOS) libLTO" {
     assert slice_wanted("lib/libLLVMCore.a", False);
     assert slice_wanted("lib/libLLVMSupport.a", True);
     assert slice_wanted("include/llvm/ADT/ArrayRef.h", False);
@@ -119,6 +119,11 @@ test "slice_wanted selects the LLVM archives, llvm headers, and (macOS) libLTO" 
     assert not slice_wanted("bin/clang", True);
     assert not slice_wanted("lib/libLTO.dylib", False);
     assert slice_wanted("lib/libLTO.dylib", True);
+    assert slice_wanted("lib/liblldELF.a", False);
+    assert slice_wanted("lib/liblldCommon.a", True);
+    assert slice_wanted("include/lld/Common/Driver.h", False);
+    assert not slice_wanted("lib/liblldb.a", False);
+    assert not slice_wanted("include/lldb/API/LLDB.h", False);
 }
 
 test "central directory parsing agrees with zipfile on a synthetic zip" {
@@ -292,23 +297,24 @@ test "source and LLVM pins agree with the payload" {
     slices = p.llvm.slices;
     lx = slices["linux-x86_64"];
     assert llvm_release("linux-x86_64") is lx;
-    assert lx.dirname == "LLVM-22.1.8-Linux-X64-libcxx";
-    assert lx.triple == "x86_64-linux-libcxx";
-    assert lx.zip_size == 667452266;
+    assert lx.dirname == "LLVM-22.1.8-Linux-X64-libcxx-lld";
+    assert lx.triple == "x86_64-linux-libcxx-lld";
+    assert lx.zip_size == 1423609156;
     assert not lx.upstream;
     la = slices["linux-aarch64"];
-    assert la.dirname == "LLVM-22.1.8-Linux-ARM64-libcxx" and la.zip_size == 462054429;
-    assert la.triple == "aarch64-linux-libcxx" and not la.upstream;
+    assert la.dirname == "LLVM-22.1.8-Linux-ARM64-libcxx-lld"
+        and la.zip_size == 1424249476;
+    assert la.triple == "aarch64-linux-libcxx-lld" and not la.upstream;
     ma = slices["macos-aarch64"];
     assert ma.dirname == "LLVM-22.1.8-macOS-ARM64"
         and ma.upstream
         and ma.zip_size == 743879473;
     assert ma.triple == "aarch64-apple-darwin";
     mx = slices["macos-x86_64"];
-    assert mx.dirname == "LLVM-22.1.8-macOS-X64"
+    assert mx.dirname == "LLVM-22.1.8-macOS-X64-lld"
         and not mx.upstream
-        and mx.zip_size == 49613317;
-    assert mx.triple == "x86_64-apple-darwin";
+        and mx.zip_size == 109599841;
+    assert mx.triple == "x86_64-apple-darwin-lld";
     for rel in p.llvm.slices.values() {
         assert len(rel.manifest_sha256) == 64;
         assert rel.dirname.startswith("LLVM-22.1.8-");

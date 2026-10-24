@@ -5,57 +5,6 @@ character sets' maps are _codecs_kr's, _codecs_jp's and _codecs_cn's,
 imported through their map capsules as the C does. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyErr_NoMemory,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject
-}
-import from jaclang.runtime.python.modules.cjkcodecs {
-    DBCINV,
-    DbcsMap,
-    DecodeWriter,
-    MBENC_FLUSH,
-    MBERR_EXCEPTION,
-    MBERR_INTERNAL,
-    MBERR_TOOFEW,
-    MBERR_TOOSMALL,
-    MULTIC,
-    MultibyteCodec,
-    MultibyteCodec_State,
-    NOCHAR,
-    PairEncodeMap,
-    UNIINV,
-    find_pairencmap,
-    getcodec,
-    importmap,
-    inbyte,
-    inchar,
-    map_decode,
-    map_decode_wide,
-    map_encode,
-    next_in,
-    next_inchar,
-    next_out,
-    no_codec_init,
-    outbyte,
-    outchar,
-    outchar2,
-    set_state_byte,
-    state_byte
-}
-import from jaclang.runtime.python.modules.cjkcodecs_jis {
-    emulate_2000_decode_plane1,
-    emulate_2000_decode_plane2,
-    emulate_2000_encode_bmp,
-    emulate_2000_encode_emp,
-    jisx0201_k_decode,
-    jisx0201_k_encode,
-    jisx0201_r_decode,
-    jisx0201_r_encode
-}
-import from jaclang.runtime.python.modules.cjkcodecs_mappings_jp { JISX0213_ENCPAIRS }
-
 # STATE
 #
 #   state->c[0-3]

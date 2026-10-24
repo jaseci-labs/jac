@@ -1,409 +1,619 @@
 graph import {
+    edge AppOverCore: core.* --> cli | desktop | mobile.* | pages.* | web;
+    edge BridgeFunnel: jaclang.server.bridge --> cli | core.docs.sync;
     edge CoreInternal: core.* --> core.*;
-    edge AppOverCore: core.* --> web.* | mobile.* | cli.* | desktop.*;
-    edge WebInternal: web.* --> web.*;
-    edge MobileInternal: mobile.* --> mobile.*;
-    edge CliInternal: cli.* --> cli.*;
-    edge DesktopInternal: desktop.* --> desktop.*;
     edge SsoFunnel: jaclang.scale.sso.* --> core.jacyac.github.auth;
-    edge BridgeFunnel: jaclang.server.bridge --> cli.commands.*;
-}
 
-graph import cli.commands {
-    common --> cli.commands.docs { EXIT_OK, explain_bridge_error }
-    common --> cli.commands.feed {
-        EXIT_OK,
-        EXIT_REJECTED,
-        EXIT_USAGE,
-        explain_bridge_error,
-        warn
-    }
-    common --> cli.commands.score { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, warn }
-    common --> cli.main { EXIT_USAGE, warn }
-    docs --> cli.main { run_docs }
-    feed --> cli.main { run_feed, run_post }
-    score --> cli.main { run_score }
+    core.docs.graph ++> [
+        cli { DocsStatus, docs_status },
+        web,
+    ]
+    core.docs.sync ++> [
+        cli { docs_sync_tick },
+        web,
+    ]
+    core.install ++> web;
+    core.jacyac.github.auth ++> desktop | web;
+    core.jacyac.limits ++> cli { PostingDenied }
+    core.jacyac.native.JacYacMobile ++> mobile.main { JacYacMobile }
+    core.packages.catalog ++> web;
+    core.site.docs.DocsShell ++> pages.docs.index { DocsShell }
+    core.site.home.Home ++> pages.index { Home }
+    core.site.jacyac.GithubCallback ++> pages.jacyac.github.callback { GithubCallback }
+    core.site.jacyac.JacYac ++> pages.jacyac
+        | pages.jacyac.ninjaclaw
+        | pages.jacyac.tutorials
+        | pages.socialize { JacYac }
+    core.site.packages.PackagesShell ++> pages.packages.index { PackagesShell }
+    core.site.ui.SiteShell ++> pages.layout { SiteShell }
+    core.social_graph ++> cli { create_tweet, load_feed }
+    core.source.files ++> web;
 }
 
 graph import core {
-    ai --> cli.commands.score | core.scoring_service { optional_review }
-    ai --> core.leaderboard.scoring { CodeReview }
-    async_utils --> core.jacyac.registration | core.site.docs.DocsShell { sleep }
-    github --> cli.commands.score {
-        RepoMeta,
-        code_breakdown,
-        download_tarball,
-        head_sha,
-        mb_of,
-        repo_meta,
-        text_of,
-        untar
+    async_utils ++> site.docs.DocsShell { sleep }
+    brand.font ++> jacyac.native.JacYacMobile { useBrandFont }
+    brand.theme ++> jacyac.native.JacYacMobile
+        | jacyac.native.components.Avatar
+        | jacyac.native.components.BridgeBanner
+        | jacyac.native.components.Composer
+        | jacyac.native.components.StatusView
+        | jacyac.native.components.TabBar
+        | jacyac.native.components.TweetCard
+        | jacyac.native.screens.AuthScreen
+        | jacyac.native.screens.ChannelsScreen
+        | jacyac.native.screens.ClawScreen
+        | jacyac.native.screens.ExploreScreen
+        | jacyac.native.screens.FeedScreen
+        | jacyac.native.screens.ProfileScreen
+        | site.ui.Navbar { useTheme }
+    brand.tokens ++> jacyac.native.theme { Colors, font_family, fonts, radii, spacing }
+    docs.corpus ++> knowledge_service { DocBundle, bundle_from, label_of }
+    docs.graph ++> [
+        site.docs.DocsArticle { DocPageView },
+        site.docs.DocsGraphFloat { TreeNode },
+        site.docs.DocsShell {
+            DocPageView,
+            TreeNode,
+            VersionInfo,
+            doc_page,
+            doc_tree,
+            docs_status
+        },
+        site.docs.DocsSidebar { TreeNode, VersionInfo },
+        site.docs.DocsTocRail { TocEntry },
+    ]
+    github ++> [
+        install { fetch },
+        packages.catalog { API_ROOT, fetch, parse_repo_url },
+    ]
+    install ++> site.ui.Navbar { ensure_install }
+    jac_tokenizer ++> site.ui.CodeBlock { Token, tokenize_lines }
+    jacyac.claw ++> [
+        site.jacyac.JacYac { useClaw },
+        site.jacyac.components.NinjaclawTab | site.jacyac.components.TutorialsTab {
+            ClawModel
+        },
+    ]
+    jacyac.format ++> [
+        site.jacyac.components.ExploreTab
+            | site.jacyac.components.ProfileHeader
+            | site.jacyac.components.RightSidebar
+            | site.jacyac.components.TweetCard { handle_of, initial_of },
+        site.jacyac.components.NinjaclawTab | site.jacyac.components.Sidebar {
+            handle_of
+        },
+        site.jacyac.components.RichText { text_segments },
+        site.jacyac.components.TutorialsTab { count_label },
+    ]
+    jacyac.github.auth ++> site.jacyac.GithubCallback {
+        complete_native_github,
+        github_callback_mode
     }
-    github --> core.install | core.jacyac.github.repos { fetch }
-    github --> core.leaderboard.scoring { RepoMeta }
-    github --> core.packages.catalog { API_ROOT, fetch, parse_repo_url }
-    github --> core.scoring_service {
-        RepoMeta,
-        code_breakdown,
-        download_tarball,
-        head_sha,
-        repo_meta,
-        text_of,
-        untar
+    jacyac.github.login ++> site.jacyac.GithubCallback { complete_web_login }
+    jacyac.identity ++> [
+        site.jacyac.JacYac
+            | site.jacyac.components.ExploreTab
+            | site.jacyac.components.ProfileHeader
+            | site.jacyac.components.RightSidebar { avatar_of, name_of },
+        site.jacyac.components.TweetCard { avatar_of },
+    ]
+    jacyac.limits ++> social_graph { PostingDenied, posting_limit }
+    jacyac.native.JacYacMobile ++> site.landing.MobileShowcase { JacYacMobile }
+    jacyac.state ++> site.jacyac.JacYac { useJacYac }
+    jacyac.validation ++> [
+        site.jacyac.components.Composer { chars_left, post_limit, valid_post },
+        social_graph { valid_post },
+    ]
+    knowledge.repo ++> [
+        knowledge_service {
+            DOCS_PATH,
+            ReleaseLine,
+            RepoStatus,
+            checkout_root,
+            ensure_repo,
+            export_docs,
+            read_status
+        },
+        ninjaclaw.secret | ninjaclaw.verify { knowledge_dir },
+    ]
+    knowledge_service ++> [
+        docs.sync { release_doc_lines, release_docs },
+        jacyac.claw {
+            ninjaclaw_activity,
+            ninjaclaw_job,
+            ninjaclaw_tutorial,
+            ninjaclaw_tutorials
+        },
+        social_graph {
+            ninjaclaw_forget,
+            ninjaclaw_results,
+            ninjaclaw_retained,
+            ninjaclaw_submit
+        },
+    ]
+    ninjaclaw.graph ++> knowledge_service {
+        ClawHub,
+        ClawJob,
+        JOB_RETENTION,
+        RECENT_LIMIT,
+        apply_pr,
+        apply_pr_state,
+        apply_sweep,
+        claim_chore,
+        claim_job,
+        claw_gaps,
+        claw_hub,
+        claw_jobs,
+        claw_tutorials,
+        enqueue_asks,
+        find_hub,
+        forget_jobs,
+        job_view,
+        next_queued,
+        pr_cooling,
+        pr_due,
+        promote_candidates,
+        prune_jobs,
+        record_outcome,
+        release_chore,
+        renew_chore,
+        renew_job,
+        replies_for,
+        requeue_stale,
+        sweep_inputs,
+        take_budget,
+        tutorial_by_slug,
+        tutorial_card
     }
-    github --> core.social_graph | core.leaderboard.board { parse_repo_url }
-    github_contracts --> core.github { GithubCommit, GithubRepository }
-    github_contracts --> core.jacyac.github.repos { GithubRepository, GithubUser }
-    install --> core.site.ui.Navbar { ensure_install }
-    install --> web.main { ensure_install, install_sh }
-    jac_tokenizer --> core.site.ui.CodeBlock { Token, tokenize_lines }
-    scoring_service --> core.social_graph { ScoredPayload, fetch_and_score }
-    social_graph --> cli.commands.feed { create_tweet, load_feed }
-    social_graph --> core.jacyac.native.components.TweetCard { Tweet }
-    social_graph --> core.jacyac.native.screens.ChannelsScreen { ChannelBundle, Tweet }
-    social_graph --> core.jacyac.native.screens.ExploreScreen { Profile, TrendingTag }
-    social_graph --> core.jacyac.native.screens.FeedScreen { Tweet }
-    social_graph --> core.jacyac.native.screens.ProfileScreen { ProfileBundle }
-    social_graph --> core.jacyac.scores { Project }
-    social_graph --> core.jacyac.state {
-        ChannelBundle,
-        Profile,
-        ProfileBundle,
-        Project,
-        TrendingTag,
-        Tweet,
-        add_comment,
-        add_project,
-        clear_avatar,
-        create_channel,
-        create_channel_tweet,
-        create_tweet,
-        delete_tweet,
-        follow_user,
-        get_all_profiles,
-        get_all_projects,
-        get_avatars,
-        get_channel_detail,
-        get_channels,
-        get_profile,
-        get_trending,
-        get_user_profile,
-        join_channel,
-        leave_channel,
-        like_tweet,
-        load_feed,
-        remove_project,
-        rescore_project,
-        set_avatar,
-        setup_profile,
-        unfollow_user,
-        update_profile
+    ninjaclaw.index ++> knowledge_service { IndexDoc, docs_from_tree, index_doc }
+    ninjaclaw.model ++> [
+        jacyac.claw { Activity, JobView, TutorialCard, TutorialView },
+        jacyac.native.screens.ClawScreen { JobView },
+        knowledge_service {
+            Activity,
+            AskInput,
+            BlockView,
+            JobReply,
+            JobView,
+            StepView,
+            TutorialCard,
+            TutorialView,
+            UpkeepView
+        },
+        site.jacyac.components.NinjaclawTab { JobView, StepView },
+        site.jacyac.components.TutorialsTab { TutorialCard, TutorialView },
+        social_graph { AskInput },
+    ]
+    ninjaclaw.promote ++> knowledge_service {
+        PrResult,
+        eligible,
+        github,
+        open_docs_pr,
+        pr_state,
+        promote_config,
+        promote_ready
     }
-    social_graph --> core.site.jacyac.components.ChannelsTab { ChannelBundle, Tweet }
-    social_graph --> core.site.jacyac.components.ExploreTab { Profile, Project }
-    social_graph --> core.site.jacyac.components.FeedTab { Tweet }
-    social_graph --> core.site.jacyac.components.ProfileEditor { Profile }
-    social_graph --> core.site.jacyac.components.ProfileHeader { ProfileBundle }
-    social_graph --> core.site.jacyac.components.ProjectCard { Project }
-    social_graph --> core.site.jacyac.components.ProjectsPanel { Project }
-    social_graph --> core.site.jacyac.components.RightSidebar { Profile, TrendingTag }
-    social_graph --> core.site.jacyac.components.TweetCard { Tweet }
-    timefmt --> core.install | core.social_graph { now_iso, seconds_since }
-    timefmt --> core.leaderboard.scoring { days_since }
-    timefmt --> core.progress | core.docs.sync { now_iso }
-    utils --> core.site.docs.DocsSidebar { cn }
-    utils --> core.site.docs.DocsTocRail { cn }
-    utils --> core.site.jacyac.components.ExploreTab { cn }
-    utils --> core.site.jacyac.components.MobileNav { cn }
-    utils --> core.site.jacyac.components.ProjectCard { cn }
-    utils --> core.site.jacyac.components.Sidebar { cn }
-    utils --> core.site.jacyac.components.TweetCard { cn }
-    utils --> core.site.landing.BookSection { cn }
-    utils --> core.site.landing.CopyCommand { cn }
-    utils --> core.site.landing.Hero { cn }
-    utils --> core.site.ui.CodeBlock { cn }
-    utils --> core.site.ui.Navbar { cn }
-    utils --> core.site.ui.accordion { cn }
-    utils --> core.site.ui.alert_dialog { cn }
-    utils --> core.site.ui.avatar { cn }
-    utils --> core.site.ui.badge { cn }
-    utils --> core.site.ui.button { cn }
-    utils --> core.site.ui.card { cn }
-    utils --> core.site.ui.carousel { cn }
-    utils --> core.site.ui.dialog { cn }
-    utils --> core.site.ui.dropdown_menu { cn }
-    utils --> core.site.ui.empty { cn }
-    utils --> core.site.ui.field { cn }
-    utils --> core.site.ui.hover_card { cn }
-    utils --> core.site.ui.input { cn }
-    utils --> core.site.ui.label { cn }
-    utils --> core.site.ui.select { cn }
-    utils --> core.site.ui.separator { cn }
-    utils --> core.site.ui.skeleton { cn }
-    utils --> core.site.ui.tabs { cn }
-    utils --> core.site.ui.textarea { cn }
-    utils --> core.site.ui.tooltip { cn }
-    utils --> core.site.landing.Reveal | core.site.source.FloatingSource { cn }
+    ninjaclaw.runner ++> knowledge_service { JobSpec, Outcome, RUNNER, run_pipeline }
+    ninjaclaw.secret ++> [
+        knowledge_service { secret_ok },
+        social_graph { service_secret },
+    ]
+    ninjaclaw.upkeep ++> knowledge_service { CHORE, sweep, sweep_items }
+    packages.catalog ++> [
+        site.packages.ApiDocs { ApiMember, ApiModule, ApiParam, ApiSymbol },
+        site.packages.PackagePage { PackageDetail, PackageVersion },
+        site.packages.PackagesIndex { PackageCatalog, PackageSummary },
+        site.packages.PackagesShell {
+            PackageCatalog,
+            PackageDetail,
+            package_catalog,
+            package_detail
+        },
+    ]
+    social_graph ++> [
+        jacyac.native.components.TweetCard
+            | jacyac.native.screens.FeedScreen
+            | site.jacyac.components.FeedTab
+            | site.jacyac.components.TweetCard { Tweet },
+        jacyac.native.screens.ChannelsScreen | site.jacyac.components.ChannelsTab {
+            ChannelBundle,
+            Tweet
+        },
+        jacyac.native.screens.ExploreScreen | site.jacyac.components.RightSidebar {
+            Profile,
+            TrendingTag
+        },
+        jacyac.native.screens.ProfileScreen | site.jacyac.components.ProfileHeader {
+            ProfileBundle
+        },
+        jacyac.state {
+            ChannelBundle,
+            Profile,
+            ProfileBundle,
+            TrendingTag,
+            Tweet,
+            add_comment,
+            clear_avatar,
+            create_channel,
+            create_channel_tweet,
+            create_tweet,
+            delete_tweet,
+            follow_user,
+            get_all_profiles,
+            get_avatars,
+            get_channel_detail,
+            get_channels,
+            get_profile,
+            get_trending,
+            get_user_profile,
+            join_channel,
+            leave_channel,
+            like_tweet,
+            load_feed,
+            set_avatar,
+            setup_profile,
+            unfollow_user,
+            update_profile
+        },
+        site.jacyac.components.ExploreTab | site.jacyac.components.ProfileEditor {
+            Profile
+        },
+    ]
+    source.files ++> [
+        site.source.CodeSpotlight { SourceSpan, source_span },
+        site.source.SourceBrowser { SourceFile, SourceView, source_file, source_tree },
+    ]
+    timefmt ++> [
+        docs.sync | progress | social_graph { now_iso },
+        install { now_iso, seconds_since },
+    ]
+    utils ++> site.docs.DocsSidebar
+        | site.docs.DocsTocRail
+        | site.home.NoGlue
+        | site.home.OneLanguage
+        | site.home.kit
+        | site.jacyac.components.MobileNav
+        | site.jacyac.components.Sidebar
+        | site.jacyac.components.TweetCard
+        | site.landing.CopyCommand
+        | site.landing.Reveal
+        | site.source.FloatingSource
+        | site.ui.CodeBlock
+        | site.ui.Navbar
+        | site.ui.accordion
+        | site.ui.alert_dialog
+        | site.ui.avatar
+        | site.ui.badge
+        | site.ui.button
+        | site.ui.card
+        | site.ui.carousel
+        | site.ui.dialog
+        | site.ui.dropdown_menu
+        | site.ui.empty
+        | site.ui.field
+        | site.ui.hover_card
+        | site.ui.input
+        | site.ui.label
+        | site.ui.select
+        | site.ui.separator
+        | site.ui.skeleton
+        | site.ui.tabs
+        | site.ui.textarea
+        | site.ui.tooltip { cn }
 }
 
 graph import core.brand {
-    font --> core.jacyac.native.JacYacMobile { useBrandFont }
-    logo --> core.brand.styles { logo_xml }
-    theme --> core.jacyac.native.JacYacMobile { useTheme }
-    theme --> core.jacyac.native.components.Avatar { useTheme }
-    theme --> core.jacyac.native.components.BridgeBanner { useTheme }
-    theme --> core.jacyac.native.components.Composer { useTheme }
-    theme --> core.jacyac.native.components.StatusView { useTheme }
-    theme --> core.jacyac.native.components.TabBar { useTheme }
-    theme --> core.jacyac.native.components.TweetCard { useTheme }
-    theme --> core.jacyac.native.screens.AuthScreen { useTheme }
-    theme --> core.jacyac.native.screens.ChannelsScreen { useTheme }
-    theme --> core.jacyac.native.screens.ExploreScreen { useTheme }
-    theme --> core.jacyac.native.screens.FeedScreen { useTheme }
-    theme --> core.jacyac.native.screens.ProfileScreen { useTheme }
-    theme --> core.jacyac.native.screens.ScoresScreen { useTheme }
-    theme --> core.site.ui.Navbar { useTheme }
-    tokens --> core.brand.styles {
-        Colors,
-        dark_palette,
-        font_family,
-        fonts,
-        light_palette,
-        radii,
-        spacing
-    }
-    tokens --> core.brand.theme { Colors, dark_palette, light_palette }
-    tokens --> core.jacyac.native.theme { Colors, font_family, fonts, radii, spacing }
+    logo ++> styles { logo_xml }
+    tokens ++> [
+        styles { Colors, dark_palette, font_family, light_palette, radii, spacing },
+        theme { Colors, dark_palette, light_palette },
+    ]
 }
 
 graph import core.docs {
-    graph --> cli.commands.docs { DocsStatus, docs_status }
-    graph --> core.docs.sync {
+    corpus ++> sync { DocBundle, bundle_from, label_of }
+    graph ++> sync {
         DocVersion,
         DocsHub,
         HasHub,
         HasVersion,
         NextPage,
+        _get_hub,
         _pretty,
         _sweep_stale,
+        _teardown_version,
         _version,
         place_page,
         rewrite_href,
         toc_of
     }
-    graph --> core.site.docs.DocsArticle { DocPageView }
-    graph --> core.site.docs.DocsGraphFloat { TreeNode }
-    graph --> core.site.docs.DocsShell {
-        DocPageView,
-        DocTree,
-        DocsStatus,
-        TreeNode,
-        VersionInfo,
-        doc_page,
-        doc_tree,
-        docs_status
-    }
-    graph --> core.site.docs.DocsSidebar { TreeNode, VersionInfo }
-    graph --> core.site.docs.DocsTocRail { TocEntry }
-    graph --> web.main { doc_page, doc_tree, docs_status, llms_txt }
-    sync --> cli.commands.docs | web.main { docs_sync_tick }
 }
 
 graph import core.jacyac {
-    format --> core.jacyac.identity { handle_of }
-    format --> core.jacyac.native.components.Avatar { handle_of, initial_of }
-    format --> core.jacyac.native.components.TweetCard { handle_of }
-    format --> core.jacyac.native.screens.ChannelsScreen { count_label }
-    format --> core.jacyac.native.screens.ExploreScreen { handle_of }
-    format --> core.jacyac.native.screens.ProfileScreen { handle_of }
-    format --> core.site.jacyac.components.ExploreTab { handle_of, initial_of }
-    format --> core.site.jacyac.components.ProfileHeader { handle_of, initial_of }
-    format --> core.site.jacyac.components.ProjectCard { handle_of, initial_of }
-    format --> core.site.jacyac.components.RightSidebar { handle_of, initial_of }
-    format --> core.site.jacyac.components.Sidebar { handle_of }
-    format --> core.site.jacyac.components.TweetCard { handle_of, initial_of }
-    genius --> core.social_graph { GuideSample, optional_fact, random_guide }
-    identity --> core.jacyac.native.components.Avatar { avatar_of }
-    identity --> core.jacyac.native.screens.ExploreScreen { name_of }
-    identity --> core.jacyac.native.screens.ProfileScreen { name_of }
-    identity --> core.jacyac.state { project_error_message }
-    identity --> core.site.jacyac.JacYac { avatar_of, name_of }
-    identity --> core.site.jacyac.components.ExploreTab { avatar_of, name_of }
-    identity --> core.site.jacyac.components.ProfileHeader { avatar_of, name_of }
-    identity --> core.site.jacyac.components.ProjectCard {
-        avatar_of,
-        project_error_message
-    }
-    identity --> core.site.jacyac.components.RightSidebar { avatar_of, name_of }
-    identity --> core.site.jacyac.components.TweetCard { avatar_of }
-    limits --> cli.commands.feed { PostingDenied }
-    limits --> core.social_graph { PostingDenied, posting_limit }
-    registration --> core.jacyac.session { register_with_challenge }
-    scores --> core.jacyac.native.screens.ScoresScreen { useScores }
-    scores --> core.site.jacyac.components.NinjaScores { useScores }
-    session --> core.jacyac.state { Session, stored_username, useSession }
-    state --> core.jacyac.native.JacYacMobile | core.site.jacyac.JacYac { useJacYac }
-    state --> core.jacyac.native.screens.ScoresScreen { JacYacState }
-    state --> core.jacyac.scores { JacYacState }
-    state --> core.site.jacyac.components.NinjaScores { JacYacState }
-    validation --> core.jacyac.native.components.Composer { chars_left }
-    validation --> core.site.jacyac.components.Composer {
-        chars_left,
-        post_limit,
-        valid_post
-    }
-    validation --> core.social_graph | core.jacyac.state { valid_post }
+    claw ++> native.screens.ClawScreen { useClaw }
+    format ++> [
+        identity
+            | native.components.TweetCard
+            | native.screens.ExploreScreen
+            | native.screens.ProfileScreen { handle_of },
+        native.components.Avatar { handle_of, initial_of },
+        native.screens.ChannelsScreen { count_label },
+        native.screens.ClawScreen { count_label, handle_of },
+    ]
+    github.auth ++> session { github_enabled }
+    github.login ++> session { github_login }
+    identity ++> [
+        native.components.Avatar { avatar_of },
+        native.screens.ExploreScreen | native.screens.ProfileScreen { name_of },
+    ]
+    session ++> state { Session, stored_username, useSession }
+    state ++> native.JacYacMobile { useJacYac }
+    validation ++> [
+        native.components.Composer { chars_left },
+        state { valid_post },
+    ]
 }
 
 graph import core.jacyac.github {
-    auth --> core.jacyac.github.login { begin_github, finish_github }
-    auth --> core.jacyac.github.repos { github_id }
-    auth --> core.jacyac.session { github_enabled }
-    auth --> core.site.jacyac.GithubCallback {
-        complete_native_github,
-        github_callback_mode
-    }
-    auth --> core.social_graph { users }
-    auth --> desktop.main {
-        begin_github,
-        complete_native_github,
-        finish_github,
-        github_callback_mode,
-        github_enabled,
-        poll_github
-    }
-    auth --> web.main {
-        begin_github,
-        complete_native_github,
-        finish_github,
-        github_callback_mode,
-        github_enabled,
-        poll_github
-    }
-    login --> core.jacyac.session { github_login }
-    login --> core.site.jacyac.GithubCallback { complete_web_login }
-    repos --> core.jacyac.scores { GithubRepo, github_repositories }
-    repos --> core.social_graph { verified_owner }
-    repos --> desktop.main | web.main { github_repositories }
+    auth ++> login { begin_github, finish_github }
 }
 
 graph import core.jacyac.native {
-    JacYacMobile --> core.site.landing.MobileShowcase | mobile.main { JacYacMobile }
-    icon --> core.jacyac.native.JacYacMobile { Icon }
-    icon --> core.jacyac.native.components.BridgeBanner { Icon }
-    icon --> core.jacyac.native.components.StatusView { Icon }
-    icon --> core.jacyac.native.components.TabBar { Icon }
-    icon --> core.jacyac.native.components.TweetCard { Icon }
-    icon --> core.jacyac.native.screens.AuthScreen { Icon }
-    icon --> core.jacyac.native.screens.ChannelsScreen { Icon }
-    icon --> core.jacyac.native.screens.ExploreScreen { Icon }
-    icon --> core.jacyac.native.screens.FeedScreen { Icon }
-    icon --> core.jacyac.native.screens.ProfileScreen { Icon }
-    theme --> core.jacyac.native.JacYacMobile { makeStyles }
-    theme --> core.jacyac.native.components.Avatar { makeStyles }
-    theme --> core.jacyac.native.components.BridgeBanner { makeStyles }
-    theme --> core.jacyac.native.components.Composer { makeStyles }
-    theme --> core.jacyac.native.components.StatusView { makeStyles }
-    theme --> core.jacyac.native.components.TabBar { makeStyles }
-    theme --> core.jacyac.native.components.TweetCard { makeStyles }
-    theme --> core.jacyac.native.screens.AuthScreen { makeStyles }
-    theme --> core.jacyac.native.screens.ChannelsScreen { makeStyles }
-    theme --> core.jacyac.native.screens.ExploreScreen { makeStyles }
-    theme --> core.jacyac.native.screens.FeedScreen { makeStyles }
-    theme --> core.jacyac.native.screens.ProfileScreen { makeStyles }
-    theme --> core.jacyac.native.screens.ScoresScreen { makeStyles }
+    components.Avatar ++> screens.ExploreScreen | screens.ProfileScreen { Avatar }
+    components.BrandMark ++> JacYacMobile | screens.AuthScreen { BrandMark }
+    components.BridgeBanner ++> JacYacMobile { BridgeBanner }
+    components.Composer ++> screens.ChannelsScreen | screens.FeedScreen { Composer }
+    components.StatusView ++> [
+        screens.ChannelsScreen
+            | screens.ClawScreen
+            | screens.ExploreScreen
+            | screens.FeedScreen { EmptyState, LoadingRows },
+        screens.ProfileScreen { EmptyState },
+    ]
+    components.TabBar ++> JacYacMobile { TabBar }
+    components.TweetCard ++> screens.ChannelsScreen
+        | screens.FeedScreen
+        | screens.ProfileScreen { TweetCard }
+    icon ++> components.BridgeBanner
+        | components.StatusView
+        | components.TabBar
+        | components.TweetCard
+        | screens.AuthScreen
+        | screens.ChannelsScreen
+        | screens.ClawScreen
+        | screens.ExploreScreen
+        | screens.FeedScreen
+        | screens.ProfileScreen { Icon }
+    screens.AuthScreen ++> JacYacMobile { AuthScreen }
+    screens.ChannelsScreen ++> JacYacMobile { ChannelsScreen }
+    screens.ClawScreen ++> JacYacMobile { ClawScreen }
+    screens.ExploreScreen ++> JacYacMobile { ExploreScreen }
+    screens.FeedScreen ++> JacYacMobile { FeedScreen }
+    screens.ProfileScreen ++> JacYacMobile { ProfileScreen }
+    theme ++> JacYacMobile
+        | components.Avatar
+        | components.BridgeBanner
+        | components.Composer
+        | components.StatusView
+        | components.TabBar
+        | components.TweetCard
+        | screens.AuthScreen
+        | screens.ChannelsScreen
+        | screens.ClawScreen
+        | screens.ExploreScreen
+        | screens.FeedScreen
+        | screens.ProfileScreen { makeStyles }
 }
 
 graph import core.jacyac.native.components {
-    Avatar --> core.jacyac.native.components.Composer { Avatar }
-    Avatar --> core.jacyac.native.components.TweetCard { Avatar }
-    Avatar --> core.jacyac.native.screens.ExploreScreen { Avatar }
-    Avatar --> core.jacyac.native.screens.ProfileScreen { Avatar }
-    BrandMark --> core.jacyac.native.JacYacMobile { BrandMark }
-    BrandMark --> core.jacyac.native.screens.AuthScreen { BrandMark }
-    BridgeBanner --> core.jacyac.native.JacYacMobile { BridgeBanner }
-    Composer --> core.jacyac.native.screens.ChannelsScreen { Composer }
-    Composer --> core.jacyac.native.screens.FeedScreen { Composer }
-    StatusView --> core.jacyac.native.screens.ChannelsScreen { EmptyState, LoadingRows }
-    StatusView --> core.jacyac.native.screens.ExploreScreen { EmptyState, LoadingRows }
-    StatusView --> core.jacyac.native.screens.FeedScreen { EmptyState, LoadingRows }
-    StatusView --> core.jacyac.native.screens.ProfileScreen { EmptyState }
-    TabBar --> core.jacyac.native.JacYacMobile { TabBar }
-    TweetCard --> core.jacyac.native.screens.ChannelsScreen { TweetCard }
-    TweetCard --> core.jacyac.native.screens.FeedScreen { TweetCard }
-    TweetCard --> core.jacyac.native.screens.ProfileScreen { TweetCard }
+    Avatar ++> Composer | TweetCard { Avatar }
 }
 
-graph import core.jacyac.native.screens {
-    AuthScreen --> core.jacyac.native.JacYacMobile { AuthScreen }
-    ChannelsScreen --> core.jacyac.native.JacYacMobile { ChannelsScreen }
-    ExploreScreen --> core.jacyac.native.JacYacMobile { ExploreScreen }
-    FeedScreen --> core.jacyac.native.JacYacMobile { FeedScreen }
-    ProfileScreen --> core.jacyac.native.JacYacMobile { ProfileScreen }
-    ScoresScreen --> core.jacyac.native.JacYacMobile { ScoresScreen }
-}
-
-graph import core.leaderboard {
-    board --> core.social_graph { BoardHub, OnBoard, RepoEntry }
-    format --> core.site.jacyac.components.ProjectCard {
-        belt_class,
-        belt_label,
-        time_ago
+graph import core.ninjaclaw {
+    brain ++> runner {
+        AskKind,
+        CALL_MAX_S,
+        Candidate,
+        DEADLINE,
+        classify_ask,
+        pick_answer,
+        repair_tutorial,
+        write_tutorial
     }
-    format --> core.site.leaderboard.Methodology { belt_class, belt_label }
-    scoring --> cli.commands.score { RepoAnalysis, ScoreBreakdown, analyze, score }
-    scoring --> core.leaderboard.board { RepoFeatures, ScoreBreakdown }
-    scoring --> core.scoring_service { RepoAnalysis, ScoreBreakdown, analyze, score }
-    scoring --> core.social_graph { ScoreBreakdown }
+    index ++> [
+        runner { IndexDoc, excerpt, search },
+        tools { IndexDoc, docs_from_tree, excerpt, index_doc, search },
+    ]
+    model ++> [
+        graph {
+            AskInput,
+            BlockView,
+            JobReply,
+            JobView,
+            LinkView,
+            StepView,
+            TutorialCard
+        },
+        runner { BlockView, LinkView, StepView },
+        upkeep | verify { BlockView },
+    ]
+    promote ++> graph { PrResult, PromoteCandidate }
+    runner ++> graph { JOB_LEASE_S, Outcome, WORKER_ID, stamp }
+    tools ++> [
+        brain { list_jac_guides, read_jac_file, read_jac_guide, search_jac },
+        runner { agent_catalog, open_toolbox },
+    ]
+    upkeep ++> graph { sweep_passed }
+    verify ++> runner | upkeep { verify_markdown }
 }
 
-graph import core.packages {
-    catalog --> core.site.packages.ApiDocs { ApiMember, ApiModule, ApiParam, ApiSymbol }
-    catalog --> core.site.packages.PackagePage { PackageDetail, PackageVersion }
-    catalog --> core.site.packages.PackagesIndex { PackageCatalog, PackageSummary }
-    catalog --> core.site.packages.PackagesShell {
-        PackageCatalog,
-        PackageDetail,
-        package_catalog,
-        package_detail
+graph import core.site {
+    docs.Markdown ++> [
+        jacyac.components.TutorialsTab { MDSpans, Markdown },
+        packages.PackagePage { Markdown },
+    ]
+    game.webgl_host ++> landing.WasmGame { run_game }
+    landing.CopyCommand ++> home.HomeClose
+        | home.HomeHero
+        | packages.PackagePage
+        | packages.PackagesIndex { CopyCommand }
+    landing.Reveal ++> home.AgentNative
+        | home.HomeClose
+        | home.InProduction
+        | home.NativeBench
+        | home.NoGlue
+        | home.OneLanguage
+        | home.ReadableTiers
+        | home.kit { Reveal }
+    source.CodeSpotlight ++> landing.MobileShowcase | landing.WaitWuuut {
+        CodeSpotlight
     }
-    catalog --> web.main { package_catalog, package_detail }
+    source.FloatingSource ++> landing.WaitWuuut { FloatingSource }
+    source.SourceBrowser ++> landing.ExplorerFinale { SourceBrowser }
+    ui.CodeBlock ++> docs.Markdown
+        | docs.MermaidDiagram
+        | home.kit
+        | source.CodeSpotlight
+        | source.SourceBrowser { CodeLines }
+    ui.GraphBackdrop ++> docs.DocsShell { GraphBackdrop }
+    ui.SectionRail ++> home.Home | landing.TechDemo | landing.WaitWuuut { SectionRail }
+    ui.alert_dialog ++> jacyac.components.TweetCard {
+        AlertDialog,
+        AlertDialogAction,
+        AlertDialogCancel,
+        AlertDialogContent,
+        AlertDialogDescription,
+        AlertDialogFooter,
+        AlertDialogHeader,
+        AlertDialogTitle,
+        AlertDialogTrigger
+    }
+    ui.avatar ++> jacyac.components.Composer
+        | jacyac.components.ExploreTab
+        | jacyac.components.ProfileHeader
+        | jacyac.components.RightSidebar
+        | jacyac.components.Sidebar
+        | jacyac.components.TweetCard { Avatar, AvatarFallback, AvatarImage }
+    ui.badge ++> jacyac.components.ChannelsTab
+        | jacyac.components.NinjaclawTab
+        | jacyac.components.RightSidebar
+        | jacyac.components.Sidebar
+        | jacyac.components.TutorialsTab
+        | landing.Agents
+        | landing.BookSection
+        | landing.ExplorerFinale
+        | landing.MobileShowcase
+        | landing.WaitWuuut
+        | landing.WasmGame
+        | packages.PackagePage
+        | packages.PackagesIndex { Badge }
+    ui.button ++> [
+        jacyac.JacYac
+            | jacyac.components.AuthForm
+            | jacyac.components.ChannelsTab
+            | jacyac.components.Composer
+            | jacyac.components.ExploreTab
+            | jacyac.components.ProfileEditor
+            | jacyac.components.ProfileHeader
+            | jacyac.components.RightSidebar
+            | jacyac.components.Sidebar
+            | jacyac.components.TweetCard
+            | jacyac.components.WelcomeBanner
+            | landing.WasmGame { Button },
+        landing.BookSection | landing.ExplorerFinale { buttonVariants },
+    ]
+    ui.card ++> [
+        jacyac.components.AuthForm {
+            Card,
+            CardContent,
+            CardDescription,
+            CardHeader,
+            CardTitle
+        },
+        jacyac.components.RightSidebar { Card, CardContent, CardHeader, CardTitle },
+    ]
+    ui.dialog ++> jacyac.components.ChannelsTab {
+        Dialog,
+        DialogContent,
+        DialogDescription,
+        DialogFooter,
+        DialogHeader,
+        DialogTitle
+    }
+    ui.dropdown_menu ++> jacyac.components.Sidebar {
+        DropdownMenu,
+        DropdownMenuContent,
+        DropdownMenuGroup,
+        DropdownMenuItem,
+        DropdownMenuTrigger
+    }
+    ui.empty ++> jacyac.components.ChannelsTab
+        | jacyac.components.ExploreTab
+        | jacyac.components.FeedTab
+        | jacyac.components.TutorialsTab {
+        Empty,
+        EmptyDescription,
+        EmptyHeader,
+        EmptyMedia,
+        EmptyTitle
+    }
+    ui.field ++> jacyac.components.AuthForm
+        | jacyac.components.ChannelsTab
+        | jacyac.components.ProfileEditor { Field, FieldLabel }
+    ui.hover_card ++> jacyac.components.RightSidebar {
+        HoverCard,
+        HoverCardContent,
+        HoverCardTrigger
+    }
+    ui.input ++> docs.DocsSidebar
+        | jacyac.components.AuthForm
+        | jacyac.components.ChannelsTab
+        | jacyac.components.ProfileEditor
+        | jacyac.components.RightSidebar
+        | jacyac.components.TweetCard
+        | packages.PackagesIndex { Input }
+    ui.select ++> docs.DocsSidebar {
+        Select,
+        SelectContent,
+        SelectGroup,
+        SelectItem,
+        SelectTrigger,
+        SelectValue
+    }
+    ui.skeleton ++> docs.DocsArticle
+        | docs.DocsSidebar
+        | jacyac.components.ChannelsTab
+        | jacyac.components.ExploreTab
+        | jacyac.components.FeedTab { Skeleton }
+    ui.tabs ++> docs.Markdown { Tabs, TabsContent, TabsList, TabsTrigger }
+    ui.textarea ++> jacyac.components.ChannelsTab
+        | jacyac.components.Composer
+        | jacyac.components.ProfileEditor { Textarea }
+    ui.tooltip ++> jacyac.components.TweetCard {
+        Tooltip,
+        TooltipContent,
+        TooltipProvider,
+        TooltipTrigger
+    }
 }
 
 graph import core.site.docs {
-    DocsArticle --> core.site.docs.DocsShell { DocsArticle, DocsArticleSkeleton }
-    DocsGraphFloat --> core.site.docs.DocsSidebar { DocsGraphFloat }
-    DocsShell --> desktop.pages.docs.index | web.pages.docs.index { DocsShell }
-    DocsSidebar --> core.site.docs.DocsShell { DocsSidebar }
-    DocsTocRail --> core.site.docs.DocsShell { DocsTocRail }
-    Markdown --> core.site.docs.DocsArticle | core.site.packages.PackagePage {
-        Markdown
-    }
-    MermaidDiagram --> core.site.docs.Markdown { MermaidDiagram }
+    DocsArticle ++> DocsShell { DocsArticle, DocsArticleSkeleton }
+    DocsGraphFloat ++> DocsSidebar { DocsGraphFloat }
+    DocsSidebar ++> DocsShell { DocsSidebar }
+    DocsTocRail ++> DocsShell { DocsTocRail }
+    Markdown ++> DocsArticle { Markdown }
+    MermaidDiagram ++> Markdown { MermaidDiagram }
 }
 
 graph import core.site.game {
-    webgl_host --> core.site.landing.WasmGame { run_game }
-    arena --> core.site.game.webgl_host {
-        frame,
-        get_deaths,
-        get_hp,
-        get_score,
-        init,
-        shutdown
-    }
-    gmath --> core.site.game.arena { clampf, jsin, lerp }
-    gmath --> core.site.game.sim {
-        DEG2RAD,
-        Rng,
-        jcos,
-        jsin,
-        jsqrt,
-        rand01,
-        rand_range,
-        rand_sign
-    }
-    platform_rl --> core.site.game.arena {
+    arena ++> webgl_host { frame, get_deaths, get_hp, get_score, init, shutdown }
+    gmath ++> [
+        arena { clampf, jsin, lerp },
+        sim { DEG2RAD, Rng, jcos, jsin, jsqrt, rand_range, rand_sign },
+    ]
+    platform_rl ++> arena {
         KEY_A,
         KEY_D,
         KEY_DOWN,
@@ -439,7 +649,7 @@ graph import core.site.game {
         should_close,
         unlock_mouse
     }
-    sim --> core.site.game.arena {
+    sim ++> arena {
         CHARGE_T,
         Cmd,
         EnemyPool,
@@ -457,353 +667,102 @@ graph import core.site.game {
         sim_tick,
         world_new
     }
-    type sim --> core.site.game.webgl_host { Game }
+    type sim ++> webgl_host { Game }
+}
+
+graph import core.site.home {
+    AgentNative ++> Home { AgentNative }
+    HomeClose ++> Home { HomeClose }
+    HomeHero ++> Home { HomeHero }
+    InProduction ++> Home { InProduction }
+    NativeBench ++> Home { NativeBench }
+    NoGlue ++> Home { NoGlue }
+    OneLanguage ++> Home { OneLanguage }
+    ReadableTiers ++> Home { ReadableTiers }
+    kit ++> [
+        AgentNative { CodeWindow, Figure, HomeSection, Prose, SectionHead },
+        HomeClose { HomeSection, Prose },
+        InProduction | NativeBench | OneLanguage {
+            Fact,
+            Figure,
+            HomeSection,
+            SectionHead
+        },
+        NoGlue | ReadableTiers {
+            CodeWindow,
+            Fact,
+            Figure,
+            HomeSection,
+            Prose,
+            SectionHead
+        },
+    ]
 }
 
 graph import core.site.jacyac {
-    GithubCallback --> desktop.pages.jacyac.github.callback { GithubCallback }
-    GithubCallback --> web.pages.jacyac.github.callback { GithubCallback }
-    JacYac --> desktop.pages.jacyac { JacYac }
-    JacYac --> desktop.pages.jacyac.scores { JacYac }
-    JacYac --> desktop.pages.socialize { JacYac }
-    JacYac --> web.pages.jacyac { JacYac }
-    JacYac --> web.pages.jacyac.scores { JacYac }
-    JacYac --> web.pages.socialize { JacYac }
+    components.AuthForm ++> JacYac { AuthForm }
+    components.ChannelsTab ++> JacYac { ChannelsTab }
+    components.ExploreTab ++> JacYac { ExploreTab }
+    components.FeedTab ++> JacYac { FeedTab }
+    components.MobileNav ++> JacYac { MobileNav }
+    components.NinjaclawTab ++> JacYac { NinjaclawTab }
+    components.ProfileEditor ++> JacYac { ProfileEditor }
+    components.ProfileHeader ++> JacYac { ProfileHeader }
+    components.RightSidebar ++> JacYac { RightSidebar }
+    components.Sidebar ++> JacYac { Sidebar }
+    components.TutorialsTab ++> JacYac { TutorialsTab }
+    components.TweetCard ++> JacYac { TweetCard }
 }
 
 graph import core.site.jacyac.components {
-    AuthForm --> core.site.jacyac.JacYac { AuthForm }
-    ChannelsTab --> core.site.jacyac.JacYac { ChannelsTab }
-    Composer --> core.site.jacyac.components.ChannelsTab { Composer }
-    Composer --> core.site.jacyac.components.FeedTab { Composer }
-    ExploreTab --> core.site.jacyac.JacYac { ExploreTab }
-    FeedTab --> core.site.jacyac.JacYac { FeedTab }
-    MobileNav --> core.site.jacyac.JacYac { MobileNav }
-    NinjaScores --> core.site.jacyac.JacYac { NinjaScores }
-    ProfileEditor --> core.site.jacyac.JacYac { ProfileEditor }
-    ProfileHeader --> core.site.jacyac.JacYac { ProfileHeader }
-    ProjectCard --> core.site.jacyac.components.ExploreTab { ProjectCard }
-    ProjectCard --> core.site.jacyac.components.NinjaScores { ProjectCard }
-    ProjectCard --> core.site.jacyac.components.ProjectsPanel { ProjectCard }
-    ProjectsPanel --> core.site.jacyac.JacYac { ProjectsPanel }
-    RightSidebar --> core.site.jacyac.JacYac { RightSidebar }
-    Sidebar --> core.site.jacyac.JacYac { Sidebar }
-    TweetCard --> core.site.jacyac.JacYac { TweetCard }
-    TweetCard --> core.site.jacyac.components.ChannelsTab { TweetCard }
-    TweetCard --> core.site.jacyac.components.FeedTab { TweetCard }
-    WelcomeBanner --> core.site.jacyac.components.FeedTab { WelcomeBanner }
+    Composer ++> ChannelsTab | FeedTab { Composer }
+    RichText ++> NinjaclawTab | TweetCard { RichText }
+    TweetCard ++> ChannelsTab | FeedTab { TweetCard }
+    WelcomeBanner ++> FeedTab { WelcomeBanner }
 }
 
 graph import core.site.landing {
-    Agents --> core.site.landing.Home { Agents }
-    BookSection --> core.site.landing.Home { BookSection }
-    Capabilities --> core.site.landing.Home { Capabilities }
-    CopyCommand --> core.site.landing.Agents | core.site.landing.Hero { CopyCommand }
-    CopyCommand --> core.site.landing.ExplorerFinale { CopyCommandBlock }
-    CopyCommand --> core.site.packages.PackagePage | core.site.packages.PackagesIndex {
-        CopyCommand
-    }
-    ExplorerFinale --> core.site.landing.Home { ExplorerFinale }
-    Hero --> core.site.landing.Home { Hero }
-    Home --> desktop.pages.index | web.pages.index { Home }
-    MobileShowcase --> core.site.landing.Home { MobileShowcase }
-    OneBinary --> core.site.landing.Home { OneBinary }
-    Reveal --> core.site.landing.Agents { Reveal }
-    Reveal --> core.site.landing.BookSection { Reveal }
-    Reveal --> core.site.landing.Capabilities { Reveal }
-    Reveal --> core.site.landing.ExplorerFinale { Reveal }
-    Reveal --> core.site.landing.MobileShowcase { Reveal }
-    Reveal --> core.site.landing.OneBinary { Reveal }
-    Reveal --> core.site.landing.Showcase { Reveal }
-    Reveal --> core.site.landing.StatsBand { Reveal }
-    Reveal --> core.site.landing.WaitWuuut { Reveal }
-    Reveal --> core.site.landing.WasmGame { Reveal }
-    Reveal --> core.site.landing.WhyJac { Reveal }
-    Showcase --> core.site.landing.Home { Showcase }
-    StatsBand --> core.site.landing.Home { StatsBand }
-    WasmGame --> core.site.landing.Home { WasmGame }
-    WhyJac --> core.site.landing.Capabilities { WhySlide }
-    WhyJac --> core.site.landing.Home { WhyJac }
-}
-
-graph import core.site.landing.diagrams {
-    GradualBorrowDiagram --> core.site.landing.WaitWuuut { GradualBorrowDiagram }
-    GradualBorrowDiagram --> core.site.landing.WhyJac { GradualBorrowDiagram }
-    PolypilerDiagram --> core.site.landing.OneBinary { PolypilerDiagram }
-    PolypilerDiagram --> core.site.landing.WaitWuuut { PolypilerDiagram }
-    SynechicDiagram --> core.site.landing.WaitWuuut { SynechicDiagram }
-    SynechicDiagram --> core.site.landing.WhyJac { SynechicDiagram }
-    TopokineticDiagram --> core.site.landing.WaitWuuut { TopokineticDiagram }
-    TopokineticDiagram --> core.site.landing.WhyJac { TopokineticDiagram }
-    motion --> core.site.landing.diagrams.GradualBorrowDiagram { view_once }
-    motion --> core.site.landing.diagrams.PolypilerDiagram { view_once }
-    motion --> core.site.landing.diagrams.SynechicDiagram { view_once }
-    motion --> core.site.landing.diagrams.TopokineticDiagram { view_once }
-}
-
-graph import core.site.leaderboard {
-    Methodology --> core.site.jacyac.components.NinjaScores { Methodology }
-    Methodology --> desktop.pages.methodology { Methodology }
-    Methodology --> web.pages.methodology { Methodology }
+    Agents ++> TechDemo { Agents }
+    BookSection ++> TechDemo { BookSection }
+    CopyCommand ++> [
+        Agents { CopyCommand },
+        ExplorerFinale { CopyCommandBlock },
+    ]
+    ExplorerFinale ++> TechDemo { ExplorerFinale }
+    MobileShowcase ++> TechDemo { MobileShowcase }
+    Reveal ++> Agents
+        | BookSection
+        | ExplorerFinale
+        | MobileShowcase
+        | WaitWuuut
+        | WasmGame { Reveal }
+    WasmGame ++> TechDemo { WasmGame }
 }
 
 graph import core.site.packages {
-    ApiDocs --> core.site.packages.PackagePage { ApiDocs }
-    PackagePage --> core.site.packages.PackagesShell { PackagePage }
-    PackagesIndex --> core.site.packages.PackagesShell { PackagesIndex }
-    PackagesShell --> desktop.pages.packages.index | web.pages.packages.index {
-        PackagesShell
-    }
+    ApiDocs ++> PackagePage { ApiDocs }
+    PackagePage ++> PackagesShell { PackagePage }
+    PackagesIndex ++> PackagesShell { PackagesIndex }
 }
 
 graph import core.site.source {
-    CodeSpotlight --> core.site.landing.MobileShowcase { CodeSpotlight }
-    CodeSpotlight --> core.site.landing.WaitWuuut { CodeSpotlight }
-    FloatingSource --> core.site.landing.Hero { FloatingSource }
-    FloatingSource --> core.site.landing.WaitWuuut { FloatingSource }
-    SourceBrowser --> core.site.landing.ExplorerFinale { SourceBrowser }
-    SourceBrowser --> core.site.source.FloatingSource { SourceBrowser }
+    SourceBrowser ++> FloatingSource { SourceBrowser }
 }
 
 graph import core.site.ui {
-    CodeBlock --> core.site.docs.Markdown { CodeLines }
-    CodeBlock --> core.site.docs.MermaidDiagram { CodeLines }
-    CodeBlock --> core.site.landing.Showcase { CodeBlock }
-    CodeBlock --> core.site.source.CodeSpotlight { CodeLines }
-    CodeBlock --> core.site.source.SourceBrowser { CodeLines }
-    Footer --> core.site.ui.SiteShell { Footer }
-    GraphBackdrop --> core.site.docs.DocsShell { GraphBackdrop }
-    GraphBackdrop --> core.site.landing.Hero { GraphBackdrop }
-    GraphBackdrop --> core.site.leaderboard.Methodology { GraphBackdrop }
-    GraphBackdrop --> core.site.ui.NotFound { GraphBackdrop }
-    Navbar --> core.site.ui.SiteShell { Navbar }
-    SectionRail --> core.site.landing.Home | core.site.landing.WaitWuuut { SectionRail }
-    SiteShell --> desktop.pages.layout | web.pages.layout { SiteShell }
-    alert_dialog --> core.site.jacyac.components.ProjectCard {
-        AlertDialog,
-        AlertDialogAction,
-        AlertDialogCancel,
-        AlertDialogContent,
-        AlertDialogDescription,
-        AlertDialogFooter,
-        AlertDialogHeader,
-        AlertDialogTitle,
-        AlertDialogTrigger
-    }
-    alert_dialog --> core.site.jacyac.components.TweetCard {
-        AlertDialog,
-        AlertDialogAction,
-        AlertDialogCancel,
-        AlertDialogContent,
-        AlertDialogDescription,
-        AlertDialogFooter,
-        AlertDialogHeader,
-        AlertDialogTitle,
-        AlertDialogTrigger
-    }
-    avatar --> core.site.jacyac.components.Composer {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    avatar --> core.site.jacyac.components.ExploreTab {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    avatar --> core.site.jacyac.components.ProfileHeader {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    avatar --> core.site.jacyac.components.ProjectCard {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    avatar --> core.site.jacyac.components.RightSidebar {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    avatar --> core.site.jacyac.components.Sidebar {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    avatar --> core.site.jacyac.components.TweetCard {
-        Avatar,
-        AvatarFallback,
-        AvatarImage
-    }
-    badge --> core.site.jacyac.components.ChannelsTab { Badge }
-    badge --> core.site.jacyac.components.ProjectCard { Badge }
-    badge --> core.site.jacyac.components.RightSidebar { Badge }
-    badge --> core.site.jacyac.components.Sidebar { Badge }
-    badge --> core.site.landing.Agents { Badge }
-    badge --> core.site.landing.BookSection { Badge }
-    badge --> core.site.landing.ExplorerFinale { Badge }
-    badge --> core.site.landing.Hero { Badge }
-    badge --> core.site.landing.MobileShowcase { Badge }
-    badge --> core.site.landing.OneBinary { Badge }
-    badge --> core.site.landing.Showcase { Badge }
-    badge --> core.site.landing.WaitWuuut { Badge }
-    badge --> core.site.landing.WasmGame { Badge }
-    badge --> core.site.landing.WhyJac { Badge }
-    badge --> core.site.leaderboard.Methodology { Badge }
-    badge --> core.site.packages.PackagePage | core.site.packages.PackagesIndex {
-        Badge
-    }
-    button --> core.site.jacyac.JacYac { Button }
-    button --> core.site.jacyac.components.AuthForm { Button }
-    button --> core.site.jacyac.components.ChannelsTab { Button }
-    button --> core.site.jacyac.components.Composer { Button }
-    button --> core.site.jacyac.components.ExploreTab { Button }
-    button --> core.site.jacyac.components.NinjaScores { Button }
-    button --> core.site.jacyac.components.ProfileEditor { Button }
-    button --> core.site.jacyac.components.ProfileHeader { Button }
-    button --> core.site.jacyac.components.ProjectCard { Button }
-    button --> core.site.jacyac.components.ProjectsPanel { Button }
-    button --> core.site.jacyac.components.RightSidebar { Button }
-    button --> core.site.jacyac.components.Sidebar { Button }
-    button --> core.site.jacyac.components.TweetCard { Button }
-    button --> core.site.jacyac.components.WelcomeBanner { Button }
-    button --> core.site.landing.BookSection { buttonVariants }
-    button --> core.site.landing.ExplorerFinale { buttonVariants }
-    button --> core.site.landing.Hero { buttonVariants }
-    button --> core.site.landing.WasmGame { Button }
-    button --> core.site.ui.Navbar { buttonVariants }
-    button --> core.site.ui.NotFound { buttonVariants }
-    button --> core.site.ui.alert_dialog { Button }
-    button --> core.site.ui.carousel { Button }
-    button --> core.site.ui.dialog { buttonVariants }
-    card --> core.site.jacyac.components.AuthForm {
-        Card,
-        CardContent,
-        CardDescription,
-        CardHeader,
-        CardTitle
-    }
-    card --> core.site.jacyac.components.RightSidebar {
-        Card,
-        CardContent,
-        CardHeader,
-        CardTitle
-    }
-    card --> core.site.landing.Capabilities { Card, CardContent, CardHeader, CardTitle }
-    carousel --> core.site.landing.Capabilities {
-        Carousel,
-        CarouselContent,
-        CarouselDots,
-        CarouselItem,
-        CarouselNext,
-        CarouselPrevious
-    }
-    carousel --> core.site.landing.WhyJac {
-        Carousel,
-        CarouselContent,
-        CarouselDots,
-        CarouselItem,
-        CarouselNext,
-        CarouselPrevious
-    }
-    dialog --> core.site.jacyac.components.ChannelsTab {
-        Dialog,
-        DialogContent,
-        DialogDescription,
-        DialogFooter,
-        DialogHeader,
-        DialogTitle
-    }
-    dropdown_menu --> core.site.jacyac.components.Sidebar {
+    Footer ++> SiteShell { Footer }
+    GraphBackdrop ++> NotFound { GraphBackdrop }
+    Navbar ++> SiteShell { Navbar }
+    button ++> [
+        Navbar | NotFound | dialog { buttonVariants },
+        alert_dialog | carousel { Button },
+    ]
+    dropdown_menu ++> Navbar {
         DropdownMenu,
         DropdownMenuContent,
-        DropdownMenuGroup,
         DropdownMenuItem,
         DropdownMenuTrigger
     }
-    empty --> core.site.jacyac.components.ChannelsTab {
-        Empty,
-        EmptyDescription,
-        EmptyHeader,
-        EmptyMedia,
-        EmptyTitle
-    }
-    empty --> core.site.jacyac.components.ExploreTab {
-        Empty,
-        EmptyDescription,
-        EmptyHeader,
-        EmptyMedia,
-        EmptyTitle
-    }
-    empty --> core.site.jacyac.components.FeedTab {
-        Empty,
-        EmptyDescription,
-        EmptyHeader,
-        EmptyMedia,
-        EmptyTitle
-    }
-    field --> core.site.jacyac.components.AuthForm { Field, FieldLabel }
-    field --> core.site.jacyac.components.ChannelsTab { Field, FieldLabel }
-    field --> core.site.jacyac.components.ProfileEditor { Field, FieldLabel }
-    hover_card --> core.site.jacyac.components.RightSidebar {
-        HoverCard,
-        HoverCardContent,
-        HoverCardTrigger
-    }
-    input --> core.site.docs.DocsSidebar { Input }
-    input --> core.site.jacyac.components.AuthForm { Input }
-    input --> core.site.jacyac.components.ChannelsTab { Input }
-    input --> core.site.jacyac.components.NinjaScores { Input }
-    input --> core.site.jacyac.components.ProfileEditor { Input }
-    input --> core.site.jacyac.components.ProjectsPanel { Input }
-    input --> core.site.jacyac.components.RightSidebar { Input }
-    input --> core.site.jacyac.components.TweetCard { Input }
-    input --> core.site.packages.PackagesIndex { Input }
-    label --> core.site.ui.field { Label }
-    select --> core.site.docs.DocsSidebar {
-        Select,
-        SelectContent,
-        SelectGroup,
-        SelectItem,
-        SelectTrigger,
-        SelectValue
-    }
-    separator --> core.site.ui.field { Separator }
-    skeleton --> core.site.docs.DocsArticle { Skeleton }
-    skeleton --> core.site.docs.DocsSidebar { Skeleton }
-    skeleton --> core.site.jacyac.components.ChannelsTab { Skeleton }
-    skeleton --> core.site.jacyac.components.ExploreTab { Skeleton }
-    skeleton --> core.site.jacyac.components.FeedTab { Skeleton }
-    tabs --> core.site.docs.Markdown { Tabs, TabsContent, TabsList, TabsTrigger }
-    tabs --> core.site.landing.Showcase { Tabs, TabsContent, TabsList, TabsTrigger }
-    textarea --> core.site.jacyac.components.ChannelsTab { Textarea }
-    textarea --> core.site.jacyac.components.Composer { Textarea }
-    textarea --> core.site.jacyac.components.ProfileEditor { Textarea }
-    tooltip --> core.site.jacyac.components.TweetCard {
-        Tooltip,
-        TooltipContent,
-        TooltipProvider,
-        TooltipTrigger
-    }
-}
-
-graph import core.source {
-    files --> core.site.landing.Showcase { SourceView, example_sources }
-    files --> core.site.source.CodeSpotlight { SourceSpan, source_span }
-    files --> core.site.source.SourceBrowser {
-        SourceFile,
-        SourceView,
-        source_file,
-        source_tree
-    }
-    files --> web.main {
-        SourceFile,
-        SourceSpan,
-        SourceView,
-        example_sources,
-        source_file,
-        source_span,
-        source_tree
-    }
+    label ++> field { Label }
+    separator ++> field { Separator }
 }

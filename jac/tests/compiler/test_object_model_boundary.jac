@@ -11,7 +11,12 @@ test "only the interoperability adapter directly imports Python record helpers" 
     ).splitlines();
     forbidden: list[str] = [];
     for name in paths {
-        if "/vendor/" in name or name == "jac/jaclang/runtime/object_interop.jac" {
+        if "/vendor/" in name
+            or name
+                in [
+                    "jac/jaclang/runtime/object_interop.jac",
+                    "jac/jaclang/runtime/impl/object_interop.impl.jac"
+                ] {
             continue;
         }
         source = (repo / name).read_text();

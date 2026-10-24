@@ -347,7 +347,86 @@ glob g_pending_url: str = "",
 
 glob BOOTSTRAP_JS: str = "window.__jac_invoke=function(p,c,a){return fetch('/__jac/invoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify([p,c,a||{}])}).then(function(r){return r.text();});};(function(){var _l={};window.__jac={invoke:function(p,c,a){return window.__jac_invoke(p,c,a||{}).then(function(r){if(typeof r==='string')r=JSON.parse(r);if(r.ok)return r.data;var e=new Error(r.error.message);e.code=r.error.code;throw e;});},on:function(ev,cb){(_l[ev]=_l[ev]||[]).push(cb);return function(){var a=_l[ev]||[];var i=a.indexOf(cb);if(i!==-1)a.splice(i,1);};},__emit__:function(ev,p){(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});}};window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';})();(function(){try{var es=new EventSource('/__jac/events');es.onmessage=function(m){try{var d=JSON.parse(m.data);if(d.eval){(0,eval)(d.eval);}else if(d.event){window.__jac.__emit__(d.event,d.payload);}}catch(_){}};}catch(_){}})();";
 
-def _log(msg: str) {
+def _log(msg: str);
+
+def:pub cef_dispatch_get_exe_dir -> str;
+
+def _init_exe_dir;
+
+def:pub cef_platform_bootstrap;
+
+def:pub cef_dispatch_getenv_set(name: str) -> i32;
+
+def:pub cef_dispatch_log(msg: str);
+
+def _on_before_close(self: int, browser: int);
+
+def _on_after_created(self: int, browser: int);
+
+def _get_life_span_handler(self: int) -> int;
+
+def _get_browser_process_handler(self: int) -> int;
+
+def _get_render_process_handler(self: int) -> int;
+
+def _on_context_initialized(self: int);
+
+def _on_context_created(self: int, browser: int, frame: int, context: int);
+
+def _on_before_cmdline(self: int, process_type: int, command_line: int);
+
+def _init_vtables;
+
+
+def:pub cef_dispatch_main_args_create -> int;
+
+def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int;
+
+def:pub cef_dispatch_window_info_create(title: str, width: int, height: int) -> int;
+
+def:pub cef_dispatch_browser_settings_create -> int;
+
+def:pub cef_dispatch_set_pending_browser(
+    url: str, title: str, width: int, height: int
+);
+
+def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int);
+
+def:pub cef_dispatch_execute_process -> i32;
+
+def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32;
+
+def:pub cef_dispatch_browser_get_main_frame(browser: int) -> int;
+
+def:pub cef_dispatch_frame_is_main(frame: int) -> i32;
+
+def:pub cef_dispatch_frame_load_url(frame: int, url: str);
+
+def:pub cef_dispatch_frame_execute_js(
+    frame: int, code: str, script_url: str, start_line: i32
+);
+
+def:pub cef_dispatch_cmdline_append_switch(cmd: int, sw: str);
+
+def:pub cef_dispatch_cmdline_append_switch_value(cmd: int, name: str, value: str);
+
+def:pub cef_dispatch_base_release(handle: int);
+
+def:pub cef_dispatch_create_browser(
+    window_info: int, client: int, url: str, settings: int
+) -> i32;
+
+def _x11_parent(dpy: int, w: int) -> int;
+
+def _x11_has_prop(dpy: int, w: int, prop: int) -> i32;
+
+def _x11_toplevel(dpy: int, xid: int) -> int;
+
+def:pub cef_dispatch_window_set_title(title: int) -> i32;
+
+def:pub cef_dispatch_window_set_size(w: int, h: int) -> i32;
+
+impl _log(msg: str) {
     prefix: str = "[cef] ";
     newline: str = "\n";
     write(2, prefix, strlen(prefix));
@@ -355,14 +434,14 @@ def _log(msg: str) {
     write(2, newline, 1);
 }
 
-def:pub cef_dispatch_get_exe_dir -> str {
+impl cef_dispatch_get_exe_dir -> str {
     _init_exe_dir();
 
     exe_dir: any = g_exe_dir_buf;
     return exe_dir;
 }
 
-def _init_exe_dir {
+impl _init_exe_dir {
     if g_exe_dir_buf != 0 {
         return;
     }
@@ -383,7 +462,7 @@ def _init_exe_dir {
     g_exe_dir_buf = buf;
 }
 
-def:pub cef_platform_bootstrap {
+impl cef_platform_bootstrap {
     _init_exe_dir();
 
     setenv("NO_AT_BRIDGE", "1", 0);
@@ -401,7 +480,7 @@ def:pub cef_platform_bootstrap {
     }
 }
 
-def:pub cef_dispatch_getenv_set(name: str) -> i32 {
+impl cef_dispatch_getenv_set(name: str) -> i32 {
     v: int = getenv(name);
     if v == 0 {
         return 0;
@@ -409,16 +488,16 @@ def:pub cef_dispatch_getenv_set(name: str) -> i32 {
     return 1;
 }
 
-def:pub cef_dispatch_log(msg: str) {
+impl cef_dispatch_log(msg: str) {
     _log(msg);
 }
 
-def _on_before_close(self: int, browser: int) {
+impl _on_before_close(self: int, browser: int) {
     _log("browser before-close");
     cef_quit_message_loop();
 }
 
-def _on_after_created(self: int, browser: int) {
+impl _on_after_created(self: int, browser: int) {
     g_browser = browser;
     b: cef_browser_t = browser;
     host: int = b.get_host(b);
@@ -431,19 +510,19 @@ def _on_after_created(self: int, browser: int) {
     _log("after-created: captured X11 window handle");
 }
 
-def _get_life_span_handler(self: int) -> int {
+impl _get_life_span_handler(self: int) -> int {
     return g_lsh;
 }
 
-def _get_browser_process_handler(self: int) -> int {
+impl _get_browser_process_handler(self: int) -> int {
     return g_bph;
 }
 
-def _get_render_process_handler(self: int) -> int {
+impl _get_render_process_handler(self: int) -> int {
     return g_rph;
 }
 
-def _on_context_initialized(self: int) {
+impl _on_context_initialized(self: int) {
     _log("context initialized");
     if g_browser_pending == 0 {
         return;
@@ -457,7 +536,7 @@ def _on_context_initialized(self: int) {
     g_browser_pending = 0;
 }
 
-def _on_context_created(self: int, browser: int, frame: int, context: int) {
+impl _on_context_created(self: int, browser: int, frame: int, context: int) {
     if cef_dispatch_frame_is_main(frame) == 0 {
         return;
     }
@@ -465,7 +544,7 @@ def _on_context_created(self: int, browser: int, frame: int, context: int) {
     _log("render: bootstrap injected");
 }
 
-def _on_before_cmdline(self: int, process_type: int, command_line: int) {
+impl _on_before_cmdline(self: int, process_type: int, command_line: int) {
     _log("cmdline: no platform flag (auto-detect)");
     if cef_dispatch_getenv_set("JAC_CEF_SINGLE_PROCESS") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "single-process");
@@ -498,7 +577,7 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
     _log("cmdline: done");
 }
 
-def _init_vtables {
+impl _init_vtables {
     if g_vtables_ready != 0 {
         return;
     }
@@ -555,8 +634,7 @@ def _init_vtables {
     g_vtables_ready = 1;
 }
 
-
-def:pub cef_dispatch_main_args_create -> int {
+impl cef_dispatch_main_args_create -> int {
     args: int = cef_main_args_create();
     if args != 0 {
         _log("args: using cmdline");
@@ -577,7 +655,7 @@ def:pub cef_dispatch_main_args_create -> int {
     return buf2;
 }
 
-def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
+impl cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
     _init_exe_dir();
     g_settings.size = 440;
     g_settings.no_sandbox = no_sandbox;
@@ -626,7 +704,7 @@ def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
     return g_settings;
 }
 
-def:pub cef_dispatch_window_info_create(title: str, width: int, height: int) -> int {
+impl cef_dispatch_window_info_create(title: str, width: int, height: int) -> int {
     g_wi.wn_ptr = 0;
     g_wi.wn_len = 0;
     g_wi.wn_dtor = 0;
@@ -652,7 +730,7 @@ def:pub cef_dispatch_window_info_create(title: str, width: int, height: int) -> 
     return g_wi;
 }
 
-def:pub cef_dispatch_browser_settings_create -> int {
+impl cef_dispatch_browser_settings_create -> int {
     buf: int = calloc(1, 264);
 
     memset(buf, 8, 1);
@@ -664,9 +742,7 @@ def:pub cef_dispatch_browser_settings_create -> int {
     return buf;
 }
 
-def:pub cef_dispatch_set_pending_browser(
-    url: str, title: str, width: int, height: int
-) {
+impl cef_dispatch_set_pending_browser(url: str, title: str, width: int, height: int) {
     g_pending_url = url;
     g_pending_title = title;
     if width > 0 {
@@ -682,7 +758,7 @@ def:pub cef_dispatch_set_pending_browser(
     g_browser_pending = 1;
 }
 
-def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int) {
+impl cef_dispatch_open_browser(url: str, title: str, width: int, height: int) {
     cef_dispatch_set_pending_browser(url, title, width, height);
     _init_vtables();
     wi: int = cef_dispatch_window_info_create(title, width, height);
@@ -693,7 +769,7 @@ def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int)
     g_browser_pending = 0;
 }
 
-def:pub cef_dispatch_execute_process -> i32 {
+impl cef_dispatch_execute_process -> i32 {
     _assert_cef_abi();
     cef_platform_bootstrap();
     _init_vtables();
@@ -711,7 +787,7 @@ def:pub cef_dispatch_execute_process -> i32 {
     return code;
 }
 
-def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
+impl cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
     _assert_cef_abi();
     cef_platform_bootstrap();
     _init_vtables();
@@ -737,17 +813,17 @@ def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
     return rc;
 }
 
-def:pub cef_dispatch_browser_get_main_frame(browser: int) -> int {
+impl cef_dispatch_browser_get_main_frame(browser: int) -> int {
     b: cef_browser_t = browser;
     return b.get_main_frame(b);
 }
 
-def:pub cef_dispatch_frame_is_main(frame: int) -> i32 {
+impl cef_dispatch_frame_is_main(frame: int) -> i32 {
     f: cef_frame_t = frame;
     return f.is_main(f);
 }
 
-def:pub cef_dispatch_frame_load_url(frame: int, url: str) {
+impl cef_dispatch_frame_load_url(frame: int, url: str) {
     f: cef_frame_t = frame;
     s: cef_string_t = cef_string_t();
     cef_string_utf8_to_utf16(url, strlen(url), s);
@@ -755,7 +831,7 @@ def:pub cef_dispatch_frame_load_url(frame: int, url: str) {
     cef_string_utf16_clear(s);
 }
 
-def:pub cef_dispatch_frame_execute_js(
+impl cef_dispatch_frame_execute_js(
     frame: int, code: str, script_url: str, start_line: i32
 ) {
     f: cef_frame_t = frame;
@@ -768,7 +844,7 @@ def:pub cef_dispatch_frame_execute_js(
     cef_string_utf16_clear(su);
 }
 
-def:pub cef_dispatch_cmdline_append_switch(cmd: int, sw: str) {
+impl cef_dispatch_cmdline_append_switch(cmd: int, sw: str) {
     c: cef_command_line_t = cmd;
     s: cef_string_t = cef_string_t();
     cef_string_utf8_to_utf16(sw, strlen(sw), s);
@@ -776,7 +852,7 @@ def:pub cef_dispatch_cmdline_append_switch(cmd: int, sw: str) {
     cef_string_utf16_clear(s);
 }
 
-def:pub cef_dispatch_cmdline_append_switch_value(cmd: int, name: str, value: str) {
+impl cef_dispatch_cmdline_append_switch_value(cmd: int, name: str, value: str) {
     c: cef_command_line_t = cmd;
     sn: cef_string_t = cef_string_t();
     sv: cef_string_t = cef_string_t();
@@ -787,9 +863,9 @@ def:pub cef_dispatch_cmdline_append_switch_value(cmd: int, name: str, value: str
     cef_string_utf16_clear(sv);
 }
 
-def:pub cef_dispatch_base_release(handle: int) {}
+impl cef_dispatch_base_release(handle: int) {}
 
-def:pub cef_dispatch_create_browser(
+impl cef_dispatch_create_browser(
     window_info: int, client: int, url: str, settings: int
 ) -> i32 {
     url_str: cef_string_t = cef_string_t();
@@ -801,7 +877,7 @@ def:pub cef_dispatch_create_browser(
     return result;
 }
 
-def _x11_parent(dpy: int, w: int) -> int {
+impl _x11_parent(dpy: int, w: int) -> int {
     root_b: int = calloc(1, 8);
     par_b: int = calloc(1, 8);
     ch_b: int = calloc(1, 8);
@@ -823,7 +899,7 @@ def _x11_parent(dpy: int, w: int) -> int {
     return parent;
 }
 
-def _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
+impl _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
     if prop == 0 {
         return 0;
     }
@@ -854,7 +930,7 @@ def _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
     return found;
 }
 
-def _x11_toplevel(dpy: int, xid: int) -> int {
+impl _x11_toplevel(dpy: int, xid: int) -> int {
     root_win: int = XDefaultRootWindow(dpy);
     wm_state: int = XInternAtom(dpy, "WM_STATE", 1);
     cur: int = xid;
@@ -882,7 +958,7 @@ def _x11_toplevel(dpy: int, xid: int) -> int {
     return cur;
 }
 
-def:pub cef_dispatch_window_set_title(title: int) -> i32 {
+impl cef_dispatch_window_set_title(title: int) -> i32 {
     if g_browser_xid == 0 {
         return 0;
     }
@@ -908,7 +984,7 @@ def:pub cef_dispatch_window_set_title(title: int) -> i32 {
     return 1;
 }
 
-def:pub cef_dispatch_window_set_size(w: int, h: int) -> i32 {
+impl cef_dispatch_window_set_size(w: int, h: int) -> i32 {
     if g_browser_xid == 0 {
         return 0;
     }

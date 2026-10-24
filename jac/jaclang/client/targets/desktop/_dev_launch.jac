@@ -12,7 +12,36 @@ glob DESKTOP_WEBKIT_ENV: list[tuple[str, str]] = [
      ];
 
 
-def _project_venv_site_packages -> str {
+def _project_venv_site_packages -> str;
+
+
+def desktop_host_env -> list[tuple[str, str]];
+
+
+def jac_desktop_webkit_shell_export -> str;
+
+
+def jac_desktop_deps_shell_export(venv_rel: str = "../../venv") -> str;
+
+
+def _prepend_env_path(env: dict[str, str], key: str, path: str) -> None;
+
+
+def _dev_roots_from_env -> dict[str, str];
+
+
+def _editable_roots_from_site -> dict[str, str];
+
+
+def ensure_dev_build_env;
+
+
+def desktop_app_runtime_env(base: any = None) -> dict[str, str];
+
+
+def desktop_launch_env(base: any = None) -> dict[str, str];
+
+impl _project_venv_site_packages -> str {
     config = get_config(force_discover=True);
     if config is None {
         return "";
@@ -24,20 +53,17 @@ def _project_venv_site_packages -> str {
     return "";
 }
 
-
-def desktop_host_env -> list[tuple[str, str]] {
+impl desktop_host_env -> list[tuple[str, str]] {
     return DESKTOP_WEBKIT_ENV if sys.platform.startswith("linux") else [];
 }
 
-
-def jac_desktop_webkit_shell_export -> str {
+impl jac_desktop_webkit_shell_export -> str {
     return "".join(
         [f'export {key}="${{{key}:-{val}}}"\n' for (key, val) in desktop_host_env()]
     );
 }
 
-
-def jac_desktop_deps_shell_export(venv_rel: str = "../../venv") -> str {
+impl jac_desktop_deps_shell_export(venv_rel: str = "../../venv") -> str {
     return (
         f"VENV_LIB=\"$(CDPATH= cd -- \"$(dirname \"$0\")/{venv_rel}/lib\" 2>/dev/null && pwd)\"\n"
         "if [ -n \"$VENV_LIB\" ] && [ -d \"$VENV_LIB\" ]; then\n"
@@ -55,8 +81,7 @@ def jac_desktop_deps_shell_export(venv_rel: str = "../../venv") -> str {
     );
 }
 
-
-def _prepend_env_path(env: dict[str, str], key: str, path: str) -> None {
+impl _prepend_env_path(env: dict[str, str], key: str, path: str) -> None {
     if not path {
         return;
     }
@@ -74,8 +99,7 @@ def _prepend_env_path(env: dict[str, str], key: str, path: str) -> None {
     }
 }
 
-
-def _dev_roots_from_env -> dict[str, str] {
+impl _dev_roots_from_env -> dict[str, str] {
     roots: dict[str, str] = {};
 
     dev_src = dev_source();
@@ -90,8 +114,7 @@ def _dev_roots_from_env -> dict[str, str] {
     return roots;
 }
 
-
-def _editable_roots_from_site -> dict[str, str] {
+impl _editable_roots_from_site -> dict[str, str] {
     roots: dict[str, str] = {};
     candidates: list[Path] = [];
     usp = site.getusersitepackages();
@@ -144,8 +167,7 @@ def _editable_roots_from_site -> dict[str, str] {
     return roots;
 }
 
-
-def ensure_dev_build_env {
+impl ensure_dev_build_env {
     for (key, val) in _editable_roots_from_site().items() {
         os.environ.setdefault(key, val);
     }
@@ -154,8 +176,7 @@ def ensure_dev_build_env {
     }
 }
 
-
-def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
+impl desktop_app_runtime_env(base: any = None) -> dict[str, str] {
     env = desktop_launch_env(base);
     for key in ["PYTHONEXECUTABLE", "JAC_HANDOFF", "VIRTUAL_ENV", ] {
         env.pop(key, None);
@@ -167,8 +188,7 @@ def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
     return env;
 }
 
-
-def desktop_launch_env(base: any = None) -> dict[str, str] {
+impl desktop_launch_env(base: any = None) -> dict[str, str] {
     env = dict(base) if base is not None else dict(os.environ);
     for (key, val) in _editable_roots_from_site().items() {
         env.setdefault(key, val);

@@ -8,54 +8,6 @@ comes from layouts.jac and embeds the exporter's `Py_buffer`. See
 ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyArg_ParseTupleAndKeywords,
-    PyBuffer_IsContiguous,
-    PyBuffer_Release,
-    PyErr_Format,
-    PyErr_SetString,
-    PyExc_BufferError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyMemoryView_FromObject,
-    PyMethodDef,
-    PyObject,
-    PyObject_ClearWeakRefs,
-    PyObject_GetBuffer,
-    Py_NewRef,
-    Py_None,
-    Py_buffer,
-    jacpy_release
-}
-import from jaclang.runtime.python.layouts {
-    METH_NOARGS,
-    PyBUF_FULL_RO,
-    PyBufferProcs,
-    PyMemoryViewObject_FLAGS,
-    PyMemoryViewObject_VIEW,
-    PyPickleBufferObject,
-    PyPickleBufferObject_SIZE,
-    PyPickleBufferObject_VIEW,
-    PyPickleBufferObject_WEAKREFLIST,
-    PyTypeObject,
-    PyVarObject,
-    Py_TPFLAGS_DEFAULT,
-    Py_TPFLAGS_HAVE_GC,
-    Py_buffer_ITEMSIZE,
-    Py_buffer_LEN,
-    _Py_MEMORYVIEW_C,
-    _Py_MEMORYVIEW_FORTRAN,
-    _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
-    _object
-}
-import from jaclang.runtime.python.object_model.header {
-    object_gc_untrack,
-    object_is_type,
-    object_type
-}
-import from jaclang.runtime.python.bindings.module { visit_reference }
-
 import from c {
     glob:priv picklebuf_keywords: list[ptr[u8]] = [ptr[u8](""), ptr[u8]()],
          picklebuf_as_buffer: PyBufferProcs = PyBufferProcs(

@@ -4,7 +4,7 @@ glob _NOTIFY_LIMIT = 7000,
      _SPILL_TTL_SECONDS = 60;
 
 
-impl MemoryBackplane.start{
+impl MemoryBackplane.start {
     if not self._warned {
         logger.warning(
             "WS MemoryBackplane in use: broadcasts are limited to this "
@@ -46,7 +46,7 @@ impl MemoryBackplane.unsubscribe(channel: str, handler: any) {
     }
 }
 
-impl MemoryBackplane.close{
+impl MemoryBackplane.close {
     self._subs = {};
 }
 
@@ -161,7 +161,7 @@ impl PgBackplane.unsubscribe(channel: str, handler: any) {
 }
 
 
-impl PgBackplane.close{
+impl PgBackplane.close {
     self._closed = True;
     self._handlers = {};
 }

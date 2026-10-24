@@ -63,446 +63,54 @@ obj StripResult {
 }
 
 
-def _is_string_kind(kind_str: str) -> bool {
-    return 'STRING' in kind_str or 'FSTR' in kind_str or 'JSX' in kind_str;
-}
+def _is_string_kind(kind_str: str) -> bool;
 
 
-def _dotted_target(tokens: list[LexToken], start: int) -> str {
-    parts: list[str] = [];
-    j = start;
-    while j < len(tokens) {
-        val = tokens[j].value;
-        if val in ('{', ';', 'as') {
-            break;
-        }
-        parts.append(val);
-        j += 1;
-    }
-    return ''.join(parts);
-}
+def _dotted_target(tokens: list[LexToken], start: int) -> str;
 
 
-def _first_name_after(tokens: list[LexToken], start: int) -> str {
-    j = start;
-    while j < len(tokens) and j < start + 8 {
-        tok = tokens[j];
-        kind_str = str(tok.kind);
-        if (
-            not _is_string_kind(kind_str)
-            and tok.value not in (':', 'pub', 'priv', 'protect', 'async', 'static')
-            and tok.value
-            and (tok.value[0].isalpha() or tok.value[0] == '_')
-            and tok.value not in _ELEMENT_KEYWORDS
-        ) {
-            return tok.value;
-        }
-        j += 1;
-    }
-    return '';
-}
+def _first_name_after(tokens: list[LexToken], start: int) -> str;
 
 
 def _collect_block_claims(
     tokens: list[LexToken], body_start: int, body_end: int, space: str, res: StripResult
-) {
-    depth = 0;
-    j = body_start;
-    while j < body_end {
-        tok = tokens[j];
-        if tok.value == '{' and str(tok.kind) == 'TokenKind.LBRACE' {
-            depth += 1;
-        } elif tok.value == '}' and str(tok.kind) == 'TokenKind.RBRACE' {
-            depth -= 1;
-        } elif depth == 0 and not _is_string_kind(str(tok.kind)) {
-            if tok.value == 'import' and space == 'server' {
-                k = j + 1;
-                if k < body_end and tokens[k].value == 'from' {
-                    tgt = _dotted_target(tokens, k + 1);
-                    if tgt {
-                        res.sv_imports.append(tgt);
-                    }
-                }
-            } elif tok.value in _NAMED_ELEMENT_KEYWORDS {
-                nm = _first_name_after(tokens, j + 1);
-                if nm {
-                    res.claims.append(
-                        MarkerClaim(name=nm, space=space, line=tok.loc.line)
-                    );
-                }
-                while j < body_end
-                    and tokens[j].value != '{'
-                    and tokens[j].value != ';' {
-                    j += 1;
-                }
-                continue;
-            }
-        }
-        j += 1;
-    }
-}
+);
 
 
-def _strip_markers(src: str, file_path: str) -> StripResult {
-    res = StripResult(text=src);
-    try {
-        (tokens, err_count) = tokenize(src, file_path);
-    } except Exception as e {
-        res.note = f"tokenize failed: {e}";
-        return res;
-    }
-    if err_count {
-        res.note = "lex errors; skipped";
-        return res;
-    }
-    edits: list[tuple[int, int, str]] = [];
-    depth = 0;
-    stmt_start = True;
-    i = 0;
-    n = len(tokens);
-    while i < n {
-        tok = tokens[i];
-        kind_str = str(tok.kind);
-        if tok.value == '{' and kind_str == 'TokenKind.LBRACE' {
-            depth += 1;
-            stmt_start = False;
-            i += 1;
-            continue;
-        }
-        if tok.value == '}' and kind_str == 'TokenKind.RBRACE' {
-            depth -= 1;
-            stmt_start = depth == 0;
-            i += 1;
-            continue;
-        }
-        if tok.value == ';' {
-            stmt_start = depth == 0;
-            i += 1;
-            continue;
-        }
-        if depth == 0 and 'STRING' in kind_str {
-            stmt_start = True;
-            i += 1;
-            continue;
-        }
-        if (
-            depth == 0
-            and stmt_start
-            and tok.value in _MARKER_SPACES
-            and not _is_string_kind(kind_str)
-            and i + 1 < n
-        ) {
-            space = _MARKER_SPACES[tok.value];
-            nxt = tokens[i + 1];
-            if nxt.value == '{' and str(nxt.kind) == 'TokenKind.LBRACE' {
-                d = 1;
-                j = i + 2;
-                close_idx = -1;
-                while j < n {
-                    jv = tokens[j];
-                    if jv.value == '{' and str(jv.kind) == 'TokenKind.LBRACE' {
-                        d += 1;
-                    } elif jv.value == '}' and str(jv.kind) == 'TokenKind.RBRACE' {
-                        d -= 1;
-                        if d == 0 {
-                            close_idx = j;
-                            break;
-                        }
-                    }
-                    j += 1;
-                }
-                if close_idx < 0 {
-                    res.note = "unbalanced marker block; skipped";
-                    return res;
-                }
-                edits.append((tok.loc.pos_start, nxt.loc.pos_end, ''));
-                edits.append(
-                    (tokens[close_idx].loc.pos_start, tokens[close_idx].loc.pos_end, '')
-                );
-                _collect_block_claims(tokens, i + 2, close_idx, space, res);
-                depth += 1;
-                i += 2;
-                continue;
-            }
-            if nxt.value in _ELEMENT_KEYWORDS and not _is_string_kind(str(nxt.kind)) {
-                edits.append((tok.loc.pos_start, nxt.loc.pos_start, ''));
-                if nxt.value == 'import' {
-                    if space == 'server'
-                        and i + 2 < n
-                        and tokens[i + 2].value == 'from' {
-                        tgt = _dotted_target(tokens, i + 3);
-                        if tgt {
-                            res.sv_imports.append(tgt);
-                        }
-                    }
-                } elif nxt.value in _NAMED_ELEMENT_KEYWORDS {
-                    nm = _first_name_after(tokens, i + 2);
-                    if nm {
-                        res.claims.append(
-                            MarkerClaim(name=nm, space=space, line=tok.loc.line)
-                        );
-                    }
-                }
-                i += 1;
-                continue;
-            }
-        }
-        if depth == 0 {
-            stmt_start = False;
-        }
-        i += 1;
-    }
-    if not edits {
-        return res;
-    }
-    edits.sort();
-    src_bytes = src.encode('utf-8');
-    out: list[bytes] = [];
-    cursor = 0;
-    for (start, end, repl) in edits {
-        out.append(src_bytes[cursor:start]);
-        out.append(repl.encode('utf-8'));
-        cursor = end;
-    }
-    out.append(src_bytes[cursor:]);
-    res.text = (b''.join(out)).decode('utf-8');
-    res.changed = True;
-    return res;
-}
+def _strip_markers(src: str, file_path: str) -> StripResult;
 
 
-def _iter_migration_files(paths: list[str]) -> list[str] {
-    files: list[str] = [];
-    for p in paths {
-        if os.path.isfile(p) {
-            if p.endswith('.jac') {
-                files.append(p);
-            }
-            continue;
-        }
-        if not os.path.isdir(p) {
-            console.error(f"Path '{p}' does not exist.");
-            continue;
-        }
-        for (cur, dirnames, filenames) in os.walk(p) {
-            kept = [
-                d
-                for d in sorted(dirnames)
-                if not d.startswith('.') and d not in _PRUNE_DIRS
-            ];
-            dirnames.clear();
-            dirnames.extend(kept);
-            for fn in sorted(filenames) {
-                if fn.endswith('.jac') {
-                    files.append(os.path.join(cur, fn));
-                }
-            }
-        }
-    }
-    return files;
-}
+def _iter_migration_files(paths: list[str]) -> list[str];
 
 
-def _read_text_if_exists(path: str) -> str {
-    if os.path.exists(path) {
-        with open(path, 'r') as f {
-            return f.read();
-        }
-    }
-    return '';
-}
+def _read_text_if_exists(path: str) -> str;
 
 
 def _append_toml_entries(
     toml_path: str, header: str, entries: dict[str, str], dry_run: bool
-) -> list[str] {
-    import tomllib;
-    text = _read_text_if_exists(toml_path);
-    try {
-        doc = tomllib.loads(text);
-    } except Exception {
-        doc = {};
-    }
-    section: dict[str, any] = doc;
-    for part in header.strip('[]').split('.') {
-        nxt_section = section.get(part, {}) if isinstance(section, dict) else {};
-        section = nxt_section;
-    }
-    missing = {
-        k: v
-        for (k, v) in entries.items()
-        if not (isinstance(section, dict) and k in section)
-    };
-    if not missing {
-        return [];
-    }
-    added = [f'"{k}" = "{v}"' for (k, v) in sorted(missing.items())];
-    if dry_run {
-        return added;
-    }
-    lines: list[str] = text.splitlines();
-    header_idx = -1;
-    for (idx, ln) in enumerate(lines) {
-        if ln.strip() == header {
-            header_idx = idx;
-            break;
-        }
-    }
-    if header_idx >= 0 {
-        insert_at = header_idx + 1;
-        merged = lines[:insert_at] + added + lines[insert_at:];
-        new_text = "\n".join(merged);
-        if text.endswith("\n") {
-            new_text += "\n";
-        }
-    } else {
-        base = text if (not text or text.endswith("\n")) else text + "\n";
-        sep = "\n" if base else "";
-        new_text = base + sep + header + "\n" + "\n".join(added) + "\n";
-    }
-    with open(toml_path, 'w') as f {
-        f.write(new_text);
-    }
-    return added;
-}
+) -> list[str];
 
 
 def _append_app_table(
     toml_path: str, name: str, table: dict[str, str], dry_run: bool
-) -> list[str] {
-    import tomllib;
-
-    text = _read_text_if_exists(toml_path);
-    try {
-        doc = tomllib.loads(text);
-    } except Exception {
-        doc = {};
-    }
-    apps = doc.get('apps', {}) if isinstance(doc, dict) else {};
-    if isinstance(apps, dict) and name in apps {
-        return [];
-    }
-    lines: list[str] = text.split("\n");
-    before = len(lines);
-    _toml_append_section(lines, ('apps', name), table);
-    added = [
-        ln
-        for ln in lines[before:]
-        if ln and not ln.startswith('[')
-    ];
-    if dry_run {
-        return added;
-    }
-    with open(toml_path, 'w') as f {
-        f.write("\n".join(lines));
-    }
-    return added;
-}
+) -> list[str];
 
 
-def _ensure_workspace(toml_path: str, dry_run: bool) -> str {
-    import tomllib;
-    import from pathlib { Path }
-
-    text = _read_text_if_exists(toml_path);
-    doc = tomllib.loads(text);
-    apps = doc.get('apps') if isinstance(doc, dict) else None;
-    if isinstance(apps, dict) and apps {
-        return '';
-    }
-    base = JacConfig.load(Path(toml_path));
-    lines: list[str] = text.split("\n");
-    base_name = migrate_implicit_app(lines, base);
-    if not dry_run {
-        with open(toml_path, 'w') as f {
-            f.write("\n".join(lines));
-        }
-    }
-    return base_name;
-}
+def _ensure_workspace(toml_path: str, dry_run: bool) -> str;
 
 
 def _service_file_for(
     target: str, importer: str, root_dir: str, scanned: list[str]
-) -> str {
-    dots = len(target) - len(target.lstrip('.'));
-    parts = [
-        p
-        for p in target.strip('.').split('.')
-        if p
-    ];
-    if not parts {
-        return '';
-    }
-    importer_dir = os.path.dirname(os.path.abspath(importer));
-    bases: list[str] = [];
-    if dots {
-        base = importer_dir;
-        for _ in range(dots - 1) {
-            base = os.path.dirname(base);
-        }
-        bases.append(base);
-    } else {
-        bases.append(root_dir);
-        bases.append(importer_dir);
-    }
-    for base in bases {
-        candidate = os.path.join(base, os.sep.join(parts)) + '.jac';
-        if os.path.isfile(candidate) {
-            return os.path.abspath(candidate);
-        }
-    }
-    want = parts[-1] + '.jac';
-    for p in scanned {
-        if os.path.basename(p) == want {
-            return os.path.abspath(p);
-        }
-    }
-    return '';
-}
+) -> str;
 
 
-def _project_entry_stem(toml_path: str) -> str {
-    try {
-        import tomllib;
-        with open(toml_path, 'rb') as f {
-            proj_doc = tomllib.load(f);
-        }
-        entry_point = str(proj_doc.get('project', {}).get('entry-point', '') or '');
-        if entry_point.endswith('.jac') {
-            entry_point = entry_point[:-4];
-        }
-        return entry_point.rsplit('.', 1)[-1];
-    } except Exception {
-        return '';
-    }
-}
+def _project_entry_stem(toml_path: str) -> str;
 
 
-def _parses_clean(src: str, file_path: str) -> bool {
-    try {
-        (_mod, had_error) = rd_parse(src, file_path);
-        return not had_error;
-    } except Exception {
-        return False;
-    }
-}
+def _parses_clean(src: str, file_path: str) -> bool;
 
 
-def _format_source(src: str, file_path: str) -> (str | None) {
-    try {
-        prog = JacProgram.jac_str_formatter(
-            source_str=src, file_path=file_path, auto_lint=False
-        );
-        if prog.errors_had {
-            return None;
-        }
-        formatted = prog.mod.main.gen.jac;
-        return formatted;
-    } except Exception {
-        return None;
-    }
-}
+def _format_source(src: str, file_path: str) -> (str | None);
 
 
 def _verify_claims(
@@ -510,52 +118,7 @@ def _verify_claims(
     claims: list[MarkerClaim],
     pins: dict[str, str],
     unverified: list[str]
-) {
-    proj_root = find_jac_project_root(file_path);
-    if not proj_root {
-        unverified.append(f"{file_path} (no jac.toml found)");
-        return;
-    }
-    if file_path.endswith('.impl.jac') or file_path.endswith('.test.jac') {
-        unverified.append(f"{file_path} (annex; verify via its base module)");
-        return;
-    }
-    prog = JacProgram();
-    try {
-        mod = prog.compile(file_path, no_cgen=True);
-    } except Exception as e {
-        unverified.append(f"{file_path} (compile failed: {e})");
-        return;
-    }
-    if prog.errors_had {
-        unverified.append(f"{file_path} (compile errors)");
-        return;
-    }
-    stamped: dict[str, tuple[str, bool]] = {};
-    for stmt in mod.body {
-        try {
-            nm = element_display_name(stmt);
-        } except Exception {
-            continue;
-        }
-        space = getattr(stmt?.code_context, 'value', '');
-        stamped[nm] = (space, bool(getattr(stmt, 'codespace_dual', False)));
-    }
-    mod_dot = module_dot_path(file_path, proj_root);
-    for claim in claims {
-        got = stamped.get(claim.name);
-        if got is None {
-            unverified.append(
-                f"{file_path}:{claim.line} '{claim.name}' (element not found)"
-            );
-            continue;
-        }
-        (space, dual) = got;
-        if space != claim.space or dual {
-            pins[f"{mod_dot}.{claim.name}"] = claim.space;
-        }
-    }
-}
+);
 
 
 obj AccessRewrite {
@@ -566,377 +129,29 @@ obj AccessRewrite {
         reason: str;
 }
 
-def _module_has_jsx(decl: any) -> bool {
-    for sub in decl.get_all_sub_nodes(uni.UniNode) {
-        if type(sub).__name__.startswith('Jsx') {
-            return True;
-        }
-    }
-    return False;
-}
+def _module_has_jsx(decl: any) -> bool;
 
-def _returns_jsx(decl: any) -> bool {
-    sig = decl?.signature;
-    ret = sig?.return_type if sig is not None else None;
-    text = '';
-    try {
-        text = ret.unparse() if ret is not None else '';
-    } except Exception {
-        text = '';
-    }
-    return 'Jsx' in text;
-}
+def _returns_jsx(decl: any) -> bool;
 
-def _parse_module(path: str) -> any {
-    try {
-        with open(path, 'r') as f {
-            src = f.read();
-        }
-        (mod, had_error) = rd_parse(src, path);
-        return None if had_error else mod;
-    } except Exception {
-        return None;
-    }
-}
+def _parse_module(path: str) -> any;
 
-def _plain_top_decls(mod: any) -> dict[str, any] {
-    out: dict[str, any] = {};
-    for item in (mod.body or []) {
-        if (
-            isinstance(item, (uni.Ability, uni.Archetype))
-            and item.surface_kind
-            and item.access is None
-        ) {
-            out[item.sym_name] = item;
-        }
-    }
-    return out;
-}
+def _plain_top_decls(mod: any) -> dict[str, any];
 
-def _priv_top_decls(mod: any) -> dict[str, any] {
-    out: dict[str, any] = {};
-    for item in (mod.body or []) {
-        if (
-            isinstance(item, (uni.Ability, uni.Archetype))
-            and item.surface_kind
-            and item.access is not None
-            and item.exposure == SymbolAccess.PRIVATE
-        ) {
-            out[item.sym_name] = item;
-        }
-    }
-    return out;
-}
+def _priv_top_decls(mod: any) -> dict[str, any];
 
-def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str {
-    try {
-        resolved = module_path.resolve_relative_path();
-        if isinstance(resolved, str)
-            and resolved.endswith('.jac')
-            and os.path.isfile(resolved) {
-            return os.path.realpath(resolved);
-        }
-    } except Exception {}
-    try {
-        dotted = module_path.dot_path_str;
-        level = module_path.level;
-    } except Exception {
-        return '';
-    }
-    parts = [
-        p
-        for p in dotted.split('.')
-        if p
-    ];
-    if level > 0 {
-        base_dir = os.path.dirname(importer);
-        for _ in range(level - 1) {
-            base_dir = os.path.dirname(base_dir);
-        }
-        candidate = os.path.join(base_dir, *parts) + '.jac';
-    } else {
-        candidate = os.path.join(proj_root, *parts) + '.jac';
-    }
-    return os.path.realpath(candidate) if os.path.isfile(candidate) else '';
-}
+def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str;
 
-def _imported_names(imp: any) -> list[str] {
-    names: list[str] = [];
-    for item in (imp.items or []) {
-        if isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name) {
-            names.append(item.name.value);
-        }
-    }
-    return names;
-}
+def _imported_names(imp: any) -> list[str];
 
-def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
-    ws = workspace_for_path(proj_root);
-    notes: list[str] = [];
-    plan: list[AccessRewrite] = [];
-    if ws is None {
-        notes.append(f"{proj_root}: no jac.toml found, nothing to migrate");
-        return (plan, notes);
-    }
-    serving = [
-        a
-        for a in ws.apps.values()
-        if a.has_server
-    ];
-    if not serving {
-        notes.append(f"{ws.toml_path}: no serving app declared, nothing to migrate");
-        return (plan, notes);
-    }
-    seen: set[tuple[str, str]] = set();
-    priv_seen: set[tuple[str, str]] = set();
-
-    def add(path: str, decl: any, kind: str, reason: str) {
-        key = (path, decl.sym_name);
-        if key in seen {
-            return;
-        }
-        if str(decl.sym_name).startswith('_') {
-            return;
-        }
-        if kind == 'function' and (_returns_jsx(decl) or _module_has_jsx(decl)) {
-            return;
-        }
-        seen.add(key);
-        plan.append(
-            AccessRewrite(
-                path=path,
-                line=decl.name_spec.loc.first_line,
-                kind=kind,
-                name=decl.sym_name,
-                reason=reason
-            )
-        );
-    }
-
-    for app in serving {
-        entry_rel = str(app.`entry or '').replace('.', os.sep);
-        entry_path = os.path.join(ws.project_root, entry_rel + '.jac');
-        if not os.path.isfile(entry_path) {
-            entry_path = os.path.join(ws.project_root, str(app.`entry or ''));
-        }
-        if not os.path.isfile(entry_path) {
-            notes.append(f"app '{app.name}': entry '{app.`entry}' not found, skipped");
-            continue;
-        }
-        entry_path = os.path.realpath(entry_path);
-        visited: set[tuple[str, bool]] = set();
-        queue: list[tuple[str, bool]] = [(entry_path, True)];
-        while queue {
-            (path, is_entry) = queue.pop(0);
-            if (path, is_entry) in visited {
-                continue;
-            }
-            visited.add((path, is_entry));
-            mod = _parse_module(path);
-            if mod is None {
-                notes.append(f"{path}: does not parse, skipped");
-                continue;
-            }
-            plain = _plain_top_decls(mod);
-            for (pname, pdecl) in _priv_top_decls(mod).items() {
-                pkey = (path, pname);
-                if pkey in priv_seen {
-                    continue;
-                }
-                priv_seen.add(pkey);
-                notes.append(
-                    f"{os.path.relpath(path)}:{pdecl.name_spec.loc.first_line}: "
-                    f":priv {pname} was served (authenticated) before; it is now private. "
-                    "Change it to :protect if it was meant to be an endpoint (left unchanged)."
-                );
-            }
-            for (name, decl) in plain.items() {
-                if isinstance(decl, uni.Ability) {
-                    if is_entry {
-                        add(
-                            path,
-                            decl,
-                            'function',
-                            f"plain def in entry of app '{app.name}'"
-                        );
-                    }
-                } else {
-                    add(
-                        path,
-                        decl,
-                        'walker',
-                        f"plain walker reachable from app '{app.name}'"
-                    );
-                }
-            }
-            for imp in mod.get_all_sub_nodes(uni.Import) {
-                if not imp.is_jac {
-                    continue;
-                }
-                module_path = imp.from_loc;
-                if imp.is_absorb and imp.items {
-                    module_path = imp.items[0];
-                }
-                if module_path is None {
-                    continue;
-                }
-                target = _resolve_project_import(module_path, path, ws.project_root);
-                if not target
-                    or not target.startswith(
-                        os.path.realpath(ws.project_root) + os.sep
-                    ) {
-                    continue;
-                }
-                if is_entry and imp.items {
-                    wanted = _imported_names(imp);
-                    tmod = _parse_module(target);
-                    if tmod is not None {
-                        tplain = _plain_top_decls(tmod);
-                        for nm in wanted {
-                            decl = tplain.get(nm);
-                            if decl is not None and isinstance(decl, uni.Ability) {
-                                add(
-                                    target,
-                                    decl,
-                                    'function',
-                                    f"plain def imported by entry of app '{app.name}'"
-                                );
-                            }
-                        }
-                    }
-                }
-
-                queue.append((target, is_entry and imp.is_absorb));
-            }
-        }
-    }
-    return (plan, notes);
-}
+def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]];
 
 def _apply_access_rewrites(
     path: str, rewrites: list[AccessRewrite]
-) -> tuple[str, int] {
-    import re;
-    with open(path, 'r') as f {
-        lines = f.read().split('\n');
-    }
-    changed = 0;
-    for rw in rewrites {
-        idx = rw.line - 1;
-        if idx < 0 or idx >= len(lines) {
-            continue;
-        }
-        keyword = 'walker' if rw.kind == 'walker' else 'def';
-        pattern = re.compile(r'\b' + keyword + r'\s+' + re.escape(rw.name) + r'\b');
-        new_line = pattern.sub(keyword + ':protect ' + rw.name, lines[idx], count=1);
-        if new_line != lines[idx] {
-            lines[idx] = new_line;
-            changed += 1;
-        }
-    }
-    return ('\n'.join(lines), changed);
-}
+) -> tuple[str, int];
 
-def _fix_access(paths: list[str], dry_run: bool) -> int {
-    proj_roots: list[str] = [];
-    for p in paths {
-        cand = os.path.realpath(p if os.path.isdir(p) else os.path.dirname(p));
-        if cand not in proj_roots {
-            proj_roots.append(cand);
-        }
-    }
-    total: list[AccessRewrite] = [];
-    all_notes: list[str] = [];
-    for proj_root in proj_roots {
-        (plan, notes) = _access_plan(proj_root);
-        total.extend(plan);
-        all_notes.extend(notes);
-    }
-    for note in all_notes {
-        console.print(f"  note: {note}");
-    }
-    if not total {
-        console.print(
-            "Nothing to migrate: every served declaration already declares its exposure."
-        );
-        return 0;
-    }
-    by_file: dict[str, list[AccessRewrite]] = {};
-    for rw in total {
-        by_file.setdefault(rw.path, []).append(rw);
-    }
-    console.print(
-        f"{'Would mark' if dry_run else 'Marking'} {len(
-            total
-        )} declaration(s) :protect:"
-    );
-    for (path, rws) in sorted(by_file.items()) {
-        for rw in sorted(rws, key=lambda (r: AccessRewrite) { r.line; }) {
-            console.print(
-                f"  {os.path.relpath(path)}:{rw.line}  {rw.kind} {rw.name}  ({rw.reason})"
-            );
-        }
-    }
-    if dry_run {
-        return 0;
-    }
-    written = 0;
-    for (path, rws) in by_file.items() {
-        (text, changed) = _apply_access_rewrites(path, rws);
-        if changed == 0 {
-            continue;
-        }
-        if not _parses_clean(text, path) {
-            console.error(f"{path}: rewritten source does not parse; left untouched");
-            continue;
-        }
-        with open(path, 'w') as f {
-            f.write(text);
-        }
-        written += changed;
-    }
-    console.print(f"Rewrote {written} declaration(s). Run `jac check` to confirm.");
-    return 0;
-}
+def _fix_access(paths: list[str], dry_run: bool) -> int;
 
-def _fix_dependencies(paths: list[str], dry_run: bool) -> int {
-    manifests = find_manifests(paths);
-    if not manifests {
-        console.error("No jac.toml found to migrate.");
-        return 1;
-    }
-    changed = 0;
-    for manifest in manifests {
-        result = migrate_manifest(manifest);
-        if not result.moved {
-            continue;
-        }
-        changed += 1;
-        verb = "Would move" if dry_run else "Moved";
-        console.print(
-            f"{verb} {len(result.moved)} Python dependenc(ies) to [*.pypi] in {manifest}",
-            style="bold"
-        );
-        for moved_key in result.moved {
-            console.print(f"  {moved_key}", style="muted");
-        }
-        if not result.lossless {
-            console.warning(
-                f"{manifest}: the file could not be edited in place, so it was "
-                "rewritten; comments inside the dependency tables were dropped"
-            );
-        }
-        if not dry_run {
-            manifest.write_text(result.text, encoding="utf-8");
-        }
-    }
-    if not changed {
-        console.success(
-            "Every jac.toml already keeps Python packages in [dependencies.pypi]."
-        );
-    }
-    return 0;
-}
+def _fix_dependencies(paths: list[str], dry_run: bool) -> int;
 
 impl fix(
     target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
@@ -1167,6 +382,873 @@ impl fix(
             "marker; review the [placement.pins] entries and delete any you "
             "trust inference to own.",
             style="muted"
+        );
+    }
+    return 0;
+}
+
+impl _is_string_kind(kind_str: str) -> bool {
+    return 'STRING' in kind_str or 'FSTR' in kind_str or 'JSX' in kind_str;
+}
+
+
+impl _dotted_target(tokens: list[LexToken], start: int) -> str {
+    parts: list[str] = [];
+    j = start;
+    while j < len(tokens) {
+        val = tokens[j].value;
+        if val in ('{', ';', 'as') {
+            break;
+        }
+        parts.append(val);
+        j += 1;
+    }
+    return ''.join(parts);
+}
+
+
+impl _first_name_after(tokens: list[LexToken], start: int) -> str {
+    j = start;
+    while j < len(tokens) and j < start + 8 {
+        tok = tokens[j];
+        kind_str = str(tok.kind);
+        if (
+            not _is_string_kind(kind_str)
+            and tok.value not in (':', 'pub', 'priv', 'protect', 'async', 'static')
+            and tok.value
+            and (tok.value[0].isalpha() or tok.value[0] == '_')
+            and tok.value not in _ELEMENT_KEYWORDS
+        ) {
+            return tok.value;
+        }
+        j += 1;
+    }
+    return '';
+}
+
+
+impl _collect_block_claims(
+    tokens: list[LexToken], body_start: int, body_end: int, space: str, res: StripResult
+) {
+    depth = 0;
+    j = body_start;
+    while j < body_end {
+        tok = tokens[j];
+        if tok.value == '{' and str(tok.kind) == 'TokenKind.LBRACE' {
+            depth += 1;
+        } elif tok.value == '}' and str(tok.kind) == 'TokenKind.RBRACE' {
+            depth -= 1;
+        } elif depth == 0 and not _is_string_kind(str(tok.kind)) {
+            if tok.value == 'import' and space == 'server' {
+                k = j + 1;
+                if k < body_end and tokens[k].value == 'from' {
+                    tgt = _dotted_target(tokens, k + 1);
+                    if tgt {
+                        res.sv_imports.append(tgt);
+                    }
+                }
+            } elif tok.value in _NAMED_ELEMENT_KEYWORDS {
+                nm = _first_name_after(tokens, j + 1);
+                if nm {
+                    res.claims.append(
+                        MarkerClaim(name=nm, space=space, line=tok.loc.line)
+                    );
+                }
+                while j < body_end
+                    and tokens[j].value != '{'
+                    and tokens[j].value != ';' {
+                    j += 1;
+                }
+                continue;
+            }
+        }
+        j += 1;
+    }
+}
+
+
+impl _strip_markers(src: str, file_path: str) -> StripResult {
+    res = StripResult(text=src);
+    try {
+        (tokens, err_count) = tokenize(src, file_path);
+    } except Exception as e {
+        res.note = f"tokenize failed: {e}";
+        return res;
+    }
+    if err_count {
+        res.note = "lex errors; skipped";
+        return res;
+    }
+    edits: list[tuple[int, int, str]] = [];
+    depth = 0;
+    stmt_start = True;
+    i = 0;
+    n = len(tokens);
+    while i < n {
+        tok = tokens[i];
+        kind_str = str(tok.kind);
+        if tok.value == '{' and kind_str == 'TokenKind.LBRACE' {
+            depth += 1;
+            stmt_start = False;
+            i += 1;
+            continue;
+        }
+        if tok.value == '}' and kind_str == 'TokenKind.RBRACE' {
+            depth -= 1;
+            stmt_start = depth == 0;
+            i += 1;
+            continue;
+        }
+        if tok.value == ';' {
+            stmt_start = depth == 0;
+            i += 1;
+            continue;
+        }
+        if depth == 0 and 'STRING' in kind_str {
+            stmt_start = True;
+            i += 1;
+            continue;
+        }
+        if (
+            depth == 0
+            and stmt_start
+            and tok.value in _MARKER_SPACES
+            and not _is_string_kind(kind_str)
+            and i + 1 < n
+        ) {
+            space = _MARKER_SPACES[tok.value];
+            nxt = tokens[i + 1];
+            if nxt.value == '{' and str(nxt.kind) == 'TokenKind.LBRACE' {
+                d = 1;
+                j = i + 2;
+                close_idx = -1;
+                while j < n {
+                    jv = tokens[j];
+                    if jv.value == '{' and str(jv.kind) == 'TokenKind.LBRACE' {
+                        d += 1;
+                    } elif jv.value == '}' and str(jv.kind) == 'TokenKind.RBRACE' {
+                        d -= 1;
+                        if d == 0 {
+                            close_idx = j;
+                            break;
+                        }
+                    }
+                    j += 1;
+                }
+                if close_idx < 0 {
+                    res.note = "unbalanced marker block; skipped";
+                    return res;
+                }
+                edits.append((tok.loc.pos_start, nxt.loc.pos_end, ''));
+                edits.append(
+                    (tokens[close_idx].loc.pos_start, tokens[close_idx].loc.pos_end, '')
+                );
+                _collect_block_claims(tokens, i + 2, close_idx, space, res);
+                depth += 1;
+                i += 2;
+                continue;
+            }
+            if nxt.value in _ELEMENT_KEYWORDS and not _is_string_kind(str(nxt.kind)) {
+                edits.append((tok.loc.pos_start, nxt.loc.pos_start, ''));
+                if nxt.value == 'import' {
+                    if space == 'server'
+                        and i + 2 < n
+                        and tokens[i + 2].value == 'from' {
+                        tgt = _dotted_target(tokens, i + 3);
+                        if tgt {
+                            res.sv_imports.append(tgt);
+                        }
+                    }
+                } elif nxt.value in _NAMED_ELEMENT_KEYWORDS {
+                    nm = _first_name_after(tokens, i + 2);
+                    if nm {
+                        res.claims.append(
+                            MarkerClaim(name=nm, space=space, line=tok.loc.line)
+                        );
+                    }
+                }
+                i += 1;
+                continue;
+            }
+        }
+        if depth == 0 {
+            stmt_start = False;
+        }
+        i += 1;
+    }
+    if not edits {
+        return res;
+    }
+    edits.sort();
+    src_bytes = src.encode('utf-8');
+    out: list[bytes] = [];
+    cursor = 0;
+    for (start, end, repl) in edits {
+        out.append(src_bytes[cursor:start]);
+        out.append(repl.encode('utf-8'));
+        cursor = end;
+    }
+    out.append(src_bytes[cursor:]);
+    res.text = (b''.join(out)).decode('utf-8');
+    res.changed = True;
+    return res;
+}
+
+
+impl _iter_migration_files(paths: list[str]) -> list[str] {
+    files: list[str] = [];
+    for p in paths {
+        if os.path.isfile(p) {
+            if p.endswith('.jac') {
+                files.append(p);
+            }
+            continue;
+        }
+        if not os.path.isdir(p) {
+            console.error(f"Path '{p}' does not exist.");
+            continue;
+        }
+        for (cur, dirnames, filenames) in os.walk(p) {
+            kept = [
+                d
+                for d in sorted(dirnames)
+                if not d.startswith('.') and d not in _PRUNE_DIRS
+            ];
+            dirnames.clear();
+            dirnames.extend(kept);
+            for fn in sorted(filenames) {
+                if fn.endswith('.jac') {
+                    files.append(os.path.join(cur, fn));
+                }
+            }
+        }
+    }
+    return files;
+}
+
+
+impl _read_text_if_exists(path: str) -> str {
+    if os.path.exists(path) {
+        with open(path, 'r') as f {
+            return f.read();
+        }
+    }
+    return '';
+}
+
+
+impl _append_toml_entries(
+    toml_path: str, header: str, entries: dict[str, str], dry_run: bool
+) -> list[str] {
+    import tomllib;
+    text = _read_text_if_exists(toml_path);
+    try {
+        doc = tomllib.loads(text);
+    } except Exception {
+        doc = {};
+    }
+    section: dict[str, any] = doc;
+    for part in header.strip('[]').split('.') {
+        nxt_section = section.get(part, {}) if isinstance(section, dict) else {};
+        section = nxt_section;
+    }
+    missing = {
+        k: v
+        for (k, v) in entries.items()
+        if not (isinstance(section, dict) and k in section)
+    };
+    if not missing {
+        return [];
+    }
+    added = [f'"{k}" = "{v}"' for (k, v) in sorted(missing.items())];
+    if dry_run {
+        return added;
+    }
+    lines: list[str] = text.splitlines();
+    header_idx = -1;
+    for (idx, ln) in enumerate(lines) {
+        if ln.strip() == header {
+            header_idx = idx;
+            break;
+        }
+    }
+    if header_idx >= 0 {
+        insert_at = header_idx + 1;
+        merged = lines[:insert_at] + added + lines[insert_at:];
+        new_text = "\n".join(merged);
+        if text.endswith("\n") {
+            new_text += "\n";
+        }
+    } else {
+        base = text if (not text or text.endswith("\n")) else text + "\n";
+        sep = "\n" if base else "";
+        new_text = base + sep + header + "\n" + "\n".join(added) + "\n";
+    }
+    with open(toml_path, 'w') as f {
+        f.write(new_text);
+    }
+    return added;
+}
+
+
+impl _append_app_table(
+    toml_path: str, name: str, table: dict[str, str], dry_run: bool
+) -> list[str] {
+    import tomllib;
+
+    text = _read_text_if_exists(toml_path);
+    try {
+        doc = tomllib.loads(text);
+    } except Exception {
+        doc = {};
+    }
+    apps = doc.get('apps', {}) if isinstance(doc, dict) else {};
+    if isinstance(apps, dict) and name in apps {
+        return [];
+    }
+    lines: list[str] = text.split("\n");
+    before = len(lines);
+    _toml_append_section(lines, ('apps', name), table);
+    added = [
+        ln
+        for ln in lines[before:]
+        if ln and not ln.startswith('[')
+    ];
+    if dry_run {
+        return added;
+    }
+    with open(toml_path, 'w') as f {
+        f.write("\n".join(lines));
+    }
+    return added;
+}
+
+
+impl _ensure_workspace(toml_path: str, dry_run: bool) -> str {
+    import tomllib;
+    import from pathlib { Path }
+
+    text = _read_text_if_exists(toml_path);
+    doc = tomllib.loads(text);
+    apps = doc.get('apps') if isinstance(doc, dict) else None;
+    if isinstance(apps, dict) and apps {
+        return '';
+    }
+    base = JacConfig.load(Path(toml_path));
+    lines: list[str] = text.split("\n");
+    base_name = migrate_implicit_app(lines, base);
+    if not dry_run {
+        with open(toml_path, 'w') as f {
+            f.write("\n".join(lines));
+        }
+    }
+    return base_name;
+}
+
+
+impl _service_file_for(
+    target: str, importer: str, root_dir: str, scanned: list[str]
+) -> str {
+    dots = len(target) - len(target.lstrip('.'));
+    parts = [
+        p
+        for p in target.strip('.').split('.')
+        if p
+    ];
+    if not parts {
+        return '';
+    }
+    importer_dir = os.path.dirname(os.path.abspath(importer));
+    bases: list[str] = [];
+    if dots {
+        base = importer_dir;
+        for _ in range(dots - 1) {
+            base = os.path.dirname(base);
+        }
+        bases.append(base);
+    } else {
+        bases.append(root_dir);
+        bases.append(importer_dir);
+    }
+    for base in bases {
+        candidate = os.path.join(base, os.sep.join(parts)) + '.jac';
+        if os.path.isfile(candidate) {
+            return os.path.abspath(candidate);
+        }
+    }
+    want = parts[-1] + '.jac';
+    for p in scanned {
+        if os.path.basename(p) == want {
+            return os.path.abspath(p);
+        }
+    }
+    return '';
+}
+
+
+impl _project_entry_stem(toml_path: str) -> str {
+    try {
+        import tomllib;
+        with open(toml_path, 'rb') as f {
+            proj_doc = tomllib.load(f);
+        }
+        entry_point = str(proj_doc.get('project', {}).get('entry-point', '') or '');
+        if entry_point.endswith('.jac') {
+            entry_point = entry_point[:-4];
+        }
+        return entry_point.rsplit('.', 1)[-1];
+    } except Exception {
+        return '';
+    }
+}
+
+
+impl _parses_clean(src: str, file_path: str) -> bool {
+    try {
+        (_mod, had_error) = rd_parse(src, file_path);
+        return not had_error;
+    } except Exception {
+        return False;
+    }
+}
+
+
+impl _format_source(src: str, file_path: str) -> (str | None) {
+    try {
+        prog = JacProgram.jac_str_formatter(
+            source_str=src, file_path=file_path, auto_lint=False
+        );
+        if prog.errors_had {
+            return None;
+        }
+        formatted = prog.mod.main.gen.jac;
+        return formatted;
+    } except Exception {
+        return None;
+    }
+}
+
+
+impl _verify_claims(
+    file_path: str,
+    claims: list[MarkerClaim],
+    pins: dict[str, str],
+    unverified: list[str]
+) {
+    proj_root = find_jac_project_root(file_path);
+    if not proj_root {
+        unverified.append(f"{file_path} (no jac.toml found)");
+        return;
+    }
+    if file_path.endswith('.impl.jac') or file_path.endswith('.test.jac') {
+        unverified.append(f"{file_path} (annex; verify via its base module)");
+        return;
+    }
+    prog = JacProgram();
+    try {
+        mod = prog.compile(file_path, no_cgen=True);
+    } except Exception as e {
+        unverified.append(f"{file_path} (compile failed: {e})");
+        return;
+    }
+    if prog.errors_had {
+        unverified.append(f"{file_path} (compile errors)");
+        return;
+    }
+    stamped: dict[str, tuple[str, bool]] = {};
+    for stmt in mod.body {
+        try {
+            nm = element_display_name(stmt);
+        } except Exception {
+            continue;
+        }
+        space = getattr(stmt?.code_context, 'value', '');
+        stamped[nm] = (space, bool(getattr(stmt, 'codespace_dual', False)));
+    }
+    mod_dot = module_dot_path(file_path, proj_root);
+    for claim in claims {
+        got = stamped.get(claim.name);
+        if got is None {
+            unverified.append(
+                f"{file_path}:{claim.line} '{claim.name}' (element not found)"
+            );
+            continue;
+        }
+        (space, dual) = got;
+        if space != claim.space or dual {
+            pins[f"{mod_dot}.{claim.name}"] = claim.space;
+        }
+    }
+}
+
+
+impl _module_has_jsx(decl: any) -> bool {
+    for sub in decl.get_all_sub_nodes(uni.UniNode) {
+        if type(sub).__name__.startswith('Jsx') {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl _returns_jsx(decl: any) -> bool {
+    sig = decl?.signature;
+    ret = sig?.return_type if sig is not None else None;
+    text = '';
+    try {
+        text = ret.unparse() if ret is not None else '';
+    } except Exception {
+        text = '';
+    }
+    return 'Jsx' in text;
+}
+
+impl _parse_module(path: str) -> any {
+    try {
+        with open(path, 'r') as f {
+            src = f.read();
+        }
+        (mod, had_error) = rd_parse(src, path);
+        return None if had_error else mod;
+    } except Exception {
+        return None;
+    }
+}
+
+impl _plain_top_decls(mod: any) -> dict[str, any] {
+    out: dict[str, any] = {};
+    for item in (mod.body or []) {
+        if (
+            isinstance(item, (uni.Ability, uni.Archetype))
+            and item.surface_kind
+            and item.access is None
+        ) {
+            out[item.sym_name] = item;
+        }
+    }
+    return out;
+}
+
+impl _priv_top_decls(mod: any) -> dict[str, any] {
+    out: dict[str, any] = {};
+    for item in (mod.body or []) {
+        if (
+            isinstance(item, (uni.Ability, uni.Archetype))
+            and item.surface_kind
+            and item.access is not None
+            and item.exposure == SymbolAccess.PRIVATE
+        ) {
+            out[item.sym_name] = item;
+        }
+    }
+    return out;
+}
+
+impl _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str {
+    try {
+        resolved = module_path.resolve_relative_path();
+        if isinstance(resolved, str)
+            and resolved.endswith('.jac')
+            and os.path.isfile(resolved) {
+            return os.path.realpath(resolved);
+        }
+    } except Exception {}
+    try {
+        dotted = module_path.dot_path_str;
+        level = module_path.level;
+    } except Exception {
+        return '';
+    }
+    parts = [
+        p
+        for p in dotted.split('.')
+        if p
+    ];
+    if level > 0 {
+        base_dir = os.path.dirname(importer);
+        for _ in range(level - 1) {
+            base_dir = os.path.dirname(base_dir);
+        }
+        candidate = os.path.join(base_dir, *parts) + '.jac';
+    } else {
+        candidate = os.path.join(proj_root, *parts) + '.jac';
+    }
+    return os.path.realpath(candidate) if os.path.isfile(candidate) else '';
+}
+
+impl _imported_names(imp: any) -> list[str] {
+    names: list[str] = [];
+    for item in (imp.items or []) {
+        if isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name) {
+            names.append(item.name.value);
+        }
+    }
+    return names;
+}
+
+impl _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
+    ws = workspace_for_path(proj_root);
+    notes: list[str] = [];
+    plan: list[AccessRewrite] = [];
+    if ws is None {
+        notes.append(f"{proj_root}: no jac.toml found, nothing to migrate");
+        return (plan, notes);
+    }
+    serving = [
+        a
+        for a in ws.apps.values()
+        if a.has_server
+    ];
+    if not serving {
+        notes.append(f"{ws.toml_path}: no serving app declared, nothing to migrate");
+        return (plan, notes);
+    }
+    seen: set[tuple[str, str]] = set();
+    priv_seen: set[tuple[str, str]] = set();
+
+    def add(path: str, decl: any, kind: str, reason: str) {
+        key = (path, decl.sym_name);
+        if key in seen {
+            return;
+        }
+        if str(decl.sym_name).startswith('_') {
+            return;
+        }
+        if kind == 'function' and (_returns_jsx(decl) or _module_has_jsx(decl)) {
+            return;
+        }
+        seen.add(key);
+        plan.append(
+            AccessRewrite(
+                path=path,
+                line=decl.name_spec.loc.first_line,
+                kind=kind,
+                name=decl.sym_name,
+                reason=reason
+            )
+        );
+    }
+
+    for app in serving {
+        entry_rel = str(app.`entry or '').replace('.', os.sep);
+        entry_path = os.path.join(ws.project_root, entry_rel + '.jac');
+        if not os.path.isfile(entry_path) {
+            entry_path = os.path.join(ws.project_root, str(app.`entry or ''));
+        }
+        if not os.path.isfile(entry_path) {
+            notes.append(f"app '{app.name}': entry '{app.`entry}' not found, skipped");
+            continue;
+        }
+        entry_path = os.path.realpath(entry_path);
+        visited: set[tuple[str, bool]] = set();
+        queue: list[tuple[str, bool]] = [(entry_path, True)];
+        while queue {
+            (path, is_entry) = queue.pop(0);
+            if (path, is_entry) in visited {
+                continue;
+            }
+            visited.add((path, is_entry));
+            mod = _parse_module(path);
+            if mod is None {
+                notes.append(f"{path}: does not parse, skipped");
+                continue;
+            }
+            plain = _plain_top_decls(mod);
+            for (pname, pdecl) in _priv_top_decls(mod).items() {
+                pkey = (path, pname);
+                if pkey in priv_seen {
+                    continue;
+                }
+                priv_seen.add(pkey);
+                notes.append(
+                    f"{os.path.relpath(path)}:{pdecl.name_spec.loc.first_line}: "
+                    f":priv {pname} was served (authenticated) before; it is now private. "
+                    "Change it to :protect if it was meant to be an endpoint (left unchanged)."
+                );
+            }
+            for (name, decl) in plain.items() {
+                if isinstance(decl, uni.Ability) {
+                    if is_entry {
+                        add(
+                            path,
+                            decl,
+                            'function',
+                            f"plain def in entry of app '{app.name}'"
+                        );
+                    }
+                } else {
+                    add(
+                        path,
+                        decl,
+                        'walker',
+                        f"plain walker reachable from app '{app.name}'"
+                    );
+                }
+            }
+            for imp in mod.get_all_sub_nodes(uni.Import) {
+                if not imp.is_jac {
+                    continue;
+                }
+                module_path = imp.from_loc;
+                if imp.is_absorb and imp.items {
+                    module_path = imp.items[0];
+                }
+                if module_path is None {
+                    continue;
+                }
+                target = _resolve_project_import(module_path, path, ws.project_root);
+                if not target
+                    or not target.startswith(
+                        os.path.realpath(ws.project_root) + os.sep
+                    ) {
+                    continue;
+                }
+                if is_entry and imp.items {
+                    wanted = _imported_names(imp);
+                    tmod = _parse_module(target);
+                    if tmod is not None {
+                        tplain = _plain_top_decls(tmod);
+                        for nm in wanted {
+                            decl = tplain.get(nm);
+                            if decl is not None and isinstance(decl, uni.Ability) {
+                                add(
+                                    target,
+                                    decl,
+                                    'function',
+                                    f"plain def imported by entry of app '{app.name}'"
+                                );
+                            }
+                        }
+                    }
+                }
+
+                queue.append((target, is_entry and imp.is_absorb));
+            }
+        }
+    }
+    return (plan, notes);
+}
+
+impl _apply_access_rewrites(
+    path: str, rewrites: list[AccessRewrite]
+) -> tuple[str, int] {
+    import re;
+    with open(path, 'r') as f {
+        lines = f.read().split('\n');
+    }
+    changed = 0;
+    for rw in rewrites {
+        idx = rw.line - 1;
+        if idx < 0 or idx >= len(lines) {
+            continue;
+        }
+        keyword = 'walker' if rw.kind == 'walker' else 'def';
+        pattern = re.compile(r'\b' + keyword + r'\s+' + re.escape(rw.name) + r'\b');
+        new_line = pattern.sub(keyword + ':protect ' + rw.name, lines[idx], count=1);
+        if new_line != lines[idx] {
+            lines[idx] = new_line;
+            changed += 1;
+        }
+    }
+    return ('\n'.join(lines), changed);
+}
+
+impl _fix_access(paths: list[str], dry_run: bool) -> int {
+    proj_roots: list[str] = [];
+    for p in paths {
+        cand = os.path.realpath(p if os.path.isdir(p) else os.path.dirname(p));
+        if cand not in proj_roots {
+            proj_roots.append(cand);
+        }
+    }
+    total: list[AccessRewrite] = [];
+    all_notes: list[str] = [];
+    for proj_root in proj_roots {
+        (plan, notes) = _access_plan(proj_root);
+        total.extend(plan);
+        all_notes.extend(notes);
+    }
+    for note in all_notes {
+        console.print(f"  note: {note}");
+    }
+    if not total {
+        console.print(
+            "Nothing to migrate: every served declaration already declares its exposure."
+        );
+        return 0;
+    }
+    by_file: dict[str, list[AccessRewrite]] = {};
+    for rw in total {
+        by_file.setdefault(rw.path, []).append(rw);
+    }
+    console.print(
+        f"{'Would mark' if dry_run else 'Marking'} {len(
+            total
+        )} declaration(s) :protect:"
+    );
+    for (path, rws) in sorted(by_file.items()) {
+        for rw in sorted(rws, key=lambda (r: AccessRewrite) { r.line; }) {
+            console.print(
+                f"  {os.path.relpath(path)}:{rw.line}  {rw.kind} {rw.name}  ({rw.reason})"
+            );
+        }
+    }
+    if dry_run {
+        return 0;
+    }
+    written = 0;
+    for (path, rws) in by_file.items() {
+        (text, changed) = _apply_access_rewrites(path, rws);
+        if changed == 0 {
+            continue;
+        }
+        if not _parses_clean(text, path) {
+            console.error(f"{path}: rewritten source does not parse; left untouched");
+            continue;
+        }
+        with open(path, 'w') as f {
+            f.write(text);
+        }
+        written += changed;
+    }
+    console.print(f"Rewrote {written} declaration(s). Run `jac check` to confirm.");
+    return 0;
+}
+
+impl _fix_dependencies(paths: list[str], dry_run: bool) -> int {
+    manifests = find_manifests(paths);
+    if not manifests {
+        console.error("No jac.toml found to migrate.");
+        return 1;
+    }
+    changed = 0;
+    for manifest in manifests {
+        result = migrate_manifest(manifest);
+        if not result.moved {
+            continue;
+        }
+        changed += 1;
+        verb = "Would move" if dry_run else "Moved";
+        console.print(
+            f"{verb} {len(result.moved)} Python dependenc(ies) to [*.pypi] in {manifest}",
+            style="bold"
+        );
+        for moved_key in result.moved {
+            console.print(f"  {moved_key}", style="muted");
+        }
+        if not result.lossless {
+            console.warning(
+                f"{manifest}: the file could not be edited in place, so it was "
+                "rewritten; comments inside the dependency tables were dropped"
+            );
+        }
+        if not dry_run {
+            manifest.write_text(result.text, encoding="utf-8");
+        }
+    }
+    if not changed {
+        console.success(
+            "Every jac.toml already keeps Python packages in [dependencies.pypi]."
         );
     }
     return 0;

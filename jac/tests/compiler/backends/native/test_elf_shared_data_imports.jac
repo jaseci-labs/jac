@@ -15,7 +15,30 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import from unittest { SkipTest }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+import from jaclang.compiler.backends.native.native_link { NativeLinkJob, link_native }
+import jaclang.compiler.backends.native.llvm.binding as llvm;
+
+def _link(
+    output: Path,
+    objects: list[bytes],
+    needed_libs: list[str],
+    shared: bool = False,
+    export_symbols: list[str] = [],
+    triple: str = ""
+) {
+    link_native(
+        NativeLinkJob(
+            platform="elf",
+            triple=triple or llvm.get_default_triple(),
+            output_path=str(output),
+            shared=shared,
+            soname=output.name,
+            objects=objects,
+            needed_libs=needed_libs,
+            export_symbols=export_symbols
+        )
+    );
+}
 
 test "a shared object's data pointer to an imported function is relocated" {
     if sys.platform != "linux" or shutil.which("cc") is None {
@@ -38,14 +61,7 @@ test "a shared object's data pointer to an imported function is relocated" {
             ["cc", "-c", "-fPIC", "-O1", str(source), "-o", str(obj_path)], check=True
         );
         output = work / "libprobe.so";
-        assert ElfLinker.link(
-            objects=[obj_path.read_bytes()],
-            output_path=str(output),
-            needed_libs=["libc.so.6"],
-            shared=True,
-            export_symbols=["probe"],
-            soname="libprobe.so"
-        );
+        _link(output, [obj_path.read_bytes()], ["libc.so.6"], True, ["probe"]);
         script = (
             "import ctypes, sys\n"
             + f"lib = ctypes.CDLL({str(output)!r})\n"

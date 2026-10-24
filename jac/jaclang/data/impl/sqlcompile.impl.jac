@@ -1,102 +1,32 @@
-def _ident_ok(name: str) -> bool {
-    if not name {
-        return False;
-    }
-    for ch in name {
-        if not (ch.isalnum() or ch == '_') {
-            return False;
-        }
-    }
-    return not name[0].isdigit();
-}
+def _ident_ok(name: str) -> bool;
 
 
-def _scalar(v: any) -> any {
-    return str(v) if isinstance(v, UUID) else v;
-}
+def _scalar(v: any) -> any;
 
 
-def _pushable_value(v: any) -> bool {
-    if isinstance(v, (str, int, float, bool, UUID)) or v is None {
-        return True;
-    }
-    if isinstance(v, (list, tuple, set)) {
-        for x in v {
-            if not isinstance(x, (str, int, float, bool, UUID)) {
-                return False;
-            }
-        }
-        return True;
-    }
-    return False;
-}
+def _pushable_value(v: any) -> bool;
 
 
-def _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str {
-    key = f"{pfx}t";
-    params[key] = names;
-    return f"{alias}.arch_type = ANY(CAST(:{key} AS text[]))";
-}
+def _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str;
 
 
-def _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str] {
-    if tname not in cache {
-        names = list(store.subtype_names(tname));
-        if tname not in names {
-            names.append(tname);
-        }
-        cache[tname] = names;
-    }
-    return cache[tname];
-}
+def _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str];
 
 
-def _sql_type_of(v: any) -> str {
-    if isinstance(v, bool) {
-        return 'boolean';
-    }
-    if isinstance(v, int) {
-        return 'bigint';
-    }
-    if isinstance(v, float) {
-        return 'float8';
-    }
-    return 'text';
-}
+def _sql_type_of(v: any) -> str;
 
 
-def _sanitize_ident(name: str) -> str {
-    out = '';
-    for ch in name.lower() {
-        out += ch if (ch.isalnum() or ch == '_') else '_';
-    }
-    return out;
-}
+def _sanitize_ident(name: str) -> str;
 
 
 def _promoted_col(
     alias: str, arch_names: list[str], field: str, promotions: (dict[str, any] | None)
-) -> (str | None) {
-    if not promotions {
-        return None;
-    }
-    for arch in arch_names {
-        declared = promotions.get(arch);
-        if declared and field in declared {
-            col = f"g_{_sanitize_ident(arch)}_{_sanitize_ident(field)}";
-            return f"{alias}.{col}";
-        }
-    }
-    return None;
-}
+) -> (str | None);
 
 
 def _field_expr(
     alias: str, field: str, arch_names: list[str], promotions: (dict[str, any] | None)
-) -> str {
-    col = _promoted_col(alias, arch_names, field, promotions);
-    return col if col is not None else f"{alias}.props->'archetype'->'{field}'";
-}
+) -> str;
 
 
 def _row_cond(
@@ -106,29 +36,7 @@ def _row_cond(
     pfx: str,
     arch_names: list[str],
     promotions: (dict[str, any] | None)
-) -> (str | None) {
-    op = {'<': '<', '<=': '<=', '>': '>', '>=': '>=', '==': '=', '!=': '<>'}.get(p.op);
-    if op is None {
-        return None;
-    }
-    names = p.field;
-    vals = p.value;
-    if not isinstance(names, tuple) or not isinstance(vals, tuple) {
-        return None;
-    }
-    lhs: list[str] = [];
-    rhs: list[str] = [];
-    for (i, name) in enumerate(names) {
-        if not _ident_ok(name) {
-            return None;
-        }
-        key = f"{pfx}k{i}";
-        params[key] = _scalar(vals[i]);
-        lhs.append(_field_expr(alias, name, arch_names, promotions));
-        rhs.append(f"to_jsonb(CAST(:{key} AS {_sql_type_of(vals[i])}))");
-    }
-    return f"({', '.join(lhs)}) {op} ({', '.join(rhs)})";
-}
+) -> (str | None);
 
 
 def _pred_cond(
@@ -138,126 +46,21 @@ def _pred_cond(
     pfx: str,
     arch_names: (list[str] | None) = None,
     promotions: (dict[str, any] | None) = None
-) -> (str | None) {
-    if isinstance(p.field, tuple) {
-        return _row_cond(alias, p, params, pfx, arch_names or [], promotions);
-    }
-    if not _ident_ok(p.field) or not _pushable_value(p.value) {
-        return None;
-    }
-    expr = _field_expr(alias, p.field, arch_names or [], promotions);
-    if p.op == 'in' {
-        vals = list(p.value) if isinstance(p.value, (list, tuple, set)) else [p.value];
-        parts: list[str] = [];
-        for (i, v) in enumerate(vals) {
-            key = f"{pfx}v{i}";
-            params[key] = _scalar(v);
-            parts.append(f"to_jsonb(CAST(:{key} AS {_sql_type_of(v)}))");
-        }
-        if not parts {
-            return 'FALSE';
-        }
-        return f"{expr} IN ({', '.join(parts)})";
-    }
-    if p.value is None {
-        if p.op == '==' {
-            return f"{expr} = 'null'::jsonb";
-        }
-        if p.op == '!=' {
-            return f"({expr} IS NULL OR {expr} <> 'null'::jsonb)";
-        }
-        return 'FALSE';
-    }
-    key = f"{pfx}v";
-    params[key] = _scalar(p.value);
-    rhs = f"to_jsonb(CAST(:{key} AS {_sql_type_of(p.value)}))";
-    if p.op == '==' {
-        return f"{expr} = {rhs}";
-    }
-    if p.op == '!=' {
-        return f"({expr} IS NULL OR {expr} <> {rhs})";
-    }
-    op = {'<': '<', '<=': '<=', '>': '>', '>=': '>='}.get(p.op);
-    if op is None {
-        return None;
-    }
-    return f"{expr} {op} {rhs}";
-}
+) -> (str | None);
 
 
-def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
-    mu = f"{pfx}mu";
-    mt = f"{pfx}mt";
-    params[mu] = root_id;
-    params[mt] = root_id;
-    return (
-        f"({alias}.root_id = CAST(:{mu} AS uuid)"
-        f" OR ({alias}.props->'access'->>'all')::int > -1"
-        f" OR ({alias}.props->'access'->'roots'->'anchors')"
-        f" ? CAST(:{mt} AS text)"
-        f" OR EXISTS ("
-        f"SELECT 1 FROM anchors ge"
-        f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
-        f" AND ({alias}.props->'access'->'groups'->'anchors')"
-        f" ? CAST(ge.dst AS text)"
-        f")"
-        f" OR (EXISTS ("
-        f"SELECT 1 FROM anchors ro"
-        f" WHERE ro.id = {alias}.root_id"
-        f" AND COALESCE("
-        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" (ro.props->'access'->>'all')::int"
-        f") > -1"
-        f") AND COALESCE("
-        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
-        f" 0"
-        f") > -1)"
-        f")"
-    );
-}
+def _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str;
 
 
-def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]] {
-    if dir == 1 {
-        return [
-            (f"e.dst = {fid}", 'e.src'),
-            (f"e.undirected AND e.src = {fid} AND e.dst <> {fid}", 'e.dst')
-        ];
-    }
-    if dir == 3 {
-        return [
-            (f"e.src = {fid}", 'e.dst'),
-            (f"e.dst = {fid} AND e.src <> {fid}", 'e.src')
-        ];
-    }
-    return [
-        (f"e.src = {fid}", 'e.dst'),
-        (f"e.undirected AND e.dst = {fid} AND e.src <> {fid}", 'e.src')
-    ];
-}
+def _edge_branches(fid: str, dir: int) -> list[tuple[str, str]];
 
 
-def _edge_join(alias: str, fid: str, dir: int, econds: list[str]) -> str {
-    arms: list[str] = [];
-    for (cond, other) in _edge_branches(fid, dir) {
-        if fid == 'f0.id' {
-            end = 'e.src' if other == 'e.dst' else 'e.dst';
-            cond += f" AND {end} = ANY(CAST(:origin AS uuid[]))";
-        }
-        where = ' AND '.join(["e.kind = 'EdgeAnchor'", cond] + econds);
-        arms.append(f"SELECT e.*, {other} AS other FROM anchors e WHERE {where}");
-    }
-    return f"JOIN LATERAL ({' UNION ALL '.join(arms)}) {alias} ON TRUE";
-}
+def _edge_join(
+    alias: str, fid: str, dir: int, econds: list[str], reach: list[str]
+) -> str;
 
 
-def _nd_types(hop: QHop) -> list[type] {
-    nd = hop.nd;
-    if nd is None {
-        return [];
-    }
-    return list(nd) if isinstance(nd, tuple) else [nd];
-}
+def _nd_types(hop: QHop) -> list[type];
 
 
 impl compile_query(
@@ -300,16 +103,19 @@ impl compile_query(
                 econds.append(cond);
             }
         }
-        joins.append(_edge_join(e, fid, hop.dir, econds));
         nconds = [f"{nd_alias}.id = {e}.other", f"{nd_alias}.kind = 'NodeAnchor'"];
+        reach: list[str] = [];
         for (k, nt) in enumerate(_nd_types(hop)) {
             import from jaclang.data.type_identity { storage_type }
             tname = storage_type(nt);
             if tname {
                 names = _type_names(tname, store, types);
                 nconds.append(_type_cond(nd_alias, names, params, f"h{n}n{k}"));
+                reach.append(f"h{n}n{k}r");
+                params[reach[-1]] = names + [''];
             }
         }
+        joins.append(_edge_join(e, fid, hop.dir, econds, reach));
         node_names = [str(getattr(nt, '__name__', '')) for nt in _nd_types(hop)];
         for (j, p) in enumerate(hop.preds) {
             cond = _pred_cond(
@@ -375,7 +181,7 @@ impl compile_query(
         tail += f" OFFSET {int(q.offset)}";
     }
     out.sql = (
-        f"SELECT n{n}.id, e{n}.id "
+        f"SELECT n{n}.id, e{n}.id, f0.id "
         f"FROM unnest(CAST(:origin AS uuid[])) WITH ORDINALITY AS f0(id, ord) "
         f"LEFT JOIN anchors s1 ON s1.id = f0.id "
         + ' '.join(joins)
@@ -385,4 +191,269 @@ impl compile_query(
     );
     out.params = params;
     return out;
+}
+
+impl _ident_ok(name: str) -> bool {
+    if not name {
+        return False;
+    }
+    for ch in name {
+        if not (ch.isalnum() or ch == '_') {
+            return False;
+        }
+    }
+    return not name[0].isdigit();
+}
+
+
+impl _scalar(v: any) -> any {
+    return str(v) if isinstance(v, UUID) else v;
+}
+
+
+impl _pushable_value(v: any) -> bool {
+    if isinstance(v, (str, int, float, bool, UUID)) or v is None {
+        return True;
+    }
+    if isinstance(v, (list, tuple, set)) {
+        for x in v {
+            if not isinstance(x, (str, int, float, bool, UUID)) {
+                return False;
+            }
+        }
+        return True;
+    }
+    return False;
+}
+
+
+impl _type_cond(alias: str, names: list[str], params: dict[str, any], pfx: str) -> str {
+    key = f"{pfx}t";
+    params[key] = names;
+    return f"{alias}.arch_type = ANY(CAST(:{key} AS text[]))";
+}
+
+
+impl _type_names(tname: str, store: Store, cache: dict[str, list[str]]) -> list[str] {
+    if tname not in cache {
+        names = list(store.subtype_names(tname));
+        if tname not in names {
+            names.append(tname);
+        }
+        cache[tname] = names;
+    }
+    return cache[tname];
+}
+
+
+impl _sql_type_of(v: any) -> str {
+    if isinstance(v, bool) {
+        return 'boolean';
+    }
+    if isinstance(v, int) {
+        return 'bigint';
+    }
+    if isinstance(v, float) {
+        return 'float8';
+    }
+    return 'text';
+}
+
+
+impl _sanitize_ident(name: str) -> str {
+    out = '';
+    for ch in name.lower() {
+        out += ch if (ch.isalnum() or ch == '_') else '_';
+    }
+    return out;
+}
+
+
+impl _promoted_col(
+    alias: str, arch_names: list[str], field: str, promotions: (dict[str, any] | None)
+) -> (str | None) {
+    if not promotions {
+        return None;
+    }
+    for arch in arch_names {
+        declared = promotions.get(arch);
+        if declared and field in declared {
+            col = f"g_{_sanitize_ident(arch)}_{_sanitize_ident(field)}";
+            return f"{alias}.{col}";
+        }
+    }
+    return None;
+}
+
+
+impl _field_expr(
+    alias: str, field: str, arch_names: list[str], promotions: (dict[str, any] | None)
+) -> str {
+    col = _promoted_col(alias, arch_names, field, promotions);
+    return col if col is not None else f"{alias}.props->'archetype'->'{field}'";
+}
+
+
+impl _row_cond(
+    alias: str,
+    p: QPred,
+    params: dict[str, any],
+    pfx: str,
+    arch_names: list[str],
+    promotions: (dict[str, any] | None)
+) -> (str | None) {
+    op = {'<': '<', '<=': '<=', '>': '>', '>=': '>=', '==': '=', '!=': '<>'}.get(p.op);
+    if op is None {
+        return None;
+    }
+    names = p.field;
+    vals = p.value;
+    if not isinstance(names, tuple) or not isinstance(vals, tuple) {
+        return None;
+    }
+    lhs: list[str] = [];
+    rhs: list[str] = [];
+    for (i, name) in enumerate(names) {
+        if not _ident_ok(name) {
+            return None;
+        }
+        key = f"{pfx}k{i}";
+        params[key] = _scalar(vals[i]);
+        lhs.append(_field_expr(alias, name, arch_names, promotions));
+        rhs.append(f"to_jsonb(CAST(:{key} AS {_sql_type_of(vals[i])}))");
+    }
+    return f"({', '.join(lhs)}) {op} ({', '.join(rhs)})";
+}
+
+
+impl _pred_cond(
+    alias: str,
+    p: QPred,
+    params: dict[str, any],
+    pfx: str,
+    arch_names: (list[str] | None) = None,
+    promotions: (dict[str, any] | None) = None
+) -> (str | None) {
+    if isinstance(p.field, tuple) {
+        return _row_cond(alias, p, params, pfx, arch_names or [], promotions);
+    }
+    if not _ident_ok(p.field) or not _pushable_value(p.value) {
+        return None;
+    }
+    expr = _field_expr(alias, p.field, arch_names or [], promotions);
+    if p.op == 'in' {
+        vals = list(p.value) if isinstance(p.value, (list, tuple, set)) else [p.value];
+        parts: list[str] = [];
+        for (i, v) in enumerate(vals) {
+            key = f"{pfx}v{i}";
+            params[key] = _scalar(v);
+            parts.append(f"to_jsonb(CAST(:{key} AS {_sql_type_of(v)}))");
+        }
+        if not parts {
+            return 'FALSE';
+        }
+        return f"{expr} IN ({', '.join(parts)})";
+    }
+    if p.value is None {
+        if p.op == '==' {
+            return f"{expr} = 'null'::jsonb";
+        }
+        if p.op == '!=' {
+            return f"({expr} IS NULL OR {expr} <> 'null'::jsonb)";
+        }
+        return 'FALSE';
+    }
+    key = f"{pfx}v";
+    params[key] = _scalar(p.value);
+    rhs = f"to_jsonb(CAST(:{key} AS {_sql_type_of(p.value)}))";
+    if p.op == '==' {
+        return f"{expr} = {rhs}";
+    }
+    if p.op == '!=' {
+        return f"({expr} IS NULL OR {expr} <> {rhs})";
+    }
+    op = {'<': '<', '<=': '<=', '>': '>', '>=': '>='}.get(p.op);
+    if op is None {
+        return None;
+    }
+    return f"{expr} {op} {rhs}";
+}
+
+
+impl _acl_cond(alias: str, root_id: str, params: dict[str, any], pfx: str) -> str {
+    mu = f"{pfx}mu";
+    mt = f"{pfx}mt";
+    params[mu] = root_id;
+    params[mt] = root_id;
+    return (
+        f"({alias}.root_id = CAST(:{mu} AS uuid)"
+        f" OR ({alias}.props->'access'->>'all')::int > -1"
+        f" OR ({alias}.props->'access'->'roots'->'anchors')"
+        f" ? CAST(:{mt} AS text)"
+        f" OR EXISTS ("
+        f"SELECT 1 FROM anchors ge"
+        f" WHERE ge.kind = 'EdgeAnchor' AND ge.src = CAST(:{mu} AS uuid)"
+        f" AND ({alias}.props->'access'->'groups'->'anchors')"
+        f" ? CAST(ge.dst AS text)"
+        f")"
+        f" OR (EXISTS ("
+        f"SELECT 1 FROM anchors ro"
+        f" WHERE ro.id = {alias}.root_id"
+        f" AND COALESCE("
+        f"(ro.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" (ro.props->'access'->>'all')::int"
+        f") > -1"
+        f") AND COALESCE("
+        f"({alias}.props->'access'->'roots'->'anchors'->>CAST(:{mt} AS text))::int,"
+        f" 0"
+        f") > -1)"
+        f")"
+    );
+}
+
+
+impl _edge_branches(fid: str, dir: int) -> list[tuple[str, str]] {
+    if dir == 1 {
+        return [
+            (f"e.dst = {fid}", 'e.src'),
+            (f"e.undirected AND e.src = {fid} AND e.dst <> {fid}", 'e.dst')
+        ];
+    }
+    if dir == 3 {
+        return [
+            (f"e.src = {fid}", 'e.dst'),
+            (f"e.dst = {fid} AND e.src <> {fid}", 'e.src')
+        ];
+    }
+    return [
+        (f"e.src = {fid}", 'e.dst'),
+        (f"e.undirected AND e.dst = {fid} AND e.src <> {fid}", 'e.src')
+    ];
+}
+
+
+impl _edge_join(
+    alias: str, fid: str, dir: int, econds: list[str], reach: list[str]
+) -> str {
+    arms: list[str] = [];
+    for (cond, other) in _edge_branches(fid, dir) {
+        if fid == 'f0.id' {
+            end = 'e.src' if other == 'e.dst' else 'e.dst';
+            cond += f" AND {end} = ANY(CAST(:origin AS uuid[]))";
+        }
+        col = 'e.dst_type' if other == 'e.dst' else 'e.src_type';
+        typed = [f"{col} = ANY(CAST(:{key} AS text[]))" for key in reach];
+        where = ' AND '.join(["e.kind = 'EdgeAnchor'", cond] + econds + typed);
+        arms.append(f"SELECT e.*, {other} AS other FROM anchors e WHERE {where}");
+    }
+    return f"JOIN LATERAL ({' UNION ALL '.join(arms)}) {alias} ON TRUE";
+}
+
+
+impl _nd_types(hop: QHop) -> list[type] {
+    nd = hop.nd;
+    if nd is None {
+        return [];
+    }
+    return list(nd) if isinstance(nd, tuple) else [nd];
 }

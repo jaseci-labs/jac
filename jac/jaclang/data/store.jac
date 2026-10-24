@@ -62,6 +62,8 @@ obj AnchorRow {
         src: (UUID | None) = None,
         dst: (UUID | None) = None,
         undirected: bool = False,
+        src_type: str = '',
+        dst_type: str = '',
         ancestry: list[str] = [],
         version: int = 0;
 }
@@ -91,12 +93,14 @@ obj Store {
     def rollback -> None abst;
     def in_txn -> bool abst;
     def txn_isolation -> (TxnIsolation | None) abst;
+    def txn_serial -> int;
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] abst;
     def adjacency(
         node_id: UUID, after: (tuple[int, UUID] | None), limit: int
     ) -> list[tuple[int, UUID]] abst;
 
     def upsert(rows_in: list[AnchorRow]) -> None abst;
+    def retype_edges(ids: list[UUID]) -> None abst;
     def delete(ids: list[UUID]) -> None abst;
     def existing(ids: list[UUID]) -> set[UUID] abst;
     def root_ids -> list[UUID] abst;
@@ -123,14 +127,7 @@ obj Store {
 
 
 obj PgStore(Store) {
-    override def new_session -> PgStore {
-        return PgStore(
-            conninfo=self.conninfo,
-            ensure_cb=self.ensure_cb,
-            promotions=dict(self.promotions),
-            auto_schema=self.auto_schema
-        );
-    }
+    override def new_session -> PgStore;
 
     has conninfo: ConnInfo,
         ensure_cb: (any | None) = None,
@@ -145,6 +142,8 @@ obj PgStore(Store) {
         _isolation: (TxnIsolation | None) postinit,
         _known_types: set[str] postinit,
         _txn_types: set[str] postinit,
+        _txn_serial: int postinit,
+        _txn_subtypes: dict[str, list[str]] postinit,
         _listeners: list[ChannelListener] postinit,
         _listen_thread: (any | None) postinit,
         _listen_stop: (any | None) postinit,
@@ -166,12 +165,14 @@ obj PgStore(Store) {
     def rollback -> None;
     def in_txn -> bool;
     def txn_isolation -> (TxnIsolation | None);
+    def txn_serial -> int;
     def load_full(ids: list[UUID]) -> dict[UUID, AnchorRow];
     def adjacency(
         node_id: UUID, after: (tuple[int, UUID] | None), limit: int
     ) -> list[tuple[int, UUID]];
 
     def upsert(rows_in: list[AnchorRow]) -> None;
+    def retype_edges(ids: list[UUID]) -> None;
     def delete(ids: list[UUID]) -> None;
     def existing(ids: list[UUID]) -> set[UUID];
     def root_ids -> list[UUID];
@@ -212,6 +213,7 @@ obj PgStore(Store) {
     def _acquire_schema_lock(fingerprint: str) -> bool;
     def _release_schema_lock -> None;
     def _apply_schema_ddl -> None;
+    def _backfill_endpoint_types -> None;
     def _apply_schema_ddl_resilient -> None;
     def _load_known_types -> None;
     def _peer_sessions -> list[dict[str, any]];

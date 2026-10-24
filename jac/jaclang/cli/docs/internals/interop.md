@@ -75,11 +75,11 @@ remaining rows.
 | 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `JcirGenPass` static route + Vite/Bun bundler |
 | 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `JcirGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
-| 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + `WasmLinker` exports |
-| 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | `WasmLinker` import table + cl host shim |
+| 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + wasm-ld exports |
+| 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | wasm-ld import table + cl host shim |
 | 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live CPython objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
 | 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars, C-layout structs (by value or by address), `ptr[T]` addresses, pinned payloads | `NaIRGenPass` clib marshaller (`ctypes` on the Python backend) |
-| 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | the link plan's glue object (`backends/native/link_glue.jac`) + platform linkers |
+| 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | the link plan's glue object (`backends/native/link_glue.jac`) + LLD (`native_link.jac`) |
 
 The rest of the document is one section per group of rows.
 
@@ -488,7 +488,7 @@ which serves `/static/<stem>.wasm`) both route through
 compiles AOT, honors the project's `[memory]` settings (`profile = "nogc"`
 builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
 **without** `internalize` (so defined functions stay exported), and links
-with the pure-Jac `WasmLinker` (no wasm-ld/emscripten).
+with the wasm-ld that ships inside the compiler's LLVM shim (no emscripten).
 
 The language-level spelling of the crossing is a plain import of a
 native-placed module (inferred from its extern-decl surface, or pinned
@@ -519,7 +519,7 @@ setup at all.
 
 Underneath, the interop model is the standard wasm import/export contract:
 
-- **`cl → na`** (exports) -- `WasmLinker` exports `memory`, the
+- **`cl → na`** (exports) -- the module exports `memory`, the
   `__stack_pointer`/`__heap_base` globals, and **every defined function**
   (or an explicit `export_funcs` list). JS calls these directly after
   `WebAssembly.instantiate`.
@@ -768,7 +768,7 @@ picks the shell it builds. There is no separate CLI verb -- the core
 | Layer | Codespace / tech | Role |
 |-------|------------------|------|
 | UI | `cl` (Vite/React bundle) | `DesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
-| Host binary | `na` (LLVM, pure-Jac linker) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
+| Host binary | `na` (LLVM, linked by the bundled LLD) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
 | Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
 | Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
 | Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
@@ -827,8 +827,8 @@ RPC to the backend). It is the matrix in miniature.
 | `sv → cl` | `client/impl/{compiler,vite_bundler}.impl.jac`; `server/impl/server.impl.jac`; `backends/es/impl/jsx_processor.impl.jac` |
 | `sv ↔ na` | `runtime/interop_bridge.jac`; `backends/py/impl/jcir_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `backends/native/impl/na_compile_pass.impl.jac` |
 | `na ↔ C` | `compiler/backends/native/{foreign,abi}.jac`; `backends/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
-| `na → C host` | `backends/native/link_plan.jac` + `link_glue.jac`; `backends/native/impl/{elf,macho,pe}_linker.impl.jac` |
-| `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_linker}.jac`; `client/impl/compiler.impl.jac` |
+| `na → C host` | `backends/native/link_plan.jac` + `link_glue.jac`; `backends/native/native_link.jac` |
+| `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_artifact}.jac`; `client/impl/compiler.impl.jac` |
 | Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `backends/py/impl/jcir_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
 | Marshalling | `data/impl/serializer.impl.jac`; `server/impl/{server,transport}.impl.jac` |
 | Capability boundary | `compiler/passes/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/diagnostics.jac) (`E5090`) |

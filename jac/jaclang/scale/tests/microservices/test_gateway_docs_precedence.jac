@@ -13,14 +13,6 @@ without one it stays the gateway's API docs page.
 
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.scale.runtime.gateway.dispatch {
-    classify_route,
-    ROUTE_BUILTIN,
-    ROUTE_CLIENT_PAGE
-}
-import from jaclang.testing.testkit { ServingTestClient }
 
 
 def _dist(with_index: bool) -> str {

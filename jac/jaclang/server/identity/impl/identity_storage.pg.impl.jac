@@ -26,40 +26,16 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
      ];
 
 
-def _pg_json_default(o: object) -> str {
-    return str(o);
-}
+def _pg_json_default(o: object) -> str;
 
 
-def _pg_unique_violation(e: Exception) -> bool {
-    for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and arg.get('C') == '23505' {
-            return True;
-        }
-    }
-    return False;
-}
+def _pg_unique_violation(e: Exception) -> bool;
 
 
-def _pg_load_doc(raw: any) -> dict[str, any] {
-    return raw if isinstance(raw, dict) else json.loads(str(raw));
-}
+def _pg_load_doc(raw: any) -> dict[str, any];
 
 
-def _pg_public(raw: any) -> dict[str, any] {
-    d = _pg_load_doc(raw);
-    return {
-        'user_id': d.get('user_id'),
-        'status': d.get('status') or 'active',
-        'identities': d.get('identities') or [],
-        'root_id': d.get('root_id') or None,
-        'role': d.get('role') or 'user',
-        'requires_password_reset': bool(d.get('requires_password_reset')),
-        'profile': d.get('profile') or {},
-        'created_at': d.get('created_at'),
-        'updated_at': d.get('updated_at')
-    };
-}
+def _pg_public(raw: any) -> dict[str, any];
 
 
 impl PgIdentityStorage.postinit -> None {
@@ -416,4 +392,39 @@ impl PgIdentityStorage.list_all_users(limit: int, offset: int) -> list[dict[str,
         {'g': Con.GUEST.value, 'l': str(limit), 'o': str(offset)}
     );
     return [_pg_public(r[0]) for r in rows];
+}
+
+impl _pg_json_default(o: object) -> str {
+    return str(o);
+}
+
+
+impl _pg_unique_violation(e: Exception) -> bool {
+    for arg in getattr(e, 'args', ()) {
+        if isinstance(arg, dict) and arg.get('C') == '23505' {
+            return True;
+        }
+    }
+    return False;
+}
+
+
+impl _pg_load_doc(raw: any) -> dict[str, any] {
+    return raw if isinstance(raw, dict) else json.loads(str(raw));
+}
+
+
+impl _pg_public(raw: any) -> dict[str, any] {
+    d = _pg_load_doc(raw);
+    return {
+        'user_id': d.get('user_id'),
+        'status': d.get('status') or 'active',
+        'identities': d.get('identities') or [],
+        'root_id': d.get('root_id') or None,
+        'role': d.get('role') or 'user',
+        'requires_password_reset': bool(d.get('requires_password_reset')),
+        'profile': d.get('profile') or {},
+        'created_at': d.get('created_at'),
+        'updated_at': d.get('updated_at')
+    };
 }

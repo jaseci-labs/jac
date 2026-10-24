@@ -219,7 +219,7 @@ test "the symtab-ir schedule pre-imports what its passes reach at run time" {
             "building the symtab-IR schedule left symbol_utils unimported, so a "
             "pass reaching it at run time would be the first to import it"
         );
-        assert hasattr(restored, "collect_assigned_symbols") , (
+        assert hasattr(restored, "resolve_import_source_module") , (
             "symbol_utils came back half-initialized"
         );
     } finally {

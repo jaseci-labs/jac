@@ -20,8 +20,6 @@ import unittest;
 import requests;
 import from pathlib { Path }
 import from typing { cast }
-import from jaclang.testing.test_runner { STRICT_ENV, strict_mode }
-import from jaclang.scale.tests.fixture_policy { apply_fixture_policy }
 
 with entry {
     apply_fixture_policy();
@@ -146,7 +144,6 @@ compile the app before it can serve /healthz.
 def start_server(
     fixtures_dir: Path, jac_file: Path, port: int, env: dict[str, str] | None = None
 ) -> subprocess.Popen {
-    import from jaclang.scale.runtime.context.util { jac_executable }
     cmd = [jac_executable(), "run", "--serve", "--port", str(port), str(jac_file.name)];
     proc_env = os.environ.copy();
     if env {

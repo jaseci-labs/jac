@@ -13,7 +13,21 @@ import from c { def write(fd: i32, buf: bytes, n: int) -> int;  }
 import from _dirent_native { dirent_name }
 import from _fd_native { open_readonly, open_writetrunc }
 
-def:pub write_file(path: str, data: bytes) -> bool {
+def:pub write_file(path: str, data: bytes) -> bool;
+
+def:pub read_at(path: str, off: int, n: int) -> bytes;
+
+def:pub listdir(path: str) -> list[str];
+
+def:pub c_string(ptr: int) -> str;
+
+def:pub c_alloc_string(s: str) -> int;
+
+def:pub peek(ptr: int, n: int) -> bytes;
+
+def:pub poke(ptr: int, data: bytes);
+
+impl write_file(path: str, data: bytes) -> bool {
     fd = open_writetrunc(path);
     if fd < 0 {
         return False;
@@ -23,7 +37,7 @@ def:pub write_file(path: str, data: bytes) -> bool {
     return wrote == len(data);
 }
 
-def:pub read_at(path: str, off: int, n: int) -> bytes {
+impl read_at(path: str, off: int, n: int) -> bytes {
     fd = open_readonly(path);
     if fd < 0 {
         return b"";
@@ -37,7 +51,7 @@ def:pub read_at(path: str, off: int, n: int) -> bytes {
     return buf[0:got];
 }
 
-def:pub listdir(path: str) -> list[str] {
+impl listdir(path: str) -> list[str] {
     names: list[str] = [];
     dirp = opendir(path);
     if dirp == 0 {
@@ -55,22 +69,22 @@ def:pub listdir(path: str) -> list[str] {
     return names;
 }
 
-def:pub c_string(ptr: int) -> str {
+impl c_string(ptr: int) -> str {
     return strdup(ptr);
 }
 
-def:pub c_alloc_string(s: str) -> int {
+impl c_alloc_string(s: str) -> int {
     p = malloc(len(s.encode()) + 1);
     strcpy(p, s);
     return p;
 }
 
-def:pub peek(ptr: int, n: int) -> bytes {
+impl peek(ptr: int, n: int) -> bytes {
     buf = b"\x00" * n;
     memcpy(buf, ptr, n);
     return buf;
 }
 
-def:pub poke(ptr: int, data: bytes) {
+impl poke(ptr: int, data: bytes) {
     memmove(ptr, data, len(data));
 }

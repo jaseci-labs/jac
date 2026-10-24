@@ -9,7 +9,9 @@ glob RTLD_NOW: int = 2,
      RTLD_GLOBAL: int = 256,
      SHLIB_EXT: str = ".so";
 
-def:pub dl_error -> str {
+def:pub dl_error -> str;
+
+impl dl_error -> str {
     p = dlerror();
     if p == 0 {
         return "unknown dl error";

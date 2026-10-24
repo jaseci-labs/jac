@@ -1,6 +1,3 @@
-import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
-import from jaclang.runtime.python.constant_keys { constant_key }
-
 # Compiler IR for the P4 back track (PLAN.md P0.10).
 #
 # Source-location, instruction, basic-block, and compile-unit objects shared by
@@ -9,31 +6,6 @@ import from jaclang.runtime.python.constant_keys { constant_key }
 #
 # na-clean leaf: no host calls, no import cycles. Location encoding matches
 # CPython 3.14 (PEP 626); col offsets are 0-based byte offsets, NO_COLUMN = -1.
-
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyInt,
-    PyBool,
-    PyFloat,
-    PyComplex,
-    PyStr,
-    PyBytes,
-    PyTuple,
-    PySet,
-    PySlice,
-    PyCode,
-    py_none
-}
-import from jaclang.runtime.python.opcode_meta {
-    opcode_cache_count,
-    opcode_has_const,
-    OP_LOAD_CONST
-}
-import from jaclang.compiler.frontend.python.compiler_diagnostics {
-    compiler_diagnostic
-}
-import from jaclang.compiler.frontend.python.compiler_symtable { sym_block }
-import from jaclang.compiler.frontend.python.ast_nodes { stmt }
 
 # A source location. lineno/end_lineno are 1-based; col_offset/end_col_offset are
 # 0-based. Matches CPython's `location` struct (Python/compile.c).

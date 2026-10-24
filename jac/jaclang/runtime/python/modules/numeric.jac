@@ -27,17 +27,6 @@ import from c {
         value: f64, whole: &mut f64
     ) -> f64;
 }
-import from jaclang.runtime.python.cpython_api {
-    jacpy_libm_cos,
-    jacpy_libm_exp,
-    jacpy_libm_exp2,
-    jacpy_libm_fma,
-    jacpy_libm_log,
-    jacpy_libm_log10,
-    jacpy_libm_log2,
-    jacpy_libm_sin,
-    jacpy_libm_tan
-}
 
 glob infinity: float = float("inf"),
      nan: float = float("nan");

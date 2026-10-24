@@ -4,7 +4,6 @@ import shutil;
 import requests;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.scale.tests.support { get_free_port, start_server, stop_server }
 
 """Whether `pid` is the server process `server_pid` or one of its workers."""
 def _served_by(pid: int, server_pid: int) -> bool {

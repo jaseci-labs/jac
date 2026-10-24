@@ -1,12 +1,12 @@
 glob FACT_SEP: str = "\x1e",
      FACT_TARGET: str = "target",
-     FACT_OS: str = "os",
      FACT_STRUCT_LAYOUTS: str = "struct_layouts",
      FACT_CODEC_TABLES: str = "codec_tables",
      FACT_CODEC_NAME: str = "codec_name",
      FACT_PRIMITIVE_METHODS: str = "primitive_methods",
      FACT_SEALED_RUNTIME: str = "sealed_runtime",
-     FACT_IMPORT_PATHS: str = "import_paths";
+     FACT_IMPORT_PATHS: str = "import_paths",
+     FACT_PACKAGE_STORE: str = "package_store";
 
 glob NATIVE_COPY_FUNCS: set[str] = {"copy", "deepcopy"};
 glob NATIVE_OS_FUNCS: set[str] = {
@@ -55,11 +55,7 @@ glob NATIVE_STRUCT_FUNCS: set[str] = {
 
      };
 
-def stdlib_intercepted(module_name: str, func_name: str) -> bool {
-    return (module_name == "os" and func_name in NATIVE_OS_FUNCS)
-        or (module_name == "random" and func_name in NATIVE_RANDOM_FUNCS)
-        or (module_name == "struct" and func_name in NATIVE_STRUCT_FUNCS);
-}
+def stdlib_intercepted(module_name: str, func_name: str) -> bool;
 
 glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_WHITE: int = 1,

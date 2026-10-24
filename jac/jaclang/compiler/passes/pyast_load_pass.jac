@@ -82,12 +82,12 @@ walker PyastBuildPass(CompilerPass) {
     def proc_continue(nd: py_ast.Continue) -> CtrlStmt;
     def proc_dict(nd: py_ast.Dict) -> DictVal;
     def proc_dict_comp(nd: py_ast.DictComp) -> DictCompr;
-    def proc_ellipsis(nd: py_ast.Constant) {}
+    def proc_ellipsis(nd: py_ast.Constant);
     def proc_except_handler(nd: py_ast.ExceptHandler) -> Except;
     def proc_expr(nd: py_ast.Expr) -> ExprStmt;
     def proc_formatted_value(nd: py_ast.FormattedValue) -> FormattedValue;
-    def proc_function_type(nd: py_ast.FunctionType) {}
-    def proc_interactive(nd: py_ast.Interactive) {}
+    def proc_function_type(nd: py_ast.FunctionType);
+    def proc_interactive(nd: py_ast.Interactive);
     def proc_template_str(nd: py_ast.AST) -> UniNode;
     def proc_interpolation(nd: py_ast.AST) -> UniNode;
     def proc_generator_exp(nd: py_ast.GeneratorExp) -> GenCompr;
@@ -160,18 +160,12 @@ walker PyastBuildPass(CompilerPass) {
     def proc_keyword(nd: py_ast.keyword) -> KWPair;
     def proc_match_case(nd: py_ast.match_case) -> MatchCase;
     def proc_withitem(nd: py_ast.withitem) -> ExprAsItem;
-    def proc_param_spec(nd: py_ast.ParamSpec) {}
-    def proc_type_alias(nd: py_ast.TypeAlias) {}
-    def proc_type_var(nd: py_ast.TypeVar) {}
-    def proc_type_var_tuple(nd: py_ast.TypeVarTuple) {}
+    def proc_param_spec(nd: py_ast.ParamSpec);
+    def proc_type_alias(nd: py_ast.TypeAlias);
+    def proc_type_var(nd: py_ast.TypeVar);
+    def proc_type_var_tuple(nd: py_ast.TypeVarTuple);
     def convert_to_doc(string: String) -> None;
     def aug_op_map(tok_dict: dict[str, str], op: Token) -> str;
 }
 
-def build_python_module(py_mod: PythonModuleAst) -> Module {
-    walk = PyastBuildPass(module=py_mod, ctx=new_context(PyastBuildPass, py_mod));
-    walk_pass(walk);
-    built = walk.module;
-    assert isinstance(built, Module);
-    return built;
-}
+def build_python_module(py_mod: PythonModuleAst) -> Module;

@@ -971,6 +971,8 @@ async def handleSignup() -> None {
 }
 ```
 
+When the server sets `[serve.auth.registration] challenge = true`, `jacSignup` fetches the proof-of-work challenge from `POST /user/register/challenge`, solves it, and sends the proof with the registration, so no extra client code is needed. It works the same in the browser and in React Native. If the challenge cannot be fetched, solved, or expires first, the result has `success` false and `error` says why (for example "Verification expired. Please try again.").
+
 ### jacLogout / jacIsLoggedIn
 
 ```jac
@@ -1474,8 +1476,13 @@ Override Vite build options via `[client.vite.build]`:
 [client.vite.build]
 sourcemap = true
 minify = "esbuild"
-outDir = "dist"
+
+# Split vendor libraries into their own chunk
+[client.vite.build.rollupOptions.output.manualChunks]
+vendor = ["react", "react-dom", "react-router-dom"]
 ```
+
+`rollupOptions` entries are merged into Jac's own build settings. Jac always sets `outDir`, `emptyOutDir`, `rollupOptions.input` and the `entryFileNames`, `assetFileNames` and `sourcemapPathTransform` outputs, because it needs them to find and serve the bundle; if you set them, they are ignored with a warning.
 
 #### Dev Server Options
 

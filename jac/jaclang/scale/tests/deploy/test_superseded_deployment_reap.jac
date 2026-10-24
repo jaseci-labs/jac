@@ -1,26 +1,4 @@
 import from types { SimpleNamespace }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.deploy.target.kubernetes.target {
-    KubernetesTarget,
-    restorable_pod_template,
-    app_bundle_digest,
-    releases_from_revisions,
-    fleet_targets_for_release,
-    fleet_revert_order
-}
-import from jaclang.scale.sdk {
-    ScaleClient,
-    AutoscalerRuntimeStatus,
-    AutoscalerTransition
-}
-import from jaclang.scale.models.resource_status {
-    REPLICA_FLOOR_ANNOTATION,
-    assess_workload
-}
 
 # A Deployment as a pre-0.34.9 toolchain wrote it: bare app name, no role label,
 # and the same pod selector the current one uses.

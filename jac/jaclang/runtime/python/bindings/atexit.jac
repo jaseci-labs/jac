@@ -1,19 +1,5 @@
 """The atexit module: register, unregister and the private test hooks."""
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    MethodDefinition,
-    MethodCallbacks
-}
-import from jaclang.runtime.python.modules.atexit {
-    atexit_clear,
-    atexit_ncallbacks,
-    atexit_register,
-    atexit_run_exitfuncs,
-    atexit_unregister
-}
-
 glob:priv METH_VARARGS_KEYWORDS: i64 = 3,
      METH_NOARGS: i64 = 4,
      METH_O: i64 = 8;

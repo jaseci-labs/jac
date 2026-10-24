@@ -1,7 +1,11 @@
 import os;
+
 import shutil;
+
 import subprocess;
+
 import platform as platform_mod;
+
 import from typing { Optional }
 
 impl MobileTarget.ensure_ready(
@@ -346,7 +350,15 @@ impl _RNHmrHandler.on_event(evt: FileChangeEvent) -> None {
     );
 }
 
-def _start_android(apk_path: Path, project_dir: Path) -> None {
+def _start_android(apk_path: Path, project_dir: Path) -> None;
+
+def _start_ios(artifact_path: Path, project_dir: Path);
+
+def _simctl_install_and_launch(
+    xcrun: str, udid: str, app_path: Path, bundle_id: str | None
+);
+
+impl _start_android(apk_path: Path, project_dir: Path) -> None {
     import json;
     adb = shutil.which("adb");
     if not adb {
@@ -393,7 +405,7 @@ def _start_android(apk_path: Path, project_dir: Path) -> None {
     console.success("App installed and launched.");
 }
 
-def _start_ios(artifact_path: Path, project_dir: Path) {
+impl _start_ios(artifact_path: Path, project_dir: Path) {
     import json;
     rn_dir = resolve_rn_project_dir(project_dir);
     if platform_mod.system() != "Darwin" {
@@ -506,24 +518,4 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
         _simctl_install_and_launch(xcrun, booted_udid, install_target, bundle_id);
     }
     console.success("iOS app installed and launched on simulator.");
-}
-
-def _simctl_install_and_launch(
-    xcrun: str, udid: str, app_path: Path, bundle_id: str | None
-) {
-    console.print(
-        f"  Installing .app on simulator {udid}: {app_path.name}", style="muted"
-    );
-    subprocess.run(
-        [xcrun, "simctl", "install", udid, str(app_path)],
-        check=True,
-        capture_output=True
-    );
-    if bundle_id {
-        bid: str = str(bundle_id);
-        console.print(f"  Launching: {bid}", style="muted");
-        subprocess.run(
-            [xcrun, "simctl", "launch", udid, bid], check=False, capture_output=True
-        );
-    }
 }
