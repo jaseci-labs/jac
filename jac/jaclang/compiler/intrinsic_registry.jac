@@ -390,6 +390,12 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  result_spec="none",
                  dispatch=IntrinsicDispatch.ATOMIC_FENCE
              ),
+             "__thread_local": IntrinsicEntry(
+                 name="__thread_local",
+                 param_specs=["str"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.C_THREAD_LOCAL
+             ),
              "__c_thread_local": IntrinsicEntry(
                  name="__c_thread_local",
                  param_specs=["str"],

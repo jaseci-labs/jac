@@ -4474,11 +4474,16 @@ impl NaIRGenPass._emit_intrinsic_c_thread_local(
         );
         return None;
     }
-    i8 = ir.IntType(8);
+
+    defining = intr.name == "__thread_local";
+    cell = ir.IntType(64) if defining else ir.IntType(8);
     existing = self.llvm_module.globals.get(name);
     if existing is None {
-        existing = ir.GlobalVariable(self.llvm_module, i8, name=name);
-        existing.linkage = "external";
+        existing = ir.GlobalVariable(self.llvm_module, cell, name=name);
+        existing.linkage = "weak" if defining else "external";
+        if defining {
+            existing.initializer = ir.Constant(cell, 0);
+        }
         existing.thread_local = True;
         existing.tls_model = "initialexec";
     } elif not isinstance(existing, ir.GlobalVariable) or not existing.thread_local {

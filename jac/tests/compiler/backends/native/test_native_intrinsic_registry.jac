@@ -209,7 +209,7 @@ def _probe_source(intr: any) -> str {
     if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
         return (
             "def probe(x: int) -> int { "
-            "return x + 7 if __c_thread_local(\"jac_probe_tls\") != 0 else 0; }\n"
+            + f"return x + 7 if {intr.name}(\"jac_probe_tls\") != 0 else 0; }}\n"
         );
     }
     if intr.dispatch == IntrinsicDispatch.REGION_TLS {
@@ -237,10 +237,11 @@ test "every registry intrinsic lowers through its registered emitter" {
             (prog, ir_mod) = _compile_src(_probe_source(intr), engine=False);
             assert not prog.errors_had , [str(e) for e in prog.errors_had];
             ir_text = str(ir_mod.gen.llvm_ir);
-            assert "@\"jac_probe_tls\" = external thread_local(initialexec) global i8"
-                in ir_text
-                or "@jac_probe_tls = external thread_local(initialexec) global i8"
-                    in ir_text , ir_text;
+            declared = "weak thread_local(initialexec) global i64 0"
+                if intr.name == "__thread_local"
+                else "external thread_local(initialexec) global i8";
+            assert f"@\"jac_probe_tls\" = {declared}" in ir_text
+                or f"@jac_probe_tls = {declared}" in ir_text , ir_text;
             assert "c.tls.addr" in ir_text , f"{intr.name}: the intrinsic was stranded";
             continue;
         }
