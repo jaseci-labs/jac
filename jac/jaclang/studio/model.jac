@@ -127,7 +127,9 @@ obj ProjectModel {
         index_secs: float = 0.0,
         uses_done: set[str] = set(),
         arch_mtimes: dict[str, float] = {},
-        rule_recs: dict[str, any] = {};
+        rule_recs: dict[str, any] = {},
+        dir_mtimes: dict[str, float] = {},
+        found: list[str] = [];
 
     def postinit;
     def build(on_progress: any = None, index: bool = True);
@@ -154,6 +156,7 @@ obj ProjectModel {
     def _link_walkers;
     def refresh(path: str) -> list[str];
     def stale_files -> list[str];
+    def new_files -> list[str];
     def module_for_file(path: str) -> (StModule | None);
     def providers(key: str) -> list[WireInfo];
     def consumers(key: str) -> list[WireInfo];
@@ -284,6 +287,9 @@ impl ProjectModel._head_files -> list[str] {
                 if not x.startswith(".") and x not in SKIP_DIRS
             ]
         );
+        try {
+            self.dir_mtimes[d] = os.path.getmtime(d);
+        } except OSError {}
         for f in sorted(fs) {
             if f.endswith(".jac") and f.count(".") == 1 and f != ARCH_FILE_NAME {
                 found.append(os.path.join(d, f));
@@ -501,13 +507,22 @@ impl ProjectModel._add_symbol(owner: StNode, sym: StNode) {
 }
 
 impl ProjectModel._clear_module_symbols(mod: StModule) {
-    stale = [
-        k
-        for k in self.symbols
-        if k.startswith(mod.key + ".")
-    ];
-    for k in stale {
-        sym = self.symbols.pop(k);
+    owned: list[StNode] = [];
+    todo: list[StNode] = [mod];
+    while todo {
+        cur = todo.pop();
+        for kid in [cur->:Contains:->] {
+            if isinstance(kid, (StModule, StPackage)) {
+                continue;
+            }
+            owned.append(kid);
+            todo.append(kid);
+        }
+    }
+    for sym in owned {
+        if self.symbols.get(sym.key) is sym {
+            self.symbols.pop(sym.key);
+        }
         del sym;
     }
     for kid in [mod->:Contains:->] {
@@ -746,6 +761,9 @@ impl ProjectModel._link_walkers {
 
 impl ProjectModel.refresh(path: str) -> list[str] {
     real = os.path.realpath(path);
+    if real in self.found {
+        self.found.remove(real);
+    }
     if os.path.basename(real) == ARCH_FILE_NAME {
         self.rewire();
         return [real];
@@ -778,6 +796,60 @@ impl ProjectModel.refresh(path: str) -> list[str] {
     return [key];
 }
 
+impl ProjectModel.new_files -> list[str] {
+    for (d, seen) in list(self.dir_mtimes.items()) {
+        try {
+            now = os.path.getmtime(d);
+        } except OSError {
+            self.dir_mtimes.pop(d, None);
+            continue;
+        }
+        if now == seen {
+            continue;
+        }
+        self.dir_mtimes[d] = now;
+        try {
+            names = sorted(os.listdir(d));
+        } except OSError {
+            continue;
+        }
+        for name in names {
+            full = os.path.join(d, name);
+            if os.path.isdir(full) {
+                if name.startswith(".")
+                    or name in SKIP_DIRS
+                    or full in self.dir_mtimes {
+                    continue;
+                }
+                for (sub, subdirs, files) in os.walk(full) {
+                    subdirs[:] = [
+                        x
+                        for x in subdirs
+                        if not x.startswith(".") and x not in SKIP_DIRS
+                    ];
+                    try {
+                        self.dir_mtimes[sub] = os.path.getmtime(sub);
+                    } except OSError {}
+                    for f in files {
+                        if f.endswith(".jac") and f != ARCH_FILE_NAME {
+                            path = os.path.realpath(os.path.join(sub, f));
+                            if path not in self.by_file and path not in self.found {
+                                self.found.append(path);
+                            }
+                        }
+                    }
+                }
+            } elif name.endswith(".jac") and name != ARCH_FILE_NAME {
+                path = os.path.realpath(full);
+                if path not in self.by_file and path not in self.found {
+                    self.found.append(path);
+                }
+            }
+        }
+    }
+    return list(self.found);
+}
+
 impl ProjectModel.stale_files -> list[str] {
     out: list[str] = [];
     for (arch, seen) in list(self.arch_mtimes.items()) {
@@ -789,6 +861,7 @@ impl ProjectModel.stale_files -> list[str] {
             out.append(arch);
         }
     }
+    out += self.new_files();
     for mod in list(self.modules.values()) {
         if mod.kind != "module" {
             continue;

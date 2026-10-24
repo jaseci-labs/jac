@@ -766,7 +766,7 @@ impl pump_background(app: Studio) {
         while app.pending_new {
             stale.append(app.pending_new.pop(0));
         }
-        for f in stale[:5] {
+        for f in stale[:20] {
             app.model.refresh(f);
             app.file_syms = {};
             app.dirty = True;
@@ -2379,7 +2379,10 @@ impl approval_key(app: Studio, key: str) {
         }
         leaves = leaf_changes(rv.symbol_changes) if rv is not None else [];
         if key.isdigit() and 1 <= int(key) <= min(len(leaves), 9) and len(leaves) > 1 {
-            keep: set[str] = req.get("keep") or set([lc.key for lc in leaves]);
+            held = req.get("keep");
+            keep: set[str] = set(held)
+                if held is not None
+                else set([lc.key for lc in leaves]);
             k = leaves[int(key) - 1].key;
             group = change_groups(rv.symbol_changes).get(k, [k])
                 if rv is not None
@@ -4770,6 +4773,9 @@ impl finish_write(app: Studio, req: dict[str, any], accept: bool, message: str) 
     }
     path = str(d.get("path", ""));
     review = req.get("review");
+    with REVIEW_LOCK {
+        req["cancelled"] = True;
+    }
     if app.gate is not None and path {
         try {
             app.gate.unstage(path);
@@ -4993,14 +4999,22 @@ impl start_review(app: Studio, req: dict[str, any]) -> None {
     d = req["data"];
     path = str(d.get("path", ""));
     content = str(d.get("content", ""));
+    def cancelled -> bool {
+        return bool(req.get("cancelled"));
+    }
     def work {
         while True {
             try {
-                req["review"] = gate.review(path, content);
+                req["review"] = gate.review(path, content, cancelled);
             } except Exception as e {
                 req["error"] = str(e);
             }
             with REVIEW_LOCK {
+                if req.get("cancelled") {
+                    gate.unstage_if(path, content);
+                    req["done"] = True;
+                    break;
+                }
                 if req.pop("recheck", False) {
                     continue;
                 }
@@ -5026,12 +5040,18 @@ impl start_partial_review(app: Studio, req: dict[str, any], keep: set[str]) -> N
     };
     req["partial"] = part;
     gate = app.gate;
+    def cancelled -> bool {
+        return bool(req.get("cancelled"));
+    }
     def work {
         if gate is not None {
             try {
-                part["review"] = gate.review(path, text);
+                part["review"] = gate.review(path, text, cancelled);
             } except Exception as e {
                 part["error"] = str(e);
+            }
+            if req.get("cancelled") {
+                gate.unstage_if(path, text);
             }
         }
         part["done"] = True;

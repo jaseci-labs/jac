@@ -3,7 +3,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.osprey.ui.virtual_terminal { VirtualTerminal }
 import os;
-import from jaclang.studio.gate { EditGate, EditReview }
+import from jaclang.studio.gate { EditGate, EditReview, symbol_changes }
 import from jaclang.studio.insight { tour_text }
 import from jaclang.studio.model { ProjectModel }
 import from jaclang.studio.tui {
@@ -142,5 +142,35 @@ test "rejecting one file rechecks the edits that were checked against it" {
         assert "review" not in against and not against["seen"] , "a review that saw the rejected text runs again";
         assert "review" in apart , "a review that did not see it is kept";
         assert running.get("recheck") , "a review still running is rechecked when it finishes";
+    }
+}
+
+test "toggling symbol changes keeps exactly the ones left ticked" {
+    with TemporaryDirectory() as tmp {
+        app = open_studio(tmp);
+        path = str(Path(app.root_dir) / "core" / "store.jac");
+        old = Path(path).read_text();
+        new = old.replace("return 0;", "return 10;").replace(
+            "return n;", "return n + 1;"
+        );
+        rv = EditReview(
+            path=path,
+            old_text=old,
+            new_text=new,
+            symbol_changes=symbol_changes(old, new, path)
+        );
+        req: dict[str, any] = {
+            "type": "write",
+            "data": {"path": path, "content": new, "request_id": 1},
+            "done": True,
+            "seen": True,
+            "review": rv
+        };
+        app.pending.append(req);
+        open_approval(app);
+        for k in ["1", "2", "1"] {
+            handle_key(app, k);
+        }
+        assert req["keep"] == {"load"} , req.get("keep");
     }
 }

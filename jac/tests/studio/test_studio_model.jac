@@ -1,5 +1,6 @@
 """The studio's project model: modules, symbols, wires, rules and the index cache."""
 import io;
+import os;
 import json;
 import from contextlib { redirect_stdout }
 import from pathlib { Path }
@@ -66,5 +67,38 @@ test "the model reads the wiring, indexes symbols and sees a new impl annex" {
         }
         found = json.loads(out.getvalue());
         assert rc == 0 and found["key"] == "core.models.Item" , out.getvalue()[:300];
+    }
+}
+
+test "refreshing a package keeps its children's symbols, and new files are found" {
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp) / "pkgs";
+        (base / "pkg").mkdir(parents=True);
+        (base / "jac.toml").write_text("[project]\nname = \"pkgs\"\n");
+        (base / "pkg" / "__init__.jac").write_text(
+            "def top -> int {\n    return 1;\n}\n"
+        );
+        (base / "pkg" / "child.jac").write_text(
+            "def leaf -> int {\n    return 2;\n}\n"
+        );
+        model = ProjectModel(root_dir=str(base));
+        model.build();
+        child = [
+            k
+            for k in model.symbols
+            if k.endswith(".leaf")
+        ];
+        assert child , sorted(model.symbols);
+        model.refresh(str(base / "pkg" / "__init__.jac"));
+        assert child[0] in model.symbols , "refreshing the package dropped a child module's symbols";
+        extra = base / "pkg" / "extra.jac";
+        extra.write_text("def more -> int {\n    return 3;\n}\n");
+        found = model.stale_files();
+        assert os.path.realpath(str(extra)) in found , found;
+        model.refresh(str(extra));
+        assert any([k.endswith(".more") for k in model.symbols]) , sorted(
+            model.symbols
+        );
+        assert os.path.realpath(str(extra)) not in model.stale_files();
     }
 }

@@ -128,7 +128,8 @@ obj EditGate {
     def unstage(path: str) -> None;
     def staged -> dict[str, str];
     def read(path: str) -> (str | None);
-    def review(path: str, new_text: str) -> EditReview;
+    def review(path: str, new_text: str, cancelled: any = None) -> EditReview;
+    def unstage_if(path: str, text: str) -> None;
     def commit(path: str) -> None;
     def _disk_text(path: str) -> (str | None);
     def _text_for(path: str, overlay: bool) -> str;
@@ -439,6 +440,15 @@ impl EditGate.stage(path: str, new_text: str) -> None {
 
 impl EditGate.unstage(path: str) -> None {
     self.overlay.pop(os.path.realpath(path), None);
+}
+
+impl EditGate.unstage_if(path: str, text: str) -> None {
+    with _GATE_LOCK {
+        real = os.path.realpath(path);
+        if self.overlay.get(real) == text {
+            self.overlay.pop(real, None);
+        }
+    }
 }
 
 impl EditGate.staged -> dict[str, str] {
@@ -873,10 +883,19 @@ impl EditGate._targets(real: str, review: EditReview) -> list[str] {
     return targets;
 }
 
-impl EditGate.review(path: str, new_text: str) -> EditReview {
+impl EditGate.review(path: str, new_text: str, cancelled: any = None) -> EditReview {
     started = time.perf_counter();
     real = os.path.realpath(path);
     with _GATE_LOCK, COMPILE_LOCK {
+        if cancelled is not None and cancelled() {
+            return EditReview(
+                path=real,
+                old_text="",
+                new_text=new_text,
+                root_dir=self.root_dir,
+                check_error="cancelled: the edit was decided before its check ran"
+            );
+        }
         old_text = self._disk_text(real);
         self.stage(real, new_text);
         rel = _rel(real, self.root_dir);
