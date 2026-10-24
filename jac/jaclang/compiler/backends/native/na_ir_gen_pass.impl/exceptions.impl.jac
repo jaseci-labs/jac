@@ -1407,6 +1407,63 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     return func;
 }
 
+impl NaIRGenPass._get_exception_context_inl_fn -> ir.Function {
+    """The lookup a frame inlines: the single-thread fast path, else the shared lookup.
+
+    `__jac_exception_context` is weak, so no caller can inline it, and every
+    frame that links an unwind record or arms a `try` paid a call, three
+    register saves and the tests. This private copy of its fast path (no
+    thread started yet and the main context exists) is always inlined; any
+    other case calls the shared lookup.
+    """;
+    if self._exc_context_inl_fn is not None {
+        return self._exc_context_inl_fn;
+    }
+    shared = self._get_exception_context_fn();
+    context_ptr = shared.function_type.return_type;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    func = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(context_ptr, []),
+        name="__jac_exception_context.inl"
+    );
+    func.linkage = "private";
+    func.attributes.add("alwaysinline");
+    self._exc_context_inl_fn = func;
+    entry_bb = func.append_basic_block("entry");
+    fast_bb = func.append_basic_block("fast");
+    slow_bb = func.append_basic_block("slow");
+    b = ir.IRBuilder(entry_bb);
+    main_gv = self.llvm_module.get_global("__jac_exception_main_ctx");
+    if self.rc_threaded_gv is None {
+        b.branch(slow_bb);
+    } else {
+        mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
+        main_ctx = b.load(main_gv, name="exc.main");
+        br = b.cbranch(
+            b.and_(
+                b.icmp_unsigned("==", mt_flag, ir.Constant(i8, 0), name="exc.st"),
+                b.icmp_unsigned(
+                    "!=", main_ctx, ir.Constant(i8p, None), name="exc.main.set"
+                ),
+                name="exc.fast"
+            ),
+            fast_bb,
+            slow_bb
+        );
+        br.set_weights([2000, 1]);
+        fb = ir.IRBuilder(fast_bb);
+        fb.ret(fb.bitcast(main_ctx, context_ptr));
+    }
+    if not fast_bb.is_terminated {
+        ir.IRBuilder(fast_bb).unreachable();
+    }
+    sb = ir.IRBuilder(slow_bb);
+    sb.ret(sb.call(shared, [], name="exc.shared"));
+    return func;
+}
+
 impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value {
     """The local an `except ... as name` binds, shared by every handler of the name.
 
@@ -1430,7 +1487,7 @@ impl NaIRGenPass._unwind_top_slot(
 ) -> ir.Value {
     """The thread's unwind chain head: the newest frame that owns rc locals.""";
     if context is None {
-        context = b.call(self._get_exception_context_fn(), []);
+        context = b.call(self._get_exception_context_inl_fn(), []);
     }
     return b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 4)]
@@ -1455,6 +1512,10 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     raise walks the chain down to the handler's saved head, releasing each
     crossed frame's locals, before it jumps. A frame whose locals need no
     cleanup (scalars, borrowed values, parameters) links nothing.
+
+    The record's allocas go first in the entry block: the context lookup is
+    inlined, and an alloca behind its branch would leave the entry block and
+    become a dynamic stack adjustment.
     """;
     if self._builder is None or self._gen_ctx is not None {
         return;
@@ -1531,6 +1592,11 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if not pending or not slots {
         return;
     }
+    sites = self._unwind_raise_sites(func, slots);
+    if sites is not None {
+        self._unwind_release_at_raises(func, slots, sites);
+        return;
+    }
     cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
     cleanup = ir.Function(self.llvm_module, cleanup_ty, name=f"{func.name}.__unwind");
     cleanup.linkage = "private";
@@ -1565,6 +1631,12 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if cached is not None {
         entry_blk.instructions.remove(cached);
     }
+
+    node_ty = self._unwind_node_type();
+    ab = ir.IRBuilder(entry_blk);
+    ab.position_at_start(entry_blk);
+    env_slot = ab.alloca(env_ty, name="unwind.env");
+    link = ab.alloca(node_ty, name="unwind.node");
     self._hoist_entry_allocas(entry_blk);
     shadows = self._unwind_shadow_slots(func, slots);
     anchor: any = None;
@@ -1590,15 +1662,12 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         entry_blk.instructions.insert(b._anchor, cached);
         b._anchor += 1;
     }
-    env_slot = b.alloca(env_ty, name="unwind.env");
     for (k, (_name, slot)) in enumerate(slots) {
         b.store(
             b.bitcast(shadows.get(id(slot), slot), i8p),
             b.gep(env_slot, [ir.Constant(i32, 0), ir.Constant(i32, k)])
         );
     }
-    node_ty = self._unwind_node_type();
-    link = b.alloca(node_ty, name="unwind.node");
     top_slot = self._unwind_top_slot(b, cached);
     prev = b.load(top_slot, name="unwind.prev");
     b.store(prev, b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
@@ -1624,6 +1693,226 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         }
         b.position_before(at);
         b.store(prev, top_slot);
+    }
+}
+
+impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
+    """A callee known never to raise: refcount and allocation helpers, libc.""";
+    if name.startswith("__rc_") or name.startswith("llvm.") {
+        return True;
+    }
+    return name
+        in (
+            "__jac_exception_context",
+            "__jac_exception_context.inl",
+            "__jac_str_stamp",
+            "snprintf",
+            "malloc",
+            "calloc",
+            "realloc",
+            "free",
+            "memcpy",
+            "memmove",
+            "memset"
+        );
+}
+
+impl NaIRGenPass._unwind_raise_sites(
+    func: ir.Function, slots: list[tuple[str, ir.Value]]
+) -> (list[tuple[ir.Instruction, set[int]]] | None) {
+    """The frame's own raise sites, when only those can raise past a held local.
+
+    A frame links an unwind record so that a raise crossing it releases its
+    owned locals. When every call that can raise runs while all of them are
+    still null (a lookup before anything is bound, say) and the frame arms no
+    handler of its own, the only raises that can find a local holding a
+    reference are the frame's own: its `raise` statements and its index and
+    arithmetic checks. Those can release the locals themselves just before
+    raising, which is what the chain walk would do, and the frame then needs
+    no record at all. A forward pass over the finished body tracks which
+    slots may hold a reference. Returns each own raise site with the slots
+    that may hold one there, or None when the frame needs its record.
+
+    A slot whose address goes anywhere but a load or a store's target can
+    change behind the pass's back, so the frame keeps its record. On entry to
+    the function every slot may hold anything until its null store. A raise
+    must end its block, followed by `unreachable`, since the release goes
+    between the raise and what precedes it.
+    """;
+    if os.environ.get("JAC_NO_UNWIND_SKIP") {
+        return None;
+    }
+    for known in self._setjmp_functions {
+        if known is func {
+            return None;
+        }
+    }
+    tracked: dict[int, ir.Value] = {};
+    for (_name, slot) in slots {
+        tracked[id(slot)] = slot;
+    }
+
+    for blk in func.blocks {
+        for inst_value in blk.instructions {
+            inst: any = inst_value;
+            if isinstance(inst, ir.LoadInstr) {
+                continue;
+            }
+            if isinstance(inst, ir.StoreInstr) {
+                if id(inst.operands[0]) in tracked {
+                    return None;
+                }
+                continue;
+            }
+            for operand in getattr(inst, "operands", []) {
+                if id(operand) in tracked {
+                    return None;
+                }
+            }
+        }
+    }
+    succs: dict[int, list[ir.Block]] = {};
+    for blk in func.blocks {
+        term: any = blk.instructions[-1] if blk.instructions else None;
+        if term is None {
+            return None;
+        }
+        if isinstance(term, ir.SwitchInstr) {
+            succs[id(blk)] = [term.default_bb] + [dest for (_val, dest) in term.cases];
+        } elif getattr(term, "opname", "")
+            in ("br", "ret", "ret void", "unreachable") {
+            succs[id(blk)] = [
+                op
+                for op in term.operands
+                if isinstance(op, ir.Block)
+            ];
+        } else {
+            return None;
+        }
+    }
+
+    held_in: dict[int, set[int]] = {};
+    for blk in func.blocks {
+        held_in[id(blk)] = set();
+    }
+    held_in[id(func.entry_basic_block)] = set(tracked.keys());
+    changed = True;
+    while changed {
+        changed = False;
+        for blk in func.blocks {
+            held = set(held_in[id(blk)]);
+            for inst_value in blk.instructions {
+                if isinstance(inst_value, ir.StoreInstr)
+                    and id(inst_value.operands[1]) in tracked {
+                    stored = inst_value.operands[0];
+                    if isinstance(stored, ir.Constant) and stored.constant is None {
+                        held.discard(id(inst_value.operands[1]));
+                    } else {
+                        held.add(id(inst_value.operands[1]));
+                    }
+                }
+            }
+            for dest in succs[id(blk)] {
+                into = held_in[id(dest)];
+                if not held.issubset(into) {
+                    into.update(held);
+                    changed = True;
+                }
+            }
+        }
+    }
+    sites: list[tuple[ir.Instruction, set[int]]] = [];
+    for blk in func.blocks {
+        held = set(held_in[id(blk)]);
+        for inst_value in blk.instructions {
+            inst: any = inst_value;
+            if isinstance(inst, ir.StoreInstr) and id(inst.operands[1]) in tracked {
+                stored = inst.operands[0];
+                if isinstance(stored, ir.Constant) and stored.constant is None {
+                    held.discard(id(inst.operands[1]));
+                } else {
+                    held.add(id(inst.operands[1]));
+                }
+                continue;
+            }
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee: any = inst.callee;
+            name = callee.name if isinstance(callee, ir.Function) else None;
+            if name == "__jac_exc_raise" {
+                if len(blk.instructions) < 2
+                    or blk.instructions[-2] is not inst
+                    or not isinstance(blk.instructions[-1], ir.Unreachable) {
+                    return None;
+                }
+                if held {
+                    sites.append((inst, set(held)));
+                }
+                continue;
+            }
+            if name is not None and self._unwind_nothrow_callee(name) {
+                continue;
+            }
+            if held {
+                return None;
+            }
+        }
+    }
+    return sites;
+}
+
+impl NaIRGenPass._unwind_release_at_raises(
+    func: ir.Function,
+    slots: list[tuple[str, ir.Value]],
+    sites: list[tuple[ir.Instruction, set[int]]]
+) -> None {
+    """Release the locals a frame without an unwind record holds at its own raises.
+
+    Each site's block is split at the raise: the release of the slots that
+    may hold a reference there goes in between, built by the same scope
+    cleanup a return runs.
+    """;
+    saved_builder = self._builder;
+    saved_locals = self.local_vars;
+    saved_regions = self.region_open_stack;
+    saved_cells = self.closure_cell_handles;
+    try {
+        for (site_value, held) in sites {
+            site: any = site_value;
+            blk = site.parent;
+            at = blk.instructions.index(site);
+            tail = blk.instructions[at:];
+            del blk.instructions[at:];
+            raise_blk = func.append_basic_block(name="raise.at");
+            for inst_value in tail {
+                moved: any = inst_value;
+                moved.parent = raise_blk;
+                raise_blk.instructions.append(moved);
+            }
+            raise_blk.terminator = blk.terminator;
+            blk.terminator = None;
+            self._builder = ir.IRBuilder(blk);
+            self._builder.position_at_end(blk);
+            site_locals: dict[str, ir.Value] = {};
+            for (name, slot) in slots {
+                if id(slot) in held {
+                    site_locals[name] = slot;
+                }
+            }
+            self.local_vars = site_locals;
+            self.region_open_stack = [];
+            self.closure_cell_handles = {};
+            self._emit_scope_cleanup(skip_var=None, loc="unwind");
+            if not self._builder.block.is_terminated {
+                self._builder.branch(raise_blk);
+            }
+        }
+    } finally {
+        self._builder = saved_builder;
+        self.local_vars = saved_locals;
+        self.region_open_stack = saved_regions;
+        self.closure_cell_handles = saved_cells;
     }
 }
 
@@ -1764,7 +2053,7 @@ impl NaIRGenPass._exception_handler_slot(
     b: ir.IRBuilder, context: (ir.Value | None) = None
 ) -> ir.Value {
     if context is None {
-        context = b.call(self._get_exception_context_fn(), []);
+        context = b.call(self._get_exception_context_inl_fn(), []);
     }
     slot = b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 3)]
@@ -1774,7 +2063,7 @@ impl NaIRGenPass._exception_handler_slot(
 
 impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = self.builder.call(self._get_exception_context_inl_fn(), []);
     fields = [
         self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, i)])
         for i in range(3)
@@ -1791,7 +2080,7 @@ impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
     error off the record takes this with it.
     """;
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = self.builder.call(self._get_exception_context_inl_fn(), []);
     return self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
 }
 
@@ -2242,7 +2531,7 @@ impl NaIRGenPass._push_exception_handler(
     state = self._stack_entry_alloca(self._get_exception_state_type(), "exc.state");
     depth = self._stack_entry_alloca(ir.IntType(64), "rgn.depth.slot");
     self._emit_exc_push(self.builder, state);
-    self.builder.store(self._region_depth(), depth);
+    self.builder.store(self._region_depth_if_used(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
     result = self.builder.call(self._exc_setjmp_fn(), [self.builder.bitcast(env, i8p)]);
     self.builder.cbranch(
@@ -2484,7 +2773,7 @@ impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
     func = b.function;
     gc = self._gen_ctx;
     if gc is not None and func is gc.resume_fn {
-        return b.call(self._get_exception_context_fn(), [], name="exc.context");
+        return b.call(self._get_exception_context_inl_fn(), [], name="exc.context");
     }
     cached = self._exc_context_cache.get(id(func));
     if cached is not None {
@@ -2503,7 +2792,7 @@ impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
     saved_anchor: int = b._anchor;
     b.position_at_start(first_block);
     b._anchor = index;
-    context = b.call(self._get_exception_context_fn(), [], name="exc.context");
+    context = b.call(self._get_exception_context_inl_fn(), [], name="exc.context");
     b._block = saved_block;
     b._anchor = saved_anchor + 1
         if saved_block is first_block and saved_anchor >= index

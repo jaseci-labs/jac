@@ -116,6 +116,12 @@ impl NaIRGenPass._emit_rc_mark_threaded -> None {
 }
 
 impl NaIRGenPass._emit_rc_helpers -> None {
+    """The refcount runtime helpers: allocation, retain, release and free.
+
+    Only a debug build reads the alloc id, so a release build's allocation
+    writes the header magic alone and spares every allocation the shared
+    alloc-id counter.
+    """;
     if self._nogc_headerless() {
         i8_ptr_hl = ir.IntType(8).as_pointer();
         i64_hl = ir.IntType(64);
@@ -249,14 +255,18 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     total = b.and_(total, ir.Constant(i64, -16), name="total.align");
     raw = b.call(self.malloc_fn, [total], name="raw");
 
-    (b, _aid_old) = self._emit_rc_count_update(
-        alloc_fn, b, alloc_id_gv, None, "add", "monotonic", "aid"
-    );
     _aid_ptr = b.bitcast(raw, i64_ptr, name="aid.ptr");
     _magic_base = ir.Constant(i64, HDR_MAGIC_SHIFT_BASE);
-    _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
-    _aid_magic = b.or_(_magic_base, _aid_lo32, name="aid.magic");
-    b.store(_aid_magic, _aid_ptr);
+    if self._rc_debug_codegen {
+        (b, _aid_old) = self._emit_rc_count_update(
+            alloc_fn, b, alloc_id_gv, None, "add", "monotonic", "aid"
+        );
+        _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
+        b.store(b.or_(_magic_base, _aid_lo32, name="aid.magic"), _aid_ptr);
+    } else {
+        _aid_old = ir.Constant(i64, 0);
+        b.store(_magic_base, _aid_ptr);
+    }
 
     _tag_raw = b.gep(
         _raw_tag_str, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="tag.raw"

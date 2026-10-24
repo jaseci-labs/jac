@@ -2,8 +2,9 @@
 
 A `lock`-prefixed RMW on every retain/release dominated RC-heavy code, but
 `flow`, parallel `flow for` and C-imported `pthread_create` can put several
-threads on one object. Retain, release and the alloc-id counter therefore test
-the process-wide `__jac_rc_threaded` byte: 0 takes a plain load/add/store, 1
+threads on one object. Retain, release and (in a debug build, the only one
+that numbers its allocations) the alloc-id counter therefore test the
+process-wide `__jac_rc_threaded` byte: 0 takes a plain load/add/store, 1
 takes the atomic RMW. Every thread spawn stores 1 before `pthread_create`, and
 nothing stores 0. These pin that shape and run the threaded fixture: with the
 flag store removed, 9 of 10 runs freed the shared string early and printed a
@@ -49,10 +50,13 @@ glob FIXTURE = os.path.join(
      MARK_RE = re.compile(r'store atomic i8 1, \S+ @"?__jac_rc_threaded"?'),
      SPAWN_RE = re.compile(r'call i32 @"?pthread_create"?\(');
 
-def _compile_ir(gc_mode: str, path: str = FIXTURE) -> str {
+def _compile_ir(gc_mode: str, path: str = FIXTURE, debug: bool = False) -> str {
     prog = JacProgram();
     ir = prog.compile(
-        file_path=path, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
+        file_path=path,
+        options=CompileOptions(
+            aot_mode=True, na_gc_mode=gc_mode, rc_debug_codegen=debug
+        )
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     return str(ir.gen.llvm_ir);
@@ -73,11 +77,16 @@ def _mark_precedes_spawn(text: str) -> bool {
 test "retain, release and alloc ids branch on the threaded flag" {
     text = _compile_ir("rc");
     assert re.search(r'@"?__jac_rc_threaded"? = weak global i8 0', text) , "no shared threaded flag";
-    for tag in ("rc.r", "rc.rel", "aid") {
+    for tag in ("rc.r", "rc.rel") {
         assert f"{tag}.mt.flag" in text , f"{tag}: update not gated on the flag";
         assert f"{tag}.st.new" in text , f"{tag}: no plain update path";
         assert f"{tag}.mt.old" in text , f"{tag}: no atomic update path";
     }
+    assert "aid.mt.flag" not in text , "a release build numbers its allocations";
+    debug_text = _compile_ir("rc", debug=True);
+    assert "aid.mt.flag" in debug_text , "aid: update not gated on the flag";
+    assert "aid.st.new" in debug_text , "aid: no plain update path";
+    assert "aid.mt.old" in debug_text , "aid: no atomic update path";
 }
 
 test "flow spawns set the flag before pthread_create" {

@@ -238,6 +238,7 @@ walker NaIRGenPass(CompilerPass) {
         _slot_caught_drops: dict[int, tuple[ir.Value, ir.Value]] = {},
         _unbound_caught_slots: dict[int, ir.Value] = {},
         _exc_context_fn: (ir.Function | None) = None,
+        _exc_context_inl_fn: (ir.Function | None) = None,
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},
         static_fields: dict[str, ir.GlobalVariable] = {},
@@ -529,6 +530,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _get_exception_context_fn -> ir.Function;
+    def _get_exception_context_inl_fn -> ir.Function;
     def _exception_handler_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None
     ) -> ir.Value;
@@ -542,6 +544,7 @@ walker NaIRGenPass(CompilerPass) {
     def _region_leave -> None;
     def _emit_region_leaves(count: int) -> None;
     def _region_depth -> ir.Value;
+    def _region_depth_if_used -> ir.Value;
     def _region_unwind(depth: ir.Value) -> None;
     def _region_open_test -> ir.Value;
     def _region_c_entry_escape -> (ir.Value | None);
@@ -2979,6 +2982,17 @@ walker NaIRGenPass(CompilerPass) {
     def _unwind_shadow_slots(
         func: ir.Function, slots: list[tuple[str, ir.Value]]
     ) -> dict[int, ir.Value];
+
+    def _unwind_nothrow_callee(name: str) -> bool;
+    def _unwind_raise_sites(
+        func: ir.Function, slots: list[tuple[str, ir.Value]]
+    ) -> (list[tuple[ir.Instruction, set[int]]] | None);
+
+    def _unwind_release_at_raises(
+        func: ir.Function,
+        slots: list[tuple[str, ir.Value]],
+        sites: list[tuple[ir.Instruction, set[int]]]
+    ) -> None;
 
     def _hoist_entry_allocas(entry_blk: ir.Block) -> None;
     def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
