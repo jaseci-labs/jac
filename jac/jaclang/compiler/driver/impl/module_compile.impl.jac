@@ -75,7 +75,10 @@ impl run_client_dependencies(task: ModuleAnalysis) {
 impl admits_interface(task: ModuleAnalysis) -> bool {
     options = task.options;
     closure = session_of(task).closure_options() or options;
-    if task.parse_failed or task.blocked or task.source is not None {
+    if task.parse_failed
+        or task.blocked
+        or task.source is not None
+        or not options.keeps_interfaces() {
         return False;
     }
     return (options.no_cgen and not options.symtab_ir_only)
