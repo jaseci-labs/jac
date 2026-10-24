@@ -2700,21 +2700,13 @@ impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
     if self.ctx._is_suppressed(W3056) or not path or self._is_file_excluded(path) {
         return;
     }
-    folder = os.path.dirname(os.path.realpath(path));
     if path.endswith(".impl.jac") {
-        parts = os.path.basename(path)[:-len(".impl.jac")].split(".");
-        while parts {
-            if os.path.isfile(os.path.join(folder, ".".join(parts) + ".jac")) {
-                self.ctx.emit(
-                    W3056,
-                    node_override=module,
-                    what=f"Annex '{os.path.basename(
-                        path
-                    )}' belongs inside an impl folder"
-                );
-                break;
-            }
-            parts = parts[:-1];
+        if self._is_sibling_annex(path) {
+            self.ctx.emit(
+                W3056,
+                node_override=module,
+                what=f"Annex '{os.path.basename(path)}' belongs inside an impl folder"
+            );
         }
         return;
     }
@@ -2729,7 +2721,7 @@ impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
             or annex == path
             or annex in seen
             or not annex.endswith(".impl.jac")
-            or os.path.dirname(os.path.realpath(annex)) != folder {
+            or not self._is_sibling_annex(annex) {
             continue;
         }
         seen.add(annex);
@@ -2739,6 +2731,13 @@ impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
             what=f"Annex '{os.path.basename(annex)}' belongs inside an impl folder"
         );
     }
+}
+
+impl JacAutoLintPass._is_sibling_annex(annex: str) -> bool {
+    base = discover_base_file(annex);
+    return base is not None
+        and os.path.dirname(os.path.realpath(base))
+            == os.path.dirname(os.path.realpath(annex));
 }
 
 impl JacAutoLintPass._in_floated_spec(nd: uni.UniNode) -> bool {

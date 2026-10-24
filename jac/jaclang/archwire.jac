@@ -653,16 +653,18 @@ graph import {
         server.hmr.HotReloader._reload_server_module { reprepare_application },
     ]
     compiler.driver.bccache ++> [
-        cli.commands.analysis._check_file_job
+        cli.commands.analysis._annex_moves
             | project.compiler_host.ProjectHost.base_file
             | server.hmr
             | testing.cl_test_runner.module_entry_for { discover_base_file },
+        cli.commands.analysis._check_file_job { discover_base_file },
         cli.commands.analysis._drop_covered_annexes { discover_base_file },
         cli.commands.analysis._float_impls_to_annex
             | cli.commands.architecture
             | project.compiler_host.ProjectHost.annex_files
             | toolchains.desktop.module_files { discover_annex_files },
         cli.commands.analysis._unit_weight { discover_annex_files },
+        cli.commands.analysis._with_annex_owners { discover_base_file },
         lsp.server.engine { discover_annex_files, discover_base_file },
         project.compiler_host.ProjectHost.is_annex_path_of
             | project.kernel_snapshot.session_inputs { host_layout_tables },
@@ -5627,7 +5629,9 @@ graph import compiler {
         backends.native.kernel_stage0.unit_line_count | tools.code_intel {
             discover_annex_files
         },
-        tests.test_batch_decl_identity | tests.test_global_narrowing {
+        tests.test_batch_decl_identity
+            | tests.test_global_narrowing
+            | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex {
             discover_base_file
         },
     ]

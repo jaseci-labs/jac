@@ -438,6 +438,109 @@ test "lintfix moves impls-in-annex impls and sibling annexes into an impl folder
     }
 }
 
+"""Run lintfix over `inputs` in `mode`: fmt-0, fmt-2 (pooled) or lint."""
+def run_lintfix(mode: str, inputs: list[str]) -> int {
+    reset_state();
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+        if mode == "lint" {
+            return lint_cmd(inputs, fix=True);
+        }
+        return fmt_cmd(inputs, lintfix=True, jobs=mode[-1]);
+    }
+}
+
+"""Make a project that selects impls-in-annex and chdir into it."""
+def annex_project -> str {
+    repo = make_project();
+    (Path(repo) / "jac.toml").write_text(
+        '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+            + '[check.lint]\nselect = ["impls-in-annex"]\n'
+    );
+    return repo;
+}
+
+glob DECL = "obj Foo {\n    def bar -> int;\n}\n",
+     IMPL = "impl Foo.bar -> int {\n    return 1;\n}\n";
+
+test "lintfix gives a variant's sibling annex one home, beside the variant" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "foo.jac").write_text(DECL);
+            (proj / "foo.native.jac").write_text(DECL);
+            (proj / "foo.native.impl.jac").write_text(IMPL);
+            ret = run_lintfix(
+                mode, [str(proj / "foo.jac"), str(proj / "foo.native.jac")]
+            );
+            homes = sorted(str(p.relative_to(proj)) for p in proj.rglob("*.impl.jac"));
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] got {ret}";
+        assert homes == ["foo.native.impl/foo.native.impl.jac"] , f"[{mode}] {homes}";
+    }
+}
+
+test "lintfix on a sibling annex alone moves it through its module" {
+    for mode in ("fmt-0", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "side.jac").write_text(DECL);
+            (proj / "side.impl.jac").write_text(IMPL);
+            ret = run_lintfix(mode, [str(proj / "side.impl.jac")]);
+            moved = (proj / "impl" / "side.impl.jac").exists();
+            left = (proj / "side.impl.jac").exists();
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 and moved and not left , f"[{mode}] ret={ret} moved={moved} left={left}";
+    }
+}
+
+test "lintfix rolls a move back when the old annex cannot be removed" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "side.jac").write_text(
+                "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n\n"
+                    + "impl Foo.baz -> int {\n    return 2;\n}\n"
+            );
+            mod_src = (proj / "side.jac").read_text();
+            (proj / "side.impl.jac").write_text(IMPL);
+            sibling = os.path.realpath(proj / "side.impl.jac");
+            real_unlink = Path.unlink;
+            def guarded_unlink(self: Path, missing_ok: bool = False) {
+                if os.path.realpath(self) == sibling {
+                    raise PermissionError(13, "Permission denied", str(self));
+                }
+                real_unlink(self, missing_ok=missing_ok);
+            }
+            with patch.object(Path, "unlink", guarded_unlink) {
+                ret = run_lintfix(mode, [str(proj / "side.jac")]);
+            }
+            mod_text = (proj / "side.jac").read_text();
+            copies = sorted(str(p.relative_to(proj)) for p in proj.rglob("*.impl.jac"));
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[{mode}] a failed removal fails the run, got {ret}";
+        assert copies == ["side.impl.jac"] , f"[{mode}] no second copy survives: {copies}";
+        assert mod_text == mod_src , f"[{mode}] the module is restored, got:\n{mod_text!r}";
+    }
+}
+
 test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {
     broken = "impl Foo.bar -> int {\n    return 1;\n";
     for mode in ("fmt-0", "fmt-2", "lint") {

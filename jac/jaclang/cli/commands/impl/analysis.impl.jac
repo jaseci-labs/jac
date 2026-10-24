@@ -506,7 +506,11 @@ impl lint(
                     raise;
                 }
                 if float_source {
-                    Path(float_source).unlink(missing_ok=True);
+                    failure = _remove_or_restore([float_source], backups);
+                    if failure {
+                        console.error(failure);
+                        return (False, 1, 1);
+                    }
                 }
             }
 
@@ -541,7 +545,12 @@ impl lint(
                     with open(home, 'w', encoding='utf-8') as f {
                         f.write(annex_formatted);
                     }
-                    Path(annex_path).unlink(missing_ok=True);
+                    failure = _remove_or_restore([annex_path], {home: None});
+                    if failure {
+                        console.error(failure);
+                        error_count += 1;
+                        unfixable_count += 1;
+                    }
                 } elif (annex_formatted and annex_formatted != annex_original) {
                     with open(annex_path, 'w', encoding='utf-8') as f {
                         f.write(annex_formatted);
@@ -559,6 +568,9 @@ impl lint(
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    if fix {
+        all_files = _with_annex_owners(all_files);
+    }
     import os;
     covered: set[str] = {os.path.realpath(f) for f in all_files};
     for file_path in all_files {
@@ -634,6 +646,12 @@ impl _snapshot_file(path: str) -> (bytes | None) {
 
 def _restore_files(backups: dict[str, (bytes | None)]) -> None;
 
+def _remove_or_restore(
+    paths: list[str], backups: dict[str, (bytes | None)]
+) -> (str | None);
+
+def _with_annex_owners(files: list[str]) -> list[str];
+
 impl _restore_files(backups: dict[str, (bytes | None)]) -> None {
     for (path, data) in backups.items() {
         try {
@@ -674,10 +692,13 @@ impl _annex_moves(
     if file_path.endswith((".impl.jac", ".test.jac")) {
         return moves;
     }
-    folder = os.path.dirname(os.path.realpath(file_path));
+    module_real = os.path.realpath(file_path);
     for ap in annex_paths {
+        owner = discover_base_file(ap);
         if not ap.endswith(".impl.jac")
-            or os.path.dirname(os.path.realpath(ap)) != folder {
+            or owner is None
+            or os.path.realpath(owner) != module_real
+            or os.path.dirname(os.path.realpath(ap)) != os.path.dirname(module_real) {
             continue;
         }
         home = _annex_home(file_path, ap);
@@ -704,6 +725,45 @@ impl _annex_moves(
         }
     }
     return moves;
+}
+
+impl _remove_or_restore(
+    paths: list[str], backups: dict[str, (bytes | None)]
+) -> (str | None) {
+    removed: dict[str, (bytes | None)] = {};
+    for gone in paths {
+        try {
+            removed[gone] = _snapshot_file(gone);
+            Path(gone).unlink(missing_ok=True);
+        } except OSError as e {
+            _restore_files(backups);
+            _restore_files(removed);
+            return f"Error removing '{gone}': {e}";
+        }
+    }
+    return None;
+}
+
+impl _with_annex_owners(files: list[str]) -> list[str] {
+    import os;
+
+    present = {os.path.realpath(f) for f in files};
+    owners: list[str] = [];
+    for f in files {
+        if not f.endswith(".impl.jac") {
+            continue;
+        }
+        owner = discover_base_file(f);
+        if owner is None
+            or os.path.realpath(owner) in present
+            or os.path.dirname(os.path.realpath(owner))
+                != os.path.dirname(os.path.realpath(f)) {
+            continue;
+        }
+        present.add(os.path.realpath(owner));
+        owners.append(owner);
+    }
+    return files + owners;
 }
 
 impl _float_impls_to_annex(
@@ -827,6 +887,9 @@ impl format(
     failed_results: list[dict[str, any]] = [];
 
     (all_files, had_path_errors) = _iter_jac_files(paths);
+    if lintfix {
+        all_files = _with_annex_owners(all_files);
+    }
     total_files = len(all_files);
 
     if total_files == 0 {
@@ -1031,12 +1094,11 @@ impl format(
                     }
                 }
                 if not write_errors and not to_screen {
-                    for gone in res.get('removed_annexes', []) {
-                        try {
-                            Path(gone).unlink(missing_ok=True);
-                        } except OSError as e {
-                            write_errors.append(f"Error removing '{gone}': {e}");
-                        }
+                    failure = _remove_or_restore(
+                        res.get('removed_annexes', []), backups
+                    );
+                    if failure {
+                        write_errors.append(failure);
                     }
                 }
                 if write_errors {
