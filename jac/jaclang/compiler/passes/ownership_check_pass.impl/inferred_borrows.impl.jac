@@ -591,8 +591,15 @@ impl OwnershipCheckPass._infer_borrows_in(
     simple: dict[SymId, list[Assignment]] = {};
     other_binds: dict[SymId, int] = {};
     names: dict[SymId, Name] = {};
+    # locals copied whole into another local: the copy at a local's last use
+    # takes its reference (move lowering), so it may stop holding its object
+    # before the function ends
+    copied: set[SymId] = set();
     for nd in nds {
         if isinstance(nd, Assignment) {
+            if isinstance(nd.value, Name) and nd.value.sym is not None {
+                copied.add(self._name_sym_id(nd.value));
+            }
             single = len(nd.target) == 1 and nd.aug_op is None;
             for tgt in nd.target {
                 for nm in self._infer_bound_names(tgt) {
@@ -719,6 +726,7 @@ impl OwnershipCheckPass._infer_borrows_in(
                 if not (
                     self._infer_is_local(base_nm)
                     and self._infer_owner_stable(ab, rsid, other_binds, simple)
+                    and rsid not in copied
                     and rsid not in captured
                 ) {
                     drop = True;

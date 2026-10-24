@@ -52,7 +52,8 @@ test "locals whose source can be released before their last use stay counted" {
         "must_call_clear",
         "must_method_clear",
         "must_loop_overwrite",
-        "must_global_root"
+        "must_global_root",
+        "must_copied_root"
     ] {
         assert retains_in(text, name) >= 1 , f"{name} lost its retain";
     }

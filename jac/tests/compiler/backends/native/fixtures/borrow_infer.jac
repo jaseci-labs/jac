@@ -102,6 +102,14 @@ def must_global_root -> int {
     return b.v + filler.v;
 }
 
+def must_copied_root(hs: list[Holder]) -> int {
+    h = hs.pop();
+    it = h.item;
+    other = h;
+    other = hs.pop();
+    return it.v;
+}
+
 with entry {
     print(keep_elem(fresh(4)), keep_loop(fresh(4)));
     print(keep_field(Holder(item=Box(v=5))));
@@ -112,4 +120,5 @@ with entry {
     print(must_loop_overwrite(fresh(5)));
     SHARED.append(Box(v=42));
     print(must_global_root());
+    print(must_copied_root([Holder(item=Box(v=8)), Holder(item=Box(v=9))]));
 }
