@@ -65,6 +65,42 @@ test "section metadata omits content and selection returns only its body" {
 }
 
 
+"""Guides point readers at sections by short names ("read Effects"), while the
+slugs are long. A unique prefix of a slug or title selects the section; an
+ambiguous prefix names the candidates instead of guessing."""
+test "a unique section prefix selects it and an ambiguous one lists candidates" {
+    topic = "reference/agent-patterns/jac-cl-components";
+    buf = io.StringIO();
+    with redirect_stdout(buf) {
+        rc = guide(topic=topic, section="effects", as_json=True);
+    }
+    assert rc == 0 , buf.getvalue();
+    assert json.loads(buf.getvalue())["section"].startswith("effects-");
+    full = get_guide("jac-types");
+    assert full is not None;
+    slugs = [p.slug for p in guide_sections(full)];
+    shared = [
+        s[:1]
+        for s in slugs
+        if len(
+            [
+                t
+                for t in slugs
+                if t.startswith(s[:1])
+            ]
+        )
+            > 1
+    ];
+    assert shared , "fixture: jac-types needs two sections sharing a first letter";
+    buf = io.StringIO();
+    with redirect_stdout(buf) {
+        rc = guide(topic="jac-types", section=shared[0], as_json=True);
+    }
+    assert rc == 1;
+    assert "ambiguous" in json.loads(buf.getvalue())["error"];
+}
+
+
 test "invalid selectors fail without falling back to the full guide" {
     cases = [
         {"section": "pitfalls"},

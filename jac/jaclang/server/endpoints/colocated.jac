@@ -50,4 +50,8 @@ def _mount_provider(
 
 def served_app_route(server: JacAPIServer) -> tuple[str, str, any];
 
+def provider_introspector(
+    server: JacAPIServer, provider_app: str, provider_module: any
+) -> (ModuleIntrospector | None);
+
 def register_colocated_endpoints(server: JacAPIServer);

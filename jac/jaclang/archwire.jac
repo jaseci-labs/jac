@@ -154,6 +154,7 @@ graph import {
     }
     byllm.visit_routing --> runtime.runtime.JacLLM.by_operator { route_visit }
     cache.home ++> cli.commands.cache { cache_home }
+    cache.locking ++> scale.admin.console_build.AdminConsole._run { FileLock }
     cache.policy ++> [
         cli.commands.cache { format_bytes },
         cli.format_cache {
@@ -177,6 +178,7 @@ graph import {
             | packages.sources._mirror_dir
             | packages.store.materialize
             | project.package_scope.store_root
+            | scale.admin.console_build.AdminConsole._note_hit
             | scale.injector.binary._scale_cache_root
             | server.session.shared_pg_data_dir
             | toolchains.android
@@ -185,7 +187,9 @@ graph import {
         compiler.types.stubcat.locate.StubcatArtifact.build
             | scale.injector.binary._fetch_verified_asset { maybe_sweep },
         dist.jab | toolchains.store { bucket, maybe_sweep },
-        packages.index.fetch_verified { bucket },
+        packages.index.fetch_verified | scale.admin.console_build.console_cache_dir {
+            bucket
+        },
     ]
     cache.registry --> [
         compiler.driver.jir._manifest_compiler_digest { bucket, maybe_sweep },
@@ -356,6 +360,7 @@ graph import {
     comptime client.cli ++> cli.manifest { SPEC_SETUP }
     client.client_bundle ++> [
         compiler.driver.client_graph.collect_client_graph
+            | dist.publish.npm_sources._link_modules
             | server.hmr.HotReloader._recompile_client_unified { ClientBundleError },
         compiler.tests.test_client_codegen_facts {
             _client_target_module,
@@ -651,9 +656,10 @@ graph import {
             | server.hmr
             | testing.cl_test_runner.module_entry_for { discover_base_file },
         cli.commands.analysis._drop_covered_annexes { discover_base_file },
-        cli.commands.analysis._unit_weight
+        cli.commands.analysis._float_impls_to_annex
             | cli.commands.architecture
             | project.compiler_host.ProjectHost.annex_files { discover_annex_files },
+        cli.commands.analysis._unit_weight { discover_annex_files },
         lsp.server.engine { discover_annex_files, discover_base_file },
         project.compiler_host.ProjectHost.is_annex_path_of
             | project.kernel_snapshot.session_inputs { host_layout_tables },
@@ -666,9 +672,18 @@ graph import {
         cli.commands.analysis.precommit { discover_annex_files },
         testing.test_runner._suite_source { discover_base_file },
     ]
-    compiler.driver.client_graph ++> client.jac_client_compiler.JacClientCompiler.emit_dependencies {
-        collect_client_graph
-    }
+    compiler.driver.client_graph ++> [
+        client.jac_client_compiler.JacClientCompiler._module_text { append_link },
+        client.jac_client_compiler.JacClientCompiler.emit_dependencies
+            | dist.publish.npm_sources._link_modules { collect_client_graph },
+        dist.publish.npm_sources.collect_npm_sources {
+            ClientLink,
+            append_link,
+            link_tail
+        },
+    ]
+    type compiler.driver.client_graph ++> client.jac_client_compiler
+        | dist.publish.npm_sources { ClientLink }
     compiler.driver.compilation_context ++> [
         dist.precompile_bytecode._application_sources { bind_options },
         dist.precompile_bytecode.precompile_context { bind_options, context_program },
@@ -899,23 +914,24 @@ graph import {
             | server.hmr.HotReloader._classify_declarations
             | testing.cl_test_runner.compile_cl_module
             | testing.test_runner._fresh_jac_state { JacProgram },
-        cli.commands.analysis._format_single_file_worker
+        cli.commands.analysis._float_impls_to_annex
             | cli.commands.fix._verify_claims
             | cli.commands.transform.jac2py
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
             | dist.precompile_bytecode.prebuild_native_closure
             | testing.cl_test_runner.module_is_client { JacProgram },
-        cli.commands.analysis.explain
+        cli.commands.analysis._format_single_file_worker
             | cli.commands.transform.py2jac
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py
             | dist.precompile_bytecode.precompile_native_unit { JacProgram },
-        cli.commands.analysis.grammar
+        cli.commands.analysis.explain
             | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse
             | dist.precompile_bytecode.precompile_unit_context { JacProgram },
-        cli.commands.analysis.lint
+        cli.commands.analysis.grammar
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
             | dist.precompile_bytecode.seal_native { JacProgram },
-        cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
+        cli.commands.analysis.lint
+            | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
             JacProgram
         },
         dist.publish.builder._backend_source { JacProgram as JacProgramRt },
@@ -1014,6 +1030,7 @@ graph import {
             | dist.precompiled._pkg_dir { jaclang_pkg_root },
         client.vite_client_bundle { ClientArtifact },
         dist.precompile_bytecode._compiler_kernel_units { kernel_unit_paths },
+        dist.publish.npm_sources._link_modules { ClientArtifact, ClientManifest },
         dist.publish.runtime_vendor._runtime_module_options {
             is_native_by_location,
             is_shared_runtime_module
@@ -1477,8 +1494,9 @@ graph import {
             | runtime.builtin._get_archetype_alias.factory.decorator
             | server.endpoints.walkers
             | server.server
-            | server.session.Session._load_edges { Serializer },
+            | server.session.Session._expired { Serializer },
         server.session { frozen_fields },
+        server.session.Session._load_edges { Serializer },
         server.session.Session._materialize { Serializer },
         server.session.Session._serialize { Serializer },
         server.session.Session._unflushed { Serializer },
@@ -1840,7 +1858,6 @@ graph import {
         client.cli.setup { kind_has_client },
         compiler.placement.placement.project_has_server
             | compiler.placement.placement_pins { kind_codespace },
-        dist.seal.build_serve_manifest { kind_has_server },
         dist.source.project.export_project { kind_has_client, kind_has_server },
     ]
     project.app_kinds --> [
@@ -1914,7 +1931,7 @@ graph import {
             | client.targets.pwa_build
             | client.targets.registry.target_for_app
             | client.targets.web_target._get_app_meta_data
-            | client.vite_bundler._dev_head_scripts
+            | client.vite_bundler._dev_head
             | data.pg_dist._configured_dist
             | runtime.graph_utils.get_name
             | scale.plugin._resolve_deploy_target
@@ -2311,12 +2328,13 @@ graph import {
         TemplateRegistry
     }
     project.textio ++> [
-        cli.commands.analysis._format_single_file_worker
+        cli.commands.analysis._float_impls_to_annex
             | cli.commands.architecture
             | cli.commands.transform.py2jac
             | compiler.driver.compiler
             | compiler.tools.lang_tools
             | runtime.traceback_render { read_file_with_encoding },
+        cli.commands.analysis._format_single_file_worker { read_file_with_encoding },
         cli.commands.analysis._iter_jac_files | cli.commands.architecture._arch_files {
             drop_git_ignored
         },
@@ -2358,6 +2376,7 @@ graph import {
             | dist.precompile_bytecode._application_sources
             | server.session.project_database { workspace_for_path },
         compiler.driver.application._warn_private_declarations { app_for_path },
+        dist.precompile_bytecode.sealable_sources { workspace_for_path },
     ]
     project.workspace --> lsp.server.engine.JacLangServer.type_check_file {
         workspace_for_path
@@ -3882,7 +3901,6 @@ graph import {
         },
         scale.admin.admin_portal {
             FileResponse,
-            HTMLResponse,
             JSONResponse,
             RedirectResponse,
             Request,
@@ -3896,6 +3914,7 @@ graph import {
             | scale.tests.server.test_oauth_providers
             | scale.tests.server.test_registration_limits
             | scale.tests.server.test_static_fallback { Request },
+        scale.admin.console_build { HTMLResponse, Response },
         scale.admin.deploy_health
             | scale.admin.llm_telemetry
             | scale.admin.logs
@@ -4776,10 +4795,9 @@ graph import cli {
 
 graph import cli.commands {
     analysis --> build.build { check }
-    build --> execution._build_plan { build }
     cli_helpers ++> execution | tools { proc_file as _proc_file }
     native_build --> [
-        build._build_app | execution._build_plan { native_build },
+        build._build_app { native_build },
         build.build { native_build },
     ]
     project --> [
@@ -4846,10 +4864,13 @@ graph import client {
         serving { client_output_dir },
     ]
     asset_processor ++> jac_client_compiler { AssetProcessor }
-    auth_contract ++> client_react_core
-        | client_runtime
-        | client_runtime_core
-        | solid_runtime { SignupResult }
+    auth_contract ++> [
+        client_react_core | client_runtime_core {
+            SignupResult,
+            __solveRegistrationChallenge
+        },
+        client_runtime | solid_runtime { SignupResult },
+    ]
     client_bundle ++> [
         compiler { ClientBuildInputs, ClientBundle, ClientBundleError },
         compiler.ViteCompiler._compile_wasm_module { client_program },
@@ -5027,8 +5048,9 @@ graph import client {
             JAC_VIRTUAL_MODULE_SOURCES
         },
     ]
-    serving ++> targets.web_target._generate_index_html
-        | vite_bundler._dev_head_scripts { HeaderBuilder }
+    serving ++> targets.web_target._generate_index_html | vite_bundler._dev_head {
+        HeaderBuilder
+    }
     source_mapping ++> client_diagnostics { JacLocator, SourceLocation, _npm_specifier }
     source_mapping --> jac_client_compiler.JacClientCompiler._write_js {
         generate_source_map_json
@@ -5036,7 +5058,10 @@ graph import client {
     targets.node_tooling_common ++> vite_bundler._build_vite_command {
         resolve_node_tool_entry
     }
-    targets.react_native.dev --> cli.run_client_start { JAC_RN_DEV_HOST_ENV }
+    targets.react_native.dev --> cli.run_client_start {
+        JAC_RN_DEV_HOST_ENV,
+        JAC_RN_TUNNEL_ENV
+    }
     targets.react_native.html_tag_map ++> client_runtime_native {
         RN_HTML_TEXT_TAGS as _TEXT_TAGS,
         RN_HTML_VIEW_TAGS as _VIEW_TAGS
@@ -5151,7 +5176,10 @@ graph import client.targets {
     }
     react_native.dev ++> mobile_target {
         JAC_RN_DEV_HOST_ENV,
+        JAC_RN_TUNNEL_ENV,
+        METRO_API_PREFIX,
         inject_dev_api_base_url,
+        inject_metro_api_base,
         resolve_metro_port,
         restore_app_json,
         rn_hmr_on_jac_changed,
@@ -5160,6 +5188,7 @@ graph import client.targets {
     }
     react_native.scaffold ++> mobile_target {
         ensure_native_deps_installed,
+        refresh_metro_config,
         write_expo_scaffold
     }
     register --> registry.get_target_registry { register_targets }
@@ -6039,6 +6068,7 @@ graph import compiler {
             scope_path_of,
             wiring_for_path
         },
+        types.stubcat.writer.CatalogWriter.encode_symbol { is_arch_file },
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
@@ -6526,7 +6556,7 @@ graph import compiler {
             | driver.nativecache { CodeGenTarget },
         backends.native.na_ir_gen_pass { NativeModuleLayout },
         driver.boundary_classify { InteropManifest },
-        driver.client_graph { ClientArtifact },
+        driver.client_graph { ClientArtifact, ClientManifest },
         driver.compiler { CodeGenTarget, NativeModuleLayout },
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
@@ -6848,7 +6878,6 @@ graph import compiler {
             E0052,
             E0055,
             E0058,
-            E0059,
             E0063,
             E0065,
             E0066,
@@ -7326,7 +7355,8 @@ graph import compiler {
             binding_sites,
             binds_target,
             confined_to,
-            enclosing_loop
+            enclosing_loop,
+            in_loop_else
         },
         backends.native.na_ir_gen_pass {
             LoopLinks,
@@ -7335,7 +7365,9 @@ graph import compiler {
             enclosing_loop,
             frame_owns
         },
-        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink },
+        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
+        passes.ast_validation_pass { in_loop_else },
+        passes.cfg_build_pass { enclosing_loop },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
@@ -8988,8 +9020,19 @@ graph import compiler {
             Expr,
             FuncCall,
             FuncSignature,
+            KWPair,
             Module,
             UnaryExpr
+        },
+        passes.wasm_contract._host_export {
+            Archetype,
+            Import,
+            Module,
+            ModuleItem,
+            Name,
+            ability_of_symbol,
+            import_chain_of,
+            resolved_decl_of
         },
         passes.wasm_contract.check_host_call { Module, Name, ability_of_symbol },
         passes.wasm_contract.host_contracts { Import },
@@ -9990,6 +10033,10 @@ graph import compiler {
             refresh_placement_module,
             solve_module_placement
         },
+        passes.placement_pass._demote_unreached_imports {
+            placement_work,
+            refresh_placement_module
+        },
         passes.placement_pass.build_native_legality { native_closure_blocker },
         passes.placement_pass.settle_native_module { invalidate_importers_es },
         passes.placement_pass.uncrossable_native {
@@ -10188,7 +10235,7 @@ graph import compiler {
         },
     ]
     type_registry --> [
-        backends.es.esast_gen_pass.EsastGenPass.exit_func_call
+        backends.es.esast_gen_pass.EsastGenPass._lower_func_call
             | passes.ownership_check_pass.OwnershipCheckPass._handled_by_enclosing_try
             | types.type_evaluator.TypeEvaluator._assign_class { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass.exit_try_stmt { JAC_TYPE_REGISTRY },
@@ -10708,7 +10755,7 @@ graph import compiler.backends.es {
         esast_gen_pass.EsastGenPass._try_primitive_op
             | jac_runtime_js._build_types_runtime_js { JSCodeGenerator },
     ]
-    es_unparse --> esast_gen_pass.EsastGenPass.exit_func_call { JSCodeGenerator }
+    es_unparse --> esast_gen_pass.EsastGenPass._lower_func_call { JSCodeGenerator }
     type esast_gen_pass ++> jsx_processor { EsastGenPass }
     estree as es ++> backends.react
         | backends.solid
@@ -15276,6 +15323,7 @@ graph import runtime {
         },
         runtime.JacBuiltin.log_report { _current_scope, osp_report },
         runtime.JacGraph.clear_edges { osp_forget },
+        runtime.JacWalker.async_spawn_call { _current_scope },
         runtime.JacWalker.disengage { osp_disengage },
         runtime.JacWalker.spawn_call { osp_spawn },
         runtime.JacWalker.visit { osp_visit, scope_of },
@@ -15329,7 +15377,7 @@ graph import runtime {
             | osp_kernel_sv._sv_on_complete
             | prepared_loader.PreparedFinder.find_spec { JacRuntime },
         archetype.NodeAnchor.all_edges { JacRuntimeInterface },
-        archetype.Root.__getattr__ { JacRuntime },
+        archetype.Root.__getattr__ | osp_kernel_sv._sv_settle { JacRuntime },
         archetype._dirty_delattr { JacRuntime },
         archetype._dirty_setattr { JacRuntime },
         interop_bridge._pyb_import_module { JacModule },
@@ -15347,6 +15395,11 @@ graph import runtime {
 }
 
 graph import runtime.na_stdlib {
+    _ascii ++> [
+        datetime { is_digit, is_space },
+        re { hexv, is_alpha, is_digit, is_space, is_word, swapcase },
+        string { is_id_start, is_word },
+    ]
     _bz2_native ++> bz2 { bz2_compress, bz2_decompress }
     _csprng_native ++> secrets | uuid { csprng_bytes }
     _datetime_native ++> datetime {
@@ -15473,6 +15526,10 @@ graph import runtime.na_stdlib {
         _default_types_val
     }
     _replace_native ++> _os_native { replace_file }
+    _repr ++> [
+        difflib { str_gt },
+        pprint | reprlib { repr_str, sorted_str_keys },
+    ]
     _select_native ++> select {
         _FD_SETSIZE,
         _POLLERR,
@@ -15643,6 +15700,10 @@ graph import runtime.na_stdlib {
     ]
     _typename ++> hmac | secrets { typename }
     _user_home ++> os.path { user_home }
+    _utf8 ++> [
+        re { cps_str, utf8_cps },
+        reprlib { cp_len, cpslice_str },
+    ]
     _zlib_native ++> [
         gzip {
             ZInflateResult,
@@ -30241,6 +30302,7 @@ graph import scale {
             | deploy.target.kubernetes.ingress
             | deploy.target.kubernetes.monitoring
             | deploy.target.kubernetes.target
+            | deploy.target.kubernetes.utils.kubernetes_utils
             | injector.pvc_injector.PvcInjector.seed { ApiException, client },
         deploy.autoscale.hpa_autoscaler | deploy.autoscale.keda_autoscaler {
             ApiException,
@@ -30258,12 +30320,6 @@ graph import scale {
             ConfigException,
             client,
             config as k8s_cluster_config
-        },
-        deploy.target.kubernetes.utils.kubernetes_utils {
-            ApiException,
-            ConfigException,
-            client,
-            config
         },
         tests.deploy.observer_transition_recorder { ApiException, config },
         tests.misc.test_optional_deps { HAS_KUBERNETES, client as k8s_client },
@@ -30289,7 +30345,7 @@ graph import scale {
     ]
     _optdeps.prometheus --> tests.misc.test_optional_deps;
     admin ++> [
-        admin.admin_portal.JacAPIServerAdmin.build_admin_client { admin_portal },
+        admin.console_build.package_ui_dir { admin_portal },
         tests.misc.test_k8s_ops { k8s_ops },
     ]
     admin --> tests.server.test_admin;
@@ -30309,6 +30365,10 @@ graph import scale {
         _parse_prometheus_text,
         _percentile_from_buckets
     }
+    admin.console_build ++> runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
+        resolve_console
+    }
+    admin.console_build --> tests.server.test_admin { AdminConsole, ConsoleState }
     admin.deploy_health ++> [
         runtime.gateway.microservice_gateway | server.extensions {
             JacAPIServerDeployHealth
@@ -30392,6 +30452,7 @@ graph import scale {
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
             | tests.deploy.test_factories
+            | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_pod_env
             | tests.deploy.test_show_yaml_autoscalers
@@ -30660,6 +30721,7 @@ graph import scale {
             | tests.deploy.test_ingress_tls_preservation
             | tests.deploy.test_memory_trigger_guard
             | tests.deploy.test_monitoring_switch
+            | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_pod_env
             | tests.deploy.test_service_routing
@@ -30690,6 +30752,7 @@ graph import scale {
             | tests.deploy.test_dry_run_purity
             | tests.deploy.test_gateway_config_isolation
             | tests.deploy.test_memory_trigger_guard
+            | tests.deploy.test_ops_rbac
             | tests.deploy.test_service_routing
             | tests.deploy.test_superseded_deployment_reap { ManifestBuilder },
         tests.deploy.test_client_build_stage {
@@ -30716,7 +30779,9 @@ graph import scale {
     ]
     deploy.target.kubernetes.ops_rbac ++> tests.deploy.test_ops_rbac {
         build_ops_rbac,
-        ops_role_name
+        ops_role_name,
+        ops_sa_is_ours,
+        ops_sa_name
     }
     deploy.target.kubernetes.runtime_bootstrap ++> tests.microservices.test_binary_injector {
         build_bootstrap_init_container,
@@ -31102,6 +31167,7 @@ graph import scale {
         StandardLogger
     }
     runtime.cli.diagnostics ++> tests.deploy.test_pdb_budget { PlanValidator }
+    runtime.cli.plan ++> tests.deploy.test_ops_rbac { Plan }
     runtime.context.auth_ctx ++> [
         server.extensions.ObservabilityExtension.register {
             reset_current_auth,
@@ -31195,18 +31261,8 @@ graph import scale {
         },
     ]
     runtime.context.util ++> [
-        admin.k8s_ops
-            | deploy.target.kubernetes.runtime_resolver.build_k8s_registry_routes {
-            in_cluster_namespace
-        },
-        deploy.target.kubernetes.database_provisioner | sdk.client { k8s_safe_name },
-        deploy.target.kubernetes.manifest_builder
-            | deploy.target.kubernetes.target
-            | tests.deploy.test_gateway_config_isolation {
-            GATEWAY_NAME,
-            k8s_safe_name
-        },
-        deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
+        admin.console_build.build_with_jac
+            | deploy.target.kubernetes.manifest_builder.ManifestBuilder._build_client_bundle
             | tests.deploy.test_client_build_deps
             | tests.deploy.test_client_build_fail_fast
             | tests.deploy.test_client_build_stage
@@ -31217,12 +31273,26 @@ graph import scale {
             | tests.server.test_root_bind_fail_closed._prewarm
             | tests.server.test_serve
             | tests.support.start_server { jac_executable },
+        admin.k8s_ops
+            | deploy.target.kubernetes.runtime_resolver.build_k8s_registry_routes {
+            in_cluster_namespace
+        },
+        deploy.target.kubernetes.database_provisioner
+            | deploy.target.kubernetes.ops_rbac
+            | sdk.client { k8s_safe_name },
+        deploy.target.kubernetes.manifest_builder
+            | deploy.target.kubernetes.target
+            | tests.deploy.test_gateway_config_isolation {
+            GATEWAY_NAME,
+            k8s_safe_name
+        },
         deploy.target.kubernetes.manifest_builder.ManifestBuilder._peer_dns_url {
             k8s_service_dns_url
         },
         deploy.target.kubernetes.runtime_resolver { DEFAULT_GATEWAY_PORT },
         tests.deploy.test_http_activation_microservices
             | tests.deploy.test_memory_trigger_guard
+            | tests.deploy.test_ops_rbac
             | tests.deploy.test_pod_env { GATEWAY_NAME },
     ]
     runtime.context.util --> [
@@ -31232,7 +31302,6 @@ graph import scale {
         },
         tests.microservices.test_gateway { http_forward_timeout },
         tests.microservices.test_k8s_health_probe
-            | tests.server.test_admin
             | tests.server.test_examples.JacScaleTestRunner.start_server
             | tests.server.test_metrics_workers { jac_executable },
     ]
@@ -31267,6 +31336,7 @@ graph import scale {
             | tests.deploy.test_dry_run_purity
             | tests.deploy.test_http_activation_microservices
             | tests.deploy.test_memory_trigger_guard
+            | tests.deploy.test_ops_rbac
             | tests.deploy.test_pdb_budget
             | tests.deploy.test_show_yaml_autoscalers { fleet_of },
         tests.deploy.test_pod_env { FLEET_ENV, fleet_of },
@@ -31474,9 +31544,12 @@ graph import scale {
         tests.data.test_gateway_owned_identity { fleet_provisions_unknown_users },
         tests.server.test_auth_policy_startup { AdminExtension, MailExtension },
     ]
-    server.extensions --> tests.server.test_scheduler_multipod {
-        validate_events_url as _validate_events_url
-    }
+    server.extensions --> [
+        tests.server.test_admin { AdminExtension },
+        tests.server.test_scheduler_multipod {
+            validate_events_url as _validate_events_url
+        },
+    ]
     server.inprocess ++> tests.scale_test_client.ScaleTestClient._initialize {
         prepare_inprocess_runtime
     }
@@ -31597,6 +31670,7 @@ graph import scale._optdeps {
 }
 
 graph import scale.admin {
+    console_build ++> admin_portal { AdminConsole, resolve_console }
     k8s_ops ++> [
         deploy_health {
             api_error_detail,
@@ -31764,6 +31838,10 @@ graph import scale.deploy.target.kubernetes {
         with_config_revision
     }
     monitoring ++> target { MonitoringDeployer }
+    ops_rbac ++> [
+        manifest_builder { ops_sa_name },
+        target { ops_sa_is_ours, ops_sa_name },
+    ]
     ops_rbac --> manifest_builder.ManifestBuilder.generate_manifests { build_ops_rbac }
     runtime_bootstrap ++> [
         manifest_builder.ManifestBuilder._build_pod_spec {
@@ -32308,6 +32386,10 @@ graph import server {
         register_auth_endpoints
     }
     endpoints.colocated ++> [
+        server.JacAPIServer._colocated_scheduled_targets {
+            colocated_providers,
+            provider_introspector
+        },
         server.JacAPIServer.register_endpoints { register_colocated_endpoints },
         server.print_endpoint_docs { colocated_providers, provider_route },
     ]
@@ -32581,9 +32663,10 @@ graph import server {
     task_scheduler ++> [
         server { Scheduler },
         server.JacAPIServer.__post_init__ { Scheduler },
+        server.JacAPIServer._colocated_scheduled_targets { ScheduleSpec },
         server.JacAPIServer._register_scheduled_tasks { schedule_namespace },
-        server.JacAPIServer._scheduled_targets { ScheduleSpec },
         server.ModuleIntrospector.scheduled_members { ScheduleSpec },
+        server.ModuleIntrospector.scheduled_targets { ScheduleSpec },
     ]
     task_scheduler --> server.JacAPIServer._start_problems { schedule_problems }
     transport ++> [

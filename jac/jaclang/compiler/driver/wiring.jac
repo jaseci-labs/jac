@@ -71,7 +71,7 @@ obj WiringSpec {
         _project_modules: (list[str] | None) = None,
         _prefix: (str | None) = None,
         _owned_dirs: dict[str, bool] = {},
-        _scopes: dict[tuple[str, int], list[str]] = {},
+        _scopes: dict[tuple[str, int], list[list[str]]] = {},
         _wire_lines: dict[int, list[WireRec]] = {},
         package_prefix: str = "";
 
@@ -84,6 +84,7 @@ obj WiringSpec {
     def owns(path: str) -> bool;
     def split_consumer(path: str) -> (tuple[str, list[str]] | None);
     def consumer_scope(consumer: str, wire: WireRec) -> list[str];
+    def consumer_scopes(consumer: str, wire: WireRec) -> list[list[str]];
     def wire_for_import(
         stmt: Import, consumer: str, taken: set[int]
     ) -> (WireRec | None);

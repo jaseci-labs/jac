@@ -237,7 +237,8 @@ impl JacClientCompiler.emit_dependencies(
         self.jac_compiler.compile_module,
         variant,
         self.SELF_COMPILED_VIRTUAL_MODULES,
-        visited
+        visited,
+        self.link_demand
     );
     for unit in closure.modules + closure.refreshed {
         module_path = unit.path;
@@ -260,7 +261,9 @@ impl JacClientCompiler.emit_dependencies(
             output_path = self.compiled_dir / name;
         }
         output_path.parent.mkdir(parents=True, exist_ok=True);
-        fresh = self._module_text(module_path, artifact);
+        fresh = self._module_text(
+            module_path, artifact, closure.links.get(module_path)
+        );
         if unit in closure.refreshed and output_path.is_file() {
             written = output_path.read_text(encoding='utf-8');
             mapped = f"{fresh}\n//# sourceMappingURL={output_path.name}.map\n";
@@ -383,10 +386,16 @@ impl JacClientCompiler.compile_pwa_runtime(
 }
 
 impl JacClientCompiler._module_text(
-    self: JacClientCompiler, module_path: Path, artifact: ClientArtifact
+    self: JacClientCompiler,
+    module_path: Path,
+    artifact: ClientArtifact,
+    link: (ClientLink | None) = None
 ) -> str {
-    return f"/* Source: {module_path} */\n"
-        + self.jac_compiler.add_runtime_imports(artifact.js);
+    return append_link(
+        f"/* Source: {module_path} */\n"
+            + self.jac_compiler.add_runtime_imports(artifact.js),
+        link
+    );
 }
 
 impl JacClientCompiler._write_js(
@@ -637,6 +646,7 @@ impl JacClientCompiler.init(
     self._has_pages = False;
     self._route_scanner: (RouteScanner | None) = None;
     self.na_wasm_modules = set();
+    self.link_demand = {};
     self.routes_manifest_changed = False;
 }
 

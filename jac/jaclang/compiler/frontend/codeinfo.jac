@@ -15,7 +15,10 @@ obj ClientManifest {
         server_imports: list[str] = [],
         server_import_routes: dict[(str, dict[(str, str)])] = {},
         page_export: (str | None) = None,
-        layout_export: (str | None) = None;
+        layout_export: (str | None) = None,
+        linkable: list[str] = [],
+        components: list[str] = [],
+        forwards: dict[str, list[str]] = {};
 }
 
 obj ClientArtifact {
@@ -311,7 +314,7 @@ def resolve_native_module(
 
 def native_wasm_stem(path: str) -> str;
 
-glob NATIVE_ABI_VERSION: int = 2;
+glob NATIVE_ABI_VERSION: int = 3;
 
 obj NativeModuleLayout {
     has abi_version: int = NATIVE_ABI_VERSION,

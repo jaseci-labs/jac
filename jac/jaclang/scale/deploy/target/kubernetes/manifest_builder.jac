@@ -139,6 +139,7 @@ obj ManifestBuilder {
     def _user_secret_name -> str;
     def _owner_labels -> dict[str, str];
     def _service_account_name -> str;
+    def _pod_service_account(svc_name: str) -> str;
     def _peer_dns_url(peer_name: str) -> str;
     def _build_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]];
     def _configured_memory_request(svc_cfg: dict[str, any]) -> str | None;

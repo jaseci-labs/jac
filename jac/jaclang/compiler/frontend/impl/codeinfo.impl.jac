@@ -195,7 +195,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
-        "pthread_setspecific "
+        "pthread_setspecific sched_yield "
         "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "
