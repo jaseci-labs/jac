@@ -5,7 +5,6 @@ impl mcp_cmd(
     mode: str = "",
     inspect: bool = False
 ) -> int {
-    import from jaclang.project.config { get_config }
     jac_cfg = get_config();
     mcp_cfg: dict[str, any] = {};
     if jac_cfg {
@@ -27,16 +26,12 @@ impl mcp_cmd(
         return 0;
     }
 
-    import from jaclang.cli.mcp.server { JacMcpServer }
     JacMcpServer(transport=str(transport), port=int(port), host=str(host)).start();
     return 0;
 }
 
 impl _print_mcp_inventory -> None {
     import sys;
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    import from jaclang.cli.mcp.tools { ToolProvider }
-    import from jaclang.cli.mcp.prompts { PromptProvider }
 
     rp = ResourceProvider();
     rp.index_resources();

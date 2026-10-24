@@ -1,23 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import type from jaclang.compiler.backends.es.view_ir { ViewChild }
-import from jaclang.compiler.backends.es.view_ir {
-    DynamicAttr,
-    EachChild,
-    EventAttr,
-    IfChild,
-    RefAttr,
-    SpreadAttr,
-    StaticAttr,
-    ViewLocator
-}
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl SolidBackend.name -> str {
     return "solid";
 }
@@ -64,14 +44,12 @@ impl SolidBackend.vite_plugin_lines -> (tuple[str, str] | None) {
 impl SolidBackend.build_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {
-    import from jaclang.client.solid_entry { build_simple_solid_entry_script }
     return build_simple_solid_entry_script(entry_module, install_global_handlers);
 }
 
 impl SolidBackend.build_pages_entry_script(
     entry_module: str, auth_redirect: str, has_app_wrapper: bool
 ) -> str {
-    import from jaclang.client.solid_entry { build_pages_solid_entry_script }
     return build_pages_solid_entry_script(entry_module, auth_redirect, has_app_wrapper);
 }
 
@@ -202,14 +180,6 @@ impl SolidBackend._jsx_named_attr(
 impl SolidBackend._jsx_child_nodes(
     children: list[ViewChild], locator: ViewLocator
 ) -> list[any] {
-    import from jaclang.compiler.backends.es.view_ir {
-        TextChild,
-        DynamicChild,
-        ElementChild,
-        FragmentTag,
-        IfChild,
-        EachChild
-    }
     out = [];
     for child in children {
         if isinstance(child, EachChild) {
@@ -258,7 +228,6 @@ impl SolidBackend._jsx_child_nodes(
 impl SolidBackend._view_children_as_expr(
     children: list[ViewChild], locator: ViewLocator
 ) -> es.Expression {
-    import from jaclang.compiler.backends.es.view_ir { ElementChild, FragmentTag }
     if (
         len(children) == 1
         and isinstance(children[0], ElementChild)
@@ -340,11 +309,6 @@ impl SolidBackend._jsx_show(child: IfChild, locator: ViewLocator) -> es.JsxEleme
 }
 
 impl SolidBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
-    import from jaclang.compiler.backends.es.view_ir {
-        ElementChild,
-        IfChild,
-        EachChild
-    }
     syms = [];
     stack = list(view.children);
     while stack {
@@ -414,11 +378,6 @@ impl SolidBackend._jsx_dynamic(
 }
 
 impl SolidBackend.lower_view(view: ViewElement, locator: ViewLocator) -> es.Expression {
-    import from jaclang.compiler.backends.es.view_ir {
-        HostTag,
-        ComponentTag,
-        FragmentTag
-    }
     tag = view.tag;
     children_nodes = self._jsx_child_nodes(view.children, locator);
 
@@ -542,14 +501,6 @@ impl SolidBackend.lower_effect(e: Effect) -> list[es.Statement] {
 }
 
 impl SolidBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
-    import from jaclang.compiler.backends.es.view_ir {
-        ViewElement,
-        ComponentTag,
-        DynamicAttr,
-        DynamicChild,
-        ElementChild
-    }
-
     jn = None;
     awaiting_fallback: es.Expression = a.awaiting_expr
         if a.awaiting_expr is not None

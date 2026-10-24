@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_NATIVE: CommandSpec = CommandSpec(
          name="native",
          help="Inspect or build the native artifacts a checkout or release runs on",
@@ -17,7 +13,7 @@ comptime SPEC_NATIVE: CommandSpec = CommandSpec(
                  "names",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Artifacts to inspect or build (none = all of them)"
+                 help="Artifacts to inspect or build (none = all of them); a per-target artifact takes its target as name@os-arch"
              ),
              Arg.create(
                  "force",
@@ -46,6 +42,14 @@ comptime SPEC_NATIVE: CommandSpec = CommandSpec(
                  help="With status: exit non-zero unless these comma-separated artifacts are built and current; 'release' is the release set, 'kit' the release set less what this image declares it leaves out",
                  short=""
              ),
+             Arg.create(
+                 "stop-after",
+                 dest="stop_after",
+                 typ=int,
+                 `default=0,
+                 help="With build kernel: plan the kernel uncached, stop once this many units are lowered, and report where the time went (nothing is linked or published)",
+                 short=""
+             ),
 
          ],
          examples=[
@@ -61,6 +65,14 @@ comptime SPEC_NATIVE: CommandSpec = CommandSpec(
              (
                  "jac native build kernel --force",
                  "Relink the kernel although it is current"
+             ),
+             (
+                 "jac native build kernel --stop-after 10",
+                 "Time an uncached kernel build up to its tenth lowered unit"
+             ),
+             (
+                 "jac native build musl@linux-aarch64",
+                 "Build the static musl runtime for another target"
              ),
              ("jac native build --release", "Build exactly what a release carries"),
              (
@@ -83,5 +95,6 @@ def native(
     force: bool = False,
     exact: bool = False,
     release: bool = False,
-    require: str = ""
+    require: str = "",
+    stop_after: int = 0
 ) -> int;

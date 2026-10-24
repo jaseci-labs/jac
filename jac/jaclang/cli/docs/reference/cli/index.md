@@ -48,7 +48,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac test` | Run tests (`jac test <app>` uses that app's `[test]` config) |
 | `jac fmt` | Format code |
 | `jac precommit` | Run format + check using `jac.toml` lint settings (installable as a git hook) |
-| `jac arch` | Declare the project's module wiring in `arch.jac` (`init`, `sync`, `graph`) |
+| `jac arch` | Declare the project's module wiring in `archwire.jac` (`init`, `sync`, `graph`) |
 | `jac clean` | Clean project build artifacts |
 | `jac dot` | Generate graph visualization |
 | `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
@@ -522,8 +522,8 @@ jac test [-h] [-t TEST_NAME] [-f FILTER] [-x] [-m MAXFAIL] [-d DIRECTORY] [-v] [
 | Option | Description | Default |
 |--------|-------------|---------|
 | `target` | An app name from `[apps]`, or a test file or directory. An app target runs that app's tests with `[test]` taken from the app's effective config and `directories` resolved against the app root | (default app / project) |
-| `-t, --test_name` | Specific test name | None |
-| `-f, --filter` | Filter tests by pattern | None |
+| `-t, --test_name` | Run the tests whose name contains every word given, case-insensitively. Words match literally, so `and`, `or` and `not` are ordinary words here: `-t "loads and reports"` selects `test "native command loads and reports status"` | None |
+| `-f, --filter` | Boolean expression over name words: `and`, `or`, `not` and parentheses, e.g. `-f "auth and not slow"` | None |
 | `-x, --xit` | Exit on first failure | `False` |
 | `-m, --maxfail` | Max failures before stop | None |
 | `-d, --directory` | Test directory | None |
@@ -651,32 +651,36 @@ jac precommit --install
 
 ### jac arch
 
-Declare the project's module wiring in an `arch.jac` beside `jac.toml` and keep it in sync with the modules. A wire `provider --> consumer { names }` generates that import into the consumer at compile time; an `edge Name: pattern --> pattern` rule says what may flow where; a module the file names is sealed in both directions, and `[arch] closed` in `jac.toml` seals the rest. See [Project Wiring](../wiring.md).
+Seal a directory with an `archwire.jac`, or catch an existing one up with the modules below it. Having the file closes the directory: every import between its modules comes from a wire `provider ++> consumer { names }`, generated into the consumer at compile time, and optional `edge Name: pattern --> pattern` rules restrict what may flow where. Day to day you edit `archwire.jac` itself; this command is for adoption and one-time cleanups. See [Project Wiring](../wiring.md).
 
 ```bash
-jac arch [-h] [action] [scope] [-s] [-f] [--format {mermaid,json}] [-o OUTPUT]
+jac arch [-h] [action] [scope] [-s] [--prune] [-f] [--format {mermaid,json}] [-o OUTPUT]
 ```
 
 | Argument / Option | Description | Default |
 |--------|-------------|---------|
-| `action` | `init` (write `arch.jac` from the current imports, with the layering rules they already follow), `sync` (add the wires and rules sealed modules are missing) or `graph` (render the wiring) | `graph` |
-| `scope` | With `init`: a dotted package; wire only its modules and the modules they import from, transitively, merging into an existing `arch.jac` | whole project |
-| `-s, --strip` | With `init` or `sync`: remove the imports `arch.jac` now provides from every covered module (the same fix `jac fmt --lintfix` applies) | `False` |
-| `-f, --force` | With `init`: overwrite an existing `arch.jac` | `False` |
+| `action` | `init` (write `archwire.jac` from the current imports, sealing the directory), `sync` (add the wires its modules are missing, and with `--prune` drop the ones they never use) or `graph` (render the wiring) | `graph` |
+| `scope` | The directory an `archwire.jac` governs; without it, `sync` visits every `archwire.jac` in the project | project root |
+| `-s, --strip` | With `init` or `sync`: remove the written imports `archwire.jac` now injects from its modules (the same fix `jac fmt --lintfix` applies) | `False` |
+| `--prune` | With `sync`: also remove the wired names their consumers never use | `False` |
+| `-f, --force` | With `init`: overwrite an existing `archwire.jac` | `False` |
 | `--format` | With `graph`: `mermaid` or `json` | `mermaid` |
 | `-o, --output` | With `graph`: write to this file instead of stdout | stdout |
 
 **Examples:**
 
 ```bash
-# Adopt: write arch.jac from every project-module import and strip them from the modules
+# Seal the project: write archwire.jac from every import between its modules and strip them
 jac arch init --strip
 
-# Wire one package and everything it imports from, adding to an existing arch.jac
-jac arch init core.docs
+# Seal one directory with its own archwire.jac
+jac arch init core --strip
 
-# Add the wires and rules that sealed modules are missing
+# Add the wires the modules are missing, in every archwire.jac
 jac arch sync
+
+# Also remove the wired names no consumer uses
+jac arch sync --prune
 
 # Print the wiring as a mermaid diagram, or dump wires and rules as JSON
 jac arch graph
@@ -818,7 +822,7 @@ Outputs are printed raw so they pipe cleanly; JSON-valued results (`eval`, `get`
 
 **Sessions and persistence:**
 
-A launched browser stays alive between CLI calls -- each invocation reconnects to the running Chrome recorded under `~/.cache/jacbrowser/`. Use `-s` to run multiple isolated browsers side by side. Element refs from `snapshot` (the `@e1` handles) persist across calls, so you can snapshot once and act on refs in later commands.
+A launched browser stays alive between CLI calls -- each invocation reconnects to the running Chrome recorded under `~/.cache/jacbrowser/`. Use `-s` to run multiple isolated browsers side by side. Each session keeps its Chrome profile (cookies, `localStorage`, auth tokens) in `~/.cache/jacbrowser/profile-<session>`, and that profile survives `close`: reusing a session name brings back its old storage, including a token from whatever app last ran on that port. Start signed-out or first-visit checks under a session name you have not used before. Element refs from `snapshot` (the `@e1` handles) persist across calls, so you can snapshot once and act on refs in later commands.
 
 **Refs vs. selectors:**
 
@@ -1657,6 +1661,7 @@ Every bucket has a **retention policy**:
 | `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
+| `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
 | `toolchains-downloads` | verified toolchain archives | unused 14 days |
 | `toolchains-installed`, `toolchains-build` | installed toolchains and builds | unused 90 days |
 | `models` | byLLM model weights | pinned: never collected, `purge` removes it |

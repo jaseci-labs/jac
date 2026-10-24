@@ -1,6 +1,18 @@
 import from pathlib { Path }
 
-def css(p: Colors) -> str {
+def css(p: Colors) -> str;
+
+with entry {
+    dest = Path(__file__).resolve().parent.parent / "site" / "styles" / "brand.css";
+    dest.write_text(
+        ":root{" + css(light_palette()) + "}\n.dark{" + css(dark_palette()) + "}\n",
+        encoding="utf-8"
+    );
+    logo = dest.parent.parent / "assets" / "jacyak-logo.svg";
+    logo.write_text(logo_xml(), encoding="utf-8");
+}
+
+impl css(p: Colors) -> str {
     return "--background:"
         + p.bg
         + ";--foreground:"
@@ -36,14 +48,4 @@ def css(p: Colors) -> str {
         + ",sans-serif;--font-display:"
         + font_family()
         + ",sans-serif;";
-}
-
-with entry {
-    dest = Path(__file__).resolve().parent.parent / "site" / "styles" / "brand.css";
-    dest.write_text(
-        ":root{" + css(light_palette()) + "}\n.dark{" + css(dark_palette()) + "}\n",
-        encoding="utf-8"
-    );
-    logo = dest.parent.parent / "assets" / "jacyak-logo.svg";
-    logo.write_text(logo_xml(), encoding="utf-8");
 }

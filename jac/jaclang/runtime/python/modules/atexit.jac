@@ -9,45 +9,6 @@ records themselves are C-layout structs walked and called here. The
 interpreter hooks are C functions defined under their C names.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyCallable_Check,
-    PyErr_FormatUnraisable,
-    PyExc_TypeError,
-    PyInterpreterState,
-    PyInterpreterState_Get,
-    PyList_Clear,
-    PyList_GetItem,
-    PyList_GetSlice,
-    PyList_Insert,
-    PyList_New,
-    PyList_SetSlice,
-    PyList_Size,
-    PyLong_FromSsize_t,
-    PyMem_Free,
-    PyObject,
-    PyObject_Call,
-    PyObject_RichCompareBool,
-    PyTuple_GetItem,
-    PyTuple_GetSlice,
-    PyTuple_New,
-    PyTuple_Size,
-    Py_NewRef,
-    Py_None,
-    jacpy_atexit_callbacks,
-    jacpy_atexit_detach,
-    jacpy_atexit_push,
-    jacpy_release,
-    jacpy_tuple_set_owned
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.layouts {
-    PyStatus,
-    _PyStatus_TYPE_ERROR,
-    _PyStatus_TYPE_OK
-}
-
 glob:priv PY_EQ: i32 = 2;
 
 """The current interpreter's list of Python callbacks (borrowed)."""

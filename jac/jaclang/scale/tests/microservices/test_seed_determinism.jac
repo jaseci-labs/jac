@@ -1,20 +1,6 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.injector.bundle { pack_jab, content_address }
-import from jaclang.scale.injector.binary { pack_binary_bytes }
-import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
-import from jaclang.compiler.driver.jir {
-    FLAG_PRECOMPILED,
-    compiler_source_digest,
-    compiler_source_files,
-    compute_module_key,
-    compute_precompile_module_key,
-    module_cache_key,
-    precompiled_jir_matches_source,
-    running_compiler_digest,
-    write_precompiled_jir
-}
 
 
 glob _JAC_BIN: Path = pod_binary();

@@ -40,7 +40,6 @@ impl target_for_kind(kind: str, project_dir: Path) -> ClientTarget {
 }
 
 impl target_for_app(app: AppConfig, project_dir: Path) -> ClientTarget {
-    import from jaclang.project.config { get_config }
     cfg = get_config();
     kind = cfg.resolved_kind(app) if cfg is not None else app.kind;
     return target_for_kind(kind, project_dir);

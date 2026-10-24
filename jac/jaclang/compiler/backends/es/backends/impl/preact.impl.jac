@@ -24,6 +24,5 @@ impl PreactBackend.vite_aliases -> dict[str, str] {
 impl PreactBackend.build_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {
-    import from jaclang.client.preact_entry { build_simple_preact_entry_script }
     return build_simple_preact_entry_script(entry_module, install_global_handlers);
 }

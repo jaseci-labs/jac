@@ -1,24 +1,6 @@
-import from jaclang.cli.console { console }
+def _jac_client_plugin_dir -> Path;
 
-def _jac_client_plugin_dir -> Path {
-    import importlib;
-    client_pkg = importlib.import_module("jaclang.client");
-    paths: list[str] = list(getattr(client_pkg, "__path__", []) or []);
-    if not paths {
-        raise ClientBundleError(
-            "jaclang.client not found; cannot locate D9 client runtime"
-        );
-    }
-    return Path(paths[0]);
-}
-
-def _atomic_write_text(path: Path, text: str) {
-    import os;
-    tmp = path.with_name(path.name + '.tmp');
-    tmp.write_text(text, encoding='utf-8');
-    os.replace(str(tmp), str(path));
-}
-
+def _atomic_write_text(path: Path, text: str);
 
 impl JacClientCompiler._get_client_dir(self: JacClientCompiler) -> Path {
     try {
@@ -72,7 +54,6 @@ impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) ->
 }
 
 impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
-    import from jaclang.jac0core.ext_registry { base_stem }
     name = path.name;
     if ".native." in name {
         return path;
@@ -88,7 +69,6 @@ impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> P
 }
 
 impl JacClientCompiler.emit_prelude(self: JacClientCompiler) -> Path {
-    import from jaclang.compiler.backends.es.jac_runtime_js { write_jac_prelude_file }
     return Path(write_jac_prelude_file(str(self.compiled_dir)));
 }
 
@@ -131,7 +111,7 @@ impl JacClientCompiler.compile(
     if native {
         self.compile_runtime_utils(self.NATIVE_RUNTIME_FILE);
     }
-    import from jaclang.client.config_loader { JacClientConfig as PwaConfig }
+
     pwa_config = PwaConfig(self.project_dir, entry_path=self.entry_path);
     if pwa_config.is_pwa_enabled() and not native {
         self.compile_pwa_runtime();
@@ -143,7 +123,6 @@ impl JacClientCompiler.compile(
 }
 
 impl JacClientCompiler.copy_root_assets(self: JacClientCompiler) -> None {
-    import from jaclang.client.config_loader { JacClientConfig }
     root_assets_dir = JacClientConfig(
         self.project_dir, entry_path=self.entry_path
     ).get_assets_dir();
@@ -170,9 +149,7 @@ impl JacClientCompiler._copy_asset_file(
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
     try {
-        output_path.write_text(
-            asset_path.read_text(encoding='utf-8'), encoding='utf-8'
-        );
+        _atomic_write_text(output_path, asset_path.read_text(encoding='utf-8'));
     } except (FileNotFoundError, OSError) as e {
         console.warning(f"Failed to copy asset '{asset_path}' to '{output_path}': {e}");
     }
@@ -246,7 +223,7 @@ impl JacClientCompiler.emit_dependencies(
     if (collected_globals is None) {
         collected_globals = {};
     }
-    import from jaclang.compiler.driver.client_graph { collect_client_graph }
+
     module_path = module_path.resolve();
     source_root = source_root.resolve()
         if source_root is not None
@@ -260,9 +237,10 @@ impl JacClientCompiler.emit_dependencies(
         self.jac_compiler.compile_module,
         variant,
         self.SELF_COMPILED_VIRTUAL_MODULES,
-        visited
+        visited,
+        self.link_demand
     );
-    for unit in closure.modules {
+    for unit in closure.modules + closure.refreshed {
         module_path = unit.path;
         artifact = unit.artifact;
         self._collect_na_modules(artifact);
@@ -274,7 +252,6 @@ impl JacClientCompiler.emit_dependencies(
             non_root_globals[name] = manifest.globals_values.get(name);
         }
         collected_globals.update(non_root_globals);
-        combined_js = self.jac_compiler.add_runtime_imports(artifact.js);
         try {
             relative_path = module_path.relative_to(source_root);
             rel_str = self._jac_path_to_js(str(relative_path));
@@ -284,13 +261,19 @@ impl JacClientCompiler.emit_dependencies(
             output_path = self.compiled_dir / name;
         }
         output_path.parent.mkdir(parents=True, exist_ok=True);
-        source_header = f"/* Source: {module_path} */\n";
-        _atomic_write_text(output_path, source_header + combined_js);
-        self._write_source_map(
-            artifact, str(module_path), output_path, source_header + combined_js
+        fresh = self._module_text(
+            module_path, artifact, closure.links.get(module_path)
         );
+        if unit in closure.refreshed and output_path.is_file() {
+            written = output_path.read_text(encoding='utf-8');
+            mapped = f"{fresh}\n//# sourceMappingURL={output_path.name}.map\n";
+            if written == fresh or (artifact.source_map and written == mapped) {
+                continue;
+            }
+        }
+        self._write_js(artifact, str(module_path), output_path, fresh);
     }
-    import from jaclang.compiler.driver.jir { compute_content_sha256 }
+
     for asset in closure.assets {
         self.input_files[str(asset)] = compute_content_sha256(str(asset))
             if asset.is_file()
@@ -305,78 +288,15 @@ impl JacClientCompiler.emit_dependencies(
     }
 }
 
-def _extract_import_lines(js_code: str) -> list[str] {
-    imports: list[str] = [];
-    for line in js_code.split('\n') {
-        trimmed = line.strip();
-        if trimmed.startswith('import ') {
-            imports.append(line);
-        }
-    }
-    return imports;
-}
+def _extract_import_lines(js_code: str) -> list[str];
 
-def _extract_function_bodies(js_code: str) -> str {
-    stripped = _strip_esm_export_line(js_code);
+def _extract_function_bodies(js_code: str) -> str;
 
-    body_lines: list[str] = [];
-    for line in stripped.split('\n') {
-        if line.strip().startswith('import ') {
-            continue;
-        }
-        body_lines.append(line);
-    }
-    return '\n'.join(body_lines);
-}
+def _merge_runtime_imports(platform_js: str, core_js: str) -> str;
 
-def _merge_runtime_imports(platform_js: str, core_js: str) -> str {
-    seen: set[str] = set();
-    merged: list[str] = [];
-    for line in _extract_import_lines(platform_js) + _extract_import_lines(core_js) {
-        if 'client_react_core' in line {
-            continue;
-        }
-        if line in seen {
-            continue;
-        }
-        seen.add(line);
-        merged.append(line);
-    }
-    return '\n'.join(merged);
-}
+def _strip_esm_export_line(js_code: str) -> str;
 
-def _strip_esm_export_line(js_code: str) -> str {
-    lines = js_code.split('\n');
-    filtered: list[str] = [];
-    for line in lines {
-        trimmed = line.strip();
-        if trimmed.startswith('export {') or trimmed.startswith('export{') {
-            continue;
-        }
-        filtered.append(line);
-    }
-    return '\n'.join(filtered);
-}
-
-def _bundle_runtime_js(core_js: str, platform_js: str, export_names: list[str]) -> str {
-    imports = _merge_runtime_imports(platform_js, core_js);
-    core_body = _extract_function_bodies(core_js);
-    platform_body = _extract_function_bodies(platform_js);
-    export_line = 'export {' + ', '.join(export_names) + '};';
-    parts: list[str] = [];
-    if imports {
-        parts.append(imports);
-    }
-    if core_body {
-        parts.append(core_body);
-    }
-    if platform_body {
-        parts.append(platform_body);
-    }
-    parts.append(export_line);
-    parts.append('__jacWirePlatformAdapters();');
-    return '\n'.join(parts) + '\n';
-}
+def _bundle_runtime_js(core_js: str, platform_js: str, export_names: list[str]) -> str;
 
 impl JacClientCompiler.compile_runtime_utils(
     self: JacClientCompiler, runtime_filename: str
@@ -405,9 +325,7 @@ impl JacClientCompiler.compile_runtime_utils(
     );
     runtimeutils_js = _bundle_runtime_js(core.js, platform.js, all_exports);
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
-    (self.compiled_dir / 'client_runtime.js').write_text(
-        runtimeutils_js, encoding='utf-8'
-    );
+    _atomic_write_text(self.compiled_dir / 'client_runtime.js', runtimeutils_js);
 
     import re;
     import json;
@@ -463,47 +381,56 @@ impl JacClientCompiler.compile_pwa_runtime(
     all_exports = sorted(set(pwa_exports_list + glob_names));
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
     pwa_out = self.compiled_dir / 'pwa_runtime.js';
-    pwa_out.write_text(pwa.js, encoding='utf-8');
-    self._write_source_map(pwa, str(pwa_runtime_path), pwa_out, pwa.js);
+    self._write_js(pwa, str(pwa_runtime_path), pwa_out, pwa.js);
     return (pwa.js, all_exports);
 }
 
-impl JacClientCompiler._write_source_map(
+impl JacClientCompiler._module_text(
+    self: JacClientCompiler,
+    module_path: Path,
+    artifact: ClientArtifact,
+    link: (ClientLink | None) = None
+) -> str {
+    return append_link(
+        f"/* Source: {module_path} */\n"
+            + self.jac_compiler.add_runtime_imports(artifact.js),
+        link
+    );
+}
+
+impl JacClientCompiler._write_js(
     self: JacClientCompiler,
     artifact: ClientArtifact,
     source_file: str,
     output_path: Path,
     full_output: str
 ) -> None {
+    trailer = "";
     segments = artifact.source_map;
-    if not segments {
-        return;
+    raw_js = artifact.js;
+    raw_start = full_output.find(raw_js) if segments and raw_js else -1;
+    if raw_start >= 0 {
+        try {
+            import from jaclang.client.source_mapping { generate_source_map_json }
+            header_lines = full_output[:raw_start].count('\n');
+            if header_lines > 0 {
+                segments = [
+                    (gen_l + header_lines, gen_c, src_l, src_c, name)
+                    for (gen_l, gen_c, src_l, src_c, name) in segments
+                ];
+            }
+            map_json = generate_source_map_json(
+                source_file=source_file, output_file=output_path.name, segments=segments
+            );
+            _atomic_write_text(
+                output_path.parent / f"{output_path.name}.map", map_json
+            );
+            trailer = f"\n//# sourceMappingURL={output_path.name}.map\n";
+        } except Exception as e {
+            console.warning(f"Failed to generate source map for '{source_file}': {e}");
+        }
     }
-    try {
-        import from jaclang.client.source_mapping { generate_source_map_json }
-        raw_js = artifact.js;
-        raw_start = full_output.find(raw_js) if raw_js else -1;
-        if raw_start < 0 {
-            return;
-        }
-        header_lines = full_output[:raw_start].count('\n');
-        if header_lines > 0 {
-            segments = [
-                (gen_l + header_lines, gen_c, src_l, src_c, name)
-                for (gen_l, gen_c, src_l, src_c, name) in segments
-            ];
-        }
-        map_json = generate_source_map_json(
-            source_file=source_file, output_file=output_path.name, segments=segments
-        );
-        map_path = output_path.parent / f"{output_path.name}.map";
-        map_path.write_text(map_json, encoding='utf-8');
-        with open(output_path, 'a', encoding='utf-8') as f {
-            f.write(f"\n//# sourceMappingURL={output_path.name}.map\n");
-        }
-    } except Exception as e {
-        console.warning(f"Failed to generate source map for '{source_file}': {e}");
-    }
+    _atomic_write_text(output_path, full_output + trailer);
 }
 
 impl JacClientCompiler.compile_mobui_utils(
@@ -523,7 +450,7 @@ impl JacClientCompiler.compile_mobui_utils(
         ui_js += '\n' + shims_path.read_text(encoding='utf-8');
     }
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
-    (self.compiled_dir / 'client_mobui.js').write_text(ui_js, encoding='utf-8');
+    _atomic_write_text(self.compiled_dir / 'client_mobui.js', ui_js);
     return (ui_js, glob_names);
 }
 
@@ -565,7 +492,6 @@ impl JacClientCompiler._scan_and_compile_pages(
 impl JacClientCompiler._check_entry_renders_routes(
     self: JacClientCompiler, entry_manifest: any
 ) -> None {
-    import from jaclang.client.route_scanner { entry_drops_route_children }
     if not entry_drops_route_children(entry_manifest) {
         return;
     }
@@ -581,7 +507,6 @@ impl JacClientCompiler._check_entry_renders_routes(
 impl JacClientCompiler._warn_pages_without_routes(
     self: JacClientCompiler, scanner: RouteScanner
 ) -> None {
-    import from jaclang.client.route_scanner { describe_pages_without_routes }
     for line in describe_pages_without_routes(scanner.pages_dir) {
         console.error(line);
     }
@@ -590,7 +515,6 @@ impl JacClientCompiler._warn_pages_without_routes(
 impl JacClientCompiler._warn_unrouted_pages(
     self: JacClientCompiler, scanner: RouteScanner
 ) -> None {
-    import from jaclang.client.route_scanner { describe_unrouted_pages }
     for line in describe_unrouted_pages(scanner.get_unrouted_files()) {
         console.warning(line);
     }
@@ -722,6 +646,7 @@ impl JacClientCompiler.init(
     self._has_pages = False;
     self._route_scanner: (RouteScanner | None) = None;
     self.na_wasm_modules = set();
+    self.link_demand = {};
     self.routes_manifest_changed = False;
 }
 
@@ -731,4 +656,103 @@ impl JacClientCompiler._collect_na_modules(
     for source in artifact.native_import_sources {
         self.na_wasm_modules.add(source);
     }
+}
+
+impl _jac_client_plugin_dir -> Path {
+    import importlib;
+    client_pkg = importlib.import_module("jaclang.client");
+    paths: list[str] = list(getattr(client_pkg, "__path__", []) or []);
+    if not paths {
+        raise ClientBundleError(
+            "jaclang.client not found; cannot locate D9 client runtime"
+        );
+    }
+    return Path(paths[0]);
+}
+
+impl _atomic_write_text(path: Path, text: str) {
+    import os;
+    try {
+        if path.read_text(encoding='utf-8') == text {
+            return;
+        }
+    } except (OSError, UnicodeDecodeError) {}
+    tmp = path.with_name(path.name + '.tmp');
+    tmp.write_text(text, encoding='utf-8');
+    os.replace(str(tmp), str(path));
+}
+
+impl _extract_import_lines(js_code: str) -> list[str] {
+    imports: list[str] = [];
+    for line in js_code.split('\n') {
+        trimmed = line.strip();
+        if trimmed.startswith('import ') {
+            imports.append(line);
+        }
+    }
+    return imports;
+}
+
+impl _extract_function_bodies(js_code: str) -> str {
+    stripped = _strip_esm_export_line(js_code);
+
+    body_lines: list[str] = [];
+    for line in stripped.split('\n') {
+        if line.strip().startswith('import ') {
+            continue;
+        }
+        body_lines.append(line);
+    }
+    return '\n'.join(body_lines);
+}
+
+impl _merge_runtime_imports(platform_js: str, core_js: str) -> str {
+    seen: set[str] = set();
+    merged: list[str] = [];
+    for line in _extract_import_lines(platform_js) + _extract_import_lines(core_js) {
+        if 'client_react_core' in line {
+            continue;
+        }
+        if line in seen {
+            continue;
+        }
+        seen.add(line);
+        merged.append(line);
+    }
+    return '\n'.join(merged);
+}
+
+impl _strip_esm_export_line(js_code: str) -> str {
+    lines = js_code.split('\n');
+    filtered: list[str] = [];
+    for line in lines {
+        trimmed = line.strip();
+        if trimmed.startswith('export {') or trimmed.startswith('export{') {
+            continue;
+        }
+        filtered.append(line);
+    }
+    return '\n'.join(filtered);
+}
+
+impl _bundle_runtime_js(
+    core_js: str, platform_js: str, export_names: list[str]
+) -> str {
+    imports = _merge_runtime_imports(platform_js, core_js);
+    core_body = _extract_function_bodies(core_js);
+    platform_body = _extract_function_bodies(platform_js);
+    export_line = 'export {' + ', '.join(export_names) + '};';
+    parts: list[str] = [];
+    if imports {
+        parts.append(imports);
+    }
+    if core_body {
+        parts.append(core_body);
+    }
+    if platform_body {
+        parts.append(platform_body);
+    }
+    parts.append(export_line);
+    parts.append('__jacWirePlatformAdapters();');
+    return '\n'.join(parts) + '\n';
 }

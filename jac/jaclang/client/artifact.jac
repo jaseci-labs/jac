@@ -11,10 +11,11 @@ obj ClientBundle {
         hash: str;
 }
 
-def client_output_dir(source_path: Path) -> Path {
-    import from jaclang.server.sealed_serve { client_dist_for }
-    import from jaclang.project.config { get_config_for_path }
-    import from jaclang.project.client_paths { client_app_dir_for }
+def client_output_dir(source_path: Path) -> Path;
+
+def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None;
+
+impl client_output_dir(source_path: Path) -> Path {
     prepared = client_dist_for(str(source_path));
     if prepared is not None {
         return prepared;
@@ -25,8 +26,7 @@ def client_output_dir(source_path: Path) -> Path {
         else source_path.parent / '.jac' / 'client' / 'dist';
 }
 
-def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None {
-    import from jaclang.server.sealed_serve { client_dist_for, serve_manifest_for }
+impl prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None {
     dist = client_dist_for(str(source_path));
     if dist is None {
         return None;

@@ -1,70 +1,7 @@
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.passes.context { CompileContext, TreePass }
-import from jaclang.compiler.tools.reactive_use_walk { ReactiveUseWalker }
 import keyword;
 import os;
-import jaclang.compiler.frontend.unitree as uni;
 
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.constant { TOKEN_MAP }
-import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
-import from jaclang.compiler.frontend.diagnostics {
-    W3001,
-    W3002,
-    W3003,
-    W3004,
-    W3005,
-    W3007,
-    W3008,
-    W3009,
-    W3010,
-    E3012,
-    W3013,
-    W3020,
-    W3021,
-    W3022,
-    W3023,
-    W3024,
-    W3025,
-    W3030,
-    W3035,
-    W3036,
-    W3037,
-    W3038,
-    W3039,
-    W3040,
-    W3041,
-    W3042,
-    W3043,
-    W3050,
-    W3051,
-    W3052,
-    W3053
-}
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.wiring { WiringSpec, is_arch_file, wiring_for_path }
-import from jaclang.compiler.passes.annex_weave { import_form }
-import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.compiler.frontend.roles {
-    Kid,
-    AssignmentsRole,
-    BodyRole,
-    ConditionRole,
-    DecoratorsRole,
-    DocRole,
-    ElseValueRole,
-    ExprRole,
-    ItemsRole,
-    NameRefRole,
-    ReturnTypeRole,
-    SignatureRole,
-    SpecRole,
-    TargetRole,
-    ValueRole,
-    ValuesRole,
-    VarsRole
-}
+glob _HEADER_COL = 10000;
 
 walker JacAutoLintPass(TreePass) {
     static has contract: PassContract = PassContract();
@@ -76,7 +13,8 @@ walker JacAutoLintPass(TreePass) {
         _did_convert_usestate: bool = False,
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
-        _base_decls_loaded: bool = False;
+        _base_decls_loaded: bool = False,
+        _floated_ids: set[int] = set();
 
     def postinit -> None;
     def _is_file_excluded(file_path: str) -> bool;
@@ -147,9 +85,13 @@ walker JacAutoLintPass(TreePass) {
     def _stmt_body_list(nd: uni.UniNode) -> (Sequence[uni.UniNode] | None);
     def _strip_redundant_semis(nd: uni.Module) -> None;
     def _remove_empty_parens_from_sig(
-        target_node: uni.UniNode, sig: uni.FuncSignature, sig_attr: str
+        target_node: uni.UniNode,
+        sig: uni.FuncSignature,
+        sig_attr: str,
+        quiet: bool = False
     ) -> None;
 
+    def _in_floated_spec(nd: uni.UniNode) -> bool;
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
     def _check_unnecessary_pass(body: list[uni.UniNode]) -> None;
@@ -192,10 +134,35 @@ walker JacAutoLintPass(TreePass) {
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def _strip_wired_imports(nd: uni.Module) -> None;
-    def _strip_duplicate_wires(nd: uni.Module) -> None;
+    def _wired_items(
+        stmt: uni.Import,
+        spec: WiringSpec,
+        provided: dict[tuple[str, str, str, str], WireRec],
+        reads: Callable[[], list[ScopeReads]],
+        scope: str
+    ) -> set[int];
+
     can exit_expr_stmt with uni.ExprStmt exit;
     can exit_module with uni.Module exit;
     def _strip_noise(nd: uni.Module) -> None;
+    def _separate_impls(
+        module: uni.Module, body: Sequence[uni.UniNode]
+    ) -> list[uni.ImplDef];
+
+    def _collect_inline_abilities(
+        body: Sequence[uni.UniNode],
+        path: list[uni.Name],
+        found: list[tuple[uni.Ability, list[uni.Name]]]
+    ) -> None;
+
+    def _can_separate(ab: uni.Ability) -> bool;
+    def _impl_target_text(ab: uni.Ability, path: list[uni.Name]) -> (str | None);
+    def _impl_header(
+        ab: uni.Ability, path: list[uni.Name], line: int
+    ) -> (uni.ImplDef | None);
+
+    def _move_body_to_impl(ab: uni.Ability, impl_node: uni.ImplDef) -> None;
+    def _drop_impl_return(impl_node: uni.ImplDef) -> None;
     def _strip_docstrings(start: uni.UniNode) -> None;
     def _collect_doc_nodes(start: uni.UniNode) -> list[tuple[uni.UniNode, uni.String]];
     def _check_stale_has_read(ability_node: uni.Ability) -> None;

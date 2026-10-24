@@ -13,9 +13,6 @@ impl traverse_graph(
     node_limit: int,
     edge_limit: int
 ) -> None {
-    import from jaclang.runtime.archetype { EdgeAnchor }
-    import from jaclang.runtime.osp_graph_sv { sv_register_hydrated }
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
     nd_anchor = nd.__jac__;
     sv_register_hydrated(nd_anchor, fetch_stubs=True);
     for edge_arch in JacRuntimeInterface.hop(nd, 3, None, True) {
@@ -80,14 +77,6 @@ impl traverse_graph(
 impl collect_node_connections(
     current_node: NodeArchetype, visited_nodes: set, connections: set, edge_ids: set
 ) -> None {
-    import from jaclang.runtime.archetype {
-        AccessLevel,
-        EdgeAnchor,
-        NodeAnchor,
-        anchor_key
-    }
-    import from jaclang.runtime.osp_graph_sv { sv_live_edges, sv_register_hydrated }
-    import from jaclang.runtime.runtime { JacRuntimeInterface, resolve_ref }
     if (current_node not in visited_nodes) {
         visited_nodes.add(current_node);
         node_anchor = current_node.__jac__;
@@ -125,8 +114,6 @@ impl collect_node_connections(
 
 impl get_name(target_path: (str | None) = None) -> str | None {
     import from pathlib { Path }
-    import from jaclang.project.config { get_config }
-    import from jaclang.runtime.runtime { JacRuntime }
 
     effective_target = target_path or JacRuntime.get_full_target_path();
     if not effective_target {
@@ -163,4 +150,45 @@ impl get_db_path(base_path: str, target_path: (str | None) = None) -> (str | Non
     }
 
     return str(data_dir / "main.db");
+}
+
+impl storage_key(id: UUID) -> str {
+    return f"anchor:{str(id)}";
+}
+
+impl to_uuid(id: (UUID | str)) -> UUID {
+    if isinstance(id, UUID) {
+        return id;
+    }
+    return UUID(str(id));
+}
+
+impl release_arch(raw: str) -> str {
+    m = raw.strip().lower();
+    if m in ("arm64", "aarch64") {
+        return "aarch64";
+    }
+    if m in ("amd64", "x86_64") {
+        return "x86_64";
+    }
+    return m;
+}
+
+impl host_arch -> str {
+    return release_arch(platform.machine());
+}
+
+impl host_os -> str {
+    sysname = platform.system().strip().lower();
+    if sysname == "darwin" {
+        return "macos";
+    }
+    return sysname;
+}
+
+impl triple_arch(triple: str) -> str {
+    if "aarch64" in triple.lower() or "arm64" in triple.lower() {
+        return "aarch64";
+    }
+    return "x86_64";
 }

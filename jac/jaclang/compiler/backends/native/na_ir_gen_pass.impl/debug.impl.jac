@@ -1,4 +1,3 @@
-import from jaclang.compiler.frontend.host { active_host }
 import os;
 import sys;
 
@@ -95,10 +94,8 @@ impl NaIRGenPass.finish with exit {
         }
     }
 
-    ir_str = str(self.llvm_module);
-
     if self.prog.options.debug_ir {
-        self._save_debug_ir(ir_str);
+        self._save_debug_ir(str(self.llvm_module));
     }
 }
 

@@ -639,3 +639,18 @@ def:pub raw_origin -> str {
     }
     return seen.origin;
 }
+
+"""A raw-body function shapes its own status and headers with respond()."""
+@restspec(method=HTTPMethod.GET, path="/raw/respond", envelope=False)
+def:pub raw_respond -> str {
+    respond(status=404, headers={"X-Probe": "1"});
+    return "no such thing";
+}
+
+"""A raw-body function that returns a Response owns the whole wire response, so a
+respond() choice beside it is a conflict, not a silent no-op."""
+@restspec(method=HTTPMethod.GET, path="/raw/respond-conflict", envelope=False)
+def:pub raw_respond_conflict -> Response {
+    respond(status=404);
+    return Response(content="owned", status_code=200, media_type="text/plain");
+}

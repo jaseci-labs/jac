@@ -1,11 +1,9 @@
-import from jaclang.project.persistence { PersistenceConfig }
 import os;
 import re;
 import sys;
 import tomllib;
 import from pathlib { Path }
-import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
-import from jaclang.project.dependencies { PackageDep }
+
 glob CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
          "scale",
@@ -60,18 +58,12 @@ obj NativeConfig {
         threads: int = 4;
 }
 
-obj ArchConfig {
-    has closed: list[str] = [];
-}
-
 obj MemoryConfig {
     has profile: str = "managed",
         enforce: list[str] = [],
         exempt: list[str] = [];
 
-    def gc_mode -> str {
-        return {"managed": "cycles", "rc": "rc", "nogc": "none"}[self.profile];
-    }
+    def gc_mode -> str;
 }
 
 obj PlacementConfig {
@@ -303,7 +295,6 @@ obj JacConfig {
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
         native: NativeConfig = NativeConfig(),
-        arch: ArchConfig = ArchConfig(),
         memory: MemoryConfig = MemoryConfig(),
         placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),
@@ -442,14 +433,8 @@ def get_config_for_path(
 
 def get_config_for_dir(start_dir: str) -> JacConfig | None;
 
-def offline_mode -> bool {
-    config = get_config();
-    return config is not None and config.network.offline;
-}
+def offline_mode -> bool;
 
-def use_system_toolchains -> bool {
-    config = get_config();
-    return config is None or config.toolchains.system;
-}
+def use_system_toolchains -> bool;
 
 def active_profile_name(config: JacConfig | None) -> str;

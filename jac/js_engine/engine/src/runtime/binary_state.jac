@@ -252,6 +252,9 @@ def:pub binary_register_typed_array(args: list[JSValue]) -> JSValue {
     raw.set_bslot(len(_TYPED_ARRAYS));
     # view→buffer edge lives in data.buffer_id (set above); no inline field.
     _TYPED_ARRAYS.append(data);
+    # Generational barrier: the view may already be old (a collection ran in
+    # the JS constructor) and the buffer young — the edge is a store into it.
+    raw.wb(buffer);
     return js_true();
 }
 
@@ -268,6 +271,7 @@ def:pub binary_register_data_view(args: list[JSValue]) -> JSValue {
     raw: JSObject = _binary_raw(view);
     raw.set_bkind(BINARY_KIND_DATA_VIEW);
     raw.set_bslot(len(_DATA_VIEWS));
+    raw.wb(buffer);  # generational barrier (see binary_register_typed_array)
     # view→buffer edge lives in DataViewData.buffer_id (set below); no inline field.
     _DATA_VIEWS.append(
         DataViewData(

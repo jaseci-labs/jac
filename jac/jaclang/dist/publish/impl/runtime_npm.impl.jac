@@ -1,19 +1,15 @@
 import re;
 import json;
 import jaclang;
+
 import from pathlib { Path }
-import from jaclang.dist.publish.npm_tarball { pack_tarball }
 
 glob _api_names_cache: dict[str, set[str]] = {},
      _runtime_js_cache: dict[str, str] = {};
 
-def _runtime_source_path(framework: str = "") -> Path {
-    import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
-    return Path(resolve_client_runtime_cl_path(framework));
-}
+def _runtime_source_path(framework: str = "") -> Path;
 
 impl runtime_pkg_name(framework: str = "") -> str {
-    import from jaclang.client.runtime_source { client_runtime_cl_basename }
     base = client_runtime_cl_basename(framework);
 
     if base == "client_runtime.jac" {
@@ -47,18 +43,7 @@ impl runtime_api_names(framework: str = "") -> set[str] {
     return names;
 }
 
-def _compile_cl_to_js(src: Path) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
-    program = JacProgram();
-    prev = len(program.errors_had);
-    mod = program.compile(str(src));
-    new_errors = program.errors_had[prev:];
-    if new_errors {
-        formatted = "\n".join(str(err) for err in new_errors);
-        raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
-    }
-    return (mod.gen.js if mod and mod.gen else "") or "";
-}
+def _compile_cl_to_js(src: Path) -> str;
 
 impl compile_runtime_js(framework: str = "") -> str {
     src = _runtime_source_path(framework);
@@ -72,7 +57,114 @@ impl compile_runtime_js(framework: str = "") -> str {
     return js;
 }
 
-def _already_exported(js: str) -> set[str] {
+def _already_exported(js: str) -> set[str];
+
+impl runtime_export_names(js: str, framework: str = "") -> list[str] {
+    api = runtime_api_names(framework);
+    top_level: set[str] = set();
+    for m in re.finditer(
+        r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)",
+        js
+    ) {
+        top_level.add(m.group(1));
+    }
+
+    return sorted((top_level & api) - _already_exported(js));
+}
+
+def _pkg_root(spec: str) -> (str | None);
+
+glob _SOLID_PEER_VERSIONS: dict[str, str] = {
+         "@tanstack/solid-form": "^1.33.0",
+         "solid-js": "^1.9.13",
+         "@solidjs/router": "^0.16.1"
+     };
+
+def _peer_versions -> dict[str, str];
+
+def _runtime_peer_deps(js: str) -> dict[str, str];
+
+impl runtime_peer_deps(js: str) -> dict[str, str] {
+    return _runtime_peer_deps(js);
+}
+
+def _relative_dep_specs(js: str) -> list[str];
+
+def _point_at_packaged_prelude(js: str, member_rel: str) -> str;
+
+def _collect_dep_modules(
+    entry_js: str, entry_dir: str = ""
+) -> tuple[str, list[tuple[str, str]]];
+
+def _runtime_package_json(
+    version: str, pkg_name: str, peers: dict[str, str] = {}
+) -> str;
+
+impl build_runtime_tarball(
+    version: str, pkg_name: str = "", framework: str = ""
+) -> bytes {
+    name = pkg_name or runtime_pkg_name(framework);
+    entry_js = compile_runtime_js(framework);
+
+    import posixpath;
+    import jaclang;
+
+    base = Path(jaclang.__file__).parent.parent;
+    entry_dir = posixpath.dirname(
+        Path(resolve_client_runtime_cl_path()).relative_to(base).as_posix()
+    );
+    (entry_js, deps) = _collect_dep_modules(entry_js, entry_dir);
+    entry_js = _point_at_packaged_prelude(entry_js, "index.js");
+    deps = [(rel, _point_at_packaged_prelude(dep_js, rel)) for (rel, dep_js) in deps];
+
+    exports = runtime_export_names(entry_js, framework);
+    if exports {
+        entry_js = entry_js.rstrip("\n") + "\nexport { " + ", ".join(exports) + " };\n";
+    }
+
+    all_js = "\n".join([entry_js] + [dep_js for (_, dep_js) in deps]);
+    peers = _runtime_peer_deps(all_js);
+    pj = _runtime_package_json(version, name, peers);
+
+    members: list[tuple[str, bytes]] = [
+        ("package/package.json", pj.encode("utf-8")),
+        ("package/index.js", entry_js.encode("utf-8")),
+        (f"package/{JAC_PRELUDE_BASENAME}", build_jac_prelude_module().encode("utf-8"))
+    ];
+    for (rel, dep_js) in deps {
+        members.append((f"package/{rel}", dep_js.encode("utf-8")));
+    }
+    return pack_tarball(members);
+}
+
+impl build_runtime_to(
+    output_dir: Path, version: str, pkg_name: str = "", framework: str = ""
+) -> Path {
+    name = pkg_name or runtime_pkg_name(framework);
+    output_dir.mkdir(parents=True, exist_ok=True);
+    flat = name.lstrip("@").replace("/", "-");
+    dest = output_dir / f"{flat}-{version}.tgz";
+    dest.write_bytes(build_runtime_tarball(version, name, framework));
+    return dest;
+}
+
+impl _runtime_source_path(framework: str = "") -> Path {
+    return Path(resolve_client_runtime_cl_path(framework));
+}
+
+impl _compile_cl_to_js(src: Path) -> str {
+    program = JacProgram();
+    prev = len(program.errors_had);
+    mod = program.compile(str(src));
+    new_errors = program.errors_had[prev:];
+    if new_errors {
+        formatted = "\n".join(str(err) for err in new_errors);
+        raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
+    }
+    return (mod.gen.js if mod and mod.gen else "") or "";
+}
+
+impl _already_exported(js: str) -> set[str] {
     names: set[str] = set();
     for block in re.finditer(r"export\s*\{([^}]*)\}", js) {
         for part in block.group(1).split(",") {
@@ -94,20 +186,7 @@ def _already_exported(js: str) -> set[str] {
     return names;
 }
 
-impl runtime_export_names(js: str, framework: str = "") -> list[str] {
-    api = runtime_api_names(framework);
-    top_level: set[str] = set();
-    for m in re.finditer(
-        r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)",
-        js
-    ) {
-        top_level.add(m.group(1));
-    }
-
-    return sorted((top_level & api) - _already_exported(js));
-}
-
-def _pkg_root(spec: str) -> (str | None) {
+impl _pkg_root(spec: str) -> (str | None) {
     if spec.startswith(".") or spec.startswith("/") {
         return None;
     }
@@ -118,18 +197,11 @@ def _pkg_root(spec: str) -> (str | None) {
     return parts[0];
 }
 
-glob _SOLID_PEER_VERSIONS: dict[str, str] = {
-         "@tanstack/solid-form": "^1.33.0",
-         "solid-js": "^1.9.13",
-         "@solidjs/router": "^0.16.1"
-     };
-
-def _peer_versions -> dict[str, str] {
-    import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS, OPTIONAL_RUNTIME_DEPS }
+impl _peer_versions -> dict[str, str] {
     return {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS, ** _SOLID_PEER_VERSIONS};
 }
 
-def _runtime_peer_deps(js: str) -> dict[str, str] {
+impl _runtime_peer_deps(js: str) -> dict[str, str] {
     roots: set[str] = set();
 
     norm = js.replace("'", '"');
@@ -162,11 +234,7 @@ def _runtime_peer_deps(js: str) -> dict[str, str] {
     return peers;
 }
 
-impl runtime_peer_deps(js: str) -> dict[str, str] {
-    return _runtime_peer_deps(js);
-}
-
-def _relative_dep_specs(js: str) -> list[str] {
+impl _relative_dep_specs(js: str) -> list[str] {
     specs: list[str] = [];
     norm = js.replace("'", '"');
     for m in re.finditer('(?m)\\bfrom\\s+"(\\.[^"]+)"', norm) {
@@ -182,12 +250,9 @@ def _relative_dep_specs(js: str) -> list[str] {
     return specs;
 }
 
-def _point_at_packaged_prelude(js: str, member_rel: str) -> str {
+impl _point_at_packaged_prelude(js: str, member_rel: str) -> str {
     import posixpath;
-    import from jaclang.compiler.backends.es.jac_runtime_js {
-        JAC_PRELUDE_BASENAME,
-        JAC_PRELUDE_MODULE
-    }
+
     up = posixpath.dirname(member_rel);
     target = posixpath.normpath(
         posixpath.join(posixpath.relpath(".", up or "."), JAC_PRELUDE_BASENAME)
@@ -203,7 +268,7 @@ def _point_at_packaged_prelude(js: str, member_rel: str) -> str {
     return js;
 }
 
-def _collect_dep_modules(
+impl _collect_dep_modules(
     entry_js: str, entry_dir: str = ""
 ) -> tuple[str, list[tuple[str, str]]] {
     import jaclang;
@@ -239,7 +304,7 @@ def _collect_dep_modules(
     return (entry_js, out);
 }
 
-def _runtime_package_json(
+impl _runtime_package_json(
     version: str, pkg_name: str, peers: dict[str, str] = {}
 ) -> str {
     doc: dict[str, any] = {
@@ -258,55 +323,4 @@ def _runtime_package_json(
         doc["peerDependencies"] = peers;
     }
     return json.dumps(doc, indent=2) + "\n";
-}
-
-impl build_runtime_tarball(
-    version: str, pkg_name: str = "", framework: str = ""
-) -> bytes {
-    name = pkg_name or runtime_pkg_name(framework);
-    entry_js = compile_runtime_js(framework);
-
-    import posixpath;
-    import jaclang;
-    import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
-    base = Path(jaclang.__file__).parent.parent;
-    entry_dir = posixpath.dirname(
-        Path(resolve_client_runtime_cl_path()).relative_to(base).as_posix()
-    );
-    (entry_js, deps) = _collect_dep_modules(entry_js, entry_dir);
-    entry_js = _point_at_packaged_prelude(entry_js, "index.js");
-    deps = [(rel, _point_at_packaged_prelude(dep_js, rel)) for (rel, dep_js) in deps];
-
-    exports = runtime_export_names(entry_js, framework);
-    if exports {
-        entry_js = entry_js.rstrip("\n") + "\nexport { " + ", ".join(exports) + " };\n";
-    }
-
-    all_js = "\n".join([entry_js] + [dep_js for (_, dep_js) in deps]);
-    peers = _runtime_peer_deps(all_js);
-    pj = _runtime_package_json(version, name, peers);
-    import from jaclang.compiler.backends.es.jac_runtime_js {
-        JAC_PRELUDE_BASENAME,
-        build_jac_prelude_module
-    }
-    members: list[tuple[str, bytes]] = [
-        ("package/package.json", pj.encode("utf-8")),
-        ("package/index.js", entry_js.encode("utf-8")),
-        (f"package/{JAC_PRELUDE_BASENAME}", build_jac_prelude_module().encode("utf-8"))
-    ];
-    for (rel, dep_js) in deps {
-        members.append((f"package/{rel}", dep_js.encode("utf-8")));
-    }
-    return pack_tarball(members);
-}
-
-impl build_runtime_to(
-    output_dir: Path, version: str, pkg_name: str = "", framework: str = ""
-) -> Path {
-    name = pkg_name or runtime_pkg_name(framework);
-    output_dir.mkdir(parents=True, exist_ok=True);
-    flat = name.lstrip("@").replace("/", "-");
-    dest = output_dir / f"{flat}-{version}.tgz";
-    dest.write_bytes(build_runtime_tarball(version, name, framework));
-    return dest;
 }

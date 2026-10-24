@@ -1,8 +1,5 @@
 """posix stat primitives for a target with no posix_stat_platform.<os>.jac; the binding rejects it."""
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.modules.stat_records { _Py_stat_struct }
-
 glob PLATFORM: str = "",
      STATVFS_RECORD_SIZE: int = 8,
      STAT_EXTRA_FIELDS: list[tuple[str, str]] = [];

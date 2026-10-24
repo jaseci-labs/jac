@@ -184,6 +184,87 @@ console.log(`slen=${Number(instance.exports.slen())}`);
     assert proc.stdout.strip().splitlines()[-1] == "slen=3";
 }
 
+"""The stdlib declares the runtime floor's functions as C imports, so a wasm
+module that reaches them (math's fmadd, for one) names them as app imports.
+wasm_rt/jac_floor.c must define every one in the module, with the
+signature the stdlib declares, or the module imports what no host supplies."""
+test "the runtime floor's functions resolve inside a wasm module" {
+    _require_libc();
+    floor_decls = {
+        "__jac_errno": "declare i64 @__jac_errno()",
+        "__jac_platform_id": "declare i32 @__jac_platform_id()",
+        "__jac_at_fdcwd": "declare i32 @__jac_at_fdcwd()",
+        "__jac_clock_id": "declare i64 @__jac_clock_id(i32)",
+        "__jac_sleep_ns": "declare i32 @__jac_sleep_ns(i64)",
+        "__jac_fmadd": "declare double @__jac_fmadd(double, double, double)",
+        "__jac_opendir": "declare i64 @__jac_opendir(ptr)",
+        "__jac_readdir": "declare i64 @__jac_readdir(i64)",
+        "__jac_closedir": "declare i32 @__jac_closedir(i64)",
+        "__jac_dirent_name": "declare i64 @__jac_dirent_name(i64)",
+        "__jac_home_dir": "declare i64 @__jac_home_dir(ptr, ptr, i64)",
+        "__jac_executable_path": "declare i64 @__jac_executable_path(ptr, i64)",
+        "__jac_addrinfo_layout": "declare i64 @__jac_addrinfo_layout(i32)",
+        "__jac_sockaddr_family": "declare i32 @__jac_sockaddr_family(ptr)"
+    };
+    calls = [
+        "  %fm = call double @__jac_fmadd(double 2.0, double 3.0, double 1.0)",
+        "  %ck = call i64 @__jac_clock_id(i32 5)",
+        "  %ai = call i64 @__jac_addrinfo_layout(i32 3)",
+        "  %e0 = call i64 @__jac_errno()",
+        "  %e1 = call i32 @__jac_platform_id()",
+        "  %e2 = call i32 @__jac_at_fdcwd()",
+        "  %e3 = call i32 @__jac_sleep_ns(i64 0)",
+        "  %e4 = call i64 @__jac_opendir(ptr null)",
+        "  %e5 = call i64 @__jac_readdir(i64 0)",
+        "  %e6 = call i32 @__jac_closedir(i64 0)",
+        "  %e7 = call i64 @__jac_dirent_name(i64 0)",
+        "  %e8 = call i64 @__jac_home_dir(ptr null, ptr null, i64 0)",
+        "  %e9 = call i64 @__jac_executable_path(ptr null, i64 0)",
+        "  %ea = call i32 @__jac_sockaddr_family(ptr @family)",
+        "  %fc = sitofp i64 %ck to double",
+        "  %fa = sitofp i64 %ai to double",
+        "  %ff = sitofp i32 %ea to double",
+        "  %s1 = fadd double %fm, %fc",
+        "  %s2 = fadd double %s1, %fa",
+        "  %s3 = fadd double %s2, %ff",
+        "  ret double %s3"
+    ];
+    app_ir = (
+        "target triple = \"wasm32-unknown-unknown\"\n"
+        + "\n".join(floor_decls.values())
+        + "\n@family = private constant [2 x i8] c\"\\0A\\00\"\n"
+        + "define double @probe() {\n"
+        + "\n".join(calls)
+        + "\n}\n"
+    );
+    mod = emit_wasm_from_ir(app_ir, ["probe"], app_imports=set(floor_decls));
+    imports = wasm_import_map(mod);
+    leaked = sorted(set(imports.get("env", [])) & set(floor_decls));
+    assert not leaked , f"floor functions became host imports: {leaked}";
+    node_bin = shutil.which("node");
+    if not node_bin {
+        testskip("node not available");
+    }
+    d = tempfile.mkdtemp();
+    wpath = os.path.join(d, "m.wasm");
+    Path(wpath).write_bytes(mod);
+    harness = """
+import { readFileSync } from "fs";
+const jac_host1 = new Proxy({}, { get: (t, k) => (...a) => 0 });
+const { instance } = await WebAssembly.instantiate(readFileSync(process.argv[2]), { jac_host1 });
+console.log(`probe=${instance.exports.probe()}`);
+""";
+    hpath = os.path.join(d, "run.mjs");
+    Path(hpath).write_text(harness);
+    proc = subprocess.run(
+        [node_bin, hpath, wpath], capture_output=True, text=True, timeout=60
+    );
+    assert proc.returncode == 0 , f"node failed: {proc.stderr}";
+    """fmadd 7, the Python monotonic clock id 1, sizeof(addrinfo) 48 and the
+    family AF_INET6 (10) read from a little-endian sockaddr.""";
+    assert proc.stdout.strip().splitlines()[-1] == "probe=66";
+}
+
 test "a missing wasm libc is an error that names the build command" {
     import from jaclang.artifacts.model { ArtifactUnavailable }
     def emit -> str {

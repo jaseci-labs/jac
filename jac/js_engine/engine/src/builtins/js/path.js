@@ -19,20 +19,7 @@ function _validatePathString(value, name) {
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function _splitPath(p) {
-    var parts = [];
-    var cur = "";
-    var i = 0;
-    while (i < p.length) {
-        if (p[i] === "/") {
-            parts.push(cur);
-            cur = "";
-        } else {
-            cur = cur + p[i];
-        }
-        i = i + 1;
-    }
-    parts.push(cur);
-    return parts;
+    return p.split("/");
 }
 
 function _normParts(parts, isAbs) {
@@ -57,14 +44,14 @@ function _normParts(parts, isAbs) {
 }
 
 function _rejoin(parts) {
-    var out = "";
-    var k = 0;
-    while (k < parts.length) {
-        if (k > 0) out = out + "/";
-        out = out + parts[k];
-        k = k + 1;
-    }
-    return out;
+    return parts.join("/");
+}
+
+// p without its trailing slashes (a lone "/" is kept).
+function _stripTrailing(p) {
+    var end = p.length;
+    while (end > 1 && p.charCodeAt(end - 1) === 47) end = end - 1;
+    return end === p.length ? p : p.slice(0, end);
 }
 
 // ── public API ──────────────────────────────────────────────────────────────
@@ -141,15 +128,8 @@ function dirname(p) {
     _validatePathString(p, "path");
     if (p.length === 0) return ".";
     // strip trailing slashes so dirname("/a/b/") == "/a" not "/a/b"
-    while (p.length > 1 && p[p.length - 1] === "/") {
-        p = p.slice(0, p.length - 1);
-    }
-    var lastSlash = -1;
-    var i = 0;
-    while (i < p.length) {
-        if (p[i] === "/") lastSlash = i;
-        i = i + 1;
-    }
+    p = _stripTrailing(p);
+    var lastSlash = p.lastIndexOf("/");
     if (lastSlash < 0) return ".";
     if (lastSlash === 0) return "/";
     return p.slice(0, lastSlash);
@@ -160,15 +140,8 @@ function basename(p, ext) {
     if (ext !== undefined && ext !== null) _validatePathString(ext, "ext");
     if (p.length === 0) return "";
     // strip trailing slashes
-    while (p.length > 1 && p[p.length - 1] === "/") {
-        p = p.slice(0, p.length - 1);
-    }
-    var lastSlash = -1;
-    var i = 0;
-    while (i < p.length) {
-        if (p[i] === "/") lastSlash = i;
-        i = i + 1;
-    }
+    p = _stripTrailing(p);
+    var lastSlash = p.lastIndexOf("/");
     var base = lastSlash >= 0 ? p.slice(lastSlash + 1) : p;
     if (typeof ext === "string" && ext.length > 0 && base.length > ext.length) {
         if (base.slice(base.length - ext.length) === ext) {
@@ -181,14 +154,9 @@ function basename(p, ext) {
 function extname(p) {
     _validatePathString(p, "path");
     if (p.length === 0) return "";
-    var lastSlash = -1;
-    var lastDot = -1;
-    var i = 0;
-    while (i < p.length) {
-        if (p[i] === "/") { lastSlash = i; lastDot = -1; }
-        else if (p[i] === ".") { lastDot = i; }
-        i = i + 1;
-    }
+    var lastSlash = p.lastIndexOf("/");
+    var lastDot = p.lastIndexOf(".");
+    if (lastDot < lastSlash) lastDot = -1;
     var baseStart = lastSlash + 1;
     if (lastDot <= baseStart) return "";
     return p.slice(lastDot);

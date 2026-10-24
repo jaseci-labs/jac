@@ -1,27 +1,95 @@
 import json;
 import os;
 import sys;
-import from jaclang.cli.console { console }
-import from jaclang.compiler.tools.code_intel { CodeIntelligence }
-import from jaclang.project.config { find_project_root }
 
 glob _SCHEMA_VERSION = 1,
      _ACTIONS: list[str] = ["symbol", "uses", "map", "walkers", "slice", "diag"];
 
 
-def _emit(text: str) {
+def _emit(text: str);
+
+
+def _emit_json(command: str, payload: dict[str, any]);
+
+
+def _fail(command: str, message: str, text: bool) -> int;
+
+
+def _load_ci -> CodeIntelligence;
+
+
+def _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int;
+
+
+def _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int;
+
+
+def _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int;
+
+
+def _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int;
+
+
+def _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int;
+
+
+def _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int;
+
+
+def _print_usage;
+
+
+impl code(
+    action: str = "", target: str = "", text: bool = False, depth: int = 1
+) -> int {
+    if not action {
+        _print_usage();
+        return 0;
+    }
+    if action not in _ACTIONS {
+        return _fail(
+            action,
+            f"Unknown action '{action}'. Expected one of: " + ", ".join(_ACTIONS),
+            text
+        );
+    }
+
+    if action in ["symbol", "uses", "walkers", "slice"] and not target {
+        return _fail(action, f"`jac code {action}` needs a name argument.", text);
+    }
+
+    try {
+        ci = _load_ci();
+    } except Exception as e {
+        return _fail(action, f"Failed to load the project: {e}", text);
+    }
+    if action == "symbol" {
+        return _code_symbol(ci, target, text);
+    } elif action == "uses" {
+        return _code_uses(ci, target, text);
+    } elif action == "map" {
+        return _code_map(ci, target, text);
+    } elif action == "walkers" {
+        return _code_walkers(ci, target, text);
+    } elif action == "slice" {
+        return _code_slice(ci, target, depth, text);
+    }
+    return _code_diag(ci, target, text);
+}
+
+impl _emit(text: str) {
     sys.stdout.write(text + "\n");
 }
 
 
-def _emit_json(command: str, payload: dict[str, any]) {
+impl _emit_json(command: str, payload: dict[str, any]) {
     body: dict[str, any] = {"schema_version": _SCHEMA_VERSION, "command": command};
     body.update(payload);
     _emit(json.dumps(body, indent=2));
 }
 
 
-def _fail(command: str, message: str, text: bool) -> int {
+impl _fail(command: str, message: str, text: bool) -> int {
     if text {
         console.error(message);
     } else {
@@ -31,7 +99,7 @@ def _fail(command: str, message: str, text: bool) -> int {
 }
 
 
-def _load_ci -> CodeIntelligence {
+impl _load_ci -> CodeIntelligence {
     found = find_project_root();
     proj_dir = str(found[0]) if found is not None else os.getcwd();
     ci = CodeIntelligence(proj_dir=proj_dir);
@@ -40,7 +108,7 @@ def _load_ci -> CodeIntelligence {
 }
 
 
-def _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
+impl _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
     defs = ci.lookup(name);
     uses = [
         r
@@ -80,7 +148,7 @@ def _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
 }
 
 
-def _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
+impl _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
     refs = ci.references(name);
     if not refs {
         if text {
@@ -99,7 +167,7 @@ def _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
 }
 
 
-def _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
+impl _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
     archs = ci.archetypes(kind);
     if not archs and kind {
         if text {
@@ -125,7 +193,7 @@ def _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
 }
 
 
-def _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
+impl _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
     eps = ci.walkers_visiting(node_type);
     if not eps {
         if text {
@@ -147,7 +215,7 @@ def _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
 }
 
 
-def _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int {
+impl _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int {
     sl = ci.slice_for(name, depth);
     if sl.target is None {
         if text {
@@ -166,7 +234,7 @@ def _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int 
 }
 
 
-def _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int {
+impl _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int {
     diags = ci.diagnostics(file);
     errors = len(
         [
@@ -203,7 +271,7 @@ def _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int {
 }
 
 
-def _print_usage {
+impl _print_usage {
     console.print();
     console.print("jac code -- ask the compiler about your code", style="bold");
     console.print(
@@ -225,43 +293,4 @@ def _print_usage {
         "  JSON by default; add --text for human-readable output.", style="muted"
     );
     console.print();
-}
-
-
-impl code(
-    action: str = "", target: str = "", text: bool = False, depth: int = 1
-) -> int {
-    if not action {
-        _print_usage();
-        return 0;
-    }
-    if action not in _ACTIONS {
-        return _fail(
-            action,
-            f"Unknown action '{action}'. Expected one of: " + ", ".join(_ACTIONS),
-            text
-        );
-    }
-
-    if action in ["symbol", "uses", "walkers", "slice"] and not target {
-        return _fail(action, f"`jac code {action}` needs a name argument.", text);
-    }
-
-    try {
-        ci = _load_ci();
-    } except Exception as e {
-        return _fail(action, f"Failed to load the project: {e}", text);
-    }
-    if action == "symbol" {
-        return _code_symbol(ci, target, text);
-    } elif action == "uses" {
-        return _code_uses(ci, target, text);
-    } elif action == "map" {
-        return _code_map(ci, target, text);
-    } elif action == "walkers" {
-        return _code_walkers(ci, target, text);
-    } elif action == "slice" {
-        return _code_slice(ci, target, depth, text);
-    }
-    return _code_diag(ci, target, text);
 }

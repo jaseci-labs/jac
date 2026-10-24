@@ -1,7 +1,8 @@
 import os;
+
 import re;
+
 import from pathlib { Path }
-import from jaclang.client.source_mapping { JacLocator, SourceLocation, _npm_specifier }
 
 glob _EXPORT_MISS_RE = re.compile(
          r"does not provide an export named [\"']([^\"']+)[\"']"
@@ -25,22 +26,11 @@ glob _EXPORT_MISS_RE = re.compile(
      _RAW_HEADER = "--- Raw Error (debug=true) ---",
      _RAW_FOOTER = "--- End Raw Error ---";
 
-def _diag(code: str) -> any {
-    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
-    return DIAGNOSTICS.get(code);
-}
+def _diag(code: str) -> any;
 
-def _text(value: any) -> str {
-    return "" if value is None else str(value);
-}
+def _text(value: any) -> str;
 
-def _number(value: any) -> int {
-    try {
-        return int(value or 0);
-    } except (TypeError, ValueError) {
-        return 0;
-    }
-}
+def _number(value: any) -> int;
 
 impl related_location(
     label: str, file: str, line: int = 0, column: int = 0
@@ -63,8 +53,6 @@ impl ClientDiagnostic.abs_file -> str {
 }
 
 impl ClientDiagnostic.render(colors: bool = False) -> str {
-    import from jaclang.project.source { render_diagnostic }
-    import from jaclang.project.textio { read_file_with_encoding, span_for_file }
     if self.rendered_cache and not self.base_path {
         return self.rendered_cache;
     }
@@ -169,18 +157,7 @@ impl ClientDiagnostic.from_dict(data: dict[str, any]) -> ClientDiagnostic {
     );
 }
 
-def _relative(base_path: str, path: str) -> str {
-    if not path or not base_path {
-        return path;
-    }
-    try {
-        rel = Path(os.path.abspath(path)).relative_to(os.path.abspath(base_path));
-    } except ValueError {
-        return path;
-    }
-    posix = rel.as_posix();
-    return path if posix in ("", ".") else posix;
-}
+def _relative(base_path: str, path: str) -> str;
 
 impl diagnostic_from_alert(alert: Alert, base_path: str = "") -> ClientDiagnostic {
     info = alert.code;
@@ -240,31 +217,9 @@ impl render_diagnostics(
     return "\n\n".join(diag.render(colors=colors) for diag in diagnostics);
 }
 
-def _raw_location(payload: dict[str, any]) -> str {
-    where = _text(payload.get("source")) or _text(payload.get("id"));
-    line = _number(payload.get("line"));
-    column = _number(payload.get("column"));
-    loc = payload.get("loc");
-    if isinstance(loc, dict) {
-        line = line or _number(loc.get("line"));
-        column = column or _number(loc.get("column"));
-    }
-    if where and line {
-        return f"{where}:{line}:{column}" if column else f"{where}:{line}";
-    }
-    return where;
-}
+def _raw_location(payload: dict[str, any]) -> str;
 
-def _payload_position(payload: dict[str, any]) -> tuple[int, int] {
-    line = _number(payload.get("line"));
-    column = _number(payload.get("column"));
-    loc = payload.get("loc");
-    if isinstance(loc, dict) {
-        line = line or _number(loc.get("line"));
-        column = column or _number(loc.get("column"));
-    }
-    return (line, column);
-}
+def _payload_position(payload: dict[str, any]) -> tuple[int, int];
 
 def _pin_location(
     diag: ClientDiagnostic,
@@ -272,30 +227,9 @@ def _pin_location(
     loc: (SourceLocation | None),
     raw_location: str,
     reason: str
-) -> None {
-    if loc is not None and loc.line > 0 {
-        diag.file = _relative(diag.base_path, loc.file);
-        diag.line = loc.line;
-        diag.column = loc.column;
-        return;
-    }
-    owner = loc.file if loc is not None else "";
-    if not owner {
-        owner = locator.owner_for(raw_location);
-    }
-    if not owner {
-        owner = locator.fallback_owner();
-    }
-    diag.file = _relative(diag.base_path, owner);
-    diag.line = 0;
-    diag.column = 0;
-    diag.unmapped_reason = reason;
-}
+) -> None;
 
-def _requested_module(message: str) -> str {
-    found = _QUOTED_RE.search(message);
-    return found.group(1) if found else "";
-}
+def _requested_module(message: str) -> str;
 
 impl classify_client_payload(
     base_path: str,
@@ -484,108 +418,21 @@ impl log_client_error(
     return diag;
 }
 
-def _leading_number(text: str) -> int {
-    digits = "";
-    for ch in text {
-        if not ch.isdigit() {
-            break;
-        }
-        digits += ch;
-    }
-    return int(digits) if digits else 0;
-}
+def _leading_number(text: str) -> int;
 
-def _marker_line(output: str, lowered: str, marker: str) -> str {
-    at = lowered.find(marker);
-    if at < 0 {
-        return "";
-    }
-    start = output.rfind("\n", 0, at) + 1;
-    end = output.find("\n", at);
-    return output[start:] if end < 0 else output[start:end];
-}
+def _marker_line(output: str, lowered: str, marker: str) -> str;
 
-def _marked_number(line: str, marker: str) -> int {
-    at = line.lower().find(marker);
-    return 0 if at < 0 else _leading_number(line[at + len(marker):]);
-}
+def _marked_number(line: str, marker: str) -> int;
 
-def _first_quoted(text: str) -> str {
-    for quote in ("'", '"') {
-        parts = text.split(quote);
-        if len(parts) >= 2 and parts[1] {
-            return parts[1];
-        }
-    }
-    return "";
-}
+def _first_quoted(text: str) -> str;
 
-def _trailing_detail(line: str) -> str {
-    at = line.rfind(": ");
-    return "" if at <= 0 else line[at + 2:].strip();
-}
+def _trailing_detail(line: str) -> str;
 
-def _jac_compile_failure(base_path: str, output: str) -> (ClientDiagnostic | None) {
-    lowered = output.lower();
-    compile_line = _marker_line(output, lowered, _JAC_COMPILE_MARKER);
-    file_path = _first_quoted(compile_line);
-    line = _marked_number(compile_line, _LINE_MARKER);
-    column = _marked_number(compile_line, _COL_MARKER);
-    message = _trailing_detail(compile_line);
-    if not file_path {
-        bytecode_line = _marker_line(output, lowered, _NO_BYTECODE_MARKER);
-        at = bytecode_line.lower().find(_NO_BYTECODE_MARKER);
-        if at >= 0 {
-            file_path = bytecode_line[at + len(_NO_BYTECODE_MARKER):].strip();
-        }
-        line = 0;
-        column = 0;
-        message = "";
-    }
-    if not file_path {
-        return None;
-    }
-    return build_failure_diagnostic(
-        base_path,
-        file_path,
-        message or f"could not compile '{os.path.basename(file_path)}'",
-        line,
-        column
-    );
-}
+def _jac_compile_failure(base_path: str, output: str) -> (ClientDiagnostic | None);
 
-def _build_error_lines(output: str) -> list[str] {
-    found: list[str] = [];
-    seen: set[str] = set();
-    for raw in output.splitlines() {
-        line = raw.strip();
-        if not line or line in seen {
-            continue;
-        }
-        for pattern in _BUILD_ERROR_RES {
-            if pattern.search(line) {
-                seen.add(line);
-                found.append(line);
-                break;
-            }
-        }
-    }
-    return found;
-}
+def _build_error_lines(output: str) -> list[str];
 
-def _condensed_build_message(output: str) -> str {
-    for raw in output.splitlines() {
-        line = raw.strip();
-        if not line or any(line.startswith(p) for p in _BUILD_FRAME_PREFIXES) {
-            continue;
-        }
-        if line.lower().rstrip(":") in _BUILD_FRAMING {
-            continue;
-        }
-        return line;
-    }
-    return output.strip() or "the client bundle build produced no output";
-}
+def _condensed_build_message(output: str) -> str;
 
 impl classify_build_output(
     base_path: str, error_output: str, verbose: bool = False
@@ -639,7 +486,7 @@ impl is_debug_mode(config: object = None) -> bool {
     if env_debug in ("0", "false", "no") {
         return False;
     }
-    import from jaclang.project.config { JacConfig }
+
     if isinstance(config, JacConfig) {
         try {
             client_cfg = config.get_plugin_config("client");
@@ -649,4 +496,167 @@ impl is_debug_mode(config: object = None) -> bool {
         } except Exception {}
     }
     return True;
+}
+
+impl _diag(code: str) -> any {
+    return DIAGNOSTICS.get(code);
+}
+
+impl _text(value: any) -> str {
+    return "" if value is None else str(value);
+}
+
+impl _number(value: any) -> int {
+    try {
+        return int(value or 0);
+    } except (TypeError, ValueError) {
+        return 0;
+    }
+}
+
+impl _relative(base_path: str, path: str) -> str {
+    if not path or not base_path {
+        return path;
+    }
+    try {
+        rel = Path(os.path.abspath(path)).relative_to(os.path.abspath(base_path));
+    } except ValueError {
+        return path;
+    }
+    posix = rel.as_posix();
+    return path if posix in ("", ".") else posix;
+}
+
+impl _raw_location(payload: dict[str, any]) -> str {
+    where = _text(payload.get("source")) or _text(payload.get("id"));
+    line = _number(payload.get("line"));
+    column = _number(payload.get("column"));
+    loc = payload.get("loc");
+    if isinstance(loc, dict) {
+        line = line or _number(loc.get("line"));
+        column = column or _number(loc.get("column"));
+    }
+    if where and line {
+        return f"{where}:{line}:{column}" if column else f"{where}:{line}";
+    }
+    return where;
+}
+
+impl _payload_position(payload: dict[str, any]) -> tuple[int, int] {
+    line = _number(payload.get("line"));
+    column = _number(payload.get("column"));
+    loc = payload.get("loc");
+    if isinstance(loc, dict) {
+        line = line or _number(loc.get("line"));
+        column = column or _number(loc.get("column"));
+    }
+    return (line, column);
+}
+
+impl _requested_module(message: str) -> str {
+    found = _QUOTED_RE.search(message);
+    return found.group(1) if found else "";
+}
+
+impl _leading_number(text: str) -> int {
+    digits = "";
+    for ch in text {
+        if not ch.isdigit() {
+            break;
+        }
+        digits += ch;
+    }
+    return int(digits) if digits else 0;
+}
+
+impl _marker_line(output: str, lowered: str, marker: str) -> str {
+    at = lowered.find(marker);
+    if at < 0 {
+        return "";
+    }
+    start = output.rfind("\n", 0, at) + 1;
+    end = output.find("\n", at);
+    return output[start:] if end < 0 else output[start:end];
+}
+
+impl _marked_number(line: str, marker: str) -> int {
+    at = line.lower().find(marker);
+    return 0 if at < 0 else _leading_number(line[at + len(marker):]);
+}
+
+impl _first_quoted(text: str) -> str {
+    for quote in ("'", '"') {
+        parts = text.split(quote);
+        if len(parts) >= 2 and parts[1] {
+            return parts[1];
+        }
+    }
+    return "";
+}
+
+impl _trailing_detail(line: str) -> str {
+    at = line.rfind(": ");
+    return "" if at <= 0 else line[at + 2:].strip();
+}
+
+impl _jac_compile_failure(base_path: str, output: str) -> (ClientDiagnostic | None) {
+    lowered = output.lower();
+    compile_line = _marker_line(output, lowered, _JAC_COMPILE_MARKER);
+    file_path = _first_quoted(compile_line);
+    line = _marked_number(compile_line, _LINE_MARKER);
+    column = _marked_number(compile_line, _COL_MARKER);
+    message = _trailing_detail(compile_line);
+    if not file_path {
+        bytecode_line = _marker_line(output, lowered, _NO_BYTECODE_MARKER);
+        at = bytecode_line.lower().find(_NO_BYTECODE_MARKER);
+        if at >= 0 {
+            file_path = bytecode_line[at + len(_NO_BYTECODE_MARKER):].strip();
+        }
+        line = 0;
+        column = 0;
+        message = "";
+    }
+    if not file_path {
+        return None;
+    }
+    return build_failure_diagnostic(
+        base_path,
+        file_path,
+        message or f"could not compile '{os.path.basename(file_path)}'",
+        line,
+        column
+    );
+}
+
+impl _build_error_lines(output: str) -> list[str] {
+    found: list[str] = [];
+    seen: set[str] = set();
+    for raw in output.splitlines() {
+        line = raw.strip();
+        if not line or line in seen {
+            continue;
+        }
+        for pattern in _BUILD_ERROR_RES {
+            if pattern.search(line) {
+                seen.add(line);
+                found.append(line);
+                break;
+            }
+        }
+    }
+    return found;
+}
+
+impl _condensed_build_message(output: str) -> str {
+    for raw in output.splitlines() {
+        line = raw.strip();
+        if not line or any(line.startswith(p) for p in _BUILD_FRAME_PREFIXES) {
+            continue;
+        }
+        if line.lower().rstrip(":") in _BUILD_FRAMING {
+            continue;
+        }
+        return line;
+    }
+    return output.strip() or "the client bundle build produced no output";
 }

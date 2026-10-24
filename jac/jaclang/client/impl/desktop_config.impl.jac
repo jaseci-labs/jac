@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cli.console { console }
 
 impl JacDesktopConfig.get_plugin_name(self: JacDesktopConfig) -> str {
     return "desktop";
@@ -162,8 +161,28 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     }
 }
 
-def _validate_plugin_keys(plugins: dict[str, any]) -> None {
-    import from jaclang.client.desktop_plugin_config { _desktop_config_schema }
+def _validate_plugin_keys(plugins: dict[str, any]) -> None;
+
+impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
+    if (
+        _desktop_config_instance is not None
+        and project_dir != _desktop_config_instance.project_dir
+    ) {
+        _desktop_config_instance = None;
+    }
+    if _desktop_config_instance is None {
+        _desktop_config_instance = JacDesktopConfig(project_dir=project_dir);
+    }
+    return _desktop_config_instance;
+}
+
+impl reset_desktop_config -> None {
+    _desktop_config_instance = None;
+}
+
+def _generate_identifier(name: str) -> str;
+
+impl _validate_plugin_keys(plugins: dict[str, any]) -> None {
     plugins_spec = _desktop_config_schema().options.get('plugins', None);
     if plugins_spec is None {
         return;
@@ -193,24 +212,7 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
     }
 }
 
-impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
-    if (
-        _desktop_config_instance is not None
-        and project_dir != _desktop_config_instance.project_dir
-    ) {
-        _desktop_config_instance = None;
-    }
-    if _desktop_config_instance is None {
-        _desktop_config_instance = JacDesktopConfig(project_dir=project_dir);
-    }
-    return _desktop_config_instance;
-}
-
-impl reset_desktop_config -> None {
-    _desktop_config_instance = None;
-}
-
-def _generate_identifier(name: str) -> str {
+impl _generate_identifier(name: str) -> str {
     import re;
     cleaned = re.sub(r'[^a-zA-Z0-9.\-]', '', name.lower());
     cleaned = re.sub(r'[.\-]+', '.', cleaned);

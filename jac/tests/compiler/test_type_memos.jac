@@ -14,7 +14,6 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Name }
 import from jaclang.compiler.types.types { CLASS_GRAPH_EPOCH, ClassType, FunctionType }
 import from jaclang.compiler.types.type_utils {
-    CachedSolution,
     apply_solved_type_vars,
     build_type_var_solution,
     convert_to_instance,
@@ -63,7 +62,7 @@ test "a class's type-variable solution is reused until its type arguments change
     str_t = instance_of(evaluator.prefetch.str_class);
     box_int = box.specialize_generics([int_t]);
     first = build_type_var_solution(box_int);
-    assert isinstance(first, CachedSolution);
+    assert box_int._tv_solution is first;
     assert build_type_var_solution(box_int) is first;
     assert first["T"] is int_t;
     box_int.private.type_args = [str_t];

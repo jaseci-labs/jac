@@ -18,6 +18,8 @@ ECMAScript spec : §24.1 — Map Objects
 Bun reference   : bun/src/js/builtins/Map.ts, MapPrototype.ts
 """
 
+import from engine.src.runtime.jscell { FLAG_OLD }
+import from engine.src.runtime.gc_barrier { gc_log_val, gc_gen_on }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -233,10 +235,16 @@ def:pub js_map_create_with_proto(proto: JSValue) -> JSValue {
         del _MAP_REALM.free_map_slots[_fms_last];
         _MAP_REALM.maps[map_idx] = ms;  # fresh ms clears the DEAD tombstone
         _MAP_REALM.maps_mark_epoch[map_idx] = 0;
+        if gc_gen_on() {
+            _MAP_REALM.gc_young_maps.append(map_idx);
+        }
     } else {
         map_idx = len(_MAP_REALM.maps);
         _MAP_REALM.maps.append(ms);
         _MAP_REALM.maps_mark_epoch.append(0);  # A2.2b GC mark bitmap
+        if gc_gen_on() {
+            _MAP_REALM.gc_young_maps.append(len(_MAP_REALM.maps) - 1);
+        }
     }
     gc_note_alloc(_MAP_REALM);  # G0.4: account map allocation
     m: JSValue = js_undefined();
@@ -274,10 +282,16 @@ def:pub js_weakmap_create_with_proto(proto: JSValue) -> JSValue {
         del _MAP_REALM.free_map_slots[_fms_last];
         _MAP_REALM.maps[map_idx] = ms;  # fresh ms clears the DEAD tombstone
         _MAP_REALM.maps_mark_epoch[map_idx] = 0;
+        if gc_gen_on() {
+            _MAP_REALM.gc_young_maps.append(map_idx);
+        }
     } else {
         map_idx = len(_MAP_REALM.maps);
         _MAP_REALM.maps.append(ms);
         _MAP_REALM.maps_mark_epoch.append(0);  # A2.2b GC mark bitmap
+        if gc_gen_on() {
+            _MAP_REALM.gc_young_maps.append(len(_MAP_REALM.maps) - 1);
+        }
     }
     gc_note_alloc(_MAP_REALM);  # G0.4: account map allocation
     m: JSValue = js_undefined();
@@ -448,12 +462,19 @@ def:pub js_map_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
     fi: int = _map_find(ms, key);
     if fi >= 0 {
         ms.evals[fi] = val;
+        if (ms.cell_flags & FLAG_OLD) != 0 {
+            gc_log_val(val);
+        }
         return m;
     }
     _map_own(ms);
     ni: int = len(ms.ekeys);
     ms.ekeys.append(key);
     ms.evals.append(val);
+    if (ms.cell_flags & FLAG_OLD) != 0 {
+        gc_log_val(key);
+        gc_log_val(val);
+    }
     if ms.head < 0 {
         ms.head = ni;
     }
@@ -798,12 +819,19 @@ def:pub js_weakmap_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
     while i < n {
         if _same_value_zero(ms.keys[i], key) {
             ms.vals[i] = val;
+            if (ms.cell_flags & FLAG_OLD) != 0 {
+                gc_log_val(val);
+            }
             return m;
         }
         i = i + 1;
     }
     ms.keys.append(key);
     ms.vals.append(val);
+    if (ms.cell_flags & FLAG_OLD) != 0 {
+        gc_log_val(key);
+        gc_log_val(val);
+    }
     return m;
 }
 

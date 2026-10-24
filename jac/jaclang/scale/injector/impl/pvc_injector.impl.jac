@@ -1,0 +1,423 @@
+impl bundle_pvc_name(app_name: str) -> str {
+    return f"{app_name}-bundles";
+}
+
+impl bundle_pvc_path(object_key: str) -> str {
+    return f"{BUNDLE_MOUNT_PATH}/{object_key}";
+}
+
+impl bundle_keys_from_pod_spec(pod_spec: dict[str, any]) -> list[str] {
+    prefix = f"{BUNDLE_MOUNT_PATH}/";
+    keys: list[str] = [];
+    for raw in list(pod_spec.get("initContainers") or []) {
+        container = dict(raw);
+        for arg in list(container.get("args") or []) {
+            for token in str(arg).replace(";", " ").split() {
+                if token.startswith(prefix) {
+                    key = token[len(prefix):];
+                    if key and not key.startswith(".") and key not in keys {
+                        keys.append(key);
+                    }
+                }
+            }
+        }
+    }
+    return keys;
+}
+
+impl build_bundle_pvc(
+    app_name: str,
+    namespace: str,
+    size: str,
+    storage_class: str,
+    access_mode: str = "ReadWriteMany"
+) -> dict[str, any] {
+    access_modes = [access_mode];
+    if access_mode == "ReadWriteMany" and not storage_class {
+        raise ValueError(
+            f"Bundle PVC '{bundle_pvc_name(app_name)}' requests accessModes "
+            "[ReadWriteMany] but no bundle_storage_class is set, so it would use "
+            "the cluster default StorageClass. Most cloud defaults (e.g. EKS gp3 / "
+            "ebs.csi.aws.com) are ReadWriteOnce and cannot provision a "
+            "ReadWriteMany volume, leaving the bundle-loader pod Pending. Set "
+            "'bundle_storage_class' under [scale.kubernetes] to a "
+            "RWX-capable StorageClass (e.g. 'efs-sc')."
+        );
+    }
+    spec: dict[str, any] = {
+        "accessModes": access_modes,
+        "resources": {"requests": {"storage": size}}
+    };
+    if storage_class {
+        spec["storageClassName"] = storage_class;
+    }
+    return {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {
+            "name": bundle_pvc_name(app_name),
+            "namespace": namespace,
+            "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-store"}
+        },
+        "spec": spec
+    };
+}
+
+impl build_volume_perms_init_container(
+    name: str, image: str, mounts: list[dict[str, str]], recursive: bool = False
+) -> dict[str, any] {
+    flag = "-R " if recursive else "";
+    steps: list[str] = [];
+    for mount in mounts {
+        path = mount["mountPath"];
+        steps.append(
+            f'chown {flag}{RUNTIME_UID}:{RUNTIME_GID} "{path}" && chmod 0775 "{path}" '
+            f"|| echo '{name}: chown/chmod of {path} not permitted by the storage "
+            "backend; relying on the volume permissions as provisioned' >&2"
+        );
+    }
+    return {
+        "name": name,
+        "image": image,
+        "command": ["sh", "-c", "; ".join(steps)],
+        "securityContext": {
+            "runAsNonRoot": False,
+            "runAsUser": 0,
+            "readOnlyRootFilesystem": True,
+            "allowPrivilegeEscalation": False,
+            "capabilities": {
+                "drop": ["ALL"],
+                "add": ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            },
+            "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "volumeMounts": [_writable_mount(m) for m in mounts]
+    };
+}
+
+impl _writable_mount(mount: dict[str, str]) -> dict[str, str] {
+    out = dict(mount);
+    out.pop("readOnly", None);
+    return out;
+}
+
+impl build_loader_perms_init_container(loader_image: str) -> dict[str, any] {
+    return build_volume_perms_init_container(
+        "bundle-perms",
+        loader_image,
+        [{"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH}],
+        recursive=True
+    );
+}
+
+impl runtime_pod_security_context -> dict[str, any] {
+    return {"fsGroup": RUNTIME_GID, "fsGroupChangePolicy": "OnRootMismatch"};
+}
+
+impl build_loader_pod(
+    loader_pod: str, pvc_name: str, loader_image: str
+) -> dict[str, any] {
+    return {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": loader_pod,
+            "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
+        },
+        "spec": {
+            "restartPolicy": "Never",
+            "securityContext": {
+                "runAsNonRoot": True,
+                "runAsUser": RUNTIME_UID,
+                "fsGroup": RUNTIME_GID,
+                "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "initContainers": [build_loader_perms_init_container(loader_image)],
+            "containers": [
+                {
+                    "name": "loader",
+                    "image": loader_image,
+                    "command": ["sh", "-c", "sleep 3600"],
+                    "securityContext": {
+                        "runAsNonRoot": True,
+                        "runAsUser": RUNTIME_UID,
+                        "readOnlyRootFilesystem": True,
+                        "allowPrivilegeEscalation": False,
+                        "capabilities": {"drop": ["ALL"]},
+                        "seccompProfile": {"type": "RuntimeDefault"}
+                    },
+                    "volumeMounts": [
+                        {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
+                        {"name": "tmp", "mountPath": "/tmp"}
+                    ]
+                }
+            ],
+            "volumes": [
+                {"name": "bundles", "persistentVolumeClaim": {"claimName": pvc_name}},
+                {"name": "tmp", "emptyDir": {}}
+            ]
+        }
+    };
+}
+
+impl _unpack_cmd(path: str, image_binary_sha256: str) -> str {
+    untar = "tar xzf " + path + " -C " + APP_MOUNT_PATH;
+    if not image_binary_sha256 {
+        return untar;
+    }
+    image_sha = "$(sha256sum /usr/local/bin/jac | cut -d' ' -f1)";
+    return (
+        "if [ -x /usr/local/bin/jac ] && [ \""
+        + image_sha
+        + "\" = \""
+        + image_binary_sha256
+        + "\" ]; then :; else "
+        + untar
+        + "; fi"
+    );
+}
+
+impl pvc_unpack_script(
+    bundle_paths: list[str], skip_when_image_binary: (dict[str, str] | None) = None
+) -> str {
+    skips = skip_when_image_binary or {};
+    steps = [_unpack_cmd(p, skips.get(p, "")) for p in bundle_paths];
+    steps.append("{ " + ensure_jac_toml_cmd() + "; }");
+    return "set -eu; " + " && ".join(steps);
+}
+
+impl build_pvc_init_container(
+    base_image: str,
+    bundle_paths: list[str],
+    skip_when_image_binary: (dict[str, str] | None) = None
+) -> dict[str, any] {
+    script = pvc_unpack_script(bundle_paths, skip_when_image_binary);
+    return {
+        "name": PVC_BOOTSTRAP_NAME,
+        "image": base_image,
+        "command": ["sh", "-c"],
+        "args": [script],
+        "volumeMounts": [
+            {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH},
+            {
+                "name": BUNDLE_VOLUME_NAME,
+                "mountPath": BUNDLE_MOUNT_PATH,
+                "readOnly": True
+            }
+        ]
+    };
+}
+
+impl _ensure_volume(pod_spec: dict[str, any], volume: dict[str, any]) -> None {
+    volumes: list[dict[str, any]] = list(pod_spec.get("volumes", []));
+    for existing in volumes {
+        if existing.get("name") == volume.get("name") {
+            return;
+        }
+    }
+    volumes.append(volume);
+    pod_spec["volumes"] = volumes;
+}
+
+impl PvcInjector._seed_artifacts -> list[tuple[str, bytes]] {
+    return [(self._object_key, self._bundle_bytes)];
+}
+
+impl PvcInjector._unpack_bundle_paths -> list[str] {
+    return [bundle_pvc_path(self._object_key)];
+}
+
+impl PvcInjector._skip_when_image_binary -> dict[str, str] {
+    return {};
+}
+
+impl PvcInjector.prepare(app_name: str, namespace: str, project_dir: str) {
+    raw = pack_jab(
+        project_dir,
+        getattr(self, "_seal_binary_bytes", b""),
+        getattr(self, "_pod_arch", ""),
+        self._fleet,
+        self._client_ready
+    );
+    digest = content_address(raw);
+    self._object_key = bundle_object_key(app_name, digest);
+    self._bundle_bytes = raw;
+}
+
+impl PvcInjector.seed(app_name: str, namespace: str) {
+    if not self._bundle_bytes {
+        raise ValueError(
+            "PvcInjector.seed() called before prepare(); there are no bundle "
+            "bytes to publish. prepare() must run first to pack the project."
+        );
+    }
+
+    import tempfile;
+    import from pathlib { Path }
+
+    core_v1 = client.CoreV1Api();
+    pvc_name = bundle_pvc_name(app_name);
+    loader_pod = f"{app_name}-bundle-loader";
+
+    pod_body = build_loader_pod(loader_pod, pvc_name, self.loader_image);
+    try {
+        core_v1.create_namespaced_pod(namespace, pod_body);
+    } except ApiException as exc {
+        if exc.status == 409 {
+            core_v1.delete_namespaced_pod(loader_pod, namespace);
+            wait_for_pod_deletion(core_v1, namespace, loader_pod);
+            core_v1.create_namespaced_pod(namespace, pod_body);
+        } else {
+            raise;
+        }
+    }
+
+    wait_for_pod_phase(core_v1, namespace, loader_pod, {"Running"});
+
+    try {
+        for (object_key, raw) in self._seed_artifacts() {
+            bundle_path = bundle_pvc_path(object_key);
+            parent_dir = str(Path(bundle_path).parent);
+
+            try {
+                run_kubectl_command(
+                    [
+                        "exec",
+                        "-n",
+                        namespace,
+                        loader_pod,
+                        "--",
+                        "sh",
+                        "-c",
+                        f"test -f '{bundle_path}'"
+                    ]
+                );
+                logger.info(
+                    f"pvc-injector: {object_key} already seeded "
+                    f"(content-addressed hit); skipping upload."
+                );
+                continue;
+            } except RuntimeError as probe_err {
+                logger.debug(f"pvc-injector: presence probe: {probe_err}");
+            }
+
+            with tempfile.NamedTemporaryFile(delete=False) as tmp {
+                tmp.write(raw);
+                tmp_path = Path(tmp.name);
+            }
+
+            staging_path = f"{bundle_path}.{os.getpid()}.part";
+            try {
+                run_kubectl_command(
+                    [
+                        "exec",
+                        "-n",
+                        namespace,
+                        loader_pod,
+                        "--",
+                        "sh",
+                        "-c",
+                        f"mkdir -p '{parent_dir}'"
+                    ]
+                );
+                run_kubectl_command(
+                    [
+                        "cp",
+                        "-n",
+                        namespace,
+                        tmp_path.name,
+                        f"{loader_pod}:{staging_path}"
+                    ],
+                    cwd=tmp_path.parent
+                );
+
+                run_kubectl_command(
+                    [
+                        "exec",
+                        "-n",
+                        namespace,
+                        loader_pod,
+                        "--",
+                        "sh",
+                        "-c",
+                        "mv -f '" + staging_path + "' '" + bundle_path + "'"
+                    ]
+                );
+                logger.info(
+                    f"pvc-injector: seeded {len(raw)} bytes to "
+                    f"{pvc_name} at {bundle_path}"
+                );
+            } finally {
+                tmp_path.unlink(missing_ok=True);
+            }
+        }
+    } finally {
+        try {
+            core_v1.delete_namespaced_pod(loader_pod, namespace);
+            wait_for_pod_deletion(core_v1, namespace, loader_pod);
+        } except ApiException as exc {
+            if exc.status != 404 {
+                raise;
+            }
+        }
+    }
+}
+
+impl PvcInjector.unpack_script -> str {
+    return pvc_unpack_script(
+        self._unpack_bundle_paths(), self._skip_when_image_binary()
+    );
+}
+
+impl PvcInjector.mutate_pod_spec(
+    pod_spec: dict[str, any], base_image: str, unpack_container: bool = True
+) -> dict[str, any] {
+    metadata = pod_spec.get("_jac_meta");
+    app_name = str(metadata.get("app_name", "")) if metadata is not None else "";
+    if not app_name {
+        raise ValueError(
+            "PvcInjector.mutate_pod_spec requires pod_spec['_jac_meta']['app_name'] "
+            "(set by the manifest builder before delegating); without it the bundle "
+            "PVC claim name would not match the PVC created by prepare() / "
+            "extra_manifests(), so the pod would mount a claim that was never created."
+        );
+    }
+
+    _ensure_volume(pod_spec, {"name": APP_VOLUME_NAME, "emptyDir": {}});
+    _ensure_volume(
+        pod_spec,
+        {
+            "name": BUNDLE_VOLUME_NAME,
+            "persistentVolumeClaim": {"claimName": bundle_pvc_name(app_name)}
+        }
+    );
+
+    if unpack_container {
+        init_containers: list[dict[str, any]] = list(
+            pod_spec.get("initContainers", [])
+        );
+        init_containers.append(
+            build_pvc_init_container(
+                base_image, self._unpack_bundle_paths(), self._skip_when_image_binary()
+            )
+        );
+        pod_spec["initContainers"] = init_containers;
+    }
+
+    for container in pod_spec.get("containers", []) {
+        mounts: list[dict[str, any]] = list(container.get("volumeMounts", []));
+        mounts.append({"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH});
+        container["volumeMounts"] = mounts;
+    }
+    return pod_spec;
+}
+
+impl PvcInjector.extra_manifests(
+    app_name: str, namespace: str
+) -> list[dict[str, any]] {
+    return [
+        build_bundle_pvc(
+            app_name, namespace, self.size, self.storage_class, self.access_mode
+        )
+    ];
+}

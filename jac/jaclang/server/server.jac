@@ -4,19 +4,8 @@ import threading;
 import from inspect { isgenerator }
 import from pathlib { Path }
 import from typing { AsyncGenerator, Generator, TypeAlias }
-import from jaclang.runtime.builtin { APIProtocol }
-import from jaclang.runtime.context { CallState, ExecutionContext }
-import from jaclang.server.identity.mail { IdentityMailer, verification_problems }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.request_scope { RequestScope }
-import from jaclang.server.serving.app { ServingApp }
-import from jaclang.server.serving.drain { DrainState }
-import from jaclang.server.serving.endpoint { JEndPoint, WSEndPoint }
-import from jaclang.server.serving.supervisor { WorkerHandle }
-import from jaclang.server.settings { ServeSettings }
-import from jaclang.server.task_scheduler { Scheduler }
+
 import from jaclang { JacRuntime as Jac }
-import type from jaclang.runtime.constructs { WalkerArchetype }
 
 glob JsonValue: TypeAlias = None
          | str
@@ -29,26 +18,18 @@ glob JsonValue: TypeAlias = None
 
 
 obj ServerExtension {
-    def validate(server: JacAPIServer) -> list[str] {
-        return [];
-    }
-
-    def mail_transport -> any {
-        return None;
-    }
-
+    def validate(server: JacAPIServer) -> list[str];
+    def mail_transport -> any;
     def register(server: JacAPIServer) -> None abst;
-    def on_worker_start(server: JacAPIServer) {}
-    def on_worker_exit(server: JacAPIServer, pid: int) {}
+    def on_worker_start(server: JacAPIServer);
+    def on_worker_exit(server: JacAPIServer, pid: int);
 }
 
 
 obj EndpointHost {
     def add_endpoint(ep: JEndPoint) -> None abst;
     def identity -> UserManager abst;
-    def mailer -> IdentityMailer {
-        return IdentityMailer(emailer=self?.emailer);
-    }
+    def mailer -> IdentityMailer;
 }
 
 
@@ -66,65 +47,15 @@ obj RequestMetrics {
 def observe_read_tier_retry(metrics: any, unit_key: str) -> None;
 
 
-def target_restspec(target: any) -> any {
-    return target.restspec if target?.restspec else None;
-}
+def target_restspec(target: any) -> any;
 
 
-def target_protocol(target: any) -> APIProtocol {
-    restspec: any = target_restspec(target);
-    if restspec?.protocol {
-        return APIProtocol(restspec.protocol);
-    }
-    return APIProtocol.HTTP;
-}
+def target_protocol(target: any) -> APIProtocol;
 
 
-def target_schedule_spec(target: any) -> any {
-    return target.schedule_spec if target?.schedule_spec else None;
-}
+def target_schedule_spec(target: any) -> any;
 
-def restspec_fields(specs: dict[str, any]) -> dict[str, any] {
-    import from jaclang.server.serving.endpoint { HTTPMethod }
-    specs = dict(specs);
-    protocol = specs.get('protocol');
-    if protocol is not None and not isinstance(protocol, APIProtocol) {
-        raw_p = str(protocol).strip().lower();
-        try {
-            specs['protocol'] = APIProtocol('websocket' if raw_p == 'ws' else raw_p);
-        } except ValueError {
-            raise ValueError(
-                f"@restspec protocol={protocol!r} is not recognized. Expected "
-                "APIProtocol.HTTP / WEBHOOK / WEBSOCKET (or the strings "
-                "'http', 'webhook', 'websocket'/'ws')."
-            );
-        }
-    }
-    method = specs.get('method');
-    if method is not None and not isinstance(method, HTTPMethod) {
-        try {
-            specs['method'] = HTTPMethod(str(method).strip().upper());
-        } except ValueError {
-            raise ValueError(
-                f"@restspec method={method!r} is not routable. Expected one "
-                f"of: {', '.join([m.value for m in HTTPMethod])}."
-            );
-        }
-    }
-    scheme = specs.get('scheme');
-    if scheme is not None {
-        raw_s = str(scheme).strip().lower();
-        if raw_s not in ('', 'jac', 'github') {
-            raise ValueError(
-                f"@restspec scheme={scheme!r} is not recognized. Expected "
-                "'jac' (api key plus timestamped HMAC, the default) or "
-                "'github' (X-Hub-Signature-256 over the raw body)."
-            );
-        }
-        specs['scheme'] = '' if raw_s == 'jac' else raw_s;
-    }
-    return specs;
-}
+def restspec_fields(specs: dict[str, any]) -> dict[str, any];
 
 
 obj ExecutionManager {
@@ -208,6 +139,7 @@ obj ModuleIntrospector {
     def route_spec(name: str) -> any;
     def is_scheduled(name: str) -> bool;
     def scheduled_members -> list[tuple[str, any, bool]];
+    def scheduled_targets -> list[tuple[str, any, ScheduleSpec, bool]];
     def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
@@ -297,6 +229,7 @@ obj JacAPIServer(EndpointHost) {
     def _ensure_sv_siblings -> None;
     def _ensure_client_bundle -> None;
     def _ensure_internal_users -> None;
+    def _colocated_scheduled_targets -> list[tuple[str, str, any, ScheduleSpec, bool]];
     def _register_scheduled_tasks -> None;
     def _scheduled_targets -> list[tuple[str, any, bool]];
     def _start_problems -> list[str];

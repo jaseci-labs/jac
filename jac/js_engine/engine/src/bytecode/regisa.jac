@@ -49,6 +49,7 @@ import from engine.src.bytecode.op {
     _opname
 }
 import from engine.src.bytecode.optimizer { _bcopt_small_int_const, _BCOPT_NO_INT }
+import from engine.src.ffi.libc { calloc, abort }
 
 # ── Gate / diagnostics (JS_REG_ISA=0, JS_REG_DEBUG=1; wired by init_global) ──
 glob _REG_GATE: int = 1,
@@ -2469,6 +2470,24 @@ def _reg_defer_ok(fn: CompiledFunction) -> bool {
     return True;
 }
 
+"""A raw copy of the register words: the register loop fetches from it with no
+bounds check (the terminator reg_translate_fn appends keeps pc inside it) and
+switches frames by reloading one integer instead of a counted list reference.
+Kept for the function's lifetime, like the words themselves."""
+def _rcode_raw(words: list[int]) -> int {
+    rr_n: int = len(words);
+    rr_p: int = calloc(rr_n, 8);
+    if rr_p == 0 {
+        abort();
+    }
+    rr_i: int = 0;
+    while rr_i < rr_n {
+        __mem_store_i64(rr_p + rr_i * 8, words[rr_i]);
+        rr_i = rr_i + 1;
+    }
+    return rr_p;
+}
+
 """Translate `fn` to the register ISA (idempotent; called lazily by the VM
 the first time a function is about to run — a build loads far more
 functions than it calls). Leaves risa == 2 and the stack code alone when
@@ -2508,6 +2527,7 @@ def:pub reg_translate_fn(fn: CompiledFunction) -> None {
     # bound pc, so the code must never run off its end.
     fn.rcode.append(R_RETUNDEF);
     fn.rorig.append(len(fn.code) - 1);
+    fn.rcode_ptr = _rcode_raw(fn.rcode);
     fn.rhandler = t.rhandler;
     fn.reg_gen_start = t.reg_gen_start;
     fn.reg_tmp_base = fn.num_locals;

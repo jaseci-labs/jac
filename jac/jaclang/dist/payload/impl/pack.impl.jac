@@ -1,11 +1,4 @@
 import os;
-
-import from jaclang.dist.payload.fsutil {
-    die,
-    read_bytes,
-    sha256_hex,
-    strip_best_effort
-}
 import from jaclang.dist.fused.trailer {
     MAGIC,
     REGION_ALIGN,

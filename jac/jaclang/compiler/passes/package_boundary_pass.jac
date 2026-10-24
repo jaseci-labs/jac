@@ -1,8 +1,3 @@
-import from jaclang.compiler.passes.context { CompilerPass }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, PassContract }
-import from jaclang.compiler.frontend.unitree { Import, Module, ModulePath }
-import from jaclang.compiler.frontend.host { ProjectFacts }
-
 walker PackageBoundaryPass(CompilerPass) {
     static has contract: PassContract = PassContract(requires=(AnalysisFact.SYM_OF, ));
 

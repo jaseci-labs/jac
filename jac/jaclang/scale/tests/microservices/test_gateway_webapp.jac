@@ -12,16 +12,6 @@ member owns the project root, and that no page request fans out.
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.server.serving.app { ServingApp }
-import from jaclang.server.serving.datatypes { JSONResponse, Request, Response }
-import from jaclang.server.serving.server { ServingServer }
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceEntry,
-    ServiceRegistry,
-    ServiceStatus
-}
-import from jaclang.testing.testkit { ServingTestClient }
 
 
 """Serve a marker backend that names itself in every response body."""

@@ -7,26 +7,6 @@
 #
 # Product module: imports flowgraph + compiler_ir + opcode_meta + objects only.
 
-import from jaclang.runtime.python.objects { PyCode }
-import from jaclang.runtime.python.opcode_meta {
-    OP_CACHE,
-    OP_EXTENDED_ARG,
-    opcode_cache_count,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_ir {
-    cinstr,
-    cloc,
-    loc,
-    same_loc,
-    NO_LINE,
-    instr_size_codeunits,
-    except_region,
-}
-import from jaclang.compiler.backends.py.jacpython.flowgraph {
-    verified_cfg,
-    flatten_blocks
-}
-
 glob CONTINUATION_BIT: int = 64;
 
 def append_except_varint(out: list[int], value: int, first_msb: int) {

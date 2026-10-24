@@ -1,6 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir as ir;
-
-
 impl NaIRGenPass._emit_rc_roots_globals -> None {
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();

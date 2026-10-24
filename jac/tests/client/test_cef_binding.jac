@@ -187,7 +187,9 @@ test "cef native lifecycle functions are invoked with parentheses" {
     ];
     for (fname, body, fns) in checks {
         for fn in fns {
-            bare = re.search(r"(?:^|[=({;,\s])" + fn + r"\s*;", body, re.M);
+            bare = re.search(
+                r"(?:^|[=({;,]|(?<!def)(?<!can)\s)" + fn + r"\s*;", body, re.M
+            );
             assert bare is None , f"{fn} is invoked without parentheses (no-op) in {fname}";
         }
     }

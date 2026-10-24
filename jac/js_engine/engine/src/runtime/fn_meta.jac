@@ -63,6 +63,7 @@ def:pub fn_meta_set_object_proto(v: JSValue, proto: JSValue) -> int {
         return 1;
     }
     _FN_META_CLOSURES[idx].object_proto = proto;
+    _FN_META_CLOSURES[idx].wb(_FN_META_CLOSURES[idx].object_proto);
     return 0;
 }
 
@@ -73,6 +74,7 @@ on use this; plain lookups use cl_props_get / cl_props_has_own."""
 def:pub cl_props(cl: JSClosure) -> JSValue {
     if not jsv_is_object_cell(cl.fn_props) {
         cl.fn_props = js_object_create_null();
+        cl.wb(cl.fn_props);
     }
     return cl.fn_props;
 }

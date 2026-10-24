@@ -9,7 +9,16 @@ import from jaclang.byllm.types { MockToolCall }
 import from jaclang.byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
 import from pathlib { Path }
-import from support { call, capture_loguru, fail, finish, fixture_path, scripted }
+import from support {
+    call,
+    capture_loguru,
+    event_types,
+    events_of,
+    fail,
+    finish,
+    fixture_path,
+    scripted
+}
 
 
 glob COMPACTION_TOML_FIXTURE = fixture_path("compaction_config");
@@ -28,32 +37,46 @@ def finish_tool(final_output: str) -> str {
 # Pipeline tests compact through a hook so they check when compaction fires,
 # not how _default_compact slices; that is verified separately.
 test "above threshold compacts and next iteration sees shortened messages" {
-    llm = MockLLM(
-        ctx_window=1000,
-        outputs=[
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
-        ]
-    );
-
-    hook_call_count = [0];
-    def shrinking_hook(msgs: list[any], keep_recent: int) -> list[any] {
-        hook_call_count[0] += 1;
+    def new_list(msgs: list[any], keep_recent: int) -> list[any] {
         return [msgs[0], msgs[1]];
     }
 
-    def my_task(q: str) -> str by llm(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=shrinking_hook
-    );
+    def in_place(msgs: list[any], keep_recent: int) -> list[any] {
+        del msgs[2:];
+        return msgs;
+    }
 
-    result = my_task("test");
+    for (label, hook) in [
+        ("hook returns a new list", new_list),
+        ("hook shrinks the list in place", in_place)
+    ] {
+        llm = MockLLM(
+            ctx_window=1000,
+            outputs=[
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+            ]
+        );
 
-    assert result == "ok";
-    assert hook_call_count[0] == 1;
-    # Without compaction iter 3 would be at 6 messages; hook collapses to 3.
-    iter_msgs = [len(sent) for sent in llm.sent("messages")];
-    assert iter_msgs == [2, 4, 3] , f"Expected [2, 4, 3], got {iter_msgs}";
+        hook_calls = [0];
+        def counted(msgs: list[any], keep_recent: int) -> list[any] {
+            hook_calls[0] += 1;
+            return hook(msgs, keep_recent);
+        }
+
+        def my_task(q: str) -> str by llm(
+            tools=[step_a], threshold_ratio=0.80, on_compaction=counted
+        );
+
+        assert my_task("test") == "ok" , f"{label}: the call must finish";
+        assert hook_calls[0] == 1 , f"{label}: the hook must run once, ran {hook_calls[
+            0
+        ]}";
+        # Without compaction iter 3 would be at 6 messages; the hook collapses it to 3.
+        iter_msgs = [len(sent) for sent in llm.sent("messages")];
+        assert iter_msgs == [2, 4, 3] , f"{label}: expected [2, 4, 3], got {iter_msgs}";
+    }
 }
 
 
@@ -318,33 +341,46 @@ test "a proactive compaction that does not reduce the history lets the call cont
 }
 
 
-test "an emergency compaction that does not reduce the history raises CompactionNotEffectiveError" {
-    llm = MockLLM(
-        outputs=[
-            (MockToolCall(tool=step_a, args={}), {}),
-            fail(
-                litellm.exceptions.ContextWindowExceededError(
-                    message="ctx exceeded", model="mockllm", llm_provider="openai"
-                )
-            )
-        ]
-    );
-
-    def noop_hook(msgs: list[any], keep_recent: int) -> list[any] {
+test "an emergency compaction raises CompactionNotEffectiveError only when it does not reduce the history" {
+    def noop(msgs: list[any], keep_recent: int) -> list[any] {
         return msgs;
     }
 
-    def my_task(q: str) -> str by llm(tools=[step_a], on_compaction=noop_hook);
-
-    raised = False;
-    try {
-        my_task("test");
-    } except CompactionNotEffectiveError as e {
-        raised = True;
-        assert "no reduction" in str(e);
+    def in_place(msgs: list[any], keep_recent: int) -> list[any] {
+        del msgs[2:];
+        return msgs;
     }
-    assert raised;
-    assert len(llm.seen) == 2 , "a compaction that did nothing must not retry the call";
+
+    # (label, hook, raises)
+    for (label, hook, raises) in [
+        ("hook changes nothing", noop, True),
+        ("hook shrinks the list in place", in_place, False)
+    ] {
+        llm = MockLLM(
+            outputs=[
+                (MockToolCall(tool=step_a, args={}), {}),
+                fail(
+                    litellm.exceptions.ContextWindowExceededError(
+                        message="ctx exceeded", model="mockllm", llm_provider="openai"
+                    )
+                ),
+                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+            ]
+        );
+
+        def my_task(q: str) -> str by llm(tools=[step_a], on_compaction=hook);
+
+        raised = False;
+        try {
+            assert my_task("test") == "ok" , f"{label}: the retried call must finish";
+        } except CompactionNotEffectiveError as e {
+            raised = True;
+            assert "no reduction" in str(e) , f"{label}: unexpected message {e}";
+        }
+        assert raised == raises , f"{label}: raised={raised}, want {raises}";
+        (calls, want_calls) = (len(llm.seen), 2 if raises else 3);
+        assert calls == want_calls , f"{label}: want {want_calls} calls, got {calls}";
+    }
 }
 
 
@@ -391,61 +427,87 @@ test "on_compaction hook returning invalid types raises ConfigurationError" {
 }
 
 
-test "streaming path triggers compaction and respects compaction_enabled" {
-    llm1 = MockLLM(
-        ctx_window=1000,
-        outputs=[
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {}),
-            "done"
-        ]
-    );
+test "streaming reports each applied compaction once and respects compaction_enabled" {
+    def overflow -> Exception {
+        return litellm.exceptions.ContextWindowExceededError(
+            message="ctx exceeded", model="mockllm", llm_provider="openai"
+        );
+    }
 
-    fired1 = [False];
-    def hook1(msgs: list[any], keep_recent: int) -> list[any] {
-        fired1[0] = True;
+    def shrink(msgs: list[any], keep_recent: int) -> list[any] {
         return msgs[:2];
     }
 
-    def task1(q: str) -> str by llm1(
-        tools=[step_a],
-        stream=True,
-        logging=True,
-        threshold_ratio=0.80,
-        on_compaction=hook1
-    );
-
-    for event in task1("test") {}
-    assert fired1[0];
-
-    llm2 = MockLLM(
-        ctx_window=1000,
-        outputs=[
-            (
-                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-                {"prompt_tokens": 950}
-            ),
-            "done"
-        ]
-    );
-
-    fired2 = [False];
-    def hook2(msgs: list[any], keep_recent: int) -> list[any] {
-        fired2[0] = True;
-        return msgs[:2];
+    def unchanged(msgs: list[any], keep_recent: int) -> list[any] {
+        return msgs;
     }
 
-    def task2(q: str) -> str by llm2(
-        tools=[step_a],
-        stream=True,
-        logging=True,
-        threshold_ratio=0.80,
-        compaction_enabled=False,
-        on_compaction=hook2
-    );
+    step = (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100});
+    big = (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850});
+    done = (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {});
+    over = [step, big, done, "ok"];
+    retry = [step, fail(overflow()), done, "ok"];
+    retry_fails = [step, fail(overflow()), fail(overflow())];
+    applied = {
+        "reason": "threshold",
+        "by": "hook",
+        "iteration": 2,
+        "messages_before": 5,
+        "messages_after": 2
+    };
+    overflowed = {"reason": "overflow", "by": "hook"};
+    # (label, model script, hook, compaction_enabled, event fields (None = no event), raises)
+    rows: list[tuple[str, list[any], any, bool, dict[str, any] | None, bool]] = [
+        ("applied compaction", over, shrink, True, applied, False),
+        ("compaction disabled", over, shrink, False, None, False),
+        ("discarded compaction", over, unchanged, True, None, False),
+        ("emergency compaction", retry, shrink, True, overflowed, False),
+        ("emergency retry that fails", retry_fails, shrink, True, overflowed, True)
+    ];
+    for (label, outputs, hook, enabled, want, raises) in rows {
+        llm = MockLLM(model_name="test-model", ctx_window=1000, outputs=list(outputs));
+        hook_calls = [0];
+        def counted(msgs: list[any], keep_recent: int) -> list[any] {
+            hook_calls[0] += 1;
+            return hook(msgs, keep_recent);
+        }
 
-    for event in task2("test") {}
-    assert not fired2[0];
+        def task(q: str) -> str by llm(
+            tools=[step_a],
+            stream=True,
+            logging=True,
+            threshold_ratio=0.80,
+            compaction_enabled=enabled,
+            on_compaction=counted
+        );
+
+        seen: list[any] = [];
+        raised = False;
+        try {
+            for event in task("go") {
+                seen.append(event);
+            }
+        } except litellm.exceptions.ContextWindowExceededError {
+            raised = True;
+        }
+        assert raised == raises , f"{label}: raised={raised}, want {raises}";
+        assert (hook_calls[0] > 0) == enabled , f"{label}: hook ran {hook_calls[
+            0
+        ]} times";
+        kinds = event_types(seen);
+        reported = events_of(seen, "compaction");
+        assert len(reported) == (0 if want is None else 1) , f"{label}: events {kinds}";
+        if want is not None {
+            info = reported[0].data;
+            for (key, value) in want.items() {
+                assert info[key] == value , f"{label}: {key} is {info[key]!r}, want {value!r}";
+            }
+            assert 0 < info["tokens_after"] < info["tokens_before"] , f"{label}: tokens {info}";
+            if not raises {
+                assert kinds.index("compaction") < kinds.index("steps_done") , f"{label}: {kinds}";
+            }
+        }
+    }
 }
 
 

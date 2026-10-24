@@ -1,23 +1,4 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext, TreePass }
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.compiler.frontend.parser.tokens { BUILTIN_TYPE_KINDS, TokenKind }
-
-def is_nil_expr(nd: object) -> bool {
-    if isinstance(nd, uni.CfgExpr) {
-        return is_nil_expr(nd.expr);
-    }
-    if isinstance(nd, uni.Null) {
-        return True;
-    }
-    if isinstance(nd, uni.Name) {
-        return nd.value == "NIL";
-    }
-    return False;
-}
+def is_nil_expr(nd: object) -> bool;
 
 obj GExpr {
     def __eq__(other: object) -> bool;

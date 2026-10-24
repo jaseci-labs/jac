@@ -225,7 +225,7 @@ notification = true
    - opens either an OS-native webview or a CEF browser window and navigates to
      that loopback origin. Walker and function calls are ordinary HTTP, exactly
      as in the browser; there is no second transport for the native window.
-3. `jac build --native` lowers the host to a native binary via Jac's pure-Jac linker
+3. `jac build --native` lowers the host to a native binary, linked by the LLD built into Jac
    (no `cc`/`ld`), recording the renderer libraries with an `$ORIGIN` runpath.
 
 Each desktop app of a workspace builds under its own `.jac/client/<app>/desktop/`.

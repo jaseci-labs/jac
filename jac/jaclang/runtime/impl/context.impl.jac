@@ -2,13 +2,7 @@ import os;
 import from typing { cast }
 import from uuid { UUID }
 
-import from jaclang.runtime.archetype { NodeAnchor, Root }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.exceptions { MissingAnchorError }
-import from jaclang.runtime.memory { Memory }
-
 impl ExecutionContext.postinit -> None {
-    import from jaclang.runtime.runtime { JacRuntime }
     if self._parent is not None {
         self.base_path_dir = self._parent.base_path_dir;
         self.full_target_path = self.full_target_path or self._parent.full_target_path;
@@ -29,7 +23,7 @@ impl ExecutionContext.postinit -> None {
         self.mem = Memory();
         return;
     }
-    import from jaclang.server.session { Session }
+
     self.mem = Session(base_path=self.base_path_dir, target_path=self.full_target_path);
 }
 
@@ -111,6 +105,21 @@ impl ExecutionContext.close -> None {
     self.run_pending_effects();
 }
 
+impl ExecutionContext.aclose -> None {
+    if self._parent is not None and self.mem is self._parent.mem {
+        return;
+    }
+
+    try {
+        await self.mem.aclose();
+    } except asyncio.CancelledError {
+        self.run_pending_effects();
+        raise;
+    }
+
+    self.run_pending_effects();
+}
+
 impl ExecutionContext.on_commit(callback: Callable) -> None {
     self.pending_effects.append(callback);
 }
@@ -121,12 +130,17 @@ impl ExecutionContext.run_pending_effects -> None {
     }
     effects = self.pending_effects;
     self.pending_effects = [];
-    for effect in effects {
-        try {
-            effect();
-        } except Exception as e {
-            logger.error(f"on_commit effect failed: {e}");
+    self.mem.unseal_scan();
+    try {
+        for effect in effects {
+            try {
+                effect();
+            } except Exception as e {
+                logger.error(f"on_commit effect failed: {e}");
+            }
         }
+    } finally {
+        self.mem.unseal_scan();
     }
 }
 
@@ -160,7 +174,7 @@ impl ExecutionContext.aset_user_root(root_id: str) -> None {
 
 impl ExecutionContext.bind_stream(value: any) -> any {
     import inspect;
-    import from jaclang.runtime.runtime { JacRuntime }
+
     context = self;
     if inspect.isgenerator(value) {
         def stream -> Generator[any, None, None] {
@@ -233,4 +247,26 @@ impl ExecutionContext.bind_stream(value: any) -> any {
         return wrapped_async;
     }
     return value;
+}
+
+impl ExecutionContext.for_target(
+    target: object, parent: ExecutionContext, user_root_id: str
+) -> ExecutionContext {
+    application = application_of(target);
+    caller = application_for(parent.full_target_path or '');
+    if application is None or caller is None or application is caller {
+        context = ExecutionContext(_parent=parent);
+    } else {
+        context = ExecutionContext(
+            _parent=parent, _own_session=True, full_target_path=application.entry
+        );
+    }
+    try {
+        await context.aset_user_root(user_root_id);
+    } except BaseException {
+        context.mem.abort();
+        context.close();
+        raise;
+    }
+    return context;
 }

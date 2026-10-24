@@ -1,7 +1,5 @@
 import logging;
 import os;
-import from jaclang.project.config { JacConfig, ServeConfig }
-import from jaclang.cli.workpool { cpu_quota, memory_headroom_bytes }
 
 glob ENV_PREFIX: str = 'JAC_SERVE_',
      WORKERS_AUTO: str = 'auto',
@@ -43,9 +41,7 @@ obj WorkerSettings {
         count_by_default: bool = False,
         threads_by_default: bool = False;
 
-    def multi_process -> bool {
-        return self.count > 1;
-    }
+    def multi_process -> bool;
 }
 
 obj TlsSettings {
@@ -54,10 +50,7 @@ obj TlsSettings {
         ca_certs: str = '',
         min_version: str = '1.2';
 
-    def enabled -> bool {
-        return bool(self.certfile);
-    }
-
+    def enabled -> bool;
     def build_context -> any;
 }
 
@@ -212,9 +205,7 @@ obj ServeSettings {
     def validate -> list[str];
     def warnings -> list[str];
     def require_valid -> None;
-    def scheme -> str {
-        return 'https' if self.tls.enabled() else 'http';
-    }
+    def scheme -> str;
 }
 
 
@@ -231,62 +222,17 @@ def overlay_table(
 def removed_table(config: (JacConfig | None)) -> list[str];
 
 
-def in_cluster -> bool {
-    return bool(os.environ.get('KUBERNETES_SERVICE_HOST', '').strip());
-}
+def in_cluster -> bool;
 
-def env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None) {
-    raw = (os.environ if environ is None else environ).get(ENV_PREFIX + name);
-    if raw is None {
-        return None;
-    }
-    stripped = raw.strip();
-    return stripped;
-}
+def env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None);
 
-def env_bool(name: str, `default: bool) -> bool {
-    raw = env_value(name);
-    if raw is None {
-        return `default;
-    }
-    return raw.lower() not in ('0', 'false', 'no', 'off');
-}
+def env_bool(name: str, `default: bool) -> bool;
 
-def env_int(name: str, `default: int) -> int {
-    raw = env_value(name);
-    if raw is None {
-        return `default;
-    }
-    try {
-        return int(raw);
-    } except ValueError {
-        raise ServeConfigError(f"{ENV_PREFIX}{name} must be an integer, got {raw!r}");
-    }
-}
+def env_int(name: str, `default: int) -> int;
 
-def env_float(name: str, `default: float) -> float {
-    raw = env_value(name);
-    if raw is None {
-        return `default;
-    }
-    try {
-        return float(raw);
-    } except ValueError {
-        raise ServeConfigError(f"{ENV_PREFIX}{name} must be a number, got {raw!r}");
-    }
-}
+def env_float(name: str, `default: float) -> float;
 
-def env_list(name: str, `default: list[str]) -> list[str] {
-    raw = env_value(name);
-    if raw is None {
-        return `default;
-    }
-    return [
-        part.strip()
-        for part in raw.split(',')
-        if part.strip()
-    ];
-}
+def env_list(name: str, `default: list[str]) -> list[str];
 
 def resolve_count(raw: str, quota: int, label: str) -> int;
 def default_threads(worker_count: int, quota: int) -> int;

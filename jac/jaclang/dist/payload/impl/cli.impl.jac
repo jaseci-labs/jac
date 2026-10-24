@@ -1,18 +1,6 @@
 import os;
 import sys;
 
-import from jaclang.dist.payload.assemble { mk_payload }
-import from jaclang.dist.payload.fetch {
-    fetch_bun,
-    fetch_llvm,
-    fetch_typeshed,
-    typeshed_sha
-}
-import from jaclang.dist.payload.fsutil { PayloadDie, die }
-import from jaclang.dist.payload.pack { pack }
-import from jaclang.dist.payload.pins { host_py_minor, py_ver }
-import from jaclang.dist.payload.vendor { build_musl, build_wasm_libc }
-
 impl main(argv: list[str]) -> int {
     try {
         dispatch(list(argv));
@@ -24,11 +12,7 @@ impl main(argv: list[str]) -> int {
     return 0;
 }
 
-def _need(argv: list[str], count: int, usage: str) {
-    if len(argv) < count {
-        die(usage);
-    }
-}
+def _need(argv: list[str], count: int, usage: str);
 
 impl dispatch(argv: list[str]) {
     if len(argv) < 1 {
@@ -88,7 +72,8 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
         "--wasm-libc=": "wasm_libc_dir",
         "--precompiled-cache=": "precompiled_cache",
         "--layer-cache=": "layer_cache",
-        "--stubcat-out=": "stubcat_out"
+        "--stubcat-out=": "stubcat_out",
+        "--kernel=": "kernel_dir"
     };
     for arg in flags {
         if arg == "--seal" {
@@ -113,12 +98,18 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
     return opts;
 }
 
-impl check_host_python{
+impl check_host_python {
     want = py_ver();
     have = host_py_minor();
     if want != have {
         die(
             f"mkpayload: must run on the bundled CPython {want} (this interpreter is {have}); invoke it with the source-built python"
         );
+    }
+}
+
+impl _need(argv: list[str], count: int, usage: str) {
+    if len(argv) < count {
+        die(usage);
     }
 }

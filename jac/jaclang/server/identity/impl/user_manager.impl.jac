@@ -1,9 +1,4 @@
 impl UserManager.postinit -> None {
-    import from jaclang.server.shared_store {
-        NO_DATABASE_RESOLVED,
-        shared_store,
-        shared_store_failure
-    }
     store = shared_store();
     if store is None {
         raise RuntimeError(

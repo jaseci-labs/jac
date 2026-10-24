@@ -139,7 +139,6 @@ impl NaIRGenPass._unpack_into(
         }
     }
 
-    import from jaclang.compiler.frontend.constant { SymbolStorage }
     rc_ok = (not is_value) or not self._nogc_headerless();
     for (i, target) in enumerate(targets) {
         if struct_type is not None and i >= len(struct_type.members()) {

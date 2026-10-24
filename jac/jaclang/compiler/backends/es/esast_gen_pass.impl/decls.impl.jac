@@ -1,6 +1,3 @@
-import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.diagnostics { E5097 }
-
 impl EsastGenPass.exit_has_var with uni.HasVar exit {
     here.gen.es_ast = None;
 }
@@ -28,6 +25,11 @@ impl EsastGenPass.exit_param_var with uni.ParamVar exit {
 
 impl EsastGenPass.exit_func_signature with uni.FuncSignature exit {
     here.gen.es_ast = None;
+}
+
+impl EsastGenPass._client_linkable(nd: uni.AstAccessNode) -> bool {
+    return isinstance(nd.parent, uni.Module)
+        and not (nd.access is not None and nd.access.tag.name == Tok.KW_PRIV);
 }
 
 impl EsastGenPass.exit_ability with uni.Ability exit {
@@ -78,17 +80,16 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             route_role = self._return_type_route_role(here.signature.return_type);
         }
 
-        if is_pub or route_role or here.codespace_dual {
-            name = here.name_ref.sym_name;
+        name = here.name_ref.sym_name;
+        if (
+            isinstance(here.signature, uni.FuncSignature)
+            and here.signature.return_type is not None
+            and return_type_is_jsx(here.signature.return_type)
+        ) {
+            self.client_manifest.components.append(name);
+        }
+        if is_pub or route_role {
             self.client_manifest.exports.append(name);
-            if (
-                isinstance(here.signature, uni.FuncSignature)
-                and here.signature.return_type is not None
-                and return_type_is_jsx(here.signature.return_type)
-            ) {
-                self.component_export_names.add(name);
-            }
-
             self.client_manifest.params[name] = [
                 p.name.sym_name
                 for p in here.signature.params
@@ -102,6 +103,8 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
                 and self.client_manifest.layout_export is None {
                 self.client_manifest.layout_export = name;
             }
+        } elif self._client_linkable(here) {
+            self.client_manifest.linkable.append(name);
         }
     }
     component_call_abi = self._component_call_abi(here);
@@ -324,24 +327,31 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
 }
 
 impl EsastGenPass.enter_ability with uni.Ability entry {
-    if isinstance(here.body, uni.ImplDef) and (here.body not in [here->:Kid:->]) {
-        here.add_kids_right([here.body], pos_update=False, parent_update=True);
-    }
-
     self._loop_label_savepoints.append(self._loop_label_stack);
     self._loop_label_stack = [];
 
     self._view_stack.append(None);
     self.reactive_vars_stack.append(self.reactive_vars);
     self.reactive_vars = set(self.reactive_vars);
+    self.walk_decl_body(here);
+}
+
+impl EsastGenPass.enter_archetype with uni.Archetype entry {
+    self.walk_decl_body(here);
+}
+
+impl EsastGenPass.enter_enum with uni.Enum entry {
+    self.walk_decl_body(here);
 }
 
 impl EsastGenPass.exit_enum with uni.Enum exit {
     if here.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = here.access and (here.access.tag.name == Tok.KW_PUB);
-        if is_pub or here.codespace_dual {
+        if is_pub {
             self.client_manifest.exports.append(here.name.sym_name);
+        } elif self._client_linkable(here) {
+            self.client_manifest.linkable.append(here.name.sym_name);
         }
     }
     properties: list[(es.Property | es.SpreadElement)] = [];
@@ -408,8 +418,10 @@ impl EsastGenPass.exit_type_alias with uni.TypeAlias exit {
     if here.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = here.access and (here.access.tag.name == Tok.KW_PUB);
-        if is_pub or here.codespace_dual {
+        if is_pub {
             self.client_manifest.exports.append(here.name.sym_name);
+        } elif self._client_linkable(here) {
+            self.client_manifest.linkable.append(here.name.sym_name);
         }
     }
     self.needs_jac_runtime = True;
@@ -435,8 +447,10 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
     if here.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = here.access and (here.access.tag.name == Tok.KW_PUB);
-        if is_pub or here.codespace_dual {
+        if is_pub {
             self.client_manifest.exports.append(here.name.sym_name);
+        } elif self._client_linkable(here) {
+            self.client_manifest.linkable.append(here.name.sym_name);
         }
     }
     body_stmts: list[es.MethodDefinition | es.PropertyDefinition] = [];
@@ -769,7 +783,7 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
     );
     class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=here);
     super_class: (es.Expression | None) = None;
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+
     if here.base_classes {
         base = here.base_classes[0];
         if base.gen.es_ast {

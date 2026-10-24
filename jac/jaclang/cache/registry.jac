@@ -1,5 +1,4 @@
 import from pathlib { Path }
-import from jaclang.cache.policy { Policy, Retention, SweepReport, KeepMatch, TempLock }
 
 obj Bucket {
     has name: str,
@@ -127,6 +126,12 @@ glob RETIRED: tuple[str, ...] = (
              root_prefix="scale-binaries"
          ),
          Bucket(
+             name="admin",
+             relpath="admin",
+             policy=Policy(ttl_days=30.0, markers=[".used"]),
+             summary="built admin consoles, one per UI source and compiler"
+         ),
+         Bucket(
              name="models",
              relpath="models",
              policy=Policy(retention=Retention.PINNED),
@@ -182,6 +187,7 @@ glob RETIRED: tuple[str, ...] = (
              name="pg",
              relpath="pg",
              policy=Policy(retention=Retention.EXTERNAL),
+             root_env="JAC_PG_HOME",
              summary="the embedded Postgres cluster and distribution (jac db)"
          ),
          Bucket(

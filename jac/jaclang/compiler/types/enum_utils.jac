@@ -1,17 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Assignment,
-    Enum,
-    Int,
-    Name,
-    NameAtom,
-    String,
-    UniNode
-}
-import from .types { ClassType, EnumMemberInfo, TypeBase }
-import type from .type_evaluator { TypeEvaluator, PrefetchedTypes }
-
 glob ENUM_RESERVED_NAMES: set[str] = {
          'name',
          'value',

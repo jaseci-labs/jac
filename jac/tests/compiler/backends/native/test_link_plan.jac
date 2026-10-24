@@ -206,6 +206,21 @@ test "a closure release keeps native interfaces and drops their products" {
     assert not registry.entries , "a full release drops the interfaces too";
 }
 
+test "a link after a closure release reads unit products back without lowering" {
+    if _can_link_host() {
+        root_dir = _diamond_copy();
+        (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+        lowered = prog.analysis.cache_events.get("native_unit_lower", 0);
+        prog.release_compile_closure();
+        out = os.path.join(root_dir, "top_released");
+        link_artifact(plan, out, ArtifactKind.EXECUTABLE);
+        assert prog.analysis.cache_events.get("native_unit_lower", 0) == lowered;
+        run = subprocess.run([out], capture_output=True, text=True);
+        assert run.returncode == 0 , run.stderr;
+        assert run.stdout.strip() == "34" , run.stdout;
+    }
+}
+
 test "changing a default argument updates an unchanged caller's executable" {
     if _can_link_host() {
         root_dir = tempfile.mkdtemp(prefix="jac-default-link-");
@@ -438,6 +453,52 @@ test "objects mode and bitcode mode agree on the program" {
     }
 }
 
+test "a whole program splits into partitions that link as one" {
+    import from jaclang.compiler.backends.native.llvm { binding as llvm }
+    import from jaclang.compiler.backends.native.na_compile_pass { emit_unit_objects }
+    llvm.initialize_native_target();
+    llvm.initialize_native_asmprinter();
+    ir = """
+@msg = private constant [3 x i8] c"hi\\00"
+define internal i64 @helper(i64 %x) {
+  %r = add i64 %x, 1
+  ret i64 %r
+}
+define i64 @alpha(i64 %x) {
+  %r = call i64 @helper(i64 %x)
+  ret i64 %r
+}
+define i64 @beta(i64 %x) {
+  %r = call i64 @helper(i64 %x)
+  %p = ptrtoint ptr @msg to i64
+  %s = add i64 %r, %p
+  ret i64 %s
+}
+define i64 @gamma(i64 %x) {
+  %r = mul i64 %x, 3
+  ret i64 %r
+}
+""";
+    parts = llvm.parse_assembly(ir, llvm.create_context()).split_bitcode(3);
+    objects = emit_unit_objects(parts, _opts());
+    assert len(objects) == 3;
+    defined: list[str] = [];
+    wanted: set[str] = set();
+    for blob in objects {
+        (blob_defined, blob_undefined) = llvm.object_symbols(blob);
+        defined.extend(s.lstrip("_") for s in blob_defined);
+        wanted.update(s.lstrip("_") for s in blob_undefined);
+    }
+    assert sorted(defined) == sorted(set(defined)) , defined;
+    assert {"alpha", "beta", "gamma"} <= set(defined);
+    assert wanted <= set(defined) , wanted - set(defined);
+    assert all(
+        s.startswith("jac_part.")
+        for s in defined
+        if s not in ("alpha", "beta", "gamma")
+    ) , defined;
+}
+
 test "a shared link exports only the C ABI" {
     if not _can_link_host() {
         import pytest;
@@ -654,6 +715,132 @@ test "an import cycle settles without repeating frontend analysis or optimizatio
             run = subprocess.run([output], capture_output=True, text=True, timeout=10);
             assert run.returncode == 0 and run.stdout.strip() == "True" , run.stderr;
         }
+    }
+}
+
+test "a cycle unit lowered before its dependency demoted a name it calls lowers again" {
+    with tempfile.TemporaryDirectory(prefix="jac-native-cycle-demote-") as root_dir {
+        even = Path(root_dir) / "even.jac";
+        odd = Path(root_dir) / "odd.jac";
+        even.write_text(
+            "import from odd { odd }\n"
+                + "def:pub probe(x: any) -> int { return x.bit_length(); }\n"
+                + "def:pub even(n: int) -> bool { if n == 0 { return True; } return odd(n - 1); }\n"
+        );
+        odd.write_text(
+            "import from even { even, probe }\n"
+                + "def odd(n: int) -> bool { if n == 0 { return False; } return even(n - 1); }\n"
+                + "def:pub odd_probe(n: int) -> int { return probe(n); }\n"
+        );
+        prog = JacProgram();
+        plan = build_link_plan(prog, [str(even)], _opts());
+        events = prog.analysis.cache_events;
+        assert events.get("native_dep_adopt_refused", 0) >= 1 , events;
+        odd_unit = plan.unit(str(odd.resolve()));
+        assert odd_unit is not None and "odd_probe" in odd_unit.iface.demoted;
+        for unit in plan.units {
+            consumed = prog.native_units().entries[unit.path].dep_digests;
+            for dep in unit.iface.deps {
+                dependency = plan.unit(dep);
+                assert dependency is not None;
+                assert consumed[dep] == dependency.digest;
+            }
+        }
+        if _can_link_host() {
+            suffix = ".dylib" if sys.platform == "darwin" else ".so";
+            out = str(Path(root_dir) / ("libeven" + suffix));
+            link_artifact(plan, out, ArtifactKind.SHARED);
+            import ctypes;
+            assert ctypes.CDLL(out).even(4) == 1;
+        }
+    }
+}
+
+test "a cycle unit that imports a demoted name without calling it keeps its single lowering" {
+    with tempfile.TemporaryDirectory(prefix="jac-native-cycle-unused-") as root_dir {
+        even = Path(root_dir) / "even.jac";
+        odd = Path(root_dir) / "odd.jac";
+        even.write_text(
+            "import from odd { odd }\n"
+                + "def:pub probe(x: any) -> int { return x.bit_length(); }\n"
+                + "def:pub even(n: int) -> bool { if n == 0 { return True; } return odd(n - 1); }\n"
+        );
+        odd.write_text(
+            "import from even { even, probe }\n"
+                + "def:pub odd(n: int) -> bool { if n == 0 { return False; } return even(n - 1); }\n"
+        );
+        prog = JacProgram();
+        plan = build_link_plan(prog, [str(even)], _opts());
+        events = prog.analysis.cache_events;
+        assert events.get("native_dep_adopt", 0) >= 1 , events;
+        assert events.get("native_dep_adopt_refused", 0) == 0 , events;
+        assert events.get("native_unit_lower", 0) == len(plan.units) , events;
+    }
+}
+
+def _target_object(triple: str, text: str) -> bytes {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    tm = llvm.Target.from_triple(triple).create_target_machine(reloc="pic");
+    mod = llvm.parse_assembly(text);
+    mod.triple = triple;
+    mod.data_layout = str(tm.target_data);
+    return tm.emit_object(mod);
+}
+
+test "a link refuses unit objects that reference a symbol no unit defines" {
+    import from jaclang.compiler.backends.native.link_plan {
+        LinkPlan,
+        LinkUnit,
+        unresolved_unit_symbols
+    }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    units = [
+        LinkUnit(
+            path=f"/units/{name}.jac",
+            prefix=name,
+            digest=name,
+            iface=NativeIface(module=name, prefix=name)
+        ) for name in ("caller_unit", "callee_unit")
+    ];
+    for triple in ("x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0") {
+        caller = _target_object(
+            triple,
+            'declare void @"callee_unit.gone"()\n'
+                + 'declare void @"probe"()\n'
+                + 'declare void @"callee_unit.kept"()\n'
+                + 'declare i32 @"puts"(ptr)\n'
+                + 'define void @"caller_unit.run"() {\n'
+                + '  call void @"callee_unit.gone"()\n'
+                + '  call void @"probe"()\n'
+                + '  call void @"callee_unit.kept"()\n'
+                + '  %r = call i32 @"puts"(ptr null)\n'
+                + '  ret void\n}\n'
+        );
+        callee = _target_object(
+            triple,
+            'define void @"callee_unit.kept"() { ret void }\n'
+                + 'define void @"probe.__jac_demoted"() { ret void }\n'
+        );
+        glue = _target_object(
+            triple, 'define void @"jac_glue_marker"() { ret void }\n'
+        );
+        plan = LinkPlan(
+            prog=JacProgram(),
+            options=_opts(),
+            roots=[units[0].path],
+            units=units,
+            mode="objects",
+            triple=triple
+        );
+        found = unresolved_unit_symbols(plan, [caller, callee, glue]);
+        assert len(found) == 2 , (triple, found);
+        assert found[0].startswith("callee_unit.gone (not defined by callee_unit.jac")
+            and "used by caller_unit.jac" in found[0] , (triple, found);
+        assert found[1].startswith("probe (demoted to Python")
+            and "used by caller_unit.jac" in found[1] , (triple, found);
+        assert unresolved_unit_symbols(plan, [callee, glue]) == [];
     }
 }
 
@@ -1180,4 +1367,130 @@ test "an edit inside one unit's body lowers that unit alone" {
         for name in set(cold) | set(warm)
         if cold.get(name) != warm.get(name)
     };
+}
+
+"""The number of `NaIRGenPass` instances alive each time a unit starts
+lowering, over a cold build of `entry`. A dependency lowered inside its
+consumer's pass shows up as a live pass."""
+def _live_passes_at_lower(entry_path: str) -> tuple[list[int], set[str]] {
+    import gc;
+    prog = JacProgram();
+    opts = _opts();
+    opts.no_ir_cache = True;
+    prog.options = opts;
+    live_at_lower: list[int] = [];
+    def progress(line: str) {
+        if " lower " in line {
+            gc.collect();
+            live_at_lower.append(
+                sum(
+                    1
+                    for o in gc.get_objects()
+                    if type(o).__name__ == "NaIRGenPass"
+                )
+            );
+        }
+    }
+    prog.native_units().progress = progress;
+    plan = build_link_plan(prog, [entry_path], opts);
+    return (live_at_lower, {os.path.basename(u.path) for u in plan.units});
+}
+
+test "a dependency lowers only after its consumer's pass has let go of its IR" {
+    root_dir = _diamond_copy();
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    assert set(UNITS) <= lowered , lowered;
+    assert live_at_lower , "no unit was lowered";
+    assert max(live_at_lower) == 0 , (
+        f"a lowering started inside another unit's pass: {live_at_lower}"
+    );
+}
+
+test "the OSP kernels lower before the unit that consults them" {
+    root_dir = tempfile.mkdtemp(prefix="jac-kernel-deps-");
+    Path(root_dir, "lib.jac").write_text(
+        "node Spot {\n    has v: int = 0;\n}\n\n"
+        "def label(x: int, name: str) -> str {\n    return f\"{name:>8}={x}\";\n}\n"
+    );
+    Path(root_dir, "top.jac").write_text(
+        "import from lib { Spot, label }\n\n"
+        "def run(n: int) -> str {\n    s = Spot(v=n);\n    return label(s.v, \"spot\");\n}\n"
+    );
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    kernels = {"osp_kernel.jac", "osp_graph.jac"};
+    assert {"lib.jac", "top.jac"} | kernels <= lowered , lowered;
+    assert max(live_at_lower) == 0 , (
+        f"a kernel lowered inside a consumer's pass: {live_at_lower}"
+    );
+}
+
+"""Over a cold build of `entry`: how many times each unit's lowering built
+the runtime helpers, and how many LLVM functions each lowering attempt that
+stopped to have its dependencies lowered first had built by then."""
+def _work_per_attempt(entry_path: str) -> tuple[dict[str, int], list[tuple[str, int]]] {
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    prog = JacProgram();
+    opts = _opts();
+    opts.no_ir_cache = True;
+    prog.options = opts;
+    helper_runs: dict[str, int] = {};
+    stopped: list[tuple[str, int]] = [];
+    emit_helpers: any = NaIRGenPass._emit_rc_helpers;
+    run_impl: any = NaIRGenPass._run_impl;
+    def counting_helpers(gen: NaIRGenPass) {
+        name = os.path.basename(gen.module.loc.mod_path);
+        helper_runs[name] = helper_runs.get(name, 0) + 1;
+        emit_helpers(gen);
+    }
+    def watching_run(gen: NaIRGenPass, ir_in: any) -> any {
+        out = run_impl(gen, ir_in);
+        if gen._deps_deferred {
+            stopped.append(
+                (
+                    os.path.basename(gen.module.loc.mod_path),
+                    len(gen.llvm_module.functions)
+                )
+            );
+        }
+        return out;
+    }
+    setattr(NaIRGenPass, "_emit_rc_helpers", counting_helpers);
+    setattr(NaIRGenPass, "_run_impl", watching_run);
+    try {
+        build_link_plan(prog, [entry_path], opts);
+    } finally {
+        setattr(NaIRGenPass, "_emit_rc_helpers", emit_helpers);
+        setattr(NaIRGenPass, "_run_impl", run_impl);
+    }
+    return (helper_runs, stopped);
+}
+
+test "a lowering that stops for its dependencies builds no IR, so each unit builds its runtime helpers once" {
+    root_dir = _diamond_copy();
+    (helper_runs, stopped) = _work_per_attempt(os.path.join(root_dir, "top.jac"));
+    assert set(UNITS) <= set(helper_runs) , helper_runs;
+    assert stopped , "no lowering stopped to have its dependencies lowered first";
+    assert all(count == 0 for (_, count) in stopped) , (
+        f"a stopped lowering built LLVM functions: {stopped}"
+    );
+    assert all(runs == 1 for runs in helper_runs.values()) , (
+        f"a unit built its runtime helpers more than once: {helper_runs}"
+    );
+}
+
+test "the formatting kernel lowers before a unit that parses an int or calls a bytes method" {
+    root_dir = tempfile.mkdtemp(prefix="jac-kernel-deps-");
+    Path(root_dir, "lib.jac").write_text(
+        "def parse(text: str) -> int {\n    return int(text);\n}\n\n"
+        "def hexed(data: bytes) -> str {\n    return data.hex();\n}\n"
+    );
+    Path(root_dir, "top.jac").write_text(
+        "import from lib { parse, hexed }\n\n"
+        "def run(text: str) -> str {\n    return hexed(b\"ab\") + str(parse(text));\n}\n"
+    );
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    assert {"lib.jac", "top.jac", "fmt_kernel.jac"} <= lowered , lowered;
+    assert max(live_at_lower) == 0 , (
+        f"a kernel lowered inside a consumer's pass: {live_at_lower}"
+    );
 }

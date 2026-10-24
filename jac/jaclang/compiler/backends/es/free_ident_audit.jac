@@ -1,5 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-
 obj FreeIdentifier {
     has name: str,
         line: int,

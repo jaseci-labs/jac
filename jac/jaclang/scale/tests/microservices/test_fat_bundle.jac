@@ -6,23 +6,6 @@ import tarfile;
 import tempfile;
 import json;
 import from pathlib { Path }
-import from jaclang.testing.requires { require_network }
-import from jaclang.scale.tests.support { require_pod_binary }
-import from jaclang.project.providers { write_venv_deps_marker }
-import from jaclang.dist.jab_vendor { WheelTarget, download_wheels }
-import from jaclang.scale.utils.vendor_wheels {
-    POD_GLIBC,
-    pod_arch_from_argv,
-    pod_wheel_target
-}
-import from jaclang.scale.injector.bundle {
-    _strip_external_record_lines,
-    staged_venv_files,
-    content_address,
-    fat_bundle_enabled,
-    fat_bundle_setting,
-    pack_jab
-}
 
 
 glob _MANYLINUX_X86_64 = re.compile(r"manylinux(2014|_2_\d+)_x86_64"),

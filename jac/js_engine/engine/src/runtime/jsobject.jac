@@ -18,6 +18,7 @@ ECMAScript spec refs:
   §10.1.8  [[Get]]  / §10.1.9  [[Set]]  / §10.1.10 [[Delete]]
 """
 
+import from engine.src.runtime.gc_barrier { gc_gen_on }
 import from engine.src.runtime.jsvalue {
     JSValue,
     jsv_is_object_cell,
@@ -80,7 +81,8 @@ import from engine.src.runtime.jscell {
     FLAG_FROZEN,
     FLAG_SEALED,
     FLAG_NON_EXTENSIBLE,
-    FLAG_IS_GLOBAL
+    FLAG_IS_GLOBAL,
+    FLAG_SLOTS_BIG
 }
 import from engine.src.runtime.shape {
     shape_gate_enabled,
@@ -160,6 +162,16 @@ def:pub obj_set_realm(r: Realm) {
 # Internal helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# gc_gen_on() latched on first use (it is fixed before the first allocation).
+glob _OBJ_GEN_ON: int = -1;
+
+def _obj_gen -> bool {
+    if _OBJ_GEN_ON < 0 {
+        _OBJ_GEN_ON = 1 if gc_gen_on() else 0;
+    }
+    return _OBJ_GEN_ON == 1;
+}
+
 """Allocate a JSObject in the global table; return its 1-based index."""
 def _obj_alloc(prototype_idx: int) -> int {
     gc_note_alloc(_OBJ_REALM);  # G0.4: account this object allocation (reuse or append path)
@@ -212,11 +224,12 @@ def _obj_alloc(prototype_idx: int) -> int {
         # old tenant's payload is released here, where the row is read anyway:
         # a freed prototype's id is about to name an unrelated object (the
         # inherited-read ICs key on it), and a minimal slot buffer (cap <= 4)
-        # is kept for the new tenant while a larger one is freed.
+        # is kept for the new tenant while a larger one is freed. (The row's
+        # FLAG_SLOTS_BIG tells which without loading the cold buffer.)
         if (ro.cell_flags & FLAG_IS_PROTO) != 0 {
             proto_epoch_bump_gc();
         }
-        if ro.scap() <= 4 {
+        if (ro.cell_flags & FLAG_SLOTS_BIG) == 0 {
             ro.sreset();
         } else {
             ro.sclear();
@@ -232,10 +245,10 @@ def _obj_alloc(prototype_idx: int) -> int {
         # Proxy/args state lives in realm side-tables (Phase 1); gc_sweep_objects
         # dels the rows when the slot is reclaimed, but drop them defensively here
         # too so a reused slot can never inherit a prior object's exotic state.
-        if idx in _OBJ_REALM.proxy_slots {
+        if ro.class_id == 1 and idx in _OBJ_REALM.proxy_slots {
             del _OBJ_REALM.proxy_slots[idx];
         }
-        if idx in _OBJ_REALM.args_slots {
+        if (ro.cell_flags & FLAG_MAPPED_ARGS) != 0 and idx in _OBJ_REALM.args_slots {
             del _OBJ_REALM.args_slots[idx];
         }
         # Release the lazy containers (P2/P3b/P4); sweep already nulled them, but
@@ -246,7 +259,11 @@ def _obj_alloc(prototype_idx: int) -> int {
         ro.binary_slot = -1;
         ro.cell_flags = 0;  # clears FLAG_MODULE_NS (former is_module_namespace) too
         ro.brand = 0;
+        ro.oid = idx;
         write_byte(_OBJ_REALM.objmark_ptr, idx - 1, 0);
+        if _obj_gen() {
+            _OBJ_REALM.gc_young_alloc.append(idx);
+        }
         return idx;
     }
     idx: int = len(_OBJ_REALM.objects) + 1;  # reserve 0 as null sentinel
@@ -278,10 +295,14 @@ def _obj_alloc(prototype_idx: int) -> int {
             shape_id=0,
             mode=(MAP_MODE_SHAPE if shape_gate_enabled() else MAP_MODE_DICT),
             class_id=0,
-            elems_kind=0
+            elems_kind=0,
+            oid=idx
         )
     );
     objmark_push(_OBJ_REALM, 0);  # GC mark byte
+    if _obj_gen() {
+        _OBJ_REALM.gc_young_alloc.append(idx);
+    }
     return idx;
 }
 
@@ -340,6 +361,23 @@ def:pub js_object_new_array(
         elements
     );
     return _obj_wrap(na_idx);
+}
+
+"""js_object_new_array with vals[off .. off+n) as the elements (no list of
+them built first)."""
+def:pub js_object_new_array_range(
+    proto_idx: int, sid: int, vals: list[JSValue], off: int, n: int, len_v: JSValue
+) -> JSValue {
+    nr_idx: int = _obj_alloc(proto_idx);
+    _OBJ_REALM.objects[nr_idx - 1].shape_id = sid;
+    _OBJ_REALM.objects[nr_idx - 1].spush(js_true());
+    _OBJ_REALM.objects[nr_idx - 1].spush(len_v);
+    _OBJ_REALM.objects[nr_idx - 1].version = 2;
+    _OBJ_REALM.objects[nr_idx - 1].brand = BRAND_ARRAY;
+    _OBJ_REALM.objects[nr_idx - 1].elems_kind = _OBJ_REALM.objects[nr_idx - 1].einit_range(
+        vals, off, n
+    );
+    return _obj_wrap(nr_idx);
 }
 
 """Record that the object with table id `id` is an ArrayBuffer: the lazy
@@ -551,6 +589,24 @@ def:pub js_object_is_plain_ordinary(v: JSValue) -> bool {
             & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)
         )
             == 0;
+}
+
+"""The shape id of `v` when it is a plain ordinary object in shape mode with
+no accessor table, no elements and no exotic brand — its own properties are
+exactly its shape's keys, each read without side effects — else -1."""
+def:pub js_object_plain_shape_id(v: JSValue) -> int {
+    if not js_object_is_plain_ordinary(v) {
+        return -1;
+    }
+    ps_id: int = jsv_to_table_id(v);
+    if _OBJ_REALM.objects[ps_id - 1].mode != MAP_MODE_SHAPE
+        or _OBJ_REALM.objects[ps_id - 1].elems_kind != ELEMS_NONE
+        or _OBJ_REALM.objects[ps_id - 1].has_acc()
+        or (_OBJ_REALM.objects[ps_id - 1].brand & BRAND_STRING_OBJ) != 0
+        or (_OBJ_REALM.objects[ps_id - 1].cell_flags & FLAG_MAPPED_ARGS) != 0 {
+        return -1;
+    }
+    return _OBJ_REALM.objects[ps_id - 1].shape_id;
 }
 
 """cell_flags of the object with table id `id`."""
@@ -1121,6 +1177,7 @@ def:pub js_object_set_ordinary(jsobj: JSValue, key: int, val: JSValue) -> bool {
                 return False;
             }
             so_prop.value = val;
+            so_raw.wb(val);
             return True;
         }
     }
@@ -1498,6 +1555,7 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
                 ms: int = st_ars.slot_map[key];
                 if ms >= 0 and ms < len(st_ars.locals) {
                     st_ars.locals[ms] = val;
+                    raw.wb(val);
                 }
             }
         }
@@ -2672,6 +2730,26 @@ this module must not import error.na.jac (cycle: error → jsobject).
 def:pub js_object_create_data_property_or_throw(
     jsobj: JSValue, key: int, val: JSValue
 ) -> int {
+    # The common case without a descriptor record: a plain shape-mode object
+    # (js_object_plain_shape_id), not the global object, and a non-index key
+    # that is an own {w,e,c} data property (its value replaced) or absent
+    # from an extensible object (added) — what ValidateAndApply leaves.
+    cd_sid: int = js_object_plain_shape_id(jsobj);
+    if cd_sid >= 0 and not _obj_is_array_index_key_id(key) {
+        cd_id: int = jsv_to_table_id(jsobj);
+        if (_OBJ_REALM.objects[cd_id - 1].cell_flags & FLAG_IS_GLOBAL) == 0 {
+            cd_p: int = shape_lookup(cd_sid, key);
+            if cd_p >= 0 {
+                if (cd_p & 15) == PROP_DEFAULT {
+                    _OBJ_REALM.objects[cd_id - 1].sset(cd_p // 16, val);
+                    return 0;
+                }
+            } elif _OBJ_REALM.objects[cd_id - 1].is_ext()
+                and _OBJ_REALM.objects[cd_id - 1].set(key, val, PROP_DEFAULT) == 0 {
+                return 0;
+            }
+        }
+    }
     desc: JSProperty = JSProperty(
         key=key,
         value=val,
@@ -3195,6 +3273,7 @@ def:pub js_object_set_prototype(jsobj: JSValue, proto: JSValue) -> int {
         return 1;
     }
     raw.prototype_idx = new_proto_idx;
+    raw.wb_all();
     # Re-linking a prototype changes the chain of every object inheriting from
     # it: invalidate inherited-read ICs (a non-prototype receiver's own link is
     # checked by the IC itself).
@@ -3337,6 +3416,7 @@ def:pub js_object_define_property(
         dpm_slot: int = dpf_ars.slot_map[key];
         if dpm_slot >= 0 and dpm_slot < len(dpf_ars.locals) {
             existing.value = dpf_ars.locals[dpm_slot];
+            raw.wb(existing.value);
         }
     }
     if existing.key == 0 {
@@ -3385,6 +3465,7 @@ def:pub js_object_define_property(
         dpm_slot2: int = dpf_ars2.slot_map[key];
         if dpm_slot2 >= 0 and dpm_slot2 < len(dpf_ars2.locals) {
             dpf_ars2.locals[dpm_slot2] = descriptor.value;
+            raw.wb(descriptor.value);
         }
         if not descriptor.writable {
             del dpf_ars2.slot_map[key];
@@ -3470,6 +3551,7 @@ def:pub js_object_apply_validated_descriptor(
         dpm_slot2: int = av_ars.slot_map[key];
         if dpm_slot2 >= 0 and dpm_slot2 < len(av_ars.locals) {
             av_ars.locals[dpm_slot2] = descriptor.value;
+            raw.wb(descriptor.value);
         }
         if not descriptor.writable {
             del av_ars.slot_map[key];
@@ -3750,6 +3832,7 @@ def:pub js_object_set_accessor_getter(
     }
     _register_accessor_key(raw, key);
     _acc_rw(raw).getters[key] = getter_fn;
+    raw.wb(getter_fn);
     # Mapped arguments: turning an aliased index into an accessor de-maps it
     # (ES §10.4.4.2 — an accessor descriptor removes the parameter mapping).
     if raw.mapped_args() {
@@ -3928,6 +4011,7 @@ def:pub js_object_set_accessor_setter(
     }
     _register_accessor_key(raw, key);
     _acc_rw(raw).setters[key] = setter_fn;
+    raw.wb(setter_fn);
     # Mapped arguments: an accessor setter de-maps the aliased index (see getter).
     if raw.mapped_args() {
         sa_ars: ArgsState = _args_row(jsv_to_table_id(jsobj));

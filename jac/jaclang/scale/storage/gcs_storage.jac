@@ -1,5 +1,4 @@
 import from typing { BinaryIO, Generator }
-import from jaclang.scale.storage.bucket_storage { BucketStorage }
 
 class GcsStorage(BucketStorage) {
     has bucket: str,

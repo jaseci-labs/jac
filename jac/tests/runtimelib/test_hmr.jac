@@ -3,11 +3,12 @@
 Tests for the file watcher and HotReloader functionality.
 """
 
+import os;
 import tempfile;
 import threading;
 import time;
 import from pathlib { Path }
-import from unittest.mock { MagicMock }
+import from unittest.mock { MagicMock, patch }
 
 import watchdog;
 
@@ -53,6 +54,71 @@ test "prepared namespaced modules reload through their source source_path" {
             updated: any = load_prepared_module(str(source_path));
             assert updated.value() == 2;
             assert updated is not module;
+        } finally {
+            forget(str(source_path));
+            for name in list(sys.modules) {
+                if name == prefix or name.startswith(prefix + '.') {
+                    sys.modules.pop(name, None);
+                }
+            }
+        }
+    }
+}
+
+test "a hot reload holds the preparation lock until the app is initialized again" {
+    import sys;
+    import threading;
+    import jaclang.runtime.prepared as prepared_runtime;
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared {
+        initialize_application,
+        load_prepared_module,
+        forget
+    }
+    import from jaclang.runtime.preparation_lock { PREPARATION_LOCK }
+    with tempfile.TemporaryDirectory() as tmp {
+        source_path = Path(tmp) / 'main.jac';
+        source_path.write_text('def value -> int { return 1; }\n');
+        application = prepare_application(str(source_path), Jac.get_program(), tmp);
+        module = initialize_application(application);
+        prefix = module.__name__.split('.')[0];
+        free_during: list[bool] = [];
+        original = prepared_runtime.initialize_application;
+        def observed_initialize(*args: any, **kwargs: any) -> any {
+            took: list[bool] = [];
+            def try_lock {
+                got = PREPARATION_LOCK.acquire(timeout=0);
+                took.append(got);
+                if got {
+                    PREPARATION_LOCK.release();
+                }
+            }
+            other = threading.Thread(target=try_lock);
+            other.start();
+            other.join(30);
+            free_during.extend(took);
+            return original(*args, **kwargs);
+        }
+        try {
+            reloader = HotReloader(
+                base_path=tmp,
+                module_name=module.__name__,
+                entry_path=str(source_path),
+                watcher=JacFileWatcher(watch_paths=[tmp])
+            );
+            source_path.write_text('def value -> int { return 2; }\n');
+            with patch.object(
+                prepared_runtime, 'initialize_application', observed_initialize
+            ) {
+                reloader._reload_server_module(str(source_path));
+            }
+            assert not reloader.diagnostics() , reloader.diagnostics();
+            assert free_during == [False] , (
+                "another thread could take the preparation lock while the reload re-initialized the app"
+            );
+            updated: any = load_prepared_module(str(source_path));
+            assert updated.value() == 2;
         } finally {
             forget(str(source_path));
             for name in list(sys.modules) {
@@ -248,7 +314,78 @@ test "a client-only sibling directory is watched on a fresh and a restored start
     }
 }
 
-test "a watched directory outside the first one delivers its changes" {
+test "the compiler's own modules never make a watch root, wherever its checkout sits" {
+    import copy;
+    import os;
+    import sys;
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.compiler.frontend.codeinfo {
+        is_compiler_source_path,
+        jaclang_pkg_root
+    }
+    import from jaclang.runtime.prepared { initialize_application, forget }
+    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
+    checkout = os.path.dirname(os.path.realpath(jaclang_pkg_root()));
+    if not os.access(checkout, os.W_OK) {
+        testskip("needs a writable directory around the jaclang source tree");
+    }
+    with tempfile.TemporaryDirectory(dir=checkout, prefix="watch-app-") as tmp {
+        web = os.path.realpath(tmp);
+        Path(web, "jac.toml").write_text('[project]\nname = "watch-app"\n');
+        source_path = os.path.join(web, "main.jac");
+        Path(source_path).write_text(
+            'import from "@jac/runtime" { Navigate }\n\ndef:pub app -> JsxElement {\n    return <Navigate to="/"/>;\n}\n'
+        );
+        application = prepare_application(
+            source_path, Jac.get_program(), web, (), True
+        );
+        module = initialize_application(application);
+        prefix = module.__name__.split('.')[0];
+        try {
+            desktop_source = resolve_jac_virtual_module_path('@jac/desktop');
+            assert desktop_source is not None;
+            desktop = os.path.realpath(desktop_source);
+            assert is_compiler_source_path(desktop) , desktop;
+            enclosing: any = copy.copy(application);
+            enclosing.`root = checkout;
+            enclosing.sources = sorted({*application.sources, desktop});
+            roots = application_watch_roots(web, enclosing, Jac.get_program());
+            assert roots == [web] , str(roots);
+        } finally {
+            forget(source_path);
+            for name in list(sys.modules) {
+                if name == prefix or name.startswith(prefix + '.') {
+                    sys.modules.pop(name, None);
+                }
+            }
+        }
+    }
+}
+
+test "a watch around the jac checkout reports no compiler source events" {
+    import os;
+    import from jaclang.compiler.frontend.codeinfo {
+        is_compiler_source_path,
+        jaclang_pkg_root
+    }
+    import from jaclang.cli.commands.execution { _count_jac_files }
+    package = os.path.realpath(jaclang_pkg_root());
+    checkout = os.path.dirname(package);
+    compiler_module = os.path.join(package, "runtime", "prepared.jac");
+    assert is_compiler_source_path(compiler_module);
+    watcher = JacFileWatcher(watch_paths=[checkout]);
+    for path in [compiler_module, os.path.join(checkout, "main.jac")] {
+        watcher._on_change(path, ChangeType.MODIFIED);
+    }
+    watcher._on_change(os.path.join(package, "runtime"), ChangeType.CREATED, True);
+    seen = sorted(watcher._pending_events);
+    assert seen == [os.path.join(checkout, "main.jac")] , str(seen);
+    assert _count_jac_files(package) == 0;
+}
+
+test "nothing under site-packages or a hidden directory becomes a watch root" {
+    import os;
     with tempfile.TemporaryDirectory() as tmp {
         top = os.path.realpath(tmp);
         base = os.path.join(top, "web");

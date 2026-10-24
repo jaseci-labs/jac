@@ -6,6 +6,8 @@ Does NOT define _CLOSURE_TABLE — that stays in vm.na.jac.
 """
 
 import from engine.src.runtime.jsvalue { JSValue, js_undefined }
+import from engine.src.runtime.jscell { FLAG_OLD }
+import from engine.src.runtime.gc_barrier { gc_log_val }
 import from engine.src.bytecode.op { CompiledFunction }
 
 
@@ -48,6 +50,27 @@ obj:pub JSClosure {
         home_realm_id: int = 0,
         prototype_writable: bool = True,
         jac_module: JSValue = js_undefined();
+
+    """Generational write barrier (docs/GENERATIONAL_GC.md §4.4): `v`, just
+    stored into a field of this closure, is logged for the next minor
+    collection when the closure is old."""
+    def:pub wb(v: JSValue) -> None {
+        if (self.cell_flags & FLAG_OLD) != 0 {
+            gc_log_val(v);
+        }
+    }
+
+    """wb for every value a list field holds (after it is replaced)."""
+    def:pub wb_lists -> None {
+        if (self.cell_flags & FLAG_OLD) != 0 {
+            for wl_f in self.free_vals {
+                gc_log_val(wl_f);
+            }
+            for wl_w in self.captured_with_objs {
+                gc_log_val(wl_w);
+            }
+        }
+    }
 }
 # captured values (index = free_vars slot)
 # lexical `this` for arrow functions

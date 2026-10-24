@@ -1,6 +1,4 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, find_project_root, get_config_for_path }
-import from jaclang.runtime.runtime { JacRuntime }
 
 impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any] {
     result = base.copy();
@@ -18,7 +16,7 @@ impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str
     return result;
 }
 
-impl PluginConfigBase.postinit{
+impl PluginConfigBase.postinit {
     full_target = self.entry_path or JacRuntime.get_full_target_path();
     project_root_result = find_project_root(Path(full_target)) if full_target else None;
     self.project_dir = (
@@ -86,10 +84,6 @@ impl PluginConfigBase.get_config_strict_env -> str {
 impl PluginConfigBase._validate_layer(
     raw: dict[str, any] | None, schema: dict[str, any], section: str
 ) -> None {
-    import from jaclang.project.config_schema {
-        report_schema_findings,
-        validate_against_schema
-    }
     options = schema.get("options");
     if not isinstance(options, dict) or not options {
         return;

@@ -1,54 +1,5 @@
 """AST preprocessing for CPython 3.14 source and AST compilation."""
 
-import from jaclang.runtime.python.compiler_integer {
-    PyBigInt,
-    integer_add,
-    integer_negate,
-    integer_to_float
-}
-
-import from jaclang.compiler.frontend.python.ast_nodes {
-    Add,
-    AnnAssign,
-    AsyncFunctionDef,
-    BinOp,
-    ClassDef,
-    Constant,
-    Expr,
-    FormattedValue,
-    FunctionDef,
-    FunctionType,
-    JoinedStr,
-    Load,
-    MatchMapping,
-    MatchValue,
-    Mod,
-    Module,
-    Name,
-    Pass,
-    Starred,
-    Sub,
-    Tuple,
-    USub,
-    UnaryOp,
-    arg,
-    ast_node,
-    expr,
-    stmt,
-}
-import from jaclang.compiler.frontend.python.ast_walk {
-    ast_rewriter,
-    rewrite_ast_children
-}
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyBool,
-    PyInt,
-    PyFloat,
-    PyComplex,
-    PyStr
-}
-
 def ast_constant(value: PyObj, location: expr | None = None) -> Constant {
     return Constant(
         value=value,

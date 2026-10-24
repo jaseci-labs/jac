@@ -145,5 +145,7 @@ test "connects build edges whose constructor requires the assigned fields" {
             "fan out labels 2 ['fan2', 'fan2']\n"
             "custom init 3 8 custom\n"
             "source order 3 4\n"
+            "kept alive old4 9 new4\n"
+            "fan kept alive ['old4', 'old4'] new4\n"
         ) , out;
 }

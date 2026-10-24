@@ -1,7 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir as ir;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
-
 impl NaIRGenPass.emit(
     diag: DiagnosticInfo,
     node_override: (uni.UniNode | None) = None,

@@ -3,8 +3,6 @@
 Uses the in-process ServingTestClient transport (no subprocess / dev server),
 so it exercises the jac-native serving WebSocket routes directly.
 """
-import from jaclang.scale.tests.scale_test_client { make_client }
-
 
 """A test client whose app carries the WebSocket routes (the scale
 extensions register them as part of the one assembly)."""

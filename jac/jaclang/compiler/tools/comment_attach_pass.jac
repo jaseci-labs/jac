@@ -1,9 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.codeinfo { NodeComments }
-
 walker CommentAttachPass(CompilerPass) {
     static has contract: PassContract = PassContract();
 

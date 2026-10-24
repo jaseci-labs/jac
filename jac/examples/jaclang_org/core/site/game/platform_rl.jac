@@ -42,51 +42,29 @@ glob KEY_W: int = 87,
 glob SCREEN_W: float = 960.0,
      SCREEN_H: float = 600.0;
 
-def open_window {
-    InitWindow(i32(960), i32(600), "Jac Rocket Arena");
-}
+def open_window;
 
-def should_close -> bool {
-    return WindowShouldClose();
-}
+def should_close -> bool;
 
-def frame_dt -> float {
-    return GetFrameTime();
-}
+def frame_dt -> float;
 
-def key_held(code: int) -> bool {
-    return IsKeyDown(i32(code));
-}
+def key_held(code: int) -> bool;
 
-def key_tapped(code: int) -> bool {
-    return IsKeyPressed(i32(code));
-}
+def key_tapped(code: int) -> bool;
 
-def mouse_x -> float {
-    return float(GetMouseX());
-}
+def mouse_x -> float;
 
-def mouse_y -> float {
-    return float(GetMouseY());
-}
+def mouse_y -> float;
 
-def mouse_pressed(button: int) -> bool {
-    return IsMouseButtonPressed(i32(button));
-}
+def mouse_pressed(button: int) -> bool;
 
-def lock_mouse {
-    DisableCursor();
-}
+def lock_mouse;
 
-def unlock_mouse {
-    EnableCursor();
-}
+def unlock_mouse;
 
 def begin_frame(r: int, g: int, b: int);
 
-def end_frame {
-    EndDrawing();
-}
+def end_frame;
 
 def set_camera(
     px: float, py: float, pz: float, yaw_deg: float, pitch_deg: float, aspect: float
@@ -96,13 +74,9 @@ def begin_overlay(width: float, height: float);
 
 def begin_model(x: float, y: float, z: float, yaw_deg: float, pitch_deg: float);
 
-def end_model {
-    rlPopMatrix();
-}
+def end_model;
 
-def draw_fps(x: int, y: int) {
-    DrawFPS(i32(x), i32(y));
-}
+def draw_fps(x: int, y: int);
 
 def _quad(
     p0: float,
@@ -137,6 +111,60 @@ def draw_floor(half: int, step: float);
 
 def draw_rect2d(x: float, y: float, w: float, h: float, r: int, g: int, b: int);
 
-def close_window {
+def close_window;
+
+impl open_window {
+    InitWindow(i32(960), i32(600), "Jac Rocket Arena");
+}
+
+impl should_close -> bool {
+    return WindowShouldClose();
+}
+
+impl frame_dt -> float {
+    return GetFrameTime();
+}
+
+impl key_held(code: int) -> bool {
+    return IsKeyDown(i32(code));
+}
+
+impl key_tapped(code: int) -> bool {
+    return IsKeyPressed(i32(code));
+}
+
+impl mouse_x -> float {
+    return float(GetMouseX());
+}
+
+impl mouse_y -> float {
+    return float(GetMouseY());
+}
+
+impl mouse_pressed(button: int) -> bool {
+    return IsMouseButtonPressed(i32(button));
+}
+
+impl lock_mouse {
+    DisableCursor();
+}
+
+impl unlock_mouse {
+    EnableCursor();
+}
+
+impl end_frame {
+    EndDrawing();
+}
+
+impl end_model {
+    rlPopMatrix();
+}
+
+impl draw_fps(x: int, y: int) {
+    DrawFPS(i32(x), i32(y));
+}
+
+impl close_window {
     CloseWindow();
 }

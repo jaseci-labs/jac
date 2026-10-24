@@ -4,6 +4,22 @@ impl module_functions(mod: ModuleRef) -> list[any] {
     return list(fns);
 }
 
+impl unit_function_counts(unit_ir: any) -> tuple[int, int] {
+    if not isinstance(unit_ir, llvm.ModuleRef) {
+        return (0, 0);
+    }
+    declared = 0;
+    defined = 0;
+    for fn in module_functions(unit_ir) {
+        if fn.is_declaration {
+            declared += 1;
+        } else {
+            defined += 1;
+        }
+    }
+    return (declared, defined);
+}
+
 impl module_bitcode(mod: ModuleRef) -> bytes {
     bitcode = mod.as_bitcode();
     assert isinstance(bitcode, bytes);
@@ -29,39 +45,104 @@ impl object_emit_jobs -> int {
     return min(os.cpu_count() or 1, 8);
 }
 
-impl emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes] {
-    workers = min(len(bitcodes), object_emit_jobs());
-    if workers < 2 {
-        return [emit_unit_object(bitcode, options) for bitcode in bitcodes];
-    }
-    import from concurrent.futures { ThreadPoolExecutor }
-    create_unit_target_machine(options);
-    def emit_one(bitcode: bytes) -> bytes {
-        return emit_unit_object(bitcode, options);
-    }
-    with ThreadPoolExecutor(max_workers=workers) as pool {
-        return list(pool.map(emit_one, bitcodes));
-    }
+impl codegen_footprint(blob: bytes) -> int {
+    return CODEGEN_BASE_BYTES + CODEGEN_BYTES_PER_BITCODE_BYTE * len(blob);
 }
 
-impl optimize_unit_texts(
-    texts: list[str], options: CompileOptions, opt_level: int
-) -> list[bytes] {
-    def optimize_one(text: str) -> bytes {
-        mod = llvm.parse_assembly(text, llvm.create_context());
-        mod.verify();
-        optimize_unit(mod, create_unit_target_machine(options), opt_level);
-        return module_bitcode(mod);
-    }
-    workers = min(len(texts), object_emit_jobs());
-    if workers < 2 {
-        return [optimize_one(text) for text in texts];
-    }
+impl codegen_map(work: Callable[..., bytes], blobs: list[bytes]) -> list[bytes] {
+    """Run `work` on every module's bitcode on one thread per emit job. A
+    module starts only while the modules in flight fit available memory at
+    their footprints (code generation for a kernel partition held about
+    thirteen times its bitcode), largest first, so small modules fill in
+    around a large one.""";
+    import threading;
     import from concurrent.futures { ThreadPoolExecutor }
-    create_unit_target_machine(options);
-    with ThreadPoolExecutor(max_workers=workers) as pool {
-        return list(pool.map(optimize_one, texts));
+    workers = min(len(blobs), object_emit_jobs());
+    if workers < 2 {
+        return [work(blob) for blob in blobs];
     }
+    budget = int(memory_headroom_bytes() * MEM_HEADROOM);
+    room = threading.Condition();
+    held: list[int] = [0];
+    def run(blob: bytes) -> bytes {
+        need = codegen_footprint(blob);
+        with room {
+            while held[0] > 0 and held[0] + need > budget {
+                room.wait();
+            }
+            held[0] += need;
+        }
+        try {
+            return work(blob);
+        } finally {
+            with room {
+                held[0] -= need;
+                room.notify_all();
+            }
+        }
+    }
+    order = sorted(range(len(blobs)), key=lambda (index: int) { -len(blobs[index]); });
+    results: list[bytes] = [b""] * len(blobs);
+    with ThreadPoolExecutor(max_workers=workers) as pool {
+        pending = [(index, pool.submit(run, blobs[index])) for index in order];
+        for (index, future) in pending {
+            results[index] = future.result();
+        }
+    }
+    return results;
+}
+
+impl emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes] {
+    import functools;
+    create_unit_target_machine(options);
+    return codegen_map(functools.partial(emit_unit_object, options=options), bitcodes);
+}
+
+impl unit_bitcode(unit_ir: any) -> bytes {
+    if isinstance(unit_ir, llvm.ModuleRef) {
+        return module_bitcode(unit_ir);
+    }
+    return module_bitcode(llvm.parse_assembly(str(unit_ir), llvm.create_context()));
+}
+
+impl unit_module_copy(unit_ir: any, context: any) -> ModuleRef {
+    if isinstance(unit_ir, llvm.ModuleRef) {
+        return llvm.parse_bitcode(module_bitcode(unit_ir), context);
+    }
+    return llvm.parse_assembly(str(unit_ir), context);
+}
+
+impl optimized_bitcode(
+    mod: ModuleRef, options: CompileOptions, opt_level: int
+) -> bytes {
+    mod.verify();
+    optimize_unit(mod, create_unit_target_machine(options), opt_level);
+    return module_bitcode(mod);
+}
+
+impl optimize_unit_ir(unit_ir: any, options: CompileOptions, opt_level: int) -> bytes {
+    return optimized_bitcode(
+        unit_module_copy(unit_ir, llvm.create_context()), options, opt_level
+    );
+}
+
+impl optimize_unit_bitcode(
+    bitcode: bytes, options: CompileOptions, opt_level: int
+) -> bytes {
+    return optimized_bitcode(
+        llvm.parse_bitcode(bitcode, llvm.create_context()), options, opt_level
+    );
+}
+
+impl optimize_unit_bitcodes(
+    bitcodes: list[bytes], options: CompileOptions, opt_level: int
+) -> list[bytes] {
+    import functools;
+    create_unit_target_machine(options);
+    return codegen_map(
+        functools.partial(optimize_unit_bitcode, options=options, opt_level=opt_level),
+        bitcodes
+    );
 }
 
 impl create_unit_target_machine(
@@ -114,7 +195,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
     verifying = False;
     try {
         if options.native_required_for(module.loc.mod_path) {
-            require_native_ir(str(module.gen.llvm_ir));
+            unit_fallbacks(module.gen).require();
         }
         registry = self.prog.native_units();
         cached = None
@@ -129,8 +210,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             module.gen.native_bitcode = cached.bitcode;
             module.gen.native_object = cached.object_bytes;
         } else {
-            unit_ir = module.gen.llvm_ir;
-            mod = llvm.parse_assembly(str(unit_ir), llvm.create_context());
+            mod = unit_module_copy(module.gen.llvm_ir, llvm.create_context());
             verifying = True;
             mod.verify();
             verifying = False;
@@ -250,7 +330,7 @@ impl NativeCompilePass._emit_debug_products(
     module: uni.Module, mod: ModuleRef, target_machine: TargetMachine
 ) -> str {
     import os;
-    import from jaclang.compiler.driver.jir { get_native_debug_dir }
+
     mod_path = module.loc.mod_path if module.loc else "jac_native";
     stem = os.path.splitext(os.path.basename(mod_path))[0];
     ir_dir = str(get_native_debug_dir(mod_path));
@@ -315,6 +395,7 @@ impl settle_unit_ir(module: uni.Module) -> None {
         return;
     }
     module.gen.ir_module = None;
+    unit_ir.release();
 }
 
 impl native_linked_ir_text(module: uni.Module) -> str {
@@ -326,39 +407,9 @@ impl native_linked_ir_text(module: uni.Module) -> str {
 }
 
 
-impl require_native_ir(llvm_ir_text: str) -> None {
-    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
-    issues = native_lowering_issues(llvm_ir_text);
-    symbols = set(native_demoted_ir_symbols(llvm_ir_text));
-    symbols.update(issue.symbol for issue in issues);
-    if symbols {
-        details = "\n".join(issue.detail for issue in issues);
-        raise ValueError(
-            "Native-only compilation cannot use Python fallback or erased fields: "
-                + ", ".join(sorted(symbols))
-                + ("\n" + details if details else "")
-        );
+impl unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks {
+    if gen.native_fallbacks is None {
+        gen.native_fallbacks = native_fallbacks_in_ir(str(gen.llvm_ir));
     }
-}
-
-impl native_demoted_ir_symbols(llvm_ir_text: str) -> list[str] {
-    import re as _ds_re;
-    _ds_def = _ds_re.compile(
-        r'^define\b[^@\n]*@(?:"([^"]+\.__jac_demoted)"'
-        r'|([A-Za-z0-9_.$\-]+\.__jac_demoted))\(',
-        _ds_re.MULTILINE
-    );
-    import from jaclang.compiler.backends.native.lowering {
-        NativeLoweringKind,
-        native_lowering_issues
-    }
-    found: set[str] = {
-        issue.symbol
-        for issue in native_lowering_issues(llvm_ir_text)
-        if issue.kind == NativeLoweringKind.CALLABLE
-    };
-    for (_ds_q, _ds_bare) in _ds_def.findall(llvm_ir_text) {
-        found.add((_ds_q or _ds_bare)[:-len(".__jac_demoted")]);
-    }
-    return sorted(found);
+    return gen.native_fallbacks;
 }

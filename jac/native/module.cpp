@@ -2,7 +2,11 @@
 #include "core.h"
 #include "llvm-c/Analysis.h"
 #include "llvm-c/Core.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/TypeFinder.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/SplitModule.h"
 #include <clocale>
 #include <string>
 
@@ -233,5 +237,32 @@ LLVMPY_DisposeTypesIter(LLVMTypesIteratorRef TyI) { delete llvm::unwrap(TyI); }
 
 API_EXPORT(LLVMModuleRef)
 LLVMPY_CloneModule(LLVMModuleRef M) { return LLVMCloneModule(M); }
+
+/* Split M into N linkable partitions, each returned as bitcode, so a whole
+   program's code generation runs on N threads (each parses its partition into
+   its own context), the way LLVM's parallel LTO code generation splits it.
+   Module-local symbols become hidden globals shared between partitions; they
+   are renamed under a reserved prefix first, so none collides with a symbol
+   the objects are linked against. M is consumed: its locals are renamed and
+   externalized. Each buffer is released with LLVMPY_DisposeString. */
+API_EXPORT(void)
+LLVMPY_SplitModuleBitcode(LLVMModuleRef M, unsigned N, const char **outbufs,
+                          size_t *outlens) {
+    llvm::Module *mod = llvm::unwrap(M);
+    for (llvm::GlobalValue &GV : mod->global_values()) {
+        if (GV.hasLocalLinkage()) {
+            GV.setName(llvm::Twine("__jac_part.") + GV.getName());
+        }
+    }
+    unsigned index = 0;
+    llvm::SplitModule(*mod, N, [&](std::unique_ptr<llvm::Module> part) {
+        llvm::SmallString<0> buffer;
+        llvm::raw_svector_ostream stream(buffer);
+        llvm::WriteBitcodeToFile(*part, stream);
+        outbufs[index] = LLVMPY_CreateByteString(buffer.data(), buffer.size());
+        outlens[index] = buffer.size();
+        ++index;
+    });
+}
 
 } // end extern "C"

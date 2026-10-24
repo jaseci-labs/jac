@@ -19,8 +19,6 @@ compiling.
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 
 glob _FIELD_SRC: str = (

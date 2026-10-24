@@ -1,7 +1,3 @@
-import from jaclang.compiler.frontend.diagnostics { E1320, E1321, E1322, E1323 }
-import from jaclang.compiler.frontend.unitree { ImplDef }
-import from jaclang.compiler.types.types { FunctionType }
-
 impl OwnershipCheckPass._stamp_write_effects -> None {
     abilities = [
         ab
@@ -26,42 +22,28 @@ impl OwnershipCheckPass._stamp_write_effects -> None {
 
 impl OwnershipCheckPass._local_writes(ab: Ability) -> set[str] {
     out: set[str] = set();
-    scope: UniNode = ab.body if isinstance(ab.body, ImplDef) else ab;
-    for asgn in scope.get_all_sub_nodes(Assignment) {
-        if self._owning_ability(asgn) is ab {
+    for asgn in ab.element_sub_nodes(Assignment) {
+        if asgn.enclosing_decl(Ability) is ab {
             for tgt in asgn.target {
                 self._store_fields(tgt, out);
             }
         }
     }
-    for dstmt in scope.get_all_sub_nodes(DeleteStmt) {
-        if self._owning_ability(dstmt) is ab {
+    for dstmt in ab.element_sub_nodes(DeleteStmt) {
+        if dstmt.enclosing_decl(Ability) is ab {
             for tgt in dstmt.leaf_targets() {
                 self._store_fields(tgt, out);
             }
         }
     }
-    for call in scope.get_all_sub_nodes(FuncCall) {
-        if self._owning_ability(call) is ab {
+    for call in ab.element_sub_nodes(FuncCall) {
+        if call.enclosing_decl(Ability) is ab {
             out |= self._call_writes(call);
         }
     }
     return out;
 }
 
-impl OwnershipCheckPass._owning_ability(nd: UniNode) -> (Ability | None) {
-    cur = nd.parent;
-    while cur is not None {
-        if isinstance(cur, Ability) {
-            return cur;
-        }
-        if isinstance(cur, ImplDef) and isinstance(cur.decl_link, Ability) {
-            return cur.decl_link;
-        }
-        cur = cur.parent;
-    }
-    return None;
-}
 
 impl OwnershipCheckPass._store_fields(tgt: Expr, out: set[str]) -> None {
     if isinstance(tgt, AtomTrailer) {

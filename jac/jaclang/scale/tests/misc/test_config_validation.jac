@@ -2,22 +2,6 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.project.config_schema { report_schema_findings }
-import from jaclang.scale.config.validation {
-    STRICT_ENV,
-    known_deploy_targets,
-    validate_scale_config
-}
-import from jaclang.comptime { fields }
-import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.config.config_loader {
-    JacScaleConfig,
-    get_scale_config,
-    reset_scale_config
-}
 
 def _collect_default_mismatches(
     options: dict[str, any], defaults: dict[str, any], path: str, bad: list[str]

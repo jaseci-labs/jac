@@ -1,7 +1,3 @@
-import from jaclang.cli.mcp.prompts { PromptProvider }
-import from jaclang.cli.mcp.resources { ResourceProvider }
-import from jaclang.cli.mcp.tools { ToolProvider }
-
 obj McpEngine {
     has resources: ResourceProvider,
         tools: ToolProvider,

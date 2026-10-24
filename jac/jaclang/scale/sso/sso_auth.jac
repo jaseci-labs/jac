@@ -3,70 +3,21 @@ import json;
 import secrets;
 import re;
 import from http.cookies { SimpleCookie }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.serving.datatypes { RedirectResponse }
-import from jaclang.scale.sso.provider { OAuth2CodeProvider }
-import from jaclang.scale.sso.oauth_session {
-    OAuthLogin,
-    OAuthSession,
-    challenge_of,
-    complete_identity
-}
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.serving.datatypes { Request, Response }
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.config.firebase_env { firebase_project_id_env_hint }
-import from jaclang.scale.shared.enums { Platforms, Operations }
-import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
-import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
 
 glob logger = logging.getLogger(__name__);
 
 
-def sso_host -> str {
-    return str(get_scale_config().get_sso_config()['host']);
-}
+def sso_host -> str;
 
 
-def configured_platforms -> dict[str, dict[str, str]] {
-    sso_config = get_scale_config().get_sso_config();
-    platforms: dict[str, dict[str, str]] = {};
-    for platform in Platforms {
-        key = platform.value.lower();
-        platform_config = sso_config.get(key, {});
-        if platform.value == Platforms.FIREBASE.value {
-            project_id = platform_config.get('project_id', '');
-            if not project_id {
-                continue;
-            }
-            platforms[platform.value] = {"project_id": project_id};
-        } else {
-            client_id = platform_config.get('client_id', '');
-            client_secret = platform_config.get('client_secret', '');
-            if not client_id or not client_secret {
-                continue;
-            }
-            platforms[platform.value] = {
-                "client_id": client_id,
-                "client_secret": client_secret
-            };
-        }
-    }
-    return platforms;
-}
+def configured_platforms -> dict[str, dict[str, str]];
 
 
 obj SSOAuth {
     has users: UserManager,
         platforms: dict[str, dict[str, str]] = {};
 
-    def postinit {
-        if not self.platforms {
-            self.platforms = configured_platforms();
-        }
-    }
-
+    def postinit;
     def get_sso(platform: str) -> SSOProvider | None;
     async def sso_initiate(
         platform: str, operation: str, client_callback: str | None = None

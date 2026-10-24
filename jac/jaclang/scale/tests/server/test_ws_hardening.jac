@@ -7,19 +7,6 @@ import os;
 import shutil;
 import time;
 import from tempfile { mkdtemp }
-import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.tests.scale_test_client { make_client }
-import from jaclang.scale.websocket.websocket {
-    WebSocketConnectionManager,
-    ConnectionContext
-}
-import from jaclang.scale.websocket.backplane {
-    BaseBackplane,
-    MemoryBackplane,
-    build_backplane
-}
-import from jaclang.scale.websocket.protocol { ws_handle_control, ws_heartbeat_loop }
 
 
 def _ws_client -> any {

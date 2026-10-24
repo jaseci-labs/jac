@@ -219,6 +219,11 @@ def _desc_own_only(desc: JSValue) -> bool {
     return True;
 }
 
+"""_desc_own_only for callers outside this module."""
+def:pub spec_desc_own_only(desc: JSValue) -> bool {
+    return _desc_own_only(desc);
+}
+
 def:pub spec_to_property_descriptor(desc: JSValue) -> PropertyDescriptorRecord {
     rec: PropertyDescriptorRecord = PropertyDescriptorRecord();
     if not spec_is_desc_object(desc) {

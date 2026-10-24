@@ -1,5 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-
 obj EmitFrame {
     has nd: es.Node,
         text: str = "",

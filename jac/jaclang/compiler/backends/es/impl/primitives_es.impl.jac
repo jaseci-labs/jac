@@ -1710,7 +1710,6 @@ impl ESRangeEmitter.emit_op_contains(
 impl ESBuiltinEmitter.emit_print(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    import from jaclang.runtime.scalars { shape_of }
     names: list[str] = ctx.arg_type_names or [];
     shown: list[str] = [];
     for (i, a) in enumerate(args) {
@@ -1730,7 +1729,6 @@ impl ESBuiltinEmitter.emit_print(
 impl ESBuiltinEmitter.emit_wrapping(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, op: str, args: list[str]
 ) -> (str | None) {
-    import from jaclang.runtime.scalars { is_sized }
     sized_name: (str | None) = None;
     for n in (ctx.arg_type_names or []) {
         if is_sized(n) {
@@ -1806,7 +1804,6 @@ impl ESBuiltinEmitter.emit_len(
 impl ESBuiltinEmitter.emit_abs(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    import from jaclang.runtime.scalars { is_sized }
     names: list[str] = ctx.arg_type_names or [];
     if args and names and is_sized(names[0]) {
         return _rt("fw", "abs_" + names[0], [args[0]]);
@@ -2214,4 +2211,110 @@ impl ESBuiltinEmitter.emit_bytearray(
         return "new Uint8Array()";
     }
     return "new Uint8Array(" + args[0] + ")";
+}
+
+impl _mcall(target: str, method: str, args: list[str]) -> str {
+    """Emit target.method(arg1, arg2, ...).""";
+    if len(args) > 0 {
+        return target + "." + method + "(" + ", ".join(args) + ")";
+    }
+    return target + "." + method + "()";
+}
+
+impl _fcall(name: str, args: list[str]) -> str {
+    """Emit name(arg1, arg2, ...).""";
+    if len(args) > 0 {
+        return name + "(" + ", ".join(args) + ")";
+    }
+    return name + "()";
+}
+
+impl _rt(ns: str, method: str, args: list[str]) -> str {
+    """Emit a Jac JS runtime helper call: _jac.ns.method(args).""";
+    if len(args) > 0 {
+        return "_jac." + ns + "." + method + "(" + ", ".join(args) + ")";
+    }
+    return "_jac." + ns + "." + method + "()";
+}
+
+impl _binop(left: str, op: str, right: str) -> str {
+    """Emit (left op right) with parens for safety.""";
+    return "(" + left + " " + op + " " + right + ")";
+}
+
+impl _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str {
+    """Emit seq.method(cb) with cb receiving exactly one element.
+
+    Python's map/filter call the callback with just the element, while JS's
+    Array.prototype.map/filter also pass (index, array) -- which a two-arity
+    callable such as `int(x, base)` reads as a radix.  Binding `fn` and `seq`
+    as parameters keeps them evaluated once, in the enclosing scope, so a
+    call-expression callback is not re-run per element.
+    """;
+    return "((_f, _s) => _s."
+        + method
+        + "((_v) => "
+        + cb_body
+        + "))("
+        + fn
+        + ", "
+        + seq
+        + ")";
+}
+
+impl _min_max_call(rt_name: str, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+    n_pos = len(ctx.arg_type_names) if ctx.arg_type_names is not None else len(args);
+    positional = args[:n_pos];
+    if not positional {
+        return None;
+    }
+    items = positional[0]
+        if len(positional) == 1 and not positional[0].startswith("...")
+        else "[" + ", ".join(positional) + "]";
+    key = (ctx.kwargs or {}).get("key", "undefined");
+    return _rt("builtin", rt_name, [items, key]);
+}
+
+impl es_primitive_emitter(suffix: str) -> (PrimitiveEmitter[(str, ESEmitCtx)] | None) {
+    if suffix == "IntEmitter" {
+        return ESIntEmitter();
+    }
+    if suffix == "FloatEmitter" {
+        return ESFloatEmitter();
+    }
+    if suffix == "ComplexEmitter" {
+        return ESComplexEmitter();
+    }
+    if suffix == "BoolEmitter" {
+        return ESBoolEmitter();
+    }
+    if suffix == "StrEmitter" {
+        return ESStrEmitter();
+    }
+    if suffix == "BytesEmitter" {
+        return ESBytesEmitter();
+    }
+    if suffix == "ListEmitter" {
+        return ESListEmitter();
+    }
+    if suffix == "DictEmitter" {
+        return ESDictEmitter();
+    }
+    if suffix == "SetEmitter" {
+        return ESSetEmitter();
+    }
+    if suffix == "FrozensetEmitter" {
+        return ESFrozensetEmitter();
+    }
+    if suffix == "TupleEmitter" {
+        return ESTupleEmitter();
+    }
+    if suffix == "RangeEmitter" {
+        return ESRangeEmitter();
+    }
+    return None;
+}
+
+impl es_sized_cast(name: str, args: list[str]) -> str {
+    return _rt("fw", "cast_" + name, [args[0] if args else "0"]);
 }

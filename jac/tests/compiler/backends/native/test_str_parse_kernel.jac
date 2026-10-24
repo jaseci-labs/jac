@@ -41,7 +41,10 @@ test "enforced tokenize loop allocates nothing per token" {
     assert "s.view" in body , "tokens are not slice views";
     assert "__jac_halloc" not in body , "enforced tokenize still allocates";
     assert "__rc_alloc" not in body , "enforced tokenize emits rc allocation";
-    assert "__jac_str_cmp3" in body or "bcmp" in body , (
+    # Compares against a literal lower to a length check plus memcmp on the
+    # descriptor parts (_emit_str_parts_cmp); older lowerings went through
+    # __jac_str_cmp3 or bcmp. Any of them compares parts without allocating.
+    assert "__jac_str_cmp3" in body or "bcmp" in body or "memcmp" in body , (
         "keyword compares bypass descriptor parts"
     );
     assert "s.view.root" not in body , "enforced views carry a root store";

@@ -1,29 +1,12 @@
 import json;
-import from jaclang.server.serving.authcrypt {
-    hash_password as _scrypt_hash,
-    verify_password as _scrypt_verify,
-    is_prescrypt_hash as _is_prescrypt,
-    needs_rehash as _needs_rehash
-}
+
 import uuid;
 import from datetime { datetime, UTC }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.server.identity.config { auth_settings, password_hash_cost }
-import from jaclang.server.identity.policy { VERIFY_BEFORE_LOGIN, verify_before_login }
 
 obj IdentityTakenError(Exception) {}
 
 
-def primary_username(user: dict[str, any]) -> str {
-    for identity in (user.get('identities') or []) {
-        if isinstance(identity, dict) and identity.get('type') == 'username' {
-            return str(
-                identity.get('value_raw') or identity.get('value_normalized') or ''
-            );
-        }
-    }
-    return '';
-}
+def primary_username(user: dict[str, any]) -> str;
 
 obj IdentityStorage {
     static def hash_password(password: str) -> str;

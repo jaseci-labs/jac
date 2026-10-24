@@ -386,6 +386,8 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_GENERATOR_FUNCTION,
     NATIVE_KIND_PROMISE,
     NATIVE_KIND_PROMISE_THEN,
+    NATIVE_KIND_PROMISE_THEN_RAW,
+    NATIVE_KIND_PROMISE_THEN_SETUP,
     NATIVE_KIND_PROMISE_CATCH,
     NATIVE_KIND_PROMISE_FINALLY,
     NATIVE_KIND_PROMISE_STATIC_RESOLVE,
@@ -4690,6 +4692,19 @@ def:pub init_global(ctx: GlobalContext) {
         gv,
         str_intern("__jacMarkNonConstructor"),
         js_native_create("__jacMarkNonConstructor", 1, NATIVE_KIND_MARK_NON_CONSTRUCTOR)
+    );
+
+    # Promise.prototype.then's SpeciesConstructor wrapper hookup
+    # (builtins_stubs.js; see _dn_native_kind_promise_then).
+    js_object_set(
+        gv,
+        str_intern("__jacPromiseThenRaw"),
+        js_native_create("then", 2, NATIVE_KIND_PROMISE_THEN_RAW)
+    );
+    js_object_set(
+        gv,
+        str_intern("__jacPromiseThenSetup"),
+        js_native_create("__jacPromiseThenSetup", 2, NATIVE_KIND_PROMISE_THEN_SETUP)
     );
 
     # SetData size for ES2024 Set algebra (bypasses receiver .size accessor overrides).

@@ -1,5 +1,4 @@
 impl names -> list[str] {
-    import from jaclang.jac0core.artifact_registry { ARTIFACTS }
     return list(ARTIFACTS);
 }
 
@@ -9,7 +8,7 @@ impl artifact_named(name: str) -> Artifact {
         return found;
     }
     import importlib;
-    import from jaclang.jac0core.artifact_registry { ARTIFACTS }
+
     (base, _, variant) = name.partition("@");
     target = ARTIFACTS.get(base);
     if target is None {
@@ -30,7 +29,7 @@ impl resolve(name: str) -> Resolution {
     if known is not None {
         return known;
     }
-    import from jaclang.jac0core.artifact_registry { resolution_in_flight }
+
     if resolution_in_flight() {
         return Resolution(name=name, reason="still loading", quiet=True, deferred=True);
     }
@@ -71,7 +70,6 @@ impl forget(name: str = "") -> None {
 }
 
 impl building_now -> frozenset[str] {
-    import from jaclang.jac0core.artifact_registry { building as marked }
     return marked();
 }
 
@@ -80,7 +78,6 @@ impl building(names: list[str]) -> _BuildingSpan {
 }
 
 impl _BuildingSpan.__enter__ -> _BuildingSpan {
-    import from jaclang.jac0core.artifact_registry { begin }
     self.added = begin(self.added);
     forget();
     return self;
@@ -89,7 +86,6 @@ impl _BuildingSpan.__enter__ -> _BuildingSpan {
 impl _BuildingSpan.__exit__(
     _exc_type: object, _exc_value: object, _traceback: object
 ) -> bool {
-    import from jaclang.jac0core.artifact_registry { end }
     end(self.added);
     forget();
     return False;
@@ -122,7 +118,7 @@ impl build_order(requested: list[str]) -> list[str] {
 
 impl publish(stage: str, destination: str, companions: tuple[str, ...] = ()) -> None {
     import from pathlib { Path }
-    import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
+
     payloads = [(destination, Path(stage).read_bytes(), 0o755)];
     for suffix in companions {
         payloads.append(
@@ -242,4 +238,106 @@ impl unmet(required: list[str]) -> list[str] {
         }
     }
     return problems;
+}
+
+impl _decide(artifact: Artifact) -> Resolution {
+    if artifact.disabled() {
+        return Resolution(name=artifact.name, reason="being built", quiet=True);
+    }
+    if artifact.name in _omitted(sealed_image=True) {
+        return Resolution(
+            name=artifact.name, reason="this image leaves it out", quiet=True
+        );
+    }
+    sealed = artifact.probe_sealed();
+    if sealed is not None {
+        if sealed.found is not None {
+            return Resolution(name=artifact.name, found=sealed.found);
+        }
+        return Resolution(
+            name=artifact.name,
+            reason="this image ships its floor",
+            quiet=sealed.omitted
+        );
+    }
+    why = artifact.unavailable_reason();
+    if why {
+        return Resolution(name=artifact.name, reason=why);
+    }
+    tree = artifact.probe_checkout();
+    if tree.found is not None {
+        return Resolution(name=artifact.name, found=tree.found);
+    }
+    if artifact.name in _omitted(sealed_image=False) {
+        return Resolution(
+            name=artifact.name, reason="the kit leaves it out", quiet=True
+        );
+    }
+    kit = artifact.probe_kit();
+    if kit.found is not None {
+        return Resolution(name=artifact.name, found=kit.found);
+    }
+    if kit.omitted {
+        return Resolution(
+            name=artifact.name, reason="the kit ships its floor", quiet=True
+        );
+    }
+    return Resolution(name=artifact.name, reason=tree.describe());
+}
+
+impl omitted_by_image -> frozenset[str] {
+    return _omitted(sealed_image=True) | _omitted(sealed_image=False);
+}
+
+impl _omitted(sealed_image: bool) -> frozenset[str] {
+    if sealed_image {
+        import from jaclang.jac0core { sealed }
+        image = sealed._jaclang_image();
+        return image.omits if image is not None else frozenset();
+    }
+
+    found = kit_image();
+    return found[1].omits if found is not None else frozenset();
+}
+
+impl _provision(artifact: Artifact, resolution: Resolution) -> Resolution {
+    import sys;
+
+    if offline_mode() {
+        return Resolution(
+            name=artifact.name,
+            reason=f"{resolution.reason
+                or 'not provisioned'}, and this project is offline ([network] offline)"
+        );
+    }
+    sys.stderr.write(
+        f"jac: provisioning {artifact.summary} ({resolution.reason
+            or 'not provisioned yet'}); "
+        f"`jac native build {artifact.name}` does this ahead of time.\n"
+    );
+    sys.stderr.flush();
+    build([artifact.name], _to_stderr);
+    return resolve(artifact.name);
+}
+
+impl _to_stderr(line: str) {
+    import sys;
+    sys.stderr.write(line + "\n");
+}
+
+impl _announce(artifact: Artifact, resolution: Resolution) {
+    if artifact.name in _ANNOUNCED
+        or artifact.kind != ArtifactKind.ACCELERATOR
+        or artifact.release == ReleasePolicy.FLOOR {
+        return;
+    }
+    _ANNOUNCED.add(artifact.name);
+    import sys;
+    (on, off) = ("\033[1;33m", "\033[0m") if sys.stderr.isatty() else ("", "");
+    sys.stderr.write(
+        f"{on}jac: {artifact.name} runs on its floor ({artifact.floor}, slower): "
+        f"{resolution.reason}. Run `jac native build {artifact.name}`; "
+        f"`jac native status {artifact.name}` shows what moved.{off}\n"
+    );
+    sys.stderr.flush();
 }

@@ -5,43 +5,6 @@ metadata and stack effects are the native compiler's own tables in
 opcode_meta.jac, so dis and the compiler cannot disagree.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_Occurred,
-    PyExc_RuntimeError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyList_Append,
-    PyList_New,
-    PyLong_AsLong,
-    PyObject,
-    PyUnicode_FromString,
-    PyUnicode_InternFromString,
-    Py_NewRef,
-    Py_None,
-    _PyCompile_GetBinaryIntrinsicName,
-    _PyCompile_GetUnaryIntrinsicName,
-    jacpy_is_code,
-    jacpy_release
-}
-import from jaclang.runtime.python.bindings.converters {
-    borrowed_none,
-    borrowed_true,
-    borrowed_false
-}
-import from jaclang.runtime.python.capi { object_error, object_tuple, type_name }
-import from jaclang.runtime.python.opcode_meta {
-    opcode_is_valid,
-    opcode_has_arg,
-    opcode_has_const,
-    opcode_has_name,
-    opcode_has_jump,
-    opcode_has_free,
-    opcode_has_local,
-    is_block_push_opcode,
-    stack_effect
-}
-
 glob ENABLE_SPECIALIZATION: i64 = 1,
      ENABLE_SPECIALIZATION_FT: i64 = 1;
 

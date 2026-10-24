@@ -7,15 +7,6 @@ import sys;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.tests.support { require_pod_binary }
-import from jaclang.scale.injector.bundle {
-    DEFAULT_SEAL_TIMEOUT_S,
-    _stage_app,
-    nested_sanitized_tomls,
-    pack_jab,
-    seal_timeout_setting
-}
-import from jaclang.dist.sanitize { sanitized_jac_toml }
 
 
 def _mini_app -> str {
@@ -173,14 +164,16 @@ class _SealLog(logging.Handler) {
 }
 
 
-def _pack_logged(base: Path, binary: bytes) -> tuple[bytes, list[str]] {
+def _pack_logged(
+    base: Path, binary: bytes, client_ready: any = None
+) -> tuple[bytes, list[str]] {
     log = logging.getLogger("jaclang.scale.injector.bundle");
     seen = _SealLog();
     previous = log.level;
     log.setLevel(logging.INFO);
     log.addHandler(seen);
     try {
-        raw = pack_jab(str(base), binary);
+        raw = pack_jab(str(base), binary, client_ready=client_ready);
     } finally {
         log.removeHandler(seen);
         log.setLevel(previous);
@@ -209,6 +202,51 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
     (_, mode_log) = _pack_logged(base, binary);
     assert not any("Reusing the sealed bundle" in m for m in mode_log) , (
         "a file mode change reused the previous seal"
+    );
+}
+
+
+def _bundle_member(raw: bytes, name: str) -> bytes {
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive {
+        data = archive.extractfile(name);
+        return data.read() if data is not None else b"";
+    }
+}
+
+
+test "a seal built alongside the client build ships the bundle the build finished" {
+    binary = require_pod_binary().read_bytes();
+    base = Path(_mini_app());
+    page = base / ".jac" / "client" / "dist" / "index.html";
+    page.parent.mkdir(parents=True);
+    page.write_text("stale");
+    waits: list[str] = [];
+    def built {
+        waits.append("built");
+        page.write_text("fresh");
+    }
+    (raw, log) = _pack_logged(base, binary, built);
+    assert waits , "the seal never waited for the client build";
+    assert _bundle_member(raw, ".jac/client/dist/index.html") == b"fresh" , (
+        "the bundle shipped the client build that was on disk when the seal began"
+    );
+    def unchanged {
+        waits.append("unchanged");
+    }
+    (again, again_log) = _pack_logged(base, binary, unchanged);
+    assert any("Reusing the sealed bundle" in m for m in again_log) , (
+        f"an unchanged project and client build sealed the app again: {again_log}"
+    );
+    assert again == raw;
+    def rebuilt {
+        page.write_text("newer");
+    }
+    (third, third_log) = _pack_logged(base, binary, rebuilt);
+    assert any("Reusing the sealed bundle" in m for m in third_log) , (
+        f"a client rebuild alone sealed the app again: {third_log}"
+    );
+    assert _bundle_member(third, ".jac/client/dist/index.html") == b"newer" , (
+        "the reused seal shipped the client build it was sealed with"
     );
 }
 
@@ -615,7 +653,14 @@ test "an explicit app seal follows its entry and excludes unrelated apps" {
         assert sources == {'web.jac', 'helper.jac', 'scoring.jac'} , sources;
         (base / 'cli.jac').write_text('def:pub main -> int { return 3; }\n');
         assert {Path(p).name for p in sealable_sources(td, 'cli')} == {'cli.jac'};
-        assert {Path(p).name for p in sealable_sources(td, 'desktop')}
-            == {'desktop.jac'};
+        desktop_sources = {Path(p).name for p in sealable_sources(td, 'desktop')};
+        assert desktop_sources
+            == {
+                'desktop.jac',
+                'web.jac',
+                'scoring.jac',
+                'helper.jac'
+            } , desktop_sources;
+        assert 'cli.jac' not in desktop_sources;
     }
 }

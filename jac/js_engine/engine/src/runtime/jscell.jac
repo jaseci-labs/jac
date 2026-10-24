@@ -57,7 +57,16 @@ glob:pub CELL_KIND_OBJECT: int = 1,
      FLAG_NON_EXTENSIBLE: int = 256,
      FLAG_MAPPED_ARGS: int = 512,
      FLAG_IS_ARGUMENTS: int = 1024,
-     FLAG_IS_GLOBAL: int = 2048;
+     FLAG_IS_GLOBAL: int = 2048,
+    # JSObject rows: the slot buffer's capacity is above 4 (kept by spush /
+    # strim / sclear; read when a swept row is reused, so the cold buffer
+    # need not be).
+    FLAG_SLOTS_BIG: int = 4096,
+    # Generational GC (docs/GENERATIONAL_GC.md): the cell survived a
+    # collection (set by the tracer) / an old cell already in this cycle's
+    # remembered set (set by the write barrier, cleared by the collector).
+    FLAG_OLD: int = 8192,
+    FLAG_REMEMBERED: int = 16384;
 # reserved for B3 (string interning refactor)
 # internal: TimerEntry (not a JS-visible cell kind)
 

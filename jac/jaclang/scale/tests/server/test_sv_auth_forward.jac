@@ -1,12 +1,4 @@
-import jaclang.server.serving.client as sv_http;
 import from jaclang.server { sv_client }
-import from jaclang.scale.runtime.context.auth_ctx {
-    set_current_auth,
-    reset_current_auth,
-    get_current_auth
-}
-import from jaclang.scale.runtime.provider { JacScaleRuntime }
-import jaclang.scale.runtime.rpc.rpc as rpc_mod;
 
 
 def _as_any(v: any) -> any {
@@ -61,7 +53,6 @@ def _restore_rpc_timeout(original: any) {
 
 """Replace the function transport with one that always fails to connect."""
 def _install_unreachable_transport(round_trips: dict[str, any]) -> any {
-    import from jaclang.server.serving.client { ClientRequestNotSent }
     original = sv_http.post_stream_aware_sync;
 
     def fake(*args: any, **kwargs: any) -> tuple[str, any] {
@@ -74,7 +65,6 @@ def _install_unreachable_transport(round_trips: dict[str, any]) -> any {
 
 """Replace the walker transport with one that always fails to connect."""
 def _install_unreachable_walker_transport(round_trips: dict[str, any]) -> any {
-    import from jaclang.server.serving.client { ClientRequestNotSent }
     original = sv_http.request_sync;
 
     def fake(*args: any, **kwargs: any) -> any {

@@ -4,26 +4,6 @@ See ../LICENSE.cpython. The HACL* library stays C: CPython's
 Modules/_hacl/libHacl_Hash_MD5.a, which the registry links for _md5.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_NoMemory,
-    PyObject,
-    Py_TYPE,
-    jacpy_release
-}
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.hashlib {
-    HashLock,
-    UINT32_MAX,
-    data_argument,
-    hash_digest,
-    hash_initial_data,
-    hash_object_new,
-    hash_state_of,
-    hash_update
-}
 import from c {
     def _Py_LibHacl_Hacl_Hash_MD5_malloc -> ptr;  def _Py_LibHacl_Hacl_Hash_MD5_update(
         state: ptr, chunk: ptr, chunk_len: u32

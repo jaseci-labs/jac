@@ -278,3 +278,16 @@ impl persistence_namespace(raw: any, project_name: str) -> str {
     }
     return namespace;
 }
+
+impl workspace_scope -> Iterator[None] {
+    if _resolution.get() is not None {
+        yield ;
+        return;
+    }
+    token = _resolution.set(WorkspaceResolution());
+    try {
+        yield ;
+    } finally {
+        _resolution.reset(token);
+    }
+}

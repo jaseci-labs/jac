@@ -1,12 +1,5 @@
 import os;
 import pathlib;
-import from jaclang.cli.console { console }
-import from jaclang.scale._optdeps.kubernetes { client }
-import from jaclang.scale.deploy.target.kubernetes.cluster_provider {
-    AWSProvider,
-    ClusterProvider,
-    LocalProvider
-}
 
 impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None {
     import shutil;
@@ -339,17 +332,11 @@ impl _refresh_rs_hashes(
     }
 }
 
-impl delete_namespace(namespace: str) -> None {
+impl delete_namespace(core_v1: client.CoreV1Api, namespace: str) -> None {
     if (namespace == 'default') {
         return;
     }
     try {
-        try {
-            config.load_kube_config();
-        } except ConfigException {
-            config.load_incluster_config();
-        }
-        core_v1 = client.CoreV1Api();
         core_v1.delete_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' deleted successfully.");
     } except ApiException as e {
@@ -510,7 +497,7 @@ impl resolve_minted_secret(
     fresh: str
 ) -> bool {
     import base64;
-    import from jaclang.server.serving.authcrypt { PLACEHOLDER_JWT_SECRET }
+
     if secret_data.get(key) != PLACEHOLDER_JWT_SECRET {
         return False;
     }

@@ -1,4 +1,31 @@
-def:pub __getEndpointEffects -> dict[str, any] {
+def:pub __getEndpointEffects -> dict[str, any];
+
+def:pub __getCacheState -> dict[str, any];
+
+def:pub __isFresh(`entry: dict[str, any]) -> bool;
+
+def:pub __cacheGet(key: str) -> dict[str, any] | None;
+
+def:pub __cacheSet(key: str, data: any, ttl: int);
+
+def:pub __evictOldest;
+
+def:pub __overlaps(list1: list[str], list2: list[str]) -> bool;
+
+def:pub __invalidateEndpoint(endpoint_key: str);
+
+async def:pub __cachedEndpointCall(
+    endpoint_key: str, args_key: str, fetch_fn: any
+) -> any;
+
+def:pub __invalidateEffects(writes: list[str]);
+
+def:pub __jacClearCache;
+
+
+def:pub __endpointKey(kind: str, name: str, opts: dict[str, any] | None) -> str;
+
+impl __getEndpointEffects -> dict[str, any] {
     effects: any = globalThis.__jacEndpointEffects__;
     if effects {
         return effects;
@@ -39,7 +66,7 @@ def:pub __getEndpointEffects -> dict[str, any] {
     return effects;
 }
 
-def:pub __getCacheState -> dict[str, any] {
+impl __getCacheState -> dict[str, any] {
     state: any = globalThis.__jacCacheState__;
     if not state {
         state = {
@@ -56,7 +83,7 @@ def:pub __getCacheState -> dict[str, any] {
     return state;
 }
 
-def:pub __isFresh(`entry: dict[str, any]) -> bool {
+impl __isFresh(`entry: dict[str, any]) -> bool {
     if not `entry {
         return False;
     }
@@ -64,7 +91,7 @@ def:pub __isFresh(`entry: dict[str, any]) -> bool {
     return age < `entry["ttl"];
 }
 
-def:pub __cacheGet(key: str) -> dict[str, any] | None {
+impl __cacheGet(key: str) -> dict[str, any] | None {
     state = __getCacheState();
     `entry = state["cache"][key];
     if not `entry {
@@ -79,7 +106,7 @@ def:pub __cacheGet(key: str) -> dict[str, any] | None {
     return `entry;
 }
 
-def:pub __cacheSet(key: str, data: any, ttl: int) {
+impl __cacheSet(key: str, data: any, ttl: int) {
     state = __getCacheState();
 
     if state["cache"][key] {
@@ -96,7 +123,7 @@ def:pub __cacheSet(key: str, data: any, ttl: int) {
     state["order"].push(key);
 }
 
-def:pub __evictOldest {
+impl __evictOldest {
     state = __getCacheState();
     if len(state["order"]) > 0 {
         oldest = state["order"].shift();
@@ -106,7 +133,7 @@ def:pub __evictOldest {
     }
 }
 
-def:pub __overlaps(list1: list[str], list2: list[str]) -> bool {
+impl __overlaps(list1: list[str], list2: list[str]) -> bool {
     if "*" in list1 or "*" in list2 {
         return bool(list1) and bool(list2);
     }
@@ -118,7 +145,7 @@ def:pub __overlaps(list1: list[str], list2: list[str]) -> bool {
     return False;
 }
 
-def:pub __invalidateEndpoint(endpoint_key: str) {
+impl __invalidateEndpoint(endpoint_key: str) {
     state = __getCacheState();
     state["generations"][endpoint_key] = (state["generations"][endpoint_key] or 0) + 1;
     keys_to_delete = [];
@@ -136,9 +163,7 @@ def:pub __invalidateEndpoint(endpoint_key: str) {
     }
 }
 
-async def:pub __cachedEndpointCall(
-    endpoint_key: str, args_key: str, fetch_fn: any
-) -> any {
+impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
@@ -190,7 +215,7 @@ async def:pub __cachedEndpointCall(
     return await fetch_fn();
 }
 
-def:pub __invalidateEffects(writes: list[str]) {
+impl __invalidateEffects(writes: list[str]) {
     effects = __getEndpointEffects();
     for endpoint_name in Object.keys(effects) {
         reader = effects[endpoint_name];
@@ -203,7 +228,7 @@ def:pub __invalidateEffects(writes: list[str]) {
     }
 }
 
-def:pub __jacClearCache {
+impl __jacClearCache {
     state = __getCacheState();
     state["epoch"] += 1;
     state["pending"] = {};
@@ -213,8 +238,7 @@ def:pub __jacClearCache {
     state["order"].splice(0, state["order"].length);
 }
 
-
-def:pub __endpointKey(kind: str, name: str, opts: dict[str, any] | None) -> str {
+impl __endpointKey(kind: str, name: str, opts: dict[str, any] | None) -> str {
     app = opts["app"] if opts and opts["app"] else "";
     module = opts["module"] if opts and opts["module"] else "";
     effects = __getEndpointEffects();

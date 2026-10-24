@@ -2,13 +2,6 @@ import contextlib;
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING }
-import from jaclang.client.client_bundle { ClientBundleError }
-import from jaclang.client.asset_processor { AssetProcessor }
-import from jaclang.client.import_processor { ImportProcessor }
-import from jaclang.client.jac_to_js { JacToJSCompiler }
-import from jaclang.client.route_scanner { RouteScanner, resolve_route_exports }
-import from jaclang.jac0core.ext_registry { ANNEX_SUFFIXES }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
 
 with entry {
     if TYPE_CHECKING {}
@@ -17,6 +10,7 @@ with entry {
 class JacClientCompiler {
     has entry_path: str = "",
         na_wasm_modules: set[str] = set(),
+        link_demand: dict[Path, dict[Path, list[str]]] = {},
         input_files: dict[str, str] = {};
 
     with entry {
@@ -113,7 +107,14 @@ class JacClientCompiler {
 
     def _warn_unrouted_pages(self: JacClientCompiler, scanner: RouteScanner) -> None;
     def _generate_routes_manifest(self: JacClientCompiler) -> bool;
-    def _write_source_map(
+    def _module_text(
+        self: JacClientCompiler,
+        module_path: Path,
+        artifact: ClientArtifact,
+        link: (ClientLink | None) = None
+    ) -> str;
+
+    def _write_js(
         self: JacClientCompiler,
         artifact: ClientArtifact,
         source_file: str,

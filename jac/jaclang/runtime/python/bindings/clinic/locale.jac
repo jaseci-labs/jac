@@ -7,36 +7,6 @@ jaclang.runtime.python.modules.locale.
 Compiled only on Windows, so absent here:
     _locale._getdefaultlocale
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
-import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }
-import from jaclang.runtime.python.bindings.type {
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.arguments { check_positional }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.capi { boundary_failure }
-import from jaclang.runtime.python.bindings.converters {
-    argument_label,
-    convert_cstr,
-    convert_int,
-    convert_str,
-    convert_unicode
-}
-import from jaclang.runtime.python.modules.locale {
-    _locale_bind_textdomain_codeset_impl,
-    _locale_bindtextdomain_impl,
-    _locale_dcgettext_impl,
-    _locale_dgettext_impl,
-    _locale_getencoding_impl,
-    _locale_gettext_impl,
-    _locale_localeconv_impl,
-    _locale_nl_langinfo_impl,
-    _locale_setlocale_impl,
-    _locale_strcoll_impl,
-    _locale_strxfrm_impl,
-    _locale_textdomain_impl
-}
 
 def:priv _locale_setlocale_bound(
     receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64

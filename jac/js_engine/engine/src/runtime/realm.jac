@@ -42,6 +42,22 @@ glob:pub _GC_GROWTH_PCT: int = 200;
 # gc_growth_pct_for uses it as is instead of tapering it.
 glob:pub _GC_GROWTH_FIXED: bool = False;
 
+# Generational GC: allocations between collections (JAC_GC_NURSERY). On the
+# site vite build 4M took GC from 16 s to 5.6 s with a lower peak than the
+# non-generational collector (2M: 8.8 s; 8M: 4.3 s for +1 GB).
+glob:pub _GC_NURSERY: int = 4000000;
+
+"""Set the generational nursery size (allocations between collections)."""
+def:pub gc_nursery_set(n: int) {
+    if n > 0 {
+        _GC_NURSERY = n;
+    }
+}
+
+def:pub gc_nursery -> int {
+    return _GC_NURSERY;
+}
+
 """Set the GC growth percentage (see _GC_GROWTH_PCT). No-op for non-positive values."""
 def:pub gc_growth_pct_set(n: int) {
     if n > 0 {
@@ -206,8 +222,20 @@ obj:pub Realm {
         free_heap_string_slots: list[int] = [],
         proxy_slots: dict[int, ProxyState] = {},
         args_slots: dict[int, ArgsState] = {},
-        safepoint_req: bool = False;
+        safepoint_req: bool = False,
+        gc_young_alloc: list[int] = [],
+        gc_young_closures: list[int] = [],
+        gc_young_maps: list[int] = [],
+        gc_young_sets: list[int] = [],
+        gc_next_major: bool = True,
+        gc_last_minor: bool = False,
+        gc_major_live: int = 0;
 }
+
+# Generational GC (docs/GENERATIONAL_GC.md): object ids allocated since the
+# last collection (the only rows a minor collection can free); whether the
+# next collection is major (always the first; then the growth policy); the
+# kind of the last one; live objects after the last major.
 
 # ── Symbol table (from jssymbol.na.jac) ──────────────────────────────────
 # Each slot holds the description string; index = symbol ID in JSValue.
@@ -479,7 +507,11 @@ def:pub realm_new -> Realm {
     r.gc_epoch = 1;  # G1.1: first live epoch (0 = never-marked stamp)
     r.gc_scan_weakmaps = [];  # G1.3: live weakmap store indices (per cycle)
     r.gc_scan_weaksets = [];  # G1.3: live weakset store indices (per cycle)
-    r.gc_young_objs = [];  # objects marked for the first time (per cycle)
+    r.gc_young_objs = [];
+    r.gc_young_alloc = [];
+    r.gc_young_closures = [];
+    r.gc_young_maps = [];
+    r.gc_young_sets = [];  # objects marked for the first time (per cycle)
     r.gc_ab_rows = {};  # object rows holding an ArrayBuffer (lazy sweep)
     r.heap_strings_mark_epoch = [];  # G1.4: heap-string mark epochs (0=unmarked,-1=dead)
     r.free_heap_string_slots = [];  # G1.4: recycled heap-string slots

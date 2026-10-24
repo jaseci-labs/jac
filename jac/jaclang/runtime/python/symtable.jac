@@ -1,30 +1,5 @@
 """Native public symbol-table data and projection from compiler scopes."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyDict_New,
-    PyLong_FromLongLong,
-    PyObject,
-    jacpy_dict_set_owned,
-    jacpy_list_new,
-    jacpy_release,
-    jacpy_symtable_entry
-}
-import from jaclang.compiler.frontend.python.compiler_symtable {
-    sym_block,
-    scope_kind,
-    scope_info_kind,
-    is_type_variable_info
-}
-import from jaclang.compiler.frontend.python.compiler_symtable {
-    DEF_PARAM,
-    DEF_BOUND,
-    SYM_USE,
-    SCOPE_OFFSET,
-    SCOPE_LOCAL,
-    SCOPE_CELL
-}
-
 glob PUBLIC_DEF_FREE_CLASS: int = 64,
      PUBLIC_DEF_COMP_CELL: int = 2048,
      TYPE_FUNCTION: int = 0,

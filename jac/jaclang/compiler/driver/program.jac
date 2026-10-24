@@ -1,24 +1,4 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
-import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import os;
-import type from jaclang.compiler.driver.compile_options { CancelToken }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.relations { ScopeChild }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.passes.context { Alert }
-import from jaclang.compiler.driver.progstate {
-    AnalysisCaches,
-    BuildScratch,
-    DepGraph,
-    DiagLedger,
-    ModuleHub
-}
-import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.runtime.semantic { Info }
 
 
 class JacProgram {
@@ -77,6 +57,7 @@ class JacProgram {
 
     def toolchain_dependency(self: JacProgram, resolved_path: str) -> bool;
     def drop_module_alerts(self: JacProgram, resolved_path: str) -> None;
+    def forget_failed_modules(self: JacProgram) -> None;
     def reset_module_root(self: JacProgram, module_root: uni.ProgramModule) -> None;
     static def hub_key(path: str) -> str;
     def has_failed_parse(self: JacProgram, path: str) -> bool;
@@ -127,20 +108,11 @@ class JacProgram {
 
     static def jac_file_formatter(
         file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
-        import from jaclang.compiler.frontend.host { active_host }
-        return active_host().format_file(file_path, auto_lint);
-    }
+    ) -> JacProgram;
 
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
-        import from jaclang.compiler.frontend.host { active_host }
-        return active_host().format_source(source_str, file_path, auto_lint);
-    }
+    ) -> JacProgram;
 
-    static def jac_file_linter(file_path: str) -> JacProgram {
-        import from jaclang.compiler.frontend.host { active_host }
-        return active_host().lint_file(file_path);
-    }
+    static def jac_file_linter(file_path: str) -> JacProgram;
 }

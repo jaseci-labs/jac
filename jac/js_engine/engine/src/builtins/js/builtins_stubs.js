@@ -3605,8 +3605,16 @@ _installGlobal('ShadowRealm', ShadowRealm);
   // to the intrinsic Promise there is nothing to adapt and the native result is
   // returned as-is (the common path, no extra allocation). Otherwise a
   // capability is built from C and settled from the native promise.
+  //
+  // With __jacPromiseThenSetup the native stays Promise.prototype.then and
+  // calls this wrapper only when SpeciesConstructor could be other than
+  // %Promise% (checked natively without running user code); the wrapper's
+  // own PerformPromiseThen is __jacPromiseThenRaw.
   (function () {
-    const nativeThen = P.prototype.then;
+    const thenSetup = globalThis.__jacPromiseThenSetup;
+    const nativeThen = typeof thenSetup === 'function'
+      ? globalThis.__jacPromiseThenRaw
+      : P.prototype.then;
 
     function speciesConstructor(O, defaultCtor) {
       const C = O.constructor;
@@ -3643,9 +3651,15 @@ _installGlobal('ShadowRealm', ShadowRealm);
       value: 'then', writable: false, enumerable: false, configurable: true
     });
     then.__NOT_CTOR__ = true;
-    Object.defineProperty(P.prototype, 'then', {
-      value: then, writable: true, enumerable: false, configurable: true
-    });
+    if (typeof thenSetup === 'function') {
+      thenSetup(then, P);
+      delete globalThis.__jacPromiseThenSetup;
+      delete globalThis.__jacPromiseThenRaw;
+    } else {
+      Object.defineProperty(P.prototype, 'then', {
+        value: then, writable: true, enumerable: false, configurable: true
+      });
+    }
 
     // §27.2.5.1: catch(onRejected) is exactly Invoke(this, "then",
     // «undefined, onRejected») — it must go through whatever `then` is

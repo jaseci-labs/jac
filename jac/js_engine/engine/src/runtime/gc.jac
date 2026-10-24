@@ -30,6 +30,7 @@ import from engine.src.runtime.jsvalue {
     jsv_to_int32,
     js_undefined,
     jsv_from_object_id,
+    jsv_from_cell_kind,
     jsv_from_string_id,
     jsv_is_object_cell,
     jsv_is_string_cell,
@@ -52,7 +53,15 @@ import from engine.src.runtime.jscell {
     CELL_KIND_REGEXP,
     CELL_KIND_TIMER,
     CELL_FLAG_DEAD,
-    FLAG_IS_PROTO
+    FLAG_IS_PROTO,
+    FLAG_OLD,
+    FLAG_REMEMBERED
+}
+import from engine.src.runtime.gc_barrier {
+    gc_gen_on,
+    gc_rem_objs,
+    gc_rem_vals,
+    gc_barrier_reset
 }
 import from engine.src.runtime.gc_mark { gc_mark, gc_is_marked, gc_clear_marks }
 import from engine.src.runtime.jsobject {
@@ -104,7 +113,7 @@ import from engine.src.runtime.jsobj_type {
     BRAND_GENERATOR,
     BRAND_REGEXP
 }
-import from engine.src.ffi.libc { write, getenv }
+import from engine.src.ffi.libc { write, getenv, abort }
 import from engine.src.ffi.libuv { uv_hrtime }
 import from engine.src.runtime.mem { read_byte, write_byte }
 # Pin registry lives in its own leaf module so any module can pin glob-held
@@ -181,6 +190,17 @@ def:pub gc_live_monitor_stats -> list[int] {
 # gc_trace — recursive mark + child traversal
 # ─────────────────────────────────────────────────────────────────────────────
 
+# gc_trace's worklist, empty between calls: one list for every root (a list
+# per call was two allocations per root value).
+glob _GC_WORK: list[JSValue] = [];
+# This collection's mode: generational on (cells marked get FLAG_OLD), and
+# whether it is a verification pass (JAC_GC_VERIFY) — references to dead
+# cells are recorded in _GC_VERIFY_BAD instead of being skipped.
+glob _GC_GEN_CYCLE: bool = False,
+     _GC_VERIFY: int = -1,
+     _GC_VERIFYING: bool = False,
+     _GC_VERIFY_BAD: list[JSValue] = [];
+
 """Mark v reachable and recursively trace all JSValues it references.
 
 Handles cycle detection: if the mark bit is already set the function returns
@@ -195,8 +215,18 @@ def:pub gc_trace(realm: Realm, v: JSValue) {
     # and gc_is_marked short-circuits any later pop of the same cell, so cyclic
     # graphs terminate. A cell may be pushed more than once (referenced by
     # several parents) — harmless; the second pop is a marked no-op.
-    work: list[JSValue] = [];
+    if not jsv_is_cell(v) {
+        return;
+    }
+    # The shared worklist is empty on entry and on return (a nested call
+    # would drain the caller's pending cells too — they are traced either way).
+    work: list[JSValue] = _GC_WORK;
     work.append(v);
+    _gc_drain(realm, work);
+}
+
+"""Trace everything pushed on `work` (gc_trace's loop)."""
+def _gc_drain(realm: Realm, work: list[JSValue]) -> None {
     while len(work) > 0 {
         gc_wtop: int = len(work) - 1;
         gc_cur: JSValue = work[gc_wtop];
@@ -232,187 +262,22 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
             return;
         }
         gc_old: int = read_byte(gc_mp, idx - 1);
-        if gc_old == gc_eb or gc_old == 255 {
+        if gc_old == gc_eb {
             return;
-        }  # cycle guard; 255: a dead row the sweep parked
+        }  # cycle guard
+        if gc_old == 255 {
+            # a dead row the sweep parked: a live reference to it is a
+            # missing write barrier (verification) — else skipped
+            if _GC_VERIFYING {
+                _GC_VERIFY_BAD.append(v);
+            }
+            return;
+        }
         write_byte(gc_mp, idx - 1, gc_eb);
         if gc_old == 0 {
             realm.gc_young_objs.append(idx);
         }
-        # Check tombstone via int field read (avoids typed-local JSObject issue)
-        gc_obj_cf: int = realm.objects[idx - 1].cell_flags;
-        if gc_obj_cf == CELL_FLAG_DEAD {
-            return;
-        }
-        # The marker keys probed below are own properties mirrored in `brand`:
-        # skip each prototype-walking probe unless this object carries it.
-        gc_brand: int = realm.objects[idx - 1].brand;
-
-        # Follow prototype chain
-        gc_proto_idx: int = realm.objects[idx - 1].prototype_idx;
-        if gc_proto_idx > 0
-            and (
-                gc_proto_idx > realm.objmark_len
-                or read_byte(gc_mp, gc_proto_idx - 1) != gc_eb
-            ) {
-            work.append(jsv_from_object_id(gc_proto_idx));
-        }
-        # Walk all property values + accessor getters/setters via a helper
-        # in jsobject.na.jac (same module as JSObject) — the inline pattern
-        #   for k in realm.objects[idx-1].entries {
-        #       gc_trace(realm, realm.objects[idx-1].entries[k].value);
-        #   }
-        # exposes a cross-module dict-subscript field-access codegen bug:
-        # `realm.objects[idx-1].entries[k].value` evaluates to 0
-        # instead of the JSValue field, leaving children unmarked.
-        # See: js_engine/issues/cross-module-dict-subscript-field-access-zero/
-        js_object_gc_push_children(idx, work);
-
-        # view→buffer strong edge (formerly the inline JSObject.binary_buffer
-        # field, now a native TypedArrayData/DataViewData.buffer_id — traced here
-        # because jsobject cannot import binary_state; Phase 1).
-        gc_bin_kind: int = realm.objects[idx - 1].bkind();
-        if gc_bin_kind == BINARY_KIND_TYPED_ARRAY
-            or gc_bin_kind == BINARY_KIND_DATA_VIEW {
-            gc_buf_id: int = binary_view_buffer_id(
-                gc_bin_kind, realm.objects[idx - 1].bslot()
-            );
-            if gc_buf_id > 0 {
-                work.append(jsv_from_object_id(gc_buf_id));
-            }
-        }
-
-        # Trace Map/Set backing stores referenced by hidden index properties
-        obj_v: JSValue = jsv_from_object_id(idx);
-        map_idx_v: JSValue = js_undefined();
-        if (gc_brand & BRAND_MAP) != 0 {
-            map_idx_v = js_object_get(obj_v, _KEY_IS_MAP);
-        }
-        if jsv_is_int32(map_idx_v) {
-            mid: int = jsv_to_int32(map_idx_v);
-            if mid >= 0 and mid < len(realm.maps) {
-                if not gc_is_marked(realm, CELL_KIND_MAP, mid) {
-                    gc_mark(realm, CELL_KIND_MAP, mid);
-                    # Map entries (deleted keys are the hole — a no-op to
-                    # trace); keys/vals hold WeakMap entries.
-                    for me_k in realm.maps[mid].ekeys {
-                        work.append(me_k);
-                    }
-                    for me_v in realm.maps[mid].evals {
-                        work.append(me_v);
-                    }
-                    ms_keys: list[JSValue] = realm.maps[mid].keys;
-                    ms_vals: list[JSValue] = realm.maps[mid].vals;
-                    for mk in ms_keys {
-                        work.append(mk);
-                    }
-                    for mv in ms_vals {
-                        work.append(mv);
-                    }
-                }
-            }
-        }
-        # WeakMap shares the maps table via _KEY_IS_WEAKMAP. G1.3 weak semantics:
-        # keep the backing STORE alive (the WeakMap object is reachable) but do
-        # NOT strong-trace its keys/values here — a WeakMap entry keeps its value
-        # alive only if the key is otherwise reachable. Record the live store for
-        # the post-mark ephemeron fixpoint (gc_collect → _gc_weak_ephemeron).
-        wmap_idx_v: JSValue = js_undefined();
-        if (gc_brand & BRAND_WEAKMAP) != 0 {
-            wmap_idx_v = js_object_get(obj_v, _KEY_IS_WEAKMAP);
-        }
-        if jsv_is_int32(wmap_idx_v) {
-            wmid: int = jsv_to_int32(wmap_idx_v);
-            if wmid >= 0 and wmid < len(realm.maps) {
-                if not gc_is_marked(realm, CELL_KIND_MAP, wmid) {
-                    gc_mark(realm, CELL_KIND_MAP, wmid);
-                    realm.gc_scan_weakmaps.append(wmid);
-                }
-            }
-        }
-        set_idx_v: JSValue = js_undefined();
-        if (gc_brand & BRAND_SET) != 0 {
-            set_idx_v = js_object_get(obj_v, _KEY_IS_SET);
-        }
-        if jsv_is_int32(set_idx_v) {
-            sid: int = jsv_to_int32(set_idx_v);
-            if sid >= 0 and sid < len(realm.sets) {
-                if not gc_is_marked(realm, CELL_KIND_SET, sid) {
-                    gc_mark(realm, CELL_KIND_SET, sid);
-                    for se_k in realm.sets[sid].ekeys {
-                        work.append(se_k);
-                    }
-                    set_items: list[JSValue] = realm.sets[sid].items;
-                    for sv in set_items {
-                        work.append(sv);
-                    }
-                }
-            }
-        }
-        # WeakSet: keep the backing store alive but do NOT strong-trace its items
-        # (G1.3). Record it; _gc_weak_clear drops unmarked items post-mark.
-        wset_idx_v: JSValue = js_undefined();
-        if (gc_brand & BRAND_WEAKSET) != 0 {
-            wset_idx_v = js_object_get(obj_v, _KEY_IS_WEAKSET);
-        }
-        if jsv_is_int32(wset_idx_v) {
-            wsid: int = jsv_to_int32(wset_idx_v);
-            if wsid >= 0 and wsid < len(realm.sets) {
-                if not gc_is_marked(realm, CELL_KIND_SET, wsid) {
-                    gc_mark(realm, CELL_KIND_SET, wsid);
-                    realm.gc_scan_weaksets.append(wsid);
-                }
-            }
-        }
-        # G0.5: RegExp compiled-state cell referenced by _KEY_IS_REGEXP. A regexp
-        # cell has no JSValue children (pattern/flags/group_names are native
-        # strings), so marking it is enough to keep it (and its pcre2_code) live.
-        re_idx_v: JSValue = js_undefined();
-        if (gc_brand & BRAND_REGEXP) != 0 {
-            re_idx_v = js_object_get(obj_v, _KEY_IS_REGEXP_MARK);
-        }
-        if jsv_is_int32(re_idx_v) {
-            rid: int = jsv_to_int32(re_idx_v);
-            if rid >= 0 and rid < len(realm.regexps) {
-                gc_mark(realm, CELL_KIND_REGEXP, rid);
-            }
-        }
-
-        # Generator objects wrap a JSGeneratorState in realm.generators via a
-        # hidden _KEY_GEN_IDX_MARK property.  Trace the suspended frame so values
-        # reachable only through a yield-point local/free_val survive --gc.
-        gen_mark_v: JSValue = js_undefined();
-        if (gc_brand & BRAND_GENERATOR) != 0 {
-            gen_mark_v = js_object_get(obj_v, _KEY_IS_GEN_MARK);
-        }
-        if jsv_is_int32(gen_mark_v) and jsv_to_int32(gen_mark_v) == 1 {
-            gen_idx_v: JSValue = js_object_get(obj_v, _KEY_GEN_IDX_MARK);
-            if jsv_is_int32(gen_idx_v) {
-                gidx: int = jsv_to_int32(gen_idx_v);
-                if gidx >= 0 and gidx < len(realm.generators) {
-                    if not gc_is_marked(realm, CELL_KIND_GENERATOR, gidx) {
-                        gc_mark(realm, CELL_KIND_GENERATOR, gidx);
-                        gst: JSGeneratorState = realm.generators[gidx];
-                        if gst.cell_flags != CELL_FLAG_DEAD {
-                            for glv in gst.locals {
-                                work.append(glv);
-                            }
-                            for gfv in gst.free_vals {
-                                work.append(gfv);
-                            }
-                            for gsv in gst.saved_stack {
-                                work.append(gsv);
-                            }
-                            work.append(gst.this_val);
-                            work.append(gst.send_val);
-                            work.append(gst.delegate_gen);
-                            work.append(gst.async_promise);
-                            work.append(gst.super_fn);
-                        }
-                    }
-                }
-            }
-        }
+        _gc_trace_obj(realm, idx, work, gc_mp, gc_eb);
     } elif kind == JS_CELL_KIND_NATIVE {
         table_id: int = jsv_to_table_id(v);
         if table_id < FN_BUILTIN_BASE {
@@ -427,7 +292,13 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
             gc_mark(realm, CELL_KIND_CLOSURE, cl_idx);
             gc_cl_cf: int = realm.closures[cl_idx].cell_flags;
             if gc_cl_cf == CELL_FLAG_DEAD {
+                if _GC_VERIFYING {
+                    _GC_VERIFY_BAD.append(v);
+                }
                 return;
+            }
+            if _GC_GEN_CYCLE and (gc_cl_cf & FLAG_OLD) == 0 {
+                realm.closures[cl_idx].cell_flags = gc_cl_cf | FLAG_OLD;
             }
 
             # Trace captured free variables
@@ -496,6 +367,9 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
         if gc_sid >= HEAP_STRING_BASE {
             gc_hidx: int = gc_sid - HEAP_STRING_BASE;
             if gc_hidx >= 0 and gc_hidx < len(realm.heap_strings_mark_epoch) {
+                if _GC_VERIFYING and realm.heap_strings_mark_epoch[gc_hidx] == -1 {
+                    _GC_VERIFY_BAD.append(v);
+                }
                 if realm.heap_strings_mark_epoch[gc_hidx] != realm.gc_epoch {
                     realm.heap_strings_mark_epoch[gc_hidx] = realm.gc_epoch;
                     if gc_hidx < len(realm.rope_left)
@@ -510,6 +384,205 @@ def _gc_trace_one(realm: Realm, v: JSValue, work: list[JSValue]) -> None {
         }
     }
     # JS_CELL_KIND_SYMBOL: interned scalar, no children to trace.
+}
+
+"""Push the children of object `idx` (marked this cycle) onto `work`:
+prototype, slots / elements / dict entries / accessors, a view's buffer, the
+Map / Set / WeakMap / WeakSet / RegExp / generator state behind its hidden
+marker keys. Generational: the row becomes old (FLAG_OLD) here. Also used
+for remembered objects, which a minor collection finds already marked."""
+def _gc_trace_obj(
+    realm: Realm, idx: int, work: list[JSValue], gc_mp: int, gc_eb: int
+) -> None {
+    # Check tombstone via int field read (avoids typed-local JSObject issue)
+    gc_obj_cf: int = realm.objects[idx - 1].cell_flags;
+    if gc_obj_cf == CELL_FLAG_DEAD {
+        return;
+    }
+    if _GC_GEN_CYCLE and (gc_obj_cf & FLAG_OLD) == 0 {
+        realm.objects[idx - 1].cell_flags = gc_obj_cf | FLAG_OLD;
+    }
+    # The marker keys probed below are own properties mirrored in `brand`:
+    # skip each prototype-walking probe unless this object carries it.
+    gc_brand: int = realm.objects[idx - 1].brand;
+
+    # Follow prototype chain
+    gc_proto_idx: int = realm.objects[idx - 1].prototype_idx;
+    if gc_proto_idx > 0
+        and (
+            gc_proto_idx > realm.objmark_len
+            or read_byte(gc_mp, gc_proto_idx - 1) != gc_eb
+        ) {
+        work.append(jsv_from_object_id(gc_proto_idx));
+    }
+    # Walk all property values + accessor getters/setters via a helper
+    # in jsobject.na.jac (same module as JSObject) — the inline pattern
+    #   for k in realm.objects[idx-1].entries {
+    #       gc_trace(realm, realm.objects[idx-1].entries[k].value);
+    #   }
+    # exposes a cross-module dict-subscript field-access codegen bug:
+    # `realm.objects[idx-1].entries[k].value` evaluates to 0
+    # instead of the JSValue field, leaving children unmarked.
+    # See: js_engine/issues/cross-module-dict-subscript-field-access-zero/
+    js_object_gc_push_children(idx, work);
+
+    # view→buffer strong edge (formerly the inline JSObject.binary_buffer
+    # field, now a native TypedArrayData/DataViewData.buffer_id — traced here
+    # because jsobject cannot import binary_state; Phase 1).
+    gc_bin_kind: int = realm.objects[idx - 1].bkind();
+    if gc_bin_kind == BINARY_KIND_TYPED_ARRAY
+        or gc_bin_kind == BINARY_KIND_DATA_VIEW {
+        gc_buf_id: int = binary_view_buffer_id(
+            gc_bin_kind, realm.objects[idx - 1].bslot()
+        );
+        if gc_buf_id > 0 {
+            work.append(jsv_from_object_id(gc_buf_id));
+        }
+    }
+
+    # Trace Map/Set backing stores referenced by hidden index properties
+    obj_v: JSValue = jsv_from_object_id(idx);
+    map_idx_v: JSValue = js_undefined();
+    if (gc_brand & BRAND_MAP) != 0 {
+        map_idx_v = js_object_get(obj_v, _KEY_IS_MAP);
+    }
+    if jsv_is_int32(map_idx_v) {
+        mid: int = jsv_to_int32(map_idx_v);
+        if mid >= 0 and mid < len(realm.maps) {
+            if not gc_is_marked(realm, CELL_KIND_MAP, mid) {
+                gc_mark(realm, CELL_KIND_MAP, mid);
+                if _GC_GEN_CYCLE and realm.maps[mid].cell_flags != CELL_FLAG_DEAD {
+                    realm.maps[mid].cell_flags = realm.maps[mid].cell_flags | FLAG_OLD;
+                }
+                # Map entries (deleted keys are the hole — a no-op to
+                # trace); keys/vals hold WeakMap entries.
+                for me_k in realm.maps[mid].ekeys {
+                    work.append(me_k);
+                }
+                for me_v in realm.maps[mid].evals {
+                    work.append(me_v);
+                }
+                ms_keys: list[JSValue] = realm.maps[mid].keys;
+                ms_vals: list[JSValue] = realm.maps[mid].vals;
+                for mk in ms_keys {
+                    work.append(mk);
+                }
+                for mv in ms_vals {
+                    work.append(mv);
+                }
+            }
+        }
+    }
+    # WeakMap shares the maps table via _KEY_IS_WEAKMAP. G1.3 weak semantics:
+    # keep the backing STORE alive (the WeakMap object is reachable) but do
+    # NOT strong-trace its keys/values here — a WeakMap entry keeps its value
+    # alive only if the key is otherwise reachable. Record the live store for
+    # the post-mark ephemeron fixpoint (gc_collect → _gc_weak_ephemeron).
+    wmap_idx_v: JSValue = js_undefined();
+    if (gc_brand & BRAND_WEAKMAP) != 0 {
+        wmap_idx_v = js_object_get(obj_v, _KEY_IS_WEAKMAP);
+    }
+    if jsv_is_int32(wmap_idx_v) {
+        wmid: int = jsv_to_int32(wmap_idx_v);
+        if wmid >= 0 and wmid < len(realm.maps) {
+            if not gc_is_marked(realm, CELL_KIND_MAP, wmid) {
+                gc_mark(realm, CELL_KIND_MAP, wmid);
+                if _GC_GEN_CYCLE and realm.maps[wmid].cell_flags != CELL_FLAG_DEAD {
+                    realm.maps[wmid].cell_flags = realm.maps[wmid].cell_flags | FLAG_OLD;
+                }
+                realm.gc_scan_weakmaps.append(wmid);
+            }
+        }
+    }
+    set_idx_v: JSValue = js_undefined();
+    if (gc_brand & BRAND_SET) != 0 {
+        set_idx_v = js_object_get(obj_v, _KEY_IS_SET);
+    }
+    if jsv_is_int32(set_idx_v) {
+        sid: int = jsv_to_int32(set_idx_v);
+        if sid >= 0 and sid < len(realm.sets) {
+            if not gc_is_marked(realm, CELL_KIND_SET, sid) {
+                gc_mark(realm, CELL_KIND_SET, sid);
+                if _GC_GEN_CYCLE and realm.sets[sid].cell_flags != CELL_FLAG_DEAD {
+                    realm.sets[sid].cell_flags = realm.sets[sid].cell_flags | FLAG_OLD;
+                }
+                for se_k in realm.sets[sid].ekeys {
+                    work.append(se_k);
+                }
+                set_items: list[JSValue] = realm.sets[sid].items;
+                for sv in set_items {
+                    work.append(sv);
+                }
+            }
+        }
+    }
+    # WeakSet: keep the backing store alive but do NOT strong-trace its items
+    # (G1.3). Record it; _gc_weak_clear drops unmarked items post-mark.
+    wset_idx_v: JSValue = js_undefined();
+    if (gc_brand & BRAND_WEAKSET) != 0 {
+        wset_idx_v = js_object_get(obj_v, _KEY_IS_WEAKSET);
+    }
+    if jsv_is_int32(wset_idx_v) {
+        wsid: int = jsv_to_int32(wset_idx_v);
+        if wsid >= 0 and wsid < len(realm.sets) {
+            if not gc_is_marked(realm, CELL_KIND_SET, wsid) {
+                gc_mark(realm, CELL_KIND_SET, wsid);
+                if _GC_GEN_CYCLE and realm.sets[wsid].cell_flags != CELL_FLAG_DEAD {
+                    realm.sets[wsid].cell_flags = realm.sets[wsid].cell_flags | FLAG_OLD;
+                }
+                realm.gc_scan_weaksets.append(wsid);
+            }
+        }
+    }
+    # G0.5: RegExp compiled-state cell referenced by _KEY_IS_REGEXP. A regexp
+    # cell has no JSValue children (pattern/flags/group_names are native
+    # strings), so marking it is enough to keep it (and its pcre2_code) live.
+    re_idx_v: JSValue = js_undefined();
+    if (gc_brand & BRAND_REGEXP) != 0 {
+        re_idx_v = js_object_get(obj_v, _KEY_IS_REGEXP_MARK);
+    }
+    if jsv_is_int32(re_idx_v) {
+        rid: int = jsv_to_int32(re_idx_v);
+        if rid >= 0 and rid < len(realm.regexps) {
+            gc_mark(realm, CELL_KIND_REGEXP, rid);
+        }
+    }
+
+    # Generator objects wrap a JSGeneratorState in realm.generators via a
+    # hidden _KEY_GEN_IDX_MARK property.  Trace the suspended frame so values
+    # reachable only through a yield-point local/free_val survive --gc.
+    gen_mark_v: JSValue = js_undefined();
+    if (gc_brand & BRAND_GENERATOR) != 0 {
+        gen_mark_v = js_object_get(obj_v, _KEY_IS_GEN_MARK);
+    }
+    if jsv_is_int32(gen_mark_v) and jsv_to_int32(gen_mark_v) == 1 {
+        gen_idx_v: JSValue = js_object_get(obj_v, _KEY_GEN_IDX_MARK);
+        if jsv_is_int32(gen_idx_v) {
+            gidx: int = jsv_to_int32(gen_idx_v);
+            if gidx >= 0 and gidx < len(realm.generators) {
+                if not gc_is_marked(realm, CELL_KIND_GENERATOR, gidx) {
+                    gc_mark(realm, CELL_KIND_GENERATOR, gidx);
+                    gst: JSGeneratorState = realm.generators[gidx];
+                    if gst.cell_flags != CELL_FLAG_DEAD {
+                        for glv in gst.locals {
+                            work.append(glv);
+                        }
+                        for gfv in gst.free_vals {
+                            work.append(gfv);
+                        }
+                        for gsv in gst.saved_stack {
+                            work.append(gsv);
+                        }
+                        work.append(gst.this_val);
+                        work.append(gst.send_val);
+                        work.append(gst.delegate_gen);
+                        work.append(gst.async_promise);
+                        work.append(gst.super_fn);
+                    }
+                }
+            }
+        }
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -875,6 +948,64 @@ def:pub gc_sweep_sets(realm: Realm) -> int {
     return freed;
 }
 
+"""A minor collection's closure / Map / Set sweeps: only the slots created
+since the last collection can be unreached — the same per-slot decision as
+gc_sweep_closures / gc_sweep_maps / gc_sweep_sets, over the young lists."""
+def _gc_sweep_young_tables(realm: Realm) -> int {
+    yt_freed: int = 0;
+    yt_ep: int = realm.gc_epoch;
+    for yt_c in realm.gc_young_closures {
+        if yt_c >= 0 and yt_c < len(realm.closures) and yt_c < len(realm.closures_mark_epoch) {
+            yt_cm: int = realm.closures_mark_epoch[yt_c];
+            if yt_cm != yt_ep and yt_cm != -1 {
+                realm.closures_mark_epoch[yt_c] = -1;
+                if realm.closures[yt_c].cell_flags != CELL_FLAG_DEAD {
+                    realm.closures[yt_c].cell_flags = CELL_FLAG_DEAD;
+                    realm.free_closure_slots.append(yt_c);
+                    yt_freed += 1;
+                }
+            }
+        }
+    }
+    for yt_m in realm.gc_young_maps {
+        if yt_m >= 0 and yt_m < len(realm.maps) and yt_m < len(realm.maps_mark_epoch) {
+            yt_mm: int = realm.maps_mark_epoch[yt_m];
+            if yt_mm != yt_ep and yt_mm != -1 {
+                realm.maps_mark_epoch[yt_m] = -1;
+                if realm.maps[yt_m].cell_flags != CELL_FLAG_DEAD {
+                    realm.maps[yt_m].ekeys = MAP_NO_VALS;
+                    realm.maps[yt_m].evals = MAP_NO_VALS;
+                    realm.maps[yt_m].key_index = MAP_NO_INDEX;
+                    realm.maps[yt_m].keys = MAP_NO_VALS;
+                    realm.maps[yt_m].vals = MAP_NO_VALS;
+                    realm.maps[yt_m].owned = False;
+                    realm.maps[yt_m].head = -1;
+                    realm.maps[yt_m].live_count = 0;
+                    realm.maps[yt_m].cell_flags = CELL_FLAG_DEAD;
+                    realm.free_map_slots.append(yt_m);
+                    yt_freed += 1;
+                }
+            }
+        }
+    }
+    for yt_s in realm.gc_young_sets {
+        if yt_s >= 0 and yt_s < len(realm.sets) and realm.sets[yt_s].cell_flags != CELL_FLAG_DEAD {
+            if not gc_is_marked(realm, CELL_KIND_SET, yt_s) {
+                realm.sets[yt_s].ekeys = SET_NO_VALS;
+                realm.sets[yt_s].key_index = SET_NO_INDEX;
+                realm.sets[yt_s].items = SET_NO_VALS;
+                realm.sets[yt_s].owned = False;
+                realm.sets[yt_s].head = -1;
+                realm.sets[yt_s].live_count = 0;
+                realm.sets[yt_s].cell_flags = CELL_FLAG_DEAD;
+                realm.free_set_slots.append(yt_s);
+                yt_freed += 1;
+            }
+        }
+    }
+    return yt_freed;
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # gc_sweep_regexps — reclaim unmarked RegExp compiled-state slots (G0.5)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1144,6 +1275,257 @@ def _gc_weak_clear(realm: Realm) {
 # gc_collect — full mark-and-sweep cycle
 # ─────────────────────────────────────────────────────────────────────────────
 
+"""A minor collection's roots beyond gc_mark_roots: every live generator
+state (a handful at a time; mutated on each suspend without a barrier), the
+children of the remembered old objects (already marked, so the trace would
+stop at them) and of the old mapped `arguments` objects (their parameter
+bindings live in the activation's locals list, written without a barrier),
+and the values logged by the non-object barriers."""
+def _gc_minor_roots(realm: Realm) -> None {
+    mr_g: int = 0;
+    while mr_g < len(realm.generators) {
+        if realm.generators[mr_g].cell_flags != CELL_FLAG_DEAD
+            and not realm.generators[mr_g].done {
+            _gc_root_gen_state(realm, mr_g);
+        }
+        mr_g = mr_g + 1;
+    }
+    mr_mp: int = realm.objmark_ptr;
+    mr_eb: int = gc_mark_byte(realm);
+    mr_work: list[JSValue] = _GC_WORK;
+    for mr_oid in gc_rem_objs() {
+        if mr_oid > 0
+            and mr_oid <= len(realm.objects)
+            and mr_oid <= realm.objmark_len
+            and read_byte(mr_mp, mr_oid - 1) == mr_eb {
+            _gc_trace_obj(realm, mr_oid, mr_work, mr_mp, mr_eb);
+            _gc_drain(realm, mr_work);
+        }
+    }
+    for mr_aid in realm.args_slots {
+        if mr_aid > 0
+            and mr_aid <= len(realm.objects)
+            and mr_aid <= realm.objmark_len
+            and read_byte(mr_mp, mr_aid - 1) == mr_eb {
+            _gc_trace_obj(realm, mr_aid, mr_work, mr_mp, mr_eb);
+            _gc_drain(realm, mr_work);
+        }
+    }
+    for mr_v in gc_rem_vals() {
+        gc_trace(realm, mr_v);
+    }
+}
+
+"""A minor collection's object sweep: only the rows allocated since the last
+collection (realm.gc_young_alloc) can be unreached — a 0 mark byte — the
+old rows read as marked. Same parking, trimming and side-table pruning as
+gc_sweep_objects."""
+def gc_sweep_objects_young(realm: Realm) -> int {
+    freed: int = 0;
+    sw_mp: int = realm.objmark_ptr;
+    sw_epoch: int = gc_mark_byte(realm);
+    if len(realm.gc_ab_rows) > 0 {
+        _gc_sweep_ab_rows(realm, sw_mp, len(realm.objects), sw_epoch);
+    }
+    for sw_i in realm.gc_young_alloc {
+        if sw_i > 0 and sw_i <= realm.objmark_len and read_byte(sw_mp, sw_i - 1) == 0 {
+            write_byte(sw_mp, sw_i - 1, 255);
+            realm.free_object_slots.append(sw_i);
+            freed += 1;
+        }
+    }
+    for sw_y in realm.gc_young_objs {
+        if read_byte(sw_mp, sw_y - 1) == sw_epoch {
+            realm.objects[sw_y - 1].strim();
+            realm.objects[sw_y - 1].etrim();
+        }
+    }
+    realm.gc_young_objs = [];
+    if len(realm.args_slots) > 0 {
+        _gc_prune_args_rows(realm);
+    }
+    if len(realm.proxy_slots) > 0 {
+        _gc_prune_proxy_rows(realm);
+    }
+    return freed;
+}
+
+"""End of a cycle: un-flag the remembered objects, forget them and the logged
+values, and start a new young-allocation list."""
+def _gc_barrier_end(realm: Realm) -> None {
+    for be_oid in gc_rem_objs() {
+        if be_oid > 0 and be_oid <= len(realm.objects) {
+            realm.objects[be_oid - 1].cell_flags = realm.objects[be_oid - 1].cell_flags
+                & ~FLAG_REMEMBERED;
+        }
+    }
+    gc_barrier_reset();
+    realm.gc_young_alloc = [];
+    realm.gc_young_closures = [];
+    realm.gc_young_maps = [];
+    realm.gc_young_sets = [];
+}
+
+"""JAC_GC_VERIFY=1: after every minor collection run a full one that records
+references to dead cells (a missing write barrier freed a live young cell)."""
+def _gc_verify_on -> bool {
+    return _gc_verify_level() >= 1;
+}
+
+"""JAC_GC_VERIFY level: 0 off; 1 the minor pre-sweep check; 2 also, after
+every collection (major ones too), a full re-mark that reports references
+to cells already dead — a value that was hidden from an earlier collection
+(an unrooted native temporary, a missing barrier) and has resurfaced."""
+def _gc_verify_level -> int {
+    if _GC_VERIFY < 0 {
+        vl_env: str = getenv("JAC_GC_VERIFY");
+        if vl_env == None {
+            _GC_VERIFY = 0;
+        } elif vl_env == "2" {
+            _GC_VERIFY = 2;
+        } else {
+            _GC_VERIFY = 1;
+        }
+    }
+    return _GC_VERIFY;
+}
+
+"""Where a verification pass found `bad` referenced (diagnostics): live
+objects, every closure field, native props, Map / Set storages, generator
+states and the root lists; up to 8 hits."""
+def _gc_verify_referrers(realm: Realm, bad: JSValue, extras: list[JSValue]) -> str {
+    vr: str = "";
+    vr_n: int = 0;
+    vr_i: int = 1;
+    while vr_i <= len(realm.objects) and vr_n < 8 {
+        if read_byte(realm.objmark_ptr, vr_i - 1) == gc_mark_byte(realm) {
+            for vr_c in js_object_gc_children(vr_i) {
+                if vr_c == bad {
+                    vr = vr + " object#" + str(vr_i) + "(flags=" + str(realm.objects[vr_i - 1].cell_flags)
+                        + ",brand=" + str(realm.objects[vr_i - 1].brand) + ",class=" + str(realm.objects[vr_i - 1].class_id) + ")";
+                    vr_n = vr_n + 1;
+                    break;
+                }
+            }
+            if realm.objects[vr_i - 1].prototype_idx > 0
+                and jsv_from_object_id(realm.objects[vr_i - 1].prototype_idx) == bad {
+                vr = vr + " object#" + str(vr_i) + "(as prototype)";
+                vr_n = vr_n + 1;
+            }
+        }
+        vr_i = vr_i + 1;
+    }
+    vr_ci: int = 0;
+    while vr_ci < len(realm.closures) and vr_n < 8 {
+        if realm.closures[vr_ci].cell_flags != CELL_FLAG_DEAD {
+            vr_f: str = "";
+            for vr_fv in realm.closures[vr_ci].free_vals {
+                if vr_fv == bad { vr_f = "free_vals"; }
+            }
+            for vr_cw in realm.closures[vr_ci].captured_with_objs {
+                if vr_cw == bad { vr_f = "captured_with_objs"; }
+            }
+            if realm.closures[vr_ci].lexical_this == bad { vr_f = "lexical_this"; }
+            if realm.closures[vr_ci].prototype_obj == bad { vr_f = "prototype_obj"; }
+            if realm.closures[vr_ci].super_class == bad { vr_f = "super_class"; }
+            if realm.closures[vr_ci].fn_props == bad { vr_f = "fn_props"; }
+            if realm.closures[vr_ci].home_object == bad { vr_f = "home_object"; }
+            if realm.closures[vr_ci].object_proto == bad { vr_f = "object_proto"; }
+            if realm.closures[vr_ci].lexical_new_target == bad { vr_f = "lexical_new_target"; }
+            if realm.closures[vr_ci].jac_module == bad { vr_f = "jac_module"; }
+            if realm.closures[vr_ci].this_binding_cell == bad { vr_f = "this_binding_cell"; }
+            if realm.closures[vr_ci].class_brand == bad { vr_f = "class_brand"; }
+            if vr_f != "" {
+                vr = vr + " closure#" + str(vr_ci) + "." + vr_f + "(flags=" + str(realm.closures[vr_ci].cell_flags) + ")";
+                vr_n = vr_n + 1;
+            }
+        }
+        vr_ci = vr_ci + 1;
+    }
+    vr_ni: int = 0;
+    while vr_ni < len(realm.natives) {
+        if realm.natives[vr_ni].props == bad {
+            vr = vr + " native#" + str(vr_ni) + ".props";
+        }
+        vr_ni = vr_ni + 1;
+    }
+    vr_mi: int = 0;
+    while vr_mi < len(realm.maps) {
+        if realm.maps[vr_mi].cell_flags != CELL_FLAG_DEAD {
+            vr_mh: bool = False;
+            for vr_mk in realm.maps[vr_mi].keys { if vr_mk == bad { vr_mh = True; } }
+            for vr_mv in realm.maps[vr_mi].vals { if vr_mv == bad { vr_mh = True; } }
+            for vr_mk2 in realm.maps[vr_mi].ekeys { if vr_mk2 == bad { vr_mh = True; } }
+            for vr_mv2 in realm.maps[vr_mi].evals { if vr_mv2 == bad { vr_mh = True; } }
+            if vr_mh {
+                vr = vr + " map#" + str(vr_mi) + "(flags=" + str(realm.maps[vr_mi].cell_flags) + ")";
+            }
+        }
+        vr_mi = vr_mi + 1;
+    }
+    vr_si: int = 0;
+    while vr_si < len(realm.sets) {
+        if realm.sets[vr_si].cell_flags != CELL_FLAG_DEAD {
+            vr_sh: bool = False;
+            for vr_sk in realm.sets[vr_si].items { if vr_sk == bad { vr_sh = True; } }
+            for vr_sk2 in realm.sets[vr_si].ekeys { if vr_sk2 == bad { vr_sh = True; } }
+            if vr_sh {
+                vr = vr + " set#" + str(vr_si) + "(flags=" + str(realm.sets[vr_si].cell_flags) + ")";
+            }
+        }
+        vr_si = vr_si + 1;
+    }
+    vr_gi: int = 0;
+    while vr_gi < len(realm.generators) {
+        if realm.generators[vr_gi].cell_flags != CELL_FLAG_DEAD {
+            vr_gh: bool = False;
+            for vr_gl in realm.generators[vr_gi].locals { if vr_gl == bad { vr_gh = True; } }
+            for vr_gs in realm.generators[vr_gi].saved_stack { if vr_gs == bad { vr_gh = True; } }
+            for vr_gf in realm.generators[vr_gi].free_vals { if vr_gf == bad { vr_gh = True; } }
+            if vr_gh {
+                vr = vr + " generator#" + str(vr_gi);
+            }
+        }
+        vr_gi = vr_gi + 1;
+    }
+    vr_ei: int = 0;
+    while vr_ei < len(extras) {
+        if extras[vr_ei] == bad {
+            vr = vr + " ROOT(vm extras #" + str(vr_ei) + " of " + str(len(extras)) + ")";
+            break;
+        }
+        vr_ei = vr_ei + 1;
+    }
+    return vr;
+}
+
+"""Report the dead cells a verification pass reached, with what still
+references them, then abort."""
+def _gc_verify_report(realm: Realm, extras: list[JSValue]) -> None {
+    vr_msg: str = "[GCVERIFY] " + str(len(_GC_VERIFY_BAD))
+        + " young cell(s) a minor collection would have freed are reachable (missing write barrier)\n";
+    write(2, vr_msg, len(vr_msg));
+    vr_k: int = 0;
+    for vr_bad in _GC_VERIFY_BAD {
+        if vr_k >= 5 {
+            break;
+        }
+        vr_k = vr_k + 1;
+        vr_what: str = "";
+        if jsv_cell_kind(vr_bad) == JS_CELL_KIND_NATIVE and jsv_to_table_id(vr_bad) < len(realm.closures) {
+            vr_what = " fn=" + realm.closures[jsv_to_table_id(vr_bad)].func.name;
+        } elif jsv_cell_kind(vr_bad) == JS_CELL_KIND_OBJECT and jsv_to_table_id(vr_bad) <= len(realm.objects) {
+            vr_ob: int = jsv_to_table_id(vr_bad) - 1;
+            vr_what = " brand=" + str(realm.objects[vr_ob].brand) + " class=" + str(realm.objects[vr_ob].class_id)
+                + " slots=" + str(realm.objects[vr_ob].slen()) + " elems=" + str(realm.objects[vr_ob].elen());
+        }
+        vr_line: str = "  young cell kind=" + str(jsv_cell_kind(vr_bad)) + " id="
+            + str(jsv_to_table_id(vr_bad)) + vr_what + "; referenced by:"
+            + _gc_verify_referrers(realm, vr_bad, extras) + "\n";
+        write(2, vr_line, len(vr_line));
+    }
+}
+
 """Run a complete GC cycle:
   1. Mark phase: gc_mark_roots → gc_trace all reachable cells.
   2. G1.3 weak passes: ephemeron fixpoint, then clear dead weak entries.
@@ -1403,12 +1785,62 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     }
     realm.gc_in_progress = True;
     gc_t0: int = uv_hrtime();
+    # Generational (docs/GENERATIONAL_GC.md): a minor collection keeps the
+    # epoch, so the cells marked by the last collection still read as marked
+    # (old) and the trace stops at them; a major one un-marks everything
+    # first (the epoch bump that used to end every collection).
+    _GC_GEN_CYCLE = gc_gen_on();
+    gc_minor: bool = _GC_GEN_CYCLE and not realm.gc_next_major and not _GC_VERIFYING;
+    if not gc_minor {
+        gc_clear_marks(realm, -1);  # -1 clears ALL tables at once
+    }
 
     # G1.3: reset per-cycle weak-scan scratch before the mark records into it.
     realm.gc_scan_weakmaps = [];
     realm.gc_scan_weaksets = [];
 
     gc_mark_roots(realm, extras);
+    if gc_minor {
+        _gc_minor_roots(realm);
+        if _gc_verify_on() {
+            # JAC_GC_VERIFY: the young cells this minor would free must be
+            # unreachable — re-mark everything from the roots (this
+            # collection becomes a major) and check.
+            vf_objs: list[int] = [];
+            vf_mp: int = realm.objmark_ptr;
+            for vf_o in realm.gc_young_alloc {
+                if vf_o > 0 and vf_o <= realm.objmark_len and read_byte(vf_mp, vf_o - 1) == 0 {
+                    vf_objs.append(vf_o);
+                }
+            }
+            vf_cls: list[int] = [];
+            for vf_c in realm.gc_young_closures {
+                if vf_c >= 0 and vf_c < len(realm.closures_mark_epoch)
+                    and realm.closures_mark_epoch[vf_c] != realm.gc_epoch {
+                    vf_cls.append(vf_c);
+                }
+            }
+            gc_minor = False;
+            gc_clear_marks(realm, -1);
+            realm.gc_scan_weakmaps = [];
+            realm.gc_scan_weaksets = [];
+            gc_mark_roots(realm, extras);
+            for vf_o2 in vf_objs {
+                if read_byte(realm.objmark_ptr, vf_o2 - 1) == gc_mark_byte(realm) {
+                    _GC_VERIFY_BAD.append(jsv_from_object_id(vf_o2));
+                }
+            }
+            for vf_c2 in vf_cls {
+                if realm.closures_mark_epoch[vf_c2] == realm.gc_epoch {
+                    _GC_VERIFY_BAD.append(jsv_from_cell_kind(vf_c2, JS_CELL_KIND_NATIVE));
+                }
+            }
+            if len(_GC_VERIFY_BAD) > 0 {
+                _gc_verify_report(realm, extras);
+                abort();
+            }
+        }
+    }
 
     # G1.3 weak semantics: resolve ephemerons (trace values of live-key weakmap
     # entries to a fixpoint), then drop entries with dead keys / dead weakset
@@ -1418,18 +1850,27 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
 
     freed: int = 0;
     gc_t_mark: int = uv_hrtime();
-    freed = freed + gc_sweep_objects(realm);
+    if gc_minor {
+        freed = freed + gc_sweep_objects_young(realm);
+    } else {
+        freed = freed + gc_sweep_objects(realm);
+    }
     gc_t_swo: int = uv_hrtime();
-    freed = freed + gc_sweep_closures(realm);
-    freed = freed + gc_sweep_maps(realm);
-    freed = freed + gc_sweep_sets(realm);
+    if gc_minor {
+        freed = freed + _gc_sweep_young_tables(realm);
+    } else {
+        freed = freed + gc_sweep_closures(realm);
+        freed = freed + gc_sweep_maps(realm);
+        freed = freed + gc_sweep_sets(realm);
+    }
     freed = freed + gc_sweep_generators(realm);
     freed = freed + gc_sweep_regexps(realm);  # G0.5
     gc_t_swc: int = uv_hrtime();
     freed = freed + gc_sweep_heap_strings(realm);  # G1.4
     gc_t_sws: int = uv_hrtime();
 
-    gc_clear_marks(realm, -1);  # -1 clears ALL tables at once
+    _gc_barrier_end(realm);
+    realm.gc_last_minor = gc_minor;
 
     realm.gc_in_progress = False;
     gc_total_cycles = gc_total_cycles + 1;
@@ -1464,6 +1905,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
             }
             _gc_msg: str = "[GCTRACE] cyc="
                 + str(gc_total_cycles)
+                + (" minor" if gc_minor else " major")
                 + " ms="
                 + str((uv_hrtime() - gc_t0) // 1000000)
                 + " mark="
@@ -1516,6 +1958,20 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 _gc_type_breakdown(realm);
                 _gc_string_breakdown(realm);
             }
+        }
+    }
+    if not _GC_VERIFYING and _gc_verify_level() >= 2 {
+        _GC_VERIFYING = True;
+        _GC_VERIFY_BAD = [];
+        realm.gc_next_major = True;
+        gc_collect(realm, extras);
+        _GC_VERIFYING = False;
+        if len(_GC_VERIFY_BAD) > 0 {
+            vp_msg: str = "[GCVERIFY] after a " + ("minor" if gc_minor else "major")
+                + " collection: references to dead cells follow\n";
+            write(2, vp_msg, len(vp_msg));
+            _gc_verify_report(realm, extras);
+            abort();
         }
     }
     return freed;

@@ -31,7 +31,8 @@ import from engine.src.runtime.jsvalue {
     jsv_is_object_cell,
     jsv_to_int32,
     jsv_from_string_id,
-    jsv_to_table_id
+    jsv_to_table_id,
+    jsv_is_cell
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -42,8 +43,14 @@ import from engine.src.runtime.jsobject {
     js_object_define_property,
     js_function_get_proto,
     js_object_set_prototype,
-    js_object_brand
+    js_object_brand,
+    js_object_get_prototype,
+    js_object_own_data_slot,
+    js_object_slot_at_id,
+    js_object_get_own_accessor_getter
 }
+import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
+import from engine.src.runtime.jssymbol { SYMBOL_SPECIES }
 import from engine.src.runtime.jsobj_type { JSProperty, BRAND_PROMISE }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.builtins.array { js_array_create, js_array_push }
@@ -187,6 +194,67 @@ glob _PROMISE_PROTO: JSValue = jsv_undefined();
 def:pub js_promise_set_proto(proto: JSValue) {
     _PROMISE_PROTO = proto;
     gc_pin_value(proto);  # glob-held singleton — invisible to the GC root walk
+}
+
+# ── Promise.prototype.then's SpeciesConstructor (§27.2.5.4 step 3) ────────
+# `then` stays this native; builtins_stubs.js hands it the JS wrapper that runs
+# SpeciesConstructor(promise, %Promise%) and builds a capability from a
+# subclass. The wrapper is skipped when that step can only yield %Promise%,
+# which is read without running user code: no own "constructor", the
+# [[Prototype]] %Promise.prototype% with "constructor" the data value
+# %Promise%, and %Promise%[@@species] the original getter (it returns its
+# receiver).
+glob _PTHEN_ON: bool = False,
+     _PTHEN_SLOW: JSValue = 0,
+     _PTHEN_CTOR: JSValue = 0,
+     _PTHEN_SPECIES: JSValue = 0,
+     _PTHEN_KEY_CTOR: int = 0;
+
+"""__jacPromiseThenSetup(wrapper, Promise): record the wrapper and the
+intrinsics compared against (pinned: only these globs hold the wrapper)."""
+def:pub js_promise_then_setup(slow: JSValue, ctor: JSValue) -> None {
+    ps_get: JSValue = js_object_get_own_accessor_getter(
+        ctor, SYMBOL_KEY_BASE + SYMBOL_SPECIES
+    );
+    if not jsv_is_cell(slow) or not jsv_is_cell(ctor) or not jsv_is_cell(ps_get) {
+        return;
+    }
+    _PTHEN_SLOW = slow;
+    _PTHEN_CTOR = ctor;
+    _PTHEN_SPECIES = ps_get;
+    gc_pin_value(slow);
+    gc_pin_value(ctor);
+    gc_pin_value(ps_get);
+    _PTHEN_KEY_CTOR = str_intern("constructor");
+    _PTHEN_ON = True;
+}
+
+"""True when `then` on the promise `p` must run the JS wrapper:
+SpeciesConstructor(p, %Promise%) could be other than %Promise%."""
+def:pub js_promise_then_wrapped(p: JSValue) -> bool {
+    if not _PTHEN_ON {
+        return False;
+    }
+    if js_object_has_own(p, _PTHEN_KEY_CTOR) {
+        return True;
+    }
+    if not (js_object_get_prototype(p) == _PROMISE_PROTO) {
+        return True;
+    }
+    pw_slot: int = js_object_own_data_slot(_PROMISE_PROTO, _PTHEN_KEY_CTOR);
+    if pw_slot < 0
+        or not (js_object_slot_at_id(jsv_to_table_id(_PROMISE_PROTO), pw_slot) == _PTHEN_CTOR) {
+        return True;
+    }
+    return not (
+        js_object_get_own_accessor_getter(_PTHEN_CTOR, SYMBOL_KEY_BASE + SYMBOL_SPECIES)
+        == _PTHEN_SPECIES
+    );
+}
+
+"""The JS `then` wrapper (valid once js_promise_then_wrapped returned True)."""
+def:pub js_promise_then_slow -> JSValue {
+    return _PTHEN_SLOW;
 }
 
 # Reaction object property keys (string-interned)

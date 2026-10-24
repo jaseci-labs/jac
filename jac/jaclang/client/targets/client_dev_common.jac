@@ -4,14 +4,53 @@ import socket;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional, cast }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
-import from jaclang.server.sv_client { headless_start_args }
-import from jaclang.server.watcher { FileChangeEvent }
-import type from jaclang.client.vite_bundler { ViteBundler }
-import type from jaclang.client.compiler { ViteCompiler }
 
-def port_bind_error(port: int) -> Optional[str] {
+def port_bind_error(port: int) -> Optional[str];
+
+def assert_port_available(port: int, role: str, failure_hint: str) -> None;
+
+def resolve_port_or_next_available(
+    start_port: int,
+    role: str,
+    reserved: Optional[list[int]] = None,
+    max_scan: int = 200
+) -> int;
+
+def setup_android_port_reverse_common(ports: list[int], timeout: int = 5) -> None;
+
+def ensure_watchdog_common(target_name: str) -> bool;
+
+def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any;
+
+def prepare_vite_dev_compilation(
+    project_dir: Path, entry_file: Path
+) -> tuple[ViteBundler, ViteCompiler];
+
+obj _ClientHmrHandler {
+    has compiler: any,
+        entry_file: Path,
+        project_dir: Path;
+
+    def on_event(evt: FileChangeEvent) -> None;
+}
+
+def dev_proxy_paths(
+    project_dir: Path, entry_file: Path
+) -> tuple[list[str], list[str]];
+
+
+def invalidate_runtime_module_cache(paths: list[str]) -> None;
+
+def stop_dev_watcher(watcher: any);
+
+def terminate_dev_processes(
+    processes: list[subprocess.Popen[bytes] | None],
+    timeout: int = SUBPROCESS_TIMEOUT_SHORT
+);
+
+def install_dev_signal_handlers;
+
+impl port_bind_error(port: int) -> Optional[str] {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     try {
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
@@ -24,7 +63,7 @@ def port_bind_error(port: int) -> Optional[str] {
     }
 }
 
-def assert_port_available(port: int, role: str, failure_hint: str) -> None {
+impl assert_port_available(port: int, role: str, failure_hint: str) -> None {
     err = port_bind_error(port);
     if err is None {
         return;
@@ -32,7 +71,7 @@ def assert_port_available(port: int, role: str, failure_hint: str) -> None {
     raise RuntimeError(f"{role} port {port} is already in use ({err}). {failure_hint}");
 }
 
-def resolve_port_or_next_available(
+impl resolve_port_or_next_available(
     start_port: int,
     role: str,
     reserved: Optional[list[int]] = None,
@@ -78,7 +117,7 @@ def resolve_port_or_next_available(
     );
 }
 
-def setup_android_port_reverse_common(ports: list[int], timeout: int = 5) -> None {
+impl setup_android_port_reverse_common(ports: list[int], timeout: int = 5) -> None {
     if not shutil.which("adb") {
         return;
     }
@@ -107,7 +146,7 @@ def setup_android_port_reverse_common(ports: list[int], timeout: int = 5) -> Non
     }
 }
 
-def ensure_watchdog_common(target_name: str) -> bool {
+impl ensure_watchdog_common(target_name: str) -> bool {
     try {
         import watchdog;
         return True;
@@ -120,7 +159,9 @@ def ensure_watchdog_common(target_name: str) -> bool {
     }
 }
 
-def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any {
+impl start_backend_server_common(
+    entry_file: Path, project_dir: Path, port: int
+) -> any {
     import sys;
     return subprocess.Popen(
         [sys.executable, "-m", "jaclang"] + headless_start_args(str(entry_file), port),
@@ -130,12 +171,9 @@ def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) 
     );
 }
 
-def prepare_vite_dev_compilation(
+impl prepare_vite_dev_compilation(
     project_dir: Path, entry_file: Path
 ) -> tuple[ViteBundler, ViteCompiler] {
-    import from jaclang.client.vite_bundler { ViteBundler }
-    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-
     console.print("  Preparing compilation for Vite dev…", style="muted");
     bundler = ViteBundler(project_dir=project_dir);
     package_json_path = bundler._get_client_dir() / "configs" / "package.json";
@@ -157,36 +195,28 @@ def prepare_vite_dev_compilation(
     return (bundler, compiler);
 }
 
-obj _ClientHmrHandler {
-    has compiler: any,
-        entry_file: Path,
-        project_dir: Path;
-
-    def on_event(evt: FileChangeEvent) -> None {
-        try {
-            pth = evt.path or "";
-            if not pth or not pth.endswith(".jac") {
-                return;
-            }
-            try {
-                Path(pth).resolve().relative_to(self.project_dir.resolve());
-            } except ValueError {
-                return;
-            }
-            invalidate_runtime_module_cache([pth, str(self.entry_file)]);
-            self.compiler.compile(None, self.entry_file);
-            console.print("  ✔ Client recompiled after save", style="success");
-        } except Exception as e {
-            console.error(f"  HMR recompile failed: {e}");
+impl _ClientHmrHandler.on_event(evt: FileChangeEvent) -> None {
+    try {
+        pth = evt.path or "";
+        if not pth or not pth.endswith(".jac") {
+            return;
         }
+        try {
+            Path(pth).resolve().relative_to(self.project_dir.resolve());
+        } except ValueError {
+            return;
+        }
+        invalidate_runtime_module_cache([pth, str(self.entry_file)]);
+        self.compiler.compile(None, self.entry_file);
+        console.print("  ✔ Client recompiled after save", style="success");
+    } except Exception as e {
+        console.error(f"  HMR recompile failed: {e}");
     }
 }
 
-def dev_proxy_paths(
+impl dev_proxy_paths(
     project_dir: Path, entry_file: Path
 ) -> tuple[list[str], list[str]] {
-    import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
-    import from jaclang.jac0core.ext_registry { base_stem }
     try {
         import from jaclang.runtime.prepared { prepared_manifest }
         if prepared_manifest(str(entry_file)) is None {
@@ -209,8 +239,7 @@ def dev_proxy_paths(
     }
 }
 
-
-def invalidate_runtime_module_cache(paths: list[str]) -> None {
+impl invalidate_runtime_module_cache(paths: list[str]) -> None {
     try {
         import from jaclang { JacRuntime as Jac }
         program = Jac.program;
@@ -246,7 +275,7 @@ def invalidate_runtime_module_cache(paths: list[str]) -> None {
     }
 }
 
-def stop_dev_watcher(watcher: any) {
+impl stop_dev_watcher(watcher: any) {
     if watcher {
         try {
             watcher.stop();
@@ -254,7 +283,7 @@ def stop_dev_watcher(watcher: any) {
     }
 }
 
-def terminate_dev_processes(
+impl terminate_dev_processes(
     processes: list[subprocess.Popen[bytes] | None],
     timeout: int = SUBPROCESS_TIMEOUT_SHORT
 ) {
@@ -273,7 +302,7 @@ def terminate_dev_processes(
     }
 }
 
-def install_dev_signal_handlers {
+impl install_dev_signal_handlers {
     import signal;
     import sys;
     import from typing { cast }

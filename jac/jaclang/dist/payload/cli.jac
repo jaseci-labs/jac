@@ -1,5 +1,3 @@
-import from jaclang.dist.payload.assemble { MkPayloadOpts }
-
 glob SUBCOMMANDS: tuple[str, ...] = (
          "fetch-typeshed",
          "fetch-llvm",

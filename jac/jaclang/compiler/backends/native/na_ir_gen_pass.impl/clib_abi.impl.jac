@@ -1,6 +1,4 @@
-import from jaclang.compiler.c_interop { c_variadic_param }
 impl NaIRGenPass._foreign_model -> dict[str, list[tuple[str, str | None]]] {
-    import from jaclang.compiler.backends.native.foreign { collect_foreign_structs }
     universe = [self.module] + self._foreign_modules;
     if self._foreign_structs is None or self._foreign_model_nmods != len(universe) {
         self._foreign_structs = collect_foreign_structs(universe);
@@ -10,7 +8,6 @@ impl NaIRGenPass._foreign_model -> dict[str, list[tuple[str, str | None]]] {
 }
 
 impl NaIRGenPass._foreign_fns -> dict[str, dict[str, any]] {
-    import from jaclang.compiler.backends.native.foreign { collect_foreign_fns }
     universe = [self.module] + self._foreign_modules;
     if self._foreign_fn_decls is None or self._foreign_fns_nmods != len(universe) {
         self._foreign_fn_decls = collect_foreign_fns(universe);
@@ -22,7 +19,6 @@ impl NaIRGenPass._foreign_fns -> dict[str, dict[str, any]] {
 impl NaIRGenPass._clib_struct_layout(
     name: str
 ) -> tuple[int, int, list[tuple[int, bool, int]]] {
-    import from jaclang.compiler.backends.native.foreign { foreign_struct_layout }
     return foreign_struct_layout(self._foreign_model(), name);
 }
 
@@ -331,7 +327,6 @@ impl NaIRGenPass._clib_reinterpret(
 }
 
 impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
     sig = decl.signature;
     if not isinstance(sig, uni.FuncSignature) {
         return "";
@@ -385,17 +380,17 @@ impl NaIRGenPass._declare_clib_definitions -> None {
             }
             continue;
         }
-        cfunc = self.clib_extern_fns.get(name) or self.func_symtab.get(name);
+        cfunc = self.clib_extern_fns.get(name) or self.scope.function(name);
         if not isinstance(cfunc, ir.Function) {
             continue;
         }
         self._clib_exports[name] = cfunc;
         self.clib_extern_fns.pop(name, None);
-        self.func_symtab.pop(name, None);
+        self.scope.unbind_function(name);
         self.clib_extern_names.discard(name);
         self._clib_symbol_lib.pop(name, None);
         self._maybe_declare_ability(decl, symbol=f"{name}.jac");
-        jac_fn = self.func_symtab.get(name);
+        jac_fn = self.scope.function(name);
         if isinstance(jac_fn, ir.Function) {
             jac_fn.linkage = "internal";
         }
@@ -417,7 +412,7 @@ impl NaIRGenPass._emit_clib_definitions -> None {
 
 impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
     cfunc = self._clib_exports[name];
-    jac_fn = self.func_symtab.get(name);
+    jac_fn = self.scope.function(name);
     if not isinstance(jac_fn, ir.Function) or cfunc.blocks {
         return;
     }

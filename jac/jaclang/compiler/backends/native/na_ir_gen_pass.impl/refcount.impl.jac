@@ -42,12 +42,7 @@ glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
          "ctor_leftover"
      );
 
-def _named_struct_name(t: (ir.Type | None)) -> str {
-    if isinstance(t, ir.IdentifiedStructType) {
-        return t.name;
-    }
-    return "";
-}
+def _named_struct_name(t: (ir.Type | None)) -> str;
 
 impl NaIRGenPass._gc_mode -> str {
     _mode = self.prog.options.na_gc_mode;
@@ -444,6 +439,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     }
     b = ir.IRBuilder(done_bb);
     b.ret_void();
+    if not self._rc_debug_codegen {
+        retain_fn.attributes.add("alwaysinline");
+    }
     self.rc_retain_fn = retain_fn;
 
     release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, ir.IntType(1)]);
@@ -698,8 +696,80 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _pub_fn.args[0].name = "ptr";
     _pub_bb = _pub_fn.append_basic_block("entry");
     _pub_b = ir.IRBuilder(_pub_bb);
-    _pub_b.call(release_fn, [_pub_fn.args[0], ir.Constant(ir.IntType(1), 1)]);
-    _pub_b.ret_void();
+    if _cycles_on or self._rc_debug_codegen or self._gc_mode() == "none" {
+        _pub_b.call(release_fn, [_pub_fn.args[0], ir.Constant(ir.IntType(1), 1)]);
+        _pub_b.ret_void();
+    } else {
+        _fp_arg = _pub_fn.args[0];
+        _fp_done = _pub_fn.append_basic_block("done");
+        _fp_chk = _pub_fn.append_basic_block("gc_dis_check");
+        _fp_rc = _pub_fn.append_basic_block("check_sentinel");
+        _fp_mc = _pub_fn.append_basic_block("magic_check");
+        _fp_mode = _pub_fn.append_basic_block("check_last");
+        _fp_dec = _pub_fn.append_basic_block("decrement");
+        _fp_slow = _pub_fn.append_basic_block("release_impl");
+        _pub_b.cbranch(
+            _pub_b.icmp_unsigned(
+                "==", _fp_arg, ir.Constant(i8_ptr, None), name="is.null"
+            ),
+            _fp_done,
+            _fp_chk
+        );
+        _pub_b = ir.IRBuilder(_fp_chk);
+        _fp_dis = _pub_b.load(self.rc_gc_disabled_gv, name="gc.dis");
+        _pub_b.cbranch(
+            _pub_b.icmp_unsigned("!=", _fp_dis, ir.Constant(i8, 0), name="gc.dis.on"),
+            _fp_done,
+            _fp_rc
+        );
+        _pub_b = ir.IRBuilder(_fp_rc);
+        _fp_rc_ptr = _pub_b.bitcast(
+            _pub_b.gep(_fp_arg, [ir.Constant(i64, HDR_RC_OFF)], name="rc.slot"),
+            i64_ptr,
+            name="rc.ptr"
+        );
+        _fp_old = _pub_b.load(_fp_rc_ptr, name="old.rc");
+        _pub_b.cbranch(
+            _pub_b.icmp_unsigned(
+                "==", _fp_old, ir.Constant(i64, RC_SENTINEL), name="is.static"
+            ),
+            _fp_done,
+            _fp_mc
+        );
+        _pub_b = ir.IRBuilder(_fp_mc);
+        _pub_b.cbranch(
+            self._emit_magic_check(_pub_b, _fp_arg, name_prefix="mc"),
+            _fp_mode,
+            _fp_done
+        );
+        _pub_b = ir.IRBuilder(_fp_mode);
+        _fp_last = _pub_b.icmp_unsigned(
+            "<=", _fp_old, ir.Constant(i64, 1), name="is.last"
+        );
+        if self.rc_threaded_gv is not None {
+            _fp_mt = _pub_b.load_atomic(
+                self.rc_threaded_gv, "monotonic", 1, name="rc.mt.flag"
+            );
+            _fp_last = _pub_b.or_(
+                _fp_last,
+                _pub_b.icmp_unsigned("!=", _fp_mt, ir.Constant(i8, 0), name="rc.mt.on"),
+                name="needs.impl"
+            );
+        }
+        _pub_b.cbranch(_fp_last, _fp_slow, _fp_dec);
+        _pub_b = ir.IRBuilder(_fp_dec);
+        _pub_b.store(
+            _pub_b.sub(_fp_old, ir.Constant(i64, 1), name="new.rc"), _fp_rc_ptr
+        );
+        _pub_b.branch(_fp_done);
+        _pub_b = ir.IRBuilder(_fp_slow);
+        _pub_b.call(release_fn, [_fp_arg, ir.Constant(ir.IntType(1), 1)]);
+        _pub_b.branch(_fp_done);
+        _pub_b = ir.IRBuilder(_fp_done);
+        _pub_b.ret_void();
+        _pub_fn.attributes.add("alwaysinline");
+        release_fn.attributes.add("noinline");
+    }
     self.rc_release_simple_fn = _pub_fn;
 
     for (_abi_name, _target) in (("jac_retain", retain_fn), ("jac_release", _pub_fn)) {
@@ -765,7 +835,7 @@ impl NaIRGenPass._opt_result_owned(val: ir.Value, expr: object) -> bool {
     if self._opt_ptr_payload_of(val.type) is None {
         return False;
     }
-    import from jaclang.compiler.passes.rc_facts_pass { Ownership, result_ownership }
+
     return isinstance(expr, uni.Expr) and result_ownership(expr) == Ownership.OWNED;
 }
 
@@ -809,7 +879,6 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
 }
 
 impl NaIRGenPass._nogc_consume_assigned_local(nd: uni.Assignment) -> bool {
-    import from jaclang.compiler.frontend.constant { OwnershipKind, is_borrow_kind }
     if nd.aug_op is not None
         or len(nd.target) != 1
         or not isinstance(nd.target[0], uni.Name)
@@ -860,7 +929,7 @@ impl NaIRGenPass._nogc_borrow_local_assign(nd: object) -> bool {
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.Name) {
         return False;
     }
-    import from jaclang.compiler.frontend.constant { is_borrow_kind }
+
     _sym = nd.target[0].sym;
     if _sym is not None and is_borrow_kind(_sym.ownership) {
         return True;
@@ -1004,7 +1073,13 @@ impl NaIRGenPass._emit_str_len_helpers -> None {
             _l_slow
         );
         b = ir.IRBuilder(_l_fast);
-        b.ret(b.lshr(_l_dv, ir.Constant(i64, STR_LEN_TAG_SHIFT), name="sl.len"));
+        b.ret(
+            b.lshr(
+                b.and_(_l_dv, ir.Constant(i64, STR_LEN_PAYLOAD_MASK), name="sl.pay"),
+                ir.Constant(i64, STR_LEN_TAG_SHIFT),
+                name="sl.len"
+            )
+        );
         b = ir.IRBuilder(_l_slow);
         b.ret(b.call(strlen_fn, [len_fn.args[0]], name="sl.strlen"));
     }
@@ -1064,7 +1139,13 @@ impl NaIRGenPass._emit_str_len_helpers -> None {
         tb.ret(
             tb.icmp_unsigned(
                 "!=",
-                tb.lshr(_t_dv, ir.Constant(i64, STR_LEN_TAG_SHIFT), name="st.len"),
+                tb.lshr(
+                    tb.and_(
+                        _t_dv, ir.Constant(i64, STR_LEN_PAYLOAD_MASK), name="st.pay"
+                    ),
+                    ir.Constant(i64, STR_LEN_TAG_SHIFT),
+                    name="st.len"
+                ),
                 ir.Constant(i64, 0),
                 name="st.len.nz"
             )
@@ -1091,12 +1172,15 @@ impl NaIRGenPass._emit_str_stamp_and_new -> None {
     i64 = ir.IntType(64);
     i64_ptr = i64.as_pointer();
     _headerless = self._nogc_headerless();
+    i1 = ir.IntType(1);
     stamp_fn = self._define_function(
-        "__jac_str_stamp", ir.FunctionType(ir.VoidType(), [i8_ptr, i64])
+        "__jac_str_stamp", ir.FunctionType(ir.VoidType(), [i8_ptr, i64, i1, i1])
     );
     stamp_fn.linkage = "private";
     stamp_fn.args[0].name = "s";
     stamp_fn.args[1].name = "n";
+    stamp_fn.args[2].name = "known";
+    stamp_fn.args[3].name = "ascii";
     _s_entry = stamp_fn.append_basic_block("entry");
     _s_done = stamp_fn.append_basic_block("done");
     b = ir.IRBuilder(_s_entry);
@@ -1113,8 +1197,52 @@ impl NaIRGenPass._emit_str_stamp_and_new -> None {
         _s_mc = self._emit_magic_check(b, stamp_fn.args[0], name_prefix="ss.mc");
         b.cbranch(_s_mc, _s_store, _s_done);
         b = ir.IRBuilder(_s_store);
+        _s_scan = stamp_fn.append_basic_block("scan");
+        _s_schk = stamp_fn.append_basic_block("scan.chk");
+        _s_sbody = stamp_fn.append_basic_block("scan.body");
+        _s_eblk = stamp_fn.append_basic_block("enc");
+        b.cbranch(stamp_fn.args[2], _s_eblk, _s_scan);
+        b = ir.IRBuilder(_s_scan);
+        b.branch(_s_schk);
+        b = ir.IRBuilder(_s_schk);
+        _s_i = b.phi(i64, name="ss.scan.i");
+        _s_i.add_incoming(ir.Constant(i64, 0), _s_scan);
+        _s_acc = b.phi(i64, name="ss.scan.acc");
+        _s_acc.add_incoming(ir.Constant(i64, 0), _s_scan);
+        _s_go = b.icmp_unsigned("<", _s_i, stamp_fn.args[1], name="ss.scan.go");
+        _s_scanned = b.icmp_unsigned(
+            "==",
+            b.and_(_s_acc, ir.Constant(i64, 0x80), name="ss.hibit"),
+            ir.Constant(i64, 0),
+            name="ss.isascii"
+        );
+        b.cbranch(_s_go, _s_sbody, _s_eblk);
+        b = ir.IRBuilder(_s_sbody);
+        _s_bp = b.gep(stamp_fn.args[0], [_s_i], name="ss.scan.p");
+        _s_bv = b.zext(b.load(_s_bp, name="ss.scan.b"), i64, name="ss.scan.bv");
+        _s_acc1 = b.or_(_s_acc, _s_bv, name="ss.scan.acc1");
+        _s_i1 = b.add(_s_i, ir.Constant(i64, 1), name="ss.scan.i1");
+        _s_i.add_incoming(_s_i1, _s_sbody);
+        _s_acc.add_incoming(_s_acc1, _s_sbody);
+        b.branch(_s_schk);
+        b = ir.IRBuilder(_s_eblk);
+        _s_isa = b.phi(i1, name="ss.isa");
+        _s_isa.add_incoming(stamp_fn.args[3], _s_store);
+        _s_isa.add_incoming(_s_scanned, _s_schk);
+        _s_ascii = b.select(
+            _s_isa,
+            ir.Constant(i64, STR_ASCII_TAG_BIT),
+            ir.Constant(i64, 0),
+            name="ss.abit"
+        );
         _s_enc = b.or_(
-            b.shl(stamp_fn.args[1], ir.Constant(i64, STR_LEN_TAG_SHIFT), name="ss.shl"),
+            b.or_(
+                b.shl(
+                    stamp_fn.args[1], ir.Constant(i64, STR_LEN_TAG_SHIFT), name="ss.shl"
+                ),
+                _s_ascii,
+                name="ss.enc1"
+            ),
             ir.Constant(i64, STR_LEN_TAG_BIT),
             name="ss.enc"
         );
@@ -1165,10 +1293,96 @@ impl NaIRGenPass._emit_str_stamp_and_new -> None {
             );
             b.call(self.rc_set_type_fn, [_n_buf, _n_tag]);
         }
-        b.call(stamp_fn, [_n_buf, _n_len]);
+        b.call(stamp_fn, [_n_buf, _n_len, ir.Constant(i1, 0), ir.Constant(i1, 0)]);
     }
     b.ret(_n_buf);
     self.str_new_fn = new_fn;
+
+    i1 = ir.IntType(1);
+    ascii_fn = self._define_function(
+        "__jac_str_isascii", ir.FunctionType(i1, [i8_ptr, i8_ptr, i64])
+    );
+    ascii_fn.linkage = "private";
+    ascii_fn.args[0].name = "root";
+    ascii_fn.args[1].name = "s";
+    ascii_fn.args[2].name = "n";
+    _a_entry = ascii_fn.append_basic_block("entry");
+    _a_scan = ascii_fn.append_basic_block("scan");
+    _a_sbody = ascii_fn.append_basic_block("scan.body");
+    _a_yes = ascii_fn.append_basic_block("yes");
+    _a_no = ascii_fn.append_basic_block("no");
+    b = ir.IRBuilder(_a_entry);
+    if _headerless {
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", ascii_fn.args[2], ir.Constant(i64, 0), name="ia.empty"
+            ),
+            _a_yes,
+            _a_scan
+        );
+        _a_i_preds = [_a_entry];
+    } else {
+        _a_sent = ascii_fn.append_basic_block("check.sentinel");
+        _a_magic = ascii_fn.append_basic_block("check.magic");
+        _a_hdr = ascii_fn.append_basic_block("hdr");
+        _a_flag_bb = ascii_fn.append_basic_block("flag");
+        _a_null = b.icmp_unsigned(
+            "==", ascii_fn.args[0], ir.Constant(i8_ptr, None), name="ia.null"
+        );
+        b.cbranch(_a_null, _a_scan, _a_sent);
+        b = ir.IRBuilder(_a_sent);
+        _a_rc_slot = b.gep(
+            ascii_fn.args[0], [ir.Constant(i64, HDR_RC_OFF)], name="ia.rc.slot"
+        );
+        _a_rc = b.load(b.bitcast(_a_rc_slot, i64_ptr, name="ia.rc.p"), name="ia.rc");
+        _a_static = b.icmp_unsigned(
+            "==", _a_rc, ir.Constant(i64, RC_SENTINEL), name="ia.static"
+        );
+        b.cbranch(_a_static, _a_hdr, _a_magic);
+        b = ir.IRBuilder(_a_magic);
+        _a_mc = self._emit_magic_check(b, ascii_fn.args[0], name_prefix="ia.mc");
+        b.cbranch(_a_mc, _a_hdr, _a_scan);
+        b = ir.IRBuilder(_a_hdr);
+        _a_dt_slot = b.gep(
+            ascii_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="ia.dt.slot"
+        );
+        _a_dv = b.load(b.bitcast(_a_dt_slot, i64_ptr, name="ia.dt.p"), name="ia.dv");
+        _a_tagged = b.icmp_unsigned(
+            "!=",
+            b.and_(_a_dv, ir.Constant(i64, STR_LEN_TAG_BIT), name="ia.tagged"),
+            ir.Constant(i64, 0),
+            name="ia.has.len"
+        );
+        b.cbranch(_a_tagged, _a_flag_bb, _a_scan);
+        b = ir.IRBuilder(_a_flag_bb);
+        _a_flag = b.icmp_unsigned(
+            "!=",
+            b.and_(_a_dv, ir.Constant(i64, STR_ASCII_TAG_BIT), name="ia.abit"),
+            ir.Constant(i64, 0),
+            name="ia.flag"
+        );
+        b.cbranch(_a_flag, _a_yes, _a_no);
+        _a_i_preds = [_a_entry, _a_magic, _a_hdr];
+    }
+    b = ir.IRBuilder(_a_scan);
+    _a_i = b.phi(i64, name="ia.i");
+    for _pred in _a_i_preds {
+        _a_i.add_incoming(ir.Constant(i64, 0), _pred);
+    }
+    _a_go = b.icmp_unsigned("<", _a_i, ascii_fn.args[2], name="ia.go");
+    b.cbranch(_a_go, _a_sbody, _a_yes);
+    b = ir.IRBuilder(_a_sbody);
+    _a_bp = b.gep(ascii_fn.args[1], [_a_i], name="ia.p");
+    _a_bv = b.zext(b.load(_a_bp, name="ia.b"), i64, name="ia.bv");
+    _a_hi = b.icmp_unsigned(">=", _a_bv, ir.Constant(i64, 0x80), name="ia.hi");
+    _a_i1 = b.add(_a_i, ir.Constant(i64, 1), name="ia.i1");
+    _a_i.add_incoming(_a_i1, _a_sbody);
+    b.cbranch(_a_hi, _a_no, _a_scan);
+    b = ir.IRBuilder(_a_yes);
+    b.ret(ir.Constant(i1, 1));
+    b = ir.IRBuilder(_a_no);
+    b.ret(ir.Constant(i1, 0));
+    self.str_isascii_fn = ascii_fn;
 }
 
 impl NaIRGenPass._call_str_len(
@@ -1178,6 +1392,20 @@ impl NaIRGenPass._call_str_len(
         self._emit_str_len_helpers();
     }
     return b.call(self.str_len_fn, [ptr], name=name);
+}
+
+impl NaIRGenPass._call_str_isascii(
+    b: ir.IRBuilder,
+    base: ir.Value,
+    ptr: ir.Value,
+    nbytes: ir.Value,
+    name: str = "s.isascii"
+) -> ir.Value {
+    if self.str_isascii_fn is None {
+        self._emit_str_len_helpers();
+    }
+    nbytes = self._coerce_type(nbytes, ir.IntType(64));
+    return b.call(self.str_isascii_fn, [base, ptr, nbytes], name=name);
 }
 
 impl NaIRGenPass._call_str_truthy(
@@ -1190,7 +1418,7 @@ impl NaIRGenPass._call_str_truthy(
 }
 
 impl NaIRGenPass._stamp_str_len(
-    b: ir.IRBuilder, ptr: ir.Value, len_val: ir.Value
+    b: ir.IRBuilder, ptr: ir.Value, len_val: ir.Value, ascii: (ir.Value | None) = None
 ) -> None {
     if self._nogc_headerless() {
         return;
@@ -1198,7 +1426,16 @@ impl NaIRGenPass._stamp_str_len(
     if self.str_stamp_fn is None {
         self._emit_str_len_helpers();
     }
-    b.call(self.str_stamp_fn, [ptr, len_val]);
+    i1 = ir.IntType(1);
+    b.call(
+        self.str_stamp_fn,
+        [
+            ptr,
+            len_val,
+            ir.Constant(i1, 0 if ascii is None else 1),
+            ir.Constant(i1, 0) if ascii is None else ascii
+        ]
+    );
 }
 
 impl NaIRGenPass._emit_str_cmp_helper -> None {
@@ -1617,11 +1854,11 @@ impl NaIRGenPass._str_alloc(
 }
 
 impl NaIRGenPass._str_finish(
-    b: ir.IRBuilder, buf: ir.Value, len_val: ir.Value
+    b: ir.IRBuilder, buf: ir.Value, len_val: ir.Value, ascii: (ir.Value | None) = None
 ) -> None {
     _end = b.gep(buf, [len_val], name="s.end");
     b.store(ir.Constant(ir.IntType(8), 0), _end);
-    self._stamp_str_len(b, buf, len_val);
+    self._stamp_str_len(b, buf, len_val, ascii);
 }
 
 impl NaIRGenPass._emit_set_type_tag(
@@ -1791,8 +2028,10 @@ impl NaIRGenPass._emit_rc_release_typed(
         return;
     }
     _tn = self._struct_ptr_pointee_name(val);
+
     if (
         _tn is not None
+        and self._gc_mode() == "cycles"
         and self._arch_is_acyclic(_tn)
         and self.rc_release_impl_fn is not None
         and isinstance(val.type, ir.PointerType)
@@ -1810,19 +2049,16 @@ impl NaIRGenPass._emit_rc_release_typed(
 }
 
 impl NaIRGenPass._arch_is_acyclic(arch_name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     lay = get_layout_registry(self.module, self.prog).get_layout(arch_name);
     return lay is not None and lay.is_acyclic;
 }
 
 impl NaIRGenPass._arch_is_osp_name(arch_name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     lay = get_layout_registry(self.module, self.prog).get_layout(arch_name);
     return lay is not None and lay.is_osp;
 }
 
 impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     lay = get_layout_registry(self.module, self.prog).get_layout(arch_name);
     return lay is not None and lay.arch_type == "walker";
 }
@@ -1948,14 +2184,9 @@ impl NaIRGenPass._drop_dispatches(type_name: str) -> bool {
     if not self._devirt_closed_world(type_name) {
         return True;
     }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
     reg = get_layout_registry(self.module, self.prog);
-    for cand in reg.mro_order {
-        if cand != type_name and type_name in self._mro_of(cand) {
-            return True;
-        }
-    }
-    return False;
+    return any(cand != type_name for cand in reg.descendants_of([type_name]));
 }
 
 impl NaIRGenPass._emit_nogc_field_drops(
@@ -2051,10 +2282,10 @@ impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
         if member is not None and (not member.is_def or member.is_static) {
             return None;
         }
-        hook = self.func_symtab.get(f"{owner}.drop");
+        hook = self.scope.function(f"{owner}.drop");
         if hook is None and member is not None {
             self._forward_declare_method(owner, member);
-            hook = self.func_symtab.get(f"{owner}.drop");
+            hook = self.scope.function(f"{owner}.drop");
         }
         if hook is not None {
             if len(hook.args) != 1 {
@@ -2072,8 +2303,8 @@ impl NaIRGenPass._drop_member_of(owner: str) -> (uni.Ability | None) {
     if arch is None or arch.body is None {
         return None;
     }
-    for ability in arch.get_all_sub_nodes(uni.Ability) {
-        if ability.find_parent_of_type(uni.Archetype) is arch
+    for ability in arch.element_sub_nodes(uni.Ability) {
+        if ability.enclosing_decl(uni.Archetype) is arch
             and ability.name_ref is not None
             and ability.name_ref.sym_name == "drop" {
             return ability;
@@ -2270,7 +2501,7 @@ impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str] {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return [];
     }
-    import from jaclang.compiler.passes.layout_pass { native_type_key }
+
     return self._nogc_type_arg_mangles_of_str(native_type_key(expr.type));
 }
 
@@ -2388,7 +2619,7 @@ impl NaIRGenPass._emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | N
     if _key in self.container_drop_fns {
         return self.container_drop_fns[_key];
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -2581,7 +2812,11 @@ impl NaIRGenPass._nogc_elem_prep(
     if isinstance(expr, uni.FString) or self._is_owned(val) {
         return val;
     }
-    if isinstance(expr, uni.AtomTrailer) and isinstance(expr.right, uni.IndexSlice) {
+    """A slice of a string is fresh text; an index is a character from the
+    static per-byte cache, which an owner must copy.""";
+    if isinstance(expr, uni.AtomTrailer)
+        and isinstance(expr.right, uni.IndexSlice)
+        and expr.right.is_range {
         _bm = "";
         try {
             _bm = expr.target.type.mangle() if expr.target.type is not None else "";
@@ -2726,7 +2961,7 @@ impl NaIRGenPass._nogc_osp_skip(val: ir.Value) -> bool {
     if _tn is None {
         return False;
     }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
     lay = get_layout_registry(self.module, self.prog).get_layout(_tn);
     return lay is not None and lay.is_osp;
 }
@@ -3261,6 +3496,106 @@ impl NaIRGenPass._str_cmp_parts_of(
     return None;
 }
 
+impl NaIRGenPass._emit_memcmp_nz(
+    a: ir.Value, b: ir.Value, n: ir.Value, name: str
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    bld = self.builder;
+    func = bld.basic_block.function;
+    memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
+    entry_bb = bld.basic_block;
+    call_bb = func.append_basic_block(name=f"{name}.call");
+    done_bb = func.append_basic_block(name=f"{name}.done");
+
+    bld.cbranch(
+        bld.icmp_signed(">", n, ir.Constant(i64, 0), name=f"{name}.has"),
+        call_bb,
+        done_bb
+    );
+    bld.position_at_end(call_bb);
+    r = bld.call(memcmp_fn, [a, b, n], name=f"{name}.memcmp");
+    call_end_bb = bld.basic_block;
+    bld.branch(done_bb);
+    bld.position_at_end(done_bb);
+    res = bld.phi(i32, name=name);
+    res.add_incoming(ir.Constant(i32, 0), entry_bb);
+    res.add_incoming(r, call_end_bb);
+    return res;
+}
+
+impl NaIRGenPass._emit_str_parts_cmp(
+    op: str, l_data: ir.Value, l_len: ir.Value, r_data: ir.Value, r_len: ir.Value
+) -> ir.Value {
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    bld = self.builder;
+    func = bld.basic_block.function;
+    zero32 = ir.Constant(i32, 0);
+    if op == Tok.EE or op == Tok.NE {
+        entry_bb = bld.basic_block;
+        cmp_bb = func.append_basic_block(name="seq.cmp");
+        done_bb = func.append_basic_block(name="seq.done");
+        bld.cbranch(
+            bld.icmp_signed("==", l_len, r_len, name="seq.len"), cmp_bb, done_bb
+        );
+        bld.position_at_end(cmp_bb);
+        c = self._emit_memcmp_nz(l_data, r_data, r_len, "seq.mc");
+        data_eq = bld.icmp_signed("==", c, zero32, name="seq.data");
+        cmp_end_bb = bld.basic_block;
+        bld.branch(done_bb);
+        bld.position_at_end(done_bb);
+        res = bld.phi(i1, name="seq");
+        res.add_incoming(ir.Constant(i1, 0), entry_bb);
+        res.add_incoming(data_eq, cmp_end_bb);
+        if op == Tok.NE {
+            return bld.not_(res, name="sne");
+        }
+        return res;
+    }
+    ge_bb = func.append_basic_block(name="sord.ge");
+    lt_bb = func.append_basic_block(name="sord.lt");
+    done_bb = func.append_basic_block(name="sord.done");
+    bld.cbranch(bld.icmp_signed(">=", l_len, r_len, name="sord.lge"), ge_bb, lt_bb);
+
+    bld.position_at_end(ge_bb);
+    c_ge = self._emit_memcmp_nz(l_data, r_data, r_len, "sord.mg");
+    tie_ge = bld.zext(
+        bld.icmp_signed(">", l_len, r_len, name="sord.gt"), i32, name="sord.gt32"
+    );
+    s_ge = bld.select(
+        bld.icmp_signed("!=", c_ge, zero32, name="sord.gne"),
+        c_ge,
+        tie_ge,
+        name="sord.sg"
+    );
+    ge_end_bb = bld.basic_block;
+    bld.branch(done_bb);
+
+    bld.position_at_end(lt_bb);
+    c_lt = self._emit_memcmp_nz(l_data, r_data, l_len, "sord.ml");
+    s_lt = bld.select(
+        bld.icmp_signed("!=", c_lt, zero32, name="sord.lne"),
+        c_lt,
+        ir.Constant(i32, -1),
+        name="sord.sl"
+    );
+    lt_end_bb = bld.basic_block;
+    bld.branch(done_bb);
+    bld.position_at_end(done_bb);
+    sign = bld.phi(i32, name="sord");
+    sign.add_incoming(s_ge, ge_end_bb);
+    sign.add_incoming(s_lt, lt_end_bb);
+    comparisons: dict[str, str] = {
+        Tok.LT: "<",
+        Tok.GT: ">",
+        Tok.LTE: "<=",
+        Tok.GTE: ">="
+    };
+    return bld.icmp_signed(comparisons[op], sign, zero32, name="scmp3");
+}
+
 impl NaIRGenPass._nogc_str_free_owned(val: ir.Value) -> None {
     _d = val;
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {
@@ -3272,4 +3607,11 @@ impl NaIRGenPass._nogc_str_free_owned(val: ir.Value) -> None {
     i8p = ir.IntType(8).as_pointer();
     _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     self.builder.call(_free_fn, [self.builder.bitcast(_d, i8p, name="osf.cast")]);
+}
+
+impl _named_struct_name(t: (ir.Type | None)) -> str {
+    if isinstance(t, ir.IdentifiedStructType) {
+        return t.name;
+    }
+    return "";
 }

@@ -129,10 +129,6 @@ impl NaIRGenPass._vtable_slot_entry(
 }
 
 impl NaIRGenPass._vtable_symbol(arch_name: str) -> str {
-    import from jaclang.compiler.frontend.codeinfo {
-        native_symbol_name,
-        native_unit_spelling
-    }
     src = self._struct_source_mod.get(arch_name, "");
     prefix = self._prefix_of_path(src) if src else self._own_prefix();
     owner_path = src or (self.module.loc.mod_path if self.module?.loc else "");
@@ -163,20 +159,12 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
 }
 
 impl NaIRGenPass._vtable_candidates(names: list[str]) -> list[ir.GlobalVariable] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-
     reg = get_layout_registry(self.module, self.prog);
     out: list[ir.GlobalVariable] = [];
-    for cand in reg.mro_order {
-        cand_mro = self._mro_of(cand);
-        for name in names {
-            if name in cand_mro {
-                vt = self._vtable_global_for(cand);
-                if vt is not None {
-                    out.append(vt);
-                }
-                break;
-            }
+    for cand in reg.descendants_of(names) {
+        vt = self._vtable_global_for(cand);
+        if vt is not None {
+            out.append(vt);
         }
     }
     return out;
@@ -196,7 +184,6 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
     garbage. Either way the answer has to come from the class-name identity
     every instance carries instead.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
     _reach = self._vtable_less_reach;
     if _reach is None {
@@ -243,7 +230,6 @@ impl NaIRGenPass._isinstance_unprovable_class(
     case that most needs the refusal. Returns the class whose MRO is short, or
     `None` when every chain this operand could take is whole.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
     _missing = self._short_mro_reach;
     if _missing is None {
@@ -393,12 +379,9 @@ impl NaIRGenPass._codegen_virtual_call(
 
     _vd_variants: list[tuple[str, ir.GlobalVariable, ir.Function]] = [];
     _vd_uniform = True;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
+
     _vd_reg = _vd_glr(self.module, self.prog);
-    for _vd_cls in _vd_reg.mro_order {
-        if obj_type_name not in self._mro_of(_vd_cls) {
-            continue;
-        }
+    for _vd_cls in _vd_reg.descendants_of([obj_type_name]) {
         _vd_lay = _vd_reg.get_layout(_vd_cls);
         if _vd_lay is None or not _vd_lay.has_vtable {
             continue;
@@ -602,7 +585,7 @@ impl NaIRGenPass._emit_class_display_fn -> ir.Function {
     if self._class_display_fn is not None {
         return self._class_display_fn;
     }
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ARCH_SCOPE_SEP }
+
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -777,84 +760,7 @@ impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | N
 
 def _caught_exception_class_name(
     pass_ref: NaIRGenPass, var_name: str
-) -> (ir.Value | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    func = pass_ref.builder.function;
-    code: (ir.Value | None) = None;
-    raised: (ir.Value | None) = None;
-    message: (ir.Value | None) = None;
-    for (owner, name, slot, bound, values) in reversed(pass_ref._exc_bindings) {
-        if owner is func and name == var_name {
-            if pass_ref.local_vars.get(name) is not slot {
-                return None;
-            }
-            code = values[0];
-            raised = values[1];
-            message = values[2];
-            break;
-        }
-    }
-    if code is None or raised is None or message is None {
-        return None;
-    }
-    class_name_fn = pass_ref._emit_runtime_class_name_fn();
-    if class_name_fn is None {
-        return None;
-    }
-    b = pass_ref.builder;
-    i8p = ir.IntType(8).as_pointer();
-    named: ir.Value = ir.Constant(i8p, None);
-    for (builtin, _parent) in JAC_TYPE_REGISTRY.exception_entries() {
-        type_id = JAC_TYPE_REGISTRY.exception_type_id(builtin);
-        named = b.select(
-            b.icmp_unsigned("==", code, ir.Constant(code.type, type_id)),
-            pass_ref._make_global_string(builtin),
-            named,
-            name="exc.name"
-        );
-    }
-    base_named = b.select(
-        b.icmp_unsigned("==", code, ir.Constant(code.type, 0)),
-        pass_ref._make_global_string("Exception"),
-        named,
-        name="exc.name"
-    );
-    raised_p = b.bitcast(raised, i8p, name="exc.name.obj");
-    message_p = b.bitcast(message, i8p, name="exc.name.msg");
-    is_object = b.and_(
-        b.icmp_unsigned(
-            "==", base_named, ir.Constant(i8p, None), name="exc.name.unknown"
-        ),
-        b.and_(
-            b.icmp_unsigned("!=", raised_p, ir.Constant(i8p, None)),
-            b.icmp_unsigned("!=", raised_p, message_p)
-        ),
-        name="exc.name.isobj"
-    );
-    object_bb = func.append_basic_block(name="exc.name.object");
-    done_bb = func.append_basic_block(name="exc.name.done");
-    fallback = b.select(
-        b.icmp_unsigned("==", base_named, ir.Constant(i8p, None)),
-        pass_ref._make_global_string("Exception"),
-        base_named,
-        name="exc.name.or"
-    );
-    from_bb = b.basic_block;
-    b.cbranch(is_object, object_bb, done_bb);
-    b.position_at_end(object_bb);
-    shown = b.call(
-        pass_ref._emit_class_display_fn(),
-        [b.call(class_name_fn, [raised_p], name="exc.name.cls")],
-        name="exc.name.display"
-    );
-    object_end = b.basic_block;
-    b.branch(done_bb);
-    b.position_at_end(done_bb);
-    result = b.phi(i8p, name="exc.class.name");
-    result.add_incoming(fallback, from_bb);
-    result.add_incoming(shown, object_end);
-    return result;
-}
+) -> (ir.Value | None);
 
 impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
     if not (nd.is_attr and self._get_name(nd.right) == "__name__") {
@@ -936,7 +842,7 @@ impl NaIRGenPass._module_class_name(expr: uni.UniNode) -> (str | None) {
     if not expr.type.is_instantiable() or expr.type.is_instance() {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     return class_type_native_name(expr.type);
 }
 
@@ -1005,7 +911,6 @@ impl NaIRGenPass._codegen_class_ref(
 }
 
 impl NaIRGenPass._is_enum_arch(name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     if name in self.enum_types {
         return True;
     }
@@ -1073,7 +978,7 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
     the index; its ancestry comes from the class record its defining module
     registered at initialization, which every unit of the program shares.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
     if self._isa_h_fn is not None {
         return self._isa_h_fn;
     }
@@ -1510,7 +1415,7 @@ impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
     `None` members are fine (the operand is null-checked first); an unknown or
     non-class type is not.
     """;
-    import from jaclang.compiler.passes.layout_pass { class_type_native_name }
+
     members: list[TypeBase] = (
         list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
     );
@@ -2101,7 +2006,7 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                 );
                 if not _has_self {
                     self.method_funcs[child_full] = impl_func;
-                    self.func_symtab[child_full] = impl_func;
+                    self.scope.bind_function(child_full, impl_func);
                     continue;
                 }
 
@@ -2159,8 +2064,88 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                 }
 
                 self.method_funcs[child_full] = wrapper_fn;
-                self.func_symtab[child_full] = wrapper_fn;
+                self.scope.bind_function(child_full, wrapper_fn);
             }
         }
     }
+}
+
+impl _caught_exception_class_name(
+    pass_ref: NaIRGenPass, var_name: str
+) -> (ir.Value | None) {
+    func = pass_ref.builder.function;
+    code: (ir.Value | None) = None;
+    raised: (ir.Value | None) = None;
+    message: (ir.Value | None) = None;
+    for (owner, name, slot, bound, values) in reversed(pass_ref._exc_bindings) {
+        if owner is func and name == var_name {
+            if pass_ref.local_vars.get(name) is not slot {
+                return None;
+            }
+            code = values[0];
+            raised = values[1];
+            message = values[2];
+            break;
+        }
+    }
+    if code is None or raised is None or message is None {
+        return None;
+    }
+    class_name_fn = pass_ref._emit_runtime_class_name_fn();
+    if class_name_fn is None {
+        return None;
+    }
+    b = pass_ref.builder;
+    i8p = ir.IntType(8).as_pointer();
+    named: ir.Value = ir.Constant(i8p, None);
+    for (builtin, _parent) in JAC_TYPE_REGISTRY.exception_entries() {
+        type_id = JAC_TYPE_REGISTRY.exception_type_id(builtin);
+        named = b.select(
+            b.icmp_unsigned("==", code, ir.Constant(code.type, type_id)),
+            pass_ref._make_global_string(builtin),
+            named,
+            name="exc.name"
+        );
+    }
+    base_named = b.select(
+        b.icmp_unsigned("==", code, ir.Constant(code.type, 0)),
+        pass_ref._make_global_string("Exception"),
+        named,
+        name="exc.name"
+    );
+    raised_p = b.bitcast(raised, i8p, name="exc.name.obj");
+    message_p = b.bitcast(message, i8p, name="exc.name.msg");
+    is_object = b.and_(
+        b.icmp_unsigned(
+            "==", base_named, ir.Constant(i8p, None), name="exc.name.unknown"
+        ),
+        b.and_(
+            b.icmp_unsigned("!=", raised_p, ir.Constant(i8p, None)),
+            b.icmp_unsigned("!=", raised_p, message_p)
+        ),
+        name="exc.name.isobj"
+    );
+    object_bb = func.append_basic_block(name="exc.name.object");
+    done_bb = func.append_basic_block(name="exc.name.done");
+    fallback = b.select(
+        b.icmp_unsigned("==", base_named, ir.Constant(i8p, None)),
+        pass_ref._make_global_string("Exception"),
+        base_named,
+        name="exc.name.or"
+    );
+    from_bb = b.basic_block;
+    b.cbranch(is_object, object_bb, done_bb);
+    b.position_at_end(object_bb);
+    shown = b.call(
+        pass_ref._emit_class_display_fn(),
+        [b.call(class_name_fn, [raised_p], name="exc.name.cls")],
+        name="exc.name.display"
+    );
+    object_end = b.basic_block;
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    result = b.phi(i8p, name="exc.class.name");
+    result.add_incoming(fallback, from_bb);
+    result.add_incoming(shown, object_end);
+    return result;
 }

@@ -1,4 +1,5 @@
 import contextlib;
+import copy;
 import time;
 import os;
 import sys;
@@ -19,7 +20,14 @@ import from jaclang.byllm.exceptions {
     McpError
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
-import from jaclang.byllm.types { Tool, Message, MessageRole }
+import from jaclang.byllm.schema { type_display_name }
+import from jaclang.byllm.types {
+    IterationAction,
+    IterationContext,
+    Message,
+    MessageRole,
+    Tool
+}
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
 import from support {
@@ -274,23 +282,57 @@ obj _TestFieldless {}
 
 
 test "parse_response raises OutputConversionError with the raw output attached" {
-    for (why, raw) in [
-        ("plain text", "Alice is a 30 year old engineer."),
-        ("markdown fenced json", "```json\n{\"name\": \"Alice\", \"age\": 30}\n```"),
-        ("wrong json structure", "{\"foo\": \"bar\", \"baz\": 99}")
+    # A union return must fail the same way, named as written.
+    for (why, resp_type, raw, name) in [
+        (
+            "plain text",
+            _TestPerson,
+            "Alice is a 30 year old engineer.",
+            "'_TestPerson'"
+        ),
+        (
+            "markdown fenced json",
+            _TestPerson,
+            "```json\n{\"name\": \"Alice\", \"age\": 30}\n```",
+            "'_TestPerson'"
+        ),
+        (
+            "wrong json structure",
+            _TestPerson,
+            "{\"foo\": \"bar\", \"baz\": 99}",
+            "'_TestPerson'"
+        ),
+        ("union return", int | None, "not json", "'int | None'")
     ] {
         raised = False;
         try {
-            mk_run(resp_type=_TestPerson).parse_response(raw);
+            mk_run(resp_type=resp_type).parse_response(raw);
         } except OutputConversionError as e {
             raised = True;
             err: any = e;
             assert err.raw_output == raw , (
                 f"{why}: raw_output should carry the model output, got '{err.raw_output}'"
             );
-            assert "Person" in str(e) , f"{why}: error message should name the target type";
+            assert name in str(e) , f"{why}: error message should name {name}, got: {e}";
+            assert e.__cause__ is not None , f"{why}: the parse failure must be chained";
         }
         assert raised , f"{why}: expected OutputConversionError";
+    }
+}
+
+test "return types are named the way they are written" {
+    # Error messages and the retry prompt name the return type with this. A union
+    # has no usable __name__ (missing before Python 3.14, just "Union" on 3.14),
+    # so composite annotations are spelled out member by member.
+    for (ty, expected) in [
+        (int, "int"),
+        (None, "None"),
+        (int | None, "int | None"),
+        (dict[str, list[int | None]], "dict[str, list[int | None]]"),
+        (tuple[int, ...], "tuple[int, ...]")
+    ] {
+        got = type_display_name(ty);
+        assert got == expected , f"{ty!r}: expected '{expected}', got '{got}'";
     }
 }
 
@@ -337,16 +379,24 @@ test "unregistered tool call is recovered not fatal" {
 }
 
 test "finish tool error on type mismatch" {
-    finish_tool = Tool.make_finish_tool(_TestPerson);
+    for (resp_type, sent, name) in [
+        (_TestPerson, {"wrong_key": "value"}, "'_TestPerson'"),
+        (int | None, "not a value", "'int | None'")
+    ] {
+        finish_tool = Tool.make_finish_tool(resp_type);
 
-    raised = False;
-    try {
-        finish_tool({"wrong_key": "value"});
-    } except FinishToolError as e {
-        raised = True;
-        assert "Person" in str(e) , f"Error should name the target type, got: {e}";
+        raised = False;
+        try {
+            finish_tool(sent);
+        } except FinishToolError as e {
+            raised = True;
+            assert f"does not match expected type {name}" in str(e) , (
+                f"{name}: error should name the target type, got: {e}"
+            );
+            assert e.__cause__ is not None , f"{name}: the validation error must be chained";
+        }
+        assert raised , f"{name}: expected FinishToolError for mismatched input type";
     }
-    assert raised , "Expected FinishToolError for mismatched input type";
 }
 
 test "finish tool error not raised for valid type" {
@@ -520,6 +570,49 @@ import from jaclang.byllm.exceptions {
 }
 
 
+"""Some models reject a forced tool choice, which is how litellm implements
+`response_format` on providers without native structured output. The call is
+repeated without the forced output (the schema hint stays in the prompt and
+byLLM still validates the reply), and the model is remembered so later calls
+skip the doomed attempt."""
+test "a model that rejects forced tool choice is asked again without it" {
+    model_name = "anthropic/claude-forced-tool-test";
+    seen: list[dict[str, any]] = [];
+    rejection = Exception(
+        'AnthropicException - tool_choice: type "tool" and "any" are not supported for this model.'
+    );
+
+    def fake_completion(**kwargs: any) -> any {
+        seen.append(dict(kwargs));
+        if "response_format" in kwargs {
+            raise rejection;
+        }
+        return {
+            "choices": [{"message": {"role": "assistant", "content": "{\"ok\": true}"}}]
+        };
+    }
+    model = Model(model_name=model_name);
+    params = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": "hi"}],
+        "response_format": {"type": "json_schema"},
+        "tool_choice": {"type": "function", "function": {"name": "x"}}
+    };
+    with unittest.mock.patch("litellm.completion", side_effect=fake_completion) {
+        model.model_call_no_stream(dict(params));
+        model.model_call_no_stream(dict(params));
+    }
+    assert len(seen) == 3 , f"one rejected attempt, then two without forced output: {len(
+        seen
+    )}";
+    assert "response_format" in seen[0];
+    for later in seen[1:] {
+        assert "response_format" not in later;
+        assert later["tool_choice"] == "auto";
+    }
+}
+
+
 test "provider errors map to byllm exceptions and log at ERROR regardless of debug" {
     # Rows carry byllm's classes; litellm's AuthenticationError and RateLimitError
     # share those names, so matching by name would let an unmapped error through.
@@ -659,38 +752,116 @@ import from jaclang.byllm.llm {
     _CACHE_CONTROL_EPHEMERAL
 }
 
+def _cache_markers(params: dict[str, any]) -> int {
+    count = len(
+        [
+            t
+            for t in params.get("tools") or []
+            if "cache_control" in t
+        ]
+    );
+    for msg in params.get("messages") or [] {
+        if not isinstance(msg, dict) {
+            continue;
+        }
+        if "cache_control" in msg {
+            count += 1;
+        }
+        content = msg.get("content");
+        if isinstance(content, list) {
+            count += len(
+                [
+                    p
+                    for p in content
+                    if isinstance(p, dict) and "cache_control" in p
+                ]
+            );
+        }
+    }
+    return count;
+}
+
 test "prompt caching marks system, last non-system message, and last tool for anthropic models" {
     assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == True;
     assert _is_prompt_caching_eligible("claude-3-opus-20240229") == True;
     assert _is_prompt_caching_eligible("gpt-4o") == False;
 
-    messages = [
-        {"role": "system", "content": "You are an agent."},
-        {"role": "user", "content": "Do something"},
-        {"role": "assistant", "content": "Calling a tool."},
-        {
-            "role": "tool",
-            "content": [
-                {"type": "text", "text": "first"},
-                {"type": "text", "text": "last"}
-            ]
-        }
-    ];
-    tools = [
-        {"type": "function", "function": {"name": "read_file"}},
-        {"type": "function", "function": {"name": "finish_tool"}}
-    ];
-    _apply_prompt_caching(messages, tools);
+    stale = dict(_CACHE_CONTROL_EPHEMERAL);
+    for (label, messages, tools, marked) in [
+        (
+            "fresh history",
+            [
+                {"role": "system", "content": "You are an agent."},
+                {"role": "user", "content": "Do something"},
+                {"role": "assistant", "content": "Calling a tool."},
+                {
+                    "role": "tool",
+                    "content": [
+                        {"type": "text", "text": "first"},
+                        {"type": "text", "text": "last"}
+                    ]
+                }
+            ],
+            [
+                {"type": "function", "function": {"name": "read_file"}},
+                {"type": "function", "function": {"name": "finish_tool"}}
+            ],
+            [1, 0, 0, 1]
+        ),
+        (
+            "history saved with stale markers",
+            [
+                {"role": "system", "content": "You are an agent."},
+                {"role": "user", "content": "first", "cache_control": stale},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "second", "cache_control": stale}
+                    ]
+                },
+                {"role": "user", "content": "latest"}
+            ],
+            [
+                {
+                    "type": "function",
+                    "function": {"name": "read_file"},
+                    "cache_control": stale
+                },
+                {"type": "function", "function": {"name": "finish_tool"}}
+            ],
+            [1, 0, 0, 1]
+        )
+    ] {
+        before = copy.deepcopy((messages, tools));
+        (sent_messages, sent_tools) = _apply_prompt_caching(messages, tools);
+        assert [_cache_markers({"messages": [m]}) for m in sent_messages]
+            == marked , label;
+        assert ["cache_control" in t for t in sent_tools] == [False, True] , label;
+        assert (messages, tools) == before , f"{label}: the caller's messages and tools changed";
+    }
 
-    assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
-    assert "cache_control" not in messages[1];
-    assert "cache_control" not in messages[2];
-    tool_content: any = messages[3].get("content");
-    assert "cache_control" not in tool_content[0];
-    assert tool_content[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    steer = {"role": "user", "content": "focus on a"};
 
-    assert "cache_control" not in tools[0];
-    assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    def lookup(key: str) -> str {
+        return key;
+    }
+
+    def hook(ctx: IterationContext) -> IterationAction {
+        ctx.messages.append(steer);
+        return IterationAction.CONTINUE;
+    }
+
+    llm = MockLLM(
+        model_name="anthropic/claude-test",
+        outputs=[tool_call("lookup", {"key": "a"}), finish("done")]
+    );
+
+    def fetch(query: str) -> str by llm(tools=[lookup], on_iteration=hook);
+
+    assert fetch("go") == "done";
+    sent = [_cache_markers(params) for params in llm.seen];
+    assert sent == [3, 3] , f"each request should carry 3 cache markers, sent {sent}";
+    assert "cache_control" not in steer , "the caller's steer message was stamped";
 }
 
 test "prompt caching disabled via config" {
@@ -1324,7 +1495,7 @@ test "litellm settings and load hooks apply when litellm is first imported" {
     out = _fresh_probe(
         "import sys\n"
         "import jaclang.byllm.llm as llm\n"
-        "from jaclang.byllm._optdeps.litellm import when_litellm_loaded\n"
+        "from jaclang.byllm._optdeps.litellm import LiteLLMMessage, when_litellm_loaded\n"
         "llm.Model(model_name='gpt-4o-mini')\n"
         "seen = []\n"
         "when_litellm_loaded(lambda mod: seen.append(mod.__name__))\n"
@@ -1332,9 +1503,9 @@ test "litellm settings and load hooks apply when litellm is first imported" {
         "print('seen=' + ','.join(seen))\n"
         "print('drop_params=' + str(litellm.drop_params))\n"
         "print('suppress=' + str(litellm.suppress_debug_info))\n"
-        "msg = llm.LiteLLMMessage(role='assistant', content='hi')\n"
+        "msg = LiteLLMMessage(role='assistant', content='hi')\n"
         "print('message=' + str(isinstance(msg, litellm.types.utils.Message)))\n"
-        "print('stand_in=' + str(isinstance(msg, llm.LiteLLMMessage)))\n"
+        "print('stand_in=' + str(isinstance(msg, LiteLLMMessage)))\n"
         "print('proxy_same=' + str(llm.litellm.completion is litellm.completion))\n"
         "from jaclang.byllm.exceptions import LLMTimeout\n"
         "print('timeout_is_provider=' + str(issubclass(LLMTimeout, litellm.Timeout)))\n"

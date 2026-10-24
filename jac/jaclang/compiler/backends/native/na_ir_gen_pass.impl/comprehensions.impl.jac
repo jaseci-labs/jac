@@ -110,7 +110,6 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._is_boolean_result_expr(nd: (uni.UniNode | None)) -> bool {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     while isinstance(nd, (uni.CfgExpr, uni.AtomUnit)) {
         nd = nd.expr if isinstance(nd, uni.CfgExpr) else nd.value;
     }
@@ -215,6 +214,27 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
             if self._str_desc_ty is not None and resolved_value == self._str_desc_ty
             else resolved_value;
         val_type_name = self._dict_val_spec(val_type);
+    }
+
+    if self?.jacval_type and key_type == self.jacval_type {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="dict with mixed key types",
+            help_text="Native dicts hash a single concrete key type; a dict whose keys mix representations has no native storage. Use one key type (for example str) and keep the mixing on the value side."
+        );
+        return None;
+    }
+    if isinstance(val_type, ir.VoidType) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="dict whose values are always None",
+            help_text="A native dict stores one concrete value type, and a value that is always None has none. Give the values a type that can hold None (for example dict[str, int | None])."
+        );
+        return None;
     }
 
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);

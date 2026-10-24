@@ -1,29 +1,5 @@
 """The resource module: generated clinic tables, struct_rusage and the constants."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyExc_ImportError,
-    PyExc_OSError,
-    PyLong_FromLong,
-    PyModule_AddIntConstant,
-    PyModule_AddObjectRef,
-    PyObject,
-    jacpy_struct_sequence_type
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    MethodDefinition,
-    add_owned,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.clinic.resource { module_methods }
-import from jaclang.runtime.python.modules.resource_records { PLATFORM, HAS_PRLIMIT }
-import from jaclang.runtime.python.modules.resource_constants {
-    CONSTANTS,
-    RLIM_INFINITY
-}
-
 glob:priv INTERNAL: list[str] = ["RLIM_INFINITY", "RLIM_NLIMITS"];
 
 def:priv execute(module: ptr[PyObject]) -> i32 {

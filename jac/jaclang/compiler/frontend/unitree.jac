@@ -1,170 +1,18 @@
 import os;
 import type from collections.abc { Sequence }
-import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant {
-    BUILTIN_CALLABLE_NAMES,
-    DELIM_MAP,
-    BindingKind,
-    CodeContext,
-    DeleteTargetError,
-    ExprCtx,
-    ImmutabilityKind,
-    OwnershipKind,
-    SymbolAccess,
-    SymbolStorage,
-    SymbolType
-}
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.compiler.frontend.constant { JacSemTokenModifier as SemTokMod }
-import from jaclang.compiler.frontend.constant { JacSemTokenType as SemTokType }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.constant { ParamKind }
-import type from jaclang.compiler.types.types { TypeBase }
-import type from jaclang.compiler.types.ct_value { CtValue }
-import from jaclang.compiler.frontend.roles {
-    Role,
-    Kid,
-    ImplOf,
-    AccessRole,
-    AccessorsRole,
-    AliasRole,
-    ArchTagInfoRole,
-    ArchTypeRole,
-    ArgPatternsRole,
-    AssignmentsRole,
-    AssignsRole,
-    AttributesRole,
-    AugOpRole,
-    AwaitingBodyRole,
-    BaseClassesRole,
-    BodyRole,
-    BoundRole,
-    CasesRole,
-    CastTypeRole,
-    CauseRole,
-    ChainRole,
-    ChildrenRole,
-    ClibDeclsRole,
-    CodeRole,
-    CollectionRole,
-    ComparesRole,
-    ComprRole,
-    ConditionRole,
-    ConditionalRole,
-    ConnAssignRole,
-    ConnTypeRole,
-    CountByRole,
-    CtrlRole,
-    DecoratorsRole,
-    DefaultValRole,
-    DescriptionRole,
-    DocRole,
-    DynamicTagRole,
-    EdgeSpecRole,
-    ElseBodyRole,
-    ElseValueRole,
-    EndRole,
-    ErrorMsgRole,
-    EventRole,
-    ExTypeRole,
-    ExceptsRole,
-    ExprRole,
-    ExprsRole,
-    FTypeRole,
-    FilterCondRole,
-    FinallyBodyRole,
-    FormatPartRole,
-    FormatSpecRole,
-    FromLocRole,
-    FromTargetRole,
-    GuardRole,
-    HintRole,
-    InsertLocRole,
-    ItemsRole,
-    IterRole,
-    KeyRole,
-    KeywordsRole,
-    KvPairRole,
-    KvPairsRole,
-    KwPatternsRole,
-    KwargsRole,
-    KwonlyargsRole,
-    LeftRole,
-    MainRole,
-    NameRole,
-    NameRefRole,
-    OpRole,
-    OperandRole,
-    OpsRole,
-    OutExprRole,
-    ParamsRole,
-    PartsRole,
-    PathRole,
-    PatternRole,
-    PatternsRole,
-    PosonlyParamsRole,
-    ReturnTypeRole,
-    RightRole,
-    RightsRole,
-    SignatureRole,
-    SlicesRole,
-    SpecRole,
-    SrcEndpointRole,
-    StartRole,
-    StepRole,
-    StopRole,
-    StringsRole,
-    TargetRole,
-    TgtEndpointRole,
-    TokRole,
-    TypeCtxRole,
-    TypeParamsRole,
-    TypeTagRole,
-    UnpackRole,
-    ValueRole,
-    ValueTypeRole,
-    ValuesRole,
-    VarargsRole,
-    VarsRole
-}
-import from jaclang.compiler.frontend.relations {
-    Absorbs,
-    CalleeDecl,
-    CalleeSignature,
-    EventTriggerOf,
-    NarrowedTypeOf,
-    TypeOf,
-    CfgFalse,
-    CfgSucc,
-    CfgTrue,
-    DecidedCodespace,
-    Codespace,
-    Defines,
-    InScope,
-    PlacedIn,
-    ScopeChild,
-    ScopeParent,
-    ScopeOverload,
-    ScopePrimary,
-    SymOf,
-    Uses,
-    codespace_node
-}
 
 
 walker TreeWalker {}
 
 node UniNode {
-    has _ctx_parent: (UniNode | None) postinit,
-        _struct_frozen: bool postinit,
-        _in_mod_nodes: list[UniNode] postinit,
-        _gen: (CodeGenTarget | None) postinit,
+    has _ctx_parent: (UniNode | None) = None,
+        _struct_frozen: bool = False,
+        _in_mod_nodes: (list[UniNode] | None) = None,
+        _gen: (CodeGenTarget | None) = None,
         loc: CodeLocInfo postinit,
-        _role_shapes: (dict[type, str] | None) postinit,
-        __sub_node_tab: (dict[(type, list[UniNode])] | None) postinit,
-        ct_pruned: bool postinit;
+        _role_shapes: (dict[type, str] | None) = None,
+        __sub_node_tab: (dict[(type, list[UniNode])] | None) = None,
+        ct_pruned: bool = False;
 
     def postinit -> None;
     can walk_kids with TreeWalker entry;
@@ -217,37 +65,23 @@ node UniNode {
     def set_parent(parent: UniNode) -> UniNode;
     def resolve_tok_range -> tuple[(Token, Token)];
     def gen_token(name: Tok, value: (str | None) = None) -> Token;
-    def get_all_sub_nodes[T](typ: type[T]) -> list[T] {
-        result: list[T] = [];
-        if typ in self._sub_node_tab {
-            for i in self._sub_node_tab[typ] {
-                if isinstance(i, typ) {
-                    result.append(i);
-                }
-            }
-        }
-        return result;
-    }
+    def get_all_sub_nodes[T](typ: type[T]) -> list[T];
+    def find_parent_of_type[T](typ: type[T]) -> (T | None);
+    def parent_of_type[T](typ: type[T]) -> T;
 
-    def find_parent_of_type[T](typ: type[T]) -> (T | None) {
-        nd: (UniNode | None) = self.parent;
-        while nd is not None {
-            if isinstance(nd, typ) {
-                return nd;
-            }
-            nd = nd.parent;
-        }
-        return None;
-    }
+    has decl_parent: (UniNode | None) { getter; }
+    has top_element: (UniNode | None) { getter; }
+    has enclosing_frame: (UniNode | None) { getter; }
+    has in_impl_spec: bool { getter; }
 
-    def parent_of_type[T](typ: type[T]) -> T {
-        ret = self.find_parent_of_type(typ);
-        if isinstance(ret, typ) {
-            return ret;
-        }
-        raise ValueError(f"Parent of type {typ} not found from{type(self)}.");
-    }
+    def is_within(outer: UniNode) -> bool;
+    def element_in(mod: Module) -> (UniNode | None);
+    def enclosing_decl[T](typ: type[T]) -> (T | None);
 
+    has own_impls: list[ImplDef] { getter; }
+
+    def linked_impls -> list[ImplDef];
+    def element_sub_nodes[T](typ: type[T]) -> list[T];
     def codespace -> CodeContext;
     def in_client_context -> bool;
     def in_native_context -> bool;
@@ -329,12 +163,7 @@ node UniScopeNode(UniNode) {
     has names_in_scope_overload: dict[(str, list[Symbol])] { getter; }
 
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
-    static def is_python_scoping(nd: (UniNode | None)) -> bool {
-        return isinstance(
-            nd, (Module, Enum, Archetype, Ability, ImplDef, Test, LambdaExpr)
-        );
-    }
-
+    static def is_python_scoping(nd: (UniNode | None)) -> bool;
     def lookup(
         name: str, deep: bool = True, incl_inner_scope: bool = False
     ) -> (Symbol | None);
@@ -349,6 +178,11 @@ node UniScopeNode(UniNode) {
     ) -> (UniNode | None);
 
     def find_scope(name: str) -> (UniScopeNode | None);
+
+    has folded: bool { getter; }
+    has owning_scope: UniScopeNode { getter; }
+
+    def fold_scope(impl_scope: UniScopeNode) -> None;
     def set_primary_names(syms: dict[(str, Symbol)]) -> None;
     def adopt_primary(sym: Symbol, alias: str = "") -> None;
     def _drop_primary(sym: Symbol) -> None;
@@ -510,14 +344,14 @@ node Expr(UniNode) {
         setter(narrowed_type: (TypeBase | None));
     }
 
-    has _type_sym_tab: (UniScopeNode | None) postinit,
-        _type_cache: (TypeBase | None) postinit,
-        _type_cache_ok: bool postinit,
-        ct_value: CtValue | None postinit,
-        coerce_to: (str | None) postinit,
-        fw: (str | None) postinit,
-        fw_safe: bool postinit,
-        attached_tokens: (list[Token] | None) postinit;
+    has _type_sym_tab: (UniScopeNode | None) = None,
+        _type_cache: (TypeBase | None) = None,
+        _type_cache_ok: bool = False,
+        ct_value: CtValue | None = None,
+        coerce_to: (str | None) = None,
+        fw: (str | None) = None,
+        fw_safe: bool = False,
+        attached_tokens: (list[Token] | None) = None;
 
     def init(*, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
@@ -676,6 +510,7 @@ node Module(AstDocNode, UniScopeNode) {
         managed_borrow_binds: set[int] postinit;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
+    has elements: list[UniNode] { getter; }
 
     def init(
         *,
@@ -709,17 +544,7 @@ node Module(AstDocNode, UniScopeNode) {
     def record_comptime_definition(path: str, qualname: str) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
-    ) -> Module {
-        return Module(
-            name=(inject_name or ''),
-            source=(inject_src or Source('', '')),
-            doc=None,
-            body=[],
-            terminals=[],
-            stub_only=True,
-            kid=[EmptyToken()]
-        );
-    }
+    ) -> Module;
 
     def __repr__ -> str;
 }
@@ -958,7 +783,7 @@ node ModuleItem(UniNode) {
     def __repr__ -> str;
 }
 
-node ImplImport(ElementStmt) {
+node GraphImport(ElementStmt) {
     has scope: (ModulePath | None) { getter; }
     has body: Sequence[ImportWire | ImportRule] { getter; }
 
@@ -981,17 +806,18 @@ node ImportWire(UniNode) {
     has is_absorb: bool = False,
         is_typed: bool = False,
         is_comptime: bool = False,
-        is_module_form: bool = False;
+        is_grouped: bool = False,
+        is_injected: bool = False;
 
     has provider: ModulePath { getter; }
-    has consumers: Sequence[ModulePath] { getter; }
-    has items: Sequence[WireItem] { getter; }
+    has targets: Sequence[WireTarget] { getter; }
 
     def init(
         *,
         provider: ModulePath,
-        consumers: Sequence[ModulePath],
-        items: (Sequence[WireItem] | None),
+        targets: Sequence[WireTarget],
+        is_grouped: bool = False,
+        is_injected: bool = False,
         is_absorb: bool = False,
         is_typed: bool = False,
         is_comptime: bool = False,
@@ -1000,8 +826,27 @@ node ImportWire(UniNode) {
 
     def postinit -> None;
 
-    has block: ImplImport { getter; }
+    has block: GraphImport { getter; }
     has provider_path: str { getter; }
+
+    def __repr__ -> str;
+}
+
+node WireTarget(UniNode) {
+    has is_module_form: bool = False;
+    has consumers: Sequence[ModulePath] { getter; }
+    has items: Sequence[WireItem] { getter; }
+
+    def init(
+        *,
+        consumers: Sequence[ModulePath],
+        items: (Sequence[WireItem] | None),
+        kid: Sequence[UniNode] = []
+    ) -> None;
+
+    def postinit -> None;
+
+    has wire: ImportWire { getter; }
     has consumer_paths: list[str] { getter; }
 
     def __repr__ -> str;
@@ -1025,24 +870,18 @@ node ImportRule(UniNode) {
 
     def postinit -> None;
 
-    has block: ImplImport { getter; }
+    has block: GraphImport { getter; }
     has item_names: set[str] { getter; }
 
     def __repr__ -> str;
 }
 
 node ModulePattern(UniNode) {
-    has is_glob: bool = False,
-        is_any: bool = False;
-
+    has is_glob: bool = False;
     has path: (ModulePath | None) { getter; }
 
     def init(
-        *,
-        path: (ModulePath | None),
-        is_glob: bool = False,
-        is_any: bool = False,
-        kid: Sequence[UniNode] = []
+        *, path: (ModulePath | None), is_glob: bool = False, kid: Sequence[UniNode] = []
     ) -> None;
 
     def postinit -> None;
@@ -1050,7 +889,6 @@ node ModulePattern(UniNode) {
     has dotted: str { getter; }
 
     static def join_scope(prefix: str, name: str) -> str;
-    def matches(module: str, prefix: str = "") -> bool;
     def __repr__ -> str;
 }
 
@@ -1114,6 +952,7 @@ node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImpl
 node ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode) {
     has decorators: (Sequence[Expr] | None) { getter; }
     has target: Sequence[NameAtom] { getter; }
+    has type_params: list[TypeParam] { getter; }
     has spec: (Sequence[Expr] | FuncSignature | EventSignature | None) { getter; }
     has body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr { getter; }
     has decl_link: (UniNode | None) { getter; }
@@ -1124,6 +963,7 @@ node ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSym
         codespace_dual: bool = False,
         decorators: (Sequence[Expr] | None),
         target: Sequence[NameAtom],
+        type_params: (Sequence[TypeParam] | None) = None,
         spec: (Sequence[Expr] | FuncSignature | EventSignature | None),
         body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
         kid: Sequence[UniNode] = []
@@ -2488,24 +2328,7 @@ node Name(Token, NameAtom) {
 
     static def gen_stub_from_node(
         nd: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None) = None
-    ) -> Name {
-        ret = Name(
-            orig_src=nd.loc.orig_src,
-            name=Tok.NAME.value,
-            value=name_str,
-            col_start=nd.loc.col_start,
-            col_end=nd.loc.col_end,
-            line=nd.loc.first_line,
-            end_line=nd.loc.last_line,
-            pos_start=nd.loc.pos_start,
-            pos_end=nd.loc.pos_end
-        );
-        if nd.parent is not None {
-            ret.set_parent(nd.parent);
-        }
-        ret.name_of = set_name_of or ret;
-        return ret;
-    }
+    ) -> Name;
 
     def __repr__ -> str;
 }
@@ -2701,241 +2524,29 @@ glob _HEX_DIGITS: str = '0123456789abcdefABCDEF',
          'v': '\x0b'
      };
 
-def _lit_prefix_len(text: str) -> int {
-    n = len(text);
-    i = 0;
-    while (i < n and i < 2) {
-        ch = text[i];
-        if (ch == '"' or ch == "'") {
-            return i;
-        }
-        if (ch not in _LIT_PREFIX_CHARS) {
-            return -1;
-        }
-        i += 1;
-    }
-    if (i < n and (text[i] == '"' or text[i] == "'")) {
-        return i;
-    }
-    return -1;
-}
+def _lit_prefix_len(text: str) -> int;
 
-def _lit_quote_len(text: str, start: int) -> int {
-    if ((len(text) - start) >= 6) {
-        opener = text[start:start + 3];
-        if (opener == '"""' or opener == "'''") {
-            return 3;
-        }
-    }
-    return 1;
-}
+def _lit_quote_len(text: str, start: int) -> int;
 
-def radix_int(digits: str, base: int) -> int {
-    value = 0;
-    seen = False;
-    for c in digits.lower() {
-        if c == "_" and seen {
-            continue;
-        }
-        digit = _RADIX_DIGITS.find(c);
-        if digit < 0 or digit >= base {
-            raise ValueError(f"invalid literal for int() with base {base}: '{digits}'");
-        }
-        value = value * base + digit;
-        seen = True;
-    }
-    if not seen {
-        raise ValueError(f"invalid literal for int() with base {base}: '{digits}'");
-    }
-    return value;
-}
+def radix_int(digits: str, base: int) -> int;
 
-def int_literal_value(text: str) -> int {
-    lowered = text.lower();
-    for (prefix, base) in (("0x", 16), ("0o", 8), ("0b", 2)) {
-        if lowered.startswith(prefix) {
-            body = text[2:];
-            if body.startswith("_") {
-                body = body[1:];
-            }
-            return radix_int(body, base);
-        }
-    }
-    digits = text.replace("_", "");
-    if len(digits) > 1 and digits.startswith("0") and digits.strip("0") {
-        raise ValueError(f"invalid literal for int() with base 0: '{text}'");
-    }
-    return radix_int(text, 10);
-}
+def int_literal_value(text: str) -> int;
 
-def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {
-    digits = text[at + 2:at + 2 + width];
-    bad = len(digits) != width;
-    if not bad {
-        for c in digits {
-            if (c not in _HEX_DIGITS) {
-                bad = True;
-                break;
-            }
-        }
-    }
-    if bad {
-        raise ValueError(
-            f"truncated \\{kind} escape: expected {width} hex digits, got '{digits}'"
-        );
-    }
-    code = radix_int(digits, 16);
-    if (code > _MAX_CODE_POINT) {
-        raise ValueError(f"illegal Unicode character in \\{kind}{digits} escape");
-    }
-    return code;
-}
+def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int;
 
-def _decode_str_escapes(text: str) -> str {
-    if ('\\' not in text) {
-        return text;
-    }
-    out: list[str] = [];
-    i = 0;
-    n = len(text);
-    while (i < n) {
-        ch = text[i];
-        if (ch != '\\' or (i + 1) >= n) {
-            out.append(ch);
-            i += 1;
-            continue;
-        }
-        nxt = text[i + 1];
-        if (nxt in _SIMPLE_ESCAPES) {
-            out.append(_SIMPLE_ESCAPES[nxt]);
-            i += 2;
-            continue;
-        }
-        if (nxt == '\n') {
-            i += 2;
-            continue;
-        }
-        if (nxt == '\r') {
-            i += 3 if ((i + 2) < n and text[i + 2] == '\n') else 2;
-            continue;
-        }
-        if (nxt in _OCT_DIGITS) {
-            j = i + 1;
-            end = min(n, i + 4);
-            while (j < end and text[j] in _OCT_DIGITS) {
-                j += 1;
-            }
-            out.append(chr(radix_int(text[i + 1:j], 8)));
-            i = j;
-            continue;
-        }
-        if (nxt == 'x' or nxt == 'u' or nxt == 'U') {
-            width = 2 if (nxt == 'x') else (4 if (nxt == 'u') else 8);
-            out.append(chr(_hex_escape_value(text, i, width, nxt)));
-            i += 2 + width;
-            continue;
-        }
-        if (nxt == 'N') {
-            raise ValueError(
-                "the \\N{name} escape is not supported: the Unicode name "
-                "database is not available to the compiler, so write the "
-                "code point as \\uXXXX or \\UXXXXXXXX instead"
-            );
-        }
-        out.append('\\');
-        out.append(nxt);
-        i += 2;
-    }
-    return ''.join(out);
-}
+def _decode_str_escapes(text: str) -> str;
 
-def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
-    out: list[int] = [];
-    i = 0;
-    n = len(text);
-    while (i < n) {
-        ch = text[i];
-        code = ord(ch);
-        if (code > 127) {
-            raise ValueError('bytes can only contain ASCII literal characters');
-        }
-        if (is_raw or ch != '\\' or (i + 1) >= n) {
-            out.append(code);
-            i += 1;
-            continue;
-        }
-        nxt = text[i + 1];
-        if (nxt in _SIMPLE_ESCAPES) {
-            out.append(ord(_SIMPLE_ESCAPES[nxt]));
-            i += 2;
-            continue;
-        }
-        if (nxt == '\n') {
-            i += 2;
-            continue;
-        }
-        if (nxt == '\r') {
-            i += 3 if ((i + 2) < n and text[i + 2] == '\n') else 2;
-            continue;
-        }
-        if (nxt in _OCT_DIGITS) {
-            j = i + 1;
-            end = min(n, i + 4);
-            while (j < end and text[j] in _OCT_DIGITS) {
-                j += 1;
-            }
-            out.append(radix_int(text[i + 1:j], 8) % 256);
-            i = j;
-            continue;
-        }
-        if (nxt == 'x') {
-            out.append(_hex_escape_value(text, i, 2, 'x'));
-            i += 4;
-            continue;
-        }
-        if (ord(nxt) > 127) {
-            raise ValueError('bytes can only contain ASCII literal characters');
-        }
-        out.append(92);
-        out.append(ord(nxt));
-        i += 2;
-    }
-    return bytes(out);
-}
+def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes;
 
-def literal_string_value(expr: UniNode) -> str | None {
-    if isinstance(expr, (String, MultiString)) {
-        value = expr.lit_value;
-        if isinstance(value, str) {
-            return value;
-        }
-    }
-    return None;
-}
+def literal_string_value(expr: UniNode) -> str | None;
 
-def decode_string_literal(text: str) -> str | bytes {
-    start = _lit_prefix_len(text);
-    if (start < 0) {
-        return text;
-    }
-    prefix = text[:start].lower();
-    quote_len = _lit_quote_len(text, start);
-    body = text[start + quote_len:len(text) - quote_len];
-    is_raw = 'r' in prefix;
-    if ('b' in prefix) {
-        return _decode_bytes_escapes(body, is_raw);
-    }
-    if is_raw {
-        return body;
-    }
-    return _decode_str_escapes(body);
-}
+def decode_string_literal(text: str) -> str | bytes;
 
 def is_identifier_slot(nd: UniNode) -> bool;
 
 def find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None);
 
-def same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool;
+def is_frame(nd: UniNode) -> bool;
 
 def find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode;
 
@@ -2944,6 +2555,10 @@ def def_insert_unpacking(
 ) -> None;
 
 def bind_assignment_targets(nd: Assignment) -> None;
+def bind_walrus_target(nd: BinaryExpr) -> None;
+def is_walrus(nd: UniNode) -> bool;
+def binding_sites_in(scope_root: UniNode) -> list[UniNode];
+def typed_rebind_names(nd: Assignment) -> list[Name];
 def definition_qualname(decl: UniNode) -> str;
 
 def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);
@@ -2977,3 +2592,56 @@ def is_comptime_stmt(nd: UniNode) -> bool;
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
 def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;
+
+impl UniNode.get_all_sub_nodes[T](typ: type[T]) -> list[T] {
+    result: list[T] = [];
+    if typ in self._sub_node_tab {
+        for i in self._sub_node_tab[typ] {
+            if isinstance(i, typ) {
+                result.append(i);
+            }
+        }
+    }
+    return result;
+}
+
+impl UniNode.find_parent_of_type[T](typ: type[T]) -> (T | None) {
+    nd: (UniNode | None) = self.parent;
+    while nd is not None {
+        if isinstance(nd, typ) {
+            return nd;
+        }
+        nd = nd.parent;
+    }
+    return None;
+}
+
+impl UniNode.parent_of_type[T](typ: type[T]) -> T {
+    ret = self.find_parent_of_type(typ);
+    if isinstance(ret, typ) {
+        return ret;
+    }
+    raise ValueError(f"Parent of type {typ} not found from{type(self)}.");
+}
+
+impl UniNode.enclosing_decl[T](typ: type[T]) -> (T | None) {
+    nd: (UniNode | None) = self.decl_parent;
+    while nd is not None {
+        if isinstance(nd, typ) {
+            return nd;
+        }
+        nd = nd.decl_parent;
+    }
+    return None;
+}
+
+impl UniNode.element_sub_nodes[T](typ: type[T]) -> list[T] {
+    found: list[T] = self.get_all_sub_nodes(typ);
+    pending: list[ImplDef] = list(reversed(self.linked_impls()));
+    while pending {
+        impl_def = pending.pop();
+        found.extend(impl_def.get_all_sub_nodes(typ));
+        pending.extend(reversed(impl_def.linked_impls()));
+    }
+    return found;
+}

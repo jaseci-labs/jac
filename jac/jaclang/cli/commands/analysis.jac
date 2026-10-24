@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
          name="explain",
          help="Explain what the compiler inferred: memory (ownership, drops), placement (demotions), ir (optimized LLVM IR)",
@@ -353,7 +349,7 @@ comptime SPEC_TEST: CommandSpec = CommandSpec(
              Arg.create(
                  "test_name",
                  `default="",
-                 help="Run specific test (without test_ prefix)",
+                 help="Run tests whose name contains every word given (case-insensitive)",
                  short="t"
              ),
              Arg.create(

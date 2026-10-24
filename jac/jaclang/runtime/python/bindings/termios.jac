@@ -1,24 +1,5 @@
 """The termios module: generated clinic tables, termios.error and the constants."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyExc_ImportError,
-    PyLong_FromUnsignedLong,
-    PyModule_AddIntConstant,
-    PyObject
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_owned,
-    add_state_owned,
-    jacpy_binding_exception
-}
-import from jaclang.runtime.python.bindings.clinic.termios { module_methods }
-import from jaclang.runtime.python.modules.termios_records { PLATFORM }
-import from jaclang.runtime.python.modules.termios_constants { CONSTANTS }
-
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" or len(CONSTANTS) == 0 {
         object_error(

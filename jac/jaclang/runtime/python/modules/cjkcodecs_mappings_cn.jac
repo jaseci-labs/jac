@@ -7,7 +7,6 @@ do not edit. Code arrays are bytes literals of their little-endian
 elements; an index entry packs (offset + 1) << 16 | bottom << 8 | top.
 See ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.modules.cjkcodecs { DbcsMap, Gb18030Range }
 
 glob CJK_CN_MAPPINGS: Final[i64] = 4;
 

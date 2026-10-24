@@ -1,5 +1,3 @@
-import from jaclang.compiler.backends.native.floors { WASM_FLOOR_MANIFEST }
-
 glob MUSL_ARTIFACTS: tuple[str, ...] = (
          "libc.a",
          "libzigc.a",

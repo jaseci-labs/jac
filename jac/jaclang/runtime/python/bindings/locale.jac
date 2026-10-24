@@ -6,26 +6,6 @@ read from the C library. The gettext functions exist only where the C library
 has <libintl.h>.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_char_max,
-    NULL,
-    PyExc_ImportError,
-    PyModule_AddIntConstant,
-    PyObject
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module {
-    MethodDefinition,
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned,
-    jacpy_binding_exception
-}
-import from jaclang.runtime.python.bindings.clinic.locale { module_methods }
-import from jaclang.runtime.python.modules.locale { ERROR }
-import from jaclang.runtime.python.modules.locale_constants { CONSTANTS, PLATFORM }
-import from jaclang.runtime.python.modules.locale_platform { HAS_LIBINTL }
-
 glob:priv LIBINTL: list[str] = [
          "gettext",
          "dgettext",

@@ -6,25 +6,9 @@ glob ARG_TYPES: dict[str, type] = {
 
      };
 
-def resolve_arg_typ(name: any) -> any {
-    if isinstance(name, str) {
-        return ARG_TYPES.get(name, str);
-    }
-    return name if name is not None else str;
-}
+def resolve_arg_typ(name: any) -> any;
 
-def arg_typ_name(typ: any) -> str {
-    for (name, registered) in ARG_TYPES.items() {
-        if typ is registered {
-            return name;
-        }
-    }
-    type_name = typ?.__name__;
-    if isinstance(type_name, str) and type_name {
-        return type_name;
-    }
-    return "str";
-}
+def arg_typ_name(typ: any) -> str;
 
 enum ArgKind {
     POSITIONAL = 1,
@@ -36,13 +20,7 @@ enum ArgKind {
     MULTI_OPTION = 8,
 }
 
-def arg_consumes_value(kind: ArgKind, typ: any) -> bool {
-    if kind in (ArgKind.POSITIONAL, ArgKind.MULTI_POSITIONAL, ArgKind.REMAINDER) {
-        return False;
-    }
-    typ_name = typ if isinstance(typ, str) else arg_typ_name(typ);
-    return kind != ArgKind.FLAG and typ_name != "bool";
-}
+def arg_consumes_value(kind: ArgKind, typ: any) -> bool;
 
 obj Arg {
     has name: str,

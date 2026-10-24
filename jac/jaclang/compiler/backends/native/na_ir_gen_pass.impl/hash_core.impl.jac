@@ -26,15 +26,7 @@ glob IDENTITY_KEY_SPEC: str = "oref",
      HASH_FNV_PRIME: int = 1099511628211,
      HASH_MUL_K: int = -7046029254386353131;
 
-def _ir_member_types(t: (ir.Type | None)) -> list[ir.Type] {
-    if isinstance(t, ir.Aggregate) {
-        return t.elements or [];
-    }
-    if isinstance(t, ir.VectorType) {
-        return t.elements;
-    }
-    return [];
-}
+def _ir_member_types(t: (ir.Type | None)) -> list[ir.Type];
 
 impl NaIRGenPass._emit_hash_core_helpers(
     family: str,
@@ -1378,4 +1370,14 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
         }
     }
     return f"tuple{size}_{sig}";
+}
+
+impl _ir_member_types(t: (ir.Type | None)) -> list[ir.Type] {
+    if isinstance(t, ir.Aggregate) {
+        return t.elements or [];
+    }
+    if isinstance(t, ir.VectorType) {
+        return t.elements;
+    }
+    return [];
 }

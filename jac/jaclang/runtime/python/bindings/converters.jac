@@ -7,66 +7,6 @@ the binding's invoke() turns into a NULL result. Messages follow
 Python/getargs.c and Tools/clinic so upstream tests see the same text.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyArg_Parse,
-    PyErr_Clear,
-    PyErr_Occurred,
-    PyExc_OverflowError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyFloat_AsDouble,
-    PyFloat_FromDouble,
-    PyIndex_Check,
-    PyLong_AsInt,
-    PyLong_AsLong,
-    PyLong_AsLongLong,
-    PyLong_AsSsize_t,
-    PyLong_AsUnsignedLongLongMask,
-    PyLong_AsUnsignedLongMask,
-    PyLong_FromLong,
-    PyLong_FromSize_t,
-    PyLong_FromSsize_t,
-    PyLong_FromUnsignedLong,
-    PyNumber_AsSsize_t,
-    PyNumber_Index,
-    PyObject,
-    PyObject_IsTrue,
-    PyType_GetSlot,
-    PyUnicode_AsUTF8AndSize,
-    PyUnicode_ReadChar,
-    Py_GetConstantBorrowed,
-    Py_None,
-    Py_TYPE,
-    _PyLong_UInt16_Converter,
-    _PyLong_UInt32_Converter,
-    _PyLong_UInt64_Converter,
-    _PyLong_UInt8_Converter,
-    _PyLong_UnsignedInt_Converter,
-    _PyLong_UnsignedShort_Converter,
-    jacpy_is_exact_long,
-    jacpy_is_float,
-    jacpy_is_unicode,
-    jacpy_release,
-    jacpy_unicode_size,
-    jacpy_unsigned_converter,
-    PyUnicode_FSConverter
-}
-import from jaclang.runtime.python.object_model.file { PyObject_AsFileDescriptor }
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
-import from jaclang.runtime.python.bindings.type {
-    TypeSlot,
-    jacpy_binding_base,
-    jacpy_binding_type_matches
-}
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    object_error,
-    text_value,
-    type_name
-}
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-
 def argument_label(argname: str, position: int) -> str {
     return f"argument {position}" if not argname else f"argument '{argname}'";
 }

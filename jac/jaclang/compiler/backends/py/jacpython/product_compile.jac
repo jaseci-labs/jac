@@ -1,41 +1,5 @@
 # Python source/AST -> PyCode through Jac validation, codegen and assembly.
 
-import from jaclang.runtime.python.objects { PyObj, py_error }
-import from jaclang.compiler.frontend.python.parser {
-    parse_eval_expr,
-    parse_file,
-    parse_interactive
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    expr,
-    mod,
-    Expr,
-    Expression,
-    Module,
-    Interactive
-}
-import from jaclang.compiler.frontend.python.compiler_preprocess { preprocess_node }
-import from jaclang.compiler.frontend.python.compiler_validate {
-    validate_eval_expr,
-    validate_module_body,
-    check_ast_warnings,
-    future_features
-}
-import from jaclang.compiler.frontend.python.compiler_symtable { build_module_symtable }
-import from jaclang.compiler.frontend.python.compiler_diagnostics {
-    compiler_diag_to_pyobj
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
-    compile_eval,
-    compile_exec
-}
-import from jaclang.compiler.backends.py.jacpython.flowgraph { verify_cfg }
-import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
-import from jaclang.compiler.frontend.python.annotation_unparse {
-    stringify_future_annotations
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context, }
-
 def compile_source(
     source: str, filename: str, mode: str, optimize: int, flags: int = 0
 ) -> PyObj {

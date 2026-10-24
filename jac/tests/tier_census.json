@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 47,
-    "refused": 81,
+    "same": 49,
+    "refused": 79,
     "fails": 0,
     "differs": 1,
     "hangs": 0,
@@ -272,12 +272,10 @@
       "reason": "E5092 Native lowering failed for constructor '_'"
     },
     "tests/language/fixtures/circle_clean.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "class": "same"
     },
     "tests/language/fixtures/circle_pure.jac": {
-      "class": "refused",
-      "reason": "E5092 Native lowering failed for constructor '_'"
+      "class": "same"
     },
     "tests/language/fixtures/cls_method.jac": {
       "class": "refused",

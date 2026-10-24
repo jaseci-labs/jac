@@ -6,15 +6,6 @@ one, so the privileged upgrade the hostPath DaemonSets need could never fire on
 a namespace jac-scale created. An operator's own label must still be respected.
 """
 
-import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
-    default_pss_labels,
-    privileged_pss_labels,
-    PSS_ENFORCE_LABEL,
-    PSS_SOURCE_LABEL,
-    PSS_WARN_LABEL
-}
-
-
 test "the default labels record that jac-scale set the enforce level" {
     labels = default_pss_labels();
     assert labels[PSS_ENFORCE_LABEL] == "baseline";

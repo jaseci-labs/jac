@@ -1,7 +1,3 @@
-import from jaclang.compiler.frontend.unitree { Module, SemDef, Symbol, UniScopeNode }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-
 walker SemDefMatchPass(CompilerPass) {
     static has contract: PassContract = PassContract(kernel_safe=True);
 

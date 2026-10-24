@@ -1,22 +1,3 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, PassContract }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    CodeBlockStmt,
-    FuncCall,
-    ImplDef,
-    Module,
-    ModuleCode,
-    Name,
-    NameAtom,
-    OpenStmt,
-    Symbol,
-    Test,
-    UniNode
-}
-
 walker RegionInferPass(CompilerPass) {
     static has contract: PassContract = PassContract(
         provides=(AnalysisFact.REGION_INFER, )

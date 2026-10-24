@@ -9,7 +9,11 @@ import from "expo-crypto" {
 import from core.async_utils { sleep }
 import from .auth { begin_github, poll_github }
 
-async def:pub github_login -> bool {
+async def:pub github_login -> bool;
+
+async def:pub complete_web_login(code: str, state: str) -> str;
+
+impl github_login -> bool {
     nonce = randomUUID() + randomUUID();
     hash = await digestStringAsync(
         CryptoDigestAlgorithm.SHA256, nonce, {"encoding": CryptoEncoding.BASE64}
@@ -51,6 +55,6 @@ async def:pub github_login -> bool {
     }
 }
 
-async def:pub complete_web_login(code: str, state: str) -> str {
+impl complete_web_login(code: str, state: str) -> str {
     return "Complete sign-in in the browser.";
 }

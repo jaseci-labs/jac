@@ -11,7 +11,6 @@ resolution for namespace / availability, and a mocked config-loader boundary
 import os;
 import from unittest.mock { patch, MagicMock }
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.admin { k8s_ops }
 
 
 test "api_error_detail maps 403 to actionable RBAC guidance" {

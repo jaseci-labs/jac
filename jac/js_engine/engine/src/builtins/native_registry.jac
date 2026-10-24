@@ -15,6 +15,7 @@ Encoding scheme:
   get_native_kind(v)  → _NR_REALM.natives[get_native_idx(v)].kind
 """
 
+import from engine.src.runtime.gc_barrier { gc_log_val }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_int,
@@ -174,6 +175,7 @@ def:pub native_props_ensure(v: JSValue) -> JSValue {
     }
     p = js_object_create_null();
     _NR_REALM.natives[idx].props = p;
+    gc_log_val(p);  # generational barrier: natives live long
     return p;
 }
 

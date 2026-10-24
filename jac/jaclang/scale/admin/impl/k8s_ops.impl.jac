@@ -1,0 +1,122 @@
+impl k8s_available -> bool {
+    if not HAS_KUBERNETES {
+        return False;
+    }
+    return bool(os.getenv("KUBERNETES_SERVICE_HOST", "").strip());
+}
+
+impl _ensure_config -> bool {
+    if _config_loaded {
+        return _config_ok;
+    }
+    if not k8s_available() {
+        _config_ok = False;
+        _config_loaded = True;
+        return False;
+    }
+    try {
+        config.load_incluster_config();
+        _config_ok = True;
+    } except Exception as e {
+        logger.warning(f"in-cluster config load failed: {e}");
+        _config_ok = False;
+    }
+
+    _config_loaded = True;
+    return _config_ok;
+}
+
+impl ops_namespace -> str {
+    return in_cluster_namespace();
+}
+
+impl core_api -> any {
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.CoreV1Api();
+    } except Exception as e {
+        logger.warning(f"CoreV1Api init failed: {e}");
+        return None;
+    }
+}
+
+impl apps_api -> any {
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.AppsV1Api();
+    } except Exception as e {
+        logger.warning(f"AppsV1Api init failed: {e}");
+        return None;
+    }
+}
+
+impl networking_api -> any {
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.NetworkingV1Api();
+    } except Exception as e {
+        logger.warning(f"NetworkingV1Api init failed: {e}");
+        return None;
+    }
+}
+
+impl autoscaling_api -> any {
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.AutoscalingV2Api();
+    } except Exception as e {
+        logger.warning(f"AutoscalingV2Api init failed: {e}");
+        return None;
+    }
+}
+
+impl custom_objects_api -> any {
+    """The client for KEDA's ScaledObject and TriggerAuthentication.
+
+    Reaching these also needs the `keda.sh` rule in OPS_READ_RULES, which a pod
+    whose Role predates that rule does not carry, so a caller has to treat a 403
+    from here as "no autoscaler view" rather than as an error.
+    """;
+    if not _ensure_config() {
+        return None;
+    }
+    try {
+        return client.CustomObjectsApi();
+    } except Exception as e {
+        logger.warning(f"CustomObjectsApi init failed: {e}");
+        return None;
+    }
+}
+
+impl api_error_detail(e: any) -> str {
+    status = e?.status;
+    reason = str(getattr(e, "reason", "") or "");
+    if status == 403 {
+        return (
+            "RBAC denied (403). Set [scale.kubernetes].ops_console = true "
+            "and redeploy so the read-only Role binds to the gateway ServiceAccount."
+        );
+    }
+    if status {
+        return f"Kubernetes API error {status} {reason}".strip();
+    }
+    return str(e);
+}
+
+impl unavailable_detail -> str {
+    if not HAS_KUBERNETES {
+        return "kubernetes client not installed (image lacks the 'deploy.k8s' capability).";
+    }
+    if not os.getenv("KUBERNETES_SERVICE_HOST", "").strip() {
+        return "not running inside a Kubernetes cluster.";
+    }
+    return "in-cluster Kubernetes config could not be loaded.";
+}

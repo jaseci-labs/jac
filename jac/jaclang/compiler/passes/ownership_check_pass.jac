@@ -1,78 +1,4 @@
-import from jaclang.compiler.frontend.roles { BodyRole, Kid }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact, PassContract }
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import type from jaclang.compiler.types.types { TypeBase }
 import from enum { Enum }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    AstElseBodyNode,
-    Archetype,
-    Assignment,
-    AtomTrailer,
-    BinaryExpr,
-    CfgExpr,
-    ConcurrentExpr,
-    ConnectOp,
-    CtrlStmt,
-    DeleteStmt,
-    DictVal,
-    DisengageStmt,
-    Enum as UniEnum,
-    Expr,
-    FString,
-    FuncCall,
-    FuncSignature,
-    GlobalVars,
-    HasVar,
-    IfElseExpr,
-    Import,
-    InForStmt,
-    IndexSlice,
-    Int,
-    IterForStmt,
-    KWPair,
-    LambdaExpr,
-    ListVal,
-    Module,
-    ModuleCode,
-    MultiString,
-    Name,
-    Null,
-    OpenStmt,
-    ParamVar,
-    RaiseStmt,
-    FinallyStmt,
-    Except,
-    TryStmt,
-    ReturnStmt,
-    SetVal,
-    Slice,
-    String,
-    SubTag,
-    Token,
-    TupleVal,
-    UnaryExpr,
-    UniCFGNode,
-    UniNode,
-    UniScopeNode,
-    WhileStmt,
-    YieldExpr
-}
-import from jaclang.compiler.frontend.constant {
-    Tokens as Tok,
-    OwnershipKind,
-    SymbolStorage,
-    is_borrow_kind,
-    is_mut_kind
-}
-
-import from jaclang.compiler.passes.dataflow {
-    DataflowTransfer,
-    SymId,
-    solve_backward,
-    solve_forward,
-    solve_forward_must
-}
 
 enum AccessKind {
     ASSIGN_TARGET = "assign_target",
@@ -98,10 +24,7 @@ obj BorrowMeta {
         managed: bool = False,
         path_fields: set[str] postinit;
 
-    def postinit {
-        self.extra_owners = [];
-        self.path_fields = set();
-    }
+    def postinit;
 }
 
 walker OwnershipCheckPass(CompilerPass) {
@@ -206,7 +129,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _stamp_raises_effects -> None;
     def _stamp_write_effects -> None;
     def _local_writes(ab: Ability) -> set[str];
-    def _owning_ability(nd: UniNode) -> (Ability | None);
     def _store_fields(tgt: Expr, out: set[str]) -> None;
     def _call_writes(call: FuncCall) -> set[str];
     def _stamp_managed_borrows -> None;
@@ -233,7 +155,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _callee_own_param_names(call: FuncCall) -> (set[str] | None);
     def _emit_place_move_diagnostics -> None;
     def _emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
-    def _node_within(nd: UniNode, scope: UniNode) -> bool;
     def _is_scope_exit(nd: UniCFGNode) -> bool;
     def _call_consumes_args(call: FuncCall) -> bool;
     def _grow_arg_moves(call: FuncCall, arg: Expr | None) -> bool;
@@ -305,7 +226,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _run_borrow_liveness(cfg_nodes: list[UniCFGNode]) -> None;
     def _run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> None;
     def _active_borrows_at(cfg: UniCFGNode) -> set[SymId];
-    def _is_ancestor(ancestor: UniNode, nd: UniNode) -> bool;
     def _emit_diagnostics -> None;
     def _earlier_move_in_node(nd: Name, sid: SymId) -> (Name | None);
     def _emit_borrow_diagnostics -> None;

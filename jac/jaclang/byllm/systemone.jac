@@ -1,13 +1,5 @@
 import from enum { Enum }
-import from jaclang.runtime.semantic {
-    ClassInfo,
-    EnumInfo,
-    FunctionInfo,
-    TypeForm,
-    VarInfo
-}
-import from jaclang.byllm.mtir { MTRuntime }
-import from jaclang.byllm.exceptions { OutputConversionError }
+
 import from types { MethodType }
 
 glob CHOICE = "choice",
@@ -70,16 +62,7 @@ obj Decision {
     static has _views: dict[int, type] = {};
 
     @classmethod
-    def __class_getitem__(cls: type, elem: any) -> type {
-        key = id(elem);
-        cached = Decision._views.get(key);
-        if cached is None {
-            name = getattr(elem, "__name__", str(elem));
-            cached = `type(f"Decision[{name}]", (Decision, ), {"_jac_inner": elem});
-            Decision._views[key] = cached;
-        }
-        return cached;
-    }
+    def __class_getitem__(cls: type, elem: any) -> type;
 }
 
 

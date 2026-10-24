@@ -27,7 +27,14 @@ impl TestPlan.is_empty -> bool {
 }
 
 impl NameFilter.postinit -> None {
-    self.tree = _parse_filter_expr(self.expr);
+    if not self.literal {
+        self.tree = _parse_filter_expr(self.expr);
+        return;
+    }
+    for word in self.expr.split() {
+        term = ("word", word.lower());
+        self.tree = term if self.tree is None else ("and", self.tree, term);
+    }
 }
 
 impl NameFilter.matches(name: str) -> bool {
@@ -142,17 +149,13 @@ impl _eval_filter(expr_node: any, name: str) -> bool {
 }
 
 impl _build_selector(test_name: str, filter: str) -> (NameFilter | None) {
-    expr = "";
-    if test_name {
-        parts = test_name.split();
-        expr = " and ".join(parts) if parts else test_name;
-    } elif filter {
-        expr = filter;
+    if test_name.strip() {
+        return NameFilter(expr=test_name, literal=True);
     }
-    if not expr {
-        return None;
+    if filter.strip() {
+        return NameFilter(expr=filter);
     }
-    return NameFilter(expr=expr);
+    return None;
 }
 
 impl _should_ignore(path: str, ignore: list[str]) -> bool {
@@ -221,12 +224,10 @@ impl _under_fixtures(path: str) -> bool {
 }
 
 impl _is_named_test_file(filename: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, is_test }
     return (filename.startswith("test_") and is_jac(filename)) or is_test(filename);
 }
 
 impl _suite_source(filepath: str) -> str {
-    import from jaclang.jac0core.ext_registry { is_test }
     if is_test(os.path.basename(filepath)) {
         try {
             import from jaclang.compiler.driver.bccache { discover_base_file }
@@ -240,7 +241,6 @@ impl _suite_source(filepath: str) -> str {
 }
 
 impl _iter_candidate_files(start: str, ignore: (list[str] | None) = None) -> list[str] {
-    import from jaclang.jac0core.ext_registry { is_impl, is_jac }
     ignored: list[str] = ignore or [];
     found: list[str] = [];
     for (dirpath, dirnames, filenames) in os.walk(start, topdown=True) {
@@ -269,7 +269,6 @@ impl discover(
     directory: (str | list[str]) = "",
     ignore: (list[str] | None) = None
 ) -> TestPlan {
-    import from jaclang.jac0core.ext_registry { is_jac }
     targets: list[str] = paths or [];
     ignored: list[str] = ignore or [];
     explicit: set[str] = set();
@@ -354,10 +353,7 @@ impl _cleanup_test_bases -> None {
 
 impl _fresh_jac_state(clear_modules: bool = True) -> None {
     import tempfile;
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface }
-    import from jaclang.project.config { get_explicit_config, set_config }
-    import from jaclang.server.session { mark_scratch_base }
+
     if not _CONFIG_PIN_BASELINE {
         _CONFIG_PIN_BASELINE.append(get_explicit_config());
     } else {
@@ -599,9 +595,7 @@ impl run_file(
     import importlib;
     import sys;
     import time;
-    import from jaclang.testing.test { JacTestCheck }
-    import from jaclang.testing.cl_test_runner { module_is_client, run_cl_test_file }
-    import from jaclang.jac0core.ext_registry { base_stem }
+
     abs_path = os.path.abspath(filepath);
     outcomes: list[TestOutcome] = [];
     is_client = False;
@@ -1038,7 +1032,7 @@ impl run_tests(
     }
     selector = _build_selector(test_name, filter);
     workers = resolve_jobs(jobs);
-    import from jaclang.server.session { own_child_databases }
+
     own_child_databases();
     started = time.perf_counter();
     raw_jobs = jobs
@@ -1102,18 +1096,12 @@ impl run_tests(
 }
 
 impl resolve_jobs(requested: (str | int | None) = None) -> int {
-    import from jaclang.cli.workpool { resolve_jobs as _resolve_pool_jobs }
-
     return _resolve_pool_jobs(requested, env_var="JAC_TEST_JOBS");
 }
 
-def _test_rss_cap_mb -> int {
-    import from jaclang.cli.workpool { env_int }
-    return env_int("JAC_TEST_RECYCLE_MB", 8192);
-}
+def _test_rss_cap_mb -> int;
 
 impl _test_retire(served: int, rss_mb: int) -> bool {
-    import from jaclang.cli.workpool { env_int }
     return _should_retire(
         served, env_int("JAC_TEST_RECYCLE", 25), rss_mb, _test_rss_cap_mb()
     );
@@ -1194,4 +1182,8 @@ impl _run_plan(
     } else {
         pool.run();
     }
+}
+
+impl _test_rss_cap_mb -> int {
+    return env_int("JAC_TEST_RECYCLE_MB", 8192);
 }

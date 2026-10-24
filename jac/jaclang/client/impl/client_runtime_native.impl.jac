@@ -1,6 +1,4 @@
-def _isNil(x: any) -> bool {
-    return x is None or x is undefined;
-}
+def _isNil(x: any) -> bool;
 
 impl __jacWirePlatformAdapters -> None {
     globalThis.__jacGetRenderer__ = __jacGetRenderer;
@@ -703,14 +701,7 @@ impl __getApiBaseUrl -> str {
     return "";
 }
 
-def _nativeStorageCache -> dict[str, any] {
-    cache: any = globalThis.__jacNativeStorageCache__;
-    if not cache {
-        cache = {};
-        globalThis.__jacNativeStorageCache__ = cache;
-    }
-    return cache;
-}
+def _nativeStorageCache -> dict[str, any];
 
 impl __getLocalStorage(key: str) -> str {
     cache = _nativeStorageCache();
@@ -868,42 +859,11 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
     );
 }
 
-def _unwrapZodSchema(schema_obj: any, depth: int = 0) -> any {
-    max_depth = 10;
-    if not schema_obj or not schema_obj._def or depth >= max_depth {
-        return schema_obj;
-    }
-    type_value = schema_obj._def.type;
-    if type_value == "optional" and schema_obj._def.innerType {
-        return _unwrapZodSchema(schema_obj._def.innerType, depth + 1);
-    }
-    if type_value == "default" and schema_obj._def.innerType {
-        return _unwrapZodSchema(schema_obj._def.innerType, depth + 1);
-    }
-    if schema_obj._def.checks and schema_obj._def.schema {
-        return _unwrapZodSchema(schema_obj._def.schema, depth + 1);
-    }
-    return schema_obj;
-}
+def _unwrapZodSchema(schema_obj: any, depth: int = 0) -> any;
 
-def _getEnumOptions(field_schema: any) -> list[str] {
-    unwrapped = _unwrapZodSchema(field_schema);
-    if unwrapped and unwrapped._def and unwrapped._def.entries {
-        return Object.keys(unwrapped._def.entries);
-    }
-    if unwrapped and unwrapped.`def and unwrapped.`def.entries {
-        return Object.keys(unwrapped.`def.entries);
-    }
-    return [];
-}
+def _getEnumOptions(field_schema: any) -> list[str];
 
-def _setFormField(form: any, field_name: str, value: any) {
-    form.setValue(
-        field_name,
-        value,
-        {"shouldDirty": True, "shouldTouch": True, "shouldValidate": True}
-    );
-}
+def _setFormField(form: any, field_name: str, value: any);
 
 impl _fieldSetter(form: any, field_name: str, value: any) -> Callable[[], None] {
     return lambda { _setFormField(form, field_name, value); };
@@ -919,16 +879,7 @@ impl _passwordToggle(
     };
 }
 
-def _fieldErrorMessage(errors: any, field_name: str) -> str {
-    err = errors[field_name] if errors and errors[field_name] else None;
-    if not err {
-        return "";
-    }
-    if err.message {
-        return str(err.message);
-    }
-    return "Invalid value";
-}
+def _fieldErrorMessage(errors: any, field_name: str) -> str;
 
 def _renderSelectField(
     form: any,
@@ -936,86 +887,11 @@ def _renderSelectField(
     selected_value: str,
     options: list[str],
     placeholder: str
-) -> JsxElement {
-    option_children = [];
-    if placeholder and selected_value == "" {
-        option_children.append(
-            React.createElement(
-                RNText,
-                {
-                    "key": "__placeholder__",
-                    "style": {
-                        "marginBottom": 8,
-                        "color": "#6b7280",
-                        "fontStyle": "italic"
-                    }
-                },
-                placeholder
-            )
-        );
-    }
-    for opt in options {
-        opt_value = str(opt);
-        is_selected = selected_value == opt_value;
-        option_children.append(
-            React.createElement(
-                RNPressable,
-                {
-                    "key": f"{field_name}:{opt_value}",
-                    "onPress": _fieldSetter(form, field_name, opt_value),
-                    "style": {
-                        "borderWidth": 1,
-                        "borderColor": ("#2563eb" if is_selected else "#d1d5db"),
-                        "paddingVertical": 10,
-                        "paddingHorizontal": 12,
-                        "borderRadius": 6,
-                        "marginBottom": 6,
-                        "backgroundColor": ("#eff6ff" if is_selected else "#ffffff")
-                    }
-                },
-                React.createElement(RNText, {"style": {"color": "#111827"}}, opt_value)
-            )
-        );
-    }
-    return React.createElement(RNView, {"style": {"marginTop": 2}}, *option_children);
-}
+) -> JsxElement;
 
 def _renderRadioField(
     form: any, field_name: str, selected_value: str, options: list[str]
-) -> JsxElement {
-    option_children = [];
-    for opt in options {
-        opt_value = str(opt);
-        is_selected = selected_value == opt_value;
-        option_children.append(
-            React.createElement(
-                RNPressable,
-                {
-                    "key": f"{field_name}:{opt_value}",
-                    "onPress": _fieldSetter(form, field_name, opt_value),
-                    "style": {
-                        "flexDirection": "row",
-                        "alignItems": "center",
-                        "paddingVertical": 8
-                    }
-                },
-                React.createElement(
-                    RNText,
-                    {
-                        "style": {
-                            "fontSize": 16,
-                            "color": "#2563eb" if is_selected else "#9ca3af",
-                            "marginRight": 8
-                        }
-                    },
-                    "◉" if is_selected else "○"
-                ),
-                React.createElement(RNText, {"style": {"color": "#111827"}}, opt_value)
-            )
-        );
-    }
-    return React.createElement(RNView, {"style": {"marginTop": 2}}, *option_children);
-}
+) -> JsxElement;
 
 def _renderTextField(
     field: any,
@@ -1024,74 +900,15 @@ def _renderTextField(
     on_change: any,
     secure: bool,
     has_error: bool
-) -> JsxElement {
-    return React.createElement(
-        RNTextInput,
-        {
-            "placeholder": placeholder,
-            "value": value,
-            "onChangeText": on_change,
-            "onBlur": field.onBlur,
-            "secureTextEntry": secure,
-            "style": {
-                "borderWidth": 1,
-                "borderColor": "#ef4444" if has_error else "#e5e7eb",
-                "padding": 10,
-                "borderRadius": 6,
-                "backgroundColor": "#ffffff",
-                "flex": 1
-            }
-        }
-    );
-}
+) -> JsxElement;
 
 def _renderPasswordRow(
     input_row: JsxElement, is_visible: bool, on_toggle: any
-) -> JsxElement {
-    toggle = React.createElement(
-        RNPressable,
-        {
-            "onPress": on_toggle,
-            "style": {"marginLeft": 8, "paddingVertical": 8, "paddingHorizontal": 10}
-        },
-        React.createElement(
-            RNText,
-            {"style": {"color": "#2563eb", "fontWeight": "600"}},
-            "Hide" if is_visible else "Show"
-        )
-    );
-    return React.createElement(
-        RNView,
-        {"style": {"flexDirection": "row", "alignItems": "center"}},
-        input_row,
-        toggle
-    );
-}
+) -> JsxElement;
 
 def _renderSubmitButton(
     is_submitting: bool, is_dirty: bool, submit_label: str, on_press: any
-) -> JsxElement {
-    return React.createElement(
-        RNPressable,
-        {
-            "onPress": on_press,
-            "disabled": is_submitting or not is_dirty,
-            "style": {
-                "backgroundColor": "#2563eb"
-                    if (is_dirty and not is_submitting)
-                    else "#9ca3af",
-                "padding": 12,
-                "borderRadius": 6,
-                "marginTop": 12
-            }
-        },
-        React.createElement(
-            RNText,
-            {"style": {"color": "white", "textAlign": "center", "fontWeight": "600"}},
-            "Submitting..." if is_submitting else submit_label
-        )
-    );
-}
+) -> JsxElement;
 
 impl JacForm(props: dict[str, any]) -> JsxElement {
     schema = props["schema"];
@@ -1209,4 +1026,65 @@ impl __jacInstallErrorHandlers -> None {
     } except Exception as e {
         console.warn("[jac-native-runtime] Failed to install ErrorUtils handler", e);
     }
+}
+
+impl _isNil(x: any) -> bool {
+    return x is None or x is undefined;
+}
+
+impl _nativeStorageCache -> dict[str, any] {
+    cache: any = globalThis.__jacNativeStorageCache__;
+    if not cache {
+        cache = {};
+        globalThis.__jacNativeStorageCache__ = cache;
+    }
+    return cache;
+}
+
+impl _unwrapZodSchema(schema_obj: any, depth: int = 0) -> any {
+    max_depth = 10;
+    if not schema_obj or not schema_obj._def or depth >= max_depth {
+        return schema_obj;
+    }
+    type_value = schema_obj._def.type;
+    if type_value == "optional" and schema_obj._def.innerType {
+        return _unwrapZodSchema(schema_obj._def.innerType, depth + 1);
+    }
+    if type_value == "default" and schema_obj._def.innerType {
+        return _unwrapZodSchema(schema_obj._def.innerType, depth + 1);
+    }
+    if schema_obj._def.checks and schema_obj._def.schema {
+        return _unwrapZodSchema(schema_obj._def.schema, depth + 1);
+    }
+    return schema_obj;
+}
+
+impl _getEnumOptions(field_schema: any) -> list[str] {
+    unwrapped = _unwrapZodSchema(field_schema);
+    if unwrapped and unwrapped._def and unwrapped._def.entries {
+        return Object.keys(unwrapped._def.entries);
+    }
+    if unwrapped and unwrapped.`def and unwrapped.`def.entries {
+        return Object.keys(unwrapped.`def.entries);
+    }
+    return [];
+}
+
+impl _setFormField(form: any, field_name: str, value: any) {
+    form.setValue(
+        field_name,
+        value,
+        {"shouldDirty": True, "shouldTouch": True, "shouldValidate": True}
+    );
+}
+
+impl _fieldErrorMessage(errors: any, field_name: str) -> str {
+    err = errors[field_name] if errors and errors[field_name] else None;
+    if not err {
+        return "";
+    }
+    if err.message {
+        return str(err.message);
+    }
+    return "Invalid value";
 }

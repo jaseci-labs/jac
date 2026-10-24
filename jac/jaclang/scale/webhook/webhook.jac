@@ -3,16 +3,8 @@ import hashlib;
 import json;
 import logging;
 import secrets;
-import from jaclang.server.serving.authcrypt {
-    JWTError,
-    JWTExpiredError,
-    jwt_decode,
-    jwt_encode
-}
+
 import from datetime { UTC, datetime, timedelta }
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.server.shared_store { shared_store }
 
 glob logger = logging.getLogger(__name__);
 
@@ -33,14 +25,7 @@ def rate_window_ok(
 ) -> bool;
 
 
-def _create_api_key_db -> any | None {
-    try {
-        return shared_store();
-    } except Exception as e {
-        logger.warning(f"webhook api-key store unavailable: {e}");
-        return None;
-    }
-}
+def _create_api_key_db -> any | None;
 
 obj ApiKeyManager {
     has _db: any | None = _create_api_key_db(),

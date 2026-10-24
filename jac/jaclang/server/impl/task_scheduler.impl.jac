@@ -612,7 +612,7 @@ impl Scheduler._compute_date(
 
 impl Scheduler._execute(task: ScheduledTask) -> None {
     import from jaclang { JacRuntimeInterface as Jac }
-    import from jaclang.runtime.context { CallState }
+
     ctx = Jac.get_context();
     token = ctx.call_state.set(CallState());
     try {

@@ -36,7 +36,6 @@ impl Resolution.on_floor -> bool {
 }
 
 impl Artifact.disabled -> bool {
-    import from jaclang.artifacts.router { building_now }
     marked = building_now();
     return self.name in marked or any(name in marked for name in self.consumes);
 }

@@ -3,65 +3,14 @@ import shutil;
 import json;
 import subprocess;
 import stat;
-import from jaclang.toolchains.cef { ensure_cef }
+
 import from pathlib { Path }
-import from jaclang.cli.console { console }
-import from jaclang.client.targets.desktop.desktop_build {
-    stage_program,
-    _find_cef_dir,
-    _jac_bin,
-    _jac_subprocess_env,
-    _patch_host_rpath,
-    _stage_fused_runtime,
-    _bundle_runtime,
-    build_cef_dispatch,
-    build_cef_subprocess,
-}
-import from jaclang.client.targets.desktop._host_bootstrap {
-    _host_boot_py,
-    _fused_runtime_import_block
-}
-import from jaclang.client.targets.desktop._dev_launch {
-    ensure_dev_build_env,
-    desktop_app_runtime_env
-}
 
-def _is_stale(output: Path, inputs: list[Path]) -> bool {
-    if not output.exists() {
-        return True;
-    }
-    out_mtime = output.stat().st_mtime;
-    for src in inputs {
-        if src.exists() and src.stat().st_mtime > out_mtime {
-            return True;
-        }
-    }
-    return False;
-}
+def _is_stale(output: Path, inputs: list[Path]) -> bool;
 
-def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
-    lib = cef_dir / "libcef_dispatch.so";
-    src = cef_dir / "cef_dispatch.jac";
-    stale = _is_stale(lib, [src, cef_dir / "cef_platform.jac"]);
-    if not stale {
-        return lib;
-    }
-    console.print(
-        "  Building libcef_dispatch.so (jac build --native --lib)...", style="muted"
-    );
-    return build_cef_dispatch(cef_dir);
-}
+def _ensure_libcef_dispatch(cef_dir: Path) -> Path;
 
-def _ensure_cef_subprocess(cef_dir: Path) -> Path {
-    helper = cef_dir / "cef-subprocess";
-    src = cef_dir / "cef_subprocess.jac";
-    stale = _is_stale(helper, [src, cef_dir / "cef_platform.jac"]);
-    if not stale {
-        return helper;
-    }
-    console.print("  Building cef-subprocess (jac build --native)...", style="muted");
-    return build_cef_subprocess(cef_dir);
-}
+def _ensure_cef_subprocess(cef_dir: Path) -> Path;
 
 def _generate_host_source(
     title: str,
@@ -75,6 +24,71 @@ def _generate_host_source(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
+    identifier: str = "",
+    pg_dist: str = ""
+) -> str;
+
+def _stage_cef_runtime(cef_dist: Path, out_dir: Path);
+
+def cef_build(
+    entry_file: Path, project_dir: Path, out_dir: Path, web_bundle: Path
+) -> Path;
+
+def cef_start(binary: Path);
+
+def cef_dev_unsupported;
+
+impl _is_stale(output: Path, inputs: list[Path]) -> bool {
+    if not output.exists() {
+        return True;
+    }
+    out_mtime = output.stat().st_mtime;
+    for src in inputs {
+        if src.exists() and src.stat().st_mtime > out_mtime {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl _ensure_libcef_dispatch(cef_dir: Path) -> Path {
+    lib = cef_dir / "libcef_dispatch.so";
+    src = cef_dir / "cef_dispatch.jac";
+    stale = _is_stale(lib, [src, cef_dir / "cef_platform.jac"]);
+    if not stale {
+        return lib;
+    }
+    console.print(
+        "  Building libcef_dispatch.so (jac build --native --lib)...", style="muted"
+    );
+    return build_cef_dispatch(cef_dir);
+}
+
+impl _ensure_cef_subprocess(cef_dir: Path) -> Path {
+    helper = cef_dir / "cef-subprocess";
+    src = cef_dir / "cef_subprocess.jac";
+    stale = _is_stale(helper, [src, cef_dir / "cef_platform.jac"]);
+    if not stale {
+        return helper;
+    }
+    console.print("  Building cef-subprocess (jac build --native)...", style="muted");
+    return build_cef_subprocess(cef_dir);
+}
+
+impl _generate_host_source(
+    title: str,
+    width: int,
+    height: int,
+    app_name: str,
+    cache_path: str,
+    plugin_configs: (dict[str, any] | None) = None,
+    program: (dict[str, any] | None) = None,
+    backend: str = "embedded",
+    dispatch_timeout_s: float = 30.0,
+    dispatch_max_queue: int = 128,
+    dispatch_debug: bool = False,
+    identifier: str = "",
+    pg_dist: str = "",
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -84,7 +98,9 @@ def _generate_host_source(
         dispatch_timeout_s,
         dispatch_max_queue,
         dispatch_debug,
-        plugin_configs
+        plugin_configs,
+        identifier,
+        pg_dist
     );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
@@ -129,13 +145,14 @@ def _generate_host_source(
         "    ts = api.PyEval_SaveThread();\n"
         "    cef_run_loop();\n"
         "    api.PyEval_RestoreThread(ts);\n"
+        '    api.PyRun_SimpleString("_ctx.shutdown()");\n'
         "    api.Py_Finalize();\n"
         "    cef_cleanup();\n"
         "}\n"
     );
 }
 
-def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
+impl _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
     shutil.copy2(cef_dist / "libcef.so", out_dir / "libcef.so");
     for name in [
         "libEGL.so",
@@ -179,11 +196,9 @@ def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
     }
 }
 
-def cef_build(
+impl cef_build(
     entry_file: Path, project_dir: Path, out_dir: Path, web_bundle: Path
 ) -> Path {
-    import from jaclang.client.desktop_config { get_desktop_config }
-
     ensure_dev_build_env();
 
     console.print("\n🖥️  Building CEF desktop app (Chromium)", style="bold");
@@ -221,6 +236,7 @@ def cef_build(
 
     backend = cfg.get_backend();
     program = stage_program(entry_file, project_dir, out_dir, backend, dist_dir);
+    pg_dist = stage_postgres(out_dir, backend);
     _stage_fused_runtime(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
@@ -235,6 +251,8 @@ def cef_build(
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,
+        desktop_storage_identifier(ident.identifier, project_dir, entry_file, backend),
+        pg_dist,
     );
     (out_dir / "host.jac").write_text(host_src);
 
@@ -256,7 +274,7 @@ def cef_build(
     return binary;
 }
 
-def cef_start(binary: Path) {
+impl cef_start(binary: Path) {
     env = desktop_app_runtime_env();
     env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1");
     env.setdefault("GALLIUM_DRIVER", "llvmpipe");
@@ -272,7 +290,7 @@ def cef_start(binary: Path) {
     }
 }
 
-def cef_dev_unsupported {
+impl cef_dev_unsupported {
     raise RuntimeError(
         "CEF desktop HMR is not supported yet. CEF routes RPC through the "
         "loopback broker, so a Vite dev origin breaks the app. Set "

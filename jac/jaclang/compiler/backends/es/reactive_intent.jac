@@ -1,5 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-
 obj StateField {
     has name: str,
         init_expr: es.Expression,

@@ -7,13 +7,9 @@ import threading;
 import time;
 import uuid;
 import from collections { OrderedDict }
-import from jaclang.data.store { OUTBOX_SCHEMA_SQL, PgStore, Store, TxnIsolation }
-import from jaclang.server.bridge { BridgeRejected }
 
 obj DeliveryReceipt {
-    static def _from_wire(payload: dict[str, any]) -> DeliveryReceipt {
-        return DeliveryReceipt();
-    }
+    static def _from_wire(payload: dict[str, any]) -> DeliveryReceipt;
 }
 
 glob logger = logging.getLogger(__name__),

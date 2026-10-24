@@ -1,38 +1,5 @@
 """The _sha1 module: the sha1 type over its generated clinic glue."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyLong_FromLong,
-    PyModule_AddIntConstant,
-    PyObject,
-    PyUnicode_FromString
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.sha1 {
-    SHA1Type_methods,
-    module_methods
-}
-import from jaclang.runtime.python.modules.hashlib { HASHLIB_GIL_MINSIZE }
-import from jaclang.runtime.python.modules.sha1 {
-    SHA1Type_token,
-    SHA1_BLOCKSIZE,
-    SHA1_DIGESTSIZE
-}
-
 def:priv sha1_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, SHA1Type_token.handle);
 }

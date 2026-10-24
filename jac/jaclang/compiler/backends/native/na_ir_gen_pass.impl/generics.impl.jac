@@ -1,57 +1,14 @@
-import from jaclang.compiler.passes.layout_pass { native_type_key }
+def _mangle_word_char(ch: str) -> bool;
 
-def _mangle_word_char(ch: str) -> bool {
-    return (ch >= "a" and ch <= "z")
-        or (ch >= "A" and ch <= "Z")
-        or (ch >= "0" and ch <= "9")
-        or ch == "_"
-        or ch > "\x7f";
-}
+def _replace_mangle_word(text: str, word: str, repl: str) -> str;
 
-def _replace_mangle_word(text: str, word: str, repl: str) -> str {
-    n = len(word);
-    if n == 0 {
-        return text;
-    }
-    head_word = _mangle_word_char(word[0]);
-    tail_word = _mangle_word_char(word[n - 1]);
-    out = "";
-    i = 0;
-    size = len(text);
-    while i < size {
-        if text[i:i + n] == word
-            and (i > 0 and _mangle_word_char(text[i - 1])) != head_word
-            and (i + n < size and _mangle_word_char(text[i + n])) != tail_word {
-            out += repl;
-            i += n;
-        } else {
-            out += text[i];
-            i += 1;
-        }
-    }
-    return out;
-}
-
-def _mangle_symbol_text(text: str) -> str {
-    out = "";
-    for ch in text {
-        if (ch >= "a" and ch <= "z")
-            or (ch >= "A" and ch <= "Z")
-            or (ch >= "0" and ch <= "9")
-            or ch == "_" {
-            out += ch;
-        } else {
-            out += "_";
-        }
-    }
-    return out;
-}
+def _mangle_symbol_text(text: str) -> str;
 
 impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
     if not isinstance(t, TypeBase) {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass { native_type_key }
+
     m = native_type_key(t);
     _map = self._mono_mangle_map;
     if _map {
@@ -294,7 +251,6 @@ impl NaIRGenPass._ct_native_const(v: CtValue, nd: uni.Expr) -> (ir.Value | None)
 }
 
 impl NaIRGenPass._ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None) {
-    import from jaclang.compiler.frontend.constant { ExprCtx }
     if not isinstance(nd, uni.Expr) or nd.ct_value is None {
         return None;
     }
@@ -492,7 +448,6 @@ impl NaIRGenPass._instantiate_generic(
 }
 
 impl NaIRGenPass._record_generic_definition(ability: uni.Ability) -> None {
-    import from jaclang.compiler.frontend.unitree { definition_qualname }
     path = ability.loc.mod_path;
     qualname = definition_qualname(ability);
     if qualname {
@@ -525,12 +480,13 @@ impl NaIRGenPass._stamp_mono_fn(
     self._mono_fns[memo_key] = fn;
     self._record_ret_facts(spec_name, sig);
 
-    saved_symtab = dict(self.func_symtab);
-    self.func_symtab[name] = fn;
+    saved_scope = self.scope;
+    self.scope = saved_scope.child();
+    self.scope.bind_function(name, fn);
     try {
         self._codegen_ability(ability);
     } finally {
-        self.func_symtab = saved_symtab;
+        self.scope = saved_scope;
     }
     return fn;
 }
@@ -713,7 +669,7 @@ impl NaIRGenPass._find_source_ability(
     mod_name: str, func_name: str
 ) -> (uni.Ability | None) {
     import os;
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+
     _base = os.path.dirname(self.module.loc.mod_path);
     _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
     (_src, full_path) = resolve_native_module(_clean, _base);
@@ -792,4 +748,51 @@ impl NaIRGenPass._ct_only_name(nd: uni.Name) -> bool {
         }
     }
     return False;
+}
+
+impl _mangle_word_char(ch: str) -> bool {
+    return (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or (ch >= "0" and ch <= "9")
+        or ch == "_"
+        or ch > "\x7f";
+}
+
+impl _replace_mangle_word(text: str, word: str, repl: str) -> str {
+    n = len(word);
+    if n == 0 {
+        return text;
+    }
+    head_word = _mangle_word_char(word[0]);
+    tail_word = _mangle_word_char(word[n - 1]);
+    out = "";
+    i = 0;
+    size = len(text);
+    while i < size {
+        if text[i:i + n] == word
+            and (i > 0 and _mangle_word_char(text[i - 1])) != head_word
+            and (i + n < size and _mangle_word_char(text[i + n])) != tail_word {
+            out += repl;
+            i += n;
+        } else {
+            out += text[i];
+            i += 1;
+        }
+    }
+    return out;
+}
+
+impl _mangle_symbol_text(text: str) -> str {
+    out = "";
+    for ch in text {
+        if (ch >= "a" and ch <= "z")
+            or (ch >= "A" and ch <= "Z")
+            or (ch >= "0" and ch <= "9")
+            or ch == "_" {
+            out += ch;
+        } else {
+            out += "_";
+        }
+    }
+    return out;
 }

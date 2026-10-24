@@ -1,14 +1,6 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.server.serving.datatypes { Headers, Request, URL }
-import from jaclang.scale.tests.support { get_free_port }
 
 test "resolve strips prefix and preserves walker path" {
     reg = ServiceRegistry();
@@ -1180,6 +1172,7 @@ test "serve admin asset returns index.html for root" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Portal</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1197,6 +1190,8 @@ test "serve admin asset returns static file" {
     admin_dir = Path(tmp) / "admin";
     assets = admin_dir / "assets";
     assets.mkdir(parents=True);
+    (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
     (assets / "admin.js").write_text("var admin = true;");
 
     reg = ServiceRegistry();
@@ -1204,7 +1199,8 @@ test "serve admin asset returns static file" {
 
     resp = gw.serve_admin_asset("assets/admin.js");
     assert resp is not None;
-    assert b"admin" in resp.body;
+    assert resp.status_code == 200;
+    assert b"var admin = true;" in resp.body;
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1215,6 +1211,7 @@ test "serve admin asset spa fallback for unknown route" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin SPA</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1231,6 +1228,8 @@ test "serve admin asset blocks path traversal" {
     tmp = tempfile.mkdtemp();
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
+    (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1247,6 +1246,7 @@ test "admin redirect via testclient" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1267,6 +1267,7 @@ test "admin index served at /admin/" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Dashboard</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1388,7 +1389,6 @@ obj _FakeScaleConfig {
 
 
 def _with_cors_config(cfg: dict[str, any], fn: any) -> any {
-    import jaclang.scale.config.config_loader as config_loader;
     orig = config_loader.get_scale_config;
     fake = _FakeScaleConfig(_cors=cfg);
     def fake_factory(project_dir: object = None) -> object {
@@ -2144,7 +2144,6 @@ test "learn skips bare builtin API roots so one service cannot capture them" {
 
 
 def gw_route_table_for_poison_test -> any {
-    import from jaclang.scale.runtime.gateway.route_table { ServiceRouteTable }
     table = ServiceRouteTable();
     table.learn(
         "core_app",
@@ -2223,9 +2222,13 @@ test "forward headers append the peer to the forwarded chain" {
     h = Headers();
     h.append("x-forwarded-for", "203.0.113.7");
     h.append("X-Forwarded-For", "198.51.100.9");
+    h.append("Expect", "100-continue");
+    h.append("X-Ordinary", "kept");
     req = Request(url=URL(path="/api/x"), headers=h, client_host="10.0.0.1");
     fwd = gw.build_forward_headers(req);
     assert fwd["X-Forwarded-For"] == "203.0.113.7, 198.51.100.9, 10.0.0.1";
+    assert all(k.lower() != "expect" for k in fwd.keys());
+    assert fwd["X-Ordinary"] == "kept";
     xff_keys = [
         k
         for k in fwd.keys()

@@ -6,26 +6,6 @@ constructors the datetime C API capsule exports with the exact signatures
 of Include/datetime.h's PyDateTime_CAPI. The types themselves are in the
 datetime_*.jac modules. See ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.cpython_api { NULL, PyArg_UnpackTuple, PyObject }
-import from jaclang.runtime.python.layouts { PyTypeObject }
-import from jaclang.runtime.python.modules.datetime_objects {
-    STATE_ISOCALENDAR_DATE_TYPE,
-    new_date_ex,
-    new_date_subclass_ex,
-    new_datetime_ex,
-    new_datetime_ex2,
-    new_datetime_subclass_fold_ex,
-    new_delta_ex,
-    new_time_ex,
-    new_time_ex2,
-    new_time_subclass_fold_ex,
-    type_of
-}
-import from jaclang.runtime.python.modules.datetime_date {
-    date_fromtimestamp,
-    new_iso_calendar_date
-}
-import from jaclang.runtime.python.modules.datetime_datetime { datetime_now }
 
 """date.fromtimestamp(timestamp): a date from a POSIX timestamp, interpreted
 as local time."""

@@ -12,7 +12,18 @@ ECMAScript spec : §20.1 — Object Objects
 """
 
 import from engine.src.runtime.js_bigint { js_bigint_cells_equal, js_bigint_get_proto }
-import from engine.src.runtime.jsobj_type { PropertyDescriptorRecord }
+import from engine.src.runtime.jsobj_type {
+    PropertyDescriptorRecord,
+    PROP_WRITABLE,
+    PROP_ENUMERABLE,
+    PROP_CONFIGURABLE
+}
+import from engine.src.runtime.shape {
+    shape_keys,
+    shape_key_count,
+    shape_lookup,
+    SHAPE_ATTR_ACCESSOR
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     jsv_from_string_id,
@@ -89,7 +100,9 @@ import from engine.src.runtime.jsobject {
     js_object_prevent_extensions,
     js_object_is_extensible,
     js_is_module_namespace,
-    js_object_is_plain_ordinary
+    js_object_is_plain_ordinary,
+    js_object_plain_shape_id,
+    js_object_set_flags
 }
 import from engine.src.runtime.fn_meta {
     fn_meta_is_closure,
@@ -157,6 +170,12 @@ import from engine.src.builtins.string {
     KEY_IS_STRING_OBJ
 }
 import from engine.src.runtime.wk_keys {
+    WK_VALUE,
+    WK_WRITABLE,
+    WK_ENUMERABLE,
+    WK_CONFIGURABLE,
+    WK_GET,
+    WK_SET,
     WK_IS_CLASS,
     WK_SUPER,
     WK_DEFER_PENDING,
@@ -165,6 +184,7 @@ import from engine.src.runtime.wk_keys {
     WK_FIELDS
 }
 import from engine.src.runtime.spec_ops {
+    spec_desc_own_only,
     spec_to_property_descriptor,
     spec_same_value,
     spec_data_record_to_jsproperty,
@@ -900,6 +920,91 @@ def _object_define_properties_apply(jsobj: JSValue, props: JSValue) -> bool {
 # 3.  Static methods
 # ══════════════════════════════════════════════════════════════════════════════
 
+"""True when shape `sid` has no `key` or holds it as a data property."""
+def _shape_data_or_absent(sid: int, key: int) -> bool {
+    sd_p: int = shape_lookup(sid, key);
+    return sd_p < 0 or (sd_p & SHAPE_ATTR_ACCESSOR) == 0;
+}
+
+"""True when `d` is a plain data descriptor whose fields read without side
+effects: a plain shape-mode object (js_object_plain_shape_id) with no `get`
+/ `set`, its descriptor fields data properties, and HasProperty for them
+just the own lookup (spec_desc_own_only)."""
+def _plain_data_desc(d: JSValue) -> bool {
+    pd_sid: int = js_object_plain_shape_id(d);
+    if pd_sid < 0 or not spec_desc_own_only(d) {
+        return False;
+    }
+    if shape_lookup(pd_sid, WK_GET) >= 0 or shape_lookup(pd_sid, WK_SET) >= 0 {
+        return False;
+    }
+    return _shape_data_or_absent(pd_sid, WK_VALUE)
+        and _shape_data_or_absent(pd_sid, WK_WRITABLE)
+        and _shape_data_or_absent(pd_sid, WK_ENUMERABLE)
+        and _shape_data_or_absent(pd_sid, WK_CONFIGURABLE);
+}
+
+"""Object.create's Properties in its common form, defined on the fresh
+`jsobj` directly: `props` a plain shape-mode object with only ordinary
+non-index keys held as data properties, the enumerable ones plain data
+descriptors (_plain_data_desc). ObjectDefineProperties' result (keys in
+OrdinaryOwnPropertyKeys order: strings, then symbols; absent fields default
+to false / undefined) without its key list, descriptor records and
+validate-then-apply copies. False, with nothing defined, when any of that
+does not hold — the general path runs."""
+def _create_props_fast(jsobj: JSValue, props: JSValue) -> bool {
+    cp_sid: int = js_object_plain_shape_id(props);
+    if cp_sid < 0 {
+        return False;
+    }
+    cp_n: int = shape_key_count(cp_sid);
+    cp_keys: list[int] = shape_keys(cp_sid);
+    cp_i: int = 0;
+    while cp_i < cp_n {
+        cp_k: int = cp_keys[cp_i];
+        if cp_k < 0
+            or str_id_is_array_index(cp_k)
+            or _is_engine_marker_key(cp_k)
+            or _is_internal_private_key(cp_k) {
+            return False;
+        }
+        cp_p: int = shape_lookup(cp_sid, cp_k);
+        if cp_p < 0 or (cp_p & SHAPE_ATTR_ACCESSOR) != 0 {
+            return False;
+        }
+        if (cp_p & PROP_ENUMERABLE) != 0
+            and not _plain_data_desc(js_object_get(props, cp_k)) {
+            return False;
+        }
+        cp_i = cp_i + 1;
+    }
+    cp_pass: int = 0;
+    while cp_pass < 2 {
+        cp_i = 0;
+        while cp_i < cp_n {
+            cp_k2: int = cp_keys[cp_i];
+            if (cp_k2 >= SYMBOL_KEY_BASE) == (cp_pass == 1)
+                and (shape_lookup(cp_sid, cp_k2) & PROP_ENUMERABLE) != 0 {
+                cp_d: JSValue = js_object_get(props, cp_k2);
+                cp_f: int = 0;
+                if jsv_coerce_to_bool(js_object_get(cp_d, WK_WRITABLE)) {
+                    cp_f = cp_f | PROP_WRITABLE;
+                }
+                if jsv_coerce_to_bool(js_object_get(cp_d, WK_ENUMERABLE)) {
+                    cp_f = cp_f | PROP_ENUMERABLE;
+                }
+                if jsv_coerce_to_bool(js_object_get(cp_d, WK_CONFIGURABLE)) {
+                    cp_f = cp_f | PROP_CONFIGURABLE;
+                }
+                js_object_set_flags(jsobj, cp_k2, js_object_get(cp_d, WK_VALUE), cp_f);
+            }
+            cp_i = cp_i + 1;
+        }
+        cp_pass = cp_pass + 1;
+    }
+    return True;
+}
+
 """
 Object.create(proto, propertiesObject?) — create object with given prototype.
 
@@ -922,6 +1027,10 @@ def:pub js_Object_create(proto: JSValue, props: JSValue) -> JSValue {
     # (adel_fixes' _object_define_properties_apply) is more spec-correct than
     # HEAD's apply-as-you-go loop (which could partially mutate before throwing).
     if not jsv_is_undefined(props) {
+        # The common plain form first (no ToObject needed: it is an object).
+        if _create_props_fast(jsobj, props) {
+            return jsobj;
+        }
         props_obj: JSValue = _to_object_or_throw(props);
         if vm_has_native_exc() {
             return js_undefined();

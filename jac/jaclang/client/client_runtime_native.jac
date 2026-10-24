@@ -21,16 +21,6 @@ import from 'expo-secure-store' { * as SecureStore }
 import from 'expo-constants' { * as ExpoConstants }
 import from 'react-error-boundary' { ErrorBoundary }
 import from 'zod' { z }
-import from client_react_core {
-    __createJacSchema,
-    jacIsLoggedIn,
-    useJacForm,
-    __jacReportError
-}
-import from jaclang.client.targets.react_native.html_tag_map {
-    RN_HTML_VIEW_TAGS as _VIEW_TAGS,
-    RN_HTML_TEXT_TAGS as _TEXT_TAGS
-}
 
 def:pub __jacGetRenderer -> any;
 def:pub __jacNativeCreate(
@@ -126,3 +116,166 @@ def _passwordToggle(
 def:pub JacForm(props: dict[str, any]) -> JsxElement;
 def:pub __jacInstallErrorHandlers -> None;
 def:pub __jacWirePlatformAdapters -> None;
+
+impl _renderSelectField(
+    form: any,
+    field_name: str,
+    selected_value: str,
+    options: list[str],
+    placeholder: str
+) -> JsxElement {
+    option_children = [];
+    if placeholder and selected_value == "" {
+        option_children.append(
+            React.createElement(
+                RNText,
+                {
+                    "key": "__placeholder__",
+                    "style": {
+                        "marginBottom": 8,
+                        "color": "#6b7280",
+                        "fontStyle": "italic"
+                    }
+                },
+                placeholder
+            )
+        );
+    }
+    for opt in options {
+        opt_value = str(opt);
+        is_selected = selected_value == opt_value;
+        option_children.append(
+            React.createElement(
+                RNPressable,
+                {
+                    "key": f"{field_name}:{opt_value}",
+                    "onPress": _fieldSetter(form, field_name, opt_value),
+                    "style": {
+                        "borderWidth": 1,
+                        "borderColor": ("#2563eb" if is_selected else "#d1d5db"),
+                        "paddingVertical": 10,
+                        "paddingHorizontal": 12,
+                        "borderRadius": 6,
+                        "marginBottom": 6,
+                        "backgroundColor": ("#eff6ff" if is_selected else "#ffffff")
+                    }
+                },
+                React.createElement(RNText, {"style": {"color": "#111827"}}, opt_value)
+            )
+        );
+    }
+    return React.createElement(RNView, {"style": {"marginTop": 2}}, *option_children);
+}
+
+impl _renderRadioField(
+    form: any, field_name: str, selected_value: str, options: list[str]
+) -> JsxElement {
+    option_children = [];
+    for opt in options {
+        opt_value = str(opt);
+        is_selected = selected_value == opt_value;
+        option_children.append(
+            React.createElement(
+                RNPressable,
+                {
+                    "key": f"{field_name}:{opt_value}",
+                    "onPress": _fieldSetter(form, field_name, opt_value),
+                    "style": {
+                        "flexDirection": "row",
+                        "alignItems": "center",
+                        "paddingVertical": 8
+                    }
+                },
+                React.createElement(
+                    RNText,
+                    {
+                        "style": {
+                            "fontSize": 16,
+                            "color": "#2563eb" if is_selected else "#9ca3af",
+                            "marginRight": 8
+                        }
+                    },
+                    "◉" if is_selected else "○"
+                ),
+                React.createElement(RNText, {"style": {"color": "#111827"}}, opt_value)
+            )
+        );
+    }
+    return React.createElement(RNView, {"style": {"marginTop": 2}}, *option_children);
+}
+
+impl _renderTextField(
+    field: any,
+    placeholder: str,
+    value: str,
+    on_change: any,
+    secure: bool,
+    has_error: bool
+) -> JsxElement {
+    return React.createElement(
+        RNTextInput,
+        {
+            "placeholder": placeholder,
+            "value": value,
+            "onChangeText": on_change,
+            "onBlur": field.onBlur,
+            "secureTextEntry": secure,
+            "style": {
+                "borderWidth": 1,
+                "borderColor": "#ef4444" if has_error else "#e5e7eb",
+                "padding": 10,
+                "borderRadius": 6,
+                "backgroundColor": "#ffffff",
+                "flex": 1
+            }
+        }
+    );
+}
+
+impl _renderPasswordRow(
+    input_row: JsxElement, is_visible: bool, on_toggle: any
+) -> JsxElement {
+    toggle = React.createElement(
+        RNPressable,
+        {
+            "onPress": on_toggle,
+            "style": {"marginLeft": 8, "paddingVertical": 8, "paddingHorizontal": 10}
+        },
+        React.createElement(
+            RNText,
+            {"style": {"color": "#2563eb", "fontWeight": "600"}},
+            "Hide" if is_visible else "Show"
+        )
+    );
+    return React.createElement(
+        RNView,
+        {"style": {"flexDirection": "row", "alignItems": "center"}},
+        input_row,
+        toggle
+    );
+}
+
+impl _renderSubmitButton(
+    is_submitting: bool, is_dirty: bool, submit_label: str, on_press: any
+) -> JsxElement {
+    return React.createElement(
+        RNPressable,
+        {
+            "onPress": on_press,
+            "disabled": is_submitting or not is_dirty,
+            "style": {
+                "backgroundColor": "#2563eb"
+                    if (is_dirty and not is_submitting)
+                    else "#9ca3af",
+                "padding": 12,
+                "borderRadius": 6,
+                "marginTop": 12
+            }
+        },
+        React.createElement(
+            RNText,
+            {"style": {"color": "white", "textAlign": "center", "fontWeight": "600"}},
+            "Submitting..." if is_submitting else submit_label
+        )
+    );
+}

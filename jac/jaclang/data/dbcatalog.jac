@@ -1,6 +1,5 @@
 import logging;
 import from enum { StrEnum }
-import from jaclang.data.store { ConnInfo, SCHEMA_STAMP_KEY }
 
 glob logger = logging.getLogger(__name__),
      REGISTRY_TABLE = 'jac_databases',

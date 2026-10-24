@@ -1,5 +1,4 @@
 """Time facilities for a target with no time_platform.<os>.jac: none beyond POSIX.1."""
-import from jaclang.runtime.python.modules.time_records { timespec }
 
 glob HAS_CLOCK_NANOSLEEP: bool = False,
      HAS_PTHREAD_GETCPUCLOCKID: bool = False;

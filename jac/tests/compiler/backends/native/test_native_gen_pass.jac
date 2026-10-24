@@ -4226,7 +4226,7 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     import shutil;
     import tempfile;
     qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
-    import from jaclang.compiler.backends.native.static_link { musl_lib_dir }
+    import from jaclang.compiler.backends.native.native_link { musl_lib_dir }
     if not qemu or musl_lib_dir("aarch64-unknown-linux-musl") is None {
         testskip(
             "aarch64 qemu-user or the aarch64 musl runtime is not present "
@@ -4268,86 +4268,47 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     }
 }
 
-test "elf linker rejects unhandled relocation (issue #6366 guard)" {
-    # Defense-in-depth: the linker must refuse to emit a binary when a
-    # relocation targeting an emitted section has no handler, rather than
-    # silently leaving the reference pointing at NULL (the #6366 failure mode).
-    # Pure link-time check -- no execution, so it runs without qemu.
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
-    import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-    llvm.initialize_all_targets();
-    llvm.initialize_all_asmprinters();
-    # A function that loads a module global forces an address-materialization
-    # relocation into .text against the global.
-    ir = "target triple = \"aarch64-unknown-linux-gnu\"\n"
-        + "@g = global i64 0\n"
-        + "define i64 @f() {\n  %v = load i64, i64* @g\n  ret i64 %v\n}\n";
-    mod = llvm.parse_assembly(ir);
-    tm = llvm.Target.from_triple("aarch64-unknown-linux-gnu").create_target_machine(
-        opt=2
-    );
-    obj_bytes = tm.emit_object(mod);
-    linker = ElfLinker(
-        obj_data=obj_bytes,
-        sections=[],
-        symbols=[],
-        relocations=[],
-        needed_libs=["libc.so.6"]
-    );
-    assert linker.parse_object() , "parse_object failed on aarch64 object";
-    assert len(linker.relocations) > 0 , "expected at least one relocation";
-    # Corrupt a relocation that patches the emitted code section to an unknown
-    # type; the linker must raise instead of emitting an unrelocated binary.
-    target = None;
-    for r in linker.relocations {
-        if r.target_sec and "text" in r.target_sec {
-            target = r;
-            break;
-        }
-    }
-    assert target is not None , "no .text relocation found to corrupt";
-    _corrupt: any = target;
-    _corrupt.rtype = 9999;
-    raised = False;
-    try {
-        linker.build_executable();
-    } except ValueError as e {
-        raised = True;
-        assert "relocation type" in str(e) , f"unexpected message: {e}";
-    }
-    assert raised , "linker silently accepted an unhandled relocation";
-}
-
-test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
+test "an ELF executable carries DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     # A standalone binary must find a sibling shared library regardless of the
-    # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
+    # launch directory. The link sets DT_RUNPATH=$ORIGIN so the loader
     # resolves needed libraries relative to the executable. Pure link-time
     # check -- no execution, so it runs without qemu.
     import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import os;
     import struct;
-    import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
+    import tempfile;
+    import from jaclang.compiler.backends.native.native_link {
+        NativeLinkJob,
+        link_native
+    }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     ir = "target triple = \"x86_64-unknown-linux-gnu\"\n"
-        + "define i64 @f() {\n  ret i64 0\n}\n";
+        + "define void @_start() {\n  ret void\n}\n";
     mod = llvm.parse_assembly(ir);
     tm = llvm.Target.from_triple("x86_64-unknown-linux-gnu").create_target_machine(
-        opt=2
+        opt=2, reloc="pic"
     );
-    obj_bytes = tm.emit_object(mod);
-    linker = ElfLinker(
-        obj_data=obj_bytes,
-        sections=[],
-        symbols=[],
-        relocations=[],
-        needed_libs=["libc.so.6", "libfoo.so"]
-    );
-    assert linker.parse_object() , "parse_object failed";
-    out = linker.build_executable();
+    with tempfile.TemporaryDirectory() as work {
+        out_path = os.path.join(work, "runpath_probe");
+        link_native(
+            NativeLinkJob(
+                platform="elf",
+                triple="x86_64-unknown-linux-gnu",
+                output_path=out_path,
+                objects=[tm.emit_object(mod)],
+                needed_libs=["libc.so.6", "libfoo.so"]
+            )
+        );
+        with open(out_path, "rb") as f {
+            out = f.read();
+        }
+    }
     # The $ORIGIN runpath string is emitted into .dynstr ...
     assert b"$ORIGIN\x00" in out , "DT_RUNPATH $ORIGIN string not emitted";
     # ... and referenced by a DT_RUNPATH (tag 29) dynamic entry.
     assert struct.pack("<q", 29) in out , "DT_RUNPATH (tag 29) dynamic entry missing";
+    assert b"libfoo.so\x00" in out , "DT_NEEDED libfoo.so not recorded";
 }
 
 test "list_bugs pop local removes element" {

@@ -9,28 +9,8 @@ import from kubernetes.client.exceptions { ApiException }
 import unittest.mock;
 import from types { SimpleNamespace }
 
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.models.resource_status { ResourceStatus }
-import from jaclang.scale.config.config_loader {
-    JacScaleConfig,
-    get_scale_config,
-    reset_scale_config
-}
 import from tempfile { mkdtemp }
 import shutil;
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.deploy.database.kubernetes_postgres {
-    KubernetesPostgresProvider
-}
-import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-import from jaclang.testing.requires { require_flag }
 
 with entry {
     require_flag(

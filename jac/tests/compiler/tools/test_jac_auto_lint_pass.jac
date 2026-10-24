@@ -1517,7 +1517,7 @@ test "W3051 strip-docstrings removes all docstrings when selected" {
     assert "# inline comment" in formatted;
 }
 
-test "deslop rules are opt-in and never fire under select all" {
+test "deslop rules fire under select all" {
     input_path = auto_lint_fixture_path("deslop.jac");
     config = JacConfig();
     config.check = CheckConfig(lint=LintConfig(select=["all"]));
@@ -1528,10 +1528,103 @@ test "deslop rules are opt-in and never fire under select all" {
     } finally {
         set_config(None);
     }
-    # "all" must NOT activate the destructive deslop rules.
-    assert "# standalone comment" in formatted;
-    assert "Module docstring to deslop" in formatted;
-    assert "Archetype docstring to deslop" in formatted;
+    assert "# standalone comment" not in formatted;
+    assert "Module docstring to deslop" not in formatted;
+    assert "Archetype docstring to deslop" not in formatted;
+    assert "# jac:ignore[E1053]" in formatted;
+}
+
+"""Format the separate_impls fixture under the given lint select list."""
+def format_separate_impls(select: list[str]) -> str {
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=select));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(
+            auto_lint_fixture_path("separate_impls.jac"), auto_lint=True
+        );
+        return prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+}
+
+test "W3055 separate-impls moves bodies into impls at the bottom of the module" {
+    formatted = format_separate_impls(["separate-impls"]);
+    assert "    def bar(x: int, y: str = \"s\") -> int;\n" in formatted;
+    assert "        def deep -> int;\n" in formatted;
+    assert "    static def make -> Foo;\n" in formatted;
+    assert "    can visit_root with Root entry;\n" in formatted;
+    assert "\ndef top(a: int) -> int;\n" in formatted;
+    tail = formatted[formatted.index("with entry {"):];
+    assert "impl Foo.bar(x: int, y: str = \"s\") -> int {" in tail;
+    assert "impl Foo.Inner.deep -> int {\n    return 3;\n}" in tail;
+    assert "impl Foo.make -> Foo {" in tail;
+    assert "impl W.visit_root with Root entry {\n    visit [-->];\n}" in tail;
+    assert "impl top(a: int) -> int {\n    def helper(b: int) -> int {" in tail;
+    # Comments travel with the code they sit on.
+    assert "    # bar comment\n    def bar(" in formatted;
+    assert "-> int {\n    # inner comment\n    return x + self.a;" in tail;
+    # The impls keep the order their declarations appear in.
+    assert tail.index("impl Foo.bar") < tail.index("impl Foo.Inner.deep");
+    assert tail.index("impl Foo.make") < tail.index("impl W.visit_root");
+    assert tail.index("impl W.visit_root") < tail.index("impl top(");
+    assert "\n) -> str {\n    return beta_parameter;" in tail;
+    assert "impl Foo.quiet_hook(\n" in tail;
+    assert "impl Foo.tiny {}" in tail;
+}
+
+test "W3055 leaves bodies that an impl cannot name in place" {
+    formatted = format_separate_impls(["separate-impls"]);
+    # Nameless abilities and nested functions stay inline.
+    assert "    can with Root entry {\n        disengage;" in formatted;
+    assert "impl helper" not in formatted;
+    assert formatted.count("impl Foo.declared") == 1;
+    # A field sharing the method's name would capture the impl's target.
+    assert "    def init(self: Field, flag: bool) {" in formatted;
+    assert "impl Field.init" not in formatted;
+}
+
+test "W3055 separates generic bodies and restates their type parameters" {
+    formatted = format_separate_impls(["separate-impls"]);
+    assert "    def generic[T](x: T) -> T;\n" in formatted;
+    assert "impl Foo.generic[T](x: T) -> T {\n    return x;" in formatted;
+}
+
+test "W3055 separates client component bodies like any other" {
+    formatted = format_separate_impls(["separate-impls"]);
+    assert "\ndef badge(label: str) -> JsxElement;\n" in formatted;
+    assert "impl badge(label: str) -> JsxElement {\n    return <span>{label}</span>;"
+        in formatted;
+    assert "\ndef counter;\n" in formatted;
+    assert "impl counter {\n    has clicks: int = 0;" in formatted;
+}
+
+test "W3055 separate-impls is idempotent" {
+    formatted = format_separate_impls(["separate-impls"]);
+    with tempfile.TemporaryDirectory() as tmpdir {
+        path = os.path.join(tmpdir, "again.jac");
+        with open(path, "w") as f {
+            f.write(formatted);
+        }
+        config = JacConfig();
+        config.check = CheckConfig(lint=LintConfig(select=["separate-impls"]));
+        set_config(config);
+        try {
+            again = JacProgram.jac_file_formatter(
+                path, auto_lint=True
+            ).mod.main.gen.jac;
+        } finally {
+            set_config(None);
+        }
+    }
+    assert again == formatted;
+}
+
+test "W3055 separate-impls is on under all and off under default" {
+    assert "impl Foo.bar(" in format_separate_impls(["all"]);
+    assert "impl Foo.bar(" not in format_separate_impls(["default"]);
+    assert "impl Foo.bar(" not in format_separate_impls(["default", "strip-comments"]);
 }
 
 test "deslop rules are disabled under default select" {

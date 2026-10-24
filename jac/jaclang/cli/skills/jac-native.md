@@ -51,6 +51,8 @@ with entry {
 - **Functions**: default params, recursion, union types (`Piece | None`).
 - **Control flow**: `if/elif/else`, `while`, `for-in` over range/collections/lazy `map`/`filter`/`enumerate`/`zip`, `break`/`continue`, ternary.
 - **Exceptions**: `try/except/else/finally`, `raise`, `except ValueError as e`, hierarchy matching.
+- **Generators**: a `def` containing `yield` lowers when its return type is written `-> Iterator[T]` (`Generator[...]` is not a native type and fails E2018). `yield from` another generator, generator methods on an `obj`, `next(it, default)`, and an `Iterator[T] | None` field holding a live generator all work, so long jobs can be stepped a slice at a time from a frame loop.
+- **Object-spatial code**: `node`/`edge`/`walker` archetypes, `spawn`, `visit [-->]`, `here`, `+>:E:+>` connects, `del` disconnects and typed edge queries (`[a->:E:->][?:Room]`).
 - **File I/O**: `open`/`read`/`write`/`close`, `with open(...) as f { }`, custom `__enter__`/`__exit__`.
 - **Builtins**: `print`, `len`, `range`, `abs`/`min`/`max`/`pow`, `chr`/`ord`, `str`/`int`/`float`, `input`; f-strings. **str methods**: `upper`/`lower`/`strip`/`split`/`join`/`replace`/`find`/`startswith`/`endswith`/`count`; substring `in`.
 
@@ -60,7 +62,7 @@ Anything else fails **loudly at compile time** - `import json` -> *"Native pathw
 
 The stdlib table is for **host** binaries. On `--target wasm32` there is no libc/libm to link: each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
 
-**Not supported** (compile errors): walkers/nodes/edges, `async`, generators/`yield`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI. Lambdas: see gotchas.
+**Not supported** (compile errors): `async`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
 
 ## Gotchas (all verified against the current compiler)
 
@@ -69,7 +71,7 @@ The stdlib table is for **host** binaries. On `--target wasm32` there is no libc
 - **A lambda that captures a local variable compiles silently and computes garbage.** Non-capturing expression lambdas happen to work, but the safe rule is: no lambdas in native code - pass named functions. (Calling a function received through an `any` param is a compile error.)
 - Forward-decl stubs (`obj Board;`) parse, but field access through a stub-typed value fails (`No matching overload ... "__add__"` / `<Unknown>`). They are unnecessary - just reference later-defined types.
 - Booleans are `True`/`False`. Lowercase `true` fails with the misleading `E1002: Cannot return <Unknown>, expected bool`.
-- `node` and `root` are reserved words - they cannot be variable names in native code. `by` is one too (`by llm()`), so the natural 3D grid params `ax, ay, az, bx, by, ...` fail E0013 - escape as `` `by `` or rename.
+- `node`, `root`, `edge`, `entry` and `own` are reserved words - they cannot be variable or field names (E0013), and a natural name like `entry` for "the state on entering" has to be renamed. `by` is one too (`by llm()`), so the natural 3D grid params `ax, ay, az, bx, by, ...` fail E0013 - escape as `` `by `` or rename.
 - **Mixing an FFI `i32` with an `int` (i64) in a ternary kills codegen**: `return n if n > 0 else 60;` where `n` came from an `-> i32` extern aborts `jac build --native` with *"PHI nodes not grouped at top of basic block"* (the widening `zext` lands between the merge block's PHIs). `jac check` passes - it only dies at nacompile. Use an explicit `if { return n; } return 60;` instead.
 - Wide flat signatures next to a C import can misbehave: the shooter flagship hit a type-checker param-counting bug on a 12-float-param helper and renamed to short uniform `p0..p11` (minimal repros pass on the current compiler - if you see a phantom arg-count error on a grid-of-floats signature, rename the params).
 
@@ -166,9 +168,19 @@ with entry {
 - **Structs are C layout; pointers are explicit.** A foreign struct's storage is its C layout (nested structs by value), so reading a nested struct or view element as a value copies it, while `cam.position.x = 1.0` writes in place. A parameter typed `&T`/`&mut T` lends C the address of the argument for the call: `UpdateCamera(&mut cam)`, scalar out-params `SDL_GetWindowSize(w, &mut width, &mut height)`. C-owned addresses are `ptr[T]` (bare `ptr` is `void*`): null-test with `p.is_null()`, compare (`==`, and `<`/`<=`/`>`/`>=` by address for one pointee type), step it C-style (`p + n`, `p - q`), pass it back, or read/write a bounds-checked `p.view(n)`; no dereference. A bodiless `obj sqlite3;` is an opaque type used only as `ptr[sqlite3]` (out-param: `&mut ptr[sqlite3]`). A pointer C keeps after the call needs `Pinned[T]` (`pin(value)`) passed to a `&mut Pinned[T]` parameter, and the pin must outlive the registration. Details: `jac guide reference/language/native-pathway` (C Library Interop).
 - No `cc`/`ld` step: each declared symbol becomes an extern Jac's own linker records (DT_NEEDED / LC_LOAD_DYLIB) and the OS loader resolves at run time.
 
+## Fast rebuilds
+
+`jac build --native` is incremental per module: the build says `Recompiled N unit(s); reused M`, and a rebuild with nothing changed costs only the link. How long an edit takes depends on what it invalidates:
+
+- **Check before building.** `jac check <file>` reports type errors, reserved words and unknown types for the files you changed in seconds to a minute; a full native build of a large program takes minutes and stops at the first module that fails.
+- **Keep the cache.** It is keyed by the compiler that built it: pointing `JAC_DEV_SOURCE` at another compiler tree, or `jac clean --cache`, recompiles every module. Stay on one compiler while iterating, and clean only for genuinely stale behaviour.
+- **Mind the import graph.** An edit to a module many others import (a shared base type, a host interface) recompiles all of them; one to a leaf recompiles little.
+- **Probe small.** To try a construct or time a function, build a ten-line program that imports just what it needs rather than the whole application.
+- **One heavy job at a time.** Native builds and `jac test` runs each compile their own closure; running several at once makes each slower.
+
 ## Debugging
 
 - `JAC_DUMP_IR=/tmp/out.ll jac build --native app.jac` writes the optimized LLVM IR to a readable `.ll` file.
-- Stale behavior after moving/regenerating files: use `jac clean --cache` (or `jac run --no-cache`) to wipe the native IR cache, which lives in the module's cache dir (`.jac/cache/native/`, or the global `~/.cache/jac/jir/` for installed sources).
+- Stale behavior after moving/regenerating files: use `jac clean --cache` (or `jac run --no-cache`) to wipe the native IR cache, which lives in the module's cache dir (`.jac/cache/native/`, or the global `~/.cache/jac/jir/` for installed sources). It costs a full rebuild, so it is not a first step for an ordinary build error.
 - Memory: reference counting by default, with memory profiles - `jac build --native --memory managed|rc|nogc` - and an opt-in ownership/borrow surface (`own`, `&`/`&mut`, `imm`, `Region` arenas opened with `in r { }`, `def drop`) that scales to fully RC-free binaries (`--memory nogc`). `jac explain memory <file>` prints per-module RC coverage and the inferred ownership facts. Any `E13xx`/`E14xx` diagnostic, leak, or refcount question: see `jac-native-memory`.
 - Run native test files with `jac test <file>`. See `jac-testing` and `jac-debugging`.

@@ -1,56 +1,13 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    TreeWalker,
-    UniNode,
-    Ability,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    BinaryExpr,
-    BoolExpr,
-    ConnectOp,
-    DeleteStmt,
-    DisconnectOp,
-    EventSignature,
-    Expr,
-    FuncCall,
-    KWPair,
-    ListVal,
-    MultiString,
-    ability_of_symbol,
-    ImplDef,
-    Name,
-    SpecialVarRef,
-    String,
-    Symbol,
-    Token
-}
-import from jaclang.compiler.passes.context { CompileContext, TreePass }
-import from jaclang.compiler.frontend.constant { SymbolType, Tokens as Tok }
+def _literal_names(value: (Expr | None)) -> (list[str] | None);
 
-def _literal_names(value: (Expr | None)) -> (list[str] | None) {
-    if not isinstance(value, ListVal) {
-        return None;
-    }
-    names: list[str] = [];
-    for item in value.values {
-        text: (str | bytes) = b"";
-        if isinstance(item, String) {
-            text = item.lit_value;
-        } elif isinstance(item, MultiString)
-            and all(isinstance(part, String) for part in item.strings) {
-            text = item.lit_value;
-        }
-        if not isinstance(text, str) or not text {
-            return None;
-        }
-        names.append(text);
-    }
-    return names;
+obj CallableKey {
+    has owner: (UniScopeNode | None) = None,
+        key: str = "";
 }
+
+def callable_key(sym: Symbol) -> CallableKey;
+
+def _summary_strings(value: object) -> list[str];
 
 walker EndpointEffectPass(TreePass) {
     static has contract: PassContract = PassContract();
@@ -60,272 +17,30 @@ walker EndpointEffectPass(TreePass) {
         _declared_writes: set[str] = set(),
         _assumptions: set[str] = set(),
         _touches: set[str] = set(),
-        _visited: set[int] = set();
+        _visited: set[int] = set(),
+        _recording: bool = False,
+        _summaries: dict[int, dict[str, any]] = {},
+        _summarizing: set[int] = set();
 
-    can prepare with entry {
-        if self.ctx.nested_depth {
-            return;
-        }
-        self._is_writer = False;
-        self._unknown = False;
-        self._declared_reads.clear();
-        self._declared_writes.clear();
-        self._assumptions.clear();
-        self._touches.clear();
-        self._visited.clear();
-    }
-
-    can enter_ability with Ability entry {
-        import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-        if (
-            not here.is_method
-            and not here.in_client_context()
-            and here.access is not None
-            and here.access.tag.name == Tok.KW_PUB
-            and isinstance(here.name_ref, Name)
-        ) {
-            self.module.gen.interop_manifest.endpoint_effects[
-                endpoint_key(self.module, "func", here.name_ref.sym_name)
-            ] = self._classify(
-                self._resolved_body(here), "func", here.name_ref.sym_name, here
-            );
-        }
-    }
-
-    can enter_archetype with Archetype entry {
-        import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-        if here.arch_kind != "walker" {
-            return;
-        }
-        if not isinstance(here.name, Name) {
-            return;
-        }
-        self.module.gen.interop_manifest.endpoint_effects[
-            endpoint_key(self.module, "walker", here.name.sym_name)
-        ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
-    }
-
+    can prepare with entry;
+    can enter_ability with Ability entry;
+    can enter_archetype with Archetype entry;
+    can record_callables with Module exit;
+    def _summary(ability: Ability) -> (dict[str, any] | None);
+    def _served_effects(call: FuncCall) -> (dict[str, any] | None);
+    def _apply(summary: dict[str, any], call: FuncCall);
     def _classify(
         body_nodes: list[UniNode],
         kind: str,
         name: str,
         declaration: Ability | None = None
-    ) -> dict[str, any] {
-        import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
-        self._is_writer = False;
-        self._unknown = False;
-        self._declared_reads.clear();
-        self._declared_writes.clear();
-        self._assumptions.clear();
-        self._touches.clear();
-        self._visited.clear();
-        declared = self._declaration_effects(declaration)
-            if declaration is not None
-            else None;
-        if declared is not None {
-            self._declared_reads.update(declared["reads"]);
-            self._declared_writes.update(declared["writes"]);
-            self._assumptions.add("Declared effects of " + name);
-        } else {
-            for nd in body_nodes {
-                self._scan(nd);
-            }
-        }
-        result: dict[str, any] = {};
-        for (field, value) in endpoint_descriptor(self.module, kind, name).items() {
-            result[field] = value;
-        }
-        result["reads"] = sorted(list(self._declared_reads))
-            if declared is not None
-            else ["*"];
-        result["writes"] = ["*"]
-            if self._is_writer or self._unknown
-            else sorted(list(self._declared_writes));
-        result["assumptions"] = sorted(list(self._assumptions));
-        result["unknown"] = self._unknown;
-        result["observed_tags"] = sorted(list(self._touches));
-        return result;
-    }
+    ) -> dict[str, any];
 
-    def _scan(nd: (UniNode | None)) -> None {
-        if nd is None {
-            return;
-        }
-
-        if isinstance(nd, BinaryExpr) {
-            if isinstance(nd.op, ConnectOp) {
-                self._is_writer = True;
-
-                if nd.op.conn_type and isinstance(nd.op.conn_type, Name) {
-                    self._touches.add(nd.op.conn_type.sym_name);
-                }
-            } elif isinstance(nd.op, DisconnectOp) {
-                self._is_writer = True;
-            } elif isinstance(nd.op, Token) and nd.op.name == Tok.KW_SPAWN {
-                self._is_writer = True;
-            }
-        }
-
-        if isinstance(nd, DeleteStmt) {
-            self._is_writer = True;
-        }
-
-        if isinstance(nd, Assignment) and nd.target {
-            for tgt in nd.target {
-                if isinstance(tgt, AtomTrailer) and tgt.is_attr {
-                    self._is_writer = True;
-                }
-            }
-        }
-
-        if isinstance(nd, FuncCall) {
-            arch_sym = self._call_target_symbol(nd);
-            if arch_sym
-                and arch_sym.sym_type in [SymbolType.NODE_ARCH, SymbolType.EDGE_ARCH] {
-                self._is_writer = True;
-                self._touches.add(arch_sym.sym_name);
-            }
-
-            if id(nd) not in self._visited {
-                self._visited.add(id(nd));
-                declared = self._declared_effects(nd);
-                if declared is not None {
-                    import from jaclang.compiler.frontend.unparse { unparse_node }
-                    self._declared_reads.update(declared["reads"]);
-                    self._declared_writes.update(declared["writes"]);
-                    self._assumptions.add(
-                        "Declared effects of " + unparse_node(nd.target)
-                    );
-                } else {
-                    body = self._callee_body(nd);
-                    if not body {
-                        self._unknown = True;
-                    }
-                    for stmt in body {
-                        self._scan(stmt);
-                    }
-                }
-            }
-        }
-
-        if isinstance(nd, EventSignature) and nd.arch_tag_info {
-            if isinstance(nd.arch_tag_info, Name) {
-                self._touches.add(nd.arch_tag_info.sym_name);
-            } elif isinstance(nd.arch_tag_info, BoolExpr) {
-                for val in nd.arch_tag_info.values {
-                    if isinstance(val, Name) {
-                        self._touches.add(val.sym_name);
-                    }
-                }
-            }
-        }
-
-        for child in [nd->:Kid:->] {
-            if child {
-                self._scan(child);
-            }
-        }
-    }
-
-    def _call_target_symbol(call: FuncCall) -> (Symbol | None) {
-        if isinstance(call.target, Name) {
-            sym = call.target.sym;
-            if not sym {
-                try {
-                    sym = call.target.sym_tab.lookup(call.target.sym_name, deep=True);
-                } except ValueError {
-                    return None;
-                }
-            }
-            return sym;
-        }
-
-        if isinstance(call.target, AtomTrailer) {
-            attrs = call.target.as_attr_list;
-            if attrs {
-                last = attrs[-1];
-                if isinstance(last, AstSymbolNode) and last.sym {
-                    return last.sym;
-                }
-            }
-        }
-        return None;
-    }
-
-    def _declared_effects(call: FuncCall) -> dict[str, list[str]] | None {
-        decl = ability_of_symbol(self._call_target_symbol(call));
-        return self._declaration_effects(decl) if decl is not None else None;
-    }
-
-    def _declaration_effects(decl: Ability) -> dict[str, list[str]] | None {
-        for decorator in decl.decorators or [] {
-            if not isinstance(decorator, FuncCall) {
-                continue;
-            }
-            target = ability_of_symbol(self._call_target_symbol(decorator));
-            if target is None
-                or not target.loc.mod_path.replace("\\", "/").endswith(
-                    "/jaclang/lib/effects.jac"
-                ) {
-                continue;
-            }
-            result: dict[str, list[str]] = {"reads": [], "writes": []};
-            for pair in decorator.params or [] {
-                if not isinstance(pair, KWPair)
-                    or pair.key is None
-                    or pair.key.sym_name not in result {
-                    raise ValueError(
-                        "Effect declarations require reads= and writes= literal lists"
-                    );
-                }
-                values = _literal_names(pair.value);
-                if values is None {
-                    raise ValueError(
-                        "Effect dependencies must be literal nonempty strings"
-                    );
-                }
-                result[pair.key.sym_name] = values;
-            }
-            return result;
-        }
-        return None;
-    }
-
-    def _callee_body(call: FuncCall) -> list[UniNode] {
-        sym = self._call_target_symbol(call);
-        if not sym or not sym.defn {
-            return [];
-        }
-        defn_node = sym.defn[0];
-        ability = None;
-        if isinstance(defn_node, Ability) {
-            ability = defn_node;
-        } elif defn_node.parent and isinstance(defn_node.parent, Ability) {
-            ability = defn_node.parent;
-        }
-        if ability {
-            return self._resolved_body(ability);
-        }
-        return [];
-    }
-
-    def _resolved_body(owner: UniNode) -> list[UniNode] {
-        if isinstance(owner, Archetype) {
-            return owner._get_impl_resolved_body();
-        }
-        if not isinstance(owner, Ability) {
-            return [];
-        }
-        body = owner.body;
-        if isinstance(body, list) {
-            return body;
-        }
-        out: list[UniNode] = [];
-        if isinstance(body, ImplDef) and isinstance(body.body, list) {
-            for stmt in body.body {
-                out.append(stmt);
-            }
-        }
-        return out;
-    }
+    def _scan(nd: (UniNode | None)) -> None;
+    def _call_target_symbol(call: FuncCall) -> (Symbol | None);
+    def _declared_effects(call: FuncCall) -> dict[str, list[str]] | None;
+    def _declaration_effects(decl: Ability) -> dict[str, list[str]] | None;
+    def _callee_ability(call: FuncCall) -> (Ability | None);
+    def _callee_body(call: FuncCall) -> list[UniNode];
+    def _resolved_body(owner: UniNode) -> list[UniNode];
 }

@@ -71,9 +71,6 @@ impl TypeEvaluator._type_from_union_annotation_arg(val: Expr) -> TypeBase {
 impl TypeEvaluator._merge_catalog_field_params(
     tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
 ) -> None {
-    import from jaclang.compiler.frontend.constant { SymbolType }
-    import from jaclang.compiler.types.stubcat.format { SYMF_DEFER, SYMF_HAS_DEFAULT }
-    import from jaclang.compiler.types.stubcat.reader { CatProvider }
     names = tab.names_in_scope.copy();
     for (name, sym) in names.items() {
         if sym.sym_type != SymbolType.HAS_VAR {
@@ -104,8 +101,6 @@ impl TypeEvaluator._merge_catalog_field_params(
 impl TypeEvaluator._build_field_params(
     class_type: ClassType, skip_deferred: bool = True
 ) -> dict[str, Parameter] {
-    import from jaclang.compiler.field_semantics { field_initialization }
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
     param_map: dict[str, Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
         cat_tab = cls.shared.symbol_table;
@@ -368,9 +363,83 @@ impl TypeEvaluator._typeddict_as_dict(base_type: ClassType) -> ClassType | None 
     return dict_type.clone_as_instance();
 }
 
+glob _TYPEDDICT_ASSIGNS_IN_PROGRESS: set[tuple[int, int]] = set();
+
+impl TypeEvaluator._assign_typeddict(
+    src_type: ClassType, dest_type: ClassType, strict: bool = False
+) -> bool {
+    if not src_type.is_typeddict() {
+        return False;
+    }
+    pair = (id(src_type.shared), id(dest_type.shared));
+    if pair in _TYPEDDICT_ASSIGNS_IN_PROGRESS {
+        return True;
+    }
+    _TYPEDDICT_ASSIGNS_IN_PROGRESS.add(pair);
+    try {
+        src_fields: dict[str, TypeBase] = src_type.shared.typeddict_fields or {};
+        for (key, dest_field) in (dest_type.shared.typeddict_fields or {}).items() {
+            if key not in src_fields {
+                return False;
+            }
+            src_field = src_fields[key];
+            if not self.assign_type(src_field, dest_field, strict)
+                or not self.assign_type(dest_field, src_field, strict) {
+                return False;
+            }
+        }
+        return True;
+    } finally {
+        _TYPEDDICT_ASSIGNS_IN_PROGRESS.discard(pair);
+    }
+}
+
+impl TypeEvaluator._typeddict_for_dict_literal(
+    expr: DictVal, expected_type: TypeBase | None
+) -> ClassType | None {
+    candidates: list[TypeBase] = [];
+    if isinstance(expected_type, UnionType) {
+        candidates = list(expected_type.types);
+    } elif expected_type is not None {
+        candidates = [expected_type];
+    }
+    for cand in candidates {
+        if not (
+            isinstance(cand, ClassType)
+            and cand.is_class_instance()
+            and cand.is_typeddict()
+        ) {
+            continue;
+        }
+        fields: dict[str, TypeBase] = cand.shared.typeddict_fields or {};
+        fits = True;
+        for kv in expr.kv_pairs {
+            if not kv.key {
+                fits = False;
+                break;
+            }
+            key_type = self.get_type_of_expression(kv.key);
+            key = key_type.get_literal_value()
+                if isinstance(key_type, ClassType)
+                else None;
+            if not isinstance(key, str) or key not in fields {
+                fits = False;
+                break;
+            }
+            val_type = self.get_type_of_expression(kv.value, expected_type=fields[key]);
+            if not self.assign_type(val_type, fields[key]) {
+                fits = False;
+                break;
+            }
+        }
+        if fits {
+            return cand;
+        }
+    }
+    return None;
+}
+
 impl TypeEvaluator._scope_has_fields(tab: UniScopeNode | None) -> bool {
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if isinstance(tab, Archetype) {
         return bool(tab.get_has_vars());
     }
@@ -462,7 +531,6 @@ impl TypeEvaluator._lookup_object_member(
 impl TypeEvaluator._lookup_class_member(
     base_type: ClassType, member: str
 ) -> ClassMember | None {
-    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
     self._heal_ancestry(base_type);
     ensure_mro_fresh(base_type);
     for cls in base_type.shared.mro {
@@ -552,7 +620,7 @@ impl TypeEvaluator.declaring_class_of(
     if symbol.decl is None {
         return None;
     }
-    arch = symbol.decl.find_parent_of_type(Archetype);
+    arch = symbol.decl.enclosing_decl(Archetype);
     if arch is None {
         return None;
     }
@@ -691,7 +759,6 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
 }
 
 impl TypeEvaluator._metaclass_of(cls_type: ClassType) -> (ClassType | None) {
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
     for cls in cls_type.shared.mro {
         arch = cls.shared.symbol_table;
         if isinstance(arch, CatScope) {
@@ -760,7 +827,6 @@ impl TypeEvaluator._report_rejected_method_call(
 }
 
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
-    import from jaclang.compiler.types.type_utils { types_equivalent }
     for existing in type_list {
         if isinstance(ty, ClassType) and isinstance(existing, ClassType) {
             if ty.shared.same_class(existing.shared) {
@@ -1008,11 +1074,7 @@ impl TypeEvaluator._iterable_elem_contrib(args: list[Expr]) -> TypeBase | None {
 }
 
 impl TypeEvaluator._get_enclosing_class(nd: UniNode) -> Archetype | None {
-    impl_ := nd.find_parent_of_type(ImplDef);
-    if impl_ and isinstance(impl_.decl_link, Archetype) {
-        return impl_.decl_link;
-    }
-    return nd.find_parent_of_type(Archetype);
+    return nd.enclosing_decl(Archetype);
 }
 
 impl TypeEvaluator._get_enclosing_method(nd: UniNode) -> Ability | None {
@@ -1040,6 +1102,9 @@ impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
                 return True;
             }
         } elif isinstance(cur, ImplDef) {
+            if isinstance(cur.decl_link, ArchSpec) {
+                return False;
+            }
             if child is not cur.spec
                 and child not in (cur.decorators or [])
                 and child not in (cur.target or []) {
@@ -1058,9 +1123,9 @@ impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
 
 impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool {
     def enclosing_fn(n: UniNode) -> (UniNode | None) {
-        cur = n.parent;
-        while cur is not None and not isinstance(cur, (Ability, ImplDef, LambdaExpr)) {
-            cur = cur.parent;
+        cur = n.decl_parent;
+        while cur is not None and not isinstance(cur, (Ability, LambdaExpr)) {
+            cur = cur.decl_parent;
         }
         return cur;
     }
@@ -1069,6 +1134,10 @@ impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool
         return False;
     }
     for use in symbol.uses {
+        owner = use.parent;
+        if isinstance(owner, AtomTrailer) and owner.is_attr and owner.right is use {
+            continue;
+        }
         if isinstance(use, Name)
             and use.expr_ctx == ExprCtx.STORE
             and enclosing_fn(use) is fn {
@@ -1081,15 +1150,9 @@ impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool
 impl TypeEvaluator._get_enclosing_return_scope(
     nd: UniNode
 ) -> Ability | LambdaExpr | None {
-    while nd := nd.parent {
-        if isinstance(nd, LambdaExpr) {
+    while nd := nd.decl_parent {
+        if isinstance(nd, (LambdaExpr, Ability)) {
             return nd;
-        }
-        if isinstance(nd, Ability) {
-            return nd;
-        }
-        if isinstance(nd, ImplDef) and isinstance(nd.decl_link, Ability) {
-            return nd.decl_link;
         }
     }
     return None;
@@ -1151,15 +1214,7 @@ impl TypeEvaluator._get_declared_return_type(
 }
 
 impl TypeEvaluator._get_enclosing_function(nd: UniNode) -> Ability | None {
-    while nd := nd.parent {
-        if isinstance(nd, Ability) {
-            return nd;
-        }
-        if isinstance(nd, ImplDef) and isinstance(nd.decl_link, Ability) {
-            return nd.decl_link;
-        }
-    }
-    return None;
+    return nd.enclosing_decl(Ability);
 }
 
 
@@ -1332,8 +1387,7 @@ impl TypeEvaluator._is_instance_method_member(member: ClassMember) -> bool {
     if params and params[0].is_cls {
         return False;
     }
-    import from jaclang.compiler.types.stubcat.format { SYMF_INSTANCE_METHOD }
-    import from jaclang.compiler.types.stubcat.reader { CatProvider }
+
     prov = member.symbol.provider;
     if isinstance(prov, CatProvider) and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 {
         return True;
@@ -1672,7 +1726,6 @@ impl TypeEvaluator._is_ability_staticmethod(node_: Ability) -> bool {
 }
 
 impl TypeEvaluator._classify_property_symbol(symbol: Symbol) -> PropertyWriteKind {
-    import from jaclang.compiler.types.type_utils { PropertyWriteKind }
     if symbol.provider is not None {
         return PropertyWriteKind(symbol.provider.property_kind());
     }
@@ -1706,7 +1759,6 @@ impl TypeEvaluator._classify_property_symbol(symbol: Symbol) -> PropertyWriteKin
 }
 
 impl TypeEvaluator.get_getter_type_from_property(symbol: Symbol) -> (TypeBase | None) {
-    import from jaclang.compiler.types.type_utils { PropertyWriteKind }
     kind = self._classify_property_symbol(symbol);
     if kind == PropertyWriteKind.NOT_PROPERTY {
         return None;
@@ -1730,10 +1782,6 @@ impl TypeEvaluator.get_getter_type_from_property(symbol: Symbol) -> (TypeBase | 
 }
 
 impl TypeEvaluator.get_property_write_type(symbol: Symbol) -> PropertyWriteResult {
-    import from jaclang.compiler.types.type_utils {
-        PropertyWriteKind,
-        PropertyWriteResult
-    }
     kind = self._classify_property_symbol(symbol);
     if kind == PropertyWriteKind.NOT_PROPERTY {
         return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
@@ -2010,7 +2058,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not mod_path {
         return None;
     }
-    import from jaclang.compiler.frontend.host { active_host }
+
     base = self._client_npm_base(spec, mod_path);
     if base is None {
         return None;
@@ -2019,7 +2067,6 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
 }
 
 impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
-    import from jaclang.compiler.frontend.host { active_host }
     if active_host().has_npm_package(spec, mod_path) {
         return mod_path;
     }
@@ -2191,7 +2238,8 @@ impl TypeEvaluator.validate_typevar_variance(func: Ability) -> None {
     }
 
     class_tvars: dict[str, TypeVarType] = {};
-    for tp in class_type.shared.type_params {
+    type_params: list[TypeVarType] = class_type.shared.type_params;
+    for tp in type_params {
         class_tvars[tp.name] = tp;
     }
 
@@ -2244,8 +2292,7 @@ impl TypeEvaluator.validate_typevar_variance(func: Ability) -> None {
 
 impl TypeEvaluator.validate_typevar_scope(expr: Expr, type_var: TypeVarType) -> None {
     if type_var.is_self {
-        if expr.find_parent_of_type(Archetype) is not None
-            or expr.find_parent_of_type(ImplDef) is not None {
+        if expr.enclosing_decl(Archetype) is not None {
             return;
         }
     }
@@ -2253,16 +2300,16 @@ impl TypeEvaluator.validate_typevar_scope(expr: Expr, type_var: TypeVarType) -> 
         sym_decl = expr.sym.decl;
         if sym_decl {
             is_module_level = False;
-            decl_parent = sym_decl.parent;
-            while decl_parent {
-                if isinstance(decl_parent, Module) {
+            owner = sym_decl.decl_parent;
+            while owner {
+                if isinstance(owner, Module) {
                     is_module_level = True;
                     break;
                 }
-                if isinstance(decl_parent, (Archetype, Ability)) {
+                if isinstance(owner, (Archetype, Ability)) {
                     break;
                 }
-                decl_parent = decl_parent.parent;
+                owner = owner.decl_parent;
             }
 
             if is_module_level {
@@ -2333,7 +2380,7 @@ impl TypeEvaluator._type_var_bound_in_scope(node_: UniNode, name: str) -> bool {
 
 impl TypeEvaluator._get_outer_scope_type_params(node_: UniNode) -> list[TypeVarType] {
     type_params: list[TypeVarType] = [];
-    current: UniNode | None = node_.parent;
+    current: UniNode | None = node_.decl_parent;
 
     while current {
         if isinstance(current, Archetype) {
@@ -2349,7 +2396,7 @@ impl TypeEvaluator._get_outer_scope_type_params(node_: UniNode) -> list[TypeVarT
                 type_params.append(tp);
             }
         }
-        current = current.parent;
+        current = current.decl_parent;
     }
     return type_params;
 }

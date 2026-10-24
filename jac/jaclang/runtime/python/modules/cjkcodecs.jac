@@ -10,34 +10,6 @@ codecs and maps are process-lifetime C data, so the per-module lists C
 allocates are the static arrays themselves. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    jacpy_is_unicode,
-    NULL,
-    Py_NewRef,
-    PyErr_NoMemory,
-    PyExc_LookupError,
-    PyExc_TypeError,
-    PyExc_ValueError,
-    PyImport_ImportModule,
-    PyImport_ImportModuleAttrString,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyModule_Add,
-    PyObject,
-    PyObject_CallOneArg,
-    PyObject_GetAttrString,
-    PyUnicode_AsUTF8,
-    PyUnicodeWriter,
-    PyUnicodeWriter_WriteChar
-}
-import from jaclang.runtime.python.object_model.capsule {
-    PyCapsule_GetPointer,
-    PyCapsule_IsValid,
-    PyCapsule_New
-}
-import from jaclang.runtime.python.capi { object_error }
-
 import from c {
     # multibytecodec.h: 8 bytes of state a codec uses as it wants, read and
     # written bytewise so getstate() is independent of byte order.

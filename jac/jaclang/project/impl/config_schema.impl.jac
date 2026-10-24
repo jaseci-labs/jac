@@ -76,7 +76,7 @@ impl report_schema_findings(
                 + "\n".join(findings)
         );
     }
-    import from jaclang.cli.console { console }
+
     for msg in findings {
         console.warning(msg);
     }

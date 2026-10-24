@@ -1,11 +1,5 @@
 import socket;
 import from pathlib { Path }
-import from jaclang.client.targets.build_common { SUBPROCESS_TIMEOUT_BUILD_NATIVE }
-import from jaclang.client.targets.node_tooling_common {
-    resolve_node_tool as _node_resolve_node_tool,
-    run_manifest_install as _node_run_manifest_install
-}
-import from jaclang.client.config_loader { JacClientConfig }
 
 glob DEFAULT_PROJECT_DIR_NAME = "mobile-rn",
      DEFAULT_APP_NAME = "main",
@@ -16,15 +10,27 @@ glob DEFAULT_PROJECT_DIR_NAME = "mobile-rn",
      EAS_CLI_VERSION = "20",
      SUBPROCESS_TIMEOUT_BUILD: int = SUBPROCESS_TIMEOUT_BUILD_NATIVE;
 
-def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
+def resolve_node_tool(project_dir: Path, tool: str) -> list[str];
+
+def run_manifest_install(project_dir: Path);
+
+def resolve_rn_project_dir(
+    project_dir: Path, client_cfg: (JacClientConfig | None) = None
+) -> Path;
+
+def normalize_rn_platform(platform: str | None = None) -> str;
+
+def detect_lan_ipv4 -> str | None;
+
+impl resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
     return _node_resolve_node_tool(project_dir, tool);
 }
 
-def run_manifest_install(project_dir: Path) {
+impl run_manifest_install(project_dir: Path) {
     _node_run_manifest_install(project_dir);
 }
 
-def resolve_rn_project_dir(
+impl resolve_rn_project_dir(
     project_dir: Path, client_cfg: (JacClientConfig | None) = None
 ) -> Path {
     if client_cfg is None {
@@ -42,7 +48,7 @@ def resolve_rn_project_dir(
     return client_cfg.get_jac_config().get_build_dir() / DEFAULT_PROJECT_DIR_NAME;
 }
 
-def normalize_rn_platform(platform: str | None = None) -> str {
+impl normalize_rn_platform(platform: str | None = None) -> str {
     if platform is None or platform.strip() == "" {
         return "android";
     }
@@ -55,7 +61,7 @@ def normalize_rn_platform(platform: str | None = None) -> str {
     );
 }
 
-def detect_lan_ipv4 -> str | None {
+impl detect_lan_ipv4 -> str | None {
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
     try {
         s.settimeout(0.5);

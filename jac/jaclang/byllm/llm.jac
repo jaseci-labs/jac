@@ -1,6 +1,6 @@
 import base64;
 import logging;
-import from jaclang.byllm._optdeps.loguru { logger }
+
 import os;
 import sys;
 import json;
@@ -10,76 +10,6 @@ import time;
 import from typing { AsyncGenerator, Generator, cast }
 import type from litellm { Router }
 import type from llama_cpp { Llama }
-import from jaclang.byllm.mtir { MTRuntime }
-import from jaclang.byllm._optdeps.litellm {
-    litellm,
-    _disable_debugging,
-    when_litellm_loaded
-}
-import from jaclang.byllm._optdeps.openai { openai, OpenAI, AsyncOpenAI }
-import from jaclang.project.capabilities { require_optional }
-import from jaclang.byllm.systemone {
-    Decision,
-    SYSTEMONE_PREFIX,
-    ProviderCaps,
-    SystemOneSpec,
-    assemble,
-    caps_for,
-    distribution,
-    lower,
-    resolve_api_key,
-    resolve_model_name,
-    wrap_result
-}
-import from jaclang.byllm.exceptions {
-    ByLLMError,
-    AuthenticationError,
-    LLMTimeout,
-    FinishToolError,
-    OutputConversionError,
-    RateLimitError,
-    ModelNotFoundError,
-    ConfigurationError,
-    CompactionNotEffectiveError,
-    OutputTruncatedError
-}
-import from jaclang.byllm.types {
-    CompletionResult,
-    Image,
-    image_resp_kind,
-    response_dict,
-    LiteLLMMessage,
-    MockToolCall,
-    MockRawResponse,
-    MockError,
-    StreamEvent,
-    Tool,
-    ToolCall,
-    Message,
-    MessageRole,
-    IterationAction,
-    IterationContext,
-    content_preview,
-    reroute_tool_images_to_user_message
-}
-import from jaclang.byllm.config_loader { get_byllm_config }
-import from jaclang.byllm.telemetry {
-    _emit_agent_telemetry,
-    _current_invocation_id,
-    _aggregate_usage
-}
-import from jaclang.byllm.parallel {
-    dispatch_batch,
-    _index_by_identity,
-    _PARALLEL_TOOL_HINT
-}
-import from jaclang.byllm.schema { inject_schema_hint }
-import from jaclang.byllm.tool_protocol {
-    inject_tool_hint,
-    recover_tool_calls,
-    coerce_message_dict,
-    response_field
-}
 
 glob _byllm_config = get_byllm_config(),
      _litellm_config = _byllm_config.get_litellm_config(),
@@ -88,9 +18,7 @@ glob _byllm_config = get_byllm_config(),
      _streaming_config = _byllm_config.get_streaming_config(),
      _CACHE_CONTROL_EPHEMERAL: dict[str, any] = {"type": "ephemeral"};
 
-def _apply_litellm_debug_setting(module: any) {
-    module.suppress_debug_info = not _litellm_config.get("debug", False);
-}
+def _apply_litellm_debug_setting(module: any);
 
 with entry {
     if _litellm_config['local_cost_map'] {
@@ -106,31 +34,12 @@ glob _TOOL_DELTA_MIN_CHARS = 48,
 glob DEFAULT_BASE_URL = "http://localhost:4000",
      MODEL_MOCK = "mockllm";
 
-def _stream_chunk_builder_accepts_logging_obj -> bool {
-    import inspect;
-    try {
-        builder: any = litellm.stream_chunk_builder;
-        return "logging_obj" in inspect.signature(builder).parameters;
-    } except Exception as e {
-        logger.debug(
-            f"could not inspect stream_chunk_builder, omitting logging_obj: {e}"
-        );
-        return False;
-    }
-}
+def _stream_chunk_builder_accepts_logging_obj -> bool;
 
 glob _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ: bool | None = None,
      _stream_builder_probe_cache: dict[str, bool] = {};
 
-def _stream_builder_accepts_logging_obj -> bool {
-    if _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ is not None {
-        return _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ;
-    }
-    if "accepts" not in _stream_builder_probe_cache {
-        _stream_builder_probe_cache["accepts"] = _stream_chunk_builder_accepts_logging_obj();
-    }
-    return _stream_builder_probe_cache["accepts"];
-}
+def _stream_builder_accepts_logging_obj -> bool;
 
 obj BaseLLM {
     has model_name: str,
@@ -227,11 +136,11 @@ obj BaseLLM {
         mt_run: MTRuntime, usage: object, just_compacted: bool, cp: dict[str, any]
     ) -> bool;
 
-    def _emergency_compact_retry(
+    def _emergency_compact(
         mt_run: MTRuntime, just_compacted: bool, cp: dict[str, any]
-    ) -> CompletionResult;
+    ) -> None;
 
-    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool;
+    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any], reason: str) -> bool;
 }
 
 obj MockLLM(BaseLLM) {

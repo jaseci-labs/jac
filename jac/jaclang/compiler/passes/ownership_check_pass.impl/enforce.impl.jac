@@ -1,35 +1,11 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.c_interop { clib_import_of, is_c_value_type }
-import from jaclang.compiler.frontend.diagnostics {
-    E1315,
-    E1401,
-    E1402,
-    E1403,
-    E1404,
-    E1405,
-    E1406
-}
-
 glob _NOGC_SCALARS: frozenset[str] = frozenset(
          ["int", "float", "bool", "None", "NoneType", "type"]
              + JAC_TYPE_REGISTRY.sized_scalar_names()
      );
 
-def _is_class_object(t: object) -> bool {
-    import from jaclang.compiler.types.types { ClassType }
-    return isinstance(t, ClassType) and t.is_instantiable_class();
-}
+def _is_class_object(t: object) -> bool;
 
-def _nogc_name_candidates(mod_name: str) -> list[str] {
-    _cands = [mod_name];
-    for _suf in (".na", ".cl") {
-        if mod_name.endswith(_suf) {
-            _cands.append(mod_name[:-len(_suf)]);
-        }
-    }
-    return _cands;
-}
+def _nogc_name_candidates(mod_name: str) -> list[str];
 
 glob _NOGC_ALIASING_BUILTINS: dict[str, str] = {
          "iter": "iter() retains a raw reference to its collection",
@@ -114,7 +90,7 @@ impl OwnershipCheckPass._nogc_tag_shape(tag: SubTag | None) -> str {
         return "any";
     }
     if _root.sym is not None and _root.sym.decl is not None {
-        _arch = _root.sym.decl.find_parent_of_type(Archetype);
+        _arch = _root.sym.decl.enclosing_decl(Archetype);
         if _arch is not None
             and _arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
             return "osp";
@@ -150,7 +126,6 @@ impl OwnershipCheckPass._nogc_local_shape(nm: Name) -> str {
 }
 
 impl OwnershipCheckPass._nogc_infer_locals -> None {
-    import from jaclang.compiler.types.types { AnyType }
     _by_sym: dict[SymId, list[Assignment]] = {};
     _decl: dict[SymId, Name] = {};
     for nd in self.idx_assignments {
@@ -239,7 +214,7 @@ impl OwnershipCheckPass._nogc_entry_confined_str(tgt: Name) -> bool {
     for _ref in _refs {
         if _ref.find_parent_of_type(GlobalVars) is not None
             or _ref.find_parent_of_type(LambdaExpr) is not None
-            or self._owning_ability(_ref) is not None {
+            or _ref.enclosing_decl(Ability) is not None {
             return False;
         }
     }
@@ -249,11 +224,6 @@ impl OwnershipCheckPass._nogc_entry_confined_str(tgt: Name) -> bool {
 impl OwnershipCheckPass._nogc_infer_state(
     expr: Expr | None
 ) -> tuple[OwnershipKind, list[Name]] {
-    import from jaclang.compiler.passes.rc_facts_pass {
-        call_borrows_receiver,
-        result_ownership,
-        Ownership
-    }
     _none: list[Name] = [];
     while isinstance(expr, CfgExpr) {
         expr = expr.expr;
@@ -584,7 +554,7 @@ impl OwnershipCheckPass._nogc_local_shape_expr_heap(expr: Expr | None) -> bool {
             return self._nogc_local_shape(_root) == "heap";
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
+
     _own = result_ownership(expr);
     if _own == Ownership.STATIC or _own == Ownership.BORROWED {
         return False;
@@ -722,13 +692,13 @@ impl OwnershipCheckPass._emit_raises_diagnostics -> None {
     if self.nogc_prov is None {
         return;
     }
-    import from jaclang.compiler.frontend.diagnostics { E1407 }
+
     for mc in self.module.get_all_sub_nodes(ModuleCode) {
         for exc in sorted(self._local_raises(mc)) {
             reported = False;
             for call in mc.get_all_sub_nodes(FuncCall) {
-                owner = call.find_parent_of_type(Ability);
-                if owner is not None and self._node_within(owner, mc) {
+                owner = call.enclosing_decl(Ability);
+                if owner is not None and owner.is_within(mc) {
                     continue;
                 }
                 callee = self._callee_ability(call);
@@ -772,7 +742,7 @@ impl OwnershipCheckPass._nogc_fresh_arch_elem(expr: Expr | None) -> bool {
     if not isinstance(_t, Name) or _t.sym is None or _t.sym.decl is None {
         return False;
     }
-    _arch = _t.sym.decl.find_parent_of_type(Archetype);
+    _arch = _t.sym.decl.enclosing_decl(Archetype);
     return _arch is not None and _arch.arch_type.name == Tok.KW_OBJECT;
 }
 
@@ -1137,7 +1107,7 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
             and _tgt.sym.ownership == OwnershipKind.NONE
             and _tgt.sym.storage != SymbolStorage.MODULE_GLOBAL
             and _tgt.find_parent_of_type(GlobalVars) is None
-            and _tgt.find_parent_of_type(UniEnum) is None {
+            and _tgt.enclosing_decl(UniEnum) is None {
             _shape = self._nogc_local_shape(_tgt);
             if _shape == "heap" {
                 self.ctx.emit(
@@ -1322,8 +1292,6 @@ impl OwnershipCheckPass._is_view_expr(expr: Expr | None) -> bool {
 }
 
 impl OwnershipCheckPass._view_arch_of_call(call: FuncCall) -> (Archetype | None) {
-    import from jaclang.compiler.types.types { ClassType }
-    import from jaclang.compiler.types.ownership { contains_borrow }
     target_type = call.target.type;
     if not isinstance(target_type, ClassType)
         or target_type._shared is None
@@ -1467,13 +1435,13 @@ impl OwnershipCheckPass._view_call_owner(call: FuncCall) -> (SymId | None) {
     _tgt = call.target;
     _ab: (Ability | None) = None;
     if isinstance(_tgt, Name) and _tgt.sym is not None and _tgt.sym.decl is not None {
-        _ab = _tgt.sym.decl.find_parent_of_type(Ability);
+        _ab = _tgt.sym.decl.enclosing_decl(Ability);
     } elif isinstance(_tgt, AtomTrailer)
         and _tgt.is_attr
         and isinstance(_tgt.right, Name)
         and _tgt.right.sym is not None
         and _tgt.right.sym.decl is not None {
-        _ab = _tgt.right.sym.decl.find_parent_of_type(Ability);
+        _ab = _tgt.right.sym.decl.enclosing_decl(Ability);
     }
     if _ab is None or id(_ab) not in self.view_elision_fns {
         return None;
@@ -1569,7 +1537,7 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
         _all_params = [
             p
             for p in self.idx_params
-            if p.find_parent_of_type(Ability) is _ab
+            if p.enclosing_decl(Ability) is _ab
         ];
         _cands = [
             p
@@ -1581,7 +1549,7 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
                 )
         ];
         for ret in self.idx_returns {
-            if ret.find_parent_of_type(Ability) is not _ab {
+            if ret.enclosing_decl(Ability) is not _ab {
                 continue;
             }
             _own_sid = self._view_of_expr(ret.expr);
@@ -1645,7 +1613,7 @@ impl OwnershipCheckPass._stamp_view_call_results(
         if id(nd) in seen_ids {
             continue;
         }
-        _encl = nd.find_parent_of_type(Ability);
+        _encl = nd.enclosing_decl(Ability);
         if scope is self.module {
             if _encl is not None {
                 continue;
@@ -1783,4 +1751,18 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
             }
         }
     }
+}
+
+impl _is_class_object(t: object) -> bool {
+    return isinstance(t, ClassType) and t.is_instantiable_class();
+}
+
+impl _nogc_name_candidates(mod_name: str) -> list[str] {
+    _cands = [mod_name];
+    for _suf in (".na", ".cl") {
+        if mod_name.endswith(_suf) {
+            _cands.append(mod_name[:-len(_suf)]);
+        }
+    }
+    return _cands;
 }

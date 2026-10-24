@@ -1,9 +1,5 @@
 """posix file descriptor primitives for a target with no posix_fileio_platform.<os>.jac; the binding rejects it."""
 
-import from jaclang.runtime.python.cpython_api { jacpy_set_errno }
-import from jaclang.runtime.python.modules.posix_constants { ENOSYS }
-import from jaclang.runtime.python.modules.time_records { timespec }
-
 import from c {
     obj iovec {
         has iov_base: ptr = ptr(),

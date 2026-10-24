@@ -1,6 +1,5 @@
 import from typing { Optional }
 import from pathlib { Path }
-import type from jaclang.project.apps { AppConfig }
 
 glob KIND_TARGET: dict[str, str] = {
          "web-app": "web",
@@ -57,7 +56,9 @@ def target_for_app(app: AppConfig, project_dir: Path) -> ClientTarget;
 
 glob _registry: TargetRegistry | None = None;
 
-def get_target_registry -> TargetRegistry {
+def get_target_registry -> TargetRegistry;
+
+impl get_target_registry -> TargetRegistry {
     import from jaclang.client.targets.registry { TargetRegistry }
     if _registry is None {
         _registry = TargetRegistry();

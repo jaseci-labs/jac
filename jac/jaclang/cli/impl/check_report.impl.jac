@@ -1,25 +1,6 @@
-def print_guide_hint(code: (str | None), category: (str | None)) -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.cli.guide_store { guide_for_diagnostic }
-    if not code or not category {
-        return;
-    }
-    name = guide_for_diagnostic(code, category);
-    if name is not None {
-        console.print(f"  → run 'jac guide {name}' for guidance", style="muted");
-    }
-}
+def print_guide_hint(code: (str | None), category: (str | None)) -> None;
 
-def print_diag(d: any, is_error: bool) {
-    import from jaclang.cli.console { console }
-    emit = console.error if is_error else console.warning;
-    if isinstance(d, dict) {
-        emit(str(d.get('pretty') or d.get('text') or ''));
-        print_guide_hint(d.get('code'), d.get('category'));
-    } else {
-        emit(str(d));
-    }
-}
+def print_diag(d: any, is_error: bool);
 
 impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
     text_part = f" {text} ";
@@ -29,7 +10,6 @@ impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
 }
 
 impl print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None {
-    import from jaclang.cli.console { console }
     percentage = int((idx / total) * 100);
     status = "ok" if success else "FAILED";
     console.print(f"{file_path} {status} [{percentage}%]");
@@ -38,7 +18,6 @@ impl print_file_progress(file_path: str, success: bool, idx: int, total: int) ->
 impl print_section(
     title: str, results: list[dict[str, any]], nowarn: bool = False
 ) -> None {
-    import from jaclang.cli.console { console }
     visible = [
         r
         for r in results
@@ -64,7 +43,6 @@ impl print_section(
 }
 
 impl print_failed_summary(failed_results: list[dict[str, any]]) -> None {
-    import from jaclang.cli.console { console }
     console.print(separator("failed files"));
     for r in failed_results {
         err_count = len(r['errors']);
@@ -78,7 +56,6 @@ impl print_failed_summary(failed_results: list[dict[str, any]]) -> None {
 }
 
 impl print_final_summary(passed_count: int, failed_count: int, elapsed: float) -> None {
-    import from jaclang.cli.console { console }
     parts = [f"{passed_count} passed"] if passed_count > 0 else [];
     if failed_count > 0 {
         parts.append(f"{failed_count} failed");
@@ -86,18 +63,9 @@ impl print_final_summary(passed_count: int, failed_count: int, elapsed: float) -
     console.print(separator(", ".join(parts) + f" in {elapsed:.2f}s"));
 }
 
-def _coverage_relpath(path: str) -> str {
-    import os;
-    try {
-        return os.path.relpath(path);
-    } except ValueError {
-        return path;
-    }
-}
+def _coverage_relpath(path: str) -> str;
 
 impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
     console.print("");
     console.print(separator("native coverage"));
     console.print(f"default codespace: {effective_default_codespace()}");
@@ -209,7 +177,6 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
 }
 
 impl print_placement_report(rows_by_module: dict[str, dict[str, any]]) -> None {
-    import from jaclang.cli.console { console }
     console.print("");
     console.print(separator("placements"));
     if not rows_by_module {
@@ -259,5 +226,34 @@ impl print_placement_report(rows_by_module: dict[str, dict[str, any]]) -> None {
                 console.print("      - " + note);
             }
         }
+    }
+}
+
+impl print_guide_hint(code: (str | None), category: (str | None)) -> None {
+    if not code or not category {
+        return;
+    }
+    name = guide_for_diagnostic(code, category);
+    if name is not None {
+        console.print(f"  → run 'jac guide {name}' for guidance", style="muted");
+    }
+}
+
+impl print_diag(d: any, is_error: bool) {
+    emit = console.error if is_error else console.warning;
+    if isinstance(d, dict) {
+        emit(str(d.get('pretty') or d.get('text') or ''));
+        print_guide_hint(d.get('code'), d.get('category'));
+    } else {
+        emit(str(d));
+    }
+}
+
+impl _coverage_relpath(path: str) -> str {
+    import os;
+    try {
+        return os.path.relpath(path);
+    } except ValueError {
+        return path;
     }
 }

@@ -6,17 +6,7 @@ import time;
 import from compression.zstd { ZstdFile }
 import from io { BytesIO }
 import from c { def atoi(s: str) -> i32;  }
-import from .trailer {
-    MAGIC,
-    OVERLAY_MAGIC,
-    TRAILER_LEN,
-    Trailer,
-    parse_trailer,
-    region_start,
-    rt_key
-}
-import from ._libc { read_at, getuid, listdir, write_file }
-import from .report { die, say }
+
 import from _cache_platform { platform_cache_home }
 
 glob CACHEDIR_TAG: str = "CACHEDIR.TAG",
@@ -37,14 +27,42 @@ obj Overlay {
         length: int = 0;
 }
 
-def trailer_at(path: str, end: int, magic: bytes) -> Trailer | None {
+def trailer_at(path: str, end: int, magic: bytes) -> Trailer | None;
+
+def:pub peek_overlay(exe_path: str, total: int) -> Overlay | None;
+
+def:pub overlay_for_path(exe_path: str) -> Overlay | None;
+
+def dir_writable(path: str) -> bool;
+
+def stamp_cachedir_tag(base: str);
+
+def prepare_cache_root(base: str);
+
+def:pub cache_root -> str;
+
+def:pub materialize(exe_path: str) -> str;
+
+def first_run(exe_path: str, total: int, trailer: Trailer, rt: str);
+
+def:pub extract_payload(zbuf: bytes, rt: str);
+
+def:pub mark_used(rt: str);
+
+def:pub runtime_ttl_seconds -> float;
+
+def:pub last_used(rt: str) -> float;
+
+def:pub sweep_runtimes(cache_dir: str, keep_key: str);
+
+impl trailer_at(path: str, end: int, magic: bytes) -> Trailer | None {
     if end < TRAILER_LEN {
         return None;
     }
     return parse_trailer(read_at(path, end - TRAILER_LEN, TRAILER_LEN), magic);
 }
 
-def:pub peek_overlay(exe_path: str, total: int) -> Overlay | None {
+impl peek_overlay(exe_path: str, total: int) -> Overlay | None {
     t = trailer_at(exe_path, total, OVERLAY_MAGIC);
     if t is None {
         return None;
@@ -57,7 +75,7 @@ def:pub peek_overlay(exe_path: str, total: int) -> Overlay | None {
     return Overlay(off=off, length=t.payload_len);
 }
 
-def:pub overlay_for_path(exe_path: str) -> Overlay | None {
+impl overlay_for_path(exe_path: str) -> Overlay | None {
     total = os.path.getsize(exe_path);
     if total < TRAILER_LEN {
         return None;
@@ -65,7 +83,7 @@ def:pub overlay_for_path(exe_path: str) -> Overlay | None {
     return peek_overlay(exe_path, total);
 }
 
-def dir_writable(path: str) -> bool {
+impl dir_writable(path: str) -> bool {
     os.makedirs(path, exist_ok=True);
     if not os.path.isdir(path) {
         return False;
@@ -78,14 +96,14 @@ def dir_writable(path: str) -> bool {
     return True;
 }
 
-def stamp_cachedir_tag(base: str) {
+impl stamp_cachedir_tag(base: str) {
     tag = base + "/" + CACHEDIR_TAG;
     if not os.path.isfile(tag) {
         write_file(tag, CACHEDIR_TAG_TEXT);
     }
 }
 
-def prepare_cache_root(base: str) {
+impl prepare_cache_root(base: str) {
     tag = base + "/" + CACHEDIR_TAG;
     if os.path.isfile(tag) {
         if read_at(tag, 0, len(CACHEDIR_TAG_TEXT)) == CACHEDIR_TAG_TEXT
@@ -99,7 +117,7 @@ def prepare_cache_root(base: str) {
     stamp_cachedir_tag(rt);
 }
 
-def:pub cache_root -> str {
+impl cache_root -> str {
     home: str = os.environ.get("HOME", "");
     base: str = os.environ.get("JAC_CACHE_HOME", "");
     if base != "" {
@@ -131,7 +149,7 @@ def:pub cache_root -> str {
     return fallback;
 }
 
-def:pub materialize(exe_path: str) -> str {
+impl materialize(exe_path: str) -> str {
     total = os.path.getsize(exe_path);
     if total < TRAILER_LEN {
         die("binary too small to carry a runtime payload");
@@ -157,7 +175,7 @@ def:pub materialize(exe_path: str) -> str {
     return rt;
 }
 
-def first_run(exe_path: str, total: int, trailer: Trailer, rt: str) {
+impl first_run(exe_path: str, total: int, trailer: Trailer, rt: str) {
     t0 = time.monotonic();
     say("first run, performing one-time setup...");
     say(f"  runtime cache: {rt}");
@@ -182,7 +200,7 @@ def first_run(exe_path: str, total: int, trailer: Trailer, rt: str) {
     say(f"one-time setup complete ({secs:.1f}s).");
 }
 
-def:pub extract_payload(zbuf: bytes, rt: str) {
+impl extract_payload(zbuf: bytes, rt: str) {
     tmp = f"{rt}.tmp.{os.getpid()}";
     if os.path.isdir(tmp) {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -206,11 +224,11 @@ def:pub extract_payload(zbuf: bytes, rt: str) {
     }
 }
 
-def:pub mark_used(rt: str) {
+impl mark_used(rt: str) {
     write_file(rt + "/" + USED_MARKER, b"");
 }
 
-def:pub runtime_ttl_seconds -> float {
+impl runtime_ttl_seconds -> float {
     raw: str = os.environ.get(TTL_ENV, "");
     days: int = RUNTIME_TTL_DAYS;
     if raw != "" {
@@ -222,7 +240,7 @@ def:pub runtime_ttl_seconds -> float {
     return float(days) * 86400.0;
 }
 
-def:pub last_used(rt: str) -> float {
+impl last_used(rt: str) -> float {
     for marker in [USED_MARKER, ".ok"] {
         stamp = rt + "/" + marker;
         if os.path.isfile(stamp) {
@@ -232,7 +250,7 @@ def:pub last_used(rt: str) -> float {
     return os.path.getmtime(rt);
 }
 
-def:pub sweep_runtimes(cache_dir: str, keep_key: str) {
+impl sweep_runtimes(cache_dir: str, keep_key: str) {
     rtdir = cache_dir + "/rt";
     now = time.time();
     sentinel = rtdir + "/" + SWEEP_SENTINEL;

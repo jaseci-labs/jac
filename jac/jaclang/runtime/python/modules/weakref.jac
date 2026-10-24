@@ -4,17 +4,6 @@ The weakref types and the per-object reference list belong to the object
 model (Objects/weakrefobject.c); this module only exposes them.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyObject,
-    PyWeakref_NewProxy,
-    Py_NewRef,
-    _PyWeakref_GetWeakrefCount,
-    jacpy_remove_dead_weakref,
-    jacpy_weakref_list
-}
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-
 def _weakref_getweakrefcount_impl(module: ptr[PyObject], object: ptr[PyObject]) -> i64 {
     return _PyWeakref_GetWeakrefCount(object);
 }

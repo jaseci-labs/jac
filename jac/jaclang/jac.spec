@@ -260,7 +260,7 @@ element_stmt ::=
     | ability
     | global_var
     | comptime_element
-    | impl_import
+    | graph_import
     | impl_def
     | sem_def
     | PYNLINE
@@ -501,7 +501,8 @@ global_var_assignment ::=
     (NAME | KWESC_NAME) (":" ownership_prefix pipe)? ("=" expression ("=" expression)*)?
 
 impl_def ::=
-    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)* (
+    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)*
+    ("[" type_params "]")? (
         func_signature
         | "(" (atomic_chain ("," atomic_chain)*)? ")"
         | "with" expression? ("entry" | "exit")
@@ -536,7 +537,8 @@ visit_stmt ::= "visit" (":" expression ":")? expression (else_stmt | ";")?
 
 report_stmt ::= "report" expression ";"
 
-impl_import ::= "impl" "import" wire_module_path?? "{" (import_rule | import_wire)* "}"
+graph_import ::=
+    ("impl" | "graph") "import" wire_module_path?? "{" (import_rule | import_wire)* "}"
 
 wire_module_path ::=
     (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)
@@ -552,12 +554,10 @@ import_wire ::=
     "comptime"? ("include" | "type")? (
         "any"
         | "*"
-        | wire_module_path (
-              "."
-              | "|"
-              | ("any" | "*" | STRING | wire_module_path ("." | "|")?)
-                (wire_payload | ";")
-          )
+        | wire_module_path
+          ("." | "|" | "++>" ("[" (wire_target ","?)* "]" | wire_target ";"))
     )
+
+wire_target ::= ("any" | "*" | STRING | wire_module_path ("." | "|")?) wire_payload?
 
 wire_payload ::= "{" (("*" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)* "}"

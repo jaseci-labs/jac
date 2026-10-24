@@ -18,15 +18,6 @@ bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T
 fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.
 Pointers to records no port reads yet are opaque.
 """
-import from jaclang.runtime.python.cpython_api {
-    PyMemberDef,
-    PyMethodDef,
-    PyObject,
-    PyType_Slot,
-    PyType_Spec,
-    Py_buffer,
-    Py_complex
-}
 
 import from c {
     obj _socket_state;  obj _object {

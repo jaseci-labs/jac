@@ -42,7 +42,6 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
-    import from jaclang.compiler.frontend.constant { SymbolStorage }
     candidates: dict[str, ir.Type] = {};
     dropped: set[str] = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
@@ -95,7 +94,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             }
         }
     }
-    import from jaclang.compiler.frontend.codeinfo { native_def_symbol }
+
     for (var_name, var_type) in candidates.items() {
         try {
             global_var = ir.GlobalVariable(
@@ -240,7 +239,6 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
 impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
-    import from jaclang.compiler.frontend.const_fold { fold_const }
     if self?.jacval_type and target_type == self.jacval_type {
         return None;
     }

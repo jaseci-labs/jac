@@ -16,19 +16,6 @@ import tempfile;
 import time;
 import from contextlib { redirect_stderr, redirect_stdout }
 import from pathlib { Path }
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    _CLIENT_BUILD_ATTEMPTS,
-    _CLIENT_BUILD_RETRY_PAUSE_S,
-    _is_transient_client_build_failure,
-    _membership_diagnosis,
-    ManifestBuilder
-}
-import from jaclang.scale.injector.bundle { bundle_source_files, source_filter_for }
-import from jaclang.scale.runtime.context.util { jac_executable }
 
 glob _PARKED: str = "# parked for the deploy\ndocsite/\nevaluation/\n",
      _SECRET: str = "sk-live-8104";
@@ -232,6 +219,33 @@ test "the client build's inputs are the bundle's membership, nothing more" {
         assert ".env" not in staged , staged;
         assert not any([n.startswith("docsite/") for n in staged]) , staged;
         assert not any([n.startswith("evaluation/") for n in staged]) , staged;
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+test "the client build's stage leaves out what the deploy writes under .jac" {
+    project_dir = _app(_PARKED);
+    base = Path(project_dir);
+    (base / ".jac" / "admin").mkdir(parents=True);
+    (base / ".jac" / "admin" / "index.html").write_text("admin");
+    (base / ".jac" / "serve_manifest.json").write_text("{}");
+    (raised, rec) = _with_recording_build(project_dir);
+    try {
+        assert raised is None , f"the staged build must succeed: {raised}";
+        staged: set[str] = set(_read(os.path.join(rec, "files")).splitlines());
+        written = sorted(
+            [
+                n
+                for n in staged
+                if n.startswith(".jac/")
+            ]
+        );
+        assert not written , (
+            f"the client build staged files the deploy rewrites while it runs: {written}"
+        );
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
         shutil.rmtree(rec, ignore_errors=True);

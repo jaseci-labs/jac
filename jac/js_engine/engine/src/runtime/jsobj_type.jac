@@ -10,7 +10,8 @@ import from engine.src.runtime.jsvalue {
     js_undefined,
     jsv_is_undefined,
     jsv_hole,
-    jsv_is_hole
+    jsv_is_hole,
+    jsv_is_cell
 }
 import from engine.src.runtime.shape {
     shape_transition_add,
@@ -27,8 +28,12 @@ import from engine.src.runtime.jscell {
     FLAG_IS_ARGUMENTS,
     FLAG_IS_PROTO,
     FLAG_MODULE_NS,
-    FLAG_IS_GLOBAL
+    FLAG_IS_GLOBAL,
+    FLAG_SLOTS_BIG,
+    FLAG_OLD,
+    FLAG_REMEMBERED
 }
+import from engine.src.runtime.gc_barrier { gc_rem_obj }
 import from engine.src.builtins.markers {
     _KEY_IS_ARRAY,
     _KEY_IS_MAP,
@@ -49,7 +54,7 @@ import from engine.src.ffi.libc { realloc, free, write, abort, getenv, memmove }
 glob _SLOT_CHECK: int = -1;
 
 """Bounds check for JSObject.sget / sset under JAC_SLOT_CHECK (latches the env var)."""
-def _slot_check(sp: int, i: int, what: str) -> None {
+def _slot_check(sc_n: int, i: int, what: str) -> None {
     if _SLOT_CHECK < 0 {
         if getenv("JAC_SLOT_CHECK") != None {
             _SLOT_CHECK = 1;
@@ -57,10 +62,6 @@ def _slot_check(sp: int, i: int, what: str) -> None {
             _SLOT_CHECK = 0;
             return;
         }
-    }
-    sc_n: int = 0;
-    if sp != 0 {
-        sc_n = read_u64(sp, 0);
     }
     if i < 0 or i >= sc_n {
         sc_msg: str = "[SLOTCHECK] slot "
@@ -406,57 +407,127 @@ obj:pub JSObject {
     has prototype_idx: int,
         version: int = 0,
         shape_id: int = 0,
+        sn: int = 0,
+        s0: JSValue = 0,
+        s1: JSValue = 0,
+        s2: JSValue = 0,
+        s3: JSValue = 0,
         sp: int = 0,
         mode: int = 0,
         class_id: int = 0,
         binary_kind: int = 0,
         binary_slot: int = -1,
         cell_flags: int = 0,
+        oid: int = 0,
         elems_kind: int = 0,
         ep: int = 0,
         brand: int = 0,
         ext: JSObjectExt | None = None;  # -1 = null prototype
 
+    # ── Generational write barrier (docs/GENERATIONAL_GC.md §4.4) ─────────
+    # oid is the row's own table id (set by _obj_alloc). A reference stored
+    # into an old object (FLAG_OLD) puts it in the remembered set, once per
+    # cycle (FLAG_REMEMBERED); a young object pays one flag test.
+
+    """Barrier for storing `v` into this object."""
+    def:pub wb(v: JSValue) -> None {
+        if (self.cell_flags & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD and jsv_is_cell(v) {
+            self.cell_flags = self.cell_flags | FLAG_REMEMBERED;
+            gc_rem_obj(self.oid);
+        }
+    }
+
+    """Barrier for a store whose values are not at hand (several elements,
+    the prototype link): remember an old object unconditionally."""
+    def:pub wb_all -> None {
+        if (self.cell_flags & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD {
+            self.cell_flags = self.cell_flags | FLAG_REMEMBERED;
+            gc_rem_obj(self.oid);
+        }
+    }
+
     # ── Property slots ─────────────────────────────────────────────────────
-    # One raw buffer of 8-byte words, [len][cap][v0 .. v(cap-1)]; sp = 0 means
-    # no slots. JSValues are tagged ints, so it needs no refcounting (a
-    # list[JSValue] cost a 72-byte list object plus an 8-slot buffer per
-    # object, empty or not). Freed by sclear (dict conversion, large rows at
-    # sweep); a swept small row keeps it for the next object (sreset).
+    # sn slots: 0..3 in the row (s0..s3), 4.. in one raw buffer of 8-byte
+    # words, [unused][cap][v4 .. v(cap+3)]; sp = 0 means no overflow slots.
+    # JSValues are tagged ints, so neither needs refcounting. An object with at
+    # most four properties (every array: marker + length) has no buffer — no
+    # allocation, and reading a property touches the row only. The buffer is
+    # freed by sclear (dict conversion, large rows at sweep); a swept small
+    # row keeps it for the next object (sreset only zeroes sn).
 
     """Number of slots in use."""
     def:pub slen -> int {
-        if self.sp == 0 {
-            return 0;
-        }
-        return read_u64(self.sp, 0);
+        return self.sn;
     }
 
     """Slot i, 0 <= i < slen(). Unchecked unless JAC_SLOT_CHECK=1."""
     def:pub sget(i: int) -> JSValue {
         if _SLOT_CHECK != 0 {
-            _slot_check(self.sp, i, "read");
+            _slot_check(self.sn, i, "read");
         }
-        return read_u64(self.sp, 16 + i * 8);
+        if i < 4 {
+            if i < 2 {
+                if i == 0 {
+                    return self.s0;
+                }
+                return self.s1;
+            }
+            if i == 2 {
+                return self.s2;
+            }
+            return self.s3;
+        }
+        return read_u64(self.sp, i * 8 - 16);
     }
 
     """Store v in slot i, 0 <= i < slen()."""
     def:pub sset(i: int, v: JSValue) -> None {
         if _SLOT_CHECK != 0 {
-            _slot_check(self.sp, i, "write");
+            _slot_check(self.sn, i, "write");
         }
-        write_i64(self.sp, 16 + i * 8, v);
+        self.wb(v);
+        if i < 4 {
+            if i < 2 {
+                if i == 0 {
+                    self.s0 = v;
+                } else {
+                    self.s1 = v;
+                }
+            } elif i == 2 {
+                self.s2 = v;
+            } else {
+                self.s3 = v;
+            }
+            return;
+        }
+        write_i64(self.sp, i * 8 - 16, v);
     }
 
-    """Append v as the new last slot; capacity grows 4, 8, 16, ..."""
+    """Append v as the new last slot; the buffer's capacity grows 4, 8, 16, ..."""
     def:pub spush(v: JSValue) -> None {
-        sp_n: int = 0;
+        self.wb(v);
+        sp_n: int = self.sn;
+        if sp_n < 4 {
+            if sp_n < 2 {
+                if sp_n == 0 {
+                    self.s0 = v;
+                } else {
+                    self.s1 = v;
+                }
+            } elif sp_n == 2 {
+                self.s2 = v;
+            } else {
+                self.s3 = v;
+            }
+            self.sn = sp_n + 1;
+            return;
+        }
+        sp_o: int = sp_n - 4;
         sp_c: int = 0;
         if self.sp != 0 {
-            sp_n = read_u64(self.sp, 0);
             sp_c = read_u64(self.sp, 8);
         }
-        if sp_n >= sp_c {
+        if sp_o >= sp_c {
             sp_nc: int = 4;
             if sp_c > 0 {
                 sp_nc = sp_c * 2;
@@ -465,43 +536,47 @@ obj:pub JSObject {
             if sp_new == 0 {
                 _slot_oom(16 + sp_nc * 8);
             }
-            write_i64(sp_new, 0, sp_n);
             write_i64(sp_new, 8, sp_nc);
             self.sp = sp_new;
+            if sp_nc > 4 {
+                self.cell_flags = self.cell_flags | FLAG_SLOTS_BIG;
+            }
         }
-        write_i64(self.sp, 16 + sp_n * 8, v);
-        write_i64(self.sp, 0, sp_n + 1);
+        write_i64(self.sp, 16 + sp_o * 8, v);
+        self.sn = sp_n + 1;
     }
 
     """Drop every slot, keeping the buffer for this row's next object."""
     def:pub sreset -> None {
-        if self.sp != 0 {
-            write_i64(self.sp, 0, 0);
-        }
+        self.sn = 0;
     }
 
-    """Slot capacity of the buffer (0 when there is none)."""
+    """Slot capacity: the four in the row plus the buffer's."""
     def:pub scap -> int {
         if self.sp == 0 {
-            return 0;
+            return 4;
         }
-        return read_u64(self.sp, 8);
+        return 4 + read_u64(self.sp, 8);
     }
 
-    """Give back unused slot capacity (GC sweep, live objects). Capacity grows
-    4, 8, 16, ... as properties are added, so a 9-property object carried 7
+    """Give back unused buffer capacity (GC sweep, live objects). Capacity grows
+    4, 8, 16, ... as properties are added, so a 13-property object carried 7
     empty slots for as long as it lived; a later add just grows it again."""
     def:pub strim -> None {
         if self.sp == 0 {
             return;
         }
-        st_n: int = read_u64(self.sp, 0);
+        st_n: int = 0;
+        if self.sn > 4 {
+            st_n = self.sn - 4;
+        }
         if read_u64(self.sp, 8) - st_n < 3 {
             return;
         }
         if st_n == 0 {
             free(self.sp);
             self.sp = 0;
+            self.cell_flags = self.cell_flags & ~FLAG_SLOTS_BIG;
             return;
         }
         st_new: int = realloc(self.sp, 16 + st_n * 8);
@@ -510,13 +585,18 @@ obj:pub JSObject {
         }
         write_i64(st_new, 8, st_n);
         self.sp = st_new;
+        if st_n <= 4 {
+            self.cell_flags = self.cell_flags & ~FLAG_SLOTS_BIG;
+        }
     }
 
     """Drop every slot and free the buffer."""
     def:pub sclear -> None {
+        self.sn = 0;
         if self.sp != 0 {
             free(self.sp);
             self.sp = 0;
+            self.cell_flags = self.cell_flags & ~FLAG_SLOTS_BIG;
         }
     }
 
@@ -721,7 +801,7 @@ obj:pub JSObject {
     """Element i, 0 <= i < elen(). Unchecked unless JAC_SLOT_CHECK=1."""
     def:pub eget(i: int) -> JSValue {
         if _SLOT_CHECK != 0 {
-            _slot_check(self.ep, i, "element read");
+            _slot_check(self.elen(), i, "element read");
         }
         return read_u64(self.ep, 16 + i * 8);
     }
@@ -729,13 +809,15 @@ obj:pub JSObject {
     """Store v as element i, 0 <= i < elen()."""
     def:pub eset(i: int, v: JSValue) -> None {
         if _SLOT_CHECK != 0 {
-            _slot_check(self.ep, i, "element write");
+            _slot_check(self.elen(), i, "element write");
         }
+        self.wb(v);
         write_i64(self.ep, 16 + i * 8, v);
     }
 
     """Append v as the new last element; capacity grows 4, 8, 16, ..."""
     def:pub epush(v: JSValue) -> None {
+        self.wb(v);
         ep_n: int = 0;
         ep_c: int = 0;
         if self.ep != 0 {
@@ -763,6 +845,7 @@ obj:pub JSObject {
     exactly their size; ELEMS_HOLEY when one of them is the hole, else
     ELEMS_DENSE (what an epush per element builds, without the regrowth)."""
     def:pub einit(vals: list[JSValue]) -> int {
+        self.wb_all();
         ei_n: int = len(vals);
         if ei_n == 0 {
             return ELEMS_DENSE;
@@ -785,6 +868,32 @@ obj:pub JSObject {
         }
         self.ep = ei_p;
         return ei_kind;
+    }
+
+    """einit of vals[off .. off+n) (NEWARRAY's registers, no slice list)."""
+    def:pub einit_range(vals: list[JSValue], off: int, n: int) -> int {
+        self.wb_all();
+        if n == 0 {
+            return ELEMS_DENSE;
+        }
+        er_p: int = realloc(self.ep, 16 + n * 8);
+        if er_p == 0 {
+            _slot_oom(16 + n * 8);
+        }
+        write_i64(er_p, 0, n);
+        write_i64(er_p, 8, n);
+        er_kind: int = ELEMS_DENSE;
+        er_k: int = 0;
+        while er_k < n {
+            er_v: JSValue = vals[off + er_k];
+            if jsv_is_hole(er_v) {
+                er_kind = ELEMS_HOLEY;
+            }
+            write_i64(er_p, 16 + er_k * 8, er_v);
+            er_k = er_k + 1;
+        }
+        self.ep = er_p;
+        return er_kind;
     }
 
     """Remove element 0, moving the rest down one; elen() must be > 0."""
@@ -1092,6 +1201,7 @@ obj:pub JSObject {
                 proto_epoch_bump();
             }
         }
+        self.wb(value);
         ent_s[key] = JSProperty(
             key=key,
             value=value,

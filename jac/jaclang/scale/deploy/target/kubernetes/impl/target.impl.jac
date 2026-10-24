@@ -1,0 +1,2208 @@
+impl _revision_sort_key(item: dict[str, any]) -> int {
+    return int(item.get("revision", 0));
+}
+
+impl fleet_revert_order(names: list[str]) -> list[str] {
+    gateway = f"{k8s_safe_name(GATEWAY_NAME)}-deployment";
+    services: list[str] = [];
+    has_gateway = False;
+    for name in sorted(set(names)) {
+        if str(name) == gateway {
+            has_gateway = True;
+        } else {
+            services.append(str(name));
+        }
+    }
+    return services + ([gateway] if has_gateway else []);
+}
+
+impl app_bundle_digest(bundle_keys: list[str]) -> str {
+    for key in bundle_keys {
+        text = str(key);
+        if text.startswith("bundles/") and text.endswith(".jab") {
+            return text.rsplit("/", 1)[-1][:-len(".jab")];
+        }
+    }
+    return "";
+}
+
+impl releases_from_revisions(entries: list[dict[str, any]]) -> list[dict[str, any]] {
+    by_digest: dict[str, dict[str, any]] = {};
+    for item in entries {
+        digest = str(item.get("bundle_digest", "") or "");
+        if not digest {
+            continue;
+        }
+        name = str(item.get("deployment", "") or "");
+        revision = int(item.get("revision", 0) or 0);
+        if digest not in by_digest {
+            by_digest[digest] = {
+                "bundle_digest": digest,
+                "revision": revision,
+                "created": str(item.get("created", "") or ""),
+                "deployments": {}
+            };
+        }
+        release = by_digest[digest];
+        if revision > int(release["deployments"].get(name, 0) or 0) {
+            release["deployments"][name] = revision;
+        }
+        if revision > int(release["revision"]) {
+            release["revision"] = revision;
+            release["created"] = str(item.get("created", "") or "");
+        }
+    }
+    return sorted(by_digest.values(), key=_revision_sort_key, reverse=True);
+}
+
+impl fleet_targets_for_release(
+    releases: list[dict[str, any]], revision: int, expected: list[str]
+) -> dict[str, any] {
+    for release in releases {
+        if int(release.get("revision", 0) or 0) != int(revision) {
+            continue;
+        }
+        held = dict(release.get("deployments", {}) or {});
+        missing = [
+            name
+            for name in expected
+            if name not in held
+        ];
+        if missing {
+            return {"ok": False, "missing": sorted(missing), "targets": {}};
+        }
+        return {"ok": True, "missing": [], "targets": held};
+    }
+    return {"ok": False, "missing": list(expected), "targets": {}};
+}
+
+impl replacing_init_containers(body: dict[str, any]) -> dict[str, any] {
+    pod_spec: dict[str, any] = dict(
+        dict(dict(body.get("spec") or {}).get("template") or {}).get("spec") or {}
+    );
+    if "initContainers" not in pod_spec {
+        return body;
+    }
+    pod_spec["initContainers"] = list(pod_spec["initContainers"])
+        + [{"$patch": "replace"}];
+    template = dict(body["spec"]["template"]);
+    template["spec"] = pod_spec;
+    spec = dict(body["spec"]);
+    spec["template"] = template;
+    patched = dict(body);
+    patched["spec"] = spec;
+    return patched;
+}
+
+impl restorable_pod_template(template: dict[str, any]) -> dict[str, any] {
+    cleaned = dict(template);
+    metadata = dict(cleaned.get("metadata") or {});
+    labels = dict(metadata.get("labels") or {});
+    labels.pop("pod-template-hash", None);
+    annotations = dict(metadata.get("annotations") or {});
+    annotations.pop(CONFIG_REVISION_ANNOTATION, None);
+    metadata["labels"] = labels;
+    if annotations {
+        metadata["annotations"] = annotations;
+    } else {
+        metadata.pop("annotations", None);
+    }
+    cleaned["metadata"] = metadata;
+    return cleaned;
+}
+
+impl apply_http_activations_for_bundle(
+    bundle: dict[str, any], namespace: str, keda: KEDAAutoscaler
+) {
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        if plan.get("mode") != ScalingMode.HTTP_ACTIVATION {
+            continue;
+        }
+        apply_http_activation_for_target(
+            dict(plan.get("http_activation", {})),
+            str(plan.get("scale_target_name", "")),
+            namespace,
+            str(plan.get("service_name", "")),
+            keda
+        );
+    }
+}
+
+impl reap_stale_scaling_resources_for_bundle(
+    bundle: dict[str, any], namespace: str, autoscaler: any, keda: KEDAAutoscaler
+) {
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        mode = plan.get("mode");
+        scale_target_name = str(plan.get("scale_target_name", ""));
+        if mode != ScalingMode.METRIC {
+            autoscaler.destroy(k8s_safe_name(svc_name), namespace);
+        }
+        if mode != ScalingMode.HTTP_ACTIVATION {
+            destroy_http_activation_for_target(scale_target_name, namespace, keda);
+        }
+    }
+}
+
+impl KubernetesTarget._gateway_cfg -> dict[str, any] {
+    if self.gateway_config is not None {
+        return normalize_gateway_config(self.gateway_config);
+    }
+    return get_scale_config().get_gateway_config();
+}
+
+impl KubernetesTarget.deploy(app_config: AppConfig) -> DeploymentResult {
+    app_name = app_config.app_name or self.k8s_config.app_name;
+    if self.k8s_config.shared_ingress and not self.k8s_config.domain {
+        return DeploymentResult(
+            success=False,
+            message="shared_ingress=True requires a domain: set 'domain' "
+            "under [scale.kubernetes] in jac.toml."
+        );
+    }
+
+    refusal = deploy_generation_refusal(app_config.code_folder);
+    if refusal {
+        return DeploymentResult(success=False, message=refusal);
+    }
+    if self.logger {
+        self.logger.info(
+            f"Deploying app '{app_name}' to Kubernetes",
+            {"namespace": self.k8s_config.namespace}
+        );
+    }
+
+    if not self.dry_run {
+        self._emit("runtime", "start", "Resolving the pod jac runtime");
+        try {
+            import from jaclang.scale.config.dev_config { resolve_dev_channel }
+            import from jaclang.scale.injector.binary {
+                node_arch,
+                preflight_pod_runtime
+            }
+            self._load_cluster_config();
+            pinned = preflight_pod_runtime(
+                app_config.code_folder,
+                resolve_dev_channel(app_config.code_folder).value,
+                node_arch()
+            );
+        } except Exception as e {
+            self._emit("runtime", "error", str(e));
+            return DeploymentResult(success=False, message=str(e));
+        }
+        self._emit(
+            "runtime",
+            "ok",
+            f"Pod runtime jac {pinned}" if pinned else "Pod runtime resolved"
+        );
+    }
+
+    self._emit("config", "start", "Checking the config the pods load");
+    try {
+        self._manifest_builder(app_config).check_pod_config(
+            app_config, self.k8s_config.python_image
+        );
+    } except Exception as e {
+        self._emit("config", "error", f"pod config check failed: {e}");
+        return DeploymentResult(success=False, message=f"pod config check failed: {e}");
+    }
+    self._emit("config", "ok", "Pod config resolves");
+
+    self._emit("provision", "start", "Provisioning backends");
+    try {
+        self._deploy_context = DatabaseProvisioner(
+            k8s_target=self, logger=self.logger
+        ).provision(
+            app_name
+        );
+    } except Exception as e {
+        self._emit("provision", "error", f"database provisioning failed: {e}");
+        return DeploymentResult(
+            success=False, message=f"database provisioning failed: {e}"
+        );
+    }
+    self._emit("provision", "ok", "Backends provisioned");
+
+    self._emit("bundle", "start", "Generating manifests");
+    try {
+        bundle = self.generate_manifests(app_config);
+    } except Exception as e {
+        self._emit("bundle", "error", f"manifest generation failed: {e}");
+        return DeploymentResult(
+            success=False, message=f"manifest generation failed: {e}"
+        );
+    }
+    self._emit(
+        "bundle",
+        "ok",
+        "Manifests generated",
+        detail={"services": len(bundle.get("pod_specs", {}))}
+    );
+
+    self._emit("apply", "start", "Applying manifests to the cluster");
+    try {
+        self.apply_manifests(bundle);
+    } except Exception as e {
+        self._emit("apply", "error", f"manifest apply failed: {e}");
+        return DeploymentResult(
+            success=False, message=f"manifest apply failed: {e}", details=bundle
+        );
+    }
+    self._emit("apply", "ok", "Manifests applied");
+
+    observability_err: str = "";
+    try {
+        self._deploy_observability(app_name);
+    } except Exception as e {
+        observability_err = str(e);
+        bundle["observability_error"] = observability_err;
+        self._emit("observability", "warn", f"observability stack deploy failed: {e}");
+        if self.logger {
+            self.logger.warn(
+                f"Observability stack deploy reported a non-fatal error: {e}",
+                {"app_name": app_name}
+            );
+        }
+    }
+
+    self._emit("rollout", "start", "Waiting for the fleet to become ready");
+    try {
+        self._wait_for_fleet_rollout(bundle);
+    } except Exception as e {
+        self._emit("rollout", "error", f"fleet did not become ready: {e}");
+        return DeploymentResult(
+            success=False, message=f"fleet did not become ready: {e}", details=bundle
+        );
+    }
+    self._emit("rollout", "ok", "Fleet is ready");
+
+    service_url = self.get_service_url(app_name) if bundle.get("ingress") else None;
+    access_hint = None if service_url else self.port_forward_hint();
+
+    svc_count = len(bundle["pod_specs"]) - 1;
+    success_msg = (
+        f"Applied {svc_count} service Deployment+Service pair(s) "
+        f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
+    );
+
+    if observability_err {
+        success_msg = (
+            f"{success_msg} "
+            f"NOTE: observability stack deploy failed - "
+            f"`{observability_err}`. The app is running but pod logs "
+            f"are not being shipped to Loki. Re-run `jac scale deploy <file.jac>` "
+            f"once the underlying issue is fixed."
+        );
+    }
+    return DeploymentResult(
+        success=True,
+        service_url=service_url,
+        access_hint=access_hint,
+        message=success_msg,
+        details=bundle
+    );
+}
+
+impl KubernetesTarget._scan_for_crash_loop(
+    core_v1: any,
+    ns: str,
+    current_hashes: set,
+    fleet_app_names: set,
+    companion_app_names: set | None = None
+) -> dict[str, any] {
+    imagepull_reasons: set = {"ImagePullBackOff", "ErrImagePull", "InvalidImageName"};
+    transient_reasons: set = {"PodInitializing", "ContainerCreating"};
+    crash = "";
+    crash_pod = None;
+    pulls: dict[str, any] = {};
+    creating: dict[str, any] = {};
+    phases: list[str] = [];
+    states: list[str] = [];
+    try {
+        for p in core_v1.list_namespaced_pod(namespace=ns).items {
+            if p.metadata?.deletion_timestamp is not None {
+                continue;
+            }
+            pod_name = str(p.metadata.name);
+            labels: dict[str, any] = p.metadata.labels or {};
+            app = str(labels.get("app", ""));
+            in_fleet = (app in fleet_app_names) if fleet_app_names else True;
+            if current_hashes and app in fleet_app_names {
+                pod_hash = labels.get("pod-template-hash");
+                if pod_hash is not None and pod_hash not in current_hashes {
+                    continue;
+                }
+            }
+            phase = str(p.status.phase or '?');
+            statuses: list[any] = list(p.status.init_container_statuses or [])
+                + list(p.status.container_statuses or []);
+            pod_reason = "";
+            pod_crash = "";
+            pod_crash_restarts = 0;
+            pod_pull = "";
+            pod_pull_reason = "";
+            for cs in statuses {
+                waiting = cs.state.waiting if cs.state else None;
+                reason = (waiting.reason if waiting else "") or "";
+                restarts = cs.restart_count or 0;
+                states.append(f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}");
+                if reason and reason not in transient_reasons {
+                    pod_reason = reason;
+                }
+
+                owned = in_fleet
+                    or (companion_app_names is not None and app in companion_app_names);
+
+                crashing = (
+                    owned
+                    and restarts >= 3
+                    and not cs.ready
+                    and reason not in imagepull_reasons
+                );
+                if crashing and not pod_crash {
+                    pod_crash = str(cs.name);
+                    pod_crash_restarts = restarts;
+                } elif reason in imagepull_reasons and not pod_pull and in_fleet {
+                    pod_pull = str(cs.name);
+                    pod_pull_reason = reason;
+                }
+            }
+            if pod_pull {
+                pulls[pod_name] = (pod_pull, pod_pull_reason, p);
+            }
+
+            reasons = [
+                str(
+                    (cs.state.waiting.reason if cs.state and cs.state.waiting else "")
+                        or ""
+                ) for cs in statuses
+            ];
+            stuck_creating = (
+                bool(statuses)
+                and not pod_reason
+                and not pod_pull
+                and ("ContainerCreating" in reasons)
+                and ("PodInitializing" not in reasons)
+            );
+            if phase == "Pending" and stuck_creating and in_fleet {
+                creating[pod_name] = p;
+            }
+            if pod_crash and not crash {
+                crash = (
+                    f"pod '{pod_name}' container '{pod_crash}' "
+                    f"crash-looping ({pod_crash_restarts} restarts)"
+                );
+                crash_pod = p;
+            }
+            if app {
+                token = f"{app}={phase}";
+                if pod_reason {
+                    token = f"{app}={phase}/{pod_reason}";
+                }
+                phases.append(token);
+            }
+        }
+    } except Exception {
+        _ = 0;
+    }
+    return {
+        "crash": crash,
+        "crash_pod": crash_pod,
+        "pulls": pulls,
+        "creating": creating,
+        "phases": phases,
+        "states": states
+    };
+}
+
+impl KubernetesTarget._pod_mount_wedged(core_v1: any, ns: str, pod_name: str) -> bool {
+    import from datetime { datetime, timezone }
+    try {
+        evs = core_v1.list_namespaced_event(
+            namespace=ns, field_selector=f"involvedObject.name={pod_name}"
+        ).items;
+    } except Exception {
+        return False;
+    }
+    now = datetime.now(timezone.utc);
+    for e in evs {
+        if str(e.reason or "") not in {"FailedMount", "FailedAttachVolume"} {
+            continue;
+        }
+
+        ts = e.last_timestamp or e.event_time or e.first_timestamp;
+        if ts is None {
+            continue;
+        }
+        try {
+            age = (now - ts).total_seconds();
+        } except Exception {
+            continue;
+        }
+        if age <= 360 {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl KubernetesTarget._try_self_heal(
+    core_v1: any, ns: str, pod: any, why: str, healed_apps: dict[str, int]
+) -> bool {
+    app = str((pod.metadata.labels or {}).get("app", "")) or str(pod.metadata.name);
+    if healed_apps.get(app, 0) >= 1 or sum(healed_apps.values()) >= 3 {
+        return False;
+    }
+    pod_name = str(pod.metadata.name);
+    try {
+        core_v1.delete_namespaced_pod(name=pod_name, namespace=ns);
+    } except Exception {
+        return False;
+    }
+    healed_apps[app] = healed_apps.get(app, 0) + 1;
+    if self.logger {
+        self.logger.warn(
+            f"Self-heal: deleted wedged pod '{pod_name}' ({why}); "
+            f"its ReplicaSet schedules a replacement. One retry per "
+            f"service, then the rollout fails as usual.",
+            {"namespace": ns, "app": app}
+        );
+    }
+    return True;
+}
+
+impl KubernetesTarget._wait_for_fleet_rollout(
+    bundle: dict[str, any], timeout: int = 1200, require_full: bool = False
+) -> None {
+    import time;
+    import sys;
+    import from kubernetes { client }
+
+    names: list[str] = [];
+    app_labels: list[str] = [];
+    for dep in bundle.get("deployments", {}).values() {
+        app: str = "";
+        try {
+            app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
+        } except Exception {}
+        if not app {
+            try {
+                app = str((dep["metadata"].get("labels") or {}).get("app") or "");
+            } except Exception {}
+        }
+        if app {
+            app_labels.append(app);
+        }
+        names.append(str(dep["metadata"]["name"]));
+    }
+    self._load_cluster_config();
+    apps_v1 = client.AppsV1Api();
+    core_v1 = client.CoreV1Api();
+    ns = self.k8s_config.namespace;
+    total = len(names);
+    elapsed = 0;
+    ready = 0;
+    interactive = bool(sys.stdout.isatty());
+    fleet_apps: set = set(app_labels);
+
+    app_name = str(self.k8s_config.app_name or "");
+    companion_apps: set = {f"{app_name}-postgres"} if app_name else set();
+    pod_selector = "app in ({})".format(", ".join(app_labels)) if app_labels else None;
+    imagepull_streak: dict[str, int] = {};
+    creating_streak: dict[str, int] = {};
+    healed_apps: dict[str, int] = {};
+    last_sig = "";
+    last_heartbeat = -90;
+
+    current_hashes: set = set();
+    if pod_selector {
+        try {
+            current_hashes = _resolve_current_rs_hashes(ns, pod_selector);
+        } except Exception as exc {
+            console.print(
+                f"[warn] RS hash lookup failed, falling back to broad pod "
+                f"scan: {exc}"
+            );
+        }
+    }
+
+    with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
+        while elapsed < timeout {
+            ready = 0;
+            idle: list[str] = [];
+            for name in names {
+                try {
+                    health = assess_workload(
+                        apps_v1.read_namespaced_deployment(name=name, namespace=ns)
+                    );
+                    complete = health.is_settled()
+                        if require_full
+                        else health.is_serving();
+                    if complete {
+                        ready += 1;
+                        if health.status == ResourceStatus.INACTIVE {
+                            idle.append(name);
+                        }
+                    }
+                } except Exception {
+                    _ = 0;
+                }
+            }
+
+            scan = self._scan_for_crash_loop(
+                core_v1, ns, current_hashes, fleet_apps, companion_apps
+            );
+            phase_tokens = scan["phases"];
+            state_tokens = scan["states"];
+            crash_failure = scan["crash"];
+            crash_pod = scan["crash_pod"];
+
+            if crash_failure and pod_selector {
+                refreshed = _refresh_rs_hashes(ns, pod_selector, current_hashes);
+                current_hashes = refreshed or set();
+                recheck = self._scan_for_crash_loop(
+                    core_v1, ns, current_hashes, fleet_apps, companion_apps
+                );
+                crash_failure = recheck["crash"];
+                crash_pod = recheck["crash_pod"];
+            }
+
+            pulls: dict[str, tuple[str, str, any]] = scan["pulls"];
+            imagepull_streak = {k: imagepull_streak.get(k, 0) + 1 for k in pulls};
+            pull_failure = "";
+            pull_pod = None;
+            for (pod_name, info) in pulls.items() {
+                if imagepull_streak.get(pod_name, 0) >= 2 {
+                    if self._try_self_heal(
+                        core_v1,
+                        ns,
+                        info[2],
+                        f"container '{info[0]}' cannot pull image ({info[1]})",
+                        healed_apps
+                    ) {
+                        imagepull_streak.pop(pod_name, None);
+                        continue;
+                    }
+                    pull_failure = (
+                        f"pod '{pod_name}' container '{info[0]}' "
+                        f"cannot pull image ({info[1]})"
+                    );
+                    pull_pod = info[2];
+                    break;
+                }
+            }
+            creating_now: dict[str, any] = scan.get("creating", {});
+            creating_streak = {k: creating_streak.get(k, 0) + 1 for k in creating_now};
+            for (pod_name, pod) in creating_now.items() {
+                if creating_streak.get(pod_name, 0) >= 30
+                    and self._pod_mount_wedged(core_v1, ns, pod_name) {
+                    if self._try_self_heal(
+                        core_v1,
+                        ns,
+                        pod,
+                        "stuck >5min with FailedMount events",
+                        healed_apps
+                    ) {
+                        creating_streak.pop(pod_name, None);
+                    }
+                }
+            }
+
+            failure = crash_failure or pull_failure;
+            failed_pod = crash_pod if crash_failure else pull_pod;
+            if failure and failed_pod is not None {
+                detail = self._pod_failure_detail(
+                    core_v1, ns, str(failed_pod.metadata.name), failed_pod
+                );
+                raise Exception(f"{failure}.{detail}");
+            }
+
+            if ready == total {
+                if self.logger {
+                    self.logger.info(
+                        f"Fleet ready: {ready}/{total} deployments serving"
+                    );
+                    if idle {
+                        self.logger.warning(
+                            f"Scaled to zero, so this revision was never "
+                            f"started and its image is unverified: "
+                            f"{', '.join(sorted(idle))}. The first request "
+                            f"to one of them is what boots it.",
+                            {"idle": sorted(idle)}
+                        );
+                    }
+                }
+                return;
+            }
+
+            summary = ", ".join(phase_tokens) if phase_tokens else "scheduling pods";
+            line = (
+                f"Rolling out fleet: {ready}/{total} ready - {elapsed}s "
+                f"elapsed ({summary}) - pods install jac + start the app"
+            );
+            st.update(line);
+
+            sig = f"{ready}/{total}|" + "|".join(sorted(state_tokens));
+            if sig != last_sig or (elapsed - last_heartbeat) >= 90 {
+                if not interactive {
+                    console.print(line);
+                }
+                last_sig = sig;
+                last_heartbeat = elapsed;
+            }
+            time.sleep(10);
+            elapsed += 10;
+        }
+    }
+    timeout_detail = "";
+    try {
+        stuck = core_v1.list_namespaced_pod(
+            namespace=ns, label_selector=pod_selector
+        ).items
+            if pod_selector
+            else [];
+        stuck_pods: list[any] = stuck;
+        for p in stuck_pods {
+            timeout_detail += (
+                f" [pod {p.metadata.name}]"
+                + self._pod_failure_detail(core_v1, ns, str(p.metadata.name), p)
+            );
+        }
+    } except Exception {
+        _ = 0;
+    }
+    raise Exception(
+        f"timed out after {timeout}s ({ready}/{total} deployments ready)."
+        f"{timeout_detail}"
+    );
+}
+
+impl KubernetesTarget._pod_failure_detail(
+    core_v1: any, namespace: str, pod_name: str, pod: any = None
+) -> str {
+    detail = describe_pod_status(core_v1, namespace, pod_name, pod);
+    term_lines: list[str] = [];
+    try {
+        if pod is None {
+            pod = core_v1.read_namespaced_pod(pod_name, namespace);
+        }
+        statuses: list[any] = (pod.status.init_container_statuses or [])
+            + (pod.status.container_statuses or []);
+        for cs in statuses {
+            states: list[tuple[str, any]] = [];
+            if cs.state and cs.state.terminated {
+                states.append(("terminated", cs.state.terminated));
+            }
+            if cs.last_state and cs.last_state.terminated {
+                states.append(("last-terminated", cs.last_state.terminated));
+            }
+            for (label, term) in states {
+                message = (term.message or "").strip();
+                if message or term.reason {
+                    term_lines.append(
+                        f"container '{cs.name}' {label}: "
+                        f"{term.reason or '?'} (exit={term.exit_code}) {message}"
+                    );
+                }
+            }
+        }
+    } except Exception {
+        _ = 0;
+    }
+    if term_lines {
+        detail = detail + " " + "; ".join(term_lines);
+    }
+    return detail;
+}
+
+impl KubernetesTarget._observability_requested -> bool {
+    logs_cfg = self._read_gateway_logs_config();
+    tracing_cfg = self._read_gateway_tracing_config();
+    return bool(self.k8s_config.monitoring_enabled)
+        or bool(logs_cfg.get("enabled", False))
+        or bool(tracing_cfg.get("enabled", False));
+}
+
+impl KubernetesTarget._deploy_observability(app_name: str) -> None {
+    if not self._observability_requested() {
+        return;
+    }
+
+    self._load_cluster_config();
+    apps_v1 = client.AppsV1Api();
+    core_v1 = client.CoreV1Api();
+
+    provider = get_cluster_provider();
+
+    obs_config = self._build_observability_config();
+
+    self._ensure_privileged_namespace(core_v1, obs_config.namespace);
+    if self.logger {
+        self.logger.info(
+            f"Deploying observability stack (Prometheus + Grafana + "
+            f"Loki + Alloy) for '{app_name}'",
+            {"namespace": obs_config.namespace, "provider": type(provider).__name__}
+        );
+    }
+    monitoring = MonitoringDeployer(obs_config, self.logger);
+    monitoring.deploy(
+        app_name,
+        obs_config.namespace,
+        apps_v1,
+        core_v1,
+        provider,
+        scrape_target_service="gateway-service"
+    );
+}
+
+impl KubernetesTarget.ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None {
+    cfg = self.k8s_config;
+    is_alb = bool(getattr(cfg, "shared_ingress", False))
+        and str(getattr(cfg, "shared_ingress_class", "")).lower() == "alb";
+    if not is_alb {
+        return;
+    }
+    gate_label = "elbv2.k8s.aws/pod-readiness-gate-inject";
+    try {
+        ns = core_v1.read_namespace(name=namespace);
+        labels: dict[str, any] = dict(getattr(ns.metadata, "labels", {}) or {});
+        if labels.get(gate_label) == "enabled" {
+            return;
+        }
+        core_v1.patch_namespace(
+            name=namespace, body={"metadata": {"labels": {gate_label: "enabled"}}}
+        );
+        if self.logger {
+            self.logger.info(
+                f"Labeled namespace '{namespace}' for ALB pod readiness "
+                f"gates: rollouts now wait for the new pod's ALB target to "
+                f"pass health checks before retiring the old pod.",
+                {"label": gate_label}
+            );
+        }
+    } except Exception as e {
+        if self.logger {
+            self.logger.warn(
+                f"Could not label namespace '{namespace}' for ALB pod "
+                f"readiness gates ({e}); rollouts may briefly serve 502s "
+                f"from the ALB while new targets pass health checks.",
+                {"label": gate_label}
+            );
+        }
+    }
+}
+
+impl KubernetesTarget._ensure_privileged_namespace(
+    core_v1: any, namespace: str
+) -> None {
+    try {
+        ns = core_v1.read_namespace(name=namespace);
+        labels: dict[str, any] = dict(getattr(ns.metadata, "labels", {}) or {});
+        new_labels = privileged_pss_labels(labels);
+        if new_labels is None {
+            if self.logger {
+                current = labels.get(PSS_ENFORCE_LABEL, "");
+                self.logger.warn(
+                    f"namespace '{namespace}' has "
+                    f"{PSS_ENFORCE_LABEL}={current} from outside jac-scale; "
+                    f"hostPath DaemonSets (node-exporter, Alloy) may be "
+                    f"rejected. Relabel manually with `kubectl label "
+                    f"namespace {namespace} "
+                    f"{PSS_ENFORCE_LABEL}=privileged "
+                    f"--overwrite` if you want to enable them."
+                );
+            }
+            return;
+        }
+        if not new_labels {
+            return;
+        }
+        patch = {"metadata": {"labels": new_labels}};
+        core_v1.patch_namespace(name=namespace, body=patch);
+        if self.logger {
+            self.logger.info(
+                f"Labeled namespace '{namespace}' with "
+                "pod-security.kubernetes.io/enforce=privileged "
+                "(required for hostPath DaemonSets)"
+            );
+        }
+    } except Exception as e {
+        if self.logger {
+            self.logger.warn(
+                f"Could not label namespace '{namespace}' privileged - "
+                f"hostPath DaemonSets may be rejected by PodSecurity. "
+                f"Run `kubectl label namespace {namespace} "
+                f"pod-security.kubernetes.io/enforce=privileged "
+                f"--overwrite` manually. Cause: {e}"
+            );
+        }
+    }
+}
+
+impl KubernetesTarget._build_observability_config -> KubernetesConfig {
+    overrides: dict[str, any] = dict(self.k8s_config.to_dict());
+    overrides["loki_enabled"] = self._read_gateway_logs_config().get("enabled", False);
+    overrides["tracing_enabled"] = self._read_gateway_tracing_config().get(
+        "enabled", False
+    );
+    return KubernetesConfig.from_dict(KubernetesConfig, overrides);
+}
+
+impl KubernetesTarget._read_gateway_logs_config -> dict[str, any] {
+    return dict(self._gateway_cfg().get("logs", {}));
+}
+
+impl KubernetesTarget._read_gateway_tracing_config -> dict[str, any] {
+    return dict(self._gateway_cfg().get("tracing", {}));
+}
+
+impl KubernetesTarget.generate_manifests(app_config: AppConfig) -> dict[str, any] {
+    self.k8s_config.python_image = resolve_pod_base_image(
+        app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
+    );
+    return self._manifest_builder(app_config).generate_manifests(
+        app_config, self.k8s_config.python_image
+    );
+}
+
+impl KubernetesTarget._manifest_builder(app_config: AppConfig) -> ManifestBuilder {
+    return ManifestBuilder(
+        k8s_config=self.k8s_config,
+        secrets=self.secrets,
+        deploy_context=self._context_with_env(),
+        logger=self.logger,
+        project_dir=app_config.code_folder,
+        fleet=self.fleet,
+        gateway_config=self.gateway_config,
+        app_overrides=dict(self.app_overrides),
+        dry_run=self.dry_run
+    );
+}
+
+impl KubernetesTarget._context_with_env -> DeployContext {
+    if not self.env {
+        return self._deploy_context;
+    }
+    ctx = DeployContext(
+        env_list=list(self._deploy_context.env_list),
+        init_containers=self._deploy_context.init_containers
+    );
+    present = {`entry.get("name") for `entry in ctx.env_list};
+    for (env_name, env_value) in self.env.items() {
+        if env_name not in present {
+            ctx.env_list.append({"name": env_name, "value": str(env_value)});
+        }
+    }
+    return ctx;
+}
+
+impl KubernetesTarget._resolve_service_triggers(
+    svc_name: str, cfg: dict[str, any]
+) -> list[Trigger] {
+    is_gateway = svc_name == GATEWAY_NAME;
+    has_memory_request = bool(cfg.get("has_memory_request", True));
+    effective_extra: list[dict[str, any]] = self.k8s_config.extra_triggers
+        if is_gateway
+        else [];
+    triggers: list[Trigger] = [];
+    if not cfg.get("triggers", []) and not effective_extra {
+        triggers = [
+            Trigger(
+                type="cpu",
+                metadata={
+                    "averageUtilization": str(
+                        cfg.get("cpu_target", self.k8s_config.cpu_utilization_target)
+                    )
+                }
+            )
+        ];
+        if cfg.get("memory_request_configured", False) {
+            triggers.append(
+                Trigger(
+                    type="memory",
+                    metadata={
+                        "averageUtilization": str(
+                            cfg.get(
+                                "memory_target",
+                                self.k8s_config.memory_utilization_target
+                            )
+                        )
+                    }
+                )
+            );
+        }
+    }
+    raw_triggers: list[dict[str, any]] = cfg.get("triggers", []) or [];
+    for raw in raw_triggers + effective_extra {
+        t = Trigger(
+            type=str(raw.get("type", "")),
+            metadata=dict(raw.get("metadata", {})),
+            name=raw.get("name")
+        );
+        if t.type == "memory" and not has_memory_request {
+            if self.logger {
+                self.logger.warn(
+                    f"Skipping 'memory' trigger for '{svc_name}': "
+                    "memory_request resolves empty (explicitly set to "
+                    "\"\"); HPA cannot compute memory utilization "
+                    "without a request baseline"
+                );
+            }
+            continue;
+        }
+        raw_auth: dict[str, any] = raw.get("auth") or {};
+        if raw_auth {
+            t.auth = TriggerAuth(secret_refs=dict(raw_auth.get("secret_refs", {})));
+        }
+        triggers.append(t);
+    }
+    return triggers;
+}
+
+impl KubernetesTarget._autoscaler_spec(
+    svc_name: str, plan: dict[str, any], autoscaler: any, namespace: str
+) -> AutoscalerSpec {
+    """Build the AutoscalerSpec for a METRIC-mode service from its already-
+        resolved scaling plan, so the scale target here is the same Deployment
+        name apply_manifests actually applied -- never re-derived from svc_name,
+        which is exactly the drift that caused apply_http_activation to 404 on
+        a real cluster before _resolve_scaling existed.
+        """;
+    k8s_name = k8s_safe_name(svc_name);
+    cfg: dict[str, any] = dict(plan.get("autoscaler", {}));
+    cfg_idle = plan.get("idle_replicas", self.k8s_config.idle_replicas);
+    return AutoscalerSpec(
+        scale_target_name=str(plan.get("scale_target_name", "")),
+        autoscaler_name=autoscaler.resource_name_for(k8s_name),
+        app_name=k8s_name,
+        namespace=namespace,
+        min_replicas=int(cfg.get("min", self.k8s_config.min_replicas)),
+        max_replicas=int(cfg.get("max", self.k8s_config.max_replicas)),
+        idle_replicas=cfg_idle,
+        polling_interval=self.k8s_config.autoscaler_polling_interval,
+        cooldown_period=self.k8s_config.autoscaler_cooldown,
+        initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+        scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+        scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
+        triggers=self._resolve_service_triggers(svc_name, cfg),
+        behavior_overlay=cfg.get("behavior", {})
+    );
+}
+
+impl KubernetesTarget.render_autoscaler_manifests(
+    bundle: dict[str, any]
+) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        if plan.get("mode") != ScalingMode.METRIC {
+            continue;
+        }
+        autoscaler = AutoscalerFactory.create(
+            self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), None
+        );
+        out.extend(
+            autoscaler._build_manifests(
+                self._autoscaler_spec(
+                    svc_name, plan, autoscaler, self.k8s_config.namespace
+                )
+            )
+        );
+    }
+    return out;
+}
+
+impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
+    self._load_cluster_config();
+    apps_v1 = client.AppsV1Api();
+    core_v1 = client.CoreV1Api();
+    policy_v1 = client.PolicyV1Api();
+    networking_v1 = client.NetworkingV1Api();
+    namespace: str = self.k8s_config.namespace;
+
+    try {
+        core_v1.list_namespace(_request_timeout=5);
+    } except Exception as e {
+        raise RuntimeError(
+            f"Kubernetes API server is unreachable.\n"
+            f"  - Verify cluster: kubectl cluster-info\n"
+            f"  - For minikube:   minikube status\n"
+            f"  - For EKS/GKE:    re-run your kubeconfig refresh "
+            f"(aws eks update-kubeconfig / gcloud container clusters get-credentials)\n"
+            f"Original error: {e}"
+        );
+    }
+
+    ensure_namespace_exists(namespace, k8s_safe_name(self.k8s_config.app_name));
+    self.ensure_alb_readiness_gates(core_v1, namespace);
+
+    ops_rbac = bundle.get("ops_rbac");
+    if ops_rbac {
+        self._apply_ops_rbac(namespace, ops_rbac);
+    }
+
+    pvcs: dict[str, dict[str, any]] = bundle.get("pvcs", {}) or {};
+    for (pvc_name, pvc_manifest) in pvcs.items() {
+        self._apply_or_replace_pvc(core_v1, namespace, pvc_manifest);
+        if self.logger {
+            self.logger.info(
+                f"Applied PVC for shared volume '{pvc_name}'",
+                {"name": pvc_manifest["metadata"]["name"]}
+            );
+        }
+    }
+
+    injector = bundle.get("injector");
+    if injector is not None {
+        injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
+        if self.logger {
+            self.logger.info(
+                "Seeded source bundle onto the bundle PVC",
+                {"app_name": k8s_safe_name(self.k8s_config.app_name)}
+            );
+        }
+    }
+
+    config_revision: str = "";
+    user_secret = bundle.get("user_secret");
+    if user_secret {
+        fresh = {
+            SIGNING_SECRET_ENV: secrets.token_urlsafe(48),
+            ADMIN_PASSWORD_ENV: minted_password(bundle.get("admin_password_rules"))
+        };
+        for (key, minted_note) in MINTED_SECRET_NOTES.items() {
+            if resolve_minted_secret(
+                core_v1,
+                namespace,
+                user_secret["metadata"]["name"],
+                user_secret["stringData"],
+                key,
+                fresh[key]
+            )
+                and self.logger {
+                self.logger.info(minted_note);
+            }
+        }
+        config_revision = create_k8s_secret(
+            core_v1,
+            namespace,
+            user_secret["metadata"]["name"],
+            user_secret["stringData"]
+        );
+        if not config_revision {
+            raise RuntimeError(
+                f"Applied the Secret for '{self.k8s_config.app_name}' but "
+                "could not read the "
+                "revision it returned, so a config change could not be made "
+                "to reach running pods. Refusing to deploy workloads rather "
+                "than reporting a success that leaves the old config live."
+            );
+        }
+        if self.logger {
+            self.logger.info(
+                f"Applied Secret for user-defined [scale.secrets] "
+                f"({len(user_secret['stringData'])} keys)",
+                {"name": user_secret["metadata"]["name"]}
+            );
+        }
+    }
+
+    services: dict[str, dict[str, any]] = bundle["services"];
+    for (svc_name, svc_manifest) in services.items() {
+        self._apply_or_replace(
+            core_v1,
+            "read_namespaced_service",
+            "patch_namespaced_service",
+            "create_namespaced_service",
+            namespace,
+            svc_manifest
+        );
+        if self.logger {
+            self.logger.info(
+                f"Applied Service for '{svc_name}'",
+                {"name": svc_manifest["metadata"]["name"]}
+            );
+        }
+    }
+
+    scaling: dict[str, any] = bundle.get("scaling", {});
+
+    deployments: dict[str, dict[str, any]] = bundle["deployments"];
+    for (svc_name, raw_manifest) in deployments.items() {
+        dep_manifest = with_config_revision(raw_manifest, config_revision);
+        patch_body = replacing_init_containers(
+            self._deployment_patch_body(dep_manifest, dict(scaling.get(svc_name, {})))
+                or dep_manifest
+        );
+        self._apply_or_replace(
+            apps_v1,
+            "read_namespaced_deployment",
+            "patch_namespaced_deployment",
+            "create_namespaced_deployment",
+            namespace,
+            dep_manifest,
+            patch_body
+        );
+        if self.logger {
+            self.logger.info(
+                f"Applied Deployment for '{svc_name}'",
+                {"name": dep_manifest["metadata"]["name"]}
+            );
+        }
+    }
+
+    self.reap_superseded_deployments(apps_v1, namespace, bundle);
+
+    reap_stale_scaling_resources_for_bundle(
+        bundle,
+        namespace,
+        AutoscalerFactory.create(
+            self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
+        ),
+        KEDAAutoscaler(
+            logger=self.logger,
+            interceptor_service_address=resolve_interceptor_service_address(
+                self.k8s_config.to_dict()
+            )
+        )
+    );
+
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        if plan.get("mode") != ScalingMode.METRIC {
+            continue;
+        }
+        autoscaler = AutoscalerFactory.create(
+            self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
+        );
+        spec = self._autoscaler_spec(svc_name, plan, autoscaler, namespace);
+        autoscaler_applied = autoscaler.apply(spec);
+
+        if self.logger and autoscaler_applied {
+            self.logger.info(
+                f"Applied autoscaler for '{svc_name}'", {"name": spec.autoscaler_name}
+            );
+        }
+    }
+
+    apply_http_activations_for_bundle(
+        bundle,
+        namespace,
+        KEDAAutoscaler(
+            logger=self.logger,
+            interceptor_service_address=resolve_interceptor_service_address(
+                self.k8s_config.to_dict()
+            )
+        )
+    );
+
+    pdbs: dict[str, dict[str, any]] = bundle.get("pdbs", {}) or {};
+    for (svc_name, pdb_manifest) in pdbs.items() {
+        self._apply_or_replace(
+            policy_v1,
+            "read_namespaced_pod_disruption_budget",
+            "patch_namespaced_pod_disruption_budget",
+            "create_namespaced_pod_disruption_budget",
+            namespace,
+            pdb_manifest
+        );
+        if self.logger {
+            self.logger.info(
+                f"Applied PDB for '{svc_name}'",
+                {"name": pdb_manifest["metadata"]["name"]}
+            );
+        }
+    }
+
+    ingress_manifest: any = bundle.get("ingress");
+    if ingress_manifest {
+        self._apply_or_replace(
+            networking_v1,
+            "read_namespaced_ingress",
+            "patch_namespaced_ingress",
+            "create_namespaced_ingress",
+            namespace,
+            ingress_manifest
+        );
+        if self.logger {
+            self.logger.info(
+                "Applied Ingress for gateway",
+                {"name": ingress_manifest["metadata"]["name"]}
+            );
+        }
+    }
+}
+
+impl KubernetesTarget._apply_ops_rbac(namespace: str, ops_rbac: dict[str, any]) {
+    self._apply_provider_service_account(
+        ops_rbac["service_account"], namespace, client.CoreV1Api()
+    );
+    try {
+        rbac_v1 = client.RbacAuthorizationV1Api();
+        role = ops_rbac["role"];
+        binding = ops_rbac["role_binding"];
+        role_name: str = role["metadata"]["name"];
+        binding_name: str = binding["metadata"]["name"];
+
+        try {
+            rbac_v1.read_namespaced_role(name=role_name, namespace=namespace);
+            rbac_v1.replace_namespaced_role(
+                name=role_name, namespace=namespace, body=role
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                rbac_v1.create_namespaced_role(namespace=namespace, body=role);
+            } else {
+                raise;
+            }
+        }
+
+        try {
+            rbac_v1.read_namespaced_role_binding(
+                name=binding_name, namespace=namespace
+            );
+            rbac_v1.replace_namespaced_role_binding(
+                name=binding_name, namespace=namespace, body=binding
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                rbac_v1.create_namespaced_role_binding(
+                    namespace=namespace, body=binding
+                );
+            } else {
+                raise;
+            }
+        }
+
+        if self.logger {
+            subj = binding["subjects"][0]["name"];
+            self.logger.info(
+                f"Applied Ops Console RBAC (read-only Role + RoleBinding)",
+                {"name": role_name, "serviceAccount": subj}
+            );
+        }
+    } except Exception as e {
+        if self.logger {
+            self.logger.warning(
+                f"Ops Console RBAC not applied ({e}); the in-admin "
+                f"deploy-health pages will render a 403 until the Role is "
+                f"bound to the gateway ServiceAccount."
+            );
+        }
+    }
+}
+
+impl KubernetesTarget.reap_superseded_deployments(
+    apps_v1: any, namespace: str, bundle: dict[str, any]
+) {
+    applied: dict[str, str] = {};
+    for dep in bundle.get("deployments", {}).values() {
+        try {
+            selector = str(dep["spec"]["selector"]["matchLabels"]["app"]);
+            applied[selector] = str(dep["metadata"]["name"]);
+        } except Exception {
+            continue;
+        }
+    }
+    if not applied {
+        return;
+    }
+
+    try {
+        existing = apps_v1.list_namespaced_deployment(namespace=namespace).items;
+    } except Exception as e {
+        if self.logger {
+            self.logger.warn(
+                f"Could not list Deployments to reap superseded ones: {e}",
+                {"namespace": namespace}
+            );
+        }
+        return;
+    }
+
+    for dep in existing {
+        try {
+            name = str(dep.metadata.name);
+            labels = dict(dep.metadata.labels or {});
+            selector = str((dep.spec.selector.match_labels or {}).get("app", ""));
+        } except Exception {
+            continue;
+        }
+        if labels.get("managed") != "jac-scale" {
+            continue;
+        }
+        current = applied.get(selector);
+        if current is None or current == name {
+            continue;
+        }
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, name, namespace, "Deployment"
+        );
+        self._emit(
+            "apply",
+            "ok",
+            f"Removed superseded Deployment '{name}'",
+            detail={"superseded_by": current, "selector": selector}
+        );
+        if self.logger {
+            self.logger.info(
+                f"Removed superseded Deployment '{name}'; '{current}' now "
+                f"solely backs the 'app={selector}' Service",
+                {"namespace": namespace}
+            );
+        }
+    }
+}
+
+impl KubernetesTarget._fleet_deployment_names(
+    apps_v1: any, namespace: str
+) -> list[str] {
+    names: list[str] = [];
+    try {
+        listed = apps_v1.list_namespaced_deployment(
+            namespace=namespace, label_selector=FLEET_SELECTOR
+        );
+        dep_items: list[any] = list(listed?.items or []);
+        for dep in dep_items {
+            try {
+                names.append(str(dep.metadata.name));
+            } except Exception {
+                continue;
+            }
+        }
+    } except Exception {
+        return [];
+    }
+    return fleet_revert_order(names);
+}
+
+impl KubernetesTarget._owned_replica_sets(
+    apps_v1: any, namespace: str, strict: bool = False
+) -> list[any] {
+    owned: list[str] = self._fleet_deployment_names(apps_v1, namespace);
+    try {
+        listed = list(
+            apps_v1.list_namespaced_replica_set(
+                namespace=namespace, label_selector="managed=jac-scale"
+            ).items
+        );
+        scoped: list[any] = [];
+        for rs in listed {
+            rs_any: any = rs;
+            try {
+                owners = list(rs_any.metadata.owner_references or []);
+            } except Exception {
+                continue;
+            }
+            if owners and str(owners[0].name) in owned {
+                scoped.append(rs_any);
+            }
+        }
+        return scoped;
+    } except Exception as e {
+        if strict {
+            raise;
+        }
+        if self.logger {
+            self.logger.warn(
+                f"Could not list ReplicaSets: {e}", {"namespace": namespace}
+            );
+        }
+        return [];
+    }
+}
+
+impl KubernetesTarget._revision_entries(strict: bool = False) -> list[dict[str, any]] {
+    self._load_cluster_config();
+    apps_v1 = client.AppsV1Api();
+    namespace: str = self.k8s_config.namespace;
+    serializer = client.ApiClient();
+    revisions: list[dict[str, any]] = [];
+
+    for rs in self._owned_replica_sets(apps_v1, namespace, strict=strict) {
+        try {
+            annotations = dict(rs.metadata.annotations or {});
+            raw_revision = annotations.get(REVISION_ANNOTATION);
+            if raw_revision is None {
+                continue;
+            }
+            owners = list(rs.metadata.owner_references or []);
+            deployment = str(owners[0].name) if owners else "";
+            pod_spec = serializer.sanitize_for_serialization(rs.spec.template.spec);
+            created = rs.metadata.creation_timestamp;
+            revisions.append(
+                {
+                    "deployment": deployment,
+                    "revision": int(raw_revision),
+                    "replica_set": str(rs.metadata.name),
+                    "bundle_keys": bundle_keys_from_pod_spec(dict(pod_spec)),
+                    "bundle_digest": app_bundle_digest(
+                        bundle_keys_from_pod_spec(dict(pod_spec))
+                    ),
+                    "created": created.isoformat() if created else "",
+                    "replicas": int(rs.spec.replicas or 0)
+                }
+            );
+        } except Exception {
+            continue;
+        }
+    }
+    return revisions;
+}
+
+impl KubernetesTarget._assert_own_app(app_name: str) {
+    mine = str(self.k8s_config.app_name or "");
+    if app_name and mine and str(app_name) != mine {
+        detail = f"configured for '{mine}', asked about '{app_name}'";
+        raise ValueError(
+            "This target cannot report or revert another app's revisions "
+                + f"({detail}). Build a target for that app."
+        );
+    }
+}
+
+impl KubernetesTarget.list_revisions(app_name: str) -> list[dict[str, any]] {
+    self._assert_own_app(app_name);
+    return releases_from_revisions(self._revision_entries());
+}
+
+impl KubernetesTarget.referenced_bundle_keys(app_name: str) -> set[str] {
+    self._assert_own_app(app_name);
+    keys: set[str] = set();
+    for item in self._revision_entries(strict=True) {
+        for key in item.get("bundle_keys", []) {
+            keys.add(str(key));
+        }
+    }
+    return keys;
+}
+
+impl KubernetesTarget._restore_templates(
+    apps_v1: any, namespace: str, names: list[str], undo: dict[str, any]
+) -> list[str] {
+    stranded: list[str] = [];
+    for name in reversed(names) {
+        template = undo.get(name);
+        if template is None {
+            continue;
+        }
+        try {
+            apps_v1.patch_namespaced_deployment(
+                name=name,
+                namespace=namespace,
+                body=[{"op": "replace", "path": "/spec/template", "value": template}]
+            );
+        } except Exception {
+            stranded.append(name);
+        }
+    }
+    return stranded;
+}
+
+impl KubernetesTarget.rollback_to(app_name: str, revision: int) -> DeploymentResult {
+    self._assert_own_app(app_name);
+    self._load_cluster_config();
+    apps_v1 = client.AppsV1Api();
+    namespace: str = self.k8s_config.namespace;
+    serializer = client.ApiClient();
+
+    expected: list[str] = self._fleet_deployment_names(apps_v1, namespace);
+    resolved = fleet_targets_for_release(
+        self.list_revisions(app_name), revision, expected
+    );
+    if not resolved.get("ok", False) {
+        missing = list(resolved.get("missing", []));
+        return DeploymentResult(
+            success=False,
+            message=(
+                f"Cannot roll '{app_name}' back to revision {revision} in "
+                f"'{namespace}': no retained revision for "
+                f"{', '.join(missing)}. It is older than "
+                f"revision_history_limit "
+                f"({self.k8s_config.revision_history_limit}), was never "
+                "deployed, or the service set changed between releases."
+            ),
+            details={"missing": missing}
+        );
+    }
+
+    wanted: dict[str, any] = dict(resolved.get("targets", {}) or {});
+    by_name: dict[str, any] = {};
+    for rs in self._owned_replica_sets(apps_v1, namespace) {
+        try {
+            owners = list(rs.metadata.owner_references or []);
+            ann = dict(rs.metadata.annotations or {});
+        } except Exception {
+            continue;
+        }
+        if not owners {
+            continue;
+        }
+        name = str(owners[0].name);
+        if name in wanted and ann.get(REVISION_ANNOTATION) == str(wanted[name]) {
+            by_name[name] = rs;
+        }
+    }
+    targets = by_name;
+
+    if len(targets) != len(wanted) {
+        return DeploymentResult(
+            success=False,
+            message=(
+                f"Refusing a partial rollback of '{app_name}': "
+                f"{len(targets)} of {len(wanted)} deployment(s) resolved. "
+                "A half reverted app serves two versions at once."
+            )
+        );
+    }
+
+    reverted: list[str] = [];
+    undo: dict[str, any] = {};
+    selectors: dict[str, any] = {};
+    for name in expected {
+        if name not in targets {
+            continue;
+        }
+        rs = targets[name];
+        template = restorable_pod_template(
+            dict(serializer.sanitize_for_serialization(rs.spec.template))
+        );
+        try {
+            live = apps_v1.read_namespaced_deployment(name=name, namespace=namespace);
+            undo[name] = dict(
+                serializer.sanitize_for_serialization(live.spec.template)
+            );
+            selectors[name] = dict(
+                serializer.sanitize_for_serialization(live.spec.selector)
+            );
+            apps_v1.patch_namespaced_deployment(
+                name=name,
+                namespace=namespace,
+                body=[{"op": "replace", "path": "/spec/template", "value": template}]
+            );
+        } except Exception as e {
+            stranded = self._restore_templates(apps_v1, namespace, reverted, undo);
+            detail = (
+                f" {len(stranded)} deployment(s) are still on revision "
+                f"{revision} and the app is serving two versions: "
+                f"{', '.join(stranded)}."
+                    if stranded
+                    else " The already reverted deployments were put back."
+            );
+            return DeploymentResult(
+                success=False,
+                message=(
+                    f"Reverting '{name}' to revision {revision} failed: {e}."
+                    f"{detail}"
+                ),
+                details={"reverted": reverted, "stranded": stranded}
+            );
+        }
+        reverted.append(name);
+    }
+
+    wait_bundle: dict[str, any] = {"deployments": {}};
+    for name in reverted {
+        wait_bundle["deployments"][name] = {
+            "metadata": {"name": name},
+            "spec": {"selector": selectors.get(name, {})}
+        };
+    }
+    try {
+        self._wait_for_fleet_rollout(wait_bundle, require_full=True);
+    } except Exception as e {
+        return DeploymentResult(
+            success=False,
+            message=(
+                f"Reverted {len(reverted)} deployment(s) to revision "
+                f"{revision}, but the fleet did not come back: {e}"
+            ),
+            details={"reverted": reverted, "revision": revision}
+        );
+    }
+    return DeploymentResult(
+        success=True,
+        message=(f"Reverted {len(reverted)} deployment(s) to revision {revision}"),
+        details={"reverted": reverted, "revision": revision}
+    );
+}
+
+impl KubernetesTarget._deployment_patch_body(
+    manifest: dict[str, any], plan: dict[str, any]
+) -> (dict[str, any] | None) {
+    """The body an update PATCH gets, or None to send the manifest whole.
+
+        Every scaling mode hands `spec.replicas` to a controller -- the HPA
+        under METRIC, the ScaledObject or HTTP interceptor under
+        HTTP_ACTIVATION -- so both are patched without it and a redeploy cannot
+        reset the count that controller set. NONE is the only mode where the
+        manifest still owns the field.
+        """;
+    if plan.get("mode", ScalingMode.NONE) == ScalingMode.NONE {
+        return None;
+    }
+    patch_body = dict(manifest);
+    patch_body["spec"] = {
+        k: v
+        for (k, v) in manifest["spec"].items()
+        if k != "replicas"
+    };
+    return patch_body;
+}
+
+impl KubernetesTarget._apply_or_replace(
+    api: any,
+    read: str,
+    update: str,
+    create: str,
+    namespace: str,
+    manifest: dict[str, any],
+    patch_body: (dict[str, any] | None) = None
+) {
+    """patch_body, when given, is sent to `update` instead of `manifest` --
+        e.g. a copy with `spec.replicas` stripped so a strategic-merge PATCH
+        leaves an externally-scaled field (KEDA's ScaledObject) alone, while a
+        fresh `create` still gets the full manifest including that field.
+        Every scaling mode relies on this: the HPA, ScaledObject or HTTP
+        interceptor owns `replicas` once it manages a Deployment, and the
+        strategic-merge PATCH this omission produces is what keeps a redeploy
+        from resetting the live value the autoscaler set.
+        """;
+    name: str = manifest["metadata"]["name"];
+    try {
+        getattr(api, read)(name=name, namespace=namespace);
+        getattr(api, update)(
+            name=name, namespace=namespace, body=patch_body or manifest
+        );
+    } except ApiException as e {
+        if e.status == 404 {
+            getattr(api, create)(namespace=namespace, body=manifest);
+        } else {
+            raise;
+        }
+    }
+}
+
+impl KubernetesTarget._apply_or_replace_pvc(
+    core_v1: any, namespace: str, manifest: dict[str, any]
+) {
+    name: str = manifest["metadata"]["name"];
+    try {
+        core_v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace);
+        if self.logger {
+            self.logger.info(
+                f"PVC '{name}' already exists; skipping patch. To apply "
+                f"size/storage-class changes, delete the PVC manually or "
+                f"run `jac scale destroy <file.jac>`."
+            );
+        }
+    } except ApiException as e {
+        if e.status == 404 {
+            core_v1.create_namespaced_persistent_volume_claim(
+                namespace=namespace, body=manifest
+            );
+        } else {
+            raise;
+        }
+    }
+}
+
+impl KubernetesTarget._destroy_fleet_workloads(
+    namespace: str, apps_v1: any, core_v1: any, policy_v1: any, networking_v1: any
+) {
+    ms_selector: str = "managed=jac-scale";
+
+    try {
+        apps_v1.delete_collection_namespaced_deployment(
+            namespace=namespace, label_selector=FLEET_SELECTOR
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+
+    try {
+        AutoscalerFactory.create(
+            self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
+        ).destroy_collection(
+            namespace, ms_selector
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+
+    if self.k8s_config.autoscaler_engine != "keda" {
+        try {
+            KEDAAutoscaler(
+                logger=self.logger,
+                interceptor_service_address=resolve_interceptor_service_address(
+                    self.k8s_config.to_dict()
+                )
+            ).destroy_collection(
+                namespace, ms_selector, best_effort=True
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+    }
+
+    try {
+        policy_v1.delete_collection_namespaced_pod_disruption_budget(
+            namespace=namespace, label_selector=ms_selector
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+
+    try {
+        networking_v1.delete_collection_namespaced_ingress(
+            namespace=namespace, label_selector=ms_selector
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+
+    try {
+        services = core_v1.list_namespaced_service(
+            namespace=namespace, label_selector=ms_selector
+        );
+        service_items: list[any] = services.items;
+        for svc in service_items {
+            try {
+                core_v1.delete_namespaced_service(
+                    name=svc.metadata.name, namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
+        }
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+
+    try {
+        core_v1.delete_collection_namespaced_config_map(
+            namespace=namespace,
+            label_selector="managed=jac-scale,jac-scale.role=source"
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+}
+
+impl KubernetesTarget._destroy_monitoring(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any, strict: bool = False
+) -> bool {
+    try {
+        monitoring = MonitoringDeployer(self.k8s_config, self.logger);
+        monitoring.destroy(app_name, namespace, apps_v1, core_v1);
+        return True;
+    } except Exception as e {
+        if strict {
+            raise;
+        }
+        if self.logger {
+            self.logger.warning(
+                f"Observability stack destroy failed, leaving its "
+                f"cluster-scoped RBAC in place: {e}",
+                {"app_name": app_name}
+            );
+        }
+        return False;
+    }
+}
+
+impl KubernetesTarget._postgres_pvc_name(app_name: str) -> str {
+    """Name the PVC the postgres volumeClaimTemplates entry creates.""";
+    pg_name: str = f"{app_name}-postgres";
+    return f"{pg_name}-data-{pg_name}-0";
+}
+
+impl KubernetesTarget._app_pvc_names(app_name: str) -> list[str] {
+    return [
+        bundle_pvc_name(k8s_safe_name(app_name)),
+        self._postgres_pvc_name(app_name)
+    ];
+}
+
+impl KubernetesTarget._destroy_pvcs(
+    pvc_names: list[str], namespace: str, core_v1: any
+) {
+    for pvc_name in pvc_names {
+        delete_if_exists(
+            core_v1.delete_namespaced_persistent_volume_claim,
+            pvc_name,
+            namespace,
+            'PersistentVolumeClaim'
+        );
+    }
+}
+
+impl KubernetesTarget._destroy_app_pvcs(app_name: str, namespace: str, core_v1: any) {
+    self._destroy_pvcs(self._app_pvc_names(app_name), namespace, core_v1);
+}
+
+impl KubernetesTarget._report_unowned_shared_volumes(namespace: str, core_v1: any) {
+    if not self.logger {
+        return;
+    }
+    try {
+        pvcs = core_v1.list_namespaced_persistent_volume_claim(
+            namespace=namespace,
+            label_selector="managed=jac-scale,jac-scale.role=shared-volume,"
+            "!jac-scale.owner"
+        );
+    } except ApiException {
+        return;
+    }
+    names: list[str] = [pvc.metadata.name for pvc in pvcs.items];
+    if names {
+        self.logger.warning(
+            f"Kept shared volumes that name no app: {', '.join(names)}. They "
+            f"predate volume ownership, so another app in this namespace may "
+            f"own them. Label one with 'jac-scale.owner' or delete it by hand.",
+            {"namespace": namespace}
+        );
+    }
+}
+
+impl KubernetesTarget._destroy_shared_volume_pvcs(
+    app_name: str, namespace: str, core_v1: any, sole_tenant: bool
+) {
+    shared: str = "managed=jac-scale,jac-scale.role=shared-volume";
+    selectors: list[str] = [f"{shared},jac-scale.owner={k8s_safe_name(app_name)}"];
+    if sole_tenant {
+        selectors.append(f"{shared},!jac-scale.owner");
+    } else {
+        self._report_unowned_shared_volumes(namespace, core_v1);
+    }
+    for selector in selectors {
+        try {
+            core_v1.delete_collection_namespaced_persistent_volume_claim(
+                namespace=namespace, label_selector=selector
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+    }
+}
+
+impl KubernetesTarget._list_managed(
+    lister: any, namespace: str, selector: str
+) -> list[any] {
+    """List the objects a lister returns, tolerating a kind the cluster lacks.""";
+    try {
+        return lister(namespace=namespace, label_selector=selector).items;
+    } except ApiException as e {
+        if e.status == 404 {
+            return [];
+        }
+        raise;
+    }
+}
+
+impl KubernetesTarget._foreign_app_resources(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) -> list[str] {
+    """Name the jac-scale resources in this namespace another app owns.""";
+    owner: str = k8s_safe_name(app_name);
+    our_bundle: str = bundle_pvc_name(owner);
+    our_postgres: str = f"{app_name}-postgres";
+    managed: str = "managed=jac-scale";
+    found: list[str] = [];
+    for pvc in self._list_managed(
+        core_v1.list_namespaced_persistent_volume_claim, namespace, managed
+    ) {
+        labels: dict[str, str] = pvc.metadata.labels or {};
+        role: str = labels.get("jac-scale.role", "");
+        volume_owner: str = labels.get("jac-scale.owner", "");
+        foreign_bundle: bool = (
+            role == "bundle-store" and pvc.metadata.name != our_bundle
+        );
+        foreign_volume: bool = (
+            role == "shared-volume" and bool(volume_owner) and volume_owner != owner
+        );
+        if foreign_bundle or foreign_volume {
+            found.append(f"PersistentVolumeClaim/{pvc.metadata.name}");
+        }
+    }
+    for sts in self._list_managed(
+        apps_v1.list_namespaced_stateful_set, namespace, managed
+    ) {
+        if sts.metadata.name != our_postgres {
+            found.append(f"StatefulSet/{sts.metadata.name}");
+        }
+    }
+    return found;
+}
+
+impl KubernetesTarget._co_tenants_best_effort(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) -> list[str] {
+    try {
+        return self._foreign_app_resources(app_name, namespace, apps_v1, core_v1);
+    } except ApiException {
+        return [];
+    }
+}
+
+impl KubernetesTarget._warn_co_tenant_workloads_removed(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) {
+    if not self.logger {
+        return;
+    }
+    co_tenants: list[str] = self._co_tenants_best_effort(
+        app_name, namespace, apps_v1, core_v1
+    );
+    if not co_tenants {
+        return;
+    }
+    self.logger.warning(
+        f"Another app has resources in '{namespace}': "
+        f"{', '.join(co_tenants)}. Its data was kept, but this removed its "
+        f"deployments, autoscalers and disruption budgets along with this "
+        f"app's, so redeploy it to restore service.",
+        {"app_name": app_name}
+    );
+}
+
+impl KubernetesTarget._destroy_ops_rbac(app_name: str, namespace: str) {
+    rbac_v1 = client.RbacAuthorizationV1Api();
+    ms_selector: str = f"managed=jac-scale,app={app_name}";
+    for delete_collection in [
+        rbac_v1.delete_collection_namespaced_role_binding,
+        rbac_v1.delete_collection_namespaced_role
+    ] {
+        try {
+            delete_collection(namespace=namespace, label_selector=ms_selector);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+    }
+
+    core_v1 = client.CoreV1Api();
+    sa_name = ops_sa_name(app_name);
+    try {
+        existing = core_v1.read_namespaced_service_account(
+            name=sa_name, namespace=namespace
+        );
+        if ops_sa_is_ours(existing.metadata.labels, app_name) {
+            core_v1.delete_namespaced_service_account(
+                name=sa_name, namespace=namespace
+            );
+        } elif self.logger {
+            self.logger.warning(
+                f"Leaving ServiceAccount '{sa_name}' in place: it was not "
+                f"created by jac-scale for '{app_name}'"
+            );
+        }
+    } except ApiException as e {
+        if e.status != 404 and self.logger {
+            self.logger.warning(
+                f"Could not remove ServiceAccount '{sa_name}' ({e.status}); "
+                f"delete it by hand if the Ops Console was enabled"
+            );
+        }
+    }
+}
+
+impl KubernetesTarget._wait_for_namespace_deletion(
+    namespace: str, core_v1: any, timeout: int = 300
+) -> bool {
+    elapsed = 0.0;
+    poll = 2.0;
+    while elapsed < timeout {
+        try {
+            core_v1.read_namespace(name=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                return True;
+            }
+            raise;
+        }
+        time.sleep(poll);
+        elapsed = elapsed + poll;
+    }
+    return False;
+}
+
+impl KubernetesTarget._reclaim_namespace(namespace: str, core_v1: any) -> bool {
+    try {
+        delete_namespace(core_v1, namespace);
+    } except ApiException as e {
+        if e.status != 403 {
+            raise;
+        }
+        return False;
+    }
+    if self._wait_for_namespace_deletion(namespace, core_v1) {
+        if self.logger {
+            self.logger.info(f"Namespace '{namespace}' deleted");
+        }
+    } elif self.logger {
+        self.logger.warning(
+            f"Timed out waiting for namespace '{namespace}' to be deleted"
+        );
+    }
+    return True;
+}
+
+impl KubernetesTarget._destroy_app_database(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any
+) {
+    pg_name: str = f"{app_name}-postgres";
+    delete_if_exists(
+        apps_v1.delete_namespaced_stateful_set, pg_name, namespace, 'StatefulSet'
+    );
+    delete_if_exists(
+        core_v1.delete_namespaced_service, f"{pg_name}-service", namespace, 'Service'
+    );
+    delete_k8s_secret(core_v1, namespace, f"{pg_name}-secret");
+    delete_k8s_secret(core_v1, namespace, f"{app_name}-external-db");
+    delete_if_exists(
+        core_v1.delete_namespaced_service_account,
+        f"{pg_name}-sa",
+        namespace,
+        'ServiceAccount'
+    );
+}
+
+impl KubernetesTarget._destroy_in_shared_namespace(
+    app_name: str, namespace: str, apps_v1: any, core_v1: any, sole_tenant: bool
+) {
+    self._destroy_app_database(app_name, namespace, apps_v1, core_v1);
+    self._destroy_app_pvcs(app_name, namespace, core_v1);
+    self._destroy_shared_volume_pvcs(app_name, namespace, core_v1, sole_tenant);
+    self._destroy_ops_rbac(app_name, namespace);
+    delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
+}
+
+impl KubernetesTarget.destroy(app_name: str, component: str = "") {
+    if self.logger {
+        self.logger.info(
+            f"Destroying microservice topology in namespace "
+            f"'{self.k8s_config.namespace}'",
+            {"app_name": app_name}
+        );
+    }
+
+    self._load_cluster_config();
+    apps_v1 = client.AppsV1Api();
+    core_v1 = client.CoreV1Api();
+    policy_v1 = client.PolicyV1Api();
+    networking_v1 = client.NetworkingV1Api();
+    namespace: str = self.k8s_config.namespace;
+
+    if component {
+        self._destroy_named_component(
+            app_name, namespace, component, apps_v1, core_v1, policy_v1, networking_v1
+        );
+        return;
+    }
+
+    self._destroy_fleet_workloads(
+        namespace, apps_v1, core_v1, policy_v1, networking_v1
+    );
+
+    monitoring_reclaimed = self._destroy_monitoring(
+        app_name, namespace, apps_v1, core_v1
+    );
+    owner: str = k8s_safe_name(app_name);
+
+    created_namespace: bool = namespace_is_owned(core_v1, namespace, owner);
+    co_tenants: list[str] = (
+        self._foreign_app_resources(app_name, namespace, apps_v1, core_v1)
+            if created_namespace
+            else []
+    );
+    sole_tenant: bool = created_namespace and not co_tenants;
+
+    if sole_tenant {
+        if monitoring_reclaimed {
+            if self._reclaim_namespace(namespace, core_v1) {
+                return;
+            }
+            if self.logger {
+                self.logger.warning(
+                    f"Not permitted to delete namespace '{namespace}', so "
+                    f"this app's resources inside it are removed instead",
+                    {"app_name": app_name}
+                );
+            }
+        } elif self.logger {
+            self.logger.warning(
+                f"Keeping namespace '{namespace}': its monitoring RBAC is "
+                f"cluster-scoped and is named after this namespace, so "
+                f"deleting it now would orphan roles nothing can attribute",
+                {"app_name": app_name}
+            );
+        }
+    } elif co_tenants and self.logger {
+        self.logger.warning(
+            f"Keeping namespace '{namespace}': this app created it, but "
+            f"{', '.join(co_tenants)} in it belongs to another app. That "
+            f"app's database and volumes are kept, but workloads in this "
+            f"namespace were removed, so redeploy it to restore service.",
+            {"app_name": app_name}
+        );
+    } elif not created_namespace {
+        self._warn_co_tenant_workloads_removed(app_name, namespace, apps_v1, core_v1);
+    }
+    self._destroy_in_shared_namespace(
+        app_name, namespace, apps_v1, core_v1, sole_tenant
+    );
+}
+
+impl KubernetesTarget._destroy_named_component(
+    app_name: str,
+    namespace: str,
+    component: str,
+    apps_v1: any,
+    core_v1: any,
+    policy_v1: any,
+    networking_v1: any
+) {
+    if component == 'application' {
+        self._destroy_fleet_workloads(
+            namespace, apps_v1, core_v1, policy_v1, networking_v1
+        );
+        self._warn_co_tenant_workloads_removed(app_name, namespace, apps_v1, core_v1);
+    } elif component == 'database' {
+        self._destroy_app_database(app_name, namespace, apps_v1, core_v1);
+        self._destroy_pvcs([self._postgres_pvc_name(app_name)], namespace, core_v1);
+    } elif component == 'monitoring' {
+        self._destroy_monitoring(app_name, namespace, apps_v1, core_v1, strict=True);
+    } else {
+        raise ValueError(
+            f"Unknown component: '{component}'. Valid choices: application, "
+            f"database, monitoring"
+        );
+    }
+    if self.logger {
+        self.logger.info(f"Component '{component}' of '{app_name}' destroyed");
+    }
+}

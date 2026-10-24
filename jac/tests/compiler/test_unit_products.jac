@@ -100,3 +100,71 @@ test "a record from another format version is refused" {
         is None;
     assert client_artifact_from_json("not json") is None;
 }
+
+test "a placement summary record round-trips and skips rows of the wrong shape" {
+    import from jaclang.compiler.placement.placement {
+        ElementSummary,
+        PlacementSummary
+    }
+    import from jaclang.compiler.placement.placement_export {
+        summary_from_dict,
+        summary_to_dict
+    }
+    element = ElementSummary(
+        index=2,
+        kind="ability",
+        name="walk",
+        import_items=["a", "b"],
+        reqs=[["native", "pin"]],
+        refs=[0, 1],
+        escapes=[(3, "x")],
+        glob_writes=[4]
+    );
+    summary = PlacementSummary(
+        mod_path="/app/main.jac",
+        decided="native",
+        anchors=["walk"],
+        jac_deps=["/app/lib.jac"],
+        has_refs=True,
+        elements=[element]
+    );
+    restored = summary_from_dict(summary_to_dict(summary));
+    assert restored is not None;
+    assert summary_to_dict(restored) == summary_to_dict(summary);
+    record = summary_to_dict(summary);
+    record["anchors"] = "walk";
+    record["elements"] = [
+        {"index": 5, "refs": "0", "escapes": [[1, "y"], "z", [], [2]]},
+        "row"
+    ];
+    odd = summary_from_dict(record);
+    assert odd is not None and odd.anchors == [] and len(odd.elements) == 1;
+    assert odd.elements[0].index == 5
+        and odd.elements[0].refs == []
+        and odd.elements[0].escapes == [(1, "y")];
+}
+
+test "a unit's jac dependencies follow plain, from and item imports" {
+    import os;
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.unit_products { jac_dependencies }
+    with tempfile.TemporaryDirectory(prefix="jac-unit-deps-") as tmp {
+        Path(tmp, "helper.jac").write_text("def f -> int { return 1; }\n");
+        Path(tmp, "other.jac").write_text("glob x: int = 1;\n");
+        Path(tmp, "pkg").mkdir();
+        Path(tmp, "pkg", "inner.jac").write_text("def g -> int { return 2; }\n");
+        main = Path(tmp, "main.jac");
+        main.write_text(
+            "import from helper { f }\nimport other;\nimport from pkg { inner }\n"
+                + "import os;\nwith entry { print(f(), other.x, inner.g(), os.sep); }\n"
+        );
+        module = JacProgram().compile(str(main));
+        assert jac_dependencies(module)
+            == sorted(
+                os.path.realpath(str(Path(tmp, name)))
+                for name in ("helper.jac", "other.jac", "pkg/inner.jac")
+            ) , jac_dependencies(module);
+    }
+}

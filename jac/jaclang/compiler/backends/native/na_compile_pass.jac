@@ -1,26 +1,31 @@
-import from jaclang.compiler.passes.context { CompileContext, CompilerPass }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import jaclang.compiler.backends.native.llvm.binding as llvm;
-import type from jaclang.compiler.backends.native.llvm.binding {
-    ModuleRef,
-    TargetMachine
-}
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.diagnostics { E5020, E5026 }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
-
 glob NATIVE_RELOC_MODEL: str = "pic",
-     NATIVE_CODE_MODEL: str = "small";
+     NATIVE_CODE_MODEL: str = "small",
+     CODEGEN_BASE_BYTES: int = 32 * 1024 * 1024,
+     CODEGEN_BYTES_PER_BITCODE_BYTE: int = 16;
 
 def module_bitcode(mod: ModuleRef) -> bytes;
 def emit_unit_object(bitcode: bytes, options: CompileOptions) -> bytes;
 def object_emit_jobs -> int;
+def codegen_footprint(blob: bytes) -> int;
+def codegen_map(work: Callable[..., bytes], blobs: list[bytes]) -> list[bytes];
 def emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes];
-def optimize_unit_texts(
-    texts: list[str], options: CompileOptions, opt_level: int
+def unit_bitcode(unit_ir: any) -> bytes;
+def unit_module_copy(unit_ir: any, context: any) -> ModuleRef;
+def optimized_bitcode(
+    mod: ModuleRef, options: CompileOptions, opt_level: int
+) -> bytes;
+
+def optimize_unit_ir(unit_ir: any, options: CompileOptions, opt_level: int) -> bytes;
+def optimize_unit_bitcode(
+    bitcode: bytes, options: CompileOptions, opt_level: int
+) -> bytes;
+
+def optimize_unit_bitcodes(
+    bitcodes: list[bytes], options: CompileOptions, opt_level: int
 ) -> list[bytes];
 
 def module_functions(mod: ModuleRef) -> list[any];
+def unit_function_counts(unit_ir: any) -> tuple[int, int];
 def settle_unit_ir(module: uni.Module) -> None;
 def create_unit_target_machine(
     options: CompileOptions, jit: bool = False
@@ -47,7 +52,5 @@ walker NativeCompilePass(CompilerPass) {
     can run_walk with uni.Module entry;
 }
 
-def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
 def native_linked_ir_text(module: uni.Module) -> str;
-
-def require_native_ir(llvm_ir_text: str) -> None;
+def unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks;

@@ -1,3 +1,5 @@
+def stops_command(exc: BaseException) -> bool;
+
 impl WorkPool.postinit -> None {
     self.kids = [];
     self.crashlogs = [];
@@ -54,6 +56,9 @@ impl WorkPool.run_inline -> None {
         } except KeyboardInterrupt {
             raise;
         } except BaseException as exc {
+            if stops_command(exc) {
+                raise;
+            }
             record = {"error": "".join(format_exception(exc)).rstrip()};
         }
         self.on_record(idx, record);
@@ -156,7 +161,11 @@ impl WorkPool._worker_loop(dispatch_fd: int, result_fd: int) -> None {
         try {
             record = {"result": self.job(request)};
         } except BaseException as exc {
-            record = {"error": "".join(format_exception(exc)).rstrip()};
+            if stops_command(exc) {
+                record = {"exit": getattr(exc, "code", 1)};
+            } else {
+                record = {"error": "".join(format_exception(exc)).rstrip()};
+            }
         }
         served += 1;
         rss = worker_rss_mb();
@@ -253,6 +262,10 @@ impl WorkPool._handle_record(kid: dict[(str, any)], line: str) -> None {
         record = json.loads(text);
     } except Exception {
         return;
+    }
+    if "exit" in record {
+        self.stopping = True;
+        raise SystemExit(record["exit"]);
     }
     done = kid["inflight"];
     kid["inflight"] = None;
@@ -704,4 +717,8 @@ impl forced_serial(requested: (str | int | None) = None) -> bool {
         return False;
     }
     return str(requested).strip() == "0";
+}
+
+impl stops_command(exc: BaseException) -> bool {
+    return isinstance(exc, SystemExit) and bool(getattr(exc, "stops_command", False));
 }

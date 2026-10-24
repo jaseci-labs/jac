@@ -154,7 +154,6 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    import from jaclang.bootstrap_manifest { is_native_lowered }
     if p != "runtime/python/LICENSE.cpython" and is_native_lowered(p) {
         return True;
     }
@@ -259,6 +258,17 @@ impl run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) ->
         label = " ".join(os.path.basename(a) for a in argv[1:4]);
         log(f"   ({label}: {took:.1f}s)");
     }
+    if rc < 0 {
+        import signal;
+        try {
+            how = signal.Signals(-rc).name;
+        } except ValueError {
+            how = f"signal {-rc}";
+        }
+        log(f"   {argv[0]} killed by {how} after {took:.1f}s");
+    } elif not ok {
+        log(f"   {argv[0]} exited {rc} after {took:.1f}s");
+    }
     if not ok and not allow_fail {
         die(f"command failed: {argv[0]}");
     }
@@ -335,23 +345,9 @@ impl rd_u32(b: bytes, off: int) -> int {
     return int.from_bytes(b[off:off + 4], "little");
 }
 
-def _default_modes -> tuple[int, int] {
-    um = os.umask(0);
-    os.umask(um);
-    return (0o666 & ~um, 0o777 & ~um);
-}
+def _default_modes -> tuple[int, int];
 
-def _stripped_name(name: str, strip_components: int) -> str | None {
-    parts = [
-        part
-        for part in name.split("/")
-        if part not in ("", ".")
-    ];
-    if len(parts) <= strip_components {
-        return None;
-    }
-    return "/".join(parts[strip_components:]);
-}
+def _stripped_name(name: str, strip_components: int) -> str | None;
 
 impl extract_tar(
     tar_bytes: bytes, dest: str, strip_components: int, exec_bit_only: bool
@@ -398,4 +394,22 @@ impl extract_tar(
         }
     }
     os.chmod(dest, dir_default | 0o700);
+}
+
+impl _default_modes -> tuple[int, int] {
+    um = os.umask(0);
+    os.umask(um);
+    return (0o666 & ~um, 0o777 & ~um);
+}
+
+impl _stripped_name(name: str, strip_components: int) -> str | None {
+    parts = [
+        part
+        for part in name.split("/")
+        if part not in ("", ".")
+    ];
+    if len(parts) <= strip_components {
+        return None;
+    }
+    return "/".join(parts[strip_components:]);
 }

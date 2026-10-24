@@ -113,10 +113,6 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
 }
 
 impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
-    import from jaclang.compiler.frontend.codeinfo {
-        native_test_symbol,
-        native_unit_prefix
-    }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
     mod_path = self.module.loc.mod_path if self.module.loc else "";
@@ -457,7 +453,6 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
-    import from jaclang.compiler.driver.boundary_classify { module_app }
     consumer = module_app(self.module);
     if consumer {
         return "'" + consumer + "'";
@@ -466,10 +461,6 @@ impl JcirGenPass._sv_consumer_app_expr -> str {
 }
 
 impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
-    import from jaclang.compiler.driver.boundary_classify {
-        CrossAppKind,
-        classify_cross_app_import
-    }
     if isinstance(expr, BinaryExpr) {
         op = expr.op;
         if isinstance(op, Token) and op.name == Tok.KW_SPAWN {

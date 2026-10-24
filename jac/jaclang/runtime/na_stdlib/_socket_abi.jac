@@ -1,15 +1,13 @@
-import from c { def __errno_location -> int;  }
+import from c { def __jac_errno -> int;  }
+import from c { def __jac_addrinfo_layout(which: i32) -> int;  }
+import from c { def __jac_sockaddr_family(address: bytes) -> i32;  }
 
-glob ADDRINFO_ADDRLEN_OFFSET: int = 16,
-     ADDRINFO_ADDR_OFFSET: int = 24,
-     ADDRINFO_NEXT_OFFSET: int = 40,
-     ADDRINFO_SIZE: int = 48,
-     IPV6_FAMILY: int = 10;
+glob ADDRINFO_ADDRLEN_OFFSET: int = __jac_addrinfo_layout(i32(0)),
+     ADDRINFO_ADDR_OFFSET: int = __jac_addrinfo_layout(i32(1)),
+     ADDRINFO_NEXT_OFFSET: int = __jac_addrinfo_layout(i32(2)),
+     ADDRINFO_SIZE: int = __jac_addrinfo_layout(i32(3)),
+     IPV6_FAMILY: int = __jac_addrinfo_layout(i32(4));
 
-def:pub errno_pointer -> int {
-    return __errno_location();
-}
+def:pub errno_pointer -> int;
 
-def:pub address_family(address: bytes) -> int {
-    return address[0] + address[1] * 256;
-}
+def:pub address_family(address: bytes) -> int;

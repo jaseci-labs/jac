@@ -2,7 +2,8 @@
 # requires them: `a +>:E:f=v:+> b` passes the names `E` requires to its
 # constructor, as `E(f=v)` would, and sets every other named field on the
 # built edge afterwards, so a defaulted field still lands after `postinit`.
-# Every value is evaluated in source order before the edge is built.
+# Every value is evaluated in source order before the edge is built, and a
+# value read from a field outlives a later value that replaces that field.
 node Spot {
     has index: int;
 }
@@ -32,11 +33,27 @@ edge Span: Spot --> Spot {
     }
 }
 
-glob calls: int = 0;
+edge Tagged: Spot --> Spot {
+    has kind: int,
+        note: str = "";
+}
+
+obj Holder {
+    has text: str;
+}
+
+glob calls: int = 0,
+     pads: list[str] = [];
 
 def bump -> int {
     calls += 1;
     return calls;
+}
+
+def swap(h: Holder) -> int {
+    h.text = "new" + str(len(h.text));
+    pads.append("pad" + str(len(h.text)));
+    return 9;
 }
 
 def link(a: Spot, b: Spot, kind: int) {
@@ -86,4 +103,15 @@ with entry {
     h +>:Named:weight=bump(), label=str(bump()):+> a;
     ordered = [edge h->:Named:->][0];
     print("source order", ordered.weight, ordered.label);
+
+    held = Holder(text="old" + str(calls));
+    p = Spot(index=15);
+    p +>:Tagged:note=held.text, kind=swap(held):+> a;
+    tagged = [edge p->:Tagged:->][0];
+    print("kept alive", tagged.note, tagged.kind, held.text);
+
+    fan = Holder(text="old" + str(calls));
+    q = Spot(index=16);
+    q +>:Tagged:note=fan.text, kind=swap(fan):+> [Spot(index=17), Spot(index=18)];
+    print("fan kept alive", [t.note for t in [edge q->:Tagged:->]], fan.text);
 }

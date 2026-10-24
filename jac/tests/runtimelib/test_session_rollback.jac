@@ -51,8 +51,26 @@ node RBag {
 
 enum RShelf { FULL = [1] }
 
+glob PEEK_TARGETS: list[any] = [];
+
+node RPeeker {
+    has n: int = 0;
+    has peek: int {
+        getter {
+            for bag in PEEK_TARGETS {
+                bag.items.append(99);
+            }
+            return len(PEEK_TARGETS);
+        }
+    }
+}
+
 node RShelved {
     has shelf: RShelf = RShelf.FULL;
+}
+
+node RVary {
+    has v: (str | list[int]) = "x";
 }
 
 edge RLink: any --> any {
@@ -782,6 +800,39 @@ test "loading anchors hashes only those whose fields can change in place" {
 }
 
 
+test "frozen_value accepts exactly the immutable value kinds" {
+    import from decimal { Decimal }
+    import from datetime { date, datetime, time, timedelta }
+    import from jaclang.data.serializer { frozen_value }
+    import from jaclang.data.store { TxnIsolation }
+    frozen = [
+        None,
+        True,
+        0,
+        1.5,
+        complex(0, 2),
+        "s",
+        bytes([98]),
+        Decimal("1.0"),
+        UUID(int=1),
+        date(2026, 1, 1),
+        datetime(2026, 1, 1),
+        time(1),
+        timedelta(1),
+        TxnIsolation.SERIALIZABLE,
+        (1, "a", (None, 2)),
+        frozenset({1, 2})
+    ];
+    thawed = [[1], {"a": 1}, {1}, object(), (1, [2]), bytearray(3)];
+    for v in frozen {
+        assert frozen_value(v) , f"{v!r} should count as immutable";
+    }
+    for v in thawed {
+        assert not frozen_value(v) , f"{v!r} can change in place";
+    }
+}
+
+
 test "a commit re-hashes only loaded anchors whose fields can change in place" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
@@ -854,6 +905,156 @@ test "a commit re-hashes only loaded anchors whose fields can change in place" {
             ctx.mem.commit();
             assert _stored(ctx, shelf_id, "shelf") == "[1, 2]" , (
                 "an enum whose value is a list can change in place; it must be scanned"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
+test "a loaded anchor's frozen verdict ends at its next field write" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        ids: list[UUID] = [];
+        try {
+            for _ in range(2) {
+                vary: NodeAnchor = _as_any(RVary()).__jac__;
+                vary.persistent = True;
+                seed.mem.put(vary);
+                ids.append(vary.ensure_id());
+            }
+            seed.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            _ = ctx.user_root;
+            ctx.mem.commit();
+            loaded = ctx.mem.batch_get(ids);
+            assert len(loaded) == 2 , loaded;
+            ctx.mem.commit();
+            tracked = _as_any(loaded[ids[0]].archetype);
+            tracked.v = [1];
+            ctx.mem.commit();
+            tracked.v.append(2);
+            ctx.mem.commit();
+            assert _stored(ctx, ids[0], "v") == "[1, 2]" , (
+                "a field that now holds a list must be scanned for in-place changes"
+            );
+            untracked = loaded[ids[1]];
+            untracked.persistent = False;
+            _as_any(untracked.archetype).v = [3];
+            untracked.persistent = True;
+            ctx.mem.commit();
+            assert _stored(ctx, ids[1], "v") == "[3]" , (
+                "a write made while the anchor was not persistent must still be found"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+    }
+}
+
+
+test "commits after a sealed scan skip in-place scans until user code runs again" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        bag_id = UUID(int=0);
+        scalar_id = UUID(int=0);
+        try {
+            scalar_id = _loose(seed, 1).ensure_id();
+            bag: NodeAnchor = _as_any(RBag(items=[1])).__jac__;
+            bag.persistent = True;
+            seed.mem.put(bag);
+            bag_id = bag.ensure_id();
+            seed.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        dumps_calls: list[int] = [];
+        import json;
+        real_dumps = json.dumps;
+        def counting_dumps(*args: any, **kwargs: any) -> str {
+            if kwargs.get("sort_keys") {
+                dumps_calls.append(1);
+            }
+            return real_dumps(*args, **kwargs);
+        }
+        try {
+            _ = ctx.user_root;
+            loaded = ctx.mem.batch_get([bag_id, scalar_id]);
+            bag_arch = _as_any(loaded[bag_id].archetype);
+            ctx.mem.commit();
+            ctx.mem.seal_scan();
+            json.dumps = counting_dumps;
+            try {
+                ctx.mem.commit();
+                ctx.mem.commit();
+            } finally {
+                json.dumps = real_dumps;
+            }
+            assert dumps_calls == [] , (
+                f"two commits after a sealed scan hashed {len(dumps_calls)} stored "
+                "forms; no user code ran, so nothing can have changed in place"
+            );
+            _as_any(loaded[scalar_id].archetype).n = 9;
+            ctx.mem.commit();
+            assert _stored(ctx, scalar_id, "n") == "9" , (
+                "a field write after a sealed scan must still land"
+            );
+            ctx.mem.seal_scan();
+            ctx.mem.unit_enter();
+            bag_arch.items.append(2);
+            ctx.mem.unit_exit();
+            ctx.mem.commit();
+            assert _stored(ctx, bag_id, "items") == "[1, 2]" , (
+                "entering a unit runs user code; its in-place change must be scanned"
+            );
+            ctx.mem.seal_scan();
+            def append_three {
+                bag_arch.items.append(3);
+            }
+            ctx.on_commit(append_three);
+            ctx.run_pending_effects();
+            ctx.mem.seal_scan();
+            ctx.mem.commit();
+            assert _stored(ctx, bag_id, "items") == "[1, 2, 3]" , (
+                "a pending effect runs user code; a seal after it must not skip the scan"
+            );
+            ctx.mem.seal_scan();
+            def append_four {
+                bag_arch.items.append(4);
+            }
+            ctx.mem.on_commit(append_four);
+            ctx.mem.commit();
+            ctx.mem.seal_scan();
+            ctx.mem.commit();
+            assert _stored(ctx, bag_id, "items") == "[1, 2, 3, 4]" , (
+                "an on_commit callback runs user code; the next commit must scan"
+            );
+            def commit_then_append {
+                ctx.mem.commit();
+                bag_arch.items.append(5);
+            }
+            ctx.mem.on_commit(commit_then_append);
+            ctx.mem.commit();
+            ctx.mem.seal_scan();
+            ctx.mem.commit();
+            assert _stored(ctx, bag_id, "items") == "[1, 2, 3, 4, 5]" , (
+                "a callback that commits and then appends must not leave a clean scan"
             );
         } finally {
             JacRuntime.exec_ctx = old;
@@ -1029,6 +1230,104 @@ test "request loop: a conflict re-run starts from the database, not from the rol
         }
     } finally {
         _restore_read_tier(prior);
+    }
+}
+
+
+test "a scan that ran a node's own getters is never sealed" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        seed = _ctx(td);
+        JacRuntime.exec_ctx = seed;
+        bag_id = UUID(int=0);
+        peek_id = UUID(int=0);
+        try {
+            bag: NodeAnchor = _as_any(RBag(items=[1])).__jac__;
+            bag.persistent = True;
+            seed.mem.put(bag);
+            bag_id = bag.ensure_id();
+            peeker: NodeAnchor = _as_any(RPeeker()).__jac__;
+            peeker.persistent = True;
+            seed.mem.put(peeker);
+            peek_id = peeker.ensure_id();
+            seed.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            seed.close();
+        }
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            _ = ctx.user_root;
+            loaded = ctx.mem.batch_get([bag_id, peek_id]);
+            PEEK_TARGETS.append(_as_any(loaded[bag_id].archetype));
+            ctx.mem.commit();
+            ctx.mem.seal_scan();
+            ctx.mem.commit();
+            stored = _stored(ctx, bag_id, "items") or "";
+            assert "99" in stored , (
+                "a getter read during the scan appended to a loaded list; a seal "
+                f"must not skip the scan that saves it, but the row holds {stored}"
+            );
+        } finally {
+            PEEK_TARGETS.clear();
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        later = _ctx(td);
+        JacRuntime.exec_ctx = later;
+        try {
+            _ = later.user_root;
+            bags = later.mem.batch_get([bag_id]);
+            bag_arch = _as_any(bags[bag_id].archetype);
+            later.mem.commit();
+            later.mem.seal_scan();
+            peekers = later.mem.batch_get([peek_id]);
+            PEEK_TARGETS.append(bag_arch);
+            _as_any(peekers[peek_id].archetype).n = 1;
+            later.mem.commit();
+            in_memory = bag_arch.items.count(99);
+            later.mem.commit();
+            stored = _stored(later, bag_id, "items") or "";
+            assert stored.count("99") >= in_memory , (
+                "a sealed commit that fell back to a full scan for a getter node "
+                f"must clear the seal: {in_memory} appends were in memory, the row holds {stored}"
+            );
+        } finally {
+            PEEK_TARGETS.clear();
+            JacRuntime.exec_ctx = old;
+            later.close();
+        }
+    }
+}
+
+
+class TrackedList(list) {}
+
+class TrackedDict(dict) {}
+
+test "only plain response data seals the scan" {
+    import from jaclang.server.server { _plain_value }
+    assert _plain_value({"a": [1, (2.5, "x")], "b": None, "c": True}) , (
+        "nested primitives, lists, tuples and dicts are plain"
+    );
+    assert not _plain_value([TrackedList([1])]) , (
+        "a list subclass can run its own __iter__; it must not count as plain"
+    );
+    assert not _plain_value(TrackedDict(a=1)) , "a dict subclass is not plain";
+    assert not _plain_value({(1, 2): 3}) , "a dict keyed by a tuple is not plain";
+    assert not _plain_value([RBag()]) , "an archetype is not plain";
+}
+
+
+test "request loop: the response shows what on_commit callbacks changed" {
+    with TemporaryDirectory() as td {
+        (exec_mgr, walkers, _) = _vote_app(td);
+        delivered = _spawn(exec_mgr, walkers["Deliver"]);
+        assert delivered.get("reports") == [{"sent": True}] , (
+            "the callback runs at the response commit, before the response is "
+            f"serialized, so the client must see its change: {delivered}"
+        );
     }
 }
 

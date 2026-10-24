@@ -7,48 +7,6 @@ Include/cpython/tupleobject.h, Py_REFCNT and Py_RETURN_RICHCOMPARE are here
 too. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyObject,
-    PyType_IsSubtype,
-    PyUnicode_InternFromString,
-    Py_NewRef,
-    Py_NotImplemented,
-    _PyEval_GetBuiltin,
-    _Py_Dealloc,
-    PyThreadState_GetUnchecked,
-    _Py_NewReference,
-    jacpy_release
-}
-import from jaclang.runtime.python.layouts {
-    _Py_freelist,
-    PyGC_Head_SIZE,
-    PyThreadState_INTERP,
-    _PyGC_PREV_FLAGS,
-    _PyGC_PREV_MASK,
-    _PyGC_PREV_MASK_FINALIZED,
-    _gc_runtime_state_GENERATION0,
-    _gc_runtime_state_HEAP_SIZE,
-    PyListObject,
-    PyTupleObject,
-    PyTupleObject_ITEMS,
-    PyTypeObject,
-    PyVarObject,
-    Py_EQ,
-    Py_GE,
-    Py_GT,
-    Py_LE,
-    Py_LT,
-    Py_NE,
-    Py_TPFLAGS_LIST_SUBCLASS,
-    _Py_IMMORTAL_INITIAL_REFCNT,
-    _object
-}
-import from jaclang.runtime.python.layouts_platform {
-    PyInterpreterState_FREELISTS,
-    PyInterpreterState_GC
-}
-
 import from c {
     glob PyType_Type: PyTypeObject,
          # Defined by bool.jac; Py_True and Py_False are their addresses.

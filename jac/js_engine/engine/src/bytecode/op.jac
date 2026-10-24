@@ -317,7 +317,9 @@ obj Instruction {
         ic_obj: int = 0,
         ic_ver: int = 0,
         ic_holder: int = 0,
-        ic_epoch: int = 0;
+        ic_epoch: int = 0,
+        ic_obj2: int = 0,
+        ic_ver2: int = 0;
 }
 
 # Auxiliary flag channel (default 0). Currently: on a bare-identifier CALL of
@@ -330,6 +332,8 @@ obj Instruction {
 # JSPropertyMap.version at cache fill
 # holder object-table id (0 = miss / undefined)
 # holder==4 ([[Set]]-add transition IC): realm proto-epoch at fill time.
+# ic_obj2 / ic_ver2: GETFIELD's second own-slot entry (shape, packed slot) —
+# the shape a refill of the own-slot IC replaced (0 = none).
 # RUNTIME-ONLY (not serialized), like the other ic_* fields.
 """Create an Instruction with the given fields."""
 def make_instruction(
@@ -462,7 +466,8 @@ obj CompiledFunction {
         rcode: list[int] = [],
         rorig: list[int] = [],
         rhandler: list[int] = [],
-        reg_gen_start: int = -1;
+        reg_gen_start: int = -1,
+        rcode_ptr: int = 0;
 }
 
 # parent-local slot index per free_var; -1 = transitive capture

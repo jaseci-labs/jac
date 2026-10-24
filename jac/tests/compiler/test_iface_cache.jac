@@ -617,6 +617,50 @@ test "an interface is identical however many twins of its module are reachable" 
     assert names[0] == names[1] , f"the interface's name count changed between compiles: {names}";
 }
 
+test "an interface written from a hydrated module keeps its instance-method bits" {
+    # The native kernel reads interfaces the host writes from modules it has
+    # itself hydrated. The instance-method bit lives only on the catalog
+    # provider of a hydrated symbol, so the second encoding dropped it and the
+    # kernel bound `Cls.method(obj, ...)` as if `obj` were the first argument.
+    import from jaclang.compiler.types.stubcat.format { SYMF_INSTANCE_METHOD }
+    import from jaclang.compiler.types.stubcat.reader { CatProvider }
+    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
+    import from jaclang.compiler.frontend.kernel_host { ProgramResolver }
+    import from jaclang.compiler.types.stubcat.modiface {
+        open_module_iface,
+        iface_module
+    }
+    tmp = os.path.realpath(tempfile.mkdtemp());
+    src = os.path.join(tmp, "methmod.jac");
+    with open(src, "w") as fh {
+        fh.write("obj Box {\n    def get(x: int) -> int { return x; }\n}\n");
+    }
+    prog = JacProgram();
+    mod = prog.compile(
+        src,
+        options=CompileOptions(no_cgen=True, symtab_ir_only=True, need_full_ast=True)
+    );
+    payload = build_module_iface(mod, prog.get_type_evaluator(), tmp);
+    for hop in range(2) {
+        cat = open_module_iface(payload, tmp, resolver=ProgramResolver(program=prog));
+        assert cat is not None;
+        served = iface_module(cat);
+        assert served is not None;
+        box = served.lookup("Box");
+        assert box is not None and box.provider is not None;
+        box_type = box.provider.resolve_type(box);
+        assert isinstance(box_type, ClassType);
+        get = box_type.shared.symbol_table.lookup("get");
+        assert get is not None;
+        prov = get.provider;
+        assert isinstance(prov, CatProvider)
+            and (prov.symbits & SYMF_INSTANCE_METHOD) != 0 , f"encoding {hop
+            + 1} lost the instance-method bit of Box.get";
+        payload = build_module_iface(served, prog.get_type_evaluator(), tmp);
+    }
+}
+
 test "a comptime import takes the dependency's tree and rides its edits" {
     # A comptime import needs the dependency's values, which an interface
     # does not carry: served from the cache, the initializer was "not known

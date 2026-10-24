@@ -7,8 +7,6 @@ import math;
 import os;
 import socket;
 import uuid;
-import from jaclang.runtime.builtin { ScheduleTrigger }
-import from jaclang.server.serving.drain { DrainState }
 
 glob _scheduler_instance: (Scheduler | None) = None,
      logger = logging.getLogger(__name__),

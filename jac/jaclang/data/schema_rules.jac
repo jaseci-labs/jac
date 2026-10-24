@@ -1,7 +1,6 @@
 import logging;
 import os;
 import threading;
-import from jaclang.runtime.object_interop { fields, is_record }
 
 glob logger = logging.getLogger(__name__),
      ATTIC_KEY: str = '__jac_attic__',

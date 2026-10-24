@@ -167,6 +167,49 @@ test "source cache keys use their own native policy instead of ambient config" {
 }
 
 
+test "a prepare's key memo keeps each codespace and native target apart" {
+    import tempfile;
+    import from jaclang.compiler.driver.compile_options {
+        pop_native_target,
+        push_native_target
+    }
+    import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
+    saved = get_effective_default_codespace_override();
+    with tempfile.TemporaryDirectory() as directory {
+        source = os.path.join(directory, "main.jac");
+        with open(source, "w") as f {
+            f.write("def value -> int { return 1; }\n");
+        }
+        def key_under(codespace: str, triple: (str | None)) -> str {
+            set_effective_default_codespace(codespace);
+            token = push_native_target(triple) if triple is not None else None;
+            try {
+                return module_cache_key(source);
+            } finally {
+                if triple is not None {
+                    pop_native_target(token);
+                }
+            }
+        }
+        scopes = [("", None), ("native", None), ("native", "wasm32-unknown-unknown")];
+        try {
+            expected = [key_under(c, t) for (c, t) in scopes];
+            assert len(set(expected)) > 1 , "a native target must change the key";
+            memo = begin_prepare_memo();
+            try {
+                memoized = [key_under(c, t) for (c, t) in scopes];
+            } finally {
+                end_prepare_memo(memo);
+            }
+            assert memoized == expected , (
+                f"a prepare reused one scope's key for another: {memoized} != {expected}"
+            );
+        } finally {
+            set_effective_default_codespace(saved);
+        }
+    }
+}
+
 test "the symtab-ir schedule pre-imports what its passes reach at run time" {
     saved_mod = sys.modules.pop("jaclang.compiler.symbol_utils");
     try {
@@ -176,7 +219,7 @@ test "the symtab-ir schedule pre-imports what its passes reach at run time" {
             "building the symtab-IR schedule left symbol_utils unimported, so a "
             "pass reaching it at run time would be the first to import it"
         );
-        assert hasattr(restored, "collect_assigned_symbols") , (
+        assert hasattr(restored, "resolve_import_source_module") , (
             "symbol_utils came back half-initialized"
         );
     } finally {

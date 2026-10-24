@@ -299,7 +299,7 @@ def:pub ServicesPage -> JsxElement {
                     </p>
                     <p
                         className={"text-2xl font-semibold mt-1 tabular-nums "
-                            + str(toneClasses[c["tone"]] or "text-fg")}
+                            + str(toneClasses[str(c["tone"])] or "text-fg")}
                     >
                         {c["value"]}
                     </p>
@@ -318,7 +318,7 @@ def:pub ServicesPage -> JsxElement {
                     </p>
                     <p
                         className={"text-2xl font-semibold mt-1 tabular-nums "
-                            + str(toneClasses[c["tone"]] or "text-fg")}
+                            + str(toneClasses[str(c["tone"])] or "text-fg")}
                     >
                         {c["value"]}
                     </p>

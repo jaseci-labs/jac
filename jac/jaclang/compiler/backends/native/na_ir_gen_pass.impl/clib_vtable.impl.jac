@@ -168,7 +168,7 @@ impl NaIRGenPass._lower_clib_function_type(
             ret_type = c_scalar(_r);
         }
     }
-    import from jaclang.compiler.types.types { FunctionType as CallbackType }
+
     param_types: list[ir.Type] = [];
     for p in (t.parameters or []) {
         if isinstance(p.param_type, CallbackType) {

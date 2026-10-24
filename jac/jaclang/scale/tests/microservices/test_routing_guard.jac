@@ -1,18 +1,3 @@
-import from jaclang.scale.runtime.routing {
-    guard_route_prefix,
-    is_gateway_owned_segment,
-    is_learnable_prefix,
-    GATEWAY_API_SEGMENTS,
-    GATEWAY_WELLKNOWN_SEGMENTS,
-    GATEWAY_CLIENT_SEGMENT,
-    GATEWAY_BUILTIN_PREFIXES,
-    GATEWAY_DISCOVERY_SEGMENTS,
-    GATEWAY_LISTING_SEGMENTS,
-    GATEWAY_REPLICATED_SEGMENTS,
-    GATEWAY_SERVICE_OWNED_SEGMENTS
-}
-
-
 test "an app route under a gateway segment is rejected" {
     caught = "";
     try {

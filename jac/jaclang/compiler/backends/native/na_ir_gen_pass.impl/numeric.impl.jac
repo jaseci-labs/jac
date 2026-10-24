@@ -1,5 +1,3 @@
-import from jaclang.compiler.frontend.const_fold { fold_const }
-
 impl NaIRGenPass._emit_float_pow(
     base: ir.Value, exp: ir.Value, unsigned: bool = False
 ) -> ir.Value {
@@ -104,18 +102,85 @@ impl NaIRGenPass._load_complex_parts(ptr: ir.Value) -> tuple[(ir.Value, ir.Value
     return (re, im);
 }
 
-impl NaIRGenPass._target_fuses_fp -> bool {
-    triple = str(self.llvm_module.triple or "").lower();
-    return triple.startswith("aarch64") or triple.startswith("arm64");
+impl NaIRGenPass._target_is_wasm -> bool {
+    return "wasm" in str(self.llvm_module.triple or "").lower();
+}
+
+impl NaIRGenPass._floor_call(
+    name: str,
+    ret: ir.Type,
+    args: list[ir.Value],
+    call_name: str = "",
+    builder: (ir.IRBuilder | None) = None
+) -> ir.Value {
+    """Call a runtime floor function (posix_floor.c, win_floor.c): what a C
+    library spells, lays out or numbers per target lives behind these, so
+    the call is the same on every target.""";
+    fn = self._get_or_declare_extern(name, ret, [a.type for a in args]);
+    b = builder if builder is not None else self.builder;
+    return b.call(fn, args, name=call_name or name);
+}
+
+impl NaIRGenPass._emit_stdio_handle(
+    fd: int, name: str, builder: (ir.IRBuilder | None) = None
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    b = builder if builder is not None else self.builder;
+    if self._target_is_wasm() {
+        libc_name = ["stdin", "stdout", "stderr"][fd];
+        if libc_name not in self.llvm_module.globals {
+            gv = ir.GlobalVariable(self.llvm_module, i8p, name=libc_name);
+            gv.linkage = "external";
+        }
+        return b.load(self.llvm_module.get_global(libc_name), name=name);
+    }
+    return self._floor_call(
+        "__jac_stdio", i8p, [ir.Constant(ir.IntType(32), fd)], name, b
+    );
+}
+
+impl NaIRGenPass._emit_platform_name -> ir.Value {
+    """sys.platform in CPython's spelling. The floor names the target's
+    platform at run time, so the lowered code is the same on every target.""";
+    if self._target_is_wasm() {
+        triple = str(self.llvm_module.triple or "").lower();
+        return self._make_global_string(
+            "emscripten" if "emscripten" in triple else "wasi"
+        );
+    }
+    which = self._floor_call(
+        "__jac_platform_id", ir.IntType(32), [], "sys.platform.id"
+    );
+    linux = self._make_global_string("linux");
+    darwin = self._make_global_string("darwin");
+    win32 = self._make_global_string("win32");
+    is_darwin = self.builder.icmp_signed(
+        "==", which, ir.Constant(ir.IntType(32), 1), name="sys.platform.darwin"
+    );
+    is_win = self.builder.icmp_signed(
+        "==", which, ir.Constant(ir.IntType(32), 2), name="sys.platform.win32"
+    );
+    return self.builder.select(
+        is_win,
+        win32,
+        self.builder.select(is_darwin, darwin, linux, name="sys.platform.posix"),
+        name="sys.platform"
+    );
 }
 
 impl NaIRGenPass._emit_fmadd(a: ir.Value, b: ir.Value, c: ir.Value) -> ir.Value {
-    if self._target_fuses_fp() {
-        f64 = ir.DoubleType();
-        fma_fn = self._get_or_declare_extern("fma", f64, [f64, f64, f64]);
-        return self.builder.call(fma_fn, [a, b, c], name="c.fma");
+    """a * b + c as llvm.fmuladd: the backend fuses it where the target's own
+    C compiler would (aarch64) and keeps it separate where it would not.""";
+    f64 = ir.DoubleType();
+    fn = self.llvm_module.globals.get("llvm.fmuladd.f64");
+    if not isinstance(fn, ir.Function) {
+        fn = ir.Function(
+            self.llvm_module,
+            ir.FunctionType(f64, [f64, f64, f64]),
+            name="llvm.fmuladd.f64"
+        );
     }
-    return self.builder.fadd(self.builder.fmul(a, b, name="c.fm"), c, name="c.fa");
+    return self.builder.call(fn, [a, b, c], name="c.fma");
 }
 
 impl NaIRGenPass._fp_fabs(v: ir.Value) -> ir.Value {

@@ -1,11 +1,8 @@
-import from jaclang.cli.console { console }
-
 impl make_client_bundle_builder(
     base_path: (Path | None) = None,
     entry_path: str = "",
     program: JacProgram | None = None
 ) -> ViteClientBundleBuilder {
-    import from jaclang.client.vite_bundler { ViteBundler }
     if base_path is None {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
         import from jaclang.project.config { find_project_root }
@@ -42,7 +39,6 @@ impl make_client_bundle_builder(
 }
 
 impl ViteClientBundleBuilder._emitted_digest(self: ViteClientBundleBuilder) -> str {
-    import from jaclang.client.client_bundle { emitted_tree_digest }
     if not self.vite_package_json {
         return '';
     }

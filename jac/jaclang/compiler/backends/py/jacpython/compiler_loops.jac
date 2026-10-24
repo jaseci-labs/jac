@@ -2,89 +2,6 @@
 # compiler_codegen.jac. Pure mechanical move; see compiler_codegen.jac for the
 # module-initialization ordering contract.
 
-import from jaclang.runtime.python.opcode_meta {
-    OP_END_ASYNC_FOR,
-    OP_END_FOR,
-    OP_FOR_ITER,
-    OP_GET_AITER,
-    OP_GET_ANEXT,
-    OP_GET_ITER,
-    OP_GET_YIELD_FROM_ITER,
-    OP_JUMP_BACKWARD,
-    OP_JUMP_FORWARD,
-    OP_LOAD_CONST,
-    OP_NOP,
-    OP_NOT_TAKEN,
-    OP_POP_ITER,
-    OP_POP_JUMP_IF_FALSE,
-    OP_POP_JUMP_IF_TRUE,
-    OP_POP_TOP,
-    OP_RETURN_VALUE,
-    has_target,
-    is_scope_exit_opcode,
-    is_unconditional_jump_opcode,
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    AsyncFor,
-    Constant,
-    For,
-    If,
-    Name,
-    While,
-    stmt,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_ir {
-    basicblock,
-    break_site,
-    cfg_builder,
-    cloc,
-    cinstr,
-    except_region,
-    loc,
-    loop_frame,
-    mk_instr,
-    mk_jump,
-    no_loc,
-    same_loc,
-    stmt_cont,
-}
-import from jaclang.runtime.python.objects { py_none }
-import from jaclang.compiler.backends.py.jacpython.flowgraph {
-    MAX_COPY_SIZE,
-    copy_cinstr
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_emit {
-    codegen_busy,
-    codegen_fail,
-    emit_anext_send_loop_footer,
-    emit_anext_send_loop_header,
-    emit_send_delegation_loop,
-    emit_branch_if_test_false,
-    emit_branch_if_test_true,
-    visit_expr,
-    visit_test_expr,
-}
-import from jaclang.compiler.backends.py.jacpython.codegen_util {
-    exec_tail_emits_code,
-    expr_loc,
-    loop_body_has_break,
-    loop_body_has_try,
-    nloc,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
-    ann_scope_plan
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
-    emit_module_return,
-    emit_tail_and_finish,
-    visit_stmt_tail,
-    visit_stmts,
-    visit_store_target_tos
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_exc {
-    emit_anext_send_except_regions
-}
-
 # ---------------- break-edge tail duplication (CPython parity) ----------------
 #
 # CPython lowers `break` as an unwind plus a jump to the loop's exit anchor,
@@ -308,7 +225,6 @@ def finish_break_sites(
 def visit_if(
     g: cfg_builder, i: If, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
-    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     iloc = nloc(i.lineno, i.end_lineno, i.col_offset, i.end_col_offset);
     constant_test: bool | None = None;
     if isinstance(i.`test, Constant) {
@@ -349,7 +265,6 @@ def visit_if(
 def visit_while(
     g: cfg_builder, w: While, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
-    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     wloc = nloc(w.lineno, w.end_lineno, w.col_offset, w.end_col_offset);
     test_loc = expr_loc(w.`test);
     head = g.new_block();
@@ -379,7 +294,6 @@ def visit_while(
 def visit_for(
     g: cfg_builder, f: For, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
-    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     floc = nloc(f.lineno, f.end_lineno, f.col_offset, f.end_col_offset);
     iter_loc = expr_loc(f.iter);
     visit_expr(g, f.iter);
@@ -413,7 +327,6 @@ def visit_for(
 def visit_async_for(
     g: cfg_builder, af: AsyncFor, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
-    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     floc = nloc(af.lineno, af.end_lineno, af.col_offset, af.end_col_offset);
     iter_loc = expr_loc(af.iter);
     visit_expr(g, af.iter);

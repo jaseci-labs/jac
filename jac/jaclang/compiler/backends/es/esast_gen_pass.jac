@@ -1,90 +1,5 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.driver.pipeline_types { PassContract }
 import json;
 import from typing { cast }
-import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
-import from jaclang.compiler.types.types { TypeBase, ClassType }
-import from jaclang.compiler.types.ct_value {
-    CtBool,
-    CtDict,
-    CtFloat,
-    CtInt,
-    CtList,
-    CtNone,
-    CtSet,
-    CtStr,
-    CtTuple,
-    CtValue,
-    int_host
-}
-import from jaclang.compiler.backends.es.primitives_es {
-    ESBuiltinEmitter,
-    ESEmitCtx,
-    es_sized_cast
-}
-import from jaclang.compiler.backends.common.primitives { PrimitiveEmitter }
-import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.types.operations { AUG_TO_BINARY_MAP }
-import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlot }
-import from jaclang.compiler.passes.context { TreePass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.frontend.loop_links {
-    LoopLinks,
-    LoopStmt,
-    PassLink,
-    assigned_on_entry,
-    binding_sites,
-    binds_target,
-    confined_to,
-    enclosing_loop,
-    is_within
-}
-import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo {
-    BoundaryTypeInfo,
-    ClientManifest,
-    InteropManifest
-}
-import from jaclang.compiler.backends.es.scoped_styles {
-    ScopedStyleSheet,
-    load_style_annex
-}
-import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.backends.es.free_ident_audit {
-    FreeIdentifier,
-    RUNTIME_PRELUDE_GLOBALS,
-    client_ambient_globals,
-    free_identifiers,
-    js_identifiers
-}
-import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.client.client_surface { WASM_HOST_MODULE }
-import from jaclang.compiler.backends.es.js_paths {
-    convert_to_js_import_path,
-    relative_js_specifier
-}
-import from jaclang.compiler.frontend.diagnostics {
-    E2025,
-    E5010,
-    E5011,
-    E5012,
-    E5016,
-    E5017,
-    E5018,
-    W5013,
-    W5014,
-    W5015,
-    E5080,
-    E5081,
-    E5085,
-    E5086,
-    E5099,
-    E5101,
-    E5103
-}
 
 glob _T = TypeVar('_T', bound=es.Node),
      ES_LOGICAL_OPS: dict[str, str] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'},
@@ -100,6 +15,7 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.STAR_MUL: '*',
          Tok.DIV: '/',
          Tok.MOD: '%',
+         Tok.STAR_POW: '**',
          Tok.BW_AND: '&',
          Tok.BW_OR: '|',
          Tok.BW_XOR: '^',
@@ -252,6 +168,13 @@ obj CallArgSlot {
         value: (es.Expression | es.SpreadElement | None);
 }
 
+obj NullSafeLink {
+    has guard: es.Expression,
+        recv: es.Expression,
+        ref: es.Expression,
+        lowered: es.Expression;
+}
+
 walker EsastGenPass(TreePass) {
     static has contract: PassContract = PassContract();
     has _ct_only_names: (set[str] | None) = None,
@@ -265,7 +188,6 @@ walker EsastGenPass(TreePass) {
         _jsx_processor: EsJsxProcessor | None = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
-        component_export_names: set[str] = set(),
         shared_arch_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
@@ -298,7 +220,8 @@ walker EsastGenPass(TreePass) {
         _builtin_emitter: PrimitiveEmitter[(str, ESEmitCtx)] = ESBuiltinEmitter(),
         _poly_methods: (set[str] | None) = None,
         loop_links: LoopLinks = LoopLinks(),
-        _native_links: dict[int, bool] = {};
+        _native_links: dict[int, bool] = {},
+        _null_safe_links: dict[int, NullSafeLink] = {};
 
     has resolved_backend: FrameworkBackend {
         getter {
@@ -328,6 +251,10 @@ walker EsastGenPass(TreePass) {
     ) -> es.Expression;
 
     def _fw_to_number(expr: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _floor_div(
+        left: es.Expression, right: es.Expression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _fw_binary(
         nd: uni.Expr, op: str, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
@@ -497,6 +424,8 @@ walker EsastGenPass(TreePass) {
     def _es_json_literal(value: any) -> any;
     can exit_type_alias with uni.TypeAlias exit;
     can exit_type_param with uni.TypeParam exit;
+    can enter_archetype with uni.Archetype entry;
+    can enter_enum with uni.Enum entry;
     can exit_archetype with uni.Archetype exit;
     can exit_enum with uni.Enum exit;
     can enter_ability with uni.Ability entry;
@@ -674,11 +603,58 @@ walker EsastGenPass(TreePass) {
         target: uni.UniNode, value_es: (es.Expression | None), jac_node: uni.UniNode
     ) -> (es.Statement | None);
 
+    def _mark_optional_link(recv: es.Expression, lowered: es.Expression) -> bool;
+    def _null_safe_ref(recv: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _null_safe_guard(
+        recv: es.Expression,
+        ref: es.Expression,
+        lowered: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _null_safe_new(
+        new_expr: es.NewExpression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _null_safe_link_of(expr: (es.Node | None)) -> (NullSafeLink | None);
+    def _open_null_safe_chain(target: uni.Expr) -> list[NullSafeLink];
+    def _close_null_safe_chain(links: list[NullSafeLink], nd: uni.Expr) -> None;
+    def _null_safe_unguarded(expr: es.Node, jac_node: uni.UniNode) -> es.Node;
+    def _bind_once(
+        param: es.Identifier,
+        body: es.Expression,
+        value: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _bind_once_delegated(
+        param: es.Identifier,
+        body: es.Expression,
+        value: es.Expression,
+        awaits: bool,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _unbox_first(boxed: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _suspends_in_place(jac_node: uni.UniNode, kind: type[uni.UniNode]) -> bool;
+    def _strip_optional_chain(expr: (es.Node | None)) -> None;
     can exit_binary_expr with uni.BinaryExpr exit;
     can exit_cfg_expr with uni.CfgExpr exit;
     can exit_bool_expr with uni.BoolExpr exit;
     can exit_compare_expr with uni.CompareExpr exit;
     can exit_unary_expr with uni.UnaryExpr exit;
+    def _aug_target_once(
+        target: es.Expression, jac_node: uni.UniNode
+    ) -> tuple[es.Expression, list[tuple[es.Identifier, es.Expression]]];
+
+    def _rereads_safely(expr: es.Expression) -> bool;
+    def _assign_once(
+        target: es.Expression,
+        value: es.Expression,
+        binds: list[tuple[es.Identifier, es.Expression]],
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _convert_assignment_target(
         target: uni.UniNode
     ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)];
@@ -688,6 +664,7 @@ walker EsastGenPass(TreePass) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_route_role(rt: uni.Expr) -> (str | None);
+    def _client_linkable(nd: uni.AstAccessNode) -> bool;
     def _component_pascal_name(nd: uni.Ability) -> (str | None);
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(
@@ -782,11 +759,13 @@ walker EsastGenPass(TreePass) {
 
     def _bind_client_value_refs(nd: uni.Module) -> list[es.Statement];
     can exit_func_call with uni.FuncCall exit;
+    def _lower_func_call(here: uni.FuncCall) -> None;
     def _place_accessors(place: es.Expression) -> es.Expression | None;
     def _lower_place_builtin(nd: uni.FuncCall) -> es.Expression | None;
     can exit_index_slice with uni.IndexSlice exit;
     can exit_special_var_ref with uni.SpecialVarRef exit;
     can exit_atom_trailer with uni.AtomTrailer exit;
+    def _lower_atom_trailer(here: uni.AtomTrailer) -> None;
     can enter_lambda_expr with uni.LambdaExpr entry;
     can exit_lambda_expr with uni.LambdaExpr exit;
     can exit_atom_unit with uni.AtomUnit exit;

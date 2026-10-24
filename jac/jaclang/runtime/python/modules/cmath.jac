@@ -4,58 +4,6 @@ Recovered algorithms are checked against pinned CPython 3.14.6, with real
 transcendentals supplied by libm. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_clear_errno,
-    jacpy_complex_value,
-    jacpy_error_pending,
-    jacpy_math_errno,
-    jacpy_release,
-    NULL,
-    PyErr_ExceptionMatches,
-    PyExc_OverflowError,
-    PyExc_ValueError,
-    PyExc_ZeroDivisionError,
-    PyFloat_AsDouble,
-    PyFloat_FromDouble,
-    PyNumber_TrueDivide,
-    PyObject
-}
-import from jaclang.runtime.python.object_model.complex {
-    PyComplex_FromDoubles,
-    PyComplex_ImagAsDouble,
-    PyComplex_RealAsDouble,
-    _Py_c_abs
-}
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
-import from jaclang.runtime.python.modules.numeric {
-    asinh,
-    atan2,
-    copysign,
-    cos,
-    cosh,
-    exp,
-    fabs,
-    hypot,
-    isfinite,
-    isinf,
-    isnan,
-    log,
-    log1p,
-    scaled,
-    sin,
-    sinh,
-    sqrt,
-    tan,
-    tanh
-}
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    required,
-    checked,
-    object_error,
-    object_tuple
-}
-
 obj complex_parts {
     has real: float,
         imag: float;

@@ -1,4 +1,3 @@
-import jaclang.compiler.backends.native.llvm.ir as ir;
 import os;
 
 impl NaIRGenPass._emit_rc_debug_globals -> None {
@@ -35,20 +34,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
         );
         _b_dis.call(self._get_printf(), [_fmt_off_ptr]);
     } else {
-        _triple = str(self.llvm_module.triple or "").lower();
-        if "wasm" not in _triple {
-            _is_darwin = ("darwin" in _triple)
-                or ("apple" in _triple)
-                or ("macos" in _triple)
-                or ("ios" in _triple);
-            _stderr_name = "__stderrp" if _is_darwin else "stderr";
-
-            if _stderr_name not in self.llvm_module.globals {
-                _stderr_gv = ir.GlobalVariable(
-                    self.llvm_module, i8_ptr, name=_stderr_name
-                );
-                _stderr_gv.linkage = "external";
-            }
+        if not self._target_is_wasm() {
             _fprintf_fn = self._get_or_declare_extern(
                 "fprintf", i32, [i8_ptr, i8_ptr], var_arg=True
             );
@@ -59,9 +45,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
             _notice_ptr = _b_en.gep(
                 _notice, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="en.notice"
             );
-            _stderr_val = _b_en.load(
-                self.llvm_module.get_global(_stderr_name), name="en.stderr"
-            );
+            _stderr_val = self._emit_stdio_handle(2, "en.stderr", _b_en);
             _b_en.call(_fprintf_fn, [_stderr_val, _notice_ptr]);
         }
     }
@@ -333,18 +317,11 @@ impl NaIRGenPass._emit_raw_free_bbs(
             live_rm_bb
         );
         b = ir.IRBuilder(log_raw_bb);
-        _triple = str(self.llvm_module.triple or "").lower();
         _raw_msz = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.msz");
-        if "wasm" in _triple {
+        if self._target_is_wasm() {
             _msz: ir.Value = ir.Constant(i64, 0);
         } else {
-            _is_darwin = ("darwin" in _triple)
-                or ("apple" in _triple)
-                or ("macos" in _triple)
-                or ("ios" in _triple);
-            _msz_sym = "malloc_size" if _is_darwin else "malloc_usable_size";
-            _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
-            _msz = b.call(_msz_fn, [_raw_msz], name="msz");
+            _msz = self._floor_call("__jac_malloc_size", i64, [_raw_msz], "msz", b);
         }
         _aid_slot = b.gep(
             ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="fr.aid.slot"
@@ -370,6 +347,9 @@ impl NaIRGenPass._emit_raw_free_bbs(
     self._emit_live_list_remove(b, ptr, i8_ptr, i64_ptr, done_bb, actual_free_bb);
 
     b = ir.IRBuilder(actual_free_bb);
+    if not self._nogc_headerless() and self._gc_mode() != "none" {
+        b = self._utf8_forget_on_free(b, ptr);
+    }
     _raw_for_free = b.gep(
         ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.for.free"
     );
@@ -409,17 +389,10 @@ impl NaIRGenPass._emit_struct_free_log(
 
     b = ir.IRBuilder(log_struct_line_bb);
 
-    _triple = str(self.llvm_module.triple or "").lower();
-    if "wasm" in _triple {
+    if self._target_is_wasm() {
         _msz2: ir.Value = ir.Constant(i64, 0);
     } else {
-        _is_darwin = ("darwin" in _triple)
-            or ("apple" in _triple)
-            or ("macos" in _triple)
-            or ("ios" in _triple);
-        _msz_sym = "malloc_size" if _is_darwin else "malloc_usable_size";
-        _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
-        _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
+        _msz2 = self._floor_call("__jac_malloc_size", i64, [obj_raw], "msz2", b);
     }
     (_op, _loc) = self._emit_ctx_load(b);
     _fmt_sf = self._get_fmt_string(

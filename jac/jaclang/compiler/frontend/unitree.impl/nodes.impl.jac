@@ -1,13 +1,4 @@
 impl UniNode.postinit -> None {
-    self.__sub_node_tab = None;
-    self._ctx_parent = None;
-    self._struct_frozen = False;
-    self._in_mod_nodes = [];
-    self._gen = None;
-    self.ct_pruned = False;
-    if self?._role_shapes is None {
-        self._role_shapes = None;
-    }
     (first_tok, last_tok) = self.resolve_tok_range();
     self.loc = CodeLocInfo(first_tok, last_tok);
 }
@@ -83,6 +74,9 @@ impl UniNode._link(kid: Sequence[UniNode], roles: dict[type, any]) -> None {
                 }
             }
         }
+    }
+    if len(attached) >= len(role_of) {
+        return;
     }
     for (role, value) in roles.items() {
         if isinstance(value, (list, tuple)) {
@@ -243,6 +237,104 @@ impl UniNode.link_impl(impl_node: UniNode) -> None {
     self +>:ImplOf:+> impl_node;
 }
 
+impl UniNode.decl_parent.getter -> (UniNode | None) {
+    up = self.parent;
+    if isinstance(self, ImplDef) {
+        up = self;
+    }
+    if isinstance(up, ImplDef) {
+        decl = up.decl_link;
+        if decl is not None {
+            return decl;
+        }
+    }
+    return self.parent;
+}
+
+impl UniNode.top_element.getter -> (UniNode | None) {
+    cur: (UniNode | None) = self;
+    while cur is not None {
+        up = cur.decl_parent;
+        if isinstance(up, Module) {
+            return cur;
+        }
+        cur = up;
+    }
+    return None;
+}
+
+impl UniNode.enclosing_frame.getter -> (UniNode | None) {
+    nd = self.decl_parent;
+    while nd is not None and not is_frame(nd) {
+        nd = nd.decl_parent;
+    }
+    return nd;
+}
+
+impl UniNode.in_impl_spec.getter -> bool {
+    child: UniNode = self;
+    cur = self.parent;
+    while cur is not None {
+        if isinstance(cur, ImplDef) {
+            spec = cur.spec;
+            if child is spec {
+                return True;
+            }
+            if isinstance(spec, list) {
+                for item in spec {
+                    if item is child {
+                        return True;
+                    }
+                }
+            }
+            return False;
+        }
+        if isinstance(cur, CodeBlockStmt) {
+            return False;
+        }
+        child = cur;
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl UniNode.is_within(outer: UniNode) -> bool {
+    cur: (UniNode | None) = self;
+    while cur is not None {
+        if cur is outer {
+            return True;
+        }
+        cur = cur.decl_parent;
+    }
+    return False;
+}
+
+impl UniNode.element_in(mod: Module) -> (UniNode | None) {
+    top = self.top_element;
+    if top is not None and top.parent is mod {
+        return top;
+    }
+    return None;
+}
+
+impl UniNode.own_impls.getter -> list[ImplDef] {
+    return [self->:ImplOf:->][?:ImplDef];
+}
+
+impl UniNode.linked_impls -> list[ImplDef] {
+    found: list[ImplDef] = self.own_impls;
+    for ability in self.get_all_sub_nodes(Ability) {
+        found.extend(ability.own_impls);
+    }
+    for arch in self.get_all_sub_nodes(Archetype) {
+        found.extend(arch.own_impls);
+    }
+    for enum_decl in self.get_all_sub_nodes(Enum) {
+        found.extend(enum_decl.own_impls);
+    }
+    return found;
+}
+
 impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
     if (self.__sub_node_tab is None) {
         self.__sub_node_tab = {};
@@ -283,18 +375,16 @@ impl UniNode._invalidate_sub_node_tab -> None {
 
 impl UniNode.sym_tab.getter -> UniScopeNode {
     nd: (UniNode | None) = self;
-
     while nd is not None {
-        if isinstance(nd, UniScopeNode) {
+        if isinstance(nd, UniScopeNode) and not nd.folded {
             if isinstance(nd, Module) {
                 return nd;
             }
-
             if nd.parent_scope is not None {
                 return nd;
             }
         }
-        nd = nd.parent;
+        nd = nd.decl_parent;
     }
     raise ValueError("No scope found");
 }
@@ -436,7 +526,6 @@ impl UniNode.resolve_tok_range -> tuple[(Token, Token)] {
 }
 
 impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
-    import from jaclang.compiler.frontend.constant { TOKEN_MAP }
     if value is None {
         value = DELIM_MAP[name]
             if (name in DELIM_MAP)
@@ -457,23 +546,12 @@ impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
 
 
 impl UniNode.codespace -> CodeContext {
-    if isinstance(self, ContextAwareNode) {
-        if (self.code_context == CodeContext.CLIENT) {
-            return CodeContext.CLIENT;
-        }
-        if (self.code_context == CodeContext.NATIVE) {
-            return CodeContext.NATIVE;
-        }
-    }
-    nd: (UniNode | None) = self.parent;
-    while (nd is not None) {
+    nd: (UniNode | None) = self;
+    while nd is not None {
         if isinstance(nd, ContextAwareNode) {
             context = nd.code_context;
-            if (context == CodeContext.CLIENT) {
-                return CodeContext.CLIENT;
-            }
-            if (context == CodeContext.NATIVE) {
-                return CodeContext.NATIVE;
+            if context == CodeContext.CLIENT or context == CodeContext.NATIVE {
+                return context;
             }
         }
         if isinstance(nd, Module) {
@@ -485,7 +563,7 @@ impl UniNode.codespace -> CodeContext {
             }
             return CodeContext.SERVER;
         }
-        nd = nd.parent;
+        nd = nd.decl_parent;
     }
     return CodeContext.SERVER;
 }
@@ -658,24 +736,10 @@ impl Symbol.storage.getter -> SymbolStorage {
         return SymbolStorage.PARAM;
     }
 
-    def_scope: (UniNode | None) = self.decl.parent;
-    while (
-        def_scope is not None
-        and not UniScopeNode.is_python_scoping(def_scope)
-        and not isinstance(def_scope, LambdaExpr)
-    ) {
-        def_scope = def_scope.parent;
-    }
+    def_scope = find_python_scope_node_of(self.decl);
     for use in self.uses {
-        cur = use.parent;
-        while (
-            cur is not None
-            and not UniScopeNode.is_python_scoping(cur)
-            and not isinstance(cur, LambdaExpr)
-        ) {
-            cur = cur.parent;
-        }
-        if cur is None or same_lexical_scope(cur, def_scope) {
+        cur = find_python_scope_node_of(use);
+        if cur is None or cur is def_scope {
             continue;
         }
         return SymbolStorage.CAPTURED;
@@ -756,6 +820,9 @@ impl UniScopeNode._init_scope(
 }
 
 impl UniScopeNode.parent_scope.getter -> (UniScopeNode | None) {
+    if self.folded {
+        return self.owning_scope.parent_scope;
+    }
     found = [self<-:ScopeChild:<-];
     if found {
         return found[-1];
@@ -773,20 +840,39 @@ impl UniScopeNode.parent_scope.setter(parent_scope: (UniScopeNode | None)) {
 }
 
 impl UniScopeNode.kid_scope.getter -> list[UniScopeNode] {
+    if self.folded {
+        return self.owning_scope.kid_scope;
+    }
     return [self->:ScopeChild:->];
 }
 
+impl UniScopeNode.owning_scope.getter -> UniScopeNode {
+    me: UniNode = self;
+    if isinstance(self, ImplDef) {
+        for decl in [me<-:ImplOf:<-] {
+            if isinstance(decl, UniScopeNode) {
+                return decl;
+            }
+            break;
+        }
+    }
+    return self;
+}
+
 impl UniScopeNode.names_in_scope.getter -> dict[(str, Symbol)] {
-    return self?._names_index or {};
+    return self.owning_scope?._names_index or {};
 }
 
 impl UniScopeNode.names_in_scope_overload.getter -> dict[(str, list[Symbol])] {
-    return self?._overload_index or {};
+    return self.owning_scope?._overload_index or {};
 }
 
 impl UniScopeNode.lookup(
     name: str, deep: bool = True, incl_inner_scope: bool = False
 ) -> (Symbol | None) {
+    if self.folded {
+        return self.owning_scope.lookup(name, deep, incl_inner_scope);
+    }
     local = self.names_in_scope.get(name);
     if local is not None {
         return local;
@@ -810,21 +896,13 @@ impl UniScopeNode.lookup(
             }
         }
     }
-
-    impl_def: ImplDef | None = (
-        self if isinstance(self, ImplDef) else self.find_parent_of_type(ImplDef)
-    );
-    decl = impl_def.decl_link if impl_def else None;
-    if decl is not None {
-        decl_scope = decl.sym_tab;
-        if decl_scope is not None {
-            return decl_scope.lookup(name, deep=deep, incl_inner_scope=False);
-        }
-    }
     return None;
 }
 
 impl UniScopeNode.lookup_all(name: str, deep: bool = True) -> list[Symbol] {
+    if self.folded {
+        return self.owning_scope.lookup_all(name, deep);
+    }
     result: list[Symbol] = [];
     if name in self.names_in_scope {
         result.append(self.names_in_scope[name]);
@@ -848,6 +926,11 @@ impl UniScopeNode.insert(
     force_overwrite: bool = False,
     imported: bool = False
 ) -> (UniNode | None) {
+    if self.folded {
+        return self.owning_scope.insert(
+            nd, access_spec, single, force_overwrite, imported
+        );
+    }
     collision = self.names_in_scope[nd.sym_name].defn[-1]
         if (single and (nd.sym_name in self.names_in_scope))
         else None;
@@ -890,19 +973,10 @@ impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
     return None;
 }
 
-impl same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool {
-    if left is None or right is None {
-        return False;
-    }
-    return left is right
-        or (isinstance(left, ImplDef) and left.decl_link is right)
-        or (isinstance(right, ImplDef) and right.decl_link is left);
-}
-
 impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
     out: list[Symbol] = [];
-    names: list[Name] = self.get_all_sub_nodes(Name);
-    names.extend(self.get_all_sub_nodes(SpecialVarRef));
+    names: list[Name] = self.element_sub_nodes(Name);
+    names.extend(self.element_sub_nodes(SpecialVarRef));
     for name in names {
         if is_identifier_slot(name) {
             continue;
@@ -919,7 +993,7 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
                 tab = sym.parent_tab;
             }
         }
-        if (tab is None) or same_lexical_scope(tab, self) {
+        if (tab is None) or tab is self {
             continue;
         }
         frame: (UniScopeNode | None) = tab;
@@ -932,7 +1006,7 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
 
         scope = self.parent_scope;
         while (scope is not None) {
-            if same_lexical_scope(scope, tab) {
+            if scope is tab {
                 if sym not in out {
                     out.append(sym);
                 }
@@ -944,6 +1018,47 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
     return out;
 }
 
+impl UniScopeNode.folded.getter -> bool {
+    me: UniNode = self;
+    if not isinstance(self, ImplDef) {
+        return False;
+    }
+    return len([me<-:ImplOf:<-]) > 0;
+}
+
+impl UniScopeNode.fold_scope(impl_scope: UniScopeNode) -> None {
+    merged = dict(impl_scope._names_index);
+    merged.update(self._names_index);
+    self.set_primary_names(merged);
+    for (name, syms) in impl_scope._overload_index.items() {
+        for sym in syms {
+            self +>:ScopeOverload:+> sym;
+            self._overload_index.setdefault(name, []).append(sym);
+        }
+    }
+    del [edge impl_scope->:ScopePrimary:->];
+    del [edge impl_scope->:ScopeOverload:->];
+    impl_scope._names_index = {};
+    impl_scope._overload_index = {};
+    for (name, sym) in impl_scope.implicit_rebinds.items() {
+        if name not in self.implicit_rebinds {
+            self.implicit_rebinds[name] = sym;
+        }
+    }
+    impl_scope.implicit_rebinds = self.implicit_rebinds;
+    homed: list[Symbol] = [impl_scope->:InScope:->];
+    del [edge impl_scope->:InScope:->];
+    for sym in homed {
+        self +>:InScope:+> sym;
+    }
+    for kid in [impl_scope->:ScopeChild:->] {
+        self.link_kid_scope(kid);
+    }
+    for kid in [impl_scope<-:ScopeParent:<-] {
+        kid.parent_scope = self;
+    }
+}
+
 impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
     del [edge self->:ScopePrimary:->];
     for (key, sym) in syms.items() {
@@ -953,6 +1068,10 @@ impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
 }
 
 impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
+    if self.folded {
+        self.owning_scope.adopt_primary(sym, alias);
+        return;
+    }
     key = alias or sym.name;
     prev = self._names_index.get(key);
     if prev is not None {
@@ -1177,12 +1296,18 @@ impl AstAccessNode.exposure.getter -> SymbolAccess {
 impl ContextAwareNode.postinit -> None {}
 
 impl ContextAwareNode.code_context.getter -> CodeContext {
+    if isinstance(self, ImplDef) {
+        decl = self.decl_link;
+        if isinstance(decl, ContextAwareNode) {
+            return decl.code_context;
+        }
+    }
     found = [self->:PlacedIn:->];
     if found {
         target: Codespace = found[0];
         return CodeContext(target.kind);
     }
-    enclosing = self.find_parent_of_type(ContextAwareNode);
+    enclosing = self.enclosing_decl(ContextAwareNode);
     return enclosing.code_context if enclosing is not None else CodeContext.SERVER;
 }
 
@@ -1351,16 +1476,7 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     return nd;
 }
 
-impl Expr.postinit -> None {
-    self._type_sym_tab = None;
-    self._type_cache = None;
-    self._type_cache_ok = False;
-    self.ct_value = None;
-    self.coerce_to = None;
-    self.fw = None;
-    self.fw_safe = False;
-    self.attached_tokens = None;
-}
+impl Expr.postinit -> None {}
 
 
 impl CodeBlockStmt.postinit -> None {
@@ -1632,7 +1748,6 @@ impl Import.is_jac.getter -> bool {
 }
 
 impl Import.__jac_detected.getter -> bool {
-    import from jaclang.compiler.frontend.host { active_host }
     host = active_host();
     if self.from_loc {
         target = self.from_loc.resolve_relative_path();
@@ -1758,7 +1873,6 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
-    import from jaclang.compiler.frontend.host { active_host }
     bundled = self.native_bundled_path();
     if bundled is not None {
         return bundled;
@@ -1781,11 +1895,6 @@ impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
 
 impl ModulePath.native_bundled_path -> (str | None) {
     import os;
-    import from jaclang.compiler.frontend.codeinfo {
-        is_bundled_native_module,
-        NATIVE_STDLIB_EXTENSIONS,
-        resolve_native_module
-    }
     mod_path = self.loc.mod_path if self.loc else None;
     if not self.in_native_context() {
         return None;
@@ -1902,11 +2011,11 @@ impl ModuleItem.resolve_relative_path -> str {
     return self.from_mod_path.resolve_relative_path(target_item=item_name);
 }
 
-impl ImplImport.postinit -> None {
+impl GraphImport.postinit -> None {
     UniNode.postinit(self);
 }
 
-impl ImplImport.scope_prefix.getter -> str {
+impl GraphImport.scope_prefix.getter -> str {
     sc = self.scope;
     return sc.dot_path_str if sc is not None else "";
 }
@@ -1915,9 +2024,9 @@ impl ImportWire.postinit -> None {
     UniNode.postinit(self);
 }
 
-impl ImportWire.block.getter -> ImplImport {
-    if (not self.parent or not isinstance(self.parent, ImplImport)) {
-        raise ValueError('ImplImport parent not found. Not Possible.');
+impl ImportWire.block.getter -> GraphImport {
+    if (not self.parent or not isinstance(self.parent, GraphImport)) {
+        raise ValueError('GraphImport parent not found. Not Possible.');
     }
     return self.parent;
 }
@@ -1928,17 +2037,29 @@ impl ImportWire.provider_path.getter -> str {
     );
 }
 
-impl ImportWire.consumer_paths.getter -> list[str] {
-    return [c.dot_path_str for c in self.consumers];
+impl WireTarget.postinit -> None {
+    UniNode.postinit(self);
+}
+
+impl WireTarget.wire.getter -> ImportWire {
+    if (not self.parent or not isinstance(self.parent, ImportWire)) {
+        raise ValueError('ImportWire parent not found. Not Possible.');
+    }
+    return self.parent;
+}
+
+impl WireTarget.consumer_paths.getter -> list[str] {
+    scope = self.wire.block.scope_prefix;
+    return [ModulePattern.join_scope(scope, c.dot_path_str) for c in self.consumers];
 }
 
 impl ImportRule.postinit -> None {
     UniNode.postinit(self);
 }
 
-impl ImportRule.block.getter -> ImplImport {
-    if (not self.parent or not isinstance(self.parent, ImplImport)) {
-        raise ValueError('ImplImport parent not found. Not Possible.');
+impl ImportRule.block.getter -> GraphImport {
+    if (not self.parent or not isinstance(self.parent, GraphImport)) {
+        raise ValueError('GraphImport parent not found. Not Possible.');
     }
     return self.parent;
 }
@@ -1973,17 +2094,6 @@ impl WireItem.postinit -> None {
 impl WireItem.binding.getter -> str {
     al = self.alias;
     return al.value if al is not None else self.name.value;
-}
-
-impl ModulePattern.matches(module: str, prefix: str = "") -> bool {
-    if self.is_any {
-        return True;
-    }
-    base = ModulePattern.join_scope(prefix, self.dotted);
-    if self.is_glob {
-        return (not base) or module == base or module.startswith(base + ".");
-    }
-    return module == base;
 }
 
 impl Archetype.postinit -> None {
@@ -2078,7 +2188,7 @@ impl Archetype.base_archetypes -> list[Archetype] {
         if not base_decl {
             continue;
         }
-        base_arch = base_decl.find_parent_of_type(Archetype);
+        base_arch = base_decl.enclosing_decl(Archetype);
         if base_arch is not None {
             bases.append(base_arch);
         }
@@ -2270,44 +2380,26 @@ impl Ability.is_def.getter -> bool {
 }
 
 impl Ability.method_owner.getter -> Archetype | Enum | None {
-    found = (
-        self.parent
-            if (self.parent and isinstance(self.parent, (Archetype, Enum)))
-            else None
-    )
-        or (
-            self.parent.decl_link
-                if (
-                    self.parent
-                    and isinstance(self.parent, ImplDef)
-                    and isinstance(self.parent.decl_link, (Archetype, Enum))
-                )
-                else None
-        );
-    if (found is None) and (self.accessor_kind != "") {
-        nodew = self.parent;
-        while nodew is not None {
-            if isinstance(nodew, (Archetype, Enum)) {
-                return nodew;
-            }
-            nodew = nodew.parent;
+    up = self.decl_parent;
+    if isinstance(up, (Archetype, Enum)) {
+        return up;
+    }
+    if self.accessor_kind != "" {
+        holder = self.enclosing_decl(ArchSpec);
+        return holder if isinstance(holder, (Archetype, Enum)) else None;
+    }
+    owner = self.class_body_owner;
+    if owner is not None and owner is not up {
+        mod = self.find_parent_of_type(Module);
+        if mod is not None and mod.is_raised_from_py {
+            return owner;
         }
     }
-
-    if found is None {
-        owner = self.class_body_owner;
-        if owner is not None and owner is not self.parent {
-            mod = self.find_parent_of_type(Module);
-            if mod is not None and mod.is_raised_from_py {
-                return owner;
-            }
-        }
-    }
-    return found;
+    return None;
 }
 
 impl Ability.class_body_owner.getter -> Archetype | Enum | None {
-    nodew = self.parent;
+    nodew = self.decl_parent;
     while isinstance(nodew, (IfStmt, ElseStmt, ModuleCode)) {
         nodew = nodew.parent;
     }
@@ -2387,36 +2479,17 @@ impl FuncSignature.get_parameters -> list[ParamVar] {
 }
 
 impl FuncSignature.is_static.getter -> bool {
-    return (
-        (isinstance(self.parent, Ability) and self.parent.is_static)
-        or (
-            isinstance(self.parent, ImplDef)
-            and isinstance(self.parent.decl_link, Ability)
-            and self.parent.decl_link.is_static
-        )
-    );
+    owner = self.decl_parent;
+    return isinstance(owner, Ability) and owner.is_static;
 }
 
 impl FuncSignature.is_in_py_class.getter -> bool {
-    owner = self.parent.decl_link if isinstance(self.parent, ImplDef) else self.parent;
-    if isinstance(owner, Ability) and owner.accessor_kind {
+    owner = self.decl_parent;
+    if not isinstance(owner, Ability) or owner.accessor_kind {
         return False;
     }
-    is_archi = self.find_parent_of_type(Archetype);
-    is_class = (is_archi is not None) and (is_archi.arch_type.name == Tok.KW_CLASS);
-    return (
-        (
-            isinstance(self.parent, Ability)
-            and (self.parent.is_method is not None)
-            and is_class
-        )
-        or (
-            isinstance(self.parent, ImplDef)
-            and isinstance(self.parent.decl_link, Ability)
-            and self.parent.decl_link.is_method
-            and is_class
-        )
-    );
+    arch = self.enclosing_decl(Archetype);
+    return arch is not None and arch.arch_type.name == Tok.KW_CLASS;
 }
 
 impl EventSignature.postinit -> None {
@@ -2652,7 +2725,6 @@ impl DeleteStmt.is_location(target: Expr) -> bool {
 
 
 impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.types.types { ClassType, TypeVarType, UnionType }
     if isinstance(t, TypeVarType) {
         return DeleteStmt.type_has_graph_member(t.bound);
     }
@@ -2677,7 +2749,6 @@ impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
 }
 
 impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.types.types { ClassType, UnionType }
     if DeleteStmt.type_has_graph_member(t) {
         return True;
     }
@@ -3264,7 +3335,6 @@ impl Token.init(
     self.c_end = col_end;
     self.pos_start = pos_start;
     self.pos_end = pos_end;
-    self._is_synthetic = False;
     UniNode.postinit(self);
 }
 
@@ -3634,14 +3704,19 @@ impl is_identifier_slot(nd: UniNode) -> bool {
     return False;
 }
 
+impl is_frame(nd: UniNode) -> bool {
+    return isinstance(nd, (Ability, LambdaExpr, Test, ModuleCode, Module))
+        or (isinstance(nd, ImplDef) and nd.decl_link is None);
+}
+
 impl find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None) {
-    while nd.parent {
-        scope_parent = nd.parent;
+    scope_parent = nd.decl_parent;
+    while scope_parent is not None {
         if isinstance(scope_parent, UniScopeNode)
             and UniScopeNode.is_python_scoping(scope_parent) {
             return scope_parent;
         }
-        nd = scope_parent;
+        scope_parent = scope_parent.decl_parent;
     }
     return None;
 }
@@ -3680,7 +3755,7 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
 
 impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
     outer_tab = sym.parent_tab;
-    if outer_tab is None or same_lexical_scope(outer_tab, py_scope) {
+    if outer_tab is None or outer_tab is py_scope {
         return;
     }
     if not isinstance(py_scope, (Ability, ImplDef, Test)) {
@@ -3859,14 +3934,13 @@ impl is_comptime_stmt(nd: UniNode) -> bool {
 }
 
 impl is_client_destined(nd: UniNode) -> bool {
-    cur: (UniNode | None) = nd;
-    while cur is not None {
-        if isinstance(cur, ContextAwareNode) {
-            return (cur.code_context == CodeContext.CLIENT) or cur.codespace_dual;
-        }
-        cur = cur.parent;
+    holder = nd
+        if isinstance(nd, ContextAwareNode)
+        else nd.enclosing_decl(ContextAwareNode);
+    if holder is None {
+        return False;
     }
-    return False;
+    return (holder.code_context == CodeContext.CLIENT) or holder.codespace_dual;
 }
 
 impl type_only_import_of(nd: NameAtom) -> (ModuleItem | None) {
@@ -3920,14 +3994,74 @@ impl definition_qualname(decl: UniNode) -> str {
         return "";
     }
     parts: list[str] = [name];
-    cur = decl.parent;
-    while cur is not None and not isinstance(cur, Module) {
-        if isinstance(cur, (Archetype, Enum)) {
-            parts.insert(0, cur.sym_name);
-        }
-        cur = cur.parent;
+    owner = decl.enclosing_decl(ArchSpec);
+    while owner is not None {
+        parts.insert(0, owner.sym_name);
+        owner = owner.enclosing_decl(ArchSpec);
     }
     return ".".join(parts);
+}
+
+impl bind_walrus_target(nd: BinaryExpr) -> None {
+    if not isinstance(nd.left, Name) {
+        return;
+    }
+    target_scope = nd.left.sym_tab;
+    owner: (UniNode | None) = nd.decl_parent;
+    while owner is not None and not isinstance(owner, (Ability, LambdaExpr)) {
+        owner = owner.decl_parent;
+    }
+    if owner is not None {
+        target_scope = owner.sym_tab;
+    }
+    sym = target_scope.lookup(nd.left.sym_name, deep=False);
+    if sym is None {
+        rebind_or_def_insert(nd.left, target_scope, single_decl='walrus var');
+    } else {
+        sym.add_use(nd.left.name_spec);
+        record_cross_scope_rebind(target_scope, nd.left.sym_name, sym);
+    }
+}
+
+impl is_walrus(nd: UniNode) -> bool {
+    return isinstance(nd, BinaryExpr)
+        and isinstance(nd.op, Token)
+        and nd.op.name == Tok.WALRUS_EQ;
+}
+
+impl binding_sites_in(scope_root: UniNode) -> list[UniNode] {
+    sites: list[UniNode] = [];
+    sites.extend(scope_root.get_all_sub_nodes(Assignment));
+    for expr in scope_root.get_all_sub_nodes(BinaryExpr) {
+        if is_walrus(expr) {
+            sites.append(expr);
+        }
+    }
+    sites.sort(
+        key=lambda (nd: UniNode) -> tuple[int, int, int, int] { return (
+            nd.loc.last_line,
+            nd.loc.col_end,
+            -nd.loc.first_line,
+            -nd.loc.col_start
+        ); }
+    );
+    return sites;
+}
+
+impl typed_rebind_names(nd: Assignment) -> list[Name] {
+    found: list[Name] = [];
+    if nd.type_tag is None {
+        return found;
+    }
+    for target in nd.target {
+        if isinstance(target, Name) {
+            scope = find_python_scope_node_of(target);
+            if scope is not None and target.sym_name in scope.implicit_rebinds {
+                found.append(target);
+            }
+        }
+    }
+    return found;
 }
 
 impl bind_assignment_targets(nd: Assignment) -> None {

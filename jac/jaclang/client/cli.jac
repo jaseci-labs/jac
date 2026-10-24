@@ -1,11 +1,5 @@
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.project.config { JacConfig }
-import type from jaclang.project.apps { AppConfig }
-import type from jaclang.project.providers { EcosystemProvider }
 import os;
 
-import from jaclang.client.targets.registry { ClientTarget, target_for_app }
 import from pathlib { Path }
 
 comptime SPEC_SETUP: CommandSpec = CommandSpec(
@@ -40,9 +34,41 @@ comptime SPEC_SETUP: CommandSpec = CommandSpec(
          handler_name=ct_name(setup)
      );
 
-def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
-    import from jaclang.cli.console { console }
+def setup(target: str = "", toolchain: str = "", platform: str = "") -> int;
 
+def run_client_setup(app: AppConfig) -> int;
+
+def _place_bundle(bundle_path: Path, out_dir: Path) -> Path;
+
+def run_client_build(
+    app: AppConfig,
+    platform: str | None,
+    entry_override: str = "",
+    output: str = "",
+    kind: str = ""
+) -> int;
+
+def run_client_start(
+    app: AppConfig,
+    host: str,
+    platform: str,
+    port: int,
+    api_port: int,
+    dev: bool,
+    no_client: bool
+) -> int | None;
+
+def get_config -> JacConfig | None;
+
+def _npm_context -> tuple[JacConfig, EcosystemProvider] | None;
+
+def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int;
+
+def run_npm_add_global(packages: list[str], dev: bool) -> int;
+
+def run_npm_remove(packages: list[str], dev: bool) -> int;
+
+impl setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
     if toolchain {
         import from jaclang.toolchains.manager { setup_toolchain }
         return setup_toolchain(toolchain);
@@ -76,7 +102,7 @@ def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
             return 1;
         }
     }
-    import from jaclang.project.kinds { kind_has_client }
+
     kind = config.resolved_kind(app);
     if not kind_has_client(kind) {
         console.error(
@@ -88,9 +114,7 @@ def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
     return run_client_setup(app);
 }
 
-def run_client_setup(app: AppConfig) -> int {
-    import from jaclang.cli.console { console }
-
+impl run_client_setup(app: AppConfig) -> int {
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -125,7 +149,7 @@ def run_client_setup(app: AppConfig) -> int {
     }
 }
 
-def _place_bundle(bundle_path: Path, out_dir: Path) -> Path {
+impl _place_bundle(bundle_path: Path, out_dir: Path) -> Path {
     import shutil;
     out_dir.mkdir(parents=True, exist_ok=True);
     if bundle_path.is_dir() {
@@ -137,16 +161,13 @@ def _place_bundle(bundle_path: Path, out_dir: Path) -> Path {
     return dest;
 }
 
-def run_client_build(
+impl run_client_build(
     app: AppConfig,
     platform: str | None,
     entry_override: str = "",
     output: str = "",
     kind: str = ""
 ) -> int {
-    import from jaclang.cli.console { console }
-    import from jaclang.client.targets.registry { target_for_kind }
-
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -199,7 +220,7 @@ def run_client_build(
     }
 }
 
-def run_client_start(
+impl run_client_start(
     app: AppConfig,
     host: str,
     platform: str,
@@ -208,12 +229,6 @@ def run_client_start(
     dev: bool,
     no_client: bool
 ) -> int | None {
-    import from jaclang.cli.console { console }
-    import from jaclang.client.client_diagnostics { is_debug_mode }
-
-    import from jaclang.project.kinds { kind_has_client }
-    import from jaclang.client.targets.registry { target_for_kind }
-
     config = get_config();
     if not config {
         return None;
@@ -248,7 +263,6 @@ def run_client_start(
         return 1;
     }
 
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     Jac.set_full_target_path(str(entry_path));
 
     if not dev and is_debug_mode(config) {
@@ -284,15 +298,11 @@ def run_client_start(
     }
 }
 
-def get_config -> JacConfig | None {
-    import from jaclang.project.config { get_config as _get_config }
+impl get_config -> JacConfig | None {
     return _get_config();
 }
 
-def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
-    import from jaclang.project.providers { get_provider_registry }
-    import from jaclang.cli.console { console }
-
+impl _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
     config = get_config();
     if config is None {
         console.error(
@@ -312,10 +322,7 @@ def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
     return (config, provider);
 }
 
-def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int {
-    import from jaclang.project.providers { InstallContext }
-    import from jaclang.cli.console { console }
-
+impl run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int {
     if install_global {
         return run_npm_add_global(packages, dev);
     }
@@ -362,12 +369,7 @@ def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) ->
     }
 }
 
-def run_npm_add_global(packages: list[str], dev: bool) -> int {
-    import from jaclang.cli.console { console }
-    import from jaclang.artifacts.model { ArtifactUnavailable }
-    import from jaclang.client.js_runtime { js_runtime_path, run_pm }
-    import from jaclang.project.tool_paths { node_root }
-
+impl run_npm_add_global(packages: list[str], dev: bool) -> int {
     if not packages {
         console.error(
             "Provide at least one npm package to install globally.",
@@ -407,10 +409,7 @@ def run_npm_add_global(packages: list[str], dev: bool) -> int {
     return 0;
 }
 
-def run_npm_remove(packages: list[str], dev: bool) -> int {
-    import from jaclang.project.providers { InstallContext }
-    import from jaclang.cli.console { console }
-
+impl run_npm_remove(packages: list[str], dev: bool) -> int {
     npm_ctx = _npm_context();
     if npm_ctx is None {
         return 1;

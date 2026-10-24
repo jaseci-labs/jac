@@ -1,9 +1,4 @@
 import types;
-import from jaclang.byllm._optdeps._deferred {
-    DeferredClassMeta,
-    DeferredModule,
-    is_installed
-}
 
 glob HAS_OPENAI: bool = is_installed("openai");
 

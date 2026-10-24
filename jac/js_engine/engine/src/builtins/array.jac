@@ -76,7 +76,8 @@ import from engine.src.runtime.jsobject {
     KEY_LENGTH,
     js_object_dense_set_present,
     js_object_array_shape,
-    js_object_new_array
+    js_object_new_array,
+    js_object_new_array_range
 }
 import from engine.src.runtime.jsobj_type {
     JSObject,
@@ -159,6 +160,23 @@ def:pub js_array_get_proto -> JSValue {
 # ══════════════════════════════════════════════════════════════════════════════
 # 2.  Core array primitives
 # ══════════════════════════════════════════════════════════════════════════════
+
+"""js_array_create of vals[off .. off+n) (NEWARRAY's registers): no list of
+the elements is built on the fast path."""
+def:pub js_array_create_range(vals: list[JSValue], off: int, n: int) -> JSValue {
+    if _ARRAY_SHAPE > 0 and jsv_is_object_cell(_ARRAY_PROTO) and dense_gate_enabled() {
+        return js_object_new_array_range(
+            jsv_to_table_id(_ARRAY_PROTO), _ARRAY_SHAPE, vals, off, n, js_array_len_value(n)
+        );
+    }
+    cr_items: list[JSValue] = [];
+    cr_k: int = 0;
+    while cr_k < n {
+        cr_items.append(vals[off + cr_k]);
+        cr_k = cr_k + 1;
+    }
+    return js_array_create(cr_items);
+}
 
 """
 Create a JS Array JSValue from a list of JSValues.

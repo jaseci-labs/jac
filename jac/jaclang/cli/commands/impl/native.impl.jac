@@ -1,15 +1,76 @@
 import time;
-import from jaclang.cli.console { console }
-import from jaclang.artifacts.model { ArtifactUnavailable, Probe }
-import jaclang.artifacts.router as router;
 
 
-def _log(message: str) {
+def _log(message: str);
+
+
+def _probe_text(probe: Probe) -> str;
+
+
+def _status_row(name: str) -> list[str];
+
+
+def _status(names: list[str]) -> int;
+
+
+def _require(spec: str) -> int;
+
+
+def _names_artifact(name: str) -> bool;
+
+
+def _build(names: list[str], force: bool, exact: bool, release: bool) -> int;
+
+
+impl native(
+    action: str = "status",
+    names: (list[str] | None) = None,
+    force: bool = False,
+    exact: bool = False,
+    release: bool = False,
+    require: str = "",
+    stop_after: int = 0
+) -> int {
+    names = list(names or []);
+    unknown = [
+        n
+        for n in names
+        if not _names_artifact(n)
+    ];
+    if unknown {
+        console.error(
+            f"unknown artifact(s): {', '.join(unknown)} (known: {', '.join(
+                router.names()
+            )})"
+        );
+        return 1;
+    }
+    if action == "status" {
+        return _require(require) if require else _status(names);
+    }
+    if stop_after {
+        if action != "build" or names != ["kernel"] or stop_after < 0 {
+            console.error(
+                "--stop-after takes a positive count and only `jac native build kernel`"
+            );
+            return 1;
+        }
+        plan_kernel_prefix(stop_after, _log);
+        return 0;
+    }
+    if action == "build" {
+        return _build(names, force, exact, release);
+    }
+    console.error(f"unknown action: {action} (expected status or build)");
+    return 1;
+}
+
+impl _log(message: str) {
     console.print(message);
 }
 
 
-def _probe_text(probe: Probe) -> str {
+impl _probe_text(probe: Probe) -> str {
     if probe.found is not None {
         return f"current ({probe.found.path})";
     }
@@ -17,7 +78,7 @@ def _probe_text(probe: Probe) -> str {
 }
 
 
-def _status_row(name: str) -> list[str] {
+impl _status_row(name: str) -> list[str] {
     artifact = router.artifact_named(name);
     resolution = router.resolve(name);
     in_use = resolution.found.source.value
@@ -33,7 +94,7 @@ def _status_row(name: str) -> list[str] {
 }
 
 
-def _status(names: list[str]) -> int {
+impl _status(names: list[str]) -> int {
     chosen = names or router.names();
     if len(chosen) > 1 or not names {
         console.print_table(
@@ -62,7 +123,7 @@ def _status(names: list[str]) -> int {
 }
 
 
-def _require(spec: str) -> int {
+impl _require(spec: str) -> int {
     if spec in ("release", "kit") {
         omitted = router.omitted_by_image() if spec == "kit" else frozenset();
         wanted = [
@@ -90,7 +151,13 @@ def _require(spec: str) -> int {
 }
 
 
-def _build(names: list[str], force: bool, exact: bool, release: bool) -> int {
+impl _names_artifact(name: str) -> bool {
+    (base, at, variant) = name.partition("@");
+    return base in router.names() and (not at or bool(variant));
+}
+
+
+impl _build(names: list[str], force: bool, exact: bool, release: bool) -> int {
     started = time.monotonic();
     if release {
         requested = router.release_set();
@@ -109,37 +176,4 @@ def _build(names: list[str], force: bool, exact: bool, release: bool) -> int {
     summary = ", ".join(built) if built else "nothing to build";
     console.success(f"{summary} ({time.monotonic() - started:.1f}s)");
     return 0;
-}
-
-
-impl native(
-    action: str = "status",
-    names: (list[str] | None) = None,
-    force: bool = False,
-    exact: bool = False,
-    release: bool = False,
-    require: str = ""
-) -> int {
-    names = list(names or []);
-    unknown = [
-        n
-        for n in names
-        if n not in router.names()
-    ];
-    if unknown {
-        console.error(
-            f"unknown artifact(s): {', '.join(unknown)} (known: {', '.join(
-                router.names()
-            )})"
-        );
-        return 1;
-    }
-    if action == "status" {
-        return _require(require) if require else _status(names);
-    }
-    if action == "build" {
-        return _build(names, force, exact, release);
-    }
-    console.error(f"unknown action: {action} (expected status or build)");
-    return 1;
 }

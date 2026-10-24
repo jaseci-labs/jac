@@ -1,5 +1,5 @@
 import hashlib;
-import type from jaclang.data.dbcatalog { DbRecord }
+
 import logging;
 import os;
 import signal;
@@ -7,8 +7,6 @@ import subprocess;
 import threading;
 import time;
 import from pathlib { Path }
-import from jaclang.data.dbcatalog { DbKind }
-import from jaclang.data.store { ConnInfo }
 
 glob logger = logging.getLogger(__name__),
      SOCK_PORT = 5432,
@@ -30,7 +28,8 @@ glob logger = logging.getLogger(__name__),
          'pg_tuning_settings',
          'predicate_lock_shortfall',
          'pg_priv_plan',
-         'pg_run_candidates'
+         'pg_run_candidates',
+         'stop_cluster'
      ];
 
 
@@ -55,6 +54,7 @@ def pg_run_candidates -> list[PgRunAs];
 def pg_priv_plan(euid: int, candidates: list[PgRunAs]) -> PgPrivPlan;
 def pg_tuning_settings -> dict[str, str];
 def predicate_lock_shortfall(settings: dict[str, int]) -> (str | None);
+def stop_cluster(data_dir: str) -> None;
 
 
 obj PgRuntime {

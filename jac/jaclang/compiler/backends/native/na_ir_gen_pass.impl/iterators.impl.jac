@@ -230,12 +230,12 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
     i1 = ir.IntType(1);
     state_ptr_type = self.struct_types["StrIterState"].as_pointer();
     if self.str_len_fn is None {
         self._emit_str_len_helpers();
     }
+    self._emit_utf8_helpers();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_str");
     fn.linkage = "private";
@@ -255,22 +255,15 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     );
     idx = b.load(idx_slot, name="sit.idx");
     n = b.call(self.str_len_fn, [s_ptr], name="sit.len");
-    ok = b.icmp_signed("<", idx, n, name="sit.ok");
+    ok = b.icmp_unsigned("<", idx, n, name="sit.ok");
     b.cbranch(ok, cont, stop);
     b.position_at_end(cont);
 
-    char_ptr = b.gep(s_ptr, [idx], name="sit.char.ptr");
-    char_val = b.load(char_ptr, name="sit.char");
-    byte_idx = b.zext(char_val, i64, name="sit.char.idx");
-    cache_gv = self._get_char_cache_gv();
-    ch = b.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="sit.char.cached"
-    );
+    ch = b.call(self.utf8_char_at_fn, [s_ptr, n, idx], name="sit.char");
+    idx_next = b.call(self.utf8_cp_len_at_fn, [s_ptr, n, idx], name="sit.adv");
     out_t = b.bitcast(fn.args[1], i8p.as_pointer(), name="sit.out");
     b.store(ch, out_t);
-    b.store(b.add(idx, ir.Constant(i64, 1), name="sit.idx.next"), idx_slot);
+    b.store(b.add(idx, idx_next, name="sit.idx.next"), idx_slot);
     b.ret(ir.Constant(i1, 1));
     b.position_at_end(stop);
     b.ret(ir.Constant(i1, 0));
@@ -733,14 +726,14 @@ impl NaIRGenPass._adapter_clos_parts(clos: ir.Value) -> (NativeIterCallback | No
 
 impl NaIRGenPass._adapter_callee(fn_expr: uni.UniNode) -> (NativeIterCallback | None) {
     fname = self._get_name(fn_expr);
-    if fname is not None and fname in self.nested_captures {
+    if fname is not None and self.scope.closure(fname) is not None {
         clos = self._emit_closure_value(fname, fn_expr);
         if clos is not None {
             return self._adapter_clos_parts(clos);
         }
         return None;
     }
-    named = self.func_symtab.get(fname) if fname is not None else None;
+    named = self.scope.function(fname) if fname is not None else None;
     if named is not None and isinstance(named, ir.Function) {
         return NativeIterCallback(function=named, function_type=named.function_type);
     }
@@ -1102,7 +1095,6 @@ impl NaIRGenPass._make_zip_iter(
 impl NaIRGenPass._resolve_method_owner(
     arch_name: str, method_name: str
 ) -> (str | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     owner = get_layout_registry(self.module, self.prog).resolve_method_owner(
         arch_name, method_name
     );
@@ -1124,7 +1116,6 @@ impl NaIRGenPass._resolve_method_owner(
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     _reg = get_layout_registry(self.module, self.prog);
     cur: (str | None) = arch_name;
     _guard = 0;
@@ -1484,18 +1475,6 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     _loc = "iter_for";
     tuple_target = nd.target if isinstance(nd.target, uni.TupleVal) else None;
 
-    _gen_it_spill: (ir.Value | None) = None;
-    if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
-        _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
-        self.builder.store(iter_val, _gen_it_spill);
-    }
-
-    _it_slot_var: (str | None) = None;
-    if _gen_it_spill is None and owns_iter {
-        _it_slot_var = self._bind_loop_coll_slot(iter_val);
-    }
-
-    elem_slot = self._entry_alloca(elem_type, "iter.elem");
     if tuple_target is not None {
         targets = tuple_target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
@@ -1506,6 +1485,22 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     } elif self._get_name(nd.target) is None {
         return False;
     }
+
+    _gen_it_spill: (ir.Value | None) = None;
+    if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
+        _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
+        if not owns_iter {
+            self._emit_rc_retain(iter_val, op="iter_spill", loc=_loc);
+        }
+        self.builder.store(iter_val, _gen_it_spill);
+    }
+
+    _it_slot_var: (str | None) = None;
+    if _gen_it_spill is None and owns_iter {
+        _it_slot_var = self._bind_loop_coll_slot(iter_val);
+    }
+
+    elem_slot = self._entry_alloca(elem_type, "iter.elem");
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="iterf.cond");
     body_bb = func.append_basic_block(name="iterf.body");
@@ -1543,7 +1538,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
             return False;
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
 
     _iter_prebody = set(self.local_vars.keys());
@@ -1563,9 +1558,12 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self.loop_stack.pop();
 
     if _gen_it_spill is not None {
-        iter_val = self.builder.load(_gen_it_spill, name="iterf.it.end");
-    }
-    if _it_slot_var is not None {
+        _it_end = self._mark_owned(
+            self.builder.load(_gen_it_spill, name="iterf.it.end")
+        );
+        self._emit_rc_release_simple(_it_end, op="iter_end", loc=_loc);
+        self.builder.store(ir.Constant(_it_end.type, None), _gen_it_spill);
+    } elif _it_slot_var is not None {
         self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
     } elif owns_iter {
         self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);

@@ -1,4 +1,4 @@
-impl HPAAutoscaler._build_manifests{
+impl HPAAutoscaler._build_manifests {
     hpa_name = spec.autoscaler_name or f"{spec.scale_target_name}-hpa";
     metrics: list[dict[str, any]] = [];
     for trigger in spec.triggers {
@@ -66,7 +66,7 @@ impl HPAAutoscaler._build_manifests{
     ];
 }
 
-impl HPAAutoscaler.apply{
+impl HPAAutoscaler.apply {
     for trigger in spec.triggers {
         if trigger.type not in ["cpu", "memory"] {
             raise ValueError(
@@ -112,7 +112,7 @@ impl HPAAutoscaler.apply{
     return True;
 }
 
-impl HPAAutoscaler.destroy{
+impl HPAAutoscaler.destroy {
     autoscaling_v2 = AutoscalingV2Api();
     delete_if_exists(
         autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
@@ -122,7 +122,7 @@ impl HPAAutoscaler.destroy{
     );
 }
 
-impl HPAAutoscaler.destroy_collection{
+impl HPAAutoscaler.destroy_collection {
     AutoscalingV2Api().delete_collection_namespaced_horizontal_pod_autoscaler(
         namespace=namespace, label_selector=label_selector
     );
@@ -161,11 +161,11 @@ impl HPAAutoscaler.destroy_collection{
     }
 }
 
-impl HPAAutoscaler.resource_name_for{
+impl HPAAutoscaler.resource_name_for {
     return f"{target}-hpa";
 }
 
-impl HPAAutoscaler.get_runtime_status{
+impl HPAAutoscaler.get_runtime_status {
     """The HPA's view, which has no trigger concept.
 
     `trigger_active` stays None rather than False: a plain HPA scales on

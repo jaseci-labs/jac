@@ -370,6 +370,8 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_PROMISE_ANY,
     NATIVE_KIND_PROMISE_WITHRESOLVERS,
     NATIVE_KIND_PROMISE_THEN,
+    NATIVE_KIND_PROMISE_THEN_RAW,
+    NATIVE_KIND_PROMISE_THEN_SETUP,
     NATIVE_KIND_PROMISE_CATCH,
     NATIVE_KIND_PROMISE_FINALLY,
     NATIVE_KIND_SET_TIMEOUT,
@@ -1419,6 +1421,9 @@ import from engine.src.builtins.generators {
 import from engine.src.builtins.promise {
     js_promise_create,
     js_is_promise,
+    js_promise_then_setup,
+    js_promise_then_wrapped,
+    js_promise_then_slow,
     js_promise_get_state,
     js_promise_get_value,
     js_promise_settle,
@@ -4294,6 +4299,7 @@ def _dn_native_kind_obj_define_property(
                     }
                     if dp_has_v {
                         dp_cl.prototype_obj = dp_new_v;
+                        dp_cl.wb(dp_cl.prototype_obj);
                     }
                     if dp_has_w {
                         dp_cl.prototype_writable = dp_want_w;
@@ -6118,8 +6124,25 @@ only reached for a direct method call. Reaching `then` any other way —
 `Promise.prototype.then.call(p, f)`, `.bind(p)`, `Reflect.apply` — dispatches
 through this table, which previously held a no-op: the call silently did
 nothing and the returned promise never settled. Implemented here so every call
-form behaves identically; the two must stay in sync."""
+form behaves identically; the two must stay in sync.
+
+Step 3 (SpeciesConstructor) runs in the JS wrapper builtins_stubs.js installs
+with __jacPromiseThenSetup, called only when it could matter (see
+js_promise_then_wrapped); the wrapper reaches PerformPromiseThen through the
+raw kind (__jacPromiseThenRaw)."""
 def _dn_native_kind_promise_then(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    if js_is_promise(this_val)
+        and js_promise_then_wrapped(this_val)
+        and js_call_bridge_ready() {
+        return js_call_observable(js_promise_then_slow(), this_val, args);
+    }
+    return _dn_native_kind_promise_then_raw(realm, this_val, args);
+}
+
+"""__jacPromiseThenRaw: §27.2.5.4 without step 3 (the JS wrapper's own call)."""
+def _dn_native_kind_promise_then_raw(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
     # §27.2.5.4 step 2: PerformPromiseThen requires an actual promise receiver.
@@ -6154,6 +6177,16 @@ def _dn_native_kind_promise_then(
         js_promise_add_reaction(this_val, on_f, on_r, next_p);
     }
     return next_p;
+}
+
+"""__jacPromiseThenSetup(wrapper, Promise) — see _dn_native_kind_promise_then."""
+def _dn_native_kind_promise_then_setup(
+    realm: Realm, this_val: JSValue, args: list[JSValue]
+) -> JSValue {
+    if len(args) >= 2 {
+        js_promise_then_setup(args[0], args[1]);
+    }
+    return js_undefined();
 }
 
 """promise.catch(onRejected) — §27.2.5.1, i.e. then(undefined, onRejected).
@@ -9606,6 +9639,7 @@ def _dn_native_kind_gc_set_threshold(
 def _dn_native_kind_gc_collect(
     realm: Realm, this_val: JSValue, args: list[JSValue]
 ) -> JSValue {
+    realm.gc_next_major = True;  # an explicit gc() reclaims everything
     realm_request_gc(realm);
     return js_int(0);
 }
@@ -11044,6 +11078,8 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_ANY] = _dn_native_kind_promise_any;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE] = _dn_native_kind_promise_call_no_new;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN] = _dn_native_kind_promise_then;
+    _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN_RAW] = _dn_native_kind_promise_then_raw;
+    _DISPATCH_TABLE[NATIVE_KIND_PROMISE_THEN_SETUP] = _dn_native_kind_promise_then_setup;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_CATCH] = _dn_native_kind_promise_catch;
     _DISPATCH_TABLE[NATIVE_KIND_PROMISE_FINALLY] = _dn_native_kind_promise_noop;
     _DISPATCH_TABLE[NATIVE_KIND_SET_TIMEOUT] = _dn_native_kind_set_timeout;

@@ -18,8 +18,10 @@ import from engine.src.runtime.realm {
     gc_min_threshold_set,
     gc_default_set,
     gc_growth_pct_set,
-    gc_floor_pct_set
+    gc_floor_pct_set,
+    gc_nursery_set
 }
+import from engine.src.runtime.gc_barrier { gc_gen_set }
 import from engine.src.vm.vm { vm_ic_enable, vm_dump_pair_stats }
 import from engine.src.builtins.process {
     process_do_exit,
@@ -895,6 +897,14 @@ with entry {
     gc_floor_env: str = getenv("JAC_GC_FLOOR");
     if gc_floor_env != None {
         gc_floor_pct_set(int(gc_floor_env));
+    }
+    # Generational collection (docs/GENERATIONAL_GC.md): on unless
+    # JAC_GC_GEN=0; JAC_GC_NURSERY sets the allocations between collections.
+    gc_gen_env: str = getenv("JAC_GC_GEN");
+    gc_gen_set(gc_gen_env == None or gc_gen_env != "0");
+    gc_nur_env: str = getenv("JAC_GC_NURSERY");
+    if gc_nur_env != None {
+        gc_nursery_set(int(gc_nur_env));
     }
     gc_str_env: str = getenv("JAC_GC_STR_MB");
     if gc_str_env != None {

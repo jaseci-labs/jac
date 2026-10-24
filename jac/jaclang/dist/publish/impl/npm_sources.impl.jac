@@ -1,11 +1,6 @@
 import re;
 import fnmatch;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
-import from jaclang.dist.publish.sources { EXCLUDED_DIRS }
-import from jaclang.dist.publish.jsdoc { jsdoc_for_module, inject_jsdoc }
-import from jaclang.dist.publish.dts { dts_for_module }
-import from jaclang.dist.publish.runtime_npm { runtime_api_names }
 
 glob _DEFAULT_RUNTIME_PKG: str = "@jaseci/runtime";
 
@@ -17,7 +12,160 @@ impl runtime_pkg_name(config: JacConfig) -> str {
     return _DEFAULT_RUNTIME_PKG;
 }
 
-def _top_level_decls(js: str) -> set[str] {
+def _top_level_decls(js: str) -> set[str];
+
+def _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]];
+
+impl npm_js_path(rel_path: str) -> str {
+    p = rel_path.replace("\\", "/");
+    if p.endswith(".jac") {
+        return p[:-4] + ".js";
+    }
+    return p;
+}
+
+def _in_excluded_dir(file_path: Path, pkg_root: Path) -> bool;
+
+def _package_dirs(config: JacConfig, proj_root: Path) -> list[Path];
+
+def _crosses_server_boundary(mod: any) -> bool;
+
+def _compile_module(program: any, path: Path) -> any;
+
+def _link_modules(program: any, modules: dict[Path, any]) -> dict[Path, ClientLink];
+
+impl collect_npm_sources(
+    config: JacConfig, project_root: Path | None = None,
+) -> list[NpmSourceFile] {
+    proj_root = project_root or config.project_root;
+    if proj_root is None {
+        raise ValueError(
+            "project_root is required: pass it explicitly or ensure "
+            "config.project_root is set."
+        );
+    }
+    if not config.project.name {
+        raise ValueError(
+            "Cannot collect npm sources: [project] name is missing in jac.toml."
+        );
+    }
+
+    program = JacProgram();
+
+    runtime_pkg = runtime_pkg_name(config);
+    result: list[NpmSourceFile] = [];
+    compiled: list[tuple[Path, str, any]] = [];
+    seen: set[str] = set();
+
+    for pkg_dir in _package_dirs(config, proj_root) {
+        for src in sorted(pkg_dir.rglob("*.jac")) {
+            if not src.is_file() or _in_excluded_dir(src, pkg_dir) {
+                continue;
+            }
+
+            rel = str(src.relative_to(proj_root)).replace("\\", "/");
+            npm_path = npm_js_path(rel);
+            if npm_path in seen {
+                continue;
+            }
+
+            mod = _compile_module(program, src);
+            js = (mod.gen.js if mod and mod.gen else "") or "";
+            if not js.strip() {
+                continue;
+            }
+            if _crosses_server_boundary(mod) {
+                raise NpmBoundaryError(
+                    f"'{rel}' crosses a server boundary and cannot be published as a "
+                    "standalone npm package. npm packages must be pure client code "
+                    "(no server-bound imports/calls)."
+                );
+            }
+            seen.add(npm_path);
+            compiled.append((src, npm_path, mod));
+        }
+    }
+
+    links = _link_modules(
+        program, {src.resolve(): mod for (src, _path, mod) in compiled}
+    );
+    for (src, npm_path, mod) in compiled {
+        link = links.get(src.resolve());
+        js = append_link(mod.gen.js, link);
+        blocks = jsdoc_for_module(mod);
+        js = inject_jsdoc(js, blocks);
+        (js, externals) = _wire_externals(js, runtime_pkg);
+        dts = dts_for_module(mod, link.names if link else None);
+        if link is not None {
+            dts += link_tail(ClientLink(forwards=link.forwards));
+        }
+        result.append(
+            NpmSourceFile(
+                npm_path=npm_path,
+                source_path=src,
+                js=js,
+                dts=dts,
+                external_imports=externals,
+            )
+        );
+    }
+    return result;
+}
+
+impl _link_modules(program: any, modules: dict[Path, any]) -> dict[Path, ClientLink] {
+    def artifact_of(path: Path) -> ClientArtifact {
+        mod = modules.get(path) or _compile_module(program, path);
+        manifest = mod.gen.client_manifest if mod and mod.gen else None;
+        return ClientArtifact(
+            js=(mod.gen.js if mod and mod.gen else "") or "",
+            manifest=manifest if manifest is not None else ClientManifest()
+        );
+    }
+    def same(path: Path) -> Path {
+        return path;
+    }
+    try {
+        closure = collect_client_graph(list(modules), artifact_of, same, set(), set());
+    } except ClientBundleError as error {
+        raise ValueError(f"Failed to link npm bundle:\n{error}") from None;
+    }
+    return closure.links;
+}
+
+impl resolve_npm_entry(config: JacConfig, files: list[NpmSourceFile],) -> str | None {
+    if not files {
+        return None;
+    }
+    paths = {f.npm_path for f in files};
+
+    npm = config._raw_data.get("npm", {});
+    `entry: str = str(npm.get("entry", "")) if isinstance(npm, dict) else "";
+    if `entry {
+        candidate = npm_js_path(`entry.replace("\\", "/"));
+        if candidate in paths {
+            return candidate;
+        }
+    }
+
+    index_files = sorted(
+        [
+            p
+            for p in paths
+            if p.endswith("index.js")
+        ],
+        key=lambda (p: any) { p.count("/"); }
+    );
+    if index_files {
+        return index_files[0];
+    }
+
+    if len(files) == 1 {
+        return files[0].npm_path;
+    }
+    return None;
+}
+
+impl _top_level_decls(js: str) -> set[str] {
     names: set[str] = set();
     for m in re.finditer(
         r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)",
@@ -28,7 +176,7 @@ def _top_level_decls(js: str) -> set[str] {
     return names;
 }
 
-def _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]] {
+impl _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]] {
     externals: list[str] = [];
     local = _top_level_decls(js);
     api = runtime_api_names();
@@ -63,15 +211,7 @@ def _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]] {
     return (out, externals);
 }
 
-impl npm_js_path(rel_path: str) -> str {
-    p = rel_path.replace("\\", "/");
-    if p.endswith(".jac") {
-        return p[:-4] + ".js";
-    }
-    return p;
-}
-
-def _in_excluded_dir(file_path: Path, pkg_root: Path) -> bool {
+impl _in_excluded_dir(file_path: Path, pkg_root: Path) -> bool {
     try {
         rel = file_path.relative_to(pkg_root);
     } except ValueError {
@@ -85,7 +225,7 @@ def _in_excluded_dir(file_path: Path, pkg_root: Path) -> bool {
     return False;
 }
 
-def _package_dirs(config: JacConfig, proj_root: Path) -> list[Path] {
+impl _package_dirs(config: JacConfig, proj_root: Path) -> list[Path] {
     package_patterns = config.project.`include.packages;
     if not package_patterns and config.project.name {
         package_patterns = [config.project.name.replace("-", "_")];
@@ -106,7 +246,7 @@ def _package_dirs(config: JacConfig, proj_root: Path) -> list[Path] {
     return dirs;
 }
 
-def _crosses_server_boundary(mod: any) -> bool {
+impl _crosses_server_boundary(mod: any) -> bool {
     im = mod.gen.interop_manifest if mod and mod.gen else None;
     if im is None {
         return False;
@@ -120,8 +260,7 @@ def _crosses_server_boundary(mod: any) -> bool {
     return False;
 }
 
-def _compile_module(program: any, path: Path) -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+impl _compile_module(program: any, path: Path) -> any {
     source_key = str(path);
     prev = len(program.errors_had);
 
@@ -131,110 +270,9 @@ def _compile_module(program: any, path: Path) -> any {
         formatted = "\n".join(str(err) for err in new_errors);
         raise ValueError(f"Failed to compile '{path}' for npm bundle:\n{formatted}");
     }
-    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.driver.pipeline { require, CompilationProduct }
+
     if mod and mod.gen and not mod.gen.js {
         require(program, mod, CompilationProduct.CLIENT);
     }
     return mod;
-}
-
-impl collect_npm_sources(
-    config: JacConfig, project_root: Path | None = None,
-) -> list[NpmSourceFile] {
-    proj_root = project_root or config.project_root;
-    if proj_root is None {
-        raise ValueError(
-            "project_root is required: pass it explicitly or ensure "
-            "config.project_root is set."
-        );
-    }
-    if not config.project.name {
-        raise ValueError(
-            "Cannot collect npm sources: [project] name is missing in jac.toml."
-        );
-    }
-
-    import from jaclang.compiler.driver.program { JacProgram }
-    program = JacProgram();
-
-    runtime_pkg = runtime_pkg_name(config);
-    result: list[NpmSourceFile] = [];
-    seen: set[str] = set();
-
-    for pkg_dir in _package_dirs(config, proj_root) {
-        for src in sorted(pkg_dir.rglob("*.jac")) {
-            if not src.is_file() or _in_excluded_dir(src, pkg_dir) {
-                continue;
-            }
-
-            rel = str(src.relative_to(proj_root)).replace("\\", "/");
-            npm_path = npm_js_path(rel);
-            if npm_path in seen {
-                continue;
-            }
-
-            mod = _compile_module(program, src);
-            js = (mod.gen.js if mod and mod.gen else "") or "";
-            if not js.strip() {
-                continue;
-            }
-            if _crosses_server_boundary(mod) {
-                raise NpmBoundaryError(
-                    f"'{rel}' crosses a server boundary and cannot be published as a "
-                    "standalone npm package. npm packages must be pure client code "
-                    "(no server-bound imports/calls)."
-                );
-            }
-            blocks = jsdoc_for_module(mod);
-            js = inject_jsdoc(js, blocks);
-            (js, externals) = _wire_externals(js, runtime_pkg);
-            dts = dts_for_module(mod);
-            seen.add(npm_path);
-            result.append(
-                NpmSourceFile(
-                    npm_path=npm_path,
-                    source_path=src,
-                    js=js,
-                    dts=dts,
-                    external_imports=externals,
-                )
-            );
-        }
-    }
-
-    return result;
-}
-
-impl resolve_npm_entry(config: JacConfig, files: list[NpmSourceFile],) -> str | None {
-    if not files {
-        return None;
-    }
-    paths = {f.npm_path for f in files};
-
-    npm = config._raw_data.get("npm", {});
-    `entry: str = str(npm.get("entry", "")) if isinstance(npm, dict) else "";
-    if `entry {
-        candidate = npm_js_path(`entry.replace("\\", "/"));
-        if candidate in paths {
-            return candidate;
-        }
-    }
-
-    index_files = sorted(
-        [
-            p
-            for p in paths
-            if p.endswith("index.js")
-        ],
-        key=lambda (p: any) { p.count("/"); }
-    );
-    if index_files {
-        return index_files[0];
-    }
-
-    if len(files) == 1 {
-        return files[0].npm_path;
-    }
-    return None;
 }

@@ -1,48 +1,27 @@
 import re;
+
 import os;
+
 import functools;
+
 import from http.server { SimpleHTTPRequestHandler }
+
 import from pathlib { Path }
+
 import from typing { Optional }
-import from jaclang.client.vite_bundler { ViteBundler }
-import from jaclang.cli.console { console }
 
 glob _MODULE_SCRIPT_RE = re.compile(
          r'<script type="module" src="([^"]*)"></script>'
      ),
      _STYLESHEET_LINK_RE = re.compile(r'<link rel="stylesheet" href="([^"]*)"\s*/?>');
 
-def _asset_in_dist(dist_dir: Path, url: str) -> (Path | None) {
-    name = os.path.basename(url.split("?", 1)[0]);
-    if not name {
-        return None;
-    }
-    candidate = dist_dir / name;
-    return candidate if candidate.exists() else None;
-}
+def _asset_in_dist(dist_dir: Path, url: str) -> (Path | None);
 
-def _strip_sourcemap_comment(js: str) -> str {
-    return re.sub(r'\n?//# sourceMappingURL=\S+\s*$', '', js);
-}
+def _strip_sourcemap_comment(js: str) -> str;
 
-def _guard_closing_tag(text: str, tag: str) -> str {
-    return text.replace(f'</{tag}', f'<\\/{tag}');
-}
+def _guard_closing_tag(text: str, tag: str) -> str;
 
-def _warn_if_split(dist_dir: Path) {
-    chunks = [
-        p
-        for p in dist_dir.`glob("*.js")
-        if not p.name.endswith(".map") and p.name != "sw.js"
-    ];
-    if len(chunks) > 1 {
-        console.warning(
-            "  Multiple JS chunks detected (code-splitting); the inlined "
-            "index.html may need an HTTP server rather than file:// for "
-            "dynamically-imported chunks."
-        );
-    }
-}
+def _warn_if_split(dist_dir: Path);
 
 impl inline_dist_assets(dist_dir: Path) -> bool {
     index_path = dist_dir / "index.html";
@@ -85,19 +64,8 @@ impl inline_dist_assets(dist_dir: Path) -> bool {
 }
 
 class _DistRequestHandler(SimpleHTTPRequestHandler) {
-    def translate_path(self: _DistRequestHandler, path: str) -> str {
-        if path.startswith("/static/") {
-            path = path[len("/static"):];
-        }
-        return super.translate_path(path);
-    }
-
-    def guess_type(self: _DistRequestHandler, path: str) -> str {
-        if str(path).endswith(".wasm") {
-            return "application/wasm";
-        }
-        return super.guess_type(path);
-    }
+    def translate_path(self: _DistRequestHandler, path: str) -> str;
+    def guess_type(self: _DistRequestHandler, path: str) -> str;
 }
 
 impl serve_static_dir(dist_dir: Path, host: str, port: int) -> None {
@@ -150,4 +118,36 @@ impl StaticTarget.start(
         raise RuntimeError(f"Build output not found: {dist_dir}");
     }
     serve_static_dir(dist_dir, "127.0.0.1", api_port);
+}
+
+impl _asset_in_dist(dist_dir: Path, url: str) -> (Path | None) {
+    name = os.path.basename(url.split("?", 1)[0]);
+    if not name {
+        return None;
+    }
+    candidate = dist_dir / name;
+    return candidate if candidate.exists() else None;
+}
+
+impl _strip_sourcemap_comment(js: str) -> str {
+    return re.sub(r'\n?//# sourceMappingURL=\S+\s*$', '', js);
+}
+
+impl _guard_closing_tag(text: str, tag: str) -> str {
+    return text.replace(f'</{tag}', f'<\\/{tag}');
+}
+
+impl _warn_if_split(dist_dir: Path) {
+    chunks = [
+        p
+        for p in dist_dir.`glob("*.js")
+        if not p.name.endswith(".map") and p.name != "sw.js"
+    ];
+    if len(chunks) > 1 {
+        console.warning(
+            "  Multiple JS chunks detected (code-splitting); the inlined "
+            "index.html may need an HTTP server rather than file:// for "
+            "dynamically-imported chunks."
+        );
+    }
 }

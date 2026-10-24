@@ -1,11 +1,3 @@
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl EsastGenPass._view_open_loop_acc(nd: uni.UniNode) -> None {
     acc = self._cur_view_acc();
     if (acc is None) or (acc in self._view_dynamic_accs) {
@@ -202,7 +194,6 @@ impl EsastGenPass._view_push_stmt(
 impl EsastGenPass._jsx_fragment(
     children: es.Expression, anchor: uni.UniNode
 ) -> es.CallExpression {
-    import from jaclang.client.client_surface { backend_jsx_factory_name }
     factory_name = backend_jsx_factory_name(self.resolved_backend);
     return self.sync_loc(
         es.CallExpression(
@@ -389,9 +380,9 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
 }
 
 impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
-    owner: (uni.UniNode | None) = here.parent;
+    owner: (uni.UniNode | None) = here.decl_parent;
     while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
-        owner = owner.parent;
+        owner = owner.decl_parent;
     }
     if isinstance(owner, uni.Archetype) or not here.in_client_context() {
         here.gen.es_ast = None;

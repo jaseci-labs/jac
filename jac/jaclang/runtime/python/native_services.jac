@@ -1,31 +1,3 @@
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_ExceptionMatches,
-    PyErr_WarnExplicit,
-    PyExc_SyntaxWarning,
-    PyExc_UnicodeError,
-    PyExc_ValueError,
-    PyImport_ImportModule,
-    PyObject,
-    PyObject_CallMethod,
-    jacpy_bytes_escape,
-    jacpy_float_value,
-    jacpy_parse_float,
-    jacpy_parse_long,
-    jacpy_release,
-    jacpy_take_error_text,
-    jacpy_unicode_escape
-}
-import from jaclang.runtime.python.capi {
-    read_buffer,
-    required,
-    boundary_failure,
-    text_object,
-    text_value
-}
-import from jaclang.runtime.python.objects { PyObj }
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
 def take_buffer(handle: ptr[PyObject]) -> bytes {
     required(handle);
     try {

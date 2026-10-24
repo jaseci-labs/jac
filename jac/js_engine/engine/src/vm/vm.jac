@@ -10,6 +10,8 @@ ECMAScript spec : §9 — Executable Code and Execution Contexts
                   https://tc39.es/ecma262/#sec-executable-code-and-execution-contexts
 """
 
+import from engine.src.runtime.gc_barrier { gc_gen_on }
+import from engine.src.runtime.realm { gc_nursery }
 import from engine.src.runtime.fn_meta { cl_props_get, cl_props_has_own, cl_props }
 import from engine.src.bytecode.op {
     Opcode,
@@ -488,7 +490,8 @@ import from engine.src.vm.vm_obs {
 }
 import from engine.src.runtime.jsobject {
     js_object_register_napi_obs_scope,
-    js_object_brand
+    js_object_brand,
+    js_object_is_plain_ordinary
 }
 import from engine.src.runtime.error {
     create_error,
@@ -843,6 +846,7 @@ import from engine.src.builtins.markers {
 import from engine.src.builtins.array {
     _KEY_IS_ARRAY,
     js_array_create,
+    js_array_create_range,
     js_is_array,
     js_is_array_spec,
     js_array_len,
@@ -1515,6 +1519,12 @@ def _vm_get_cached(ins: Instruction, rv: JSValue) -> JSValue {
         if not jsv_is_hole(gc_v) {
             return gc_v;
         }
+        if ins.ic_obj2 > 0 {
+            gc_v2: JSValue = js_object_ic_hit(rv, ins.ic_obj2, ins.ic_ver2 // 16);
+            if not jsv_is_hole(gc_v2) {
+                return gc_v2;
+            }
+        }
     }
     if not _vm_ic_key_ok(ins.arg2) {
         return jsv_hole();
@@ -2103,6 +2113,7 @@ def _bind_jac_module_on_exports(exports: JSValue, mod: JSValue, realm: Realm) ->
             cl_idx: int = get_fn_idx(fv);
             if cl_idx >= 0 and cl_idx < len(realm.closures) {
                 realm.closures[cl_idx].jac_module = mod;
+                realm.closures[cl_idx].wb(realm.closures[cl_idx].jac_module);
             }
         }
         ki = ki + 1;
@@ -4078,6 +4089,9 @@ def:pub vm_register_closure(realm: Realm, cl: JSClosure) -> int {
         del realm.free_closure_slots[_rc_last];
         realm.closures[idx] = cl;  # fresh cl (cell_flags=0) clears the DEAD tombstone
         realm.closures_mark_epoch[idx] = 0;
+        if gc_gen_on() {
+            realm.gc_young_closures.append(idx);
+        }
         if idx < len(realm.functions) {
             # reset the freed slot's record in place (V4.24): the fields a
             # fresh JSFunctionMeta(name="", arg_count=0, prototype_obj=
@@ -4100,6 +4114,9 @@ def:pub vm_register_closure(realm: Realm, cl: JSClosure) -> int {
     _rc_idx: int = len(realm.closures);
     realm.closures.append(cl);
     realm.closures_mark_epoch.append(0);
+    if gc_gen_on() {
+        realm.gc_young_closures.append(len(realm.closures) - 1);
+    }
     gc_note_alloc(realm);
     return _rc_idx;
 }
@@ -9308,6 +9325,7 @@ obj VM {
                         return False;
                     }
                     cl_sv.prototype_obj = val;
+                    cl_sv.wb(cl_sv.prototype_obj);
                 } else {
                     js_object_set(cl_props(cl_sv), key, val);
                 }
@@ -16805,6 +16823,7 @@ obj VM {
                     if sp_dm_cl.func.is_method
                         and jsv_is_undefined(sp_dm_cl.home_object) {
                         sp_dm_cl.home_object = sp_obj;
+                        sp_dm_cl.wb(sp_dm_cl.home_object);
                     }
                 }
             }
@@ -16920,6 +16939,7 @@ obj VM {
                 sp_mcl: JSClosure = self.realm.closures[sp_mcl_idx];
                 if sp_mcl.func.is_method and jsv_is_undefined(sp_mcl.home_object) {
                     sp_mcl.home_object = sp_obj;
+                    sp_mcl.wb(sp_mcl.home_object);
                 }
             }
         }
@@ -16976,6 +16996,7 @@ obj VM {
                     # plain assignment: no-op in sloppy, TypeError in strict (ES §10.2.4).
                     if sp_cl.prototype_writable {
                         sp_cl.prototype_obj = sp_val;
+                        sp_cl.wb(sp_cl.prototype_obj);
                     } elif ins.arg2 == 1 {
                         sp_proto_ro_exc: JSValue = make_type_error(
                             "Cannot assign to read only property 'prototype' of function"
@@ -18074,6 +18095,7 @@ obj VM {
                     if si_hm_cl.func.is_method
                         and jsv_is_undefined(si_hm_cl.home_object) {
                         si_hm_cl.home_object = si_obj;
+                        si_hm_cl.wb(si_hm_cl.home_object);
                     }
                 }
             }
@@ -18201,6 +18223,7 @@ obj VM {
                     # computed assignment too: no-op sloppy, TypeError strict (ES §10.2.4).
                     if si_cl.prototype_writable {
                         si_cl.prototype_obj = si_val;
+                        si_cl.wb(si_cl.prototype_obj);
                     } elif frame.func.is_strict or ins.arg2 == 1 {
                         si_proto_ro_exc: JSValue = make_type_error(
                             "Cannot assign to read only property 'prototype' of function"
@@ -28757,6 +28780,7 @@ obj VM {
         if is_fn_val(frame.self_fn) {
             mf_encl_cl: JSClosure = self.realm.closures[get_fn_idx(frame.self_fn)];
             new_cl_mf.class_brand = mf_encl_cl.class_brand;
+            new_cl_mf.wb(new_cl_mf.class_brand);
             new_cl_mf.class_brand_sid = mf_encl_cl.class_brand_sid;
             # Home realm is lexical: a nested function belongs to the same realm as its encloser.
             new_cl_mf.home_realm_id = mf_encl_cl.home_realm_id;
@@ -28783,6 +28807,7 @@ obj VM {
                 cw_mf.append(cw_o_mf);
             }
             new_cl_mf.captured_with_objs = cw_mf;
+            new_cl_mf.wb_lists();
         }
         # Tag CJS-created closures with their defining module so LOAD_GLOBAL
         # for `module`/`exports` resolves the right module in async callbacks.
@@ -28791,6 +28816,7 @@ obj VM {
             cur_mod_mf: JSValue = self._reg_cur_module();
             if jsv_is_object_cell(cur_mod_mf) {
                 new_cl_mf.jac_module = cur_mod_mf;
+                new_cl_mf.wb(new_cl_mf.jac_module);
             }
         }
         mf_fn_idx: int = vm_register_closure(self.realm, new_cl_mf);  # G0.5: reuse freed slot
@@ -28870,6 +28896,7 @@ obj VM {
         );
         arrow_cl.is_arrow = True;
         arrow_cl.lexical_new_target = frame.new_target;
+        arrow_cl.wb(arrow_cl.lexical_new_target);
         # Inherit the enclosing frame's shared this-binding cell (if any): an arrow inside a
         # derived constructor shares its this-binding, so `super()` in the arrow initializes
         # the enclosing ctor's `this` (ES §9.1.1.3). Propagates through nested arrows too.
@@ -28895,10 +28922,13 @@ obj VM {
         if is_fn_val(ma_encl_self) {
             ma_encl_cl: JSClosure = self.realm.closures[get_fn_idx(ma_encl_self)];
             arrow_cl.super_class = ma_encl_cl.super_class;
+            arrow_cl.wb(arrow_cl.super_class);
             arrow_cl.home_object = ma_encl_cl.home_object;
+            arrow_cl.wb(arrow_cl.home_object);
             # Private names are lexically scoped — an arrow inside a class member inherits that
             # class's per-evaluation brand (ES §6.2.12 / §15.7), like super/home above.
             arrow_cl.class_brand = ma_encl_cl.class_brand;
+            arrow_cl.wb(arrow_cl.class_brand);
             arrow_cl.class_brand_sid = ma_encl_cl.class_brand_sid;
             arrow_cl.home_realm_id = ma_encl_cl.home_realm_id;
         }
@@ -28913,6 +28943,7 @@ obj VM {
                 cw_ma.append(cw_o_ma);
             }
             arrow_cl.captured_with_objs = cw_ma;
+            arrow_cl.wb_lists();
         }
         # Tag CJS-created arrow functions with their defining module (same as MAKE_FUNCTION).
         # Guard: skip in ESM scope to prevent stale CJS module from leaking.
@@ -28920,6 +28951,7 @@ obj VM {
             cur_mod_ma: JSValue = self._reg_cur_module();
             if jsv_is_object_cell(cur_mod_ma) {
                 arrow_cl.jac_module = cur_mod_ma;
+                arrow_cl.wb(arrow_cl.jac_module);
             }
         }
         return js_fn_val(vm_register_closure(self.realm, arrow_cl));  # G0.5: reuse freed slot
@@ -29099,6 +29131,7 @@ obj VM {
             dm_super_cv: JSValue = js_object_get(dm_cls, WK_SUPER);
             dm_cl_ref: JSClosure = self.realm.closures[get_fn_idx(dm_fn)];
             dm_cl_ref.super_class = dm_super_cv;
+            dm_cl_ref.wb(dm_cl_ref.super_class);
             # ES §13.3.7 SuperProperty uses the method's [[HomeObject]]: `super.x` resolves to
             # GetPrototypeOf([[HomeObject]])[x]. For a genuine BASE class (no ClassHeritage at
             # all — not even `extends null`) there is no super_class, so set HomeObject so super.x
@@ -29109,13 +29142,16 @@ obj VM {
             if not js_object_has_own(dm_cls, WK_SUPER) {
                 if dm_is_static == 1 {
                     dm_cl_ref.home_object = dm_cls;
+                    dm_cl_ref.wb(dm_cl_ref.home_object);
                 } else {
                     dm_cl_ref.home_object = js_object_get(dm_cls, WK_PROTOTYPE);
+                    dm_cl_ref.wb(dm_cl_ref.home_object);
                 }
             }
             # Capture this class's per-evaluation private brand so the method's private
             # accesses match only objects branded by THIS evaluation (ES §15.7).
             dm_cl_ref.class_brand = js_object_get(dm_cls, str_intern("__brand@cur"));
+            dm_cl_ref.wb(dm_cl_ref.class_brand);
             dm_cl_ref.class_brand_sid = jsv_to_int32(
                 js_object_get(dm_cls, str_intern("__brandsid@cur"))
             );
@@ -29232,9 +29268,11 @@ obj VM {
             dg_super_cv: JSValue = js_object_get(dg_obj, WK_SUPER);
             dg_cl_ref: JSClosure = self.realm.closures[get_fn_idx(dg_fn)];
             dg_cl_ref.super_class = dg_super_cv;
+            dg_cl_ref.wb(dg_cl_ref.super_class);
             # Per-evaluation brand: a getter accessing `this.#x` must match only objects branded
             # by THIS evaluation (ES §15.7). Class accessors only (modes 0/1).
             dg_cl_ref.class_brand = js_object_get(dg_obj, str_intern("__brand@cur"));
+            dg_cl_ref.wb(dg_cl_ref.class_brand);
             dg_cl_ref.class_brand_sid = jsv_to_int32(
                 js_object_get(dg_obj, str_intern("__brandsid@cur"))
             );
@@ -29248,6 +29286,7 @@ obj VM {
                 dg_hm_cl: JSClosure = self.realm.closures[get_fn_idx(dg_fn)];
                 if dg_hm_cl.func.is_method and jsv_is_undefined(dg_hm_cl.home_object) {
                     dg_hm_cl.home_object = dg_obj;
+                    dg_hm_cl.wb(dg_hm_cl.home_object);
                 }
             }
             js_object_set_accessor_getter(dg_obj, dg_key, dg_fn);
@@ -29294,8 +29333,10 @@ obj VM {
             ds_super_cv: JSValue = js_object_get(ds_obj, WK_SUPER);
             ds_cl_ref: JSClosure = self.realm.closures[get_fn_idx(ds_fn)];
             ds_cl_ref.super_class = ds_super_cv;
+            ds_cl_ref.wb(ds_cl_ref.super_class);
             # Per-evaluation brand (ES §15.7) — see _op_define_getter. Class accessors only.
             ds_cl_ref.class_brand = js_object_get(ds_obj, str_intern("__brand@cur"));
+            ds_cl_ref.wb(ds_cl_ref.class_brand);
             ds_cl_ref.class_brand_sid = jsv_to_int32(
                 js_object_get(ds_obj, str_intern("__brandsid@cur"))
             );
@@ -29307,6 +29348,7 @@ obj VM {
                 ds_hm_cl: JSClosure = self.realm.closures[get_fn_idx(ds_fn)];
                 if ds_hm_cl.func.is_method and jsv_is_undefined(ds_hm_cl.home_object) {
                     ds_hm_cl.home_object = ds_obj;
+                    ds_hm_cl.wb(ds_hm_cl.home_object);
                 }
             }
             js_object_set_accessor_setter(ds_obj, ds_key, ds_fn);
@@ -29390,10 +29432,12 @@ obj VM {
             df_super_cv: JSValue = js_object_get(df_cls, WK_SUPER);
             df_cl_attach: JSClosure = self.realm.closures[get_fn_idx(df_init_fn)];
             df_cl_attach.super_class = df_super_cv;
+            df_cl_attach.wb(df_cl_attach.super_class);
             # Capture the class's per-evaluation brand so a field initializer (incl. the
             # synthetic private-brand-install field, which LOAD_CLASS_BRANDs it) can stamp
             # `this` with THIS brand.
             df_cl_attach.class_brand = js_object_get(df_cls, str_intern("__brand@cur"));
+            df_cl_attach.wb(df_cl_attach.class_brand);
             df_cl_attach.class_brand_sid = jsv_to_int32(
                 js_object_get(df_cls, str_intern("__brandsid@cur"))
             );
@@ -29457,10 +29501,13 @@ obj VM {
             df_super_cv: JSValue = js_object_get(df_cls, WK_SUPER);
             df_fi_cl: JSClosure = self.realm.closures[get_fn_idx(df_init_fn)];
             df_fi_cl.super_class = df_super_cv;
+            df_fi_cl.wb(df_fi_cl.super_class);
             if df_is_static == 1 {
                 df_fi_cl.home_object = df_cls;
+                df_fi_cl.wb(df_fi_cl.home_object);
             } else {
                 df_fi_cl.home_object = js_object_get(df_cls, WK_PROTOTYPE);
+                df_fi_cl.wb(df_fi_cl.home_object);
             }
         }
         if df_is_static == 1 {
@@ -32784,6 +32831,20 @@ obj VM {
             for gc_es in self.eval_super_fns {
                 gc_roots_all.append(gc_es);
             }
+            if getenv("JAC_GC_VERIFY") == "2" {
+                # root layout for the verification report's extras indices
+                gr_nf: int = 0;
+                for gr_f in self.frames {
+                    if not gr_f.win {
+                        gr_nf = gr_nf + len(gr_f.locals);
+                    }
+                }
+                gr_msg: str = "[GCROOTS] stack=0.." + str(len(self.stack)) + " regs="
+                    + str(len(self.stack)) + ".." + str(len(self.stack) + self.rtop)
+                    + " then frames (" + str(len(self.frames)) + " frames, "
+                    + str(gr_nf) + " non-window locals), globals, …\n";
+                write(2, gr_msg, len(gr_msg));
+            }
             gc_collect(self.realm, gc_roots_all);
             # ADAPTIVE threshold (proportional-heap heuristic). A fixed
             # 10k-alloc trigger is catastrophic once the live set is large:
@@ -32802,6 +32863,27 @@ obj VM {
                 self.realm.gc_threshold = _gc_live;
             } else {
                 self.realm.gc_threshold = _GC_MIN_THRESHOLD;
+            }
+            # Generational (docs/GENERATIONAL_GC.md §4.8): a collection every
+            # nursery-full of allocations; the next one is major once the heap
+            # (old garbage included — a minor frees only young cells) has grown
+            # past the last major's live set by the growth policy. The heap
+            # counts the closure / Map / Set rows too: a minor frees none that
+            # are old, so old dead closures alone must still bring a major.
+            if gc_gen_on() {
+                _gc_ncells: int = _gc_nlive + len(self.realm.closures)
+                    - len(self.realm.free_closure_slots)
+                    + len(self.realm.maps)
+                    - len(self.realm.free_map_slots)
+                    + len(self.realm.sets)
+                    - len(self.realm.free_set_slots);
+                if not self.realm.gc_last_minor {
+                    self.realm.gc_major_live = _gc_ncells;
+                }
+                _gc_mlive: int = self.realm.gc_major_live;
+                self.realm.gc_next_major = _gc_ncells
+                    >= _gc_mlive + (_gc_mlive * gc_growth_pct_for(_gc_mlive)) // 100;
+                self.realm.gc_threshold = gc_nursery();
             }
         }
     }
@@ -33376,20 +33458,32 @@ obj VM {
             rc_this = cl.lexical_this;
         } elif not cl.func.is_strict {
             if jsv_is_null(rc_this) or jsv_is_undefined(rc_this) {
-                rc_this = self._sloppy_this_for(cl.func);
+                # (_sloppy_this_for's common case inline: no sandbox global)
+                if cl.func.ctx_global == 0 {
+                    rc_this = self.realm.global_this;
+                } else {
+                    rc_this = self._sloppy_this_for(cl.func);
+                }
             } elif not jsv_is_any_object(rc_this) {
                 return 0;
             }
         }
-        rc_swap: bool = jsv_is_object_cell(cl.jac_module)
-            and not (cl.jac_module == self._reg_cur_module());
+        # (_reg_cur_module's cached value read inline while it is current)
+        rc_swap: bool = False;
+        if jsv_is_object_cell(cl.jac_module) {
+            if self.cur_mod_epoch != self.gw_epoch {
+                self._reg_cur_module();
+            }
+            rc_swap = not (cl.jac_module == self.cur_mod_val);
+        }
         # TDZ checks of flagged argument registers, left to right (the stack
         # code checked each where it loaded it; nothing observable runs in
         # between).
         rc_k: int = 0;
+        rc_rp: int = wrapping_add(frame.func.rcode_ptr, wrapping_mul(argpc, 8));
         if argpc >= 0 {
             while rc_k < argc {
-                rc_w: int = frame.func.rcode[argpc + rc_k];
+                rc_w: int = __mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8)));
                 if (rc_w & 32768) != 0
                     and js_is_tdz(frame.locals[frame.lb + (rc_w & 32767)]) {
                     self._reg_tdz_throw(frame, st, rc_w & 32767, orig);
@@ -33409,7 +33503,7 @@ obj VM {
         if argpc >= 0 {
             while rc_k < np and rc_k < argc {
                 self.regs[rc_base + pb + rc_k] = frame.locals[
-                    frame.lb + (frame.func.rcode[argpc + rc_k] & 32767)
+                    frame.lb + (__mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8))) & 32767)
                 ];
                 rc_k = rc_k + 1;
             }
@@ -34854,6 +34948,7 @@ obj VM {
                 and self.realm.closures[sd_idx].func.is_method
                 and jsv_is_undefined(self.realm.closures[sd_idx].home_object) {
                 self.realm.closures[sd_idx].home_object = so;
+                self.realm.closures[sd_idx].wb(self.realm.closures[sd_idx].home_object);
             }
         }
         _ = js_object_create_data_property_or_throw(so, sd_key, sv);
@@ -34945,45 +35040,45 @@ obj VM {
         return False;
     }
 
-    """RETURN from an in-loop register frame: pool it and deliver st.ret to
-    the caller's ret_reg (unless discard_ret) — _inline_return's register
-    form."""
-    def _reg_inline_return(st: ExecState) -> None {
+    """RETURN from an in-loop register frame (`fr`, the top one): pool it and
+    deliver st.ret to the caller's ret_reg (unless discard_ret) —
+    _inline_return's register form."""
+    def _reg_inline_return(fr: CallFrame, st: ExecState) -> None {
         ir_top: int = len(self.frames) - 1;
-        if self.module_fns is not self.frames[ir_top].caller_module_fns {
-            self.module_fns = self.frames[ir_top].caller_module_fns;
+        if self.module_fns is not fr.caller_module_fns {
+            self.module_fns = fr.caller_module_fns;
         }
-        ir_sb: int = self.frames[ir_top].stack_base;
+        ir_sb: int = fr.stack_base;
         while len(self.stack) > ir_sb {
             self.stack.pop();
         }
-        self.frames[ir_top].ip = 0;
-        ir_keep: bool = not self.frames[ir_top].discard_ret;
-        ir_dst: int = self.frames[ir_top].ret_reg;
+        fr.ip = 0;
+        ir_keep: bool = not fr.discard_ret;
+        ir_dst: int = fr.ret_reg;
         ir_post: JSValue = 0;
         ir_super: int = 0;
-        if self.frames[ir_top].ctor_this != 0 {
-            if jsv_is_undefined(self.frames[ir_top].ctor_this) {
+        if fr.ctor_this != 0 {
+            if jsv_is_undefined(fr.ctor_this) {
                 # an in-loop super(): finished in the caller below
                 ir_super = 1;
             } else {
                 # [[Construct]]: a non-object result is replaced by the new object.
                 if not jsv_is_any_object(st.ret) {
-                    st.ret = self.frames[ir_top].ctor_this;
+                    st.ret = fr.ctor_this;
                 }
-                ir_post = self.frames[ir_top].post_fields;
-                self.frames[ir_top].post_fields = 0;
+                ir_post = fr.post_fields;
+                fr.post_fields = 0;
             }
-            self.frames[ir_top].ctor_this = 0;
+            fr.ctor_this = 0;
         }
-        if self.frames[ir_top].win {
-            self.rtop = self.frames[ir_top].lb;
+        if fr.win {
+            self.rtop = fr.lb;
         }
-        if self.frames[ir_top].mod_swapped {
-            self._reg_mod_restore(self.frames[ir_top]);
+        if fr.mod_swapped {
+            self._reg_mod_restore(fr);
         }
         if len(self.frame_pool) < _FRAME_POOL_MAX {
-            self.frame_pool.append(self.frames[ir_top]);
+            self.frame_pool.append(fr);
         }
         del self.frames[ir_top];
         st.inline_depth = st.inline_depth - 1;
@@ -35035,7 +35130,7 @@ obj VM {
             frame.dispose_marks = [];
         }
         if st.inline_depth > 0 and not self.had_exception {
-            self._reg_inline_return(st);
+            self._reg_inline_return(frame, st);
             return True;
         }
         st.running = False;
@@ -35110,6 +35205,19 @@ obj VM {
                     return gs_r;
                 }
             }
+            # An own getter (object-literal `get x()`, defineProperty getters
+            # on instances and CommonJS exports) — the getter IC only holds
+            # inherited ones: entered in-loop like them, instead of through
+            # _get_prop_accessor's nested run.
+            gs_og: JSValue = self._reg_own_getter(va, gs_key);
+            if not jsv_is_hole(gs_og) {
+                gs_r2: int = self._reg_call_enter(
+                    frame, st, gs_og, va, (w >> 8) & 65535, pc, 0, c, pc
+                );
+                if gs_r2 != 0 {
+                    return gs_r2;
+                }
+            }
             if gs_key != 0
                 and self._reg_getfield_generic(frame, st, w, c, va, gs_key) {
                 return 0;
@@ -35117,6 +35225,37 @@ obj VM {
         }
         self._reg_bridge(frame, st, c, 1, va, 0, 0, (w >> 8) & 65535, 1);
         return 0;
+    }
+
+    """The getter of `key` when it is an own accessor of `v`, a plain ordinary
+    object (shape or dict mode; no brand, not a class object), and the getter
+    is a JS function that can run in-loop (no native / async / generator /
+    bound / arguments-object function) — else the hole."""
+    def _reg_own_getter(v: JSValue, key: int) -> JSValue {
+        if key == 0
+            or key == KEY_PROTO
+            or not js_object_is_plain_ordinary(v)
+            or js_object_brand(v) != 0
+            or (js_object_cell_flags_id(jsv_to_table_id(v)) & FLAG_IS_CLASS) != 0
+            or not js_object_has_own_accessor(v, key) {
+            return jsv_hole();
+        }
+        og_fn: JSValue = js_object_get_own_accessor_getter(v, key);
+        if not is_fn_val(og_fn) {
+            return jsv_hole();
+        }
+        og_ci: int = get_fn_idx(og_fn);
+        if og_ci < 0 or og_ci >= len(self.realm.closures) {
+            return jsv_hole();
+        }
+        if self.realm.closures[og_ci].napi_cb_ptr != 0
+            or self.realm.closures[og_ci].func.is_generator
+            or self.realm.closures[og_ci].func.is_async
+            or self.realm.closures[og_ci].func.is_bound
+            or self.realm.closures[og_ci].func.arguments_slot >= 0 {
+            return jsv_hole();
+        }
+        return og_fn;
     }
 
     """GETFIELD on an object cell that _op_get_prop answers in its generic
@@ -35201,6 +35340,14 @@ obj VM {
             gf_pk: int = shape_lookup(gf_sid, key);
             if gf_pk >= 0 {
                 if (gf_pk & SHAPE_ATTR_ACCESSOR) == 0 {
+                    # The own-slot shape this refill replaces stays as the
+                    # second entry (a shape always maps the key to one slot).
+                    if frame.func.code[c].ic_holder == 1
+                        and frame.func.code[c].ic_obj > 0
+                        and frame.func.code[c].ic_obj != gf_sid {
+                        frame.func.code[c].ic_obj2 = frame.func.code[c].ic_obj;
+                        frame.func.code[c].ic_ver2 = frame.func.code[c].ic_ver;
+                    }
                     frame.func.code[c].ic_obj = gf_sid;
                     frame.func.code[c].ic_ver = gf_pk;
                     frame.func.code[c].ic_holder = 1;
@@ -35488,13 +35635,10 @@ obj VM {
     def _reg_op_newarray(frame: CallFrame, w: int) {
         na_base: int = (w >> 8) & 65535;
         na_n: int = (w >> 24) & 65535;
-        na_items: list[JSValue] = [];
-        na_k: int = 0;
-        while na_k < na_n {
-            na_items.append(frame.locals[frame.lb + (na_base + na_k)]);
-            na_k = na_k + 1;
-        }
-        frame.locals[frame.lb + (na_base)] = js_array_create(na_items);
+        # (the elements are copied from the registers: no temporary list)
+        frame.locals[frame.lb + (na_base)] = js_array_create_range(
+            frame.locals, frame.lb + na_base, na_n
+        );
     }
 
     """GETITER dst, src, orig: for-of over an array with the default
@@ -35789,7 +35933,10 @@ obj VM {
     when an exception that escaped this frame is caught by an in-loop
     caller (bounded by the try nesting of the frames involved)."""
     def _exec_reg_resume(frame: CallFrame, st: ExecState) -> JSValue {
-        rc: list[int] = frame.func.rcode;
+        # The register words are fetched from the function's raw copy
+        # (rcode_ptr): no bounds check per dispatch, and a frame switch reloads
+        # an integer instead of a counted list reference.
+        rcp: int = frame.func.rcode_ptr;
         code: list[Instruction] = frame.func.code;
         regs: list[JSValue] = frame.locals;
         if not frame.win {
@@ -35798,7 +35945,6 @@ obj VM {
             }
         }
         lb: int = frame.lb;
-        n_rc: int = len(rc);
         pc: int = frame.rpc;
         # A resume in throw mode (_unwind_in_frame ran before this loop
         # started): continue at the handler it installed.
@@ -35842,7 +35988,7 @@ obj VM {
                 }
                 self._loop_safepoint(st);
                 if dbg {
-                    self._reg_trace(frame, pc, rc[pc]);
+                    self._reg_trace(frame, pc, frame.func.rcode[pc]);
                     rlm.safepoint_req = True;
                 }
                 if tprof {
@@ -35850,7 +35996,7 @@ obj VM {
                     rlm.safepoint_req = True;
                 }
             }
-            w = rc[pc];
+            w = __mem_load_i64(wrapping_add(rcp, wrapping_mul(pc, 8)));
             op = w & 255;
             pc = pc + 1;
             if op < 50 {
@@ -36596,12 +36742,11 @@ obj VM {
                         } elif self._reg_getfield_slow(frame, st, w, c, va, pc) == 1 {
                             # a plain-JS getter entered in-loop
                             frame = self.frames[len(self.frames) - 1];
-                            rc = frame.func.rcode;
+                            rcp = frame.func.rcode_ptr;
                             code = frame.func.code;
                             if frame.locals is not regs {
                                 regs = frame.locals;
                             }
-                            n_rc = len(rc);
                             lb = frame.lb;
                             pc = 0;
                         }
@@ -36626,12 +36771,11 @@ obj VM {
                         == 1 {
                         # a plain-JS setter entered in-loop (result dropped)
                         frame = self.frames[len(self.frames) - 1];
-                        rc = frame.func.rcode;
+                        rcp = frame.func.rcode_ptr;
                         code = frame.func.code;
                         if frame.locals is not regs {
                             regs = frame.locals;
                         }
-                        n_rc = len(rc);
                         lb = frame.lb;
                         pc = 0;
                     }
@@ -36644,7 +36788,7 @@ obj VM {
                     yi = pc + c;
                     br = -1;
                     if op == 91 {
-                        br = rc[pc];
+                        br = __mem_load_i64(wrapping_add(rcp, wrapping_mul(pc, 8)));
                         xi = pc + 1;
                         yi = pc + 1 + c;
                     }
@@ -36668,12 +36812,11 @@ obj VM {
                             br = br & 32767;
                         }
                         cr = 0;
+                        # (a closure value is never a native, a proxy or
+                        # [[IsHTMLDDA]]: is_fn_val excludes them)
                         if (code[frame.func.rorig[pc - 1]].arg3 & 8) == 0
                             and len(frame.with_objs) == 0
-                            and is_fn_val(va)
-                            and not is_native_val(va)
-                            and not js_is_proxy(va)
-                            and not jsv_is_htmldda(va) {
+                            and is_fn_val(va) {
                             cr = self._reg_call_enter(
                                 frame,
                                 st,
@@ -36699,12 +36842,11 @@ obj VM {
                         }
                         if cr == 1 {
                             frame = self.frames[len(self.frames) - 1];
-                            rc = frame.func.rcode;
+                            rcp = frame.func.rcode_ptr;
                             code = frame.func.code;
                             if frame.locals is not regs {
                                 regs = frame.locals;
                             }
-                            n_rc = len(rc);
                             lb = frame.lb;
                             pc = 0;
                         } elif cr == 0 {
@@ -36755,12 +36897,11 @@ obj VM {
                     }
                     if ok and self._reg_return(frame, st, vr, pc) {
                         frame = self.frames[len(self.frames) - 1];
-                        rc = frame.func.rcode;
+                        rcp = frame.func.rcode_ptr;
                         code = frame.func.code;
                         if frame.locals is not regs {
                             regs = frame.locals;
                         }
-                        n_rc = len(rc);
                         lb = frame.lb;
                         pc = frame.rpc;
                     }
@@ -36863,12 +37004,11 @@ obj VM {
                     # NEW dst, ctor, argc [args...] (see _reg_op_new)
                     if self._reg_op_new(frame, st, w, pc) == 1 {
                         frame = self.frames[len(self.frames) - 1];
-                        rc = frame.func.rcode;
+                        rcp = frame.func.rcode_ptr;
                         code = frame.func.code;
                         if frame.locals is not regs {
                             regs = frame.locals;
                         }
-                        n_rc = len(rc);
                         lb = frame.lb;
                         pc = 0;
                     } else {
@@ -36878,12 +37018,11 @@ obj VM {
                     # TAILCALL dst, callee, argc [args] (see _reg_op_tailcall)
                     if self._reg_op_tailcall(frame, st, w, pc) == 1 {
                         frame = self.frames[len(self.frames) - 1];
-                        rc = frame.func.rcode;
+                        rcp = frame.func.rcode_ptr;
                         code = frame.func.code;
                         if frame.locals is not regs {
                             regs = frame.locals;
                         }
-                        n_rc = len(rc);
                         lb = frame.lb;
                         pc = 0;
                     } else {
@@ -36900,12 +37039,11 @@ obj VM {
                     if code[(w >> 40) & 8388607].opcode == Opcode.SUPER_CALL
                         and self._reg_super_enter(frame, st, w, pc) == 1 {
                         frame = self.frames[len(self.frames) - 1];
-                        rc = frame.func.rcode;
+                        rcp = frame.func.rcode_ptr;
                         code = frame.func.code;
                         if frame.locals is not regs {
                             regs = frame.locals;
                         }
-                        n_rc = len(rc);
                         lb = frame.lb;
                         pc = 0;
                     } elif not self._reg_stk_fast(frame, st, w) {
@@ -42047,6 +42185,7 @@ def _vm_function_define_property(
         }
         if applied.has_value {
             fn_cl.prototype_obj = applied.value;
+            fn_cl.wb(fn_cl.prototype_obj);
         }
         if applied.has_writable {
             fn_cl.prototype_writable = applied.writable;

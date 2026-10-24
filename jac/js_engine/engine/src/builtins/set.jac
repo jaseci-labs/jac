@@ -9,6 +9,8 @@ JSSetStorage:
 ECMAScript spec : §24.2 — Set Objects
 """
 
+import from engine.src.runtime.jscell { FLAG_OLD }
+import from engine.src.runtime.gc_barrier { gc_log_val, gc_gen_on }
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -243,10 +245,16 @@ def:pub js_set_create_with_proto(proto: JSValue) -> JSValue {
         del _SET_REALM.free_set_slots[_fss_last];
         _SET_REALM.sets[set_idx] = ss;  # fresh ss clears the DEAD tombstone
         _SET_REALM.sets_mark_epoch[set_idx] = 0;
+        if gc_gen_on() {
+            _SET_REALM.gc_young_sets.append(set_idx);
+        }
     } else {
         set_idx = len(_SET_REALM.sets);
         _SET_REALM.sets.append(ss);
         _SET_REALM.sets_mark_epoch.append(0);
+        if gc_gen_on() {
+            _SET_REALM.gc_young_sets.append(len(_SET_REALM.sets) - 1);
+        }
     }
     gc_note_alloc(_SET_REALM);  # G0.4: account set allocation
     s: JSValue = js_undefined();
@@ -278,10 +286,16 @@ def:pub js_weakset_create_with_proto(proto: JSValue) -> JSValue {
         del _SET_REALM.free_set_slots[_fss_last];
         _SET_REALM.sets[set_idx] = ss;  # fresh ss clears the DEAD tombstone
         _SET_REALM.sets_mark_epoch[set_idx] = 0;
+        if gc_gen_on() {
+            _SET_REALM.gc_young_sets.append(set_idx);
+        }
     } else {
         set_idx = len(_SET_REALM.sets);
         _SET_REALM.sets.append(ss);
         _SET_REALM.sets_mark_epoch.append(0);
+        if gc_gen_on() {
+            _SET_REALM.gc_young_sets.append(len(_SET_REALM.sets) - 1);
+        }
     }
     gc_note_alloc(_SET_REALM);  # G0.4: account set allocation
     s: JSValue = js_undefined();
@@ -305,6 +319,9 @@ def:pub js_set_add(s: JSValue, val: JSValue) -> JSValue {
     _set_own(ss);
     ni: int = len(ss.ekeys);
     ss.ekeys.append(val);
+    if (ss.cell_flags & FLAG_OLD) != 0 {
+        gc_log_val(val);
+    }
     if ss.head < 0 {
         ss.head = ni;
     }
@@ -534,6 +551,9 @@ def:pub js_weakset_add(s: JSValue, val: JSValue) -> JSValue {
         i = i + 1;
     }
     ss.items.append(val);
+    if (ss.cell_flags & FLAG_OLD) != 0 {
+        gc_log_val(val);
+    }
     return s;
 }
 

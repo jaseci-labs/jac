@@ -132,6 +132,9 @@ def:pub js_function_create_src(
         del _FN_REALM.free_closure_slots[last];
         _FN_REALM.closures[idx] = cl;
         _FN_REALM.closures_mark_epoch[idx] = 0;
+        if gc_gen_on() {
+            _FN_REALM.gc_young_closures.append(idx);
+        }
         # Reuse the parallel function metadata slot if it exists.
         if idx < len(_FN_REALM.functions) {
             _FN_REALM.functions[idx] = JSFunctionMeta(
@@ -145,6 +148,9 @@ def:pub js_function_create_src(
     idx: int = len(_FN_REALM.closures);
     _FN_REALM.closures.append(cl);
     _FN_REALM.closures_mark_epoch.append(0);  # A2.2b GC mark bitmap
+    if gc_gen_on() {
+        _FN_REALM.gc_young_closures.append(len(_FN_REALM.closures) - 1);
+    }
     gc_note_alloc(_FN_REALM);  # G0.4: account closure allocation
 
     # Pad _FN_REALM.functions with dummy entries for any closures that were created
@@ -453,6 +459,9 @@ def:pub js_Function_prototype_bind(
     cl: JSClosure = make_closure(stub_fn, partial_args, bound_this, js_undefined());
     _FN_REALM.closures.append(cl);
     _FN_REALM.closures_mark_epoch.append(0);  # A2.2b GC mark bitmap
+    if gc_gen_on() {
+        _FN_REALM.gc_young_closures.append(len(_FN_REALM.closures) - 1);
+    }
     gc_note_alloc(_FN_REALM);  # G0.4: account closure allocation
     idx: int = len(_FN_REALM.closures) - 1;
 

@@ -1,55 +1,6 @@
 """The _blake2 module: blake2b and blake2s over blake2b's generated methods;
 only their constructors differ."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyDict_SetItemString,
-    PyLong_FromLong,
-    PyModule_AddIntConstant,
-    PyObject,
-    PyType_GetDict,
-    Py_TYPE,
-    jacpy_release
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned,
-    jacpy_binding_state_get
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.blake2 {
-    blake2b_doc,
-    blake2b_methods,
-    blake2s_doc,
-    py_blake2b_new_new,
-    py_blake2s_new_new
-}
-import from jaclang.runtime.python.modules.hashlib { HASHLIB_GIL_MINSIZE }
-import from jaclang.runtime.python.modules.blake2 {
-    Blake2_token,
-    HACL_HASH_BLAKE2B_KEY_BYTES,
-    HACL_HASH_BLAKE2B_OUT_BYTES,
-    HACL_HASH_BLAKE2B_PERSONAL_BYTES,
-    HACL_HASH_BLAKE2B_SALT_BYTES,
-    HACL_HASH_BLAKE2S_KEY_BYTES,
-    HACL_HASH_BLAKE2S_OUT_BYTES,
-    HACL_HASH_BLAKE2S_PERSONAL_BYTES,
-    HACL_HASH_BLAKE2S_SALT_BYTES,
-    get_block_size,
-    get_digest_size,
-    get_name
-}
-
 def:priv blake2_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, Blake2_token.definition_of(Py_TYPE(instance)));
 }

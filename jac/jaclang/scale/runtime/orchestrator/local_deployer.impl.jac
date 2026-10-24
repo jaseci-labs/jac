@@ -53,11 +53,6 @@ impl LocalDeployer.scale_service(name: str, replicas: int) -> bool {
 }
 
 impl LocalDeployer.status -> dict[str, dict[str, any]] {
-    import from jaclang.scale.runtime.orchestrator.process_manager {
-        _read_pidfile,
-        _read_portfile,
-        _pid_alive
-    }
     pm = self._ensure_pm();
 
     for (name, svc_entry) in self.registry.entries.items() {

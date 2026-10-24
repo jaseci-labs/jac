@@ -1,55 +1,10 @@
-def _effective_bound(q: GraphQuery) -> (tuple[(int | None), int] | None) {
-    if q.limit is not None {
-        return (q.limit, q.offset);
-    }
-    slc = q.slc;
-    if slc is None {
-        return None;
-    }
-    (start, stop, step) = (slc.start, slc.stop, slc.step);
-    if step is not None and step != 1 {
-        return None;
-    }
-    if start is not None and (not isinstance(start, int) or start < 0) {
-        return None;
-    }
-    if stop is not None and (not isinstance(stop, int) or stop < 0) {
-        return None;
-    }
-    off = start or 0;
-    return (None if stop is None else max(0, stop - off), off);
-}
+def _effective_bound(q: GraphQuery) -> (tuple[(int | None), int] | None);
 
 
-def _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None) {
-    if not access_gated() {
-        return None;
-    }
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
-    import from jaclang.runtime.archetype { Archetype, Root }
-    base = Archetype?.__jac_access__;
-    for hop in q.hops[:upto] {
-        nd = hop.nd;
-        if nd is None {
-            return None;
-        }
-        types = nd if isinstance(nd, tuple) else (nd, );
-        for nt in types {
-            if nt?.__jac_access__ is not base
-                or (isinstance(nt, type) and issubclass(Root, nt)) {
-                return None;
-            }
-        }
-    }
-    jctx = JacRuntimeInterface.get_context();
-    ur = jctx?.user_root;
-    return str(ur.id) if ur is not None else None;
-}
+def _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None);
 
 
-def _bound_pushable -> bool {
-    return not access_gated();
-}
+def _bound_pushable -> bool;
 
 
 impl _sql_pairs(
@@ -99,6 +54,28 @@ impl _sql_pairs(
         }
         tail = list(cq.residual.get(last) or []);
     }
+    if upto > 0
+        and len(origin_ids) == 1
+        and eff.limit is None
+        and not eff.offset
+        and mem.batching() {
+        key = (cq.sql, _param_key(cq.params));
+        hit = mem.hop_cached(key, origin_ids[0]);
+        if hit is not None {
+            return (hit, tail);
+        }
+        siblings = mem.hop_siblings(origin_ids[0]);
+        if len(siblings) > 1 and origin_ids[0] in siblings {
+            by_origin = _hop_by_origin(store, cq, list(siblings));
+            mem.hop_store(key, by_origin);
+            reached = _unique_nodes([p for pairs in by_origin.values() for p in pairs]);
+            if reached {
+                mem.batch_get(reached);
+                mem.note_siblings(reached);
+            }
+            return (by_origin.get(origin_ids[0], []), tail);
+        }
+    }
     cq.params['origin'] = [str(i) for i in origin_ids];
     out: list[tuple[(UUID | None), (UUID | None)]] = [];
     for r in store.rows(cq.sql, cq.params) {
@@ -110,84 +87,28 @@ impl _sql_pairs(
 }
 
 
-def _tail_ok(anchor: Anchor, tail: list[QPred]) -> bool {
-    arch = anchor.archetype;
-    if arch is None {
-        return False;
-    }
-    for p in tail {
-        if not p.matches(pred_subject(arch, p)) {
-            return False;
-        }
-    }
-    return True;
-}
+def _hop_by_origin(
+    store: any, cq: any, origins: list[UUID]
+) -> dict[UUID, list[tuple[(UUID | None), (UUID | None)]]];
+
+
+def _param_key(params: dict[str, any]) -> tuple[tuple[str, str], ...];
+
+
+def _tail_ok(anchor: Anchor, tail: list[QPred]) -> bool;
 
 
 def _resolve_pairs(
     mem: Session, q: GraphQuery, upto: int
-) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred]] {
-    origins = origin_anchors(q);
-    local: dict[any, Anchor] = {};
-    sql_ids: list[UUID] = [];
-    mem_origins: list[Anchor] = [];
-    for oanch in origins {
-        if mem.store is not None and oanch.persistent {
-            sql_ids.append(oanch.ensure_id());
-        } else {
-            mem_origins.append(oanch);
-        }
-        local[anchor_key(oanch)] = oanch;
-    }
-    (pairs, tail) = _sql_pairs(mem, sql_ids, q, upto);
-    if upto == 0 {
-        pairs = [(i, None) for i in sql_ids];
-    }
-    for (a, e) in walk(mem_origins, q, upto, access_gated()) {
-        akey = anchor_key(a);
-        local[akey] = a;
-        ekey: any = None;
-        if e is not None {
-            ekey = anchor_key(e);
-            local[ekey] = e;
-        }
-        pairs.append((akey, ekey));
-    }
-    return (pairs, local, tail);
-}
+) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred]];
 
 
 def _materialize_ids(
     mem: Session, ids: list[any], local: dict[any, Anchor]
-) -> list[Anchor] {
-    missing = [
-        i
-        for i in ids
-        if i not in local
-    ];
-    fetched = mem.batch_get(missing) if missing else {};
-    out: list[Anchor] = [];
-    for i in ids {
-        a = local.get(i) or fetched.get(i);
-        if a is not None and a.is_populated() and a.archetype is not None {
-            out.append(a);
-        }
-    }
-    return out;
-}
+) -> list[Anchor];
 
 
-def _unique_nodes(pairs: list[tuple[any, any]]) -> list[any] {
-    seen: set = set();
-    out: list[any] = [];
-    for (nid, _) in pairs {
-        if nid is not None and nid not in seen {
-            seen.add(nid);
-            out.append(nid);
-        }
-    }
-    return out;
-}
+def _unique_nodes(pairs: list[tuple[any, any]]) -> list[any];
 
 
 impl resolve_query_prefix(mem: Session, q: GraphQuery, upto: int) -> list[UUID] {
@@ -212,6 +133,13 @@ impl resolve_query(mem: Session, q: GraphQuery) -> list[Anchor] {
     }
     (pairs, local, tail) = _resolve_pairs(mem, q, len(q.hops));
     ids = _unique_nodes(pairs);
+    mem.note_siblings(
+        [
+            i
+            for i in ids
+            if isinstance(i, UUID)
+        ]
+    );
     out = _materialize_ids(mem, ids, local);
     if tail {
         out = [
@@ -240,34 +168,10 @@ impl resolve_query(mem: Session, q: GraphQuery) -> list[Anchor] {
 }
 
 
-def _acl_fully_pushed(mem: Session, q: GraphQuery) -> bool {
-    if mem.store is None or _acl_pushdown_root(q, len(q.hops)) is None {
-        return False;
-    }
-    origins = origin_anchors(q);
-    if not origins {
-        return False;
-    }
-    for oanch in origins {
-        if not oanch.persistent {
-            return False;
-        }
-    }
-    return True;
-}
+def _acl_fully_pushed(mem: Session, q: GraphQuery) -> bool;
 
 
-def _pushed_bound(mem: Session, q: GraphQuery) -> bool {
-    if mem.store is None or not _bound_pushable() {
-        return False;
-    }
-    for oanch in origin_anchors(q) {
-        if not oanch.persistent {
-            return False;
-        }
-    }
-    return bool(origin_anchors(q));
-}
+def _pushed_bound(mem: Session, q: GraphQuery) -> bool;
 
 
 impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
@@ -368,9 +272,7 @@ impl resolve_query_count(mem: Session, q: GraphQuery) -> int {
 }
 
 
-def _resolve_for(mem: Session, q: GraphQuery) -> list[Anchor] {
-    return resolve_query_edges(mem, q) if q.edges_only else resolve_query(mem, q);
-}
+def _resolve_for(mem: Session, q: GraphQuery) -> list[Anchor];
 
 
 impl resolve_query_exists(mem: Session, q: GraphQuery) -> bool {
@@ -441,7 +343,6 @@ impl LazyRefs._count(self: LazyRefs) -> int {
 
 
 impl LazyRefs._mem(self: LazyRefs) -> any {
-    import from jaclang.runtime.runtime { JacRuntimeInterface }
     return JacRuntimeInterface.get_context().mem;
 }
 
@@ -596,4 +497,199 @@ impl LazyRefs.count(self: LazyRefs, item: any) -> int {
 impl LazyRefs.copy(self: LazyRefs) -> list[any] {
     self._realize();
     return list(self);
+}
+
+impl _effective_bound(q: GraphQuery) -> (tuple[(int | None), int] | None) {
+    if q.limit is not None {
+        return (q.limit, q.offset);
+    }
+    slc = q.slc;
+    if slc is None {
+        return None;
+    }
+    (start, stop, step) = (slc.start, slc.stop, slc.step);
+    if step is not None and step != 1 {
+        return None;
+    }
+    if start is not None and (not isinstance(start, int) or start < 0) {
+        return None;
+    }
+    if stop is not None and (not isinstance(stop, int) or stop < 0) {
+        return None;
+    }
+    off = start or 0;
+    return (None if stop is None else max(0, stop - off), off);
+}
+
+
+impl _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None) {
+    if not access_gated() {
+        return None;
+    }
+
+    base = Archetype?.__jac_access__;
+    for hop in q.hops[:upto] {
+        nd = hop.nd;
+        if nd is None {
+            return None;
+        }
+        types = nd if isinstance(nd, tuple) else (nd, );
+        for nt in types {
+            if nt?.__jac_access__ is not base
+                or (isinstance(nt, type) and issubclass(Root, nt)) {
+                return None;
+            }
+        }
+    }
+    jctx = JacRuntimeInterface.get_context();
+    ur = jctx?.user_root;
+    return str(ur.id) if ur is not None else None;
+}
+
+
+impl _bound_pushable -> bool {
+    return not access_gated();
+}
+
+
+impl _hop_by_origin(
+    store: any, cq: any, origins: list[UUID]
+) -> dict[UUID, list[tuple[(UUID | None), (UUID | None)]]] {
+    by_origin: dict[UUID, list[tuple[(UUID | None), (UUID | None)]]] = {
+        o: [] for o in origins
+    };
+    params = dict(cq.params);
+    params['origin'] = [str(o) for o in origins];
+    for r in store.rows(cq.sql, params) {
+        nid = UUID(str(r[0])) if r[0] is not None else None;
+        eid = UUID(str(r[1])) if r[1] is not None else None;
+        by_origin[UUID(str(r[2]))].append((nid, eid));
+    }
+    return by_origin;
+}
+
+
+impl _param_key(params: dict[str, any]) -> tuple[tuple[str, str], ...] {
+    return tuple(
+        sorted(
+            (k, repr(v))
+            for (k, v) in params.items()
+            if k != 'origin'
+        )
+    );
+}
+
+
+impl _tail_ok(anchor: Anchor, tail: list[QPred]) -> bool {
+    arch = anchor.archetype;
+    if arch is None {
+        return False;
+    }
+    for p in tail {
+        if not p.matches(pred_subject(arch, p)) {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+impl _resolve_pairs(
+    mem: Session, q: GraphQuery, upto: int
+) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred]] {
+    origins = origin_anchors(q);
+    local: dict[any, Anchor] = {};
+    sql_ids: list[UUID] = [];
+    mem_origins: list[Anchor] = [];
+    for oanch in origins {
+        if mem.store is not None and oanch.persistent {
+            sql_ids.append(oanch.ensure_id());
+        } else {
+            mem_origins.append(oanch);
+        }
+        local[anchor_key(oanch)] = oanch;
+    }
+    (pairs, tail) = _sql_pairs(mem, sql_ids, q, upto);
+    if upto == 0 {
+        pairs = [(i, None) for i in sql_ids];
+    }
+    for (a, e) in walk(mem_origins, q, upto, access_gated()) {
+        akey = anchor_key(a);
+        local[akey] = a;
+        ekey: any = None;
+        if e is not None {
+            ekey = anchor_key(e);
+            local[ekey] = e;
+        }
+        pairs.append((akey, ekey));
+    }
+    return (pairs, local, tail);
+}
+
+
+impl _materialize_ids(
+    mem: Session, ids: list[any], local: dict[any, Anchor]
+) -> list[Anchor] {
+    missing = [
+        i
+        for i in ids
+        if i not in local
+    ];
+    fetched = mem.batch_get(missing) if missing else {};
+    out: list[Anchor] = [];
+    for i in ids {
+        a = local.get(i) or fetched.get(i);
+        if a is not None and a.is_populated() and a.archetype is not None {
+            out.append(a);
+        }
+    }
+    return out;
+}
+
+
+impl _unique_nodes(pairs: list[tuple[any, any]]) -> list[any] {
+    seen: set = set();
+    out: list[any] = [];
+    for (nid, _) in pairs {
+        if nid is not None and nid not in seen {
+            seen.add(nid);
+            out.append(nid);
+        }
+    }
+    return out;
+}
+
+
+impl _acl_fully_pushed(mem: Session, q: GraphQuery) -> bool {
+    if mem.store is None or _acl_pushdown_root(q, len(q.hops)) is None {
+        return False;
+    }
+    origins = origin_anchors(q);
+    if not origins {
+        return False;
+    }
+    for oanch in origins {
+        if not oanch.persistent {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+impl _pushed_bound(mem: Session, q: GraphQuery) -> bool {
+    if mem.store is None or not _bound_pushable() {
+        return False;
+    }
+    for oanch in origin_anchors(q) {
+        if not oanch.persistent {
+            return False;
+        }
+    }
+    return bool(origin_anchors(q));
+}
+
+
+impl _resolve_for(mem: Session, q: GraphQuery) -> list[Anchor] {
+    return resolve_query_edges(mem, q) if q.edges_only else resolve_query(mem, q);
 }

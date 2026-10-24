@@ -10,43 +10,6 @@ ENTER_HASHLIB and LEAVE_HASHLIB do. The lock is a PyThread lock, allocated
 when the object first needs it.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_NoMemory,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_BufferError,
-    PyExc_SystemError,
-    PyExc_TypeError,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject,
-    PyObject_CheckBuffer,
-    PyThread_acquire_lock,
-    PyThread_allocate_lock,
-    PyThread_free_lock,
-    PyThread_release_lock,
-    Py_NewRef,
-    Py_TYPE,
-    _Py_strhex,
-    jacpy_bytes_from_memory,
-    jacpy_crypto_compare,
-    jacpy_is_unicode,
-    jacpy_release,
-    jacpy_unicode_ascii
-}
-import from jaclang.runtime.python.capi { object_error, type_name }
-import from jaclang.runtime.python.object_model.bool { PyBool_FromLong }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.buffer { BufferArgument }
-import from jaclang.runtime.python.bindings.converters { ClassToken, borrowed_none }
-import from jaclang.runtime.python.bindings.type { jacpy_binding_allocate }
-import from jaclang.runtime.python.bindings.payload {
-    jacpy_binding_native_get,
-    jacpy_binding_native_present,
-    jacpy_binding_native_set
-}
-
 glob HASHLIB_GIL_MINSIZE: i64 = 2048,
      UINT32_MAX: i64 = 0xFFFFFFFF;
 

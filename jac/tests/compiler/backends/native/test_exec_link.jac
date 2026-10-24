@@ -1,4 +1,3 @@
-import from jaclang.compiler.backends.native.entry_points { inject_main }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -9,11 +8,11 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-import from jaclang.compiler.backends.native.static_link {
-    collect_musl_static,
-    musl_lib_dir
+import from jaclang.compiler.backends.native.native_link {
+    NativeLinkJob,
+    link_native,
+    musl_lib_dir,
+    musl_runtime
 }
 import from tests.support { program_ir }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
@@ -33,13 +32,15 @@ def _entry_definitions(ir_txt: str) -> int {
     );
 }
 
-def _emit_object(ir_txt: str, triple: str) -> bytes {
+def _emit_object(
+    ir_txt: str, triple: str, reloc: str = "default", codemodel: str = "large"
+) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     mod = llvm.parse_assembly(ir_txt);
     mod.verify();
     tm = llvm.Target.from_triple(triple).create_target_machine(
-        opt=2, codemodel="large"
+        opt=2, reloc=reloc, codemodel=codemodel
     );
     return tm.emit_object(mod);
 }
@@ -64,18 +65,35 @@ def _link_static(relobj: bytes, triple: str, out: str) -> bool {
     # Static-link against vendored musl (libc.a + libzigc.a + compiler-rt + crt),
     # exactly as `jac build --native` does. Returns False if the musl runtime is not
     # vendored in this environment (callers skip the link/run in that case).
-    musl = collect_musl_static([relobj], triple);
-    if musl is None {
+    runtime = musl_runtime(triple);
+    if runtime is None {
         return False;
     }
-    (members, crt) = musl;
-    return ElfLinker.link(
-        objects=[relobj],
-        output_path=out,
-        needed_libs=[],
-        crt_objects=crt,
-        archive_members=members,
-        static_link=True
+    (crt, archives) = runtime;
+    link_native(
+        NativeLinkJob(
+            platform="elf",
+            triple=triple,
+            output_path=out,
+            objects=[relobj],
+            crt_objects=crt,
+            archives=archives,
+            static_musl=True
+        )
+    );
+    return True;
+}
+
+
+def _link_macho(relobj: bytes, triple: str, out: str) {
+    link_native(
+        NativeLinkJob(
+            platform="macho",
+            triple=triple,
+            output_path=out,
+            objects=[relobj],
+            needed_libs=["/usr/lib/libSystem.B.dylib"]
+        )
     );
 }
 
@@ -121,7 +139,7 @@ test "ELF executable links, runs, and prints through the C ABI" {
         return;
     }
     ok = _link_static(relobj, triple, out);
-    assert ok , "ElfLinker static link returned False";
+    assert ok , "static musl link did not run";
     raw = Path(out).read_bytes();
     assert raw[:4] == b"\x7fELF" , "not an ELF image";
     e_type = struct.unpack_from("<H", raw, 16)[0];
@@ -164,7 +182,7 @@ test "concatenated `with entry` blocks run in source order (issue #6660)" {
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
         i = res.stdout.find(b"FIRST");
@@ -187,7 +205,7 @@ test "a terminating `with entry` block stops later blocks (issue #6660)" {
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry_terminator");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
 
         assert res.returncode != 0 , f"expected non-zero exit from uncaught raise, got 0: {res.stdout}";
@@ -208,7 +226,7 @@ test "glob-init runs before every `with entry` block (issue #6660)" {
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry_glob");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
 
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
@@ -229,7 +247,7 @@ test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
         d = tempfile.mkdtemp();
         out = os.path.join(d, "xmod_exc_main");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"cross-module raise did not unwind (exit {res.returncode}); stderr={res.stderr}";
         assert b"XMOD_CAUGHT" in res.stdout , f"handler did not catch cross-module raise: {res.stdout}";
@@ -241,16 +259,10 @@ test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
 
 test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
     triple = "x86_64-apple-darwin";
-    relobj = _emit_object(program_ir(FIXTURE, triple), triple);
+    relobj = _emit_object(program_ir(FIXTURE, triple), triple, "pic", "small");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
-    ok = MachOLinker.link(
-        objects=[relobj],
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=False
-    );
-    assert ok , "MachOLinker.link(shared=False) returned False";
+    _link_macho(relobj, triple, out);
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
     filetype = struct.unpack_from("<I", raw, 12)[0];
@@ -273,16 +285,10 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
 
 test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
     triple = "arm64-apple-darwin";
-    relobj = _emit_object(program_ir(FIXTURE, triple), triple);
+    relobj = _emit_object(program_ir(FIXTURE, triple), triple, "pic", "small");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke_arm64");
-    ok = MachOLinker.link(
-        objects=[relobj],
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=False
-    );
-    assert ok , "MachOLinker.link(shared=False) returned False for arm64";
+    _link_macho(relobj, triple, out);
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 12)[0] == 2 , "expected MH_EXECUTE (2)";
     sig_off = _codesig_off(raw);

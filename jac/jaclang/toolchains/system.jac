@@ -2,152 +2,24 @@ import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from jaclang.toolchains.host { run_step }
-import from jaclang.toolchains.store { offline }
 
-def install_linux_packages(packages: dict[str, list[str]]) {
-    if offline() {
-        raise RuntimeError(
-            "Required system libraries are missing and jac.toml sets `[network] offline`. Run setup online first."
-        );
-    }
-    for (manager, names) in packages.items() {
-        binary = shutil.which(manager);
-        if not binary {
-            continue;
-        }
-        prefix: list[str] = [];
-        if os.geteuid() != 0 {
-            sudo = shutil.which("sudo");
-            if not sudo {
-                raise RuntimeError(
-                    f"Administrator access is needed to install {', '.join(
-                        names
-                    )} using {manager}. Install these packages and retry."
-                );
-            }
-            prefix = [sudo];
-            if not os.isatty(0) {
-                prefix.append("-n");
-            }
-        }
-        if manager == "apt-get" {
-            run_step(
-                "Updating system package index (administrator access required)",
-                prefix + [binary, "update"],
-                Path.cwd(),
-                dict(os.environ)
-            );
-        }
-        options = ["-S", "--needed", "--noconfirm"]
-            if manager == "pacman"
-            else ["install", "-y"];
-        if manager == "apt-get" {
-            options.append("--no-install-recommends");
-        }
-        if manager == "dnf" {
-            options.append("--setopt=install_weak_deps=False");
-        }
-        run_step(
-            "Installing native build dependencies: " + ", ".join(names),
-            prefix + [binary] + options + names,
-            Path.cwd(),
-            dict(os.environ)
-        );
-        return;
-    }
-    raise RuntimeError(
-        "No supported system package manager found. Install a C++ compiler, pkg-config, GTK3 and WebKitGTK 4.1, then retry."
-    );
-}
+def install_linux_packages(packages: dict[str, list[str]]);
 
-def webkit_module -> str {
-    pkg = shutil.which("pkg-config");
-    if not pkg {
-        return "";
-    }
-    for name in ["webkit2gtk-4.1", "webkit2gtk-4.0"] {
-        if subprocess.run([pkg, "--exists", name], capture_output=True).returncode
-            == 0 {
-            return name;
-        }
-    }
-    return "";
-}
+def webkit_module -> str;
 
-def ensure_linux_desktop {
-    import from jaclang.toolchains.host { host_platform }
-    host = host_platform();
-    if not host.startswith("linux-") {
-        raise RuntimeError(f"WebKitGTK provisioning needs a Linux host, not {host}.");
-    }
-    if desktop_system_ready() {
-        return;
-    }
-    install_linux_packages(
-        {
-            "apt-get": ["g++", "pkg-config", "libgtk-3-dev", "libwebkit2gtk-4.1-dev"],
-            "dnf": [
-                "gcc-c++",
-                "pkgconf-pkg-config",
-                "gtk3-devel",
-                "webkit2gtk4.1-devel"
-            ],
-            "pacman": ["gcc", "pkgconf", "gtk3", "webkit2gtk-4.1"]
-        }
-    );
-    if not desktop_system_ready() {
-        raise RuntimeError(
-            "Desktop dependencies remain unavailable after package installation."
-        );
-    }
-}
+def ensure_linux_desktop;
 
 
-def ensure_mac_desktop {
-    if mac_desktop_ready() {
-        return;
-    }
-    raise RuntimeError(
-        "The desktop target needs the Xcode Command Line Tools (clang++ and the "
-        "WebKit SDK). Run `xcode-select --install`, then retry."
-    );
-}
+def ensure_mac_desktop;
 
 
-def mac_desktop_ready -> bool {
-    selector = shutil.which("xcode-select");
-    if not selector
-        or subprocess.run([selector, "-p"], capture_output=True).returncode != 0 {
-        return False;
-    }
-    return bool(shutil.which("clang++"));
-}
+def mac_desktop_ready -> bool;
 
 
-def ensure_desktop_host -> str {
-    import from jaclang.toolchains.host { host_platform }
-    host = host_platform();
-    if host.startswith("linux-") {
-        ensure_linux_desktop();
-    } elif host.startswith("mac-") {
-        ensure_mac_desktop();
-    } else {
-        raise RuntimeError(
-            "Desktop apps build on Linux (WebKitGTK) and macOS (WKWebView); "
-            f"{host} has no native webview backend yet."
-        );
-    }
-    return host;
-}
+def ensure_desktop_host -> str;
 
 
-def ensure_patchelf -> str {
-    import from jaclang.toolchains.tools { tool_path }
-    return str(tool_path("patchelf"));
-}
+def ensure_patchelf -> str;
 
 
-def desktop_system_ready -> bool {
-    return bool(webkit_module() and shutil.which("g++"));
-}
+def desktop_system_ready -> bool;

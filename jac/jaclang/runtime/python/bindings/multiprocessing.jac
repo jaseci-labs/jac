@@ -1,45 +1,5 @@
 """The _multiprocessing module: SemLock, sem_unlink() and the flags dict."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    PyDict_New,
-    PyDict_SetItemString,
-    PyLong_FromLong,
-    PyObject,
-    PyType_GetDict
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeFlags,
-    TypeHooks
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.multiprocessing {
-    SemLock_methods,
-    _multiprocessing_SemLock_new,
-    module_methods
-}
-import from jaclang.runtime.python.modules.multiprocessing {
-    SEMLOCK_FIELDS_SIZE,
-    SemLock_token,
-    semlock_members
-}
-import from jaclang.runtime.python.modules.multiprocessing_constants { SEM_VALUE_MAX }
-import from jaclang.runtime.python.modules.semaphore_platform {
-    HAVE_BROKEN_SEM_GETVALUE,
-    HAVE_BROKEN_SEM_UNLINK,
-    HAVE_SEM_OPEN,
-    HAVE_SEM_TIMEDWAIT
-}
-
 glob:priv INT_MAX: i64 = 0x7FFFFFFF;
 
 def:priv semlock_dealloc(instance: ptr[PyObject]) {

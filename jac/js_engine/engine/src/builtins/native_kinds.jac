@@ -992,7 +992,9 @@ glob:pub NATIVE_KIND_CONSOLE_LOG: int = 1,
      NATIVE_KIND_NET_TLS_TRY_WRITE: int = 1103,
      NATIVE_KIND_NET_WAIT_IO: int = 1104,
      NATIVE_KIND_NET_TCP_SHUTDOWN: int = 1105,
-     NATIVE_KIND_LAST: int = 1106;
+     NATIVE_KIND_PROMISE_THEN_RAW: int = 1106,
+     NATIVE_KIND_PROMISE_THEN_SETUP: int = 1107,
+     NATIVE_KIND_LAST: int = 1108;
 
 
 # ── Global numeric / string utilities ────────────────────────────────────────
