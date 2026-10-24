@@ -663,6 +663,7 @@ select = ["combine-has", "remove-empty-parens"]
 | `strip-comments` | `W3050` | Remove **all** comments | all |
 | `strip-docstrings` | `W3051` | Remove **all** docstrings | all |
 | `separate-impls` | `W3055` | Move every function, method and ability body into an `impl` in its module's `.impl.jac` annex | all |
+| `impls-in-annex` | `W3056` | Keep every `impl` in an annex inside an impl folder: none in the module itself, no annex beside it | all |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
 
@@ -670,7 +671,9 @@ Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. Se
 
 `strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. `separate-impls` restructures every module: `jac fmt --lintfix` keeps each declaration in place (`def f(x: int) -> int;`) and moves its body into `impl f(x: int) -> int { ... }` in the module's impl annex, in declaration order. The annex is the module's existing `.impl.jac` file, or a new `impl/<module>.impl.jac` beside it. `impl` blocks already in the module stay where they are. Bodies an `impl` cannot name stay inline: nested functions, nameless abilities (`can with Root entry`), accessors and `@property` methods, and names a field or another member of the same scope also uses. A generic function or method is separated like any other, and its impl restates the type parameters: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Client component bodies are separated like any other: a body behaves the same inline and in an `impl`, so JSX, body-level `has` state and a `JsxElement` return type all move with it.
 
-`select = ["all"]` turns all three on; `select = ["default"]` leaves them off. Each can also be named on its own, or turned off under `all` with `ignore`:
+`impls-in-annex` finishes that layout: every `impl` lives in an annex inside an impl folder, which is `impl/<module>.impl.jac`, or `<module>.impl/` for a dotted stem such as a platform variant (`foo.linux.jac`), so the portable `foo.jac` does not claim its impls. It flags an `impl` block written in its module, and an annex that sits beside its module (`foo.impl.jac` next to `foo.jac`). `jac fmt --lintfix` and `jac check --lint --fix` move the module's `impl` blocks into the annex, after any impls it already holds, and relocate a sibling annex into the folder, merging the two when both apply.
+
+`select = ["all"]` turns all four on; `select = ["default"]` leaves them off. Each can also be named on its own, or turned off under `all` with `ignore`:
 
 ```toml
 [check.lint]
