@@ -669,6 +669,12 @@ impl NaIRGenPass._emit_optional_str(
 }
 
 impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
+    """An f-string as one string: its literal text with each piece's text in place.
+
+    A string piece the f-string owns, one made just for it such as `{w[1:]}`,
+    is the f-string's to release once its text is copied; a headerless `nogc`
+    build's owned strings follow their own rules.
+    """;
     fmt_parts: list[str] = [];
     args: list[ir.Value] = [];
 
@@ -866,6 +872,8 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                         name=type(part.format_part).__name__
                     );
                     return None;
+                } elif self._is_owned(val) and not self._nogc_headerless() {
+                    obj_strs.append(val);
                 }
                 fmt_parts.append("%s");
                 args.append(val);
