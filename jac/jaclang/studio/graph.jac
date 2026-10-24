@@ -74,11 +74,17 @@ def strong_components(
     names: list[str], weights: dict[tuple[str, str], int]
 ) -> list[list[str]];
 
-def edge_wires(model: ProjectModel, src: str, dst: str) -> list[WireInfo];
+def edge_wires(
+    model: ProjectModel, src: str, dst: str, only: (set[str] | None) = None
+) -> list[WireInfo];
+
+def edge_scope(src: str, dst: str) -> str;
 
 def deps_key(src: str, dst: str) -> str;
 
 def parse_deps_key(key: str) -> (tuple[str, str] | None);
+
+def split_spec(key: str) -> tuple[str, str];
 
 def level_dict(level: GraphLevel, model: ProjectModel) -> dict[str, any];
 
@@ -86,7 +92,9 @@ def level_text(level: GraphLevel, model: ProjectModel) -> str;
 
 def matrix_text(level: GraphLevel) -> list[str];
 
-def deps_text(model: ProjectModel, src: str, dst: str) -> str;
+def deps_text(
+    model: ProjectModel, src: str, dst: str, only: (set[str] | None) = None
+) -> str;
 
 impl GraphEdge.count -> int {
     return len(self.wires);
@@ -477,24 +485,58 @@ impl strong_components(
     return ordered;
 }
 
-impl edge_wires(model: ProjectModel, src: str, dst: str) -> list[WireInfo] {
-    return [
-        w
-        for w in model.wires
-        if (w.provider == src or w.provider.startswith(src + "."))
-            and (w.consumer == dst or w.consumer.startswith(dst + "."))
-    ];
+impl edge_scope(src: str, dst: str) -> str {
+    a = src.split(".");
+    b = dst.split(".");
+    n = 0;
+    while n < min(len(a), len(b)) and a[n] == b[n] {
+        n += 1;
+    }
+    if n == len(a) or n == len(b) {
+        n = min(len(a), len(b));
+        return ".".join(a[:n]) if n == len(a) else ".".join(b[:n]);
+    }
+    return ".".join(a[:n]);
+}
+
+impl edge_wires(
+    model: ProjectModel, src: str, dst: str, only: (set[str] | None) = None
+) -> list[WireInfo] {
+    scope = edge_scope(src, dst);
+    found: list[WireInfo] = [];
+    for w in model.wires {
+        pm = model.modules.get(w.provider);
+        cm = model.modules.get(w.consumer);
+        if pm is None or cm is None or pm.kind != "module" or cm.kind != "module" {
+            continue;
+        }
+        if only is not None and (w.provider not in only or w.consumer not in only) {
+            continue;
+        }
+        if group_of(w.provider, scope) == src and group_of(w.consumer, scope) == dst {
+            found.append(w);
+        }
+    }
+    return found;
 }
 
 impl deps_key(src: str, dst: str) -> str {
     return f"{DEPS_PREFIX}{src}{DEPS_SEP}{dst}";
 }
 
+impl split_spec(key: str) -> tuple[str, str] {
+    if "?" in key {
+        (head, spec) = key.split("?", 1);
+        return (head, spec);
+    }
+    return (key, "");
+}
+
 impl parse_deps_key(key: str) -> (tuple[str, str] | None) {
     if not key.startswith(DEPS_PREFIX) {
         return None;
     }
-    body = key[len(DEPS_PREFIX):];
+    body = split_spec(key[len(DEPS_PREFIX):])[0];
     if DEPS_SEP not in body {
         return None;
     }
@@ -647,9 +689,11 @@ impl matrix_text(level: GraphLevel) -> list[str] {
     return out;
 }
 
-impl deps_text(model: ProjectModel, src: str, dst: str) -> str {
+impl deps_text(
+    model: ProjectModel, src: str, dst: str, only: (set[str] | None) = None
+) -> str {
     with model.lock {
-        found = edge_wires(model, src, dst);
+        found = edge_wires(model, src, dst, only);
     }
     lines = [f"Wires from {src} to {dst} ({len(found)}):"];
     for w in found[:MAX_DEPS_WIRES] {
@@ -664,7 +708,7 @@ impl deps_text(model: ProjectModel, src: str, dst: str) -> str {
     if len(found) > MAX_DEPS_WIRES {
         lines.append(f"  ... and {len(found) - MAX_DEPS_WIRES} more");
     }
-    back = edge_wires(model, dst, src);
+    back = edge_wires(model, dst, src, only);
     if back {
         lines.append(
             f"{dst} also feeds {src} through {len(

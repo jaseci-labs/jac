@@ -88,6 +88,8 @@ def list_sessions(root_dir: str) -> list[dict[str, any]];
 
 def fork_session(root_dir: str, session_id: str) -> (StudioSession | None);
 
+def transcript_of(entries: list[dict[str, any]]) -> str;
+
 def with_store(root_dir: str, fn: any) -> any;
 
 def _import_json(root_dir: str, top: any) -> None;
@@ -522,4 +524,34 @@ impl fork_session(root_dir: str, session_id: str) -> (StudioSession | None) {
     child = src.fork();
     child.save();
     return child;
+}
+
+impl transcript_of(entries: list[dict[str, any]]) -> str {
+    said: list[str] = [];
+    for en in entries {
+        role = str(en.get("role", ""));
+        text = str(en.get("text", "")).strip();
+        if role not in ["user", "agent"] or not text {
+            continue;
+        }
+        if len(text) > 1500 {
+            text = text[:1500] + " …";
+        }
+        said.append(("User: " if role == "user" else "Assistant: ") + text);
+    }
+    if not said {
+        return "";
+    }
+    kept: list[str] = [];
+    size = 0;
+    for line in reversed(said[-40:]) {
+        if size + len(line) > 15000 {
+            break;
+        }
+        kept.insert(0, line);
+        size += len(line);
+    }
+    return "This conversation continues an earlier jac studio session. You do not have its history, so here is what was said, oldest first:\n\n"
+        + "\n\n".join(kept)
+        + "\n\nThe new request follows.";
 }

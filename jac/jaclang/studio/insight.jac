@@ -162,6 +162,7 @@ obj ArchDiff {
         rules_removed: list[str] = [],
         rules_changed: list[str] = [],
         rule_changes: dict[str, list[str]] = {},
+        forms_changed: list[tuple[WireInfo, str, str]] = [],
         new_violations: list[WireInfo] = [],
         fixed_violations: list[WireInfo] = [],
         levels: list[LevelDelta] = [],
@@ -218,7 +219,9 @@ def clusters_dict(rep: ClusterReport) -> dict[str, any];
 
 def tour_text(model: ProjectModel, scope: str = "") -> str;
 
-def model_at_rev(model: ProjectModel, rev: str) -> tuple[(ProjectModel | None), str];
+def model_at_rev(
+    model: ProjectModel, rev: str
+) -> tuple[(ProjectModel | None), str, str];
 
 def review_base(where: str, rev: str) -> str;
 
@@ -233,6 +236,12 @@ def diff_dict(d: ArchDiff) -> dict[str, any];
 def default_base(where: str) -> str;
 
 def insight_run(model: ProjectModel, view: str, key: str, as_text: bool) -> any;
+
+def filter_modules(model: ProjectModel, spec: str) -> (set[str] | None);
+
+def filter_label(spec: str) -> str;
+
+def spec_parts(spec: str) -> dict[str, str];
 
 impl RolesReport.by_role(role: str) -> list[ModuleRole] {
     return [
@@ -521,7 +530,7 @@ impl interface_of(model: ProjectModel, key: str) -> InterfaceReport {
         share = cnt / rep.out_wires;
         if share >= 0.75 and len(rep.out_by_group) > 1 or share >= 0.9 {
             rep.hints.append(
-                f"{int(share * 100)}% of what {key} exports goes to {top}; it may belong next to it"
+                f"{int(share * 100)}% of what {key} exports goes to {top}: it serves {top} and little else"
             );
         }
     }
@@ -1438,7 +1447,9 @@ impl review_base(where: str, rev: str) -> str {
     }
 }
 
-impl model_at_rev(model: ProjectModel, rev: str) -> tuple[(ProjectModel | None), str] {
+impl model_at_rev(
+    model: ProjectModel, rev: str
+) -> tuple[(ProjectModel | None), str, str] {
     where = model.root_dir;
     try {
         top = subprocess.run(
@@ -1454,24 +1465,39 @@ impl model_at_rev(model: ProjectModel, rev: str) -> tuple[(ProjectModel | None),
             check=True
         );
     } except Exception {
-        return (None, f"{rev} is not a commit in the repository around {where}");
+        return (None, f"{rev} is not a commit in the repository around {where}", "");
     }
     rel = os.path.relpath(os.path.realpath(where), os.path.realpath(top));
     tmp = tempfile.mkdtemp(prefix="jac-studio-rev-");
     spec = "." if rel == "." else rel;
+    try {
+        listed = subprocess.run(
+            ["git", "-C", top, "ls-tree", "-r", "--name-only", rev, "--", spec],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.split(
+            "\n"
+        );
+    } except Exception {
+        shutil.rmtree(tmp, ignore_errors=True);
+        return (None, f"could not list the tree at {rev}", "");
+    }
+    patterns = [
+        f":(glob){spec}/**/{tail}"
+        for (tail, ends) in [
+            ("*.jac", ".jac"),
+            ("*.py", ".py"),
+            ("jac.toml", "jac.toml")
+        ]
+        if any([name.endswith(ends) for name in listed])
+    ];
+    if not patterns {
+        shutil.rmtree(tmp, ignore_errors=True);
+        return (None, f"{rev} has no Jac files under {rel}", "");
+    }
     archive = subprocess.Popen(
-        [
-            "git",
-            "-C",
-            top,
-            "archive",
-            "--format=tar",
-            rev,
-            "--",
-            f":(glob){spec}/**/*.jac",
-            f":(glob){spec}/**/*.py",
-            f":(glob){spec}/**/jac.toml"
-        ],
+        ["git", "-C", top, "archive", "--format=tar", rev, "--"] + patterns,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL
     );
@@ -1481,7 +1507,7 @@ impl model_at_rev(model: ProjectModel, rev: str) -> tuple[(ProjectModel | None),
     archive.wait();
     if archive.returncode != 0 or untar.returncode != 0 {
         shutil.rmtree(tmp, ignore_errors=True);
-        return (None, f"could not read the tree at {rev}");
+        return (None, f"could not read the tree at {rev}", "");
     }
     base_root = os.path.join(tmp, rel) if rel != "." else tmp;
     try {
@@ -1489,10 +1515,9 @@ impl model_at_rev(model: ProjectModel, rev: str) -> tuple[(ProjectModel | None),
         before.build(index=False);
     } except Exception as e {
         shutil.rmtree(tmp, ignore_errors=True);
-        return (None, f"could not load the wiring at {rev}: {e}");
+        return (None, f"could not load the wiring at {rev}: {e}", "");
     }
-    before.root_dir = tmp;
-    return (before, "");
+    return (before, "", tmp);
 }
 
 impl level_delta(before: ProjectModel, after: ProjectModel, scope: str) -> LevelDelta {
@@ -1559,47 +1584,83 @@ impl arch_diff(model: ProjectModel, rev: str) -> ArchDiff {
     t0 = time.time();
     base = review_base(model.root_dir, rev);
     d = ArchDiff(base=rev if base == rev else f"{rev} (merge-base {base[:10]})");
-    (before, error) = model_at_rev(model, base);
+    (before, error, tmp) = model_at_rev(model, base);
     if before is None {
         d.error = error;
         return d;
     }
     try {
-        def wkey(w: WireInfo) -> tuple[str, str, str] {
-            return (w.provider, w.consumer, w.scope);
+        def by_ends(m: ProjectModel) -> dict[tuple[str, str, str], list[WireInfo]] {
+            out: dict[tuple[str, str, str], list[WireInfo]] = {};
+            for w in m.wires {
+                out.setdefault((w.provider, w.consumer, w.scope), []).append(w);
+            }
+            return out;
         }
-        old = {wkey(w): w for w in before.wires};
-        fresh = {wkey(w): w for w in model.wires};
-        for (k, w) in fresh.items() {
-            if k not in old {
+        def same(a: WireInfo, b: WireInfo) -> bool {
+            return a.form == b.form and sorted(a.names) == sorted(b.names);
+        }
+        old = by_ends(before);
+        fresh = by_ends(model);
+        for k in sorted(set(old) | set(fresh)) {
+            olds = list(old.get(k, []));
+            news: list[WireInfo] = [];
+            for w in fresh.get(k, []) {
+                hit = -1;
+                for (i, o) in enumerate(olds) {
+                    if same(o, w) {
+                        hit = i;
+                        break;
+                    }
+                }
+                if hit >= 0 {
+                    o = olds.pop(hit);
+                    if w.violation and not o.violation {
+                        d.new_violations.append(w);
+                    }
+                    if o.violation and not w.violation {
+                        d.fixed_violations.append(w);
+                    }
+                } else {
+                    news.append(w);
+                }
+            }
+            for (o, w) in zip(olds, news) {
+                (on, nn) = (set(o.names), set(w.names));
+                if nn - on {
+                    d.names_added.append((w, sorted(nn - on)));
+                }
+                if on - nn {
+                    d.names_removed.append((w, sorted(on - nn)));
+                }
+                if o.form != w.form {
+                    d.forms_changed.append((w, o.form, w.form));
+                }
+                if w.violation and not o.violation {
+                    d.new_violations.append(w);
+                }
+                if o.violation and not w.violation {
+                    d.fixed_violations.append(w);
+                }
+            }
+            for w in news[len(olds):] {
                 d.added.append(w);
                 if w.violation {
                     d.new_violations.append(w);
                 }
-                continue;
             }
-            o = old[k];
-            (on, nn) = (set(o.names), set(w.names));
-            if nn - on {
-                d.names_added.append((w, sorted(nn - on)));
-            }
-            if on - nn {
-                d.names_removed.append((w, sorted(on - nn)));
-            }
-            if w.violation and not o.violation {
-                d.new_violations.append(w);
-            }
-            if o.violation and not w.violation {
-                d.fixed_violations.append(w);
-            }
-        }
-        for (k, w) in old.items() {
-            if k not in fresh {
-                d.removed.append(w);
-                if w.violation {
-                    d.fixed_violations.append(w);
+            for o in olds[len(news):] {
+                d.removed.append(o);
+                if o.violation {
+                    d.fixed_violations.append(o);
                 }
             }
+        }
+        def rule_id(m: ProjectModel, r: StRule) -> tuple[str, str] {
+            return (
+                os.path.relpath(os.path.realpath(r.file), os.path.realpath(m.root_dir)),
+                r.name
+            );
         }
         def rule_sig(r: StRule) -> str {
             return " | ".join(r.sources)
@@ -1609,49 +1670,46 @@ impl arch_diff(model: ProjectModel, rev: str) -> ArchDiff {
                 + ",".join(r.names)
                 + "}";
         }
-        ro = {r.name: rule_sig(r) for r in before.rules};
-        rn = {r.name: rule_sig(r) for r in model.rules};
+        ro = {rule_id(before, r): r for r in before.rules};
+        rn = {rule_id(model, r): r for r in model.rules};
+        all_names = [k[1] for k in set(ro) | set(rn)];
+        def label(k: tuple[str, str]) -> str {
+            return k[1] if all_names.count(k[1]) == 1 else f"{k[1]} ({k[0]})";
+        }
         d.rules_added = sorted(
             [
-                n
-                for n in rn
-                if n not in ro
+                label(k)
+                for k in rn
+                if k not in ro
             ]
         );
         d.rules_removed = sorted(
             [
-                n
-                for n in ro
-                if n not in rn
+                label(k)
+                for k in ro
+                if k not in rn
             ]
         );
-        d.rules_changed = sorted(
-            [
-                n
-                for n in rn
-                if n in ro and ro[n] != rn[n]
-            ]
-        );
-        old_rules = {r.name: r for r in before.rules};
-        for r in model.rules {
-            if r.name not in d.rules_changed {
+        for k in sorted(rn) {
+            if k not in ro or rule_sig(ro[k]) == rule_sig(rn[k]) {
                 continue;
             }
-            prior = old_rules[r.name];
+            (prior, r) = (ro[k], rn[k]);
             bits: list[str] = [];
-            for (label, x, y) in [
+            for (what, x, y) in [
                 ("source", prior.sources, r.sources),
                 ("target", prior.targets, r.targets),
                 ("name", prior.names, r.names)
             ] {
                 for t in sorted(set(y) - set(x)) {
-                    bits.append(f"+{label} {t}");
+                    bits.append(f"+{what} {t}");
                 }
                 for t in sorted(set(x) - set(y)) {
-                    bits.append(f"-{label} {t}");
+                    bits.append(f"-{what} {t}");
                 }
             }
-            d.rule_changes[r.name] = bits;
+            d.rules_changed.append(label(k));
+            d.rule_changes[label(k)] = bits;
         }
         scopes = [effective_scope(model, "")];
         top = graph_level(model, scopes[0]);
@@ -1678,7 +1736,7 @@ impl arch_diff(model: ProjectModel, rev: str) -> ArchDiff {
             }
         }
     } finally {
-        shutil.rmtree(before.root_dir, ignore_errors=True);
+        shutil.rmtree(tmp, ignore_errors=True);
     }
     d.secs = time.time() - t0;
     return d;
@@ -1692,7 +1750,9 @@ impl diff_text(d: ArchDiff) -> str {
         f"Architecture changes since {d.base}: {len(d.added)} wire(s) added, {len(
             d.removed
         )} removed, "
-            + f"{len(d.names_added) + len(d.names_removed)} changed what they carry; "
+            + f"{len(d.names_added)
+                + len(d.names_removed)
+                + len(d.forms_changed)} changed what they carry or how they load; "
             + f"{len(d.rules_added)} rule(s) added, {len(d.rules_removed)} removed, {len(
                 d.rules_changed
             )} changed."
@@ -1702,6 +1762,7 @@ impl diff_text(d: ArchDiff) -> str {
         or d.removed
         or d.names_added
         or d.names_removed
+        or d.forms_changed
         or d.rules_added
         or d.rules_removed
         or d.rules_changed
@@ -1790,6 +1851,11 @@ impl diff_text(d: ArchDiff) -> str {
             f"  {w.provider} ++> {w.consumer} no longer carries {', '.join(ns)}"
         );
     }
+    for (w, was, now) in d.forms_changed[:15] {
+        lines.append(
+            f"  {w.provider} ++> {w.consumer} now loads as '{now}' (was '{was}')"
+        );
+    }
     for n in d.rules_added {
         lines.append(f"Rule added: {n}");
     }
@@ -1815,6 +1881,9 @@ impl diff_dict(d: ArchDiff) -> dict[str, any] {
         ],
         "names_removed": [
             {"wire": w.to_dict(), "names": ns} for (w, ns) in d.names_removed
+        ],
+        "forms_changed": [
+            {"wire": w.to_dict(), "was": a, "now": b} for (w, a, b) in d.forms_changed
         ],
         "rules_added": d.rules_added,
         "rules_removed": d.rules_removed,
@@ -1912,4 +1981,68 @@ impl insight_run(model: ProjectModel, view: str, key: str, as_text: bool) -> any
     raise ValueError(
         f"unknown view '{view}': roles, interface, rules, slice, blast, clusters, tour or diff"
     );
+}
+
+impl spec_parts(spec: str) -> dict[str, str] {
+    parts: dict[str, str] = {};
+    for p in spec.split("&") {
+        if not p {
+            continue;
+        }
+        (k, _, v) = p.partition("=");
+        parts[k] = v;
+    }
+    return parts;
+}
+
+impl filter_modules(model: ProjectModel, spec: str) -> (set[str] | None) {
+    if not spec {
+        return None;
+    }
+    parts = spec_parts(spec);
+    if "slice" in parts or "blast" in parts {
+        up = "slice" in parts;
+        r = reach(
+            model,
+            parts.get("slice", "") if up else parts.get("blast", ""),
+            "up" if up else "down"
+        );
+        if not r.seeds {
+            return set();
+        }
+        if "all" in parts {
+            return r.modules();
+        }
+        mods: set[str] = set(r.seeds);
+        for step in r.eager_steps {
+            mods.update(step);
+        }
+        return mods if len(mods) > len(r.seeds) else r.modules();
+    }
+    if "cluster" in parts {
+        (cid, _, cscope) = parts["cluster"].partition("@");
+        for cl in cluster_report(model, cscope).clusters {
+            if str(cl.id) == cid {
+                return set(cl.members);
+            }
+        }
+        return set();
+    }
+    return None;
+}
+
+impl filter_label(spec: str) -> str {
+    parts = spec_parts(spec);
+    when = "through any wire" if "all" in parts else "at import time";
+    if "slice" in parts {
+        return f"slice of {parts['slice']} ({when})";
+    }
+    if "blast" in parts {
+        return f"blast radius of {parts['blast']} ({when})";
+    }
+    if "cluster" in parts {
+        (cid, _, cscope) = parts["cluster"].partition("@");
+        return f"cluster #{cid} of {cscope or 'the project'}";
+    }
+    return spec;
 }

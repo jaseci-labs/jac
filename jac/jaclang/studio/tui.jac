@@ -30,6 +30,7 @@ import from jaclang.osprey.ui.renderer {
 }
 import from jaclang.osprey.ui.renderer_types { Renderer }
 import from jaclang.osprey.ui.terminal { ProcessTerminal, read_terminal_size }
+import from jaclang.osprey.ui.virtual_terminal { VirtualTerminal }
 import from jaclang.osprey.ui.input { InputNormalizer, coalesce_events }
 import from jaclang.osprey.ui.input_events {
     KeyEvent,
@@ -88,7 +89,7 @@ obj Studio {
         model: ProjectModel,
         sess: UiSession postinit,
         r: Renderer postinit,
-        term: ProcessTerminal postinit,
+        term: (ProcessTerminal | VirtualTerminal) postinit,
         norm: InputNormalizer postinit,
         screen: MainScreen postinit,
         header: Pane postinit,
@@ -196,7 +197,8 @@ obj Studio {
         gmap: (MapState | None) = None,
         wire_items: list[PickItem] = [],
         doc_result: (tuple[str, str] | None) = None,
-        doc_busy: bool = False;
+        doc_busy: bool = False,
+        restored_transcript: str = "";
 
     def postinit;
     def install_layout;
@@ -438,7 +440,11 @@ def map_target(app: Studio) -> str;
 
 def ensure_map_data(app: Studio) -> None;
 
-def map_filter(app: Studio, key: str, direction: str) -> None;
+def map_filter(app: Studio, key: str, direction: str, again: bool = False) -> None;
+
+def map_spec(app: Studio) -> str;
+
+def apply_spec(app: Studio, spec: str) -> None;
 
 def map_list_activate(app: Studio, it: MapItem) -> None;
 
@@ -447,6 +453,12 @@ def open_doc(app: Studio, title: str, text: str) -> None;
 def start_doc(app: Studio, kind: str) -> None;
 
 def open_wires(app: Studio, title: str, wires: list[WireInfo]) -> None;
+
+def deliver(app: Studio, blocks: list[dict[str, any]]) -> None;
+
+def wire_ref(w: WireInfo) -> str;
+
+def map_sig(app: Studio) -> tuple[int, int, int];
 
 def chat_lines(app: Studio, width: int) -> list[list[TextSpan]];
 
@@ -1679,7 +1691,7 @@ impl wire_key(app: Studio, key: str) -> None {
         item = cols[c][app.wire_sel[c]];
         if c in [0, 2] and item.data is not None {
             w = item.data;
-            add_to_tray(app, f"wire:{w.provider}->{w.consumer}");
+            add_to_tray(app, wire_ref(w));
         } else {
             add_to_tray(app, item.key);
         }
@@ -1688,7 +1700,7 @@ impl wire_key(app: Studio, key: str) -> None {
         for item in cols[c] {
             k = item.key;
             if c in [0, 2] and item.data is not None {
-                k = f"wire:{item.data.provider}->{item.data.consumer}";
+                k = wire_ref(item.data);
             }
             if k not in app.tray {
                 app.tray.append(k);
@@ -1769,7 +1781,12 @@ impl tray_key(app: Studio, key: str) {
             k = app.tray[app.tray_sel];
             pair = parse_deps_key(k);
             if k.startswith(MAP_PREFIX) {
-                open_map(app, k[len(MAP_PREFIX):], inside=True);
+                (scope_, spec_) = split_spec(k[len(MAP_PREFIX):]);
+                open_map(app, scope_, inside=True);
+                if spec_ {
+                    apply_spec(app, spec_);
+                    set_map_scope(app, scope_);
+                }
             } elif pair is not None {
                 (a, b) = (pair[0].split("."), pair[1].split("."));
                 n = 0;
@@ -1777,6 +1794,7 @@ impl tray_key(app: Studio, key: str) {
                     n += 1;
                 }
                 open_map(app, "");
+                apply_spec(app, split_spec(k)[1]);
                 set_map_scope(app, ".".join(a[:n]), pair[0]);
                 open_wire_list(app, pair[0], pair[1]);
             } elif not k.startswith("wire:") {
@@ -1943,7 +1961,7 @@ impl send_to_agent(app: Studio, text: str) {
     }
     blocks.append({"type": "text", "text": text});
     if app.agent is not None and app.agent_state == "ready" {
-        app.agent.prompt(blocks);
+        deliver(app, blocks);
         app.agent_state = "busy";
         app.turn_started = time.time();
         return;
@@ -2257,7 +2275,7 @@ impl pick(app: Studio, item: PickItem, alt: bool) {
     } elif purpose == "wires" {
         w = item.data;
         if alt {
-            add_to_tray(app, f"wire:{w.provider}->{w.consumer}");
+            add_to_tray(app, wire_ref(w));
         } elif w.consumer in app.model.modules
             and app.model.modules[w.consumer].kind == "module" {
             app.wire_mod = w.consumer;
@@ -2350,16 +2368,36 @@ impl approval_key(app: Studio, key: str) {
     }
     if req["type"] == "write" {
         rv = req.get("review");
+        checking = app.gate is not None and not req.get("done");
+        if checking and (key in ["a", "A", "y", "enter"] or key.isdigit()) {
+            app.say(
+                "The compiler is still checking this edit. Wait for its verdict, or press r to reject it.",
+                "warn",
+                6.0
+            );
+            return;
+        }
         leaves = leaf_changes(rv.symbol_changes) if rv is not None else [];
         if key.isdigit() and 1 <= int(key) <= min(len(leaves), 9) and len(leaves) > 1 {
             keep: set[str] = req.get("keep") or set([lc.key for lc in leaves]);
             k = leaves[int(key) - 1].key;
+            group = change_groups(rv.symbol_changes).get(k, [k])
+                if rv is not None
+                else [k];
             if k in keep {
-                keep.discard(k);
+                keep.difference_update(group);
             } else {
-                keep.add(k);
+                keep.update(group);
+            }
+            if len(group) > 1 {
+                app.say(
+                    f"{len(group)} changes share lines ({', '.join(
+                        group
+                    )}), so they are kept or dropped together"
+                );
             }
             req["keep"] = keep;
+            req.pop("partial", None);
             at = app.sheet_scroll;
             open_approval(app);
             app.sheet_scroll = at;
@@ -2385,6 +2423,15 @@ impl approval_key(app: Studio, key: str) {
             if rv is not None
                 and keep_now is not None
                 and len(keep_now) < len(leaves) {
+                part = req.get("partial");
+                if part is None or part["keep"] != frozenset(keep_now) {
+                    start_partial_review(app, req, keep_now);
+                    return;
+                }
+                if not part["done"] {
+                    app.say("Still checking the selected changes…");
+                    return;
+                }
                 finish_partial(app, req, keep_now);
             } else {
                 finish_write(app, req, True, "");
@@ -2847,6 +2894,10 @@ impl open_map(app: Studio, key: str, inside: bool = False) -> None {
     if app.gmap is None {
         app.gmap = MapState();
     }
+    app.gmap.only = None;
+    app.gmap.only_spec = "";
+    app.gmap.only_label = "";
+    app.gmap.data = {};
     key = key.strip();
     scope = scope_for(app.model, key) if key else "";
     if key and scope == key and not inside {
@@ -2864,7 +2915,7 @@ impl set_map_scope(app: Studio, scope: str, select: str = "") -> None {
     }
     st.level = graph_level(app.model, scope, st.only);
     st.scope = st.level.scope;
-    st.sig = (id(app.model.wires), len(app.model.wires));
+    st.sig = map_sig(app);
     (st.r, st.c, st.sel, st.item) = (0, 0, 0, 0);
     (st.top, st.left, st.scroll) = (0, 0, 0);
     if select {
@@ -2882,7 +2933,7 @@ impl paint_map(app: Studio) -> None {
         app.center_mode = "code";
         return;
     }
-    if st.level is None or st.sig != (id(app.model.wires), len(app.model.wires)) {
+    if st.level is None or st.sig != map_sig(app) {
         keep = "";
         if st.level is not None and st.level.nodes {
             i = st.r if st.view == "matrix" else st.sel;
@@ -2923,13 +2974,14 @@ impl map_key(app: Studio, key: str) -> None {
         target = it.key
             if it is not None and it.kind in ["module", "export", "import"]
             else st.group_key();
-        map_filter(app, target, "up" if key == "s" else "down");
+        map_filter(app, target, "up" if key == "s" else "down", True);
     } elif key == "x" {
         if st.only is None {
             return;
         }
         st.only = None;
         st.only_label = "";
+        st.only_spec = "";
         st.data = {};
         set_map_scope(app, st.scope, st.group_key());
     } elif key in ["backspace", "u"] {
@@ -2944,7 +2996,7 @@ impl map_key(app: Studio, key: str) -> None {
     } elif key in [" ", "a", "ctrl+space"] {
         map_add(app);
     } elif key == "A" {
-        add_to_tray(app, MAP_PREFIX + st.scope);
+        add_to_tray(app, MAP_PREFIX + st.scope + map_spec(app));
     } elif key == "o" {
         nd = st.selected_node();
         if nd is not None and nd.kind == "module" {
@@ -3014,11 +3066,9 @@ impl map_add(app: Studio) -> None {
         if li is not None
             and li.key
             and li.kind in ["module", "export", "import", "wire"] {
-            add_to_tray(
-                app, f"wire:{li.src}->{li.dst}" if li.kind == "wire" else li.key
-            );
+            add_to_tray(app, li.key);
         } elif li is not None and li.kind == "rule" {
-            add_to_tray(app, MAP_PREFIX + st.scope);
+            add_to_tray(app, MAP_PREFIX + st.scope + map_spec(app));
         }
         return;
     }
@@ -3030,26 +3080,30 @@ impl map_add(app: Studio) -> None {
         it = items[min(st.item, len(items) - 1)];
         add_to_tray(
             app,
-            MAP_PREFIX + st.scope if it.kind == "cycle" else deps_key(it.src, it.dst)
+            (MAP_PREFIX + st.scope if it.kind == "cycle" else deps_key(it.src, it.dst))
+                + map_spec(app)
         );
         return;
     }
     nd = st.selected_node();
     if nd is not None {
-        add_to_tray(app, MAP_PREFIX + nd.key if nd.kind == "package" else nd.key);
+        add_to_tray(
+            app, MAP_PREFIX + nd.key + map_spec(app) if nd.kind == "package" else nd.key
+        );
         return;
     }
     e = st.selected_edge();
     if e is not None {
-        add_to_tray(app, deps_key(e.src, e.dst));
+        add_to_tray(app, deps_key(e.src, e.dst) + map_spec(app));
     } else {
         app.say("No wires between these two");
     }
 }
 
 impl open_wire_list(app: Studio, src: str, dst: str) -> None {
+    st = app.gmap;
     with app.model.lock {
-        wires = edge_wires(app.model, src, dst);
+        wires = edge_wires(app.model, src, dst, st.only if st is not None else None);
     }
     if not wires {
         app.say(f"{src} does not feed {dst}");
@@ -3118,42 +3172,65 @@ impl ensure_map_data(app: Studio) -> None {
     st.data[view] = (ck, found);
 }
 
-impl map_filter(app: Studio, key: str, direction: str) -> None {
+impl map_filter(app: Studio, key: str, direction: str, again: bool = False) -> None {
     if app.gmap is None {
         app.gmap = MapState();
     }
     st = app.gmap;
+    word = "slice" if direction == "up" else "blast";
+    prior = spec_parts(st.only_spec) if again and st.only is not None else {};
+    if word in prior {
+        key = prior[word];
+    }
     r = reach(app.model, key, direction);
     if not r.seeds {
         app.say(f"{key} is not a module, package or name the wiring knows", "warn");
         return;
     }
-    eager: set[str] = set(r.seeds);
-    for step in r.eager_steps {
-        eager.update(step);
-    }
-    what = "slice" if direction == "up" else "blast radius";
-    prev = st.data.get("reach");
-    full = prev is not None and prev[1] == (key, direction, "eager");
-    mods = r.modules() if full else eager;
-    if len(mods) <= len(r.seeds) and not full {
-        (mods, full) = (r.modules(), True);
+    full = word in prior and prior[word] == key and "all" not in prior;
+    spec = f"{word}={key}" + ("&all" if full else "");
+    mods = filter_modules(app.model, spec) or set(r.seeds);
+    if not full and mods == r.modules() {
+        spec = f"{word}={key}&all";
+        full = True;
     }
     n = len(mods) - len(r.seeds);
+    what = "slice" if direction == "up" else "blast radius";
     when = "through any wire" if full else "at import time";
     st.only = mods;
+    st.only_spec = spec;
     st.only_label = f"{what} of {key.rsplit('.', 1)[-1]}: {n} module(s) {when}";
-    st.data = {"reach": ("", (key, direction, "full" if full else "eager"))};
+    st.data = {};
     set_map_scope(app, "", r.seeds[0]);
     app.center_mode = "map";
     app.focus = "code";
-    again = ""
+    total = len(r.modules()) - len(r.seeds);
+    more = ""
         if full
-        else f"; press {'s' if direction == 'up' else 'b'} again for all {len(
-            r.modules()
-        )
-            - len(r.seeds)} reachable through any wire";
-    app.say(f"{what.capitalize()} of {key}: {n} module(s) {when}{again}", "ok", 6.0);
+        else f"; press {'s' if direction == 'up' else 'b'} again for all {total} reachable through any wire";
+    app.say(f"{what.capitalize()} of {key}: {n} module(s) {when}{more}", "ok", 6.0);
+}
+
+impl map_spec(app: Studio) -> str {
+    st = app.gmap;
+    return f"?{st.only_spec}"
+        if st is not None and st.only is not None and st.only_spec
+        else "";
+}
+
+impl apply_spec(app: Studio, spec: str) -> None {
+    st = app.gmap;
+    if st is None or not spec {
+        return;
+    }
+    mods = filter_modules(app.model, spec);
+    if mods is None {
+        return;
+    }
+    st.only = mods;
+    st.only_spec = spec;
+    st.only_label = f"{filter_label(spec)}: {len(mods)} module(s)";
+    st.data = {};
 }
 
 impl open_wires(app: Studio, title: str, wires: list[WireInfo]) -> None {
@@ -3200,6 +3277,7 @@ impl map_list_activate(app: Studio, it: MapItem) -> None {
     } elif it.kind == "group" {
         st.only = None;
         st.only_label = "";
+        st.only_spec = "";
         st.data = {};
         set_map_scope(app, it.key);
         st.set_view("matrix");
@@ -3257,6 +3335,7 @@ impl map_list_activate(app: Studio, it: MapItem) -> None {
                 st.only = set(cl.members);
                 st.only_label = f"cluster #{cl.id}: {len(cl.members)} modules";
                 scope = held[1].scope;
+                st.only_spec = f"cluster={cl.id}@{scope}";
                 st.data = {};
                 set_map_scope(app, scope);
                 st.set_view("matrix");
@@ -3509,11 +3588,16 @@ impl paint_tray(app: Studio) -> None {
         label = k[5:] if k.startswith("wire:") else k;
         if k.startswith(MAP_PREFIX) {
             kind = "package";
-            label = "map of " + (k[len(MAP_PREFIX):] or "the project");
+            (scope_, spec_) = split_spec(k[len(MAP_PREFIX):]);
+            label = "map of "
+                + (scope_ or "the project")
+                + (f" ({filter_label(spec_)})" if spec_ else "");
         } elif parse_deps_key(k) is not None {
             kind = "wire";
             (src, dst) = parse_deps_key(k);
-            label = f"wires {src} → {dst}";
+            spec_ = split_spec(k)[1];
+            label = f"wires {src} → {dst}"
+                + (f" ({filter_label(spec_)})" if spec_ else "");
         }
         line = fit(
             [sp(" " + kind_icon(kind) + " ", kind_attrs(kind)), sp(label, THEME.text)],
@@ -4099,6 +4183,9 @@ impl handle_agent_event(app: Studio, ev: any) -> None {
     }
     if kind == "ready" {
         app.agent_title = str(d.get("title") or d.get("agent") or app.agent_name);
+        if d.get("resumed") {
+            app.restored_transcript = "";
+        }
         if app.rec is not None and d.get("session_id") {
             app.rec.agent_session_id = str(d.get("session_id"));
         }
@@ -4110,7 +4197,7 @@ impl handle_agent_event(app: Studio, ev: any) -> None {
         app.agent_state = "ready";
         if app.queued {
             item = app.queued.pop(0);
-            app.agent.prompt(item["blocks"]);
+            deliver(app, item["blocks"]);
             app.agent_state = "busy";
             app.turn_started = time.time();
         }
@@ -4223,7 +4310,7 @@ impl handle_agent_event(app: Studio, ev: any) -> None {
         }
         if app.queued and app.agent is not None {
             item = app.queued.pop(0);
-            app.agent.prompt(item["blocks"]);
+            deliver(app, item["blocks"]);
             app.agent_state = "busy";
             app.turn_started = time.time();
         }
@@ -4323,6 +4410,51 @@ impl open_approval(app: Studio) -> None {
                 THEME.overlay_title
             )
         );
+        part = req.get("partial");
+        if part is not None {
+            prv = part.get("review");
+            if not part["done"] {
+                verdict = [
+                    sp("  Selected changes only: checking…", with_bg(THEME.warn, 237))
+                ];
+            } elif prv is not None and prv.clean() {
+                verdict = [
+                    sp("  Selected changes only: ✓ ", with_bg(THEME.ok, 237)),
+                    sp(prv.summary() + "   press a to write them", THEME.overlay)
+                ];
+            } elif prv is not None {
+                verdict = [
+                    sp("  Selected changes only: ✗ ", with_bg(THEME.err, 237)),
+                    sp(
+                        prv.summary() + "   a writes them anyway, r rejects",
+                        THEME.overlay
+                    )
+                ];
+                for dg in prv.new_errors()[:6] {
+                    lines.append(
+                        fit(
+                            [
+                                sp(
+                                    f"    {os.path.basename(dg.file)}:{dg.line} {dg.message}",
+                                    with_bg(THEME.err, 237)
+                                )
+                            ],
+                            w,
+                            THEME.overlay
+                        )
+                    );
+                }
+            } else {
+                verdict = [
+                    sp(
+                        "  Selected changes only: not checked "
+                            + str(part.get("error", "")),
+                        THEME.overlay
+                    )
+                ];
+            }
+            lines.insert(1, fit(verdict, w, THEME.overlay));
+        }
         if app.gate is not None {
             for ln in review_lines(req.get("review"), w, req.get("keep")) {
                 lines.append(ln);
@@ -4641,6 +4773,9 @@ impl finish_write(app: Studio, req: dict[str, any], accept: bool, message: str) 
         try {
             app.gate.unstage(path);
         } except Exception {}
+        if not accept {
+            rerun_reviews(app, req, path);
+        }
     }
     if accept and review is not None {
         mark_changed(app, path, review);
@@ -4675,6 +4810,25 @@ impl finish_write(app: Studio, req: dict[str, any], accept: bool, message: str) 
     }
     next_approval(app);
 }
+
+impl wire_ref(w: WireInfo) -> str {
+    scope = f".{w.scope}" if w.scope else "";
+    return f"wire:{w.provider}->{w.consumer}{scope}";
+}
+
+impl map_sig(app: Studio) -> tuple[int, int, int] {
+    m = app.model;
+    return (id(m.wires), len(m.wires), len(m.modules));
+}
+
+impl deliver(app: Studio, blocks: list[dict[str, any]]) -> None {
+    if app.restored_transcript {
+        blocks = [{"type": "text", "text": app.restored_transcript}] + blocks;
+        app.restored_transcript = "";
+    }
+    app.agent.prompt(blocks);
+}
+
 
 impl write_feedback(req: dict[str, any]) -> str {
     review = req.get("review");
@@ -4721,6 +4875,7 @@ impl restore_session(app: Studio, session_id: str) -> None {
             );
         }
     }
+    app.restored_transcript = transcript_of(rec.entries);
     app.chat.append(
         ChatEntry(
             role="system",
@@ -4736,6 +4891,10 @@ def start_gate_and_bridge(app: Studio, session_id: str);
 def auto_permission(app: Studio, d: dict[str, any]) -> bool;
 
 def start_review(app: Studio, req: dict[str, any]) -> None;
+
+def start_partial_review(app: Studio, req: dict[str, any], keep: set[str]) -> None;
+
+def rerun_reviews(app: Studio, req: dict[str, any], path: str) -> None;
 
 def pump_reviews(app: Studio) -> None;
 
@@ -4817,14 +4976,74 @@ impl start_review(app: Studio, req: dict[str, any]) -> None {
     path = str(d.get("path", ""));
     content = str(d.get("content", ""));
     def work {
+        real = os.path.realpath(path);
+        req["saw"] = {
+            p
+            for p in gate.staged().keys()
+            if p != real
+        };
         try {
             req["review"] = gate.review(path, content);
         } except Exception as e {
             req["error"] = str(e);
         }
         req["done"] = True;
+        app.dirty = True;
     }
     threading.Thread(target=work, daemon=True).start();
+}
+
+impl start_partial_review(app: Studio, req: dict[str, any], keep: set[str]) -> None {
+    rv = req["review"];
+    path = str(req["data"].get("path", ""));
+    text = partial_text(rv.old_text, rv.new_text, rv.symbol_changes, keep);
+    part: dict[str, any] = {
+        "keep": frozenset(keep),
+        "text": text,
+        "done": False,
+        "review": None,
+        "seen": False
+    };
+    req["partial"] = part;
+    gate = app.gate;
+    def work {
+        if gate is not None {
+            try {
+                part["review"] = gate.review(path, text);
+            } except Exception as e {
+                part["error"] = str(e);
+            }
+        }
+        part["done"] = True;
+        app.dirty = True;
+    }
+    threading.Thread(target=work, daemon=True).start();
+    app.say(
+        "Checking just the selected changes; press a again once the verdict is shown",
+        "info",
+        6.0
+    );
+    at = app.sheet_scroll;
+    open_approval(app);
+    app.sheet_scroll = at;
+}
+
+impl rerun_reviews(app: Studio, req: dict[str, any], path: str) -> None {
+    real = os.path.realpath(path);
+    for other in app.pending {
+        if other is req or other.get("type") != "write" {
+            continue;
+        }
+        if real not in (other.get("saw") or set()) {
+            continue;
+        }
+        for k in ["review", "partial", "keep", "error"] {
+            other.pop(k, None);
+        }
+        other["done"] = False;
+        other["seen"] = False;
+        start_review(app, other);
+    }
 }
 
 impl pump_reviews(app: Studio) -> None {
@@ -4832,6 +5051,15 @@ impl pump_reviews(app: Studio) -> None {
         return;
     }
     req = app.pending[0];
+    part = req.get("partial");
+    if part is not None and part["done"] and not part["seen"] {
+        part["seen"] = True;
+        if app.sheet is not None and app.sheet_kind == "approval" {
+            at = app.sheet_scroll;
+            open_approval(app);
+            app.sheet_scroll = at;
+        }
+    }
     if req.get("type") != "write" or not req.get("done") or req.get("seen") {
         return;
     }
@@ -5154,7 +5382,10 @@ impl finish_partial(app: Studio, req: dict[str, any], keep: set[str]) -> None {
     rv = req["review"];
     path = str(d.get("path", ""));
     rel = os.path.relpath(path, app.root_dir);
-    text = partial_text(rv.old_text, rv.new_text, rv.symbol_changes, keep);
+    part = req.get("partial");
+    text = part["text"]
+        if part is not None
+        else partial_text(rv.old_text, rv.new_text, rv.symbol_changes, keep);
     leaves = leaf_changes(rv.symbol_changes);
     kept = [
         lc.key

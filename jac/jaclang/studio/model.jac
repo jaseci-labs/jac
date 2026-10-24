@@ -437,6 +437,12 @@ impl ProjectModel._add_wiring(arch: str, spec: WiringSpec) {
                     for r in spec.rules_admitting(w.provider, cmod, True)
                 ];
             } except Exception {}
+            verdict = wire_violation(
+                spec, w.provider, cmod, [n for (n, a) in w.items], w.is_module_form
+            );
+            if verdict.startswith(("E2090", "E2091")) {
+                admitting = [];
+            }
             info = WireInfo(
                 provider=prov_key,
                 consumer=ckey,
@@ -446,9 +452,7 @@ impl ProjectModel._add_wiring(arch: str, spec: WiringSpec) {
                 form=form,
                 archwire=arch,
                 line=w.line,
-                violation=wire_violation(
-                    spec, w.provider, cmod, [n for (n, a) in w.items], w.is_module_form
-                ),
+                violation=verdict,
                 rules=admitting,
                 crosses=crosses,
                 local_provider=w.provider,
@@ -1489,6 +1493,13 @@ impl ProjectModel._load_cache(mod: StModule) -> bool {
     if mod.file not in stamps {
         return False;
     }
+    try {
+        for annex in active_host().annex_files(mod.file) {
+            if os.path.realpath(annex) not in stamps {
+                return False;
+            }
+        }
+    } except Exception {}
     for (f, seen) in stamps.items() {
         try {
             if abs(os.path.getmtime(f) - float(seen)) > 0.0001 {

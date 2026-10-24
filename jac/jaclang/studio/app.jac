@@ -223,11 +223,18 @@ impl cmd_model(root_dir: str, args: list[str], as_json: bool) -> int {
         sys.stderr.write("\r" + " " * 40 + "\r");
     }
     target = args[0] if args else "";
-    if target
-        and target not in model.modules
-        and target in model.symbols
-        and not as_json {
-        out(format_symbol(model, target));
+    if target and target not in model.modules and target in model.symbols {
+        if as_json {
+            nd = model.symbols[target];
+            found = model.node_dict(nd);
+            found["users"] = [u.key for u in model.users_of(target)];
+            found["uses"] = [u.key for u in model.uses_of(target)];
+            found["implementations"] = [i.file for i in model.implementations(target)];
+            found["walkers"] = [w.key for w in model.walkers_of(target)];
+            out(json.dumps(found, indent=2));
+        } else {
+            out(format_symbol(model, target));
+        }
         return 0;
     }
     if target and target not in model.modules {
@@ -235,6 +242,10 @@ impl cmd_model(root_dir: str, args: list[str], as_json: bool) -> int {
         if hits {
             target = hits[0].key;
         }
+    }
+    if target and target not in model.modules {
+        err(f"jac studio model: no module or symbol matches '{args[0]}'");
+        return 1;
     }
     if as_json {
         out(json.dumps(model.to_dict(target), indent=2));

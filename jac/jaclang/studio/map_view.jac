@@ -48,7 +48,7 @@ obj MapItem {
 obj MapState {
     has scope: str = "",
         level: (GraphLevel | None) = None,
-        sig: tuple[int, int] = (0, 0),
+        sig: tuple[int, int, int] = (0, 0, 0),
         view: str = "matrix",
         r: int = 0,
         c: int = 0,
@@ -60,6 +60,7 @@ obj MapState {
         width: int = 80,
         only: (set[str] | None) = None,
         only_label: str = "",
+        only_spec: str = "",
         data: dict[str, any] = {};
 
     def selected_node -> (GraphNode | None);
@@ -836,7 +837,8 @@ impl rules_items(rep: IntentReport) -> list[MapItem] {
                     detail=w.violation,
                     src=w.provider,
                     dst=w.consumer,
-                    key=w.consumer,
+                    key=f"wire:{w.provider}->{w.consumer}"
+                        + (f".{w.scope}" if w.scope else ""),
                     section=f"Violations {code}"
                 )
             );

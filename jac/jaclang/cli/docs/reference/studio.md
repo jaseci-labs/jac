@@ -120,12 +120,14 @@ When an agent writes a file, the write is held while the compiler checks the new
 | Key | Action |
 |-----|--------|
 | `a` | Accept the edit |
-| `1`-`9` | Toggle one symbol change; `a` then applies only the selected ones |
+| `1`-`9` | Toggle one symbol change; changes that share a line toggle together |
 | `A` | Approve an architecture change and accept the edit |
 | `r` | Reject |
 | `f` | Reject and send the compiler's findings back to the agent |
 
-An edit that changes the architecture cannot be accepted with `a`; it always needs `A`. When you accept part of an edit, the studio writes the kept changes and tells the agent which changes were dropped.
+An edit cannot be accepted while the compiler is still checking it, and an edit that changes the architecture cannot be accepted with `a`; it always needs `A`. To accept part of an edit, toggle the changes to drop and press `a`: the studio first compiles just the kept changes and shows that verdict, and a second `a` writes them and tells the agent which changes were dropped. When an agent proposes several files at once, rejecting one rechecks the others that were checked against it.
+
+A resumed or forked session gives the agent its earlier conversation: an agent that can reload its own session does, and otherwise the saved transcript goes with the first new request.
 
 Reads, searches, the jac and studio MCP tools, and edits are allowed without asking, because every write is reviewed here. Other tool calls, such as shell commands, ask first. `[studio] auto_allow` adds tool kinds or title fragments to the allowed set.
 

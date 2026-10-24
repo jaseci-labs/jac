@@ -194,6 +194,7 @@ impl AcpSession.start(cwd: str, mcp_servers: list[dict[str, any]]) -> None {
     }
     base: dict[str, any] = {"cwd": self.cwd, "mcpServers": mcp_servers};
     sess: any = None;
+    resumed = False;
     if self.load_session_id and self.agent_caps.get("loadSession") {
         params = dict(base);
         params["sessionId"] = self.load_session_id;
@@ -202,6 +203,7 @@ impl AcpSession.start(cwd: str, mcp_servers: list[dict[str, any]]) -> None {
             sess = self.request("session/load", params, timeout=HANDSHAKE_SECS) or {};
             self.agent_session_id = self.load_session_id;
             self._replaying = False;
+            resumed = True;
         } except AcpError as e {
             self._replaying = False;
             self.emit("log", {"text": f"could not resume the agent session: {e}"});
@@ -225,6 +227,7 @@ impl AcpSession.start(cwd: str, mcp_servers: list[dict[str, any]]) -> None {
         "version": self.agent_info.get("version", ""),
         "session_id": self.agent_session_id,
         "load_session": bool(self.agent_caps.get("loadSession")),
+        "resumed": resumed,
         "prompt_capabilities": self.agent_caps.get("promptCapabilities") or {}
     };
     if self.models {

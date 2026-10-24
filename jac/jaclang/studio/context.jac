@@ -72,23 +72,36 @@ impl context_blocks(model: ProjectModel, keys: list[str]) -> list[dict[str, any]
 
 impl context_block(model: ProjectModel, key: str) -> (dict[str, any] | None) {
     if key.startswith(MAP_PREFIX) {
-        level = graph_level(model, key[len(MAP_PREFIX):]);
+        (scope, spec) = split_spec(key[len(MAP_PREFIX):]);
+        only = filter_modules(model, spec);
+        level = graph_level(model, scope, only);
+        text = level_text(level, model);
+        if only is not None {
+            text = f"Only the {len(only)} module(s) in the {filter_label(spec)}.\n"
+                + text;
+        }
         return {
             "type": "resource",
             "resource": {
-                "uri": MAP_SCHEME + (level.scope or "project"),
-                "text": level_text(level, model),
+                "uri": MAP_SCHEME + key[len(MAP_PREFIX):],
+                "text": text,
                 "mimeType": "text/plain"
             }
         };
     }
     pair = parse_deps_key(key);
     if pair is not None {
+        spec = split_spec(key)[1];
+        only = filter_modules(model, spec);
+        text = deps_text(model, pair[0], pair[1], only);
+        if only is not None {
+            text = f"Only wires inside the {filter_label(spec)}.\n" + text;
+        }
         return {
             "type": "resource",
             "resource": {
                 "uri": DEPS_SCHEME + key[len(DEPS_PREFIX):],
-                "text": deps_text(model, pair[0], pair[1]),
+                "text": text,
                 "mimeType": "text/plain"
             }
         };

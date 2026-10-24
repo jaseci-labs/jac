@@ -32882,7 +32882,7 @@ graph import studio {
     ]
     gate ++> [
         app { EditGate, EditReview, format_review },
-        tui { EditGate, leaf_changes, partial_text },
+        tui { EditGate, change_groups, leaf_changes, partial_text },
     ]
     graph ++> [
         app { graph_level, in_scope, level_dict, level_text, scope_for },
@@ -32893,7 +32893,8 @@ graph import studio {
             deps_text,
             graph_level,
             level_text,
-            parse_deps_key
+            parse_deps_key,
+            split_spec
         },
         insight {
             GraphEdge,
@@ -32913,7 +32914,8 @@ graph import studio {
             group_of,
             parent_scope,
             parse_deps_key,
-            scope_for
+            scope_for,
+            split_spec
         },
     ]
     insight ++> [
@@ -32940,6 +32942,7 @@ graph import studio {
             tour_text
         },
         bridge | native_agent { insight_run },
+        context { filter_label, filter_modules },
         map_view {
             ClusterReport,
             IntentReport,
@@ -32954,10 +32957,13 @@ graph import studio {
             cluster_report,
             default_base,
             diff_text,
+            filter_label,
+            filter_modules,
             intent_report,
             interface_of,
             module_roles,
             reach,
+            spec_parts,
             tour_text
         },
     ]
@@ -33018,7 +33024,7 @@ graph import studio {
             new_session,
             sessions_dir
         },
-        tui { load_session, new_session },
+        tui { load_session, new_session, transcript_of },
     ]
     studio_mcp ++> app { serve_studio_mcp }
     theme ++> [

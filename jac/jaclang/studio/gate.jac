@@ -163,6 +163,8 @@ def format_review(rv: EditReview) -> str;
 
 def leaf_changes(changes: list[SymbolChange]) -> list[SymbolChange];
 
+def change_groups(changes: list[SymbolChange]) -> dict[str, list[str]];
+
 def partial_text(
     old_text: str, new_text: str, changes: list[SymbolChange], keep: set[str]
 ) -> str;
@@ -1378,6 +1380,34 @@ impl leaf_changes(changes: list[SymbolChange]) -> list[SymbolChange] {
     return out;
 }
 
+impl change_groups(changes: list[SymbolChange]) -> dict[str, list[str]] {
+    leaves = leaf_changes(changes);
+    parent = list(range(len(leaves)));
+    def find(i: int) -> int {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
+    }
+    def overlap(x: (tuple[int, int] | None), y: (tuple[int, int] | None)) -> bool {
+        return x is not None and y is not None and x[0] <= y[1] and y[0] <= x[1];
+    }
+    for i in range(len(leaves)) {
+        for j in range(i + 1, len(leaves)) {
+            (a, b) = (leaves[i], leaves[j]);
+            if overlap(a.new_lines, b.new_lines) or overlap(a.old_lines, b.old_lines) {
+                parent[find(i)] = find(j);
+            }
+        }
+    }
+    members: dict[int, list[str]] = {};
+    for i in range(len(leaves)) {
+        members.setdefault(find(i), []).append(leaves[i].key);
+    }
+    return {leaves[i].key: members[find(i)] for i in range(len(leaves))};
+}
+
 impl partial_text(
     old_text: str, new_text: str, changes: list[SymbolChange], keep: set[str]
 ) -> str {
@@ -1392,22 +1422,42 @@ impl partial_text(
         }
         return len(new);
     }
+    groups = change_groups(changes);
+    by_key = {sc.key: sc for sc in leaf_changes(changes)};
+    done: set[str] = set();
     edits: list[tuple[int, int, list[str]]] = [];
-    for sc in leaf_changes(changes) {
-        if sc.key in keep {
+    for (key, group) in groups.items() {
+        if key in done {
             continue;
         }
-        if sc.change == "added" and sc.new_lines {
-            (a, b) = sc.new_lines;
-            edits.append((a - 1, b, []));
-        } elif sc.change == "changed" and sc.new_lines and sc.old_lines {
-            (a, b) = sc.new_lines;
-            (c, d) = sc.old_lines;
-            edits.append((a - 1, b, old[c - 1:d]));
-        } elif sc.change == "removed" and sc.old_lines {
-            (c, d) = sc.old_lines;
-            at = map_old(c - 1);
-            edits.append((at, at, old[c - 1:d]));
+        done.update(group);
+        if any([k in keep for k in group]) {
+            continue;
+        }
+        members = [by_key[k] for k in group];
+        new_spans = [
+            sc.new_lines
+            for sc in members
+            if sc.change in ["added", "changed"] and sc.new_lines
+        ];
+        old_spans = [
+            sc.old_lines
+            for sc in members
+            if sc.change in ["changed", "removed"] and sc.old_lines
+        ];
+        old_part: list[str] = [];
+        if old_spans {
+            c = min([sp_[0] for sp_ in old_spans]);
+            d = max([sp_[1] for sp_ in old_spans]);
+            old_part = old[c - 1:d];
+        }
+        if new_spans {
+            a = min([sp_[0] for sp_ in new_spans]);
+            b = max([sp_[1] for sp_ in new_spans]);
+            edits.append((a - 1, b, old_part));
+        } elif old_spans {
+            at = map_old(min([sp_[0] for sp_ in old_spans]) - 1);
+            edits.append((at, at, old_part));
         }
     }
     edits.sort(
