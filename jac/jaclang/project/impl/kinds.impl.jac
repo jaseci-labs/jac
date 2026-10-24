@@ -1,13 +1,12 @@
 impl RunPlan.command_line -> str {
-    parts = ["jac", "build", "--native"]
-        if self.verb == "native"
-        else ["jac", self.verb];
-    if self.app {
-        parts.append(self.app);
-    } elif self.entry_path {
-        parts.append(os.path.basename(self.entry_path));
+    if self.action == "build" {
+        return self.build_line();
     }
+    parts = ["jac", "run", self._target()];
     for (k, v) in self.flags.items() {
+        if k in ("output", "lib", "as") {
+            continue;
+        }
         flag = f"--{k.replace('_', '-')}";
         if isinstance(v, bool) {
             if v {
@@ -18,7 +17,35 @@ impl RunPlan.command_line -> str {
             parts.append(str(v));
         }
     }
-    return " ".join(parts);
+    return " ".join(
+        [
+            p
+            for p in parts
+            if p
+        ]
+    );
+}
+
+impl RunPlan.build_line -> str {
+    parts = ["jac", "build", self._target()];
+    platform = self.flags.get("platform", "");
+    if platform {
+        parts += ["--platform", str(platform)];
+    }
+    return " ".join(
+        [
+            p
+            for p in parts
+            if p
+        ]
+    );
+}
+
+impl RunPlan._target -> str {
+    if self.app {
+        return self.app;
+    }
+    return os.path.basename(self.entry_path) if self.entry_path else "";
 }
 
 impl _has_client(config: JacConfig) -> bool {

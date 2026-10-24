@@ -115,7 +115,7 @@ test "create --kind cli-native" {
 }
 
 test "create --kind native-binary" {
-    _assert_kind("native-binary", "main.jac", "build");
+    _assert_kind("native-binary", "main.jac", "execute");
     _cleanup();
 }
 
@@ -182,11 +182,12 @@ test "create --kind mobile scaffolds a single-app mobUI project" {
         "the scaffold writes no client / client_kind keys"
     );
     plan = plan_app_run(cfg, str(proj), app);
-    assert plan.action == "build" , f"mobile: expected build, got {plan.action}";
+    assert plan.action == "serve" , f"mobile: expected serve, got {plan.action}";
     assert plan.app == "" , "an implicit app runs without an app positional";
     assert "client" not in plan.flags , "the plan carries no client flag";
     assert plan.spec.ui == "mobui";
-    assert plan.command_line() == "jac build main.jac" , plan.command_line();
+    assert plan.command_line() == "jac run main.jac --dev" , plan.command_line();
+    assert plan.build_line() == "jac build main.jac" , plan.build_line();
     assert plan.entry_path.endswith("main.jac") , plan.entry_path;
     _cleanup();
 }
