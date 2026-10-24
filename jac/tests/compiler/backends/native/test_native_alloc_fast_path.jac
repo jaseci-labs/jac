@@ -14,7 +14,7 @@ import from tests.support { NATIVE_FIXTURES }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "move_last_use.jac");
+glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "unwind_leaf.jac");
 
 """The fixture's unoptimized IR under the cycle collector."""
 def fixture_ir(debug: bool) -> str {
@@ -37,9 +37,9 @@ def body_of(text: str, name: str) -> str {
 }
 
 test "allocations ask for the current region only once a thread entered one" {
-    rotate = body_of(fixture_ir(False), ".rotate");
-    assert '@"__jac_region_tls_used"' in rotate;
-    assert "region.cur.read" in rotate;
+    make = body_of(fixture_ir(False), ".make");
+    assert '@"__jac_region_tls_used"' in make;
+    assert "region.cur.read" in make;
 }
 
 test "only a debug build numbers its allocations" {
