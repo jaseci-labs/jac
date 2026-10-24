@@ -36,7 +36,8 @@ def f_param(a: own Box) -> int {
     return take(b2);
 }
 
-# 3. Source is passed as a call-arg (a non-alias use) -> disqualified -> b3 NOT.
+# 3. Source is passed as a call-arg, then copied at its last use -> b3 marked:
+#    the copy holds the object as long as the source would have.
 #    Plain local: an `own` source re-read after the call is E1301 and cannot compile.
 def f_callarg -> int {
     a: Box = Box(v=1);
@@ -45,7 +46,8 @@ def f_callarg -> int {
     return take(b3);
 }
 
-# 4. Source stored into a field (escapes) -> disqualified -> b4 NOT.
+# 4. Source stored into a field (the field keeps its own reference), then copied
+#    at its last use -> b4 marked.
 #    Plain local: an `own` source re-read after the field store cannot compile.
 def f_fieldstore -> int {
     a: Box = Box(v=1);

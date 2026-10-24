@@ -427,6 +427,16 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
         return;
     }
 
+    sites_by_sym: dict[SymId, list[Assignment]] = {};
+    for (nd, sid) in candidates {
+        if sid in sites_by_sym {
+            sites_by_sym[sid].append(nd);
+        } else {
+            sites_by_sym[sid] = [nd];
+        }
+    }
+    import os;
+    flow_moves = not os.environ.get("JAC_NO_MOVE_FLOW");
     qualified: set[SymId] = set();
     for sid in tracked {
         ok = True;
@@ -436,7 +446,13 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
                 break;
             }
         }
-        if ok {
+        if ok
+            or (
+                flow_moves
+                and self._move_flow_safe(
+                    uses_by_sym.get(sid, []), sites_by_sym.get(sid, [])
+                )
+            ) {
             qualified.add(sid);
         }
     }
@@ -456,6 +472,57 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
             nd.na_move_lowerable = True;
         }
     }
+}
+
+impl RcFactsPass._move_flow_safe(uses: list[Name], sites: list[Assignment]) -> bool {
+    """Can liveness alone decide which copies of this local are its last use?
+
+    A copy after which no path reads the local moves its reference: the copy
+    is released no earlier than the local would have been, so the object
+    lives exactly as long and whatever else holds it (a callee, a field) is
+    unaffected. What liveness cannot see leaves the local to the alias-only
+    rule: the statement graph has no edge from inside a `try` to its
+    handlers, so a handler may read a local that looks dead; a lambda, a
+    comprehension, a `flow` or a parallel loop reads it in a scope or at a
+    time of its own; and a borrow (`&local`) refers to the local's slot.
+    """;
+    if not sites {
+        return False;
+    }
+    owner = self._enclosing_fn_scope(sites[0]);
+    nodes: list[UniNode] = [];
+    for u in uses {
+        nodes.append(u);
+    }
+    for nd in sites {
+        nodes.append(nd);
+    }
+    for nd in nodes {
+        if self._enclosing_fn_scope(nd) is not owner {
+            return False;
+        }
+        if isinstance(nd.parent, UnaryExpr) and is_borrow_kind(nd.parent.ownership) {
+            return False;
+        }
+        cur = nd.parent;
+        while cur is not None and cur is not owner {
+            if type(cur).__name__
+                in (
+                    "TryStmt",
+                    "LambdaExpr",
+                    "ListCompr",
+                    "DictCompr",
+                    "SetCompr",
+                    "GenCompr",
+                    "ConcurrentExpr"
+                )
+                or getattr(cur, "is_async", False) {
+                return False;
+            }
+            cur = cur.parent;
+        }
+    }
+    return True;
 }
 
 impl RcFactsPass._cfg_owner(sub: UniNode) -> (UniCFGNode | None) {
