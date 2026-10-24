@@ -895,7 +895,9 @@ test "a converting C trampoline runs outside the caller's open region" {
         == ["drop on heap True True", "open False", "drop on heap True True"] , out;
 }
 
-test "a converting C trampoline calls its body and leaves an open region out of line" {
+# vec_drop has no annotated result, so its body returns a word the void C
+# slot never reads; the trampoline still jumps straight into it.
+test "a C trampoline over a def without `-> T` jumps into its body" {
     with tempfile.TemporaryDirectory() as directory {
         stage_source(directory, C_CONVERTING_CALLBACK, "cbconvert.jac");
         text = str(
@@ -905,16 +907,10 @@ test "a converting C trampoline calls its body and leaves an open region out of 
     found = re.search(
         r'define internal void @"?([^"(\s]*vec_drop\.__clibcb\.\d+)"?\(', text
     );
-    assert found , "no converting C trampoline for vec_drop";
+    assert found , "no C trampoline for vec_drop";
     trampoline = found.group(1);
     (thunk, escape) = c_entry_pair(text, trampoline);
-    body = f'@"{trampoline.rsplit(".__clibcb.", 1)[0]}"';
-    assert thunk.count("musttail call") == 1 , thunk;
-    assert f'@"{trampoline}.escape"' in thunk and body in thunk , thunk;
-    assert "__jac_region_escape" not in thunk , thunk;
-    assert escape.index("__jac_region_escape")
-        < escape.index(body)
-        < escape.index("__jac_region_restore") , escape;
+    assert_frameless_entry(thunk, escape, trampoline.rsplit(".__clibcb.", 1)[0]);
 }
 
 """The C entry `name` and the cold function that leaves an open region for it."""

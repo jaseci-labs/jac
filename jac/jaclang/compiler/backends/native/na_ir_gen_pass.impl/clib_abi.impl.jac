@@ -548,7 +548,8 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
     grows the stack by a frame per step on an unoptimized build and breaks the
     tail-call guarantee. The call goes through the body's address typed with
     the thunk's own prototype, which `musttail` requires, and passes the same
-    registers the body reads.
+    registers the body reads. A void C function whose body is declared
+    without `-> T` returns a word the C caller never reads.
     """;
     cty = cfunc.function_type;
     jty = jac_fn.function_type;
@@ -582,7 +583,8 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
         or (
             isinstance(c_ret, ir.PointerType)
             and (j_ret == i64 or isinstance(j_ret, ir.PointerType))
-        );
+        )
+        or (isinstance(c_ret, ir.VoidType) and j_ret == i64);
 }
 
 impl NaIRGenPass._c_entry_tail_or_escape(
