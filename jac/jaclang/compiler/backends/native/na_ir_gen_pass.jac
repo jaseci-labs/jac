@@ -357,6 +357,8 @@ walker NaIRGenPass(CompilerPass) {
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
         rc_release_impl_fn: (ir.Function | None) = None,
+        rc_release_acyclic_fn: (ir.Function | None) = None,
+        rc_possible_root_fn: (ir.Function | None) = None,
         rc_set_type_fn: (ir.Function | None) = None,
         rc_gc_disable_fn: (ir.Function | None) = None,
         rc_gc_enable_fn: (ir.Function | None) = None,
@@ -2804,6 +2806,13 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
+    def _target_little_endian -> bool;
+    def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
+    def _emit_rc_release_fast(
+        fn: ir.Function, release_fn: ir.Function, may_cycle: bool
+    ) -> None;
+
+    def _emit_rc_possible_root_fn -> ir.Function;
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
     def _is_null_ptr_const(val: ir.Value) -> bool;
