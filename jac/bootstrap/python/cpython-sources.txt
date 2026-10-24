@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 166 C files / 337,781 lines; 148 headers / 136,340 lines.
-#   Total: 314 files / 474,121 source lines.
+#   Excluded: 167 C files / 341,443 lines; 148 headers / 136,340 lines.
+#   Total: 315 files / 477,783 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -291,7 +291,7 @@ Objects/mimalloc/stats.c
 # Objects/moduleobject.c  # removed: 1,440 source lines
 # Objects/namespaceobject.c  # removed: 332 source lines
 # Objects/object.c  # removed: 3,395 source lines
-Objects/obmalloc.c
+# Objects/obmalloc.c  # removed: 3,662 source lines
 # Objects/odictobject.c  # removed: 2,372 source lines
 # Objects/picklebufobject.c  # removed: 224 source lines
 # Objects/rangeobject.c  # removed: 1,317 source lines

@@ -29,6 +29,14 @@
 #include "internal/pycore_frame.h"
 #include "frameobject.h"
 #include "internal/pycore_opcode_utils.h"
+#include "internal/pycore_obmalloc.h"
+#include "internal/pycore_llist.h"
+#include "internal/pycore_pymem.h"
+#include "internal/pycore_qsbr.h"
+#include "internal/pycore_tstate.h"
+#include "internal/pycore_runtime_structs.h"
+#include "internal/pycore_mimalloc.h"
+#include "sys/mman.h"
 #include "opcode_ids.h"
 #include <stddef.h>
 #ifdef _Py_FORCE_UTF8_FS_ENCODING
@@ -956,6 +964,87 @@ KIND(struct type_cache_entry, name, 5);
 FIELD(struct type_cache_entry, value, 16, 8);
 KIND(struct type_cache_entry, value, 5);
 LAYOUT(struct type_cache_entry, 24, 8);
+
+/* PyMemAllocatorEx */
+FIELD(PyMemAllocatorEx, ctx, 0, 8);
+KIND(PyMemAllocatorEx, ctx, 5);
+FIELD(PyMemAllocatorEx, malloc, 8, 8);
+KIND(PyMemAllocatorEx, malloc, 5);
+FIELD(PyMemAllocatorEx, calloc, 16, 8);
+KIND(PyMemAllocatorEx, calloc, 5);
+FIELD(PyMemAllocatorEx, realloc, 24, 8);
+KIND(PyMemAllocatorEx, realloc, 5);
+FIELD(PyMemAllocatorEx, free, 32, 8);
+KIND(PyMemAllocatorEx, free, 5);
+LAYOUT(PyMemAllocatorEx, 40, 8);
+
+/* PyObjectArenaAllocator */
+FIELD(PyObjectArenaAllocator, ctx, 0, 8);
+KIND(PyObjectArenaAllocator, ctx, 5);
+FIELD(PyObjectArenaAllocator, alloc, 8, 8);
+KIND(PyObjectArenaAllocator, alloc, 5);
+FIELD(PyObjectArenaAllocator, free, 16, 8);
+KIND(PyObjectArenaAllocator, free, 5);
+LAYOUT(PyObjectArenaAllocator, 24, 8);
+
+/* pool_header */
+FIELD(struct pool_header, ref._padding, 0, 8);
+KIND(struct pool_header, ref._padding, 5);
+FIELD(struct pool_header, freeblock, 8, 8);
+KIND(struct pool_header, freeblock, 5);
+FIELD(struct pool_header, nextpool, 16, 8);
+KIND(struct pool_header, nextpool, 5);
+FIELD(struct pool_header, prevpool, 24, 8);
+KIND(struct pool_header, prevpool, 5);
+FIELD(struct pool_header, arenaindex, 32, 4);
+KIND(struct pool_header, arenaindex, 1);
+SIGNED(struct pool_header, arenaindex, 0);
+FIELD(struct pool_header, szidx, 36, 4);
+KIND(struct pool_header, szidx, 1);
+SIGNED(struct pool_header, szidx, 0);
+FIELD(struct pool_header, nextoffset, 40, 4);
+KIND(struct pool_header, nextoffset, 1);
+SIGNED(struct pool_header, nextoffset, 0);
+FIELD(struct pool_header, maxnextoffset, 44, 4);
+KIND(struct pool_header, maxnextoffset, 1);
+SIGNED(struct pool_header, maxnextoffset, 0);
+LAYOUT(struct pool_header, 48, 8);
+
+/* arena_object */
+FIELD(struct arena_object, address, 0, 8);
+KIND(struct arena_object, address, 1);
+SIGNED(struct arena_object, address, 0);
+FIELD(struct arena_object, pool_address, 8, 8);
+KIND(struct arena_object, pool_address, 5);
+FIELD(struct arena_object, nfreepools, 16, 4);
+KIND(struct arena_object, nfreepools, 1);
+SIGNED(struct arena_object, nfreepools, 0);
+FIELD(struct arena_object, ntotalpools, 20, 4);
+KIND(struct arena_object, ntotalpools, 1);
+SIGNED(struct arena_object, ntotalpools, 0);
+FIELD(struct arena_object, freepools, 24, 8);
+KIND(struct arena_object, freepools, 5);
+FIELD(struct arena_object, nextarena, 32, 8);
+KIND(struct arena_object, nextarena, 5);
+FIELD(struct arena_object, prevarena, 40, 8);
+KIND(struct arena_object, prevarena, 5);
+LAYOUT(struct arena_object, 48, 8);
+
+/* arena_coverage_t */
+FIELD(arena_coverage_t, tail_hi, 0, 4);
+KIND(arena_coverage_t, tail_hi, 1);
+SIGNED(arena_coverage_t, tail_hi, 1);
+FIELD(arena_coverage_t, tail_lo, 4, 4);
+KIND(arena_coverage_t, tail_lo, 1);
+SIGNED(arena_coverage_t, tail_lo, 1);
+LAYOUT(arena_coverage_t, 8, 4);
+
+/* llist_node */
+FIELD(struct llist_node, next, 0, 8);
+KIND(struct llist_node, next, 5);
+FIELD(struct llist_node, prev, 8, 8);
+KIND(struct llist_node, prev, 5);
+LAYOUT(struct llist_node, 16, 8);
 
 /* _PyLineTableOpaque */
 FIELD(struct _opaque, computed_line, 0, 4);
@@ -2180,6 +2269,79 @@ CONSTANT(sizeof(_PyBytesWriter), 552LL);
 CONSTANT(sizeof(PyByteArrayObject), 56LL);
 CONSTANT(sizeof(bytesiterobject), 32LL);
 CONSTANT(_Py_TYPE_VERSION_BYTEARRAY, 9LL);
+CONSTANT(ALIGNMENT_SHIFT, 4LL);
+CONSTANT(SMALL_REQUEST_THRESHOLD, 512LL);
+CONSTANT(NB_SMALL_SIZE_CLASSES, 32LL);
+CONSTANT(ARENA_SIZE, 1048576LL);
+CONSTANT(ARENA_SIZE_MASK, 1048575LL);
+CONSTANT(POOL_SIZE, 16384LL);
+CONSTANT(POOL_SIZE_MASK, 16383LL);
+CONSTANT(MAX_POOLS_IN_ARENA, 64LL);
+CONSTANT(POOL_OVERHEAD, 48LL);
+CONSTANT(DUMMY_SIZE_IDX, 65535LL);
+CONSTANT(INITIAL_ARENA_OBJECTS, 16LL);
+CONSTANT(OBMALLOC_USED_POOLS_SIZE, 64LL);
+CONSTANT(MAP_TOP_SHIFT, 49LL);
+CONSTANT(MAP_MID_SHIFT, 34LL);
+CONSTANT(MAP_BOT_SHIFT, 20LL);
+CONSTANT(MAP_TOP_MASK, 32767LL);
+CONSTANT(MAP_MID_MASK, 32767LL);
+CONSTANT(MAP_BOT_MASK, 16383LL);
+CONSTANT(MAP_TOP_LENGTH, 32768LL);
+CONSTANT(MAP_MID_LENGTH, 32768LL);
+CONSTANT(PYMEM_CLEANBYTE, 205LL);
+CONSTANT(PYMEM_DEADBYTE, 221LL);
+CONSTANT(PYMEM_FORBIDDENBYTE, 253LL);
+CONSTANT(PYMEM_DOMAIN_RAW, 0LL);
+CONSTANT(PYMEM_DOMAIN_MEM, 1LL);
+CONSTANT(PYMEM_DOMAIN_OBJ, 2LL);
+CONSTANT(PYMEM_ALLOCATOR_NOT_SET, 0LL);
+CONSTANT(PYMEM_ALLOCATOR_DEFAULT, 1LL);
+CONSTANT(PYMEM_ALLOCATOR_DEBUG, 2LL);
+CONSTANT(PYMEM_ALLOCATOR_MALLOC, 3LL);
+CONSTANT(PYMEM_ALLOCATOR_MALLOC_DEBUG, 4LL);
+CONSTANT(PYMEM_ALLOCATOR_PYMALLOC, 5LL);
+CONSTANT(PYMEM_ALLOCATOR_PYMALLOC_DEBUG, 6LL);
+CONSTANT(PYMEM_ALLOCATOR_MIMALLOC, 7LL);
+CONSTANT(PYMEM_ALLOCATOR_MIMALLOC_DEBUG, 8LL);
+CONSTANT(PY_LOCK_ACQUIRED, 1LL);
+CONSTANT(_Py_LOCK_DONT_DETACH, 0LL);
+CONSTANT(PROT_READ|PROT_WRITE, 3LL);
+CONSTANT(MI_SMALL_OBJ_SIZE_MAX, 16384LL);
+CONSTANT(MI_MEDIUM_OBJ_SIZE_MAX, 131072LL);
+CONSTANT(MI_LARGE_OBJ_SIZE_MAX, 16777216LL);
+CONSTANT(MI_BIN_HUGE, 73LL);
+CONSTANT(offsetof(mi_heap_area_t, reserved), 8LL);
+CONSTANT(offsetof(mi_heap_area_t, committed), 16LL);
+CONSTANT(offsetof(mi_heap_area_t, used), 24LL);
+CONSTANT(offsetof(mi_heap_area_t, block_size), 32LL);
+CONSTANT(offsetof(mi_heap_area_t, full_block_size), 40LL);
+CONSTANT(sizeof(PyMemAllocatorEx), 40LL);
+CONSTANT(sizeof(PyObjectArenaAllocator), 24LL);
+CONSTANT(offsetof(debug_alloc_api_t, alloc), 8LL);
+CONSTANT(offsetof(struct pool_header, ref.count), 0LL);
+CONSTANT(sizeof(struct arena_object), 48LL);
+CONSTANT(sizeof(arena_map_top_t), 262144LL);
+CONSTANT(sizeof(arena_map_mid_t), 262144LL);
+CONSTANT(sizeof(arena_map_bot_t), 131072LL);
+CONSTANT(sizeof(struct _obmalloc_state), 263248LL);
+CONSTANT(offsetof(struct _obmalloc_state, pools.used), 0LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.arenas), 512LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.maxarenas), 520LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.unused_arena_objects), 528LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.usable_arenas), 536LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.nfp2lasta), 544LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.narenas_currently_allocated), 1064LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.ntimes_arena_allocated), 1072LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.narenas_highwater), 1080LL);
+CONSTANT(offsetof(struct _obmalloc_state, mgmt.raw_allocated_blocks), 1088LL);
+CONSTANT(offsetof(struct _obmalloc_state, usage.arena_map_root), 1096LL);
+CONSTANT(offsetof(struct _obmalloc_state, usage.arena_map_mid_count), 263240LL);
+CONSTANT(offsetof(struct _obmalloc_state, usage.arena_map_bot_count), 263244LL);
+CONSTANT(offsetof(struct _qsbr_thread_state, should_process), 48LL);
+CONSTANT(offsetof(struct _Py_mem_interp_free_queue, has_work), 0LL);
+CONSTANT(offsetof(struct _Py_mem_interp_free_queue, mutex), 4LL);
+CONSTANT(offsetof(struct _Py_mem_interp_free_queue, head), 8LL);
 CONSTANT(Py_TPFLAGS_READYING, 8192LL);
 CONSTANT(Py_TPFLAGS_IS_ABSTRACT, 1048576LL);
 CONSTANT(Py_TPFLAGS_ITEMS_AT_END, 8388608LL);
@@ -2927,6 +3089,25 @@ CONSTANT(offsetof(PyInterpreterState, rare_events.set_bases), 223225LL);
 CONSTANT(offsetof(_PyRuntimeState, types.next_version_tag), 10584LL);
 CONSTANT(offsetof(_PyRuntimeState, types.managed_static.types), 10592LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.strings), 34680LL);
+CONSTANT(MAP_PRIVATE|MAP_ANONYMOUS, 34LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.mutex), 872LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.raw), 880LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.mem), 920LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.obj), 960LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.raw), 1000LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.mem), 1048LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.obj), 1096LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.is_debug_enabled), 1144LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.obj_arena), 1152LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.dump_debug_stats), 1176LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.interpreter_leaks), 1184LL);
+CONSTANT(offsetof(_PyRuntimeState, _finalizing), 784LL);
+CONSTANT(offsetof(_PyRuntimeState, interpreters.mutex), 800LL);
+CONSTANT(offsetof(PyInterpreterState, obmalloc), 10904LL);
+CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
+CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79920LL);
+CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
+CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 10432LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 10440LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90544LL);
@@ -3030,6 +3211,25 @@ CONSTANT(offsetof(PyInterpreterState, rare_events.set_bases), 223241LL);
 CONSTANT(offsetof(_PyRuntimeState, types.next_version_tag), 10584LL);
 CONSTANT(offsetof(_PyRuntimeState, types.managed_static.types), 10592LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.strings), 34680LL);
+CONSTANT(MAP_PRIVATE|MAP_ANONYMOUS, 34LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.mutex), 872LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.raw), 880LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.mem), 920LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.obj), 960LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.raw), 1000LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.mem), 1048LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.obj), 1096LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.is_debug_enabled), 1144LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.obj_arena), 1152LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.dump_debug_stats), 1176LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.interpreter_leaks), 1184LL);
+CONSTANT(offsetof(_PyRuntimeState, _finalizing), 784LL);
+CONSTANT(offsetof(_PyRuntimeState, interpreters.mutex), 800LL);
+CONSTANT(offsetof(PyInterpreterState, obmalloc), 10920LL);
+CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
+CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79936LL);
+CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
+CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 10432LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 10440LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90544LL);
@@ -3133,6 +3333,25 @@ CONSTANT(offsetof(PyInterpreterState, rare_events.set_bases), 223273LL);
 CONSTANT(offsetof(_PyRuntimeState, types.next_version_tag), 10080LL);
 CONSTANT(offsetof(_PyRuntimeState, types.managed_static.types), 10088LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.strings), 34184LL);
+CONSTANT(MAP_PRIVATE|MAP_ANONYMOUS, 4098LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.mutex), 872LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.raw), 880LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.mem), 920LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.obj), 960LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.raw), 1000LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.mem), 1048LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.obj), 1096LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.is_debug_enabled), 1144LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.obj_arena), 1152LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.dump_debug_stats), 1176LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.interpreter_leaks), 1184LL);
+CONSTANT(offsetof(_PyRuntimeState, _finalizing), 784LL);
+CONSTANT(offsetof(_PyRuntimeState, interpreters.mutex), 800LL);
+CONSTANT(offsetof(PyInterpreterState, obmalloc), 10952LL);
+CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
+CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79968LL);
+CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
+CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 9928LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 9936LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90048LL);
@@ -3236,6 +3455,25 @@ CONSTANT(offsetof(PyInterpreterState, rare_events.set_bases), 223273LL);
 CONSTANT(offsetof(_PyRuntimeState, types.next_version_tag), 10080LL);
 CONSTANT(offsetof(_PyRuntimeState, types.managed_static.types), 10088LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.strings), 34184LL);
+CONSTANT(MAP_PRIVATE|MAP_ANONYMOUS, 4098LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.mutex), 872LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.raw), 880LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.mem), 920LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.standard.obj), 960LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.raw), 1000LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.mem), 1048LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.debug.obj), 1096LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.is_debug_enabled), 1144LL);
+CONSTANT(offsetof(_PyRuntimeState, allocators.obj_arena), 1152LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.dump_debug_stats), 1176LL);
+CONSTANT(offsetof(_PyRuntimeState, obmalloc.interpreter_leaks), 1184LL);
+CONSTANT(offsetof(_PyRuntimeState, _finalizing), 784LL);
+CONSTANT(offsetof(_PyRuntimeState, interpreters.mutex), 800LL);
+CONSTANT(offsetof(PyInterpreterState, obmalloc), 10952LL);
+CONSTANT(offsetof(PyInterpreterState, runtime), 7384LL);
+CONSTANT(offsetof(PyInterpreterState, mem_free_queue), 79968LL);
+CONSTANT(offsetof(_PyThreadStateImpl, qsbr), 896LL);
+CONSTANT(offsetof(_PyThreadStateImpl, mem_free_queue), 904LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_func), 9928LL);
 CONSTANT(offsetof(_PyRuntimeState, ref_tracer.tracer_data), 9936LL);
 CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.tuple_empty), 90048LL);

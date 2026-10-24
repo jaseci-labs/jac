@@ -13,6 +13,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/build-graph.patch",
     "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
     "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
+    "bootstrap/python/mimalloc_unit.c",
     "bootstrap/python/layouts_check.c",    "bootstrap/python/features_check.c",
 
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
@@ -242,6 +243,7 @@ fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
             std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
             std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c") or
+            std.mem.endsWith(u8, path, "/mimalloc_unit.c") or
             std.mem.endsWith(u8, path, "/layouts_check.c") or std.mem.endsWith(u8, path, "/features_check.c") or
             std.mem.endsWith(u8, path, "/jacpython-modules.txt"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });

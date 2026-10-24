@@ -153,6 +153,7 @@ cpython() {
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
         cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
+        cp "$recipe/mimalloc_unit.c" Objects/jac_mimalloc.c
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
     # cpython-sources.txt decides what the extracted tree holds; detach the

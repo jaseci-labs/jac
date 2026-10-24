@@ -99,6 +99,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/complexobject.h",
          "Include/cpython/classobject.h",
          "Include/structseq.h",
+         "Include/cpython/pymem.h",
+         "Include/cpython/objimpl.h",
+         "Include/internal/pycore_llist.h",
+         "Include/internal/pycore_obmalloc.h",
          "Include/internal/pycore_interp_structs.h"
      ],
      # Object files whose private object structs are layouts: the ports of
@@ -164,6 +168,14 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "internal/pycore_frame.h",
          "frameobject.h",
          "internal/pycore_opcode_utils.h",
+         "internal/pycore_obmalloc.h",
+         "internal/pycore_llist.h",
+         "internal/pycore_pymem.h",
+         "internal/pycore_qsbr.h",
+         "internal/pycore_tstate.h",
+         "internal/pycore_runtime_structs.h",
+         "internal/pycore_mimalloc.h",
+         "sys/mman.h",
          "opcode_ids.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
@@ -219,6 +231,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyHeapTypeObject", "PyHeapTypeObject"),
          ("managed_static_type_state", "managed_static_type_state"),
          ("type_cache_entry", "struct type_cache_entry"),
+         ("PyMemAllocatorEx", "PyMemAllocatorEx"),
+         ("PyObjectArenaAllocator", "PyObjectArenaAllocator"),
+         ("pool_header", "struct pool_header"),
+         ("arena_object", "struct arena_object"),
+         ("arena_coverage_t", "arena_coverage_t"),
+         ("llist_node", "struct llist_node"),
          ("_PyLineTableOpaque", "struct _opaque"),
          ("PyCodeAddressRange", "PyCodeAddressRange"),
          ("lineiterator", "lineiterator"),
@@ -983,6 +1001,151 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyByteArrayObject_SIZE", "sizeof(PyByteArrayObject)", "i64"),
          ("bytesiterobject_SIZE", "sizeof(bytesiterobject)", "i64"),
          ("_Py_TYPE_VERSION_BYTEARRAY", "_Py_TYPE_VERSION_BYTEARRAY", "u32"),
+         ("ALIGNMENT_SHIFT", "ALIGNMENT_SHIFT", "u32"),
+         ("SMALL_REQUEST_THRESHOLD", "SMALL_REQUEST_THRESHOLD", "u64"),
+         ("NB_SMALL_SIZE_CLASSES", "NB_SMALL_SIZE_CLASSES", "u32"),
+         ("ARENA_SIZE", "ARENA_SIZE", "u64"),
+         ("ARENA_SIZE_MASK", "ARENA_SIZE_MASK", "u64"),
+         ("POOL_SIZE", "POOL_SIZE", "u64"),
+         ("POOL_SIZE_MASK", "POOL_SIZE_MASK", "u64"),
+         ("MAX_POOLS_IN_ARENA", "MAX_POOLS_IN_ARENA", "u32"),
+         ("POOL_OVERHEAD", "POOL_OVERHEAD", "u32"),
+         ("DUMMY_SIZE_IDX", "DUMMY_SIZE_IDX", "u32"),
+         ("INITIAL_ARENA_OBJECTS", "INITIAL_ARENA_OBJECTS", "u32"),
+         ("OBMALLOC_USED_POOLS_SIZE", "OBMALLOC_USED_POOLS_SIZE", "i64"),
+         ("MAP_TOP_SHIFT", "MAP_TOP_SHIFT", "u64"),
+         ("MAP_MID_SHIFT", "MAP_MID_SHIFT", "u64"),
+         ("MAP_BOT_SHIFT", "MAP_BOT_SHIFT", "u64"),
+         ("MAP_TOP_MASK", "MAP_TOP_MASK", "u64"),
+         ("MAP_MID_MASK", "MAP_MID_MASK", "u64"),
+         ("MAP_BOT_MASK", "MAP_BOT_MASK", "u64"),
+         ("MAP_TOP_LENGTH", "MAP_TOP_LENGTH", "i64"),
+         ("MAP_MID_LENGTH", "MAP_MID_LENGTH", "i64"),
+         ("PYMEM_CLEANBYTE", "PYMEM_CLEANBYTE", "i32"),
+         ("PYMEM_DEADBYTE", "PYMEM_DEADBYTE", "i32"),
+         ("PYMEM_FORBIDDENBYTE", "PYMEM_FORBIDDENBYTE", "i32"),
+         ("PYMEM_DOMAIN_RAW", "PYMEM_DOMAIN_RAW", "i32"),
+         ("PYMEM_DOMAIN_MEM", "PYMEM_DOMAIN_MEM", "i32"),
+         ("PYMEM_DOMAIN_OBJ", "PYMEM_DOMAIN_OBJ", "i32"),
+         ("PYMEM_ALLOCATOR_NOT_SET", "PYMEM_ALLOCATOR_NOT_SET", "i32"),
+         ("PYMEM_ALLOCATOR_DEFAULT", "PYMEM_ALLOCATOR_DEFAULT", "i32"),
+         ("PYMEM_ALLOCATOR_DEBUG", "PYMEM_ALLOCATOR_DEBUG", "i32"),
+         ("PYMEM_ALLOCATOR_MALLOC", "PYMEM_ALLOCATOR_MALLOC", "i32"),
+         ("PYMEM_ALLOCATOR_MALLOC_DEBUG", "PYMEM_ALLOCATOR_MALLOC_DEBUG", "i32"),
+         ("PYMEM_ALLOCATOR_PYMALLOC", "PYMEM_ALLOCATOR_PYMALLOC", "i32"),
+         ("PYMEM_ALLOCATOR_PYMALLOC_DEBUG", "PYMEM_ALLOCATOR_PYMALLOC_DEBUG", "i32"),
+         ("PYMEM_ALLOCATOR_MIMALLOC", "PYMEM_ALLOCATOR_MIMALLOC", "i32"),
+         ("PYMEM_ALLOCATOR_MIMALLOC_DEBUG", "PYMEM_ALLOCATOR_MIMALLOC_DEBUG", "i32"),
+         ("PY_LOCK_ACQUIRED", "PY_LOCK_ACQUIRED", "i32"),
+         ("_Py_LOCK_DONT_DETACH", "_Py_LOCK_DONT_DETACH", "i32"),
+         ("ARENA_MMAP_PROT", "PROT_READ|PROT_WRITE", "i32"),
+         ("MI_SMALL_OBJ_SIZE_MAX", "MI_SMALL_OBJ_SIZE_MAX", "u64"),
+         ("MI_MEDIUM_OBJ_SIZE_MAX", "MI_MEDIUM_OBJ_SIZE_MAX", "u64"),
+         ("MI_LARGE_OBJ_SIZE_MAX", "MI_LARGE_OBJ_SIZE_MAX", "u64"),
+         ("MI_BIN_HUGE", "MI_BIN_HUGE", "u32"),
+         ("mi_heap_area_t_RESERVED", "offsetof(mi_heap_area_t, reserved)", "i64"),
+         ("mi_heap_area_t_COMMITTED", "offsetof(mi_heap_area_t, committed)", "i64"),
+         ("mi_heap_area_t_USED", "offsetof(mi_heap_area_t, used)", "i64"),
+         ("mi_heap_area_t_BLOCK_SIZE", "offsetof(mi_heap_area_t, block_size)", "i64"),
+         (
+             "mi_heap_area_t_FULL_BLOCK_SIZE",
+             "offsetof(mi_heap_area_t, full_block_size)",
+             "i64"
+         ),
+         ("PyMemAllocatorEx_SIZE", "sizeof(PyMemAllocatorEx)", "i64"),
+         ("PyObjectArenaAllocator_SIZE", "sizeof(PyObjectArenaAllocator)", "i64"),
+         ("debug_alloc_api_t_ALLOC", "offsetof(debug_alloc_api_t, alloc)", "i64"),
+         ("pool_header_REF_COUNT", "offsetof(struct pool_header, ref.count)", "i64"),
+         ("arena_object_SIZE", "sizeof(struct arena_object)", "i64"),
+         ("arena_map_top_t_SIZE", "sizeof(arena_map_top_t)", "i64"),
+         ("arena_map_mid_t_SIZE", "sizeof(arena_map_mid_t)", "i64"),
+         ("arena_map_bot_t_SIZE", "sizeof(arena_map_bot_t)", "i64"),
+         ("_obmalloc_state_SIZE", "sizeof(struct _obmalloc_state)", "i64"),
+         (
+             "_obmalloc_state_POOLS_USED",
+             "offsetof(struct _obmalloc_state, pools.used)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_ARENAS",
+             "offsetof(struct _obmalloc_state, mgmt.arenas)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_MAXARENAS",
+             "offsetof(struct _obmalloc_state, mgmt.maxarenas)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_UNUSED_ARENA_OBJECTS",
+             "offsetof(struct _obmalloc_state, mgmt.unused_arena_objects)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_USABLE_ARENAS",
+             "offsetof(struct _obmalloc_state, mgmt.usable_arenas)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_NFP2LASTA",
+             "offsetof(struct _obmalloc_state, mgmt.nfp2lasta)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_NARENAS_CURRENTLY_ALLOCATED",
+             "offsetof(struct _obmalloc_state, mgmt.narenas_currently_allocated)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_NTIMES_ARENA_ALLOCATED",
+             "offsetof(struct _obmalloc_state, mgmt.ntimes_arena_allocated)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_NARENAS_HIGHWATER",
+             "offsetof(struct _obmalloc_state, mgmt.narenas_highwater)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_MGMT_RAW_ALLOCATED_BLOCKS",
+             "offsetof(struct _obmalloc_state, mgmt.raw_allocated_blocks)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_USAGE_ARENA_MAP_ROOT",
+             "offsetof(struct _obmalloc_state, usage.arena_map_root)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_USAGE_ARENA_MAP_MID_COUNT",
+             "offsetof(struct _obmalloc_state, usage.arena_map_mid_count)",
+             "i64"
+         ),
+         (
+             "_obmalloc_state_USAGE_ARENA_MAP_BOT_COUNT",
+             "offsetof(struct _obmalloc_state, usage.arena_map_bot_count)",
+             "i64"
+         ),
+         (
+             "_qsbr_thread_state_SHOULD_PROCESS",
+             "offsetof(struct _qsbr_thread_state, should_process)",
+             "i64"
+         ),
+         (
+             "_Py_mem_interp_free_queue_HAS_WORK",
+             "offsetof(struct _Py_mem_interp_free_queue, has_work)",
+             "i64"
+         ),
+         (
+             "_Py_mem_interp_free_queue_MUTEX",
+             "offsetof(struct _Py_mem_interp_free_queue, mutex)",
+             "i64"
+         ),
+         (
+             "_Py_mem_interp_free_queue_HEAD",
+             "offsetof(struct _Py_mem_interp_free_queue, head)",
+             "i64"
+         ),
          ("Py_TPFLAGS_READYING", "Py_TPFLAGS_READYING", "u64"),
          ("Py_TPFLAGS_IS_ABSTRACT", "Py_TPFLAGS_IS_ABSTRACT", "u64"),
          ("Py_TPFLAGS_ITEMS_AT_END", "Py_TPFLAGS_ITEMS_AT_END", "u64"),
@@ -3215,6 +3378,89 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "offsetof(_PyRuntimeState, static_objects.singletons.strings)",
              "i64"
          ),
+         ("ARENA_MMAP_FLAGS", "MAP_PRIVATE|MAP_ANONYMOUS", "i32"),
+         (
+             "_PyRuntimeState_ALLOCATORS_MUTEX",
+             "offsetof(_PyRuntimeState, allocators.mutex)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_STANDARD_RAW",
+             "offsetof(_PyRuntimeState, allocators.standard.raw)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_STANDARD_MEM",
+             "offsetof(_PyRuntimeState, allocators.standard.mem)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_STANDARD_OBJ",
+             "offsetof(_PyRuntimeState, allocators.standard.obj)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_DEBUG_RAW",
+             "offsetof(_PyRuntimeState, allocators.debug.raw)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_DEBUG_MEM",
+             "offsetof(_PyRuntimeState, allocators.debug.mem)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_DEBUG_OBJ",
+             "offsetof(_PyRuntimeState, allocators.debug.obj)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_IS_DEBUG_ENABLED",
+             "offsetof(_PyRuntimeState, allocators.is_debug_enabled)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ALLOCATORS_OBJ_ARENA",
+             "offsetof(_PyRuntimeState, allocators.obj_arena)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_OBMALLOC_DUMP_DEBUG_STATS",
+             "offsetof(_PyRuntimeState, obmalloc.dump_debug_stats)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_OBMALLOC_INTERPRETER_LEAKS",
+             "offsetof(_PyRuntimeState, obmalloc.interpreter_leaks)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FINALIZING",
+             "offsetof(_PyRuntimeState, _finalizing)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_INTERPRETERS_MUTEX",
+             "offsetof(_PyRuntimeState, interpreters.mutex)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_OBMALLOC",
+             "offsetof(PyInterpreterState, obmalloc)",
+             "i64"
+         ),
+         ("PyInterpreterState_RUNTIME", "offsetof(PyInterpreterState, runtime)", "i64"),
+         (
+             "PyInterpreterState_MEM_FREE_QUEUE",
+             "offsetof(PyInterpreterState, mem_free_queue)",
+             "i64"
+         ),
+         ("_PyThreadStateImpl_QSBR", "offsetof(_PyThreadStateImpl, qsbr)", "i64"),
+         (
+             "_PyThreadStateImpl_MEM_FREE_QUEUE",
+             "offsetof(_PyThreadStateImpl, mem_free_queue)",
+             "i64"
+         ),
          (
              "_PyRuntimeState_REF_TRACER_FUNC",
              "offsetof(_PyRuntimeState, ref_tracer.tracer_func)",
@@ -3289,6 +3535,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Py_ssize_t": ("i64", True),
          "Py_hash_t": ("i64", True),
          "uintptr_t": ("u64", False),
+         # pycore_obmalloc.h's `#define uint pymem_uint` (unsigned int).
+         "uint": ("u32", False),
+         "pymem_uint": ("u32", False),
          "intptr_t": ("i64", True),
          "double": ("f64", True),
          "float": ("f32", True),
@@ -3376,7 +3625,7 @@ def strip_comments(text: str) -> str {
 def condition(expression: str, defines: dict[str, str]) -> bool {
     pieces: list[str] = [];
     for token in re.findall(
-        r"defined\s*\(\s*\w+\s*\)|defined\s+\w+|\w+|&&|\|\||[!=<>]=|<<|>>|[!()<>+\-*]",
+        r"defined\s*\(\s*\w+\s*\)|defined\s+\w+|\w+|&&|\|\||[!=<>]=|<<|>>|[!()<>+\-*&|^~]",
         expression
     ) {
         if token.startswith("defined") and token != "defined" {
@@ -3724,6 +3973,8 @@ def member_function(returns: str, raw: str) -> str {
 # int for enumerators that are all non-negative, which the kind and signedness
 # asserts prove. A function-pointer member (`PyObject *(*f)(int)`) is typed as
 # its signature.
+glob union_designators: dict[str, str] = {};
+
 def members(body: str) -> list[tuple[str, str, int]] {
     body = body.replace("__extension__", " ");
     while True {
@@ -3744,13 +3995,20 @@ def members(body: str) -> list[tuple[str, str, int]] {
         }
         end = closing(body, hit.end() - 1);
         tail = re.match(r"\s*(\w*)\s*;", body[end:]);
-        if tail is None or tail.group(1) {
-            sys.exit("gen_layouts: only anonymous nested unions are supported");
+        if tail is None or (tail.group(1) and hit.group(1) != "union") {
+            sys.exit("gen_layouts: only anonymous nested structs are supported");
         }
         inner = members(body[hit.end():end - 1]);
         replacement = f"{inner[0][0]} {inner[0][1]}{bounds(inner[0][2])};"
             if hit.group(1) == "union"
             else " ".join(f"{t} {n}{bounds(a)};" for (t, n, a) in inner);
+        if tail.group(1) {
+            # A named union (pool_header's `ref`) is likewise one field of its
+            # first member's type, under the union's name; the asserts reach
+            # it through that member.
+            union_designators[tail.group(1)] = f"{tail.group(1)}.{inner[0][1]}";
+            replacement = f"{inner[0][0]} {tail.group(1)}{bounds(inner[0][2])};";
+        }
         body = body[:hit.start()] + replacement + body[end + len(tail.group(0)):];
     }
     found: list[tuple[str, str, int]] = [];
@@ -3821,6 +4079,7 @@ def require(name: str) -> None {
     layout = Layout(name=name, ctype=ctype, fields=[], size=0, align=1);
     emitted[name] = layout;
     offset = 0;
+    union_designators.clear();
     for (member_type, member, count) in members(body) {
         jac = jac_type(member_type);
         (size, align) = size_align(jac);
@@ -3853,7 +4112,10 @@ def require(name: str) -> None {
                     array=count == 1,
                     member=f"{member}[{index}]"
                         if count > 1
-                        else (member if jac_member != member else ""),
+                        else (
+                            union_designators.get(member)
+                            or (member if jac_member != member else "")
+                        ),
                     boolean=scalar is not None
                         and " ".join(member_type.split()) in ("bool", "_Bool")
                 )
@@ -4119,7 +4381,11 @@ def default_include -> Path {
 }
 
 def probe_flags(headers_dir: Path) -> list[str] {
-    return [f"-I{headers_dir}", "-DPy_BUILD_CORE=1"];
+    return [
+        f"-I{headers_dir}",
+        f"-I{headers_dir}/internal/mimalloc",
+        "-DPy_BUILD_CORE=1"
+    ];
 }
 
 # Constant values as the compiler folds them against the configured headers.
