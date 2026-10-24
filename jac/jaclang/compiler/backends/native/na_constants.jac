@@ -22,6 +22,8 @@ glob NATIVE_OS_FUNCS: set[str] = {
          "unlink",
          "rename",
          "system",
+         "read",
+         "isatty",
 
      };
 glob NATIVE_OSPATH_FUNCS: set[str] = {

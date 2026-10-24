@@ -1,6 +1,6 @@
 comptime import from jaclang.cli.commands.arch { SPEC_ARCH }
 
-comptime VERB_BUDGET: int = 27,
+comptime VERB_BUDGET: int = 28,
      TOMBSTONED_VERBS: dict[str, str] = {
          "add": "jac install <pkg>",
          "format": "jac fmt",
@@ -90,6 +90,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_RUN),
          _route(SPEC_SCALE_CMD),
          _route(SPEC_SETUP),
+         _route(SPEC_STUDIO),
          _route(SPEC_TEST),
          _route(SPEC_TOOL),
          _route(SPEC_UPDATE),

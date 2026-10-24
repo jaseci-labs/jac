@@ -2221,6 +2221,18 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
             if target_val is not None
                 and isinstance(target_expr.right, uni.IndexSlice)
+                and target_expr.right.is_range {
+                self.emit(
+                    E5092,
+                    node_override=target_expr,
+                    kind="slice assignment",
+                    name=self._get_name(target_expr.target) or "sequence",
+                    help_text="Assigning to a slice is not lowered natively; assign the elements one by one."
+                );
+                continue;
+            }
+            if target_val is not None
+                and isinstance(target_expr.right, uni.IndexSlice)
                 and target_expr.right.slices {
                 slices = target_expr.right.slices or [];
                 if slices {

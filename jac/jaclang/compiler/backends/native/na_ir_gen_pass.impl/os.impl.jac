@@ -357,6 +357,79 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         return None;
     }
 
+    if name == "isatty" and len(params) >= 1 {
+        fd_v = self._codegen_expr(params[0]);
+        if fd_v is None {
+            return None;
+        }
+        isatty_fn = self._get_or_declare_extern("isatty", i32, [i32]);
+        r = self.builder.call(
+            isatty_fn,
+            [
+                self.builder.trunc(
+                    self._coerce_type(fd_v, i64), i32, name="os.isatty.fd"
+                )
+            ],
+            name="os.isatty"
+        );
+        return self.builder.icmp_signed(
+            "!=", r, ir.Constant(i32, 0), name="os.isatty.b"
+        );
+    }
+
+    if name == "read" and len(params) >= 2 {
+        fd_v = self._codegen_expr(params[0]);
+        n_v = self._codegen_expr(params[1]);
+        if fd_v is None or n_v is None {
+            return None;
+        }
+        want = self._coerce_type(n_v, i64);
+        self._emit_runtime_raise(
+            self.builder.icmp_signed("<", want, ir.Constant(i64, 0)),
+            "ValueError",
+            "negative count"
+        );
+        bv = self._bytes_alloc(want);
+        read_fn = self._get_or_declare_extern("read", i64, [i32, i8p, i64]);
+        got = self.builder.call(
+            read_fn,
+            [
+                self.builder.trunc(
+                    self._coerce_type(fd_v, i64), i32, name="os.read.fd"
+                ),
+                self._bytes_data_ptr(bv),
+                want
+            ],
+            name="os.read.n"
+        );
+        failed = self.builder.icmp_signed("<", got, ir.Constant(i64, 0));
+        wasm = self._target_is_wasm();
+        errno_fn = self._get_or_declare_extern(
+            "__errno_location" if wasm else "__jac_errno", i64, []
+        );
+        err = self.builder.load(
+            self.builder.inttoptr(self.builder.call(errno_fn, []), i32.as_pointer())
+        );
+        would_block = self.builder.or_(
+            self.builder.icmp_signed("==", err, ir.Constant(i32, 11)),
+            self.builder.icmp_signed("==", err, ir.Constant(i32, 35))
+        );
+        self._emit_runtime_raise(
+            self.builder.and_(failed, would_block),
+            "BlockingIOError",
+            "Resource temporarily unavailable",
+            [bv]
+        );
+        self._emit_runtime_raise(failed, "OSError", "read failed", [bv]);
+        self.builder.store(
+            got,
+            self.builder.gep(
+                bv, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="os.read.len"
+            )
+        );
+        return bv;
+    }
+
     if name == "rename" and len(params) >= 2 {
         src = self._str_arg(self._codegen_expr(params[0]));
         dst = self._str_arg(self._codegen_expr(params[1]));

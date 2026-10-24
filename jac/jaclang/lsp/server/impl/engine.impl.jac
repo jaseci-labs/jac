@@ -784,7 +784,7 @@ impl JacLangServer.get_inlay_hints(
         }
         out.append(
             lspt.InlayHint(
-                position=lspt.Position(line=line, character=h.col),
+                position=lspt.Position(line=line, character=max(h.col - 1, 0)),
                 label=h.label,
                 kind=(
                     lspt.InlayHintKind.Parameter

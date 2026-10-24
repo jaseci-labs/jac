@@ -2595,6 +2595,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         func = self._module_function((real_path(source), func_name))
             if source is not None
             else None;
+        if func is None and _mod_qual == "os" and func_name not in self.generic_fns {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="function",
+                name=f"{_mod_qual}.{func_name}",
+                help_text=f"'{_mod_qual}' has no native implementation of '{func_name}', "
+                "so the native pathway cannot call it; call it from a server (@sv) "
+                "context instead."
+            );
+            return None;
+        }
     }
     if func is None and not _var_callee {
         manifest = self.module.gen.interop_manifest;
@@ -4395,6 +4407,14 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_callable_value(
     nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
 ) -> (ir.Value | None) {
+    if self._opt_payload_of(value.type) is not None {
+        _callee = self._opt_unwrap_guarded(
+            value, "call", "'NoneType' object is not callable"
+        );
+        if _callee is not None {
+            return self._codegen_callable_value(nd, _callee, captures);
+        }
+    }
     closure_name = self._closure_struct_of(value.type);
     if closure_name is not None {
         return self._codegen_closure_call(nd, value, closure_name);

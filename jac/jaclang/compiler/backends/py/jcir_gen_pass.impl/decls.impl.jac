@@ -95,7 +95,9 @@ impl JcirGenPass.exit_archetype with Archetype exit {
     ct_fields = self._ct_param_fields(here);
     if ct_fields {
         insert_at = 1 if here.doc else 0;
-        body[insert_at:insert_at] = ct_fields;
+        for (k, field) in enumerate(ct_fields) {
+            body.insert(insert_at + k, field);
+        }
     }
     async_walker = here.arch_kind == 'walker'
         and any(

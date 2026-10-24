@@ -648,7 +648,13 @@ def emit_match_pattern_or(
                     rotations = si + 1;
                     rotated = alt_ctx.stores[:rotations];
                     alt_ctx.stores = alt_ctx.stores[rotations:];
-                    alt_ctx.stores[ci - si:ci - si] = rotated;
+                    at = ci - si;
+                    if at < 0 {
+                        at = max(0, len(alt_ctx.stores) + at);
+                    }
+                    for (k, moved) in enumerate(rotated) {
+                        alt_ctx.stores.insert(at + k, moved);
+                    }
                     for unused in range(rotations) {
                         match_pattern_rotate(g, ploc, ci + 1);
                     }
