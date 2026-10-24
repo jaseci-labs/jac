@@ -526,7 +526,7 @@ code is generated in the kernel too. Otherwise the kernel emitted nothing
 because it handed the module back (an integer literal past a native int) or
 there is nothing to emit (an empty package `__init__`), and the host
 compiles it."""
-test "a kernel compile with no unit is final only when it reported errors" {
+test "a kernel compile with no unit is final, and an error when it reported none" {
     import from unittest.mock { patch }
     import from jaclang.compiler.frontend.kernel_analyze {
         AnalysisDiag,
@@ -541,11 +541,11 @@ test "a kernel compile with no unit is final only when it reported errors" {
         program = JacProgram();
         compiler = program._get_compiler();
         failed = [AnalysisDiag(code="E1001", message="x", path=entry_file, line=1)];
-        for (placed_native, errors, expect_handled) in [
-            (True, [], False),
-            (False, [], False),
-            (False, failed, True),
-            (True, failed, True)
+        for (placed_native, errors) in [
+            (True, []),
+            (False, []),
+            (False, failed),
+            (True, failed)
         ] {
             canned = CompileReport(
                 analysis=AnalysisReport(
@@ -557,12 +557,20 @@ test "a kernel compile with no unit is final only when it reported errors" {
             with patch.object(
                 kernel_compile_mod, "host_kernel_compile", _answering(canned)
             ) {
-                (handled, code) = compiler._adopt_kernel_compile(
-                    entry_file, program, compile_options()
-                );
+                if errors {
+                    (handled, code) = compiler._adopt_kernel_compile(
+                        entry_file, program, compile_options()
+                    );
+                    assert handled , (placed_native, "the kernel's errors are final");
+                    assert code is None;
+                } else {
+                    with testraises(RuntimeError, `match="returned no unit") {
+                        compiler._adopt_kernel_compile(
+                            entry_file, program, compile_options()
+                        );
+                    }
+                }
             }
-            assert handled == expect_handled , (placed_native, len(errors), handled);
-            assert code is None;
         }
     }
 }
@@ -986,10 +994,7 @@ test "a module importing another copy of the compiler is handed to the host" {
             );
         }
         assert not runs , runs;
-        assert outcome is not None;
-        assert not outcome.units;
-        placed = outcome.analysis.module(entry_file);
-        assert placed is not None and placed.native , outcome.analysis.modules;
+        assert outcome is None , "another compiler copy is the host's to compile";
     }
 }
 
