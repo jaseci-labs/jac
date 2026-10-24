@@ -968,6 +968,15 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         reverse: (ir.Value | None)
     ) -> (ir.Value | None);
 
+    def _emit_key_sort(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        key_fn: ir.Function,
+        reverse: (ir.Value | None),
+        key_node: UniNode
+    ) -> (ir.Value | None);
+
     def emit_reverse(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,
