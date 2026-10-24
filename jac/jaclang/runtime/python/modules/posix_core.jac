@@ -403,7 +403,7 @@ import from c {
             Py_ExitStatusException(status);
             return;
         }
-        tstate = PyThreadState_GetUnchecked();
+        tstate = current_tstate();
         if not tstate {
             _Py_FatalErrorFunc(
                 "PyOS_AfterFork_Child",

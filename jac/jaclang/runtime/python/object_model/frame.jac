@@ -2310,7 +2310,7 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
         popped = iframe_stack_pop(iframe);
         if top_of_stack(start_stack) == KIND_EXCEPT {
             exc = stackref_borrow(popped);
-            ts = ptr[u8](PyThreadState_GetUnchecked());
+            ts = ptr[u8](current_tstate());
             exc_info = ptr[ptr[u8]](ts + PyThreadState_EXC_INFO).view(1)[0];
             slot = ptr[ptr[PyObject]](exc_info + _PyErr_StackItem_EXC_VALUE);
             old = slot.view(1)[0];

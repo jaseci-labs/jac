@@ -19777,7 +19777,6 @@ graph import runtime.python {
             PyObject_GetIter,
             PyThreadState,
             PyThreadState_GetInterpreter,
-            PyThreadState_GetUnchecked,
             PyUnicode_AsWideCharString,
             PyUnicode_DecodeFSDefaultAndSize,
             PyUnicode_EncodeFSDefault,
@@ -21717,7 +21716,6 @@ graph import runtime.python {
             PyObject,
             PyObject_GetOptionalAttr,
             PyThreadState,
-            PyThreadState_GetUnchecked,
             PyTuple_New,
             _PyErr_FormatFromCause,
             _PyTuple_FromArray
@@ -21775,7 +21773,6 @@ graph import runtime.python {
             PyObject_GenericGetAttr,
             PyObject_GenericHash,
             PyObject_GetAttrString,
-            PyThreadState_GetUnchecked,
             PyUnicode_FromFormat,
             PyVectorcall_Call,
             PyVectorcall_NARGS,
@@ -22353,7 +22350,6 @@ graph import runtime.python {
             PyObject_RichCompareBool,
             PySys_Audit,
             PyThreadState_Get,
-            PyThreadState_GetUnchecked,
             PyTuple_New,
             PyTuple_Pack,
             PyTuple_Size,
@@ -22456,7 +22452,6 @@ graph import runtime.python {
             PyObject_GetOptionalAttr,
             PyObject_SelfIter,
             PySys_Audit,
-            PyThreadState_GetUnchecked,
             PyTraceBack_Type,
             PyTuple_New,
             PyUnicode_FromFormat,
@@ -22540,7 +22535,7 @@ graph import runtime.python {
         object_model.header {
             NULL,
             PyObject,
-            PyThreadState_GetUnchecked,
+            PyThreadState,
             PyType_IsSubtype,
             Py_NewRef,
             Py_NotImplemented,
@@ -22723,7 +22718,6 @@ graph import runtime.python {
             PyObject_IsTrue,
             PyObject_Malloc,
             PyThreadState,
-            PyThreadState_GetUnchecked,
             PyTuple_New,
             PyTuple_Pack,
             PyUnicodeWriter_Create,
@@ -22848,7 +22842,6 @@ graph import runtime.python {
             PyObject_GetOptionalAttrString,
             PyObject_Hash,
             PyObject_RichCompareBool,
-            PyThreadState_GetUnchecked,
             PyType_Ready,
             PyUnicode_FromFormat,
             PyVectorcall_Call,
@@ -23011,7 +23004,6 @@ graph import runtime.python {
             PyObject_Malloc,
             PySequence_List,
             PyThreadState,
-            PyThreadState_GetUnchecked,
             PyTuple_New,
             PyType_IsSubtype,
             PyType_Ready,
@@ -23038,7 +23030,6 @@ graph import runtime.python {
             PyMutex_Unlock,
             PyObject,
             PyThreadState,
-            PyThreadState_GetUnchecked,
             _PyEval_StartTheWorldAll,
             _PyEval_StopTheWorldAll,
             _PyInterpreterState_HasFeature,
@@ -23558,7 +23549,6 @@ graph import runtime.python {
             PySequence_Concat,
             PySequence_Index,
             PySequence_Length,
-            PyThreadState_GetUnchecked,
             PyTuple_GetSlice,
             PyTuple_New,
             PyTuple_Pack,
@@ -29686,6 +29676,7 @@ graph import runtime.python {
             | modules.socket_core
             | modules.socket_object
             | modules.sqlite3 { object_type },
+        modules.posix_core { current_tstate },
         modules.sre { object_size, object_type, tuple_get_item, tuple_set_item },
         modules.struct { tuple_get_item, tuple_set_item },
     ]
@@ -34278,6 +34269,7 @@ graph import runtime.python.object_model {
             type_has_feature
         },
         call {
+            current_tstate,
             object_decref,
             object_is_type,
             object_new_ref,
@@ -34298,6 +34290,7 @@ graph import runtime.python.object_model {
             rich_compare_values
         },
         cfunction {
+            current_tstate,
             eval_builtin,
             freelist_pop,
             freelist_push,
@@ -34422,6 +34415,7 @@ graph import runtime.python.object_model {
             type_has_feature
         },
         frame {
+            current_tstate,
             object_decref,
             object_gc_track,
             object_gc_untrack,
@@ -34452,6 +34446,7 @@ graph import runtime.python.object_model {
             type_has_feature
         },
         gen {
+            current_tstate,
             freelist_pop,
             freelist_push,
             gc_head,
@@ -34511,6 +34506,7 @@ graph import runtime.python.object_model {
         },
         long {
             current_interp,
+            current_tstate,
             freelist_pop,
             freelist_push,
             object_decref,
@@ -34546,6 +34542,7 @@ graph import runtime.python.object_model {
             _Py_FalseStruct,
             _Py_TrueStruct,
             current_interp,
+            current_tstate,
             eval_builtin,
             freelist_pop_in,
             freelist_push_in,
@@ -34584,6 +34581,7 @@ graph import runtime.python.object_model {
         },
         object {
             current_interp,
+            current_tstate,
             gc_head,
             gc_track_in,
             gc_untrack_in,
@@ -34599,7 +34597,7 @@ graph import runtime.python.object_model {
             object_xdecref,
             type_has_feature
         },
-        obmalloc { object_decref },
+        obmalloc { current_tstate, object_decref },
         odict {
             eval_builtin,
             object_decref,
@@ -34722,6 +34720,7 @@ graph import runtime.python.object_model {
         },
         typevar {
             current_interp,
+            current_tstate,
             object_decref,
             object_gc_track,
             object_gc_untrack,

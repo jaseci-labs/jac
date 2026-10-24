@@ -2380,7 +2380,7 @@ impl dir_locals -> ptr[PyObject] {
     if _PyEval_GetFrame() {
         scope = _PyEval_GetFrameLocals();
     } else {
-        scope = _PyEval_GetGlobalsFromRunningMain(PyThreadState_GetUnchecked());
+        scope = _PyEval_GetGlobalsFromRunningMain(current_tstate());
         if not scope {
             if not PyErr_Occurred() {
                 scope = _PyEval_GetFrameLocals();

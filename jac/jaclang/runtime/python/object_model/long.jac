@@ -6443,7 +6443,7 @@ impl long_vectorcall(
 ) -> ptr[PyObject] {
     nargs = PyVectorcall_NARGS(nargsf);
     if kwnames {
-        tstate = PyThreadState_GetUnchecked();
+        tstate = current_tstate();
         return _PyObject_MakeTpCall(tstate, type, args, nargs, kwnames);
     }
     if nargs == 0 {

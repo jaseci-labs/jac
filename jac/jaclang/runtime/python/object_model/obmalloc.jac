@@ -127,13 +127,13 @@ import from c {
     }
 }
 
-glob:priv pydebug: i32 = 0,
-     PY_SSIZE_T_MAX_SIZE: u64 = u64(0x7FFFFFFFFFFFFFFF),
-     WCHAR_SIZE: u64 = u64(4),
-     MEM_WORK_CHUNK_ARRAY: i64 = 32,
-     SST: i64 = 8,
-     PYMEM_DEBUG_EXTRA_BYTES: u64 = u64(24),
-     ERASED_SIZE: i64 = 64;
+glob:priv pydebug: Final[i32] = 0,
+     PY_SSIZE_T_MAX_SIZE: Final[u64] = 0x7FFFFFFFFFFFFFFF,
+     WCHAR_SIZE: Final[u64] = 4,
+     MEM_WORK_CHUNK_ARRAY: Final[i64] = 32,
+     SST: Final[i64] = 8,
+     PYMEM_DEBUG_EXTRA_BYTES: Final[u64] = 24,
+     ERASED_SIZE: Final[i64] = 64;
 
 import from c {
     def _PyMem_RawMalloc(ctx: ptr, size: u64) -> ptr {
@@ -524,7 +524,7 @@ import from c {
             ptr[llist_node](interp_queue + _Py_mem_interp_free_queue_HEAD), queue
         );
 
-        this_tstate = ptr[u8](PyThreadState_GetUnchecked());
+        this_tstate = ptr[u8](current_tstate());
         process_interp_queue(interp_queue, this_tstate, ptr(), ptr());
         PyMutex_Unlock(m);
     }  def _PyMem_FiniDelayed(interp: ptr[u8]) {
@@ -1392,7 +1392,7 @@ impl has_own_state(interp: ptr[u8]) -> bool {
 }
 
 impl get_state -> ptr[u8] {
-    tstate = ptr[u8](PyThreadState_GetUnchecked());
+    tstate = ptr[u8](current_tstate());
     interp = ptr[ptr[u8]](tstate + PyThreadState_INTERP).view(1)[0];
     return ptr[ptr[u8]](interp + PyInterpreterState_OBMALLOC).view(1)[0];
 }
@@ -2019,7 +2019,7 @@ impl _PyMem_DebugRawAlloc(use_calloc: bool, ctx: ptr, nbytes: u64) -> ptr {
 }
 
 impl _PyMem_DebugCheckGIL(func: ptr[u8]) {
-    if not PyThreadState_GetUnchecked() {
+    if not current_tstate() {
         _Py_FatalErrorFunc(
             func, ptr[u8]("Python memory allocator called without holding the GIL")
         );

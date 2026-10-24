@@ -1515,7 +1515,7 @@ impl make_union(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl caller -> ptr[PyObject] {
-    tstate = ptr[u8](PyThreadState_GetUnchecked());
+    tstate = ptr[u8](current_tstate());
     f = ptr[ptr[u8]](tstate + PyThreadState_CURRENT_FRAME).view(1)[0];
     if not f {
         return object_new_ref(Py_None);

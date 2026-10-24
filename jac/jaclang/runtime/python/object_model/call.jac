@@ -689,7 +689,7 @@ import from c {
 }
 
 impl thread_state -> ptr[PyThreadState] {
-    return PyThreadState_GetUnchecked();
+    return current_tstate();
 }
 
 impl exception_raised(tstate: ptr[PyThreadState]) -> bool {

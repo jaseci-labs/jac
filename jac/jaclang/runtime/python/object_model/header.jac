@@ -42,6 +42,8 @@ def rich_compare_values(left: i64, right: i64, op: i32) -> ptr[PyObject];
 
 def eval_builtin(name: str) -> ptr[PyObject];
 
+def current_tstate -> ptr[PyThreadState];
+
 def current_interp -> ptr[u8];
 
 def freelist_in(interp: ptr[u8], offset: i64) -> ptr[_Py_freelist];
@@ -198,8 +200,12 @@ impl eval_builtin(name: str) -> ptr[PyObject] {
     return result;
 }
 
+impl current_tstate -> ptr[PyThreadState] {
+    return ptr[ptr[PyThreadState]](__c_thread_local("_Py_tss_tstate")).view(1)[0];
+}
+
 impl current_interp -> ptr[u8] {
-    tstate = ptr[u8](PyThreadState_GetUnchecked());
+    tstate = ptr[u8](current_tstate());
     return ptr[ptr[u8]](tstate + PyThreadState_INTERP).view(1)[0];
 }
 

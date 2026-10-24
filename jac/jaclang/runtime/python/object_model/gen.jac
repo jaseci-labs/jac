@@ -986,7 +986,7 @@ impl code_i32(code: ptr[PyObject], offset: i64) -> i32 {
 }
 
 impl thread_state -> ptr[u8] {
-    return ptr[u8](PyThreadState_GetUnchecked());
+    return ptr[u8](current_tstate());
 }
 
 impl slot_get(op: ptr[PyObject], offset: i64) -> ptr[PyObject] {
@@ -1319,7 +1319,7 @@ impl gen_dealloc(self: ptr[PyObject]) {
 impl gen_send_ex2(
     gen: ptr[PyObject], arg: ptr[PyObject], exc: i32, closing: i32
 ) -> tuple[i32, ptr[PyObject]] {
-    tstate = ptr[u8](PyThreadState_GetUnchecked());
+    tstate = ptr[u8](current_tstate());
     base = ptr[u8](gen);
     frame = base + PyGenObject_IFRAME;
     state_slot = ptr[i8](base + PyGenObject_FRAME_STATE);

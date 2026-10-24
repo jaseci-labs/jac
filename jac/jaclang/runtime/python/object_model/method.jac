@@ -249,7 +249,7 @@ impl method_vectorcall(
 ) -> ptr[PyObject] {
     m = method_of(method);
     return _PyObject_VectorcallPrepend(
-        PyThreadState_GetUnchecked(),
+        current_tstate(),
         m.view(1)[0].im_func,
         m.view(1)[0].im_self,
         args,

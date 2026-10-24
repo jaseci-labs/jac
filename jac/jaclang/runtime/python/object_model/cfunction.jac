@@ -646,9 +646,7 @@ impl cfunction_call(
         slot.view(1)[0].one = int(meth);
         result = slot.view(1)[0].one(self, args);
     }
-    return _Py_CheckFunctionResult(
-        ptr(PyThreadState_GetUnchecked()), func, result, ptr[u8]()
-    );
+    return _Py_CheckFunctionResult(ptr(current_tstate()), func, result, ptr[u8]());
 }
 
 impl dict_used(dict: ptr[PyObject]) -> i64 {
