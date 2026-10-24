@@ -224,3 +224,50 @@ test "only server and desktop apps include sibling services" {
         assert [app.name for app in desktop_services] == ["api"] , desktop_services;
     }
 }
+
+
+"""A sealed image never carries secrets, and honors `.jacignore`.
+
+The `.jab` is what a desktop build ships beside its binary and what `jac build`
+hands out, so it must hold the same floor the deploy bundle does: no `.env`
+files (a project's model and API keys live there), no key material. A tree
+parked in `.jacignore` (a vendored jac checkout, local data) stays out too.
+"""
+test "build_jab never seals secrets and leaves out what .jacignore parks" {
+    ws = _workspace();
+    try {
+        base = Path(ws);
+        (base / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-secret\n");
+        (base / ".env.local").write_text("TOKEN=local\n");
+        (base / "web" / ".env").write_text("NESTED=1\n");
+        (base / "deploy.pem").write_text("-----BEGIN PRIVATE KEY-----\n");
+        (base / "id_ed25519").write_text("key\n");
+        (base / "vendor" / "jac").mkdir(parents=True);
+        (base / "vendor" / "jac" / "big.jac").write_text("with entry { print(1); }\n");
+        (base / "notes").mkdir();
+        (base / "notes" / "todo.md").write_text("ship it\n");
+        (base / ".jacignore").write_text("vendor/\nnotes/*.md\n");
+        config = JacConfig.load(base / "jac.toml");
+        out = base / "out" / "web.jab";
+        build_jab(config, out, app="web", bake_client=False);
+        img = materialize_jab(str(out));
+        for leaked in [
+            ".env",
+            ".env.local",
+            "web/.env",
+            "deploy.pem",
+            "id_ed25519",
+            "vendor",
+            "notes/todo.md"
+        ] {
+            assert not (img / leaked).exists() , f"{leaked} must not be sealed";
+        }
+        assert (img / "core" / "helper.jac").is_file() , "the app's own code still ships";
+        assert (img / ".jacignore").is_file() , ".jacignore itself ships";
+        import gzip;
+        assert b"sk-ant-secret" not in gzip.decompress(out.read_bytes());
+    } finally {
+        set_config(None);
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
+    }
+}

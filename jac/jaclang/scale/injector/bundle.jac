@@ -39,24 +39,6 @@ glob _EXCLUDE_DIRS: set[str] = {
          ".pytest_cache"
      };
 
-glob _EXCLUDE_FILES: set[str] = {
-         ".env",
-         "jac.toml",
-         "id_rsa",
-         "id_dsa",
-         "id_ecdsa",
-         "id_ed25519"
-     };
-glob _EXCLUDE_SUFFIXES: tuple[str, ...] = (
-         ".pem",
-         ".key",
-         ".crt",
-         ".cer",
-         ".p12",
-         ".pfx",
-         ".jks",
-         ".keystore"
-     );
 glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
 

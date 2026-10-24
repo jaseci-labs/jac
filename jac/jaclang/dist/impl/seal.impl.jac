@@ -258,19 +258,31 @@ impl make_sealed_image(
         } except ValueError {}
     }
 
+    proj_dir = Path(proj_root).resolve();
+    parked = read_jacignore_patterns(str(proj_root));
+
     def copy_ignore(d: str, items: list[str]) -> list[str] {
-        skipped = seal_copy_ignore(d, items);
-        if out_names and Path(d).resolve() == Path(proj_root).resolve() {
-            skipped = list(
-                set(skipped)
-                    | {
-                        it
-                        for it in items
-                        if it in out_names
-                    }
-            );
+        skipped = set(seal_copy_ignore(d, items));
+        here = Path(d).resolve();
+        if out_names and here == proj_dir {
+            skipped |= {
+                it
+                for it in items
+                if it in out_names
+            };
         }
-        return skipped;
+        for it in items {
+            if it in skipped {
+                continue;
+            }
+            if is_secret_file(it) and (here / it).is_file() {
+                skipped.add(it);
+            } elif parked
+                and path_matches_exclude((here / it).relative_to(proj_dir).as_posix(), parked) {
+                skipped.add(it);
+            }
+        }
+        return list(skipped);
     }
 
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));

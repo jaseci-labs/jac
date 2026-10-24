@@ -2311,7 +2311,10 @@ graph import {
         compiler.passes.import_wiring_pass
             | compiler.passes.pyast_load_pass.PyastBuildPass.convert
             | compiler.tools.lang_tools { pascal_to_snake },
+        dist.seal.make_sealed_image { is_secret_file, path_matches_exclude },
         runtime.traceback_render { pretty_print_source_location },
+        scale.injector.bundle.BundleSourceFilter.excludes { is_secret_file },
+        scale.injector.bundle.BundleSourceFilter.exclusion_reason { is_secret_file },
         scale.injector.bundle.BundleSourceFilter.parks { path_matches_exclude },
     ]
     project.template_loader ++> [
@@ -2347,7 +2350,9 @@ graph import {
             read_file_with_encoding,
             span_for_file
         },
-        scale.injector.bundle.source_filter_for { read_jacignore_patterns },
+        dist.seal.make_sealed_image | scale.injector.bundle.source_filter_for {
+            read_jacignore_patterns
+        },
     ]
     project.textio --> [
         cli.commands.analysis._check_file_job { read_file_with_encoding as _read_src },
