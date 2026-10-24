@@ -30,7 +30,9 @@ def fixture_ir(debug: bool) -> str {
 
 """The body of the function named exactly `name`."""
 def body_of(text: str, name: str) -> (str | None) {
-    found = re.search(r'define [^\n]*@"' + re.escape(name) + r'"\(.*?\n}\n', text, re.S);
+    found = re.search(
+        r'define [^\n]*@"' + re.escape(name) + r'"\(.*?\n}\n', text, re.S
+    );
     return found.group(0) if found is not None else None;
 }
 

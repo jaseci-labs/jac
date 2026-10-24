@@ -53,8 +53,8 @@ def work(seed: int) -> int {
     return total;
 }
 
+glob keep: list[Mid] = [];
 with entry {
-    keep: list[Mid] = [];
     first = churn(50000, keep);
     print(first, len(keep), keep[3].tag);
     h1 = flow work(1) ;

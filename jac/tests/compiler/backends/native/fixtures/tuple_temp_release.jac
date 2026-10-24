@@ -17,8 +17,8 @@ def label(n: int) -> tuple[str, int] {
     return (str(n), n * 2);
 }
 
+glob mode = sys.argv[1];
 with entry {
-    mode = sys.argv[1];
     steps = int(sys.argv[2]);
     total = 0;
     if mode == "obj" {

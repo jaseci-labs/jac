@@ -116,6 +116,17 @@ impl NaIRGenPass._emit_rc_mark_threaded -> None {
 }
 
 impl NaIRGenPass._emit_rc_helpers -> None {
+    """The refcount runtime helpers: allocation, retain, release and free.
+
+    Small objects recycle their blocks: one free list per 16-byte size class
+    from 48 to 128 bytes (header included), shared by every unit. A free
+    pushes the block onto its class's list (up to `pool_cap` blocks) and an
+    allocation pops one before it calls malloc, both inline. The class sits
+    in the top byte of the alloc-id word, which nothing else uses. Only the
+    single-threaded program pools (the refcount fast path's flag): once a
+    thread runs, blocks go back to malloc and free -- every pooled block is a
+    malloc block, so free takes it as well. A debug build does not pool.
+    """;
     if self._nogc_headerless() {
         i8_ptr_hl = ir.IntType(8).as_pointer();
         i64_hl = ir.IntType(64);
@@ -209,14 +220,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _sf_b = ir.IRBuilder(_sf_done);
     _sf_b.ret_void();
     self.rc_safe_free_fn = sf_fn;
-    # Small objects recycle their blocks: one free list per 16-byte size class
-    # from 48 to 128 bytes (header included), shared by every unit. A free
-    # pushes the block onto its class's list (up to `pool_cap` blocks) and an
-    # allocation pops one before it calls malloc, both inline. The class sits
-    # in the top byte of the alloc-id word, which nothing else uses. Only the
-    # single-threaded program pools (the refcount fast path's flag): once a
-    # thread runs, blocks go back to malloc and free -- every pooled block is
-    # a malloc block, so free takes it as well. A debug build does not pool.
+
     import os;
     _pool_on = not self._rc_debug_codegen
         and self.rc_threaded_gv is not None
@@ -228,11 +232,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     pool_count_gv: (ir.GlobalVariable | None) = None;
     if _pool_on {
         _pool_arr = ir.ArrayType(i8_ptr, 8);
-        pool_free_gv = ir.GlobalVariable(self.llvm_module, _pool_arr, name="__jac_pool_free");
+        pool_free_gv = ir.GlobalVariable(
+            self.llvm_module, _pool_arr, name="__jac_pool_free"
+        );
         pool_free_gv.linkage = "weak";
         pool_free_gv.initializer = ir.Constant(_pool_arr, None);
         _count_arr = ir.ArrayType(i64, 8);
-        pool_count_gv = ir.GlobalVariable(self.llvm_module, _count_arr, name="__jac_pool_count");
+        pool_count_gv = ir.GlobalVariable(
+            self.llvm_module, _count_arr, name="__jac_pool_count"
+        );
         pool_count_gv.linkage = "weak";
         pool_count_gv.initializer = ir.Constant(_count_arr, None);
         fb_fn = self._define_function("__rc_free_block", sf_fnty);
@@ -247,7 +255,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         fb = ir.IRBuilder(_fb_entry);
         fb.cbranch(
             fb.icmp_unsigned(
-                "!=", fb.load(rc_gc_disabled_gv, name="fb.gc.dis"), ir.Constant(i8, 0),
+                "!=",
+                fb.load(rc_gc_disabled_gv, name="fb.gc.dis"),
+                ir.Constant(i8, 0),
                 name="fb.dis"
             ),
             _fb_done,
@@ -268,7 +278,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _fb_ok = fb.and_(
             fb.and_(
                 fb.icmp_unsigned("!=", _fb_cls, ir.Constant(i64, 0), name="fb.has"),
-                fb.icmp_unsigned("<=", _fb_cls, ir.Constant(i64, pool_classes), name="fb.inr"),
+                fb.icmp_unsigned(
+                    "<=", _fb_cls, ir.Constant(i64, pool_classes), name="fb.inr"
+                ),
                 name="fb.valid"
             ),
             _fb_st,
@@ -277,7 +289,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         fb.cbranch(_fb_ok, _fb_room, _fb_free);
         fb = ir.IRBuilder(_fb_room);
         _fb_idx = fb.sub(_fb_cls, ir.Constant(i64, 1), name="fb.idx");
-        _fb_cnt_p = fb.gep(pool_count_gv, [ir.Constant(i32, 0), _fb_idx], name="fb.cntp");
+        _fb_cnt_p = fb.gep(
+            pool_count_gv, [ir.Constant(i32, 0), _fb_idx], name="fb.cntp"
+        );
         _fb_cnt = fb.load(_fb_cnt_p, name="fb.cnt");
         fb.cbranch(
             fb.icmp_unsigned("<", _fb_cnt, ir.Constant(i64, pool_cap), name="fb.room"),
@@ -285,7 +299,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
             _fb_free
         );
         fb = ir.IRBuilder(_fb_push);
-        _fb_head_p = fb.gep(pool_free_gv, [ir.Constant(i32, 0), _fb_idx], name="fb.headp");
+        _fb_head_p = fb.gep(
+            pool_free_gv, [ir.Constant(i32, 0), _fb_idx], name="fb.headp"
+        );
         fb.store(
             fb.load(_fb_head_p, name="fb.head"),
             fb.bitcast(fb_fn.args[0], i8_ptr.as_pointer(), name="fb.link")
@@ -341,18 +357,26 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     if pool_free_gv is not None and pool_count_gv is not None {
         _in_class = b.and_(
             b.icmp_unsigned(">=", total, ir.Constant(i64, 48), name="pool.lo"),
-            b.icmp_unsigned("<=", total, ir.Constant(i64, 32 + 16 * pool_classes), name="pool.hi"),
+            b.icmp_unsigned(
+                "<=", total, ir.Constant(i64, 32 + 16 * pool_classes), name="pool.hi"
+            ),
             name="pool.inclass"
         );
         _pidx = b.select(
             _in_class,
-            b.sub(b.lshr(total, ir.Constant(i64, 4)), ir.Constant(i64, 3), name="pool.idx.raw"),
+            b.sub(
+                b.lshr(total, ir.Constant(i64, 4)),
+                ir.Constant(i64, 3),
+                name="pool.idx.raw"
+            ),
             ir.Constant(i64, 0),
             name="pool.idx"
         );
         _class_byte = b.select(
-            _in_class, b.add(_pidx, ir.Constant(i64, 1), name="pool.cls1"),
-            ir.Constant(i64, 0), name="pool.cls"
+            _in_class,
+            b.add(_pidx, ir.Constant(i64, 1), name="pool.cls1"),
+            ir.Constant(i64, 0),
+            name="pool.cls"
         );
         _p_use = b.and_(
             _in_class,
@@ -370,7 +394,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _p_got = alloc_fn.append_basic_block("pool.got");
         b.cbranch(_p_use, _p_try, _p_malloc);
         b = ir.IRBuilder(_p_try);
-        _p_head_p = b.gep(pool_free_gv, [ir.Constant(i32, 0), _pidx], name="pool.headp");
+        _p_head_p = b.gep(
+            pool_free_gv, [ir.Constant(i32, 0), _pidx], name="pool.headp"
+        );
         _p_head = b.load(_p_head_p, name="pool.head");
         b.cbranch(
             b.icmp_unsigned("!=", _p_head, ir.Constant(i8_ptr, None), name="pool.some"),
@@ -379,11 +405,16 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         );
         b = ir.IRBuilder(_p_pop);
         b.store(
-            b.load(b.bitcast(_p_head, i8_ptr.as_pointer(), name="pool.link"), name="pool.next"),
+            b.load(
+                b.bitcast(_p_head, i8_ptr.as_pointer(), name="pool.link"),
+                name="pool.next"
+            ),
             _p_head_p
         );
         _p_cnt_p = b.gep(pool_count_gv, [ir.Constant(i32, 0), _pidx], name="pool.cntp");
-        b.store(b.sub(b.load(_p_cnt_p, name="pool.cnt"), ir.Constant(i64, 1)), _p_cnt_p);
+        b.store(
+            b.sub(b.load(_p_cnt_p, name="pool.cnt"), ir.Constant(i64, 1)), _p_cnt_p
+        );
         b.branch(_p_got);
         b = ir.IRBuilder(_p_malloc);
         _p_fresh = b.call(self.malloc_fn, [total], name="raw.fresh");
@@ -403,7 +434,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _magic_base = ir.Constant(i64, HDR_MAGIC_SHIFT_BASE);
     if _class_byte is not None {
         _magic_base = b.or_(
-            _magic_base, b.shl(_class_byte, ir.Constant(i64, 56), name="pool.clsbits"),
+            _magic_base,
+            b.shl(_class_byte, ir.Constant(i64, 56), name="pool.clsbits"),
             name="aid.base"
         );
     }
