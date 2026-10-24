@@ -1937,7 +1937,9 @@ impl NaIRGenPass._get_fmt_int_fn -> ir.Function {
         b.icmp_signed("<", v, ir.Constant(i64, 0), name="fi.lt0"),
         name="fi.neg"
     );
-    mag0 = b.select(neg, b.sub(ir.Constant(i64, 0), v, name="fi.negv"), v, name="fi.mag");
+    mag0 = b.select(
+        neg, b.sub(ir.Constant(i64, 0), v, name="fi.negv"), v, name="fi.mag"
+    );
     b.branch(loop);
     b = ir.IRBuilder(loop);
     mag = b.phi(i64, name="fi.m");
@@ -1953,7 +1955,9 @@ impl NaIRGenPass._get_fmt_int_fn -> ir.Function {
     );
     mag.add_incoming(q, loop);
     pos.add_incoming(npos, loop);
-    b.cbranch(b.icmp_unsigned("!=", q, ir.Constant(i64, 0), name="fi.more"), loop, sign);
+    b.cbranch(
+        b.icmp_unsigned("!=", q, ir.Constant(i64, 0), name="fi.more"), loop, sign
+    );
     b = ir.IRBuilder(sign);
     spos = b.sub(npos, ir.Constant(i64, 1), name="fi.spos");
     signed_bb = fn.append_basic_block("minus");
@@ -1978,7 +1982,9 @@ impl NaIRGenPass._emit_fmt_int(
 ) -> ir.Value {
     i64 = ir.IntType(64);
     if val.type != i64 {
-        val = b.zext(val, i64) if unsigned or val.type == ir.IntType(1) else b.sext(val, i64);
+        val = b.zext(val, i64)
+            if unsigned or val.type == ir.IntType(1)
+            else b.sext(val, i64);
     }
     return b.call(
         self._get_fmt_int_fn(),
@@ -2036,7 +2042,9 @@ impl NaIRGenPass._fstring_direct(
             n = ir.Constant(i64, len(value.encode("utf8")));
         } elif kind == "%s" {
             if null_text is None {
-                null_text = self._make_global_string("(null)", name_prefix=".fstr.null");
+                null_text = self._make_global_string(
+                    "(null)", name_prefix=".fstr.null"
+                );
             }
             text = b.bitcast(value, i8p) if value.type != i8p else value;
             src = b.select(
@@ -2054,7 +2062,9 @@ impl NaIRGenPass._fstring_direct(
         sources.append((src, n));
         total = b.add(total, n, name="fd.total");
     }
-    buf = self._str_alloc(b, b.add(total, ir.Constant(i64, 1), name="fd.size"), name="fstr.buf");
+    buf = self._str_alloc(
+        b, b.add(total, ir.Constant(i64, 1), name="fd.size"), name="fstr.buf"
+    );
     at: ir.Value = ir.Constant(i64, 0);
     for (src, n) in sources {
         b.call(memcpy, [b.gep(buf, [at], name="fd.at"), src, n]);
@@ -2259,6 +2269,22 @@ impl NaIRGenPass._emit_float_repr(fv: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._float_repr_fn -> ir.Function {
+    """The shortest decimal repr of a double, as Python's `repr` prints it.
+
+    Fast path, |d| < 1e15 with at most six decimals: a double below 1e15 has
+    one decimal of at most 15 significant digits that reads back as it, so the
+    first k (0..6) for which N = round(|d| * 10^k) divided by 10^k gives |d|
+    back (IEEE division rounds correctly, as reading the text would) yields
+    the shortest repr: N's digits with a point k from the end, the k decimals
+    written last first and zero-padded on the left. No printf and no strtod.
+
+    Otherwise 15 significant digits first: a double has at most one decimal of
+    15 digits that reads back as it, so if that rounding does, it is the
+    shortest once its trailing zeros go (the zeros of the mantissa, just
+    before the 'e'); else 16, then 17, which always do. A subnormal has fewer
+    than 53 bits, so several 15-digit decimals read back as it: it keeps the
+    search from one digit up.
+    """;
     if self._float_repr_function is not None {
         return self._float_repr_function;
     }
@@ -2328,12 +2354,6 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
 
     b.position_at_end(setup_bb);
     if not self._nogc_headerless() {
-        # Fast path: |d| < 1e15 with at most six decimals. A double below 1e15
-        # has one decimal of at most 15 significant digits that reads back as
-        # it, so the first k (0..6) for which N = round(|d| * 10^k) divided by
-        # 10^k gives |d| back (IEEE division rounds correctly, as reading
-        # the text would) yields the shortest repr: N's digits with a point k
-        # from the end. No printf and no strtod.
         slow_bb = fn.append_basic_block("fr.slow");
         negative = b.icmp_signed(
             "<", b.bitcast(d, i64, name="fr.bits"), ir.Constant(i64, 0), name="fr.neg"
@@ -2366,13 +2386,19 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
             b.position_at_end(try_bb);
             scale = ir.Constant(f64, float(10 ** k));
             scaled = b.fmul(mag, scale, name=f"fr.s{k}");
-            fits = b.fcmp_ordered("<", scaled, ir.Constant(f64, 1e15), name=f"fr.fit{k}");
+            fits = b.fcmp_ordered(
+                "<", scaled, ir.Constant(f64, 1e15), name=f"fr.fit{k}"
+            );
             n = b.fptoui(
-                b.fadd(scaled, ir.Constant(f64, 0.5), name=f"fr.r{k}"), i64, name=f"fr.n{k}"
+                b.fadd(scaled, ir.Constant(f64, 0.5), name=f"fr.r{k}"),
+                i64,
+                name=f"fr.n{k}"
             );
             back = b.fdiv(b.uitofp(n, f64, name=f"fr.nf{k}"), scale, name=f"fr.b{k}");
             hit = b.and_(
-                fits, b.fcmp_ordered("==", back, mag, name=f"fr.eq{k}"), name=f"fr.hit{k}"
+                fits,
+                b.fcmp_ordered("==", back, mag, name=f"fr.eq{k}"),
+                name=f"fr.hit{k}"
             );
             next_bb = fn.append_basic_block(f"fr.fast.k{k + 1}") if k < 6 else slow_bb;
             here = b.block;
@@ -2413,7 +2439,7 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
         b.store(ir.Constant(i8, 48), b.gep(out, [first]));
         end0 = b.add(first, ir.Constant(i64, 1), name="fr.end0");
         b.branch(done_bb);
-        # (the k decimals, last first, zero-padded on the left)
+
         b.position_at_end(digits_bb);
         j = b.phi(i64, name="fr.j");
         rest = b.phi(i64, name="fr.rest");
@@ -2429,7 +2455,11 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
         j.add_incoming(j1, digits_bb);
         rest.add_incoming(q, digits_bb);
         endk = b.add(first, k_phi, name="fr.endk");
-        b.cbranch(b.icmp_unsigned("==", j1, ir.Constant(i64, 0), name="fr.jdone"), done_bb, digits_bb);
+        b.cbranch(
+            b.icmp_unsigned("==", j1, ir.Constant(i64, 0), name="fr.jdone"),
+            done_bb,
+            digits_bb
+        );
         b.position_at_end(done_bb);
         end = b.phi(i64, name="fr.end");
         end.add_incoming(end0, tail0_bb);
@@ -2441,11 +2471,7 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     cap = ir.Constant(i64, 64);
     tmp = self._str_alloc(b, cap, name="fr.tmp");
     endptr = b.alloca(i8p, name="fr.endptr");
-    # 15 significant digits first: a double has at most one decimal of 15
-    # digits that reads back as it, so if that rounding does, it is the
-    # shortest once its trailing zeros go; else 16, then 17, which always do.
-    # (a subnormal has fewer than 53 bits, so several 15-digit decimals read
-    # back as it: it keeps the search from one digit up)
+
     try15 = fn.append_basic_block("fr.p15");
     try16 = fn.append_basic_block("fr.p16");
     loop_done = fn.append_basic_block("fr.done");
@@ -2474,7 +2500,8 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     );
     b.cbranch(
         b.or_(
-            sub_eq, b.icmp_signed(">=", sub_p, ir.Constant(i32, 16), name="fr.sub.max"),
+            sub_eq,
+            b.icmp_signed(">=", sub_p, ir.Constant(i32, 16), name="fr.sub.max"),
             name="fr.sub.stop"
         ),
         sub_done,
@@ -2489,7 +2516,9 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     tried: list[tuple[ir.Block, any]] = [(sub_done, sub_p64)];
     for (blk, prec, nxt) in ((try15, 14, try16), (try16, 15, None)) {
         b.position_at_end(blk);
-        b.call(snprintf, [tmp, cap, fmt_e, ir.Constant(i32, prec), d], name=f"fr.e{prec}");
+        b.call(
+            snprintf, [tmp, cap, fmt_e, ir.Constant(i32, prec), d], name=f"fr.e{prec}"
+        );
         parsed = b.call(strtod, [tmp, endptr], name=f"fr.parsed{prec}");
         eq = b.fcmp_ordered("==", parsed, d, name=f"fr.eq{prec}");
         if nxt is not None {
@@ -2513,7 +2542,7 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
             prec if isinstance(prec, ir.Value) else ir.Constant(i64, prec), blk
         );
     }
-    # (trailing zeros of the mantissa, just before the 'e')
+
     epos0 = b.call(strchr, [tmp, ir.Constant(i32, 101)], name="fr.epos0");
     strip_bb = fn.append_basic_block("fr.strip");
     strip_next = fn.append_basic_block("fr.strip.next");
@@ -2524,7 +2553,8 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     zeros = b.phi(i64, name="fr.zeros");
     zeros.add_incoming(ir.Constant(i64, 0), pre_strip);
     at_ch = b.load(
-        b.gep(epos0, [b.sub(ir.Constant(i64, -1), zeros, name="fr.zoff")]), name="fr.zch"
+        b.gep(epos0, [b.sub(ir.Constant(i64, -1), zeros, name="fr.zoff")]),
+        name="fr.zch"
     );
     more = b.and_(
         b.icmp_unsigned("==", at_ch, ir.Constant(i8, 48), name="fr.iszero"),

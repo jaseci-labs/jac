@@ -5142,7 +5142,9 @@ impl NaIRGenPass._emit_comparison(
                     name="s1.flip"
                 );
             } else {
-                cmp_result = self._call_str_cmp(self.builder, left, right, name="strcmp");
+                cmp_result = self._call_str_cmp(
+                    self.builder, left, right, name="strcmp"
+                );
             }
             zero = ir.Constant(ir.IntType(32), 0);
             if op == Tok.EE or op == Tok.NE {

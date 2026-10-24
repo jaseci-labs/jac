@@ -1530,16 +1530,22 @@ impl NaIRGenPass._emit_str_cmp_one_byte(val: ir.Value, byte: int) -> ir.Value {
     tie_bb = fn.append_basic_block("s1.tie");
     done_bb = fn.append_basic_block("s1.done");
     b.cbranch(
-        b.icmp_unsigned("==", val, ir.Constant(i8p, None), name="s1.null"), done_bb, first_bb
+        b.icmp_unsigned("==", val, ir.Constant(i8p, None), name="s1.null"),
+        done_bb,
+        first_bb
     );
     b.position_at_end(first_bb);
     first = b.zext(b.load(val, name="s1.byte"), i32, name="s1.byte32");
     diff = b.sub(first, ir.Constant(i32, byte), name="s1.diff");
-    b.cbranch(b.icmp_signed("==", diff, ir.Constant(i32, 0), name="s1.same"), tie_bb, done_bb);
+    b.cbranch(
+        b.icmp_signed("==", diff, ir.Constant(i32, 0), name="s1.same"), tie_bb, done_bb
+    );
     b.position_at_end(tie_bb);
     longer = b.zext(
         b.icmp_signed(
-            ">", self._call_str_len(b, val, name="s1.len"), ir.Constant(ir.IntType(64), 1),
+            ">",
+            self._call_str_len(b, val, name="s1.len"),
+            ir.Constant(ir.IntType(64), 1),
             name="s1.longer"
         ),
         i32,

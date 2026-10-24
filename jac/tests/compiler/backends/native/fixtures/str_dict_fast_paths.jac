@@ -10,20 +10,24 @@ digits, both ends of fixed notation, subnormals and the extremes.
 """
 
 def rel(a: str, b: str) -> str {
-    return f"{int(a < b)}{int(a <= b)}{int(a == b)}{int(a != b)}{int(a >= b)}{int(a > b)}";
+    return f"{int(a < b)}{int(a <= b)}{int(a == b)}{int(a != b)}{int(a >= b)}{int(
+        a > b
+    )}";
 }
 
-def compares() -> list[str] {
+def compares -> list[str] {
     out: list[str] = [];
     for s in ["", "a", "b", "ab", "A", "z", "zz", "é", "\t", "a\x00"] {
         out.append(
-            f"{rel(s, 'a')}|{int('a' < s)}{int('a' <= s)}{int('a' == s)}{int('a' > s)}{int('a' >= s)}"
+            f"{rel(s, 'a')}|{int('a' < s)}{int('a' <= s)}{int('a' == s)}{int('a' > s)}{int(
+                'a' >= s
+            )}"
         );
     }
     return out;
 }
 
-def numbers() -> list[str] {
+def numbers -> list[str] {
     out: list[str] = [];
     big = 9223372036854775807;
     small = -big - 1;
@@ -36,7 +40,7 @@ def numbers() -> list[str] {
     return out;
 }
 
-def counters() -> list[str] {
+def counters -> list[str] {
     words = ["a", "bb", "a", "ccc", "bb", "a", "dd"];
     c: dict[str, int] = {};
     for w in words {
@@ -66,14 +70,39 @@ def counters() -> list[str] {
     return [str(c), str(m), str(bits), str(f), str(lit)];
 }
 
-def floats() -> list[str] {
+def floats -> list[str] {
     out: list[str] = [];
-    for v in [0.0, -0.0, 0.1, 0.1 + 0.2, 1.0 / 3.0, 2.25, -7.0, 1e-4, 1e-5, 0.000123456, 999999.999999, 123456789012345.6, 1e15, 1e16, 5e-324, 2.2250738585072014e-308, 1e-310, 1.7976931348623157e308, 2.675, 100000000000000.25, 9007199254740993.0, 6.02e23] {
+    for v in [
+        0.0,
+        -0.0,
+        0.1,
+        0.1 + 0.2,
+        1.0 / 3.0,
+        2.25,
+        -7.0,
+        1e-4,
+        1e-5,
+        0.000123456,
+        999999.999999,
+        123456789012345.6,
+        1e15,
+        1e16,
+        5e-324,
+        2.2250738585072014e-308,
+        1e-310,
+        1.7976931348623157e308,
+        2.675,
+        100000000000000.25,
+        9007199254740993.0,
+        6.02e23
+    ] {
         out.append(f"{v}|{str(-v)}");
     }
     total = 0;
     for i in range(600) {
-        total += len(str((i * 7919 % 10007) / 64.0 - 50.0)) + len(str(i * 0.001)) + len(str(i / 7.0));
+        total += len(str((i * 7919 % 10007) / 64.0 - 50.0))
+            + len(str(i * 0.001))
+            + len(str(i / 7.0));
     }
     out.append(str(total));
     return out;

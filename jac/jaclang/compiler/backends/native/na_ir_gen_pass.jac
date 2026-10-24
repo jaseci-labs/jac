@@ -578,8 +578,12 @@ walker NaIRGenPass(CompilerPass) {
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
     def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
     def _get_fmt_int_fn -> ir.Function;
-    def _emit_fmt_int(b: ir.IRBuilder, val: ir.Value, out: ir.Value, unsigned: bool) -> ir.Value;
-    def _fstring_direct(fmt_parts: list[str], args: list[ir.Value]) -> (ir.Value | None);
+    def _emit_fmt_int(
+        b: ir.IRBuilder, val: ir.Value, out: ir.Value, unsigned: bool
+    ) -> ir.Value;
+    def _fstring_direct(
+        fmt_parts: list[str], args: list[ir.Value]
+    ) -> (ir.Value | None);
     def _emit_value_repr(
         val: ir.Value, type_node: (uni.UniNode | None)
     ) -> (ir.Value | None);

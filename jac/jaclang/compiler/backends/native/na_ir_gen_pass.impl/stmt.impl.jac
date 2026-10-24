@@ -2007,7 +2007,9 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
         Tok.BW_OR: "|=",
         Tok.BW_AND: "&=",
         Tok.BW_XOR: "^="
-    }.get(val.op.name);
+    }.get(
+        val.op.name
+    );
     call = val.left;
     if aug is None
         or not isinstance(call, uni.FuncCall)
@@ -2021,7 +2023,9 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
         return False;
     }
     params = list(call.params or []);
-    if len(params) != 2 or isinstance(params[0], uni.KWPair) or isinstance(params[1], uni.KWPair) {
+    if len(params) != 2
+        or isinstance(params[0], uni.KWPair)
+        or isinstance(params[1], uni.KWPair) {
         return False;
     }
     if not self._same_pure_key(params[0], key_node) {
@@ -2042,8 +2046,7 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
         return False;
     }
     dval = self._codegen_expr(d_node);
-    if dval is None
-        or self._dict_key_reconcile(dict_type_key, dval) != dict_type_key {
+    if dval is None or self._dict_key_reconcile(dict_type_key, dval) != dict_type_key {
         return False;
     }
     dval = self._unwrap_opt_container(dval);
