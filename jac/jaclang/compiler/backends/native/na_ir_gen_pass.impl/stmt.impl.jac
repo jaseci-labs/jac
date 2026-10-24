@@ -2415,6 +2415,15 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self.local_vars[var_name] = alloca;
                     }
                 }
+            } elif nd.aug_op is None and nd.value is not None {
+                _rebound_ty = self._lower_type(nd.value.type);
+                if _rebound_ty is not None
+                    and self._rebinds_slot(
+                        alloca.pointee_type, _rebound_ty, value.type
+                    ) {
+                    alloca = self._entry_alloca(_rebound_ty, var_name);
+                    self.local_vars[var_name] = alloca;
+                }
             }
             is_inplace_set_op = False;
             _ip_handled = False;
