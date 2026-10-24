@@ -86,6 +86,12 @@ glob RETIRED: tuple[str, ...] = (
              summary="compiler source digests, one per checkout"
          ),
          Bucket(
+             name="jir-file-digests",
+             relpath="jir/digests",
+             policy=Policy(ttl_days=14.0, pattern="*.json"),
+             summary="file content digests keyed by file identity, one ledger per directory"
+         ),
+         Bucket(
              name="apps",
              relpath="apps",
              policy=Policy(ttl_days=30.0, markers=[".used"]),

@@ -160,7 +160,8 @@ def write_compiler_identity(pkg_dir: str, dest_dir: str) -> str;
 glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _COMPILER_INPUT_ROWS: dict[str, list[tuple[str, str]]] = {},
      _PY_EMITTER_DIGESTS: dict[str, str] = {},
-     _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
+     _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {},
+     _DIGEST_BOOKKEEPING: list[tuple[bool, str]] = [];
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
      PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
@@ -169,6 +170,8 @@ glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
 def _digest_manifest_path(pkg_dir: str) -> Path;
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
+
+def _digest_bookkeeping;
 
 def running_compiler_digest -> str;
 

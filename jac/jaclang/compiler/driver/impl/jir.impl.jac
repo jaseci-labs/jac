@@ -261,17 +261,8 @@ impl get_jir_cache_dir -> Path {
 }
 
 impl compute_content_sha256(file_path: str) -> str {
-    h = hashlib.sha256();
-    with open(file_path, 'rb') as f {
-        while True {
-            chunk = f.read(8192);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
+    import from jaclang.compiler.driver.digests { file_sha256 }
+    return file_sha256(file_path);
 }
 
 impl _related_files(source_path: str) -> list[tuple[str, str]] {
@@ -533,24 +524,45 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
     }
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
-    try {
-        import from jaclang.cache.registry { bucket, maybe_sweep }
-        if changed or digest != stored_digest {
+    rewrite = changed or digest != stored_digest;
+    if rewrite {
+        try {
             manifest_path.parent.mkdir(parents=True, exist_ok=True);
             tmp = manifest_path.with_suffix(f".{os.getpid()}.tmp");
             tmp.write_text(json.dumps({"entries": new_entries, "digest": digest}));
             tmp.rename(manifest_path);
-            maybe_sweep("jir-digests");
-        } else {
-            bucket("jir-digests").note_hit(manifest_path);
+        } except OSError {}
+    }
+
+    _DIGEST_BOOKKEEPING.append((rewrite, str(manifest_path)));
+    if _COMPILER_DIGEST_CACHE {
+        _digest_bookkeeping();
+    }
+    return digest;
+}
+
+impl _digest_bookkeeping {
+    pending = list(_DIGEST_BOOKKEEPING);
+    _DIGEST_BOOKKEEPING.clear();
+    if not pending {
+        return;
+    }
+    try {
+        import from jaclang.cache.registry { bucket, maybe_sweep }
+        for (rewrote, path) in pending {
+            if rewrote {
+                maybe_sweep("jir-digests");
+            } else {
+                bucket("jir-digests").note_hit(Path(path));
+            }
         }
     } except Exception {}
-    return digest;
 }
 
 impl running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
         _COMPILER_DIGEST_CACHE.append(_manifest_compiler_digest(_jaclang_pkg_dir));
+        _digest_bookkeeping();
     }
     return _COMPILER_DIGEST_CACHE[0];
 }

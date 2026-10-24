@@ -143,17 +143,8 @@ impl kernel_plan(
 }
 
 impl _sha256_file(path: str) -> str {
-    h = hashlib.sha256();
-    with open(path, "rb") as f {
-        while True {
-            chunk = f.read(1 << 20);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
+    import from jaclang.compiler.driver.digests { file_sha256 }
+    return file_sha256(path);
 }
 
 impl _unit_label(path: str) -> str {
