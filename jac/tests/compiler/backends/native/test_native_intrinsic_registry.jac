@@ -102,7 +102,12 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
          IntrinsicDispatch.LIST_DATA: "list.data.p",
          IntrinsicDispatch.BUFFER_DATA: "buf.data.i64",
          IntrinsicDispatch.REF_ADDR: "ref.addr",
-         IntrinsicDispatch.STR_DATA: "str.data.i64"
+         IntrinsicDispatch.STR_DATA: "str.data.i64",
+         IntrinsicDispatch.ATOMIC_LOAD: "load atomic",
+         IntrinsicDispatch.ATOMIC_STORE: "store atomic",
+         IntrinsicDispatch.ATOMIC_CAS: "cmpxchg",
+         IntrinsicDispatch.ATOMIC_RMW: "atomicrmw",
+         IntrinsicDispatch.ATOMIC_FENCE: "fence seq_cst"
      };
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
@@ -179,6 +184,27 @@ def _probe_source(intr: any) -> str {
             "def probe(x: int) -> int { s = str(x) + \"jac\"; "
             "return x + 7 if __str_data(s) != 0 else 0; }\n"
         );
+    }
+    if intr.dispatch
+        in (
+            IntrinsicDispatch.ATOMIC_LOAD,
+            IntrinsicDispatch.ATOMIC_STORE,
+            IntrinsicDispatch.ATOMIC_CAS,
+            IntrinsicDispatch.ATOMIC_RMW
+        ) {
+        width = intr.name.rsplit("_", 1)[1];
+        return (
+            RAW_MEM_IMPORTS
+            + "def probe(x: int) -> int { p = malloc(8); __mem_store_i64(p, 0); "
+            + f"__atomic_store_{width}(p, {width}(5), 3); "
+            + f"old = __atomic_cas_{width}(p, {width}(5), {width}(9), 5); "
+            + f"before = __atomic_add_{width}(p, {width}(x - 9), 4); "
+            + f"v = __atomic_load_{width}(p, 2); free(p); "
+            + "return int(v) + int(old) - int(before) + 11; }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_FENCE {
+        return "def probe(x: int) -> int { __atomic_fence(5); return x + 7; }\n";
     }
     if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
         return (
@@ -380,4 +406,54 @@ test "a C thread-local is named by a string literal" {
     assert any(
         e.code is E5095 and "string literal" in str(e) for e in prog.errors_had
     ) , [str(e) for e in prog.errors_had];
+}
+
+test "atomic read-modify-write returns the old value at each width" {
+    for width in ["i8", "i16", "i32", "i64"] {
+        (prog, ir_mod) = _compile_src(
+            RAW_MEM_IMPORTS
+                + "def probe(x: int) -> int { p = malloc(8); __mem_store_i64(p, 0); "
+                + f"__atomic_store_{width}(p, {width}(12), 0); "
+                + f"a = __atomic_sub_{width}(p, {width}(2), 5); "
+                + f"o = __atomic_or_{width}(p, {width}(1), 5); "
+                + f"n = __atomic_and_{width}(p, {width}(6), 5); "
+                + f"z = __atomic_xor_{width}(p, {width}(3), 5); "
+                + f"s = __atomic_swap_{width}(p, {width}(x), 5); "
+                + f"miss = __atomic_cas_{width}(p, {width}(0), {width}(1), 5); "
+                + f"v = __atomic_load_{width}(p, 5); free(p); "
+                + "return int(a) * 1000000 + int(o) * 10000 + int(n) * 100 + int(z) "
+                + "+ int(s) - int(v) + int(miss) - int(v); }\n"
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        fn = _get_func(
+            ir_mod.gen.native_engine, "probe", ctypes.c_int64, ctypes.c_int64
+        );
+        # 12 -2-> 10 |1-> 11 &6-> 2 ^3-> 1, swapped for x = 7; the CAS misses and reads 7.
+        assert fn(7)
+            == 12 * 1000000 + 10 * 10000 + 11 * 100 + 2 + 1 - 7 + 7 - 7 , width;
+    }
+}
+
+test "a load cannot release and a memory order is a constant" {
+    for source in [
+        "def probe(p: int) -> int { return int(__atomic_load_i64(p, 3)); }\n",
+        "def probe(p: int, o: i32) -> int { return int(__atomic_load_i64(p, o)); }\n"
+    ] {
+        with tempfile.TemporaryDirectory() as tmp {
+            src = os.path.join(tmp, "intrinsic_probe.jac");
+            with open(src, "w") as f {
+                f.write(source);
+            }
+            prog = JacProgram();
+            prog.compile(
+                file_path=src,
+                options=CompileOptions(
+                    force_codespace="native",
+                    native_required=True,
+                    skip_native_engine=True
+                )
+            );
+        }
+        assert any(e.code is E5095 for e in prog.errors_had) , source;
+    }
 }

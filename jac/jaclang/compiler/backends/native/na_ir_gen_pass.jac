@@ -763,6 +763,14 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
+    def _intrinsic_memory_order(
+        nd: uni.FuncCall, intr: IntrinsicEntry, arg: uni.Expr, kind: str
+    ) -> (str | None);
+
+    def _emit_intrinsic_atomic(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
     def _emit_intrinsic_call_dtor(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);

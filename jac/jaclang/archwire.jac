@@ -9425,6 +9425,9 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_intrinsic {
             IntrinsicDispatch
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._emit_intrinsic_atomic {
+            IntrinsicDispatch
+        },
         passes.type_checker_pass.TypeCheckPass._check_intrinsic_collision
             | types.type_evaluator.TypeEvaluator._intrinsic_function_type {
             IntrinsicRegistry

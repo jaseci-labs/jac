@@ -1381,6 +1381,16 @@ impl NaIRGenPass._codegen_intrinsic(
     if _dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
         return self._emit_intrinsic_c_thread_local(nd, intr, positional);
     }
+    if _dispatch
+        in (
+            IntrinsicDispatch.ATOMIC_LOAD,
+            IntrinsicDispatch.ATOMIC_STORE,
+            IntrinsicDispatch.ATOMIC_CAS,
+            IntrinsicDispatch.ATOMIC_RMW,
+            IntrinsicDispatch.ATOMIC_FENCE
+        ) {
+        return self._emit_intrinsic_atomic(nd, intr, positional);
+    }
     if _dispatch == IntrinsicDispatch.CALL_DTOR {
         return self._emit_intrinsic_call_dtor(nd, intr, positional);
     }
@@ -4478,4 +4488,88 @@ impl NaIRGenPass._emit_intrinsic_c_thread_local(
         return None;
     }
     return self.builder.ptrtoint(existing, ir.IntType(64), name="c.tls.addr");
+}
+
+impl NaIRGenPass._intrinsic_memory_order(
+    nd: uni.FuncCall, intr: IntrinsicEntry, arg: uni.Expr, kind: str
+) -> (str | None) {
+    (ok, value) = c_scalar_constant(arg);
+    names = ["monotonic", "acquire", "acquire", "release", "acq_rel", "seq_cst"];
+    if not ok or not isinstance(value, int) or value < 0 or value >= len(names) {
+        self._emit_intrinsic_misuse(
+            nd, intr, "the memory order is a constant from 0 (relaxed) to 5 (seq_cst)"
+        );
+        return None;
+    }
+    order = names[value];
+    if (kind == "load" and order in ("release", "acq_rel"))
+        or (kind == "store" and order in ("acquire", "acq_rel")) {
+        self._emit_intrinsic_misuse(
+            nd, intr, f"a {kind} cannot use memory order {value}"
+        );
+        return None;
+    }
+    return order;
+}
+
+impl NaIRGenPass._emit_intrinsic_atomic(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    b = self.builder;
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_FENCE {
+        order = self._intrinsic_memory_order(nd, intr, args[0], "fence");
+        if order is None {
+            return None;
+        }
+        if order != "monotonic" {
+            b.fence(order);
+        }
+        return None;
+    }
+    width = int(intr.name.rsplit("_i", 1)[1]);
+    value_type = ir.IntType(width);
+    addr = self._intrinsic_operand(nd, intr, args[0], "i64");
+    if addr is None {
+        return None;
+    }
+    slot = b.inttoptr(addr, value_type.as_pointer(), name="atomic.p");
+    align = width // 8;
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_LOAD {
+        order = self._intrinsic_memory_order(nd, intr, args[1], "load");
+        if order is None {
+            return None;
+        }
+        return b.load_atomic(slot, order, align, name="atomic.ld");
+    }
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_STORE {
+        val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+        order = self._intrinsic_memory_order(nd, intr, args[2], "store");
+        if val is None or order is None {
+            return None;
+        }
+        b.store_atomic(val, slot, order, align);
+        return None;
+    }
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_CAS {
+        expected = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+        desired = self._intrinsic_operand(nd, intr, args[2], intr.param_specs[2]);
+        order = self._intrinsic_memory_order(nd, intr, args[3], "rmw");
+        if expected is None or desired is None or order is None {
+            return None;
+        }
+        failure = "acquire"
+            if order == "acq_rel"
+            else ("monotonic" if order == "release" else order);
+        pair = b.cmpxchg(slot, expected, desired, order, failure, name="atomic.cas");
+        return b.extract_value(pair, 0, name="atomic.cas.old");
+    }
+    val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+    order = self._intrinsic_memory_order(nd, intr, args[2], "rmw");
+    if val is None or order is None {
+        return None;
+    }
+    op = intr.name[len("__atomic_"):].rsplit("_i", 1)[0];
+    return b.atomic_rmw(
+        "xchg" if op == "swap" else op, slot, val, ordering=order, name="atomic.rmw"
+    );
 }
