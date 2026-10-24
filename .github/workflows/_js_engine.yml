@@ -94,11 +94,6 @@ jobs:
       - name: Run the WebAssembly runtime smoke test
         run: jac/zig-out/js/bin/node jac/js_engine/engine/tests/wasm/test_externref_js_values.js
 
-      # TEMPORARY diagnostics for the unicode test262 regressions; remove with
-      # jac/js_engine/tools/unicode_diag.js once the regressions are fixed.
-      - name: Dump unicode diagnostics
-        if: always()
-        run: jac/zig-out/js/bin/node jac/js_engine/tools/unicode_diag.js
 
       - name: Restore the test262 checkout
         uses: actions/cache@v4
