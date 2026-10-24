@@ -1,8 +1,10 @@
 import re;
+
 import from pathlib { Path }
+
 import from operator { attrgetter }
 
-impl RouteScanner.postinit{
+impl RouteScanner.postinit {
     self.pages_dir = self.project_root / self.PAGES_DIR_NAME;
 }
 
@@ -127,15 +129,7 @@ impl RouteScanner._file_to_route_path(filename: str) -> str {
     return filename;
 }
 
-def _sanitize_segment(segment: str) -> list[str] {
-    fragments: list[str] = [];
-    for fragment in re.split(r'[^0-9A-Za-z]+', segment) {
-        if len(fragment) > 0 {
-            fragments.append(fragment[0].upper() + fragment[1:]);
-        }
-    }
-    return fragments;
-}
+def _sanitize_segment(segment: str) -> list[str];
 
 impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     try {
@@ -196,4 +190,14 @@ impl entry_drops_route_children(manifest: any) -> bool {
         return False;
     }
     return "children" not in names and names != ["props"];
+}
+
+impl _sanitize_segment(segment: str) -> list[str] {
+    fragments: list[str] = [];
+    for fragment in re.split(r'[^0-9A-Za-z]+', segment) {
+        if len(fragment) > 0 {
+            fragments.append(fragment[0].upper() + fragment[1:]);
+        }
+    }
+    return fragments;
 }

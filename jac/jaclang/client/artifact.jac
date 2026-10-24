@@ -11,7 +11,11 @@ obj ClientBundle {
         hash: str;
 }
 
-def client_output_dir(source_path: Path) -> Path {
+def client_output_dir(source_path: Path) -> Path;
+
+def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None;
+
+impl client_output_dir(source_path: Path) -> Path {
     prepared = client_dist_for(str(source_path));
     if prepared is not None {
         return prepared;
@@ -22,7 +26,7 @@ def client_output_dir(source_path: Path) -> Path {
         else source_path.parent / '.jac' / 'client' / 'dist';
 }
 
-def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None {
+impl prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None {
     dist = client_dist_for(str(source_path));
     if dist is None {
         return None;

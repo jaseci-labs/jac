@@ -1,9 +1,3 @@
-import from jaclang.runtime.python.cpython_api {
-    _PyUnicode_IsPrintable,
-    _PyUnicode_IsXidContinue,
-    _PyUnicode_IsXidStart
-}
-
 def point_width(data: bytes, pos: int) -> int {
     lead = data[pos];
     if lead < 128 {

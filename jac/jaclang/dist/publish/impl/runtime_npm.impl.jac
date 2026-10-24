@@ -7,9 +7,7 @@ import from pathlib { Path }
 glob _api_names_cache: dict[str, set[str]] = {},
      _runtime_js_cache: dict[str, str] = {};
 
-def _runtime_source_path(framework: str = "") -> Path {
-    return Path(resolve_client_runtime_cl_path(framework));
-}
+def _runtime_source_path(framework: str = "") -> Path;
 
 impl runtime_pkg_name(framework: str = "") -> str {
     base = client_runtime_cl_basename(framework);
@@ -45,17 +43,7 @@ impl runtime_api_names(framework: str = "") -> set[str] {
     return names;
 }
 
-def _compile_cl_to_js(src: Path) -> str {
-    program = JacProgram();
-    prev = len(program.errors_had);
-    mod = program.compile(str(src));
-    new_errors = program.errors_had[prev:];
-    if new_errors {
-        formatted = "\n".join(str(err) for err in new_errors);
-        raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
-    }
-    return (mod.gen.js if mod and mod.gen else "") or "";
-}
+def _compile_cl_to_js(src: Path) -> str;
 
 impl compile_runtime_js(framework: str = "") -> str {
     src = _runtime_source_path(framework);
@@ -69,27 +57,7 @@ impl compile_runtime_js(framework: str = "") -> str {
     return js;
 }
 
-def _already_exported(js: str) -> set[str] {
-    names: set[str] = set();
-    for block in re.finditer(r"export\s*\{([^}]*)\}", js) {
-        for part in block.group(1).split(",") {
-            piece = part.strip();
-            if not piece {
-                continue;
-            }
-
-            tokens: list[str] = re.split(r"\s+as\s+", piece);
-            names.add(tokens[-1].strip());
-        }
-    }
-    for m in re.finditer(
-        r"(?m)^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)",
-        js
-    ) {
-        names.add(m.group(1));
-    }
-    return names;
-}
+def _already_exported(js: str) -> set[str];
 
 impl runtime_export_names(js: str, framework: str = "") -> list[str] {
     api = runtime_api_names(framework);
@@ -104,16 +72,7 @@ impl runtime_export_names(js: str, framework: str = "") -> list[str] {
     return sorted((top_level & api) - _already_exported(js));
 }
 
-def _pkg_root(spec: str) -> (str | None) {
-    if spec.startswith(".") or spec.startswith("/") {
-        return None;
-    }
-    parts = spec.split("/");
-    if spec.startswith("@") {
-        return "/".join(parts[:2]) if len(parts) >= 2 else spec;
-    }
-    return parts[0];
-}
+def _pkg_root(spec: str) -> (str | None);
 
 glob _SOLID_PEER_VERSIONS: dict[str, str] = {
          "@tanstack/solid-form": "^1.33.0",
@@ -121,137 +80,25 @@ glob _SOLID_PEER_VERSIONS: dict[str, str] = {
          "@solidjs/router": "^0.16.1"
      };
 
-def _peer_versions -> dict[str, str] {
-    return {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS, ** _SOLID_PEER_VERSIONS};
-}
+def _peer_versions -> dict[str, str];
 
-def _runtime_peer_deps(js: str) -> dict[str, str] {
-    roots: set[str] = set();
-
-    norm = js.replace("'", '"');
-    for m in re.finditer('(?m)\\bfrom\\s+"([^"]+)"', norm) {
-        pkg = _pkg_root(m.group(1));
-        if pkg {
-            roots.add(pkg);
-        }
-    }
-    for m in re.finditer('(?m)^\\s*import\\s+"([^"]+)"', norm) {
-        pkg = _pkg_root(m.group(1));
-        if pkg {
-            roots.add(pkg);
-        }
-    }
-    peers: dict[str, str] = {};
-    known = _peer_versions();
-    for pkg in sorted(roots) {
-        version = known.get(pkg);
-        if version is None {
-            raise ValueError(
-                f"runtime imports unknown peer package {pkg!r}; "
-                "add it to CORE_RUNTIME_DEPS/OPTIONAL_RUNTIME_DEPS in "
-                "npm_provider.jac (or _SOLID_PEER_VERSIONS here) and the "
-                "client dependency defaults"
-            );
-        }
-        peers[pkg] = version;
-    }
-    return peers;
-}
+def _runtime_peer_deps(js: str) -> dict[str, str];
 
 impl runtime_peer_deps(js: str) -> dict[str, str] {
     return _runtime_peer_deps(js);
 }
 
-def _relative_dep_specs(js: str) -> list[str] {
-    specs: list[str] = [];
-    norm = js.replace("'", '"');
-    for m in re.finditer('(?m)\\bfrom\\s+"(\\.[^"]+)"', norm) {
-        if m.group(1).endswith(".js") {
-            specs.append(m.group(1));
-        }
-    }
-    for m in re.finditer('(?m)^\\s*import\\s+"(\\.[^"]+)"', norm) {
-        if m.group(1).endswith(".js") {
-            specs.append(m.group(1));
-        }
-    }
-    return specs;
-}
+def _relative_dep_specs(js: str) -> list[str];
 
-def _point_at_packaged_prelude(js: str, member_rel: str) -> str {
-    import posixpath;
-
-    up = posixpath.dirname(member_rel);
-    target = posixpath.normpath(
-        posixpath.join(posixpath.relpath(".", up or "."), JAC_PRELUDE_BASENAME)
-    )
-        if up
-        else JAC_PRELUDE_BASENAME;
-    if not target.startswith(".") {
-        target = "./" + target;
-    }
-    for quote in ['"', "'"] {
-        js = js.replace(quote + JAC_PRELUDE_MODULE + quote, quote + target + quote);
-    }
-    return js;
-}
+def _point_at_packaged_prelude(js: str, member_rel: str) -> str;
 
 def _collect_dep_modules(
     entry_js: str, entry_dir: str = ""
-) -> tuple[str, list[tuple[str, str]]] {
-    import jaclang;
-    import posixpath;
-    base = Path(jaclang.__file__).parent.parent;
-    seen: set[str] = set();
-    out: list[tuple[str, str]] = [];
-
-    worklist: list[tuple[str, str]] = [(entry_dir, entry_js)];
-    is_entry = True;
-    while worklist {
-        (cur_dir, js) = worklist.pop();
-        for spec in _relative_dep_specs(js) {
-            rel = posixpath.normpath(posixpath.join(cur_dir, spec));
-            if is_entry and rel != spec.lstrip("./") {
-                for quote in ['"', "'"] {
-                    entry_js = entry_js.replace(
-                        quote + spec + quote, quote + "./" + rel + quote
-                    );
-                }
-            }
-            if rel in seen {
-                continue;
-            }
-            seen.add(rel);
-            src = base / (rel[:-3] + ".jac");
-            dep_js = _compile_cl_to_js(src);
-            out.append((rel, dep_js));
-            worklist.append((posixpath.dirname(rel), dep_js));
-        }
-        is_entry = False;
-    }
-    return (entry_js, out);
-}
+) -> tuple[str, list[tuple[str, str]]];
 
 def _runtime_package_json(
     version: str, pkg_name: str, peers: dict[str, str] = {}
-) -> str {
-    doc: dict[str, any] = {
-        "name": pkg_name,
-        "version": version,
-        "description": "Jac client runtime (JSX factory + reactive primitives) for "
-        "npm-published Jac libraries.",
-        "license": "MIT",
-        "type": "module",
-        "main": "index.js",
-        "module": "index.js",
-        "exports": {".": {"import": "./index.js"}},
-
-    };
-    if peers {
-        doc["peerDependencies"] = peers;
-    }
-    return json.dumps(doc, indent=2) + "\n";
-}
+) -> str;
 
 impl build_runtime_tarball(
     version: str, pkg_name: str = "", framework: str = ""
@@ -299,4 +146,181 @@ impl build_runtime_to(
     dest = output_dir / f"{flat}-{version}.tgz";
     dest.write_bytes(build_runtime_tarball(version, name, framework));
     return dest;
+}
+
+impl _runtime_source_path(framework: str = "") -> Path {
+    return Path(resolve_client_runtime_cl_path(framework));
+}
+
+impl _compile_cl_to_js(src: Path) -> str {
+    program = JacProgram();
+    prev = len(program.errors_had);
+    mod = program.compile(str(src));
+    new_errors = program.errors_had[prev:];
+    if new_errors {
+        formatted = "\n".join(str(err) for err in new_errors);
+        raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
+    }
+    return (mod.gen.js if mod and mod.gen else "") or "";
+}
+
+impl _already_exported(js: str) -> set[str] {
+    names: set[str] = set();
+    for block in re.finditer(r"export\s*\{([^}]*)\}", js) {
+        for part in block.group(1).split(",") {
+            piece = part.strip();
+            if not piece {
+                continue;
+            }
+
+            tokens: list[str] = re.split(r"\s+as\s+", piece);
+            names.add(tokens[-1].strip());
+        }
+    }
+    for m in re.finditer(
+        r"(?m)^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)",
+        js
+    ) {
+        names.add(m.group(1));
+    }
+    return names;
+}
+
+impl _pkg_root(spec: str) -> (str | None) {
+    if spec.startswith(".") or spec.startswith("/") {
+        return None;
+    }
+    parts = spec.split("/");
+    if spec.startswith("@") {
+        return "/".join(parts[:2]) if len(parts) >= 2 else spec;
+    }
+    return parts[0];
+}
+
+impl _peer_versions -> dict[str, str] {
+    return {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS, ** _SOLID_PEER_VERSIONS};
+}
+
+impl _runtime_peer_deps(js: str) -> dict[str, str] {
+    roots: set[str] = set();
+
+    norm = js.replace("'", '"');
+    for m in re.finditer('(?m)\\bfrom\\s+"([^"]+)"', norm) {
+        pkg = _pkg_root(m.group(1));
+        if pkg {
+            roots.add(pkg);
+        }
+    }
+    for m in re.finditer('(?m)^\\s*import\\s+"([^"]+)"', norm) {
+        pkg = _pkg_root(m.group(1));
+        if pkg {
+            roots.add(pkg);
+        }
+    }
+    peers: dict[str, str] = {};
+    known = _peer_versions();
+    for pkg in sorted(roots) {
+        version = known.get(pkg);
+        if version is None {
+            raise ValueError(
+                f"runtime imports unknown peer package {pkg!r}; "
+                "add it to CORE_RUNTIME_DEPS/OPTIONAL_RUNTIME_DEPS in "
+                "npm_provider.jac (or _SOLID_PEER_VERSIONS here) and the "
+                "client dependency defaults"
+            );
+        }
+        peers[pkg] = version;
+    }
+    return peers;
+}
+
+impl _relative_dep_specs(js: str) -> list[str] {
+    specs: list[str] = [];
+    norm = js.replace("'", '"');
+    for m in re.finditer('(?m)\\bfrom\\s+"(\\.[^"]+)"', norm) {
+        if m.group(1).endswith(".js") {
+            specs.append(m.group(1));
+        }
+    }
+    for m in re.finditer('(?m)^\\s*import\\s+"(\\.[^"]+)"', norm) {
+        if m.group(1).endswith(".js") {
+            specs.append(m.group(1));
+        }
+    }
+    return specs;
+}
+
+impl _point_at_packaged_prelude(js: str, member_rel: str) -> str {
+    import posixpath;
+
+    up = posixpath.dirname(member_rel);
+    target = posixpath.normpath(
+        posixpath.join(posixpath.relpath(".", up or "."), JAC_PRELUDE_BASENAME)
+    )
+        if up
+        else JAC_PRELUDE_BASENAME;
+    if not target.startswith(".") {
+        target = "./" + target;
+    }
+    for quote in ['"', "'"] {
+        js = js.replace(quote + JAC_PRELUDE_MODULE + quote, quote + target + quote);
+    }
+    return js;
+}
+
+impl _collect_dep_modules(
+    entry_js: str, entry_dir: str = ""
+) -> tuple[str, list[tuple[str, str]]] {
+    import jaclang;
+    import posixpath;
+    base = Path(jaclang.__file__).parent.parent;
+    seen: set[str] = set();
+    out: list[tuple[str, str]] = [];
+
+    worklist: list[tuple[str, str]] = [(entry_dir, entry_js)];
+    is_entry = True;
+    while worklist {
+        (cur_dir, js) = worklist.pop();
+        for spec in _relative_dep_specs(js) {
+            rel = posixpath.normpath(posixpath.join(cur_dir, spec));
+            if is_entry and rel != spec.lstrip("./") {
+                for quote in ['"', "'"] {
+                    entry_js = entry_js.replace(
+                        quote + spec + quote, quote + "./" + rel + quote
+                    );
+                }
+            }
+            if rel in seen {
+                continue;
+            }
+            seen.add(rel);
+            src = base / (rel[:-3] + ".jac");
+            dep_js = _compile_cl_to_js(src);
+            out.append((rel, dep_js));
+            worklist.append((posixpath.dirname(rel), dep_js));
+        }
+        is_entry = False;
+    }
+    return (entry_js, out);
+}
+
+impl _runtime_package_json(
+    version: str, pkg_name: str, peers: dict[str, str] = {}
+) -> str {
+    doc: dict[str, any] = {
+        "name": pkg_name,
+        "version": version,
+        "description": "Jac client runtime (JSX factory + reactive primitives) for "
+        "npm-published Jac libraries.",
+        "license": "MIT",
+        "type": "module",
+        "main": "index.js",
+        "module": "index.js",
+        "exports": {".": {"import": "./index.js"}},
+
+    };
+    if peers {
+        doc["peerDependencies"] = peers;
+    }
+    return json.dumps(doc, indent=2) + "\n";
 }

@@ -5,22 +5,6 @@ Derived from CPython 3.14.6 Modules/_multiprocessing/posixshmem.c; see
 EINTR unless a signal handler raises.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_errno,
-    NULL,
-    Py_NewRef,
-    PyErr_CheckSignals,
-    PyErr_SetFromErrnoWithFilenameObject,
-    PyEval_RestoreThread,
-    PyEval_SaveThread,
-    PyExc_OSError,
-    PyExc_ValueError,
-    PyObject,
-    PyUnicode_AsUTF8AndSize
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.modules.errno_constants { EINTR }
 import from c {
     def shm_unlink(name: ptr[u8]) -> i32;  def strlen(text: ptr[u8]) -> u64;
     # macOS declares shm_open() variadic, reading the mode only with O_CREAT;

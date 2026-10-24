@@ -1,19 +1,5 @@
 """The _uuid module: generate_time_safe() and the library capability flags."""
 
-import from jaclang.runtime.python.cpython_api { PyModule_AddIntConstant, PyObject }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    MethodCallbacks,
-    MethodDefinition
-}
-import from jaclang.runtime.python.modules.uuid { py_uuid_generate_time_safe }
-import from jaclang.runtime.python.modules.uuid_library {
-    HAVE_UUID_HEADER,
-    HAVE_GENERATE_TIME_SAFE,
-    HAVE_GENERATE_TIME_SAFE_STABLE_MAC
-}
-
 glob:priv METH_NOARGS: i64 = 4;
 
 def:priv execute(module: ptr[PyObject]) -> i32 {

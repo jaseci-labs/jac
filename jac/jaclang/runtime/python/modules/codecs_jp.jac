@@ -4,69 +4,6 @@ euc_jisx0213 and shift_jisx0213) in native Jac, with alg_jisx0201.h and
 emu_jisx0213_2000.h. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.modules.cjkcodecs {
-    DBCINV,
-    DecodeWriter,
-    MBENC_FLUSH,
-    MBERR_EXCEPTION,
-    MBERR_TOOFEW,
-    MBERR_TOOSMALL,
-    MULTIC,
-    MultibyteCodec,
-    MultibyteCodec_State,
-    NOCHAR,
-    UNIINV,
-    find_pairencmap,
-    getcodec,
-    inbyte,
-    inchar,
-    map_decode,
-    map_decode_wide,
-    map_encode,
-    next_in,
-    next_inchar,
-    next_out,
-    no_codec_init,
-    no_decode_reset,
-    no_encode_reset,
-    no_state_init,
-    outbyte,
-    outchar,
-    outchar2,
-    register_maps
-}
-import from jaclang.runtime.python.modules.cjkcodecs_jis {
-    EMPBASE,
-    EMULATE_JISX0213_2000_DECODE_INVALID,
-    EMULATE_JISX0213_2000_ENCODE_INVALID,
-    emulate_2000_decode_plane1,
-    emulate_2000_decode_plane2,
-    emulate_2000_encode_bmp,
-    emulate_2000_encode_emp,
-    jisx0201_k_decode,
-    jisx0201_k_encode,
-    jisx0201_r_decode,
-    jisx0201_r_encode
-}
-import from jaclang.runtime.python.modules.cjkcodecs_mappings_jp {
-    CJK_JP_MAPPINGS,
-    JISX0213_ENCPAIRS,
-    cjk_cp932ext_map,
-    cjk_jisx0208_map,
-    cjk_jisx0212_map,
-    cjk_jisx0213_1_bmp_map,
-    cjk_jisx0213_1_emp_map,
-    cjk_jisx0213_2_bmp_map,
-    cjk_jisx0213_2_emp_map,
-    cjk_jisx0213_bmp_map,
-    cjk_jisx0213_emp_map,
-    cjk_jisx0213_pair_encmap,
-    cjk_jisx0213_pair_map,
-    cjk_jisxcommon_map,
-    cjk_jp_mappings
-}
-
 def:priv pair_code(body: int, modifier: int) -> int {
     return find_pairencmap(
         body, modifier, addressof(cjk_jisx0213_pair_encmap), JISX0213_ENCPAIRS

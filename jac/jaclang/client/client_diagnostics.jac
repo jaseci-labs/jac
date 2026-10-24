@@ -65,3 +65,29 @@ def format_build_diagnostics(
 ) -> str;
 
 def is_debug_mode(config: object = None) -> bool;
+
+impl _pin_location(
+    diag: ClientDiagnostic,
+    locator: JacLocator,
+    loc: (SourceLocation | None),
+    raw_location: str,
+    reason: str
+) -> None {
+    if loc is not None and loc.line > 0 {
+        diag.file = _relative(diag.base_path, loc.file);
+        diag.line = loc.line;
+        diag.column = loc.column;
+        return;
+    }
+    owner = loc.file if loc is not None else "";
+    if not owner {
+        owner = locator.owner_for(raw_location);
+    }
+    if not owner {
+        owner = locator.fallback_owner();
+    }
+    diag.file = _relative(diag.base_path, owner);
+    diag.line = 0;
+    diag.column = 0;
+    diag.unmapped_reason = reason;
+}

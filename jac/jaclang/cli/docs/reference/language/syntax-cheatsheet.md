@@ -113,7 +113,7 @@ import from ..parent.mod { SomeClass }
 include random;
 
 # Imports between modules under an archwire.jac come from its wires instead:
-#   graph import core { util --> core.svc { now } }   # generates the import into core.svc
+#   graph import core { util ++> svc { now } }   # injects the import into core.svc
 # See reference/wiring.md
 
 # Cross-codespace imports are plain imports (see Full-Stack section below)

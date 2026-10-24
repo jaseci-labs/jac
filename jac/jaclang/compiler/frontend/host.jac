@@ -1,18 +1,5 @@
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
-import from jaclang.project.workspace_model { AppSpec, WorkspaceSpec }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
-import type from jaclang.compiler.types.ct_value { CtEnvironment }
-import type from jaclang.compiler.frontend.unitree { Module }
-import type from jaclang.compiler.passes.annex_weave { WovenAnnex }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
-import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-import type from jaclang.compiler.driver.native_iface { NativeIface }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.driver.module_analysis { ModuleAnalysis }
-import type from jaclang.compiler.frontend.kernel_analyze { CompileReport }
 
 obj CheckSettings {
     has suppress: list[str] = [],
@@ -71,154 +58,54 @@ obj ProjectFacts {
 
 obj HostServices {
     @contextmanager
-    def session -> Iterator[None] {
-        yield ;
-    }
+    def session -> Iterator[None];
 
-    def in_kernel -> bool {
-        return False;
-    }
-
-    def project_defaults -> (ProjectDefaults | None) {
-        return None;
-    }
-
-    def check_settings(target_app: str) -> CheckSettings {
-        return CheckSettings();
-    }
-
-    def project_facts(path: str) -> (ProjectFacts | None) {
-        return None;
-    }
-
-    def lint_settings(path: str) -> LintSettings {
-        return LintSettings(check=CheckSettings());
-    }
-
-    def workspace(path: str) -> (WorkspaceSpec | None) {
-        return None;
-    }
-
-    def app_for_path(path: str) -> (AppSpec | None) {
-        return None;
-    }
-
-    def project_root(path: str) -> (str | None) {
-        return None;
-    }
-
+    def in_kernel -> bool;
+    def project_defaults -> (ProjectDefaults | None);
+    def check_settings(target_app: str) -> CheckSettings;
+    def project_facts(path: str) -> (ProjectFacts | None);
+    def lint_settings(path: str) -> LintSettings;
+    def workspace(path: str) -> (WorkspaceSpec | None);
+    def app_for_path(path: str) -> (AppSpec | None);
+    def project_root(path: str) -> (str | None);
     def resolve_module(
         target: str, base_path: str, string_spec: bool = False
-    ) -> tuple[str, str] {
-        return ("", "");
-    }
+    ) -> tuple[str, str];
 
-    def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None) {
-        return None;
-    }
-
-    def jac_virtual_module_path(target: str) -> (str | None) {
-        return None;
-    }
-
-    def is_path_alias(target: str, base_path: str) -> bool {
-        return False;
-    }
-
-    def is_untyped_third_party(path: str) -> bool {
-        return False;
-    }
-
-    def in_typeshed_tree(path: str) -> bool {
-        return False;
-    }
-
-    def sibling_declaration(js_path: str) -> (str | None) {
-        return None;
-    }
-
-    def client_pulls(path: str) -> str {
-        return "";
-    }
-
-    def client_pull_grew(path: str) {}
-    def has_npm_package(spec: str, base_path: str) -> bool {
-        return False;
-    }
-
-    def resolve_npm_package(spec: str, base_path: str) -> (str | None) {
-        return None;
-    }
-
-    def npm_declarations(spec: str, base_path: str) -> (str | None) {
-        return None;
-    }
-
+    def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None);
+    def jac_virtual_module_path(target: str) -> (str | None);
+    def is_path_alias(target: str, base_path: str) -> bool;
+    def is_untyped_third_party(path: str) -> bool;
+    def in_typeshed_tree(path: str) -> bool;
+    def sibling_declaration(js_path: str) -> (str | None);
+    def client_pulls(path: str) -> str;
+    def client_pull_grew(path: str);
+    def has_npm_package(spec: str, base_path: str) -> bool;
+    def resolve_npm_package(spec: str, base_path: str) -> (str | None);
+    def npm_declarations(spec: str, base_path: str) -> (str | None);
     def declared_dependencies(
         module_path: str, fallback_app: str
-    ) -> (list[str] | None) {
-        return None;
-    }
+    ) -> (list[str] | None);
 
-    def note(message: str, style: str = "dim") {}
-    def stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
-        return None;
-    }
-
+    def note(message: str, style: str = "dim");
+    def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
     def parse_python(
         source_str: str, file_path: str, program: JacProgram
-    ) -> tuple[Module, bool] {
-        raise RuntimeError("no compiler host is installed");
-    }
+    ) -> tuple[Module, bool];
 
-    def ct_environment -> CtEnvironment {
-        import from jaclang.compiler.types.ct_value { CtEnvironment }
-        return CtEnvironment();
-    }
-
-    def path_facts(path: str) -> PathFacts {
-        return PathFacts();
-    }
-
-    def host_platform -> HostPlatform {
-        return HostPlatform();
-    }
-
-    def read_source(path: str) -> str {
-        with open(path) as handle {
-            return handle.read();
-        }
-    }
-
-    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
-        return [];
-    }
-
-    def base_file(annex_path: str) -> (str | None) {
-        return None;
-    }
-
-    def is_annex_path_of(candidate: str, base: str) -> bool {
-        return False;
-    }
-
-    def package_init(directory: str) -> (str | None) {
-        return None;
-    }
-
-    def wiring_file(path: str) -> (str | None) {
-        return None;
-    }
-
-    def is_seed_source(rel_path: str) -> bool {
-        return False;
-    }
-
-    def wiring_records(digest: str) -> str {
-        return "";
-    }
-
-    def keep_wiring_records(digest: str, text: str) {}
+    def stub_interface(program: JacProgram, file_path: str) -> (Module | None);
+    def ct_environment -> CtEnvironment;
+    def path_facts(path: str) -> PathFacts;
+    def host_platform -> HostPlatform;
+    def read_source(path: str) -> str;
+    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];
+    def base_file(annex_path: str) -> (str | None);
+    def is_annex_path_of(candidate: str, base: str) -> bool;
+    def package_init(directory: str) -> (str | None);
+    def wiring_file(path: str) -> (str | None);
+    def is_seed_source(rel_path: str) -> bool;
+    def wiring_records(digest: str) -> str;
+    def keep_wiring_records(digest: str, text: str);
     def native_parse(
         source_str: str,
         file_path: str,
@@ -226,190 +113,90 @@ obj HostServices {
         annexes: list[WovenAnnex],
         early_context: str = "",
         load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None) {
-        return None;
-    }
+    ) -> (tuple[Module, bool] | None);
 
-    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None) {
-        return None;
-    }
-
-    def place_wired_imports(module: Module) {}
-    def drop_python_lane_products(path: str, program: JacProgram) {}
-    def compiler_for(program: JacProgram) -> JacCompiler {
-        raise RuntimeError("no compiler host is installed");
-    }
-
-    def iface_registry_for(program: JacProgram) -> IfaceRegistry {
-        raise RuntimeError("no compiler host is installed");
-    }
-
+    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
+    def place_wired_imports(module: Module);
+    def drop_python_lane_products(path: str, program: JacProgram);
+    def compiler_for(program: JacProgram) -> JacCompiler;
+    def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_dep_iface(
         program: JacProgram, path: str, options: CompileOptions
-    ) -> (NativeIface | None) {
-        return None;
-    }
+    ) -> (NativeIface | None);
 
-    def native_dep_discovery_open(program: JacProgram) -> bool {
-        return False;
-    }
-
-    def native_deps_deferred(program: JacProgram) -> bool {
-        return False;
-    }
-
+    def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_deps_deferred(program: JacProgram) -> bool;
     def held_native_iface(
         program: JacProgram, path: str, options: CompileOptions
-    ) -> str {
-        return "";
-    }
+    ) -> str;
 
-    def native_lowering_failed(program: JacProgram, path: str, detail: str) {}
-    def native_fact(kind: str, key: str) -> str {
-        return "";
-    }
-
-    def save_native_debug_ir(path: str, text: str) {}
-    def native_units_for(program: JacProgram) -> NativeUnitRegistry {
-        raise RuntimeError("no compiler host is installed");
-    }
-
-    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
-        return None;
-    }
-
+    def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def native_fact(kind: str, key: str) -> str;
+    def save_native_debug_ir(path: str, text: str);
+    def native_units_for(program: JacProgram) -> NativeUnitRegistry;
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
     def kernel_compile(
         program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None) {
-        return None;
-    }
+    ) -> (CompileReport | None);
 
-    def in_compiler_tree(path: str) -> bool {
-        return False;
-    }
-
-    def schedule_import_failed(err: ImportError) {}
-    def client_osp_core_js -> str {
-        return "";
-    }
-
-    def client_stub_globals -> list[str] {
-        return [];
-    }
-
+    def in_compiler_tree(path: str) -> bool;
+    def schedule_import_failed(err: ImportError);
+    def client_osp_core_js -> str;
+    def client_stub_globals -> list[str];
     def native_session_declares(
         program: JacProgram, source: str, element: str
-    ) -> (bool | None) {
-        return None;
-    }
+    ) -> (bool | None);
 
-    def native_session_active(program: JacProgram) -> bool {
-        return False;
-    }
-
+    def native_session_active(program: JacProgram) -> bool;
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
-    ) {}
+    );
 
     def native_analyze(
         program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-    ) -> (ModuleAnalysis | None) {
-        return None;
-    }
+    ) -> (ModuleAnalysis | None);
 
-    def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
-        raise RuntimeError("no compiler host is installed");
-    }
-
+    def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
         source_str: str, file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
-        raise RuntimeError("no compiler host is installed");
-    }
+    ) -> JacProgram;
 
-    def lint_file(file_path: str) -> JacProgram {
-        raise RuntimeError("no compiler host is installed");
-    }
-
-    def native_pipeline_available -> tuple[bool, str] {
-        return (False, "native pipeline unavailable: no compiler host is installed");
-    }
-
+    def lint_file(file_path: str) -> JacProgram;
+    def native_pipeline_available -> tuple[bool, str];
     def compile_module(
         program: JacProgram,
         file_path: str,
         use_str: (str | None),
         options: CompileOptions
-    ) -> Module {
-        raise RuntimeError("no compiler host is installed");
-    }
+    ) -> Module;
 
     def build_module(
         program: JacProgram, file_path: str, use_str: (str | None)
-    ) -> Module {
-        raise RuntimeError("no compiler host is installed");
-    }
+    ) -> Module;
 
     def run_module_pipeline(
         program: JacProgram,
         file_path: str,
         use_str: (str | None),
         options: CompileOptions
-    ) -> Module {
-        raise RuntimeError("no compiler host is installed");
-    }
+    ) -> Module;
 
-    def internal_program(program: JacProgram) -> (JacProgram | None) {
-        return None;
-    }
-
-    def bind_context_program(context_root: JacProgram, program: JacProgram) {}
-    def note_program_dependency(program: JacProgram, resolved_path: str) {}
-    def forget_program_products(program: JacProgram, resolved_path: str) {}
-    def release_program_products(program: JacProgram, retain_stubs: bool) {}
-    def prepare_interface(program: JacProgram, path: str, module: Module) -> bool {
-        return False;
-    }
-
-    def collect_released_memory {}
-    def load_modules(names: list[str]) {}
-    def module_in_flight(names: list[str]) -> str {
-        return "";
-    }
-
-    def import_in_flight(path: str) -> bool {
-        return False;
-    }
-
-    def has_active_stub_catalog -> bool {
-        return False;
-    }
-
-    def typeshed_unavailable_reason -> str {
-        import os;
-        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-        stdlib = os.path.join(jaclang_pkg_root(), "vendor", "typeshed", "stdlib");
-        if os.path.isfile(os.path.join(stdlib, "builtins.pyi")) {
-            return "";
-        }
-        return f"no typeshed stdlib at {stdlib}";
-    }
-
-    def is_native_only_source(rel: str) -> bool {
-        return False;
-    }
-
-    def is_native_lowered_source(rel: str) -> bool {
-        return False;
-    }
-
-    def default_target_triple -> str {
-        return "";
-    }
-
-    def host_side -> HostServices {
-        return self;
-    }
+    def internal_program(program: JacProgram) -> (JacProgram | None);
+    def bind_context_program(context_root: JacProgram, program: JacProgram);
+    def note_program_dependency(program: JacProgram, resolved_path: str);
+    def forget_program_products(program: JacProgram, resolved_path: str);
+    def release_program_products(program: JacProgram, retain_stubs: bool);
+    def prepare_interface(program: JacProgram, path: str, module: Module) -> bool;
+    def collect_released_memory;
+    def load_modules(names: list[str]);
+    def module_in_flight(names: list[str]) -> str;
+    def import_in_flight(path: str) -> bool;
+    def has_active_stub_catalog -> bool;
+    def typeshed_unavailable_reason -> str;
+    def is_native_only_source(rel: str) -> bool;
+    def is_native_lowered_source(rel: str) -> bool;
+    def default_target_triple -> str;
+    def host_side -> HostServices;
 }
 
 obj NeutralHost(HostServices) {}
@@ -423,37 +210,16 @@ glob _HOSTS: list[HostServices] = [],
      _NEUTRAL_HOST: HostServices = NeutralHost(),
      _PACKAGE_ROOT: list[str] = [];
 
-def active_host -> HostServices {
-    return _HOSTS[-1] if _HOSTS else _NEUTRAL_HOST;
-}
+def active_host -> HostServices;
 
-def package_root -> str {
-    return _PACKAGE_ROOT[0] if _PACKAGE_ROOT else "";
-}
+def package_root -> str;
 
-def set_package_root(path: str) {
-    _PACKAGE_ROOT.clear();
-    _PACKAGE_ROOT.append(path);
-}
+def set_package_root(path: str);
 
-def install_host(host: HostServices) {
-    _HOSTS.clear();
-    _HOSTS.append(host);
-}
+def install_host(host: HostServices);
 
-def set_kernel_host_mode(mode: str) -> str {
-    previous = kernel_host_mode();
-    _KERNEL_HOST_MODE.clear();
-    if mode {
-        _KERNEL_HOST_MODE.append(mode);
-    }
-    return previous;
-}
+def set_kernel_host_mode(mode: str) -> str;
 
-def kernel_host_mode -> str {
-    return _KERNEL_HOST_MODE[0] if _KERNEL_HOST_MODE else "";
-}
+def kernel_host_mode -> str;
 
-def kernel_host_enabled -> bool {
-    return kernel_host_mode() != "";
-}
+def kernel_host_enabled -> bool;

@@ -24,50 +24,14 @@ glob ARTIFACTS: dict[str, str] = {
          "jaclang.artifacts.kit"
      );
 
-def _marks -> set[str] {
-    import from jaclang.jac0core.handoff { handoff }
-    marked = handoff().get("building");
-    if isinstance(marked, list) {
-        return {str(name) for name in marked};
-    }
-    return set();
-}
+def _marks -> set[str];
 
-def _record(marked: set[str]) {
-    import from jaclang.jac0core.handoff { update_handoff }
-    update_handoff(building=sorted(marked) or None);
-}
+def _record(marked: set[str]);
 
-def building -> frozenset[str] {
-    return frozenset(_marks());
-}
+def building -> frozenset[str];
 
-def begin(names: list[str]) -> list[str] {
-    marked = _marks();
-    added = [
-        name
-        for name in names
-        if name not in marked
-    ];
-    _record(marked | set(added));
-    return added;
-}
+def begin(names: list[str]) -> list[str];
 
-def end(names: list[str]) {
-    _record(_marks() - set(names));
-}
+def end(names: list[str]);
 
-def resolution_in_flight -> bool {
-    names = set(ROUTER_MODULES);
-    for target in ARTIFACTS.values() {
-        names.add(target.split(":", 1)[0]);
-    }
-    for name in names {
-        module = sys.modules.get(name);
-        spec = module?.__spec__ if module is not None else None;
-        if spec is not None and getattr(spec, "_initializing", False) {
-            return True;
-        }
-    }
-    return False;
-}
+def resolution_in_flight -> bool;

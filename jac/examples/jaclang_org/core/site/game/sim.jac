@@ -96,12 +96,7 @@ obj Enemy {
 }
 
 obj Projectile {
-    def step {
-        self.x += self.vx * TICK_DT;
-        self.y += self.vy * TICK_DT;
-        self.z += self.vz * TICK_DT;
-        self.life -= TICK_DT;
-    }
+    def step;
 
     has x: float = 0.0,
         y: float = 0.0,
@@ -136,43 +131,26 @@ obj Spark {
         cb: int = 0;
 }
 
-def remove_at[T](items: &mut list[own T], i: int) {
-    last = items.pop();
-    if i < len(items) {
-        items[i] = last;
-    }
-}
+def remove_at[T](items: &mut list[own T], i: int);
 
 obj EnemyPool {
     has items: list[own Enemy] = [];
 
-    def size -> int {
-        return len(self.items);
-    }
+    def size -> int;
 }
 
 obj ProjectilePool {
     has items: list[own Projectile] = [];
 
-    def size -> int {
-        return len(self.items);
-    }
-
-    def remove(i: int) {
-        remove_at(&mut self.items, i);
-    }
+    def size -> int;
+    def remove(i: int);
 }
 
 obj SparkPool {
     has items: list[own Spark] = [];
 
-    def size -> int {
-        return len(self.items);
-    }
-
-    def remove(i: int) {
-        remove_at(&mut self.items, i);
-    }
+    def size -> int;
+    def remove(i: int);
 }
 
 obj Boom {
@@ -194,23 +172,9 @@ obj Events {
         kills: list[own Kill] = [],
         damage: list[float] = [];
 
-    def boom(x: float, y: float, z: float) {
-        if len(self.booms) < MAX_EVENTS {
-            self.booms.append(Boom(x=x, y=y, z=z));
-        }
-    }
-
-    def kill(slot: int, gen: int, x: float, y: float, z: float) {
-        if len(self.kills) < MAX_EVENTS {
-            self.kills.append(Kill(slot=slot, gen=gen, x=x, y=y, z=z));
-        }
-    }
-
-    def hurt(amount: float) {
-        if len(self.damage) < MAX_EVENTS {
-            self.damage.append(amount);
-        }
-    }
+    def boom(x: float, y: float, z: float);
+    def kill(slot: int, gen: int, x: float, y: float, z: float);
+    def hurt(amount: float);
 }
 
 obj FrameState {
@@ -302,3 +266,48 @@ def process_events(w: &mut Game);
 def sim_tick(w: &mut Game);
 
 def world_new -> own Game;
+
+impl Projectile.step {
+    self.x += self.vx * TICK_DT;
+    self.y += self.vy * TICK_DT;
+    self.z += self.vz * TICK_DT;
+    self.life -= TICK_DT;
+}
+
+impl EnemyPool.size -> int {
+    return len(self.items);
+}
+
+impl ProjectilePool.size -> int {
+    return len(self.items);
+}
+
+impl ProjectilePool.remove(i: int) {
+    remove_at(&mut self.items, i);
+}
+
+impl SparkPool.size -> int {
+    return len(self.items);
+}
+
+impl SparkPool.remove(i: int) {
+    remove_at(&mut self.items, i);
+}
+
+impl Events.boom(x: float, y: float, z: float) {
+    if len(self.booms) < MAX_EVENTS {
+        self.booms.append(Boom(x=x, y=y, z=z));
+    }
+}
+
+impl Events.kill(slot: int, gen: int, x: float, y: float, z: float) {
+    if len(self.kills) < MAX_EVENTS {
+        self.kills.append(Kill(slot=slot, gen=gen, x=x, y=y, z=z));
+    }
+}
+
+impl Events.hurt(amount: float) {
+    if len(self.damage) < MAX_EVENTS {
+        self.damage.append(amount);
+    }
+}

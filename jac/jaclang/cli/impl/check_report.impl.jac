@@ -1,22 +1,6 @@
-def print_guide_hint(code: (str | None), category: (str | None)) -> None {
-    if not code or not category {
-        return;
-    }
-    name = guide_for_diagnostic(code, category);
-    if name is not None {
-        console.print(f"  → run 'jac guide {name}' for guidance", style="muted");
-    }
-}
+def print_guide_hint(code: (str | None), category: (str | None)) -> None;
 
-def print_diag(d: any, is_error: bool) {
-    emit = console.error if is_error else console.warning;
-    if isinstance(d, dict) {
-        emit(str(d.get('pretty') or d.get('text') or ''));
-        print_guide_hint(d.get('code'), d.get('category'));
-    } else {
-        emit(str(d));
-    }
-}
+def print_diag(d: any, is_error: bool);
 
 impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
     text_part = f" {text} ";
@@ -79,14 +63,7 @@ impl print_final_summary(passed_count: int, failed_count: int, elapsed: float) -
     console.print(separator(", ".join(parts) + f" in {elapsed:.2f}s"));
 }
 
-def _coverage_relpath(path: str) -> str {
-    import os;
-    try {
-        return os.path.relpath(path);
-    } except ValueError {
-        return path;
-    }
-}
+def _coverage_relpath(path: str) -> str;
 
 impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
     console.print("");
@@ -249,5 +226,34 @@ impl print_placement_report(rows_by_module: dict[str, dict[str, any]]) -> None {
                 console.print("      - " + note);
             }
         }
+    }
+}
+
+impl print_guide_hint(code: (str | None), category: (str | None)) -> None {
+    if not code or not category {
+        return;
+    }
+    name = guide_for_diagnostic(code, category);
+    if name is not None {
+        console.print(f"  → run 'jac guide {name}' for guidance", style="muted");
+    }
+}
+
+impl print_diag(d: any, is_error: bool) {
+    emit = console.error if is_error else console.warning;
+    if isinstance(d, dict) {
+        emit(str(d.get('pretty') or d.get('text') or ''));
+        print_guide_hint(d.get('code'), d.get('category'));
+    } else {
+        emit(str(d));
+    }
+}
+
+impl _coverage_relpath(path: str) -> str {
+    import os;
+    try {
+        return os.path.relpath(path);
+    } except ValueError {
+        return path;
     }
 }

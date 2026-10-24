@@ -1,7 +1,4 @@
-def _database_config(base_path: (str | None)) -> DatabaseConfig {
-    config = get_config_for_dir(base_path) if base_path else None;
-    return config.database if config is not None else DatabaseConfig();
-}
+def _database_config(base_path: (str | None)) -> DatabaseConfig;
 
 
 impl promotions_for(base_path: (str | None)) -> dict[str, list[str]] {
@@ -135,16 +132,7 @@ impl scratch_owner_pid -> int {
 }
 
 
-def _drop_owned_at_exit -> None {
-    if scratch_owner_pid() != os.getpid() {
-        return;
-    }
-    try {
-        drop_owned_databases();
-    } except Exception as e {
-        logger.debug(f"could not drop the databases this process owns: {e}");
-    }
-}
+def _drop_owned_at_exit -> None;
 
 
 impl own_child_databases -> None {
@@ -242,66 +230,17 @@ impl takeover_project(base_path: str, target_path: (str | None) = None) -> int {
 }
 
 
-def _ancestry_of(arch: (object | None)) -> list[str] {
-    if arch is None {
-        return [];
-    }
-    stops = (NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype, object);
-    out: list[str] = [];
-    for c in type(arch).__mro__ {
-        if c in stops {
-            break;
-        }
-        import from jaclang.data.type_identity { storage_type }
-        out.append(storage_type(c));
-    }
-    return out;
-}
+def _ancestry_of(arch: (object | None)) -> list[str];
 
 
 glob _GETTER_CLASSES: dict[type, bool] = {};
 
-def _runs_getters(arch: object) -> bool {
-    cls = type(arch);
-    found = _GETTER_CLASSES.get(cls);
-    if found is None {
-        found = any(
-            isinstance(member, property)
-            for klass in cls.__mro__
-            if klass is not object and not klass.__module__.startswith('jaclang.')
-            for member in vars(klass).values()
-        );
-        _GETTER_CLASSES[cls] = found;
-    }
-    return found;
-}
+def _runs_getters(arch: object) -> bool;
 
-def _settle_written(anchor: Anchor, seen: int) {
-    if seen and anchor.__dict__.get('_field_written', 0) == seen {
-        anchor.__dict__.pop('_field_written', None);
-    }
-}
+def _settle_written(anchor: Anchor, seen: int);
 
 
-def _is_serialization_conflict(e: Exception) -> bool {
-    if isinstance(e, WriteConflict) {
-        return False;
-    }
-    seen = 0;
-    cur: (BaseException | None) = e;
-    while cur is not None and seen < 8 {
-        c: BaseException = cur;
-        for arg in getattr(c, 'args', ()) {
-            if isinstance(arg, dict)
-                and arg.get('C') in ('40001', '40P01', '53200', '55P03', '08006') {
-                return True;
-            }
-        }
-        cur = c.__cause__ or c.__context__;
-        seen += 1;
-    }
-    return False;
-}
+def _is_serialization_conflict(e: Exception) -> bool;
 
 
 impl transient_db_error(e: Exception) -> bool {
@@ -309,21 +248,7 @@ impl transient_db_error(e: Exception) -> bool {
 }
 
 
-def _is_lock_timeout(e: Exception) -> bool {
-    seen = 0;
-    cur: (BaseException | None) = e;
-    while cur is not None and seen < 8 {
-        c: BaseException = cur;
-        for arg in getattr(c, 'args', ()) {
-            if isinstance(arg, dict) and arg.get('C') == '55P03' {
-                return True;
-            }
-        }
-        cur = c.__cause__ or c.__context__;
-        seen += 1;
-    }
-    return False;
-}
+def _is_lock_timeout(e: Exception) -> bool;
 
 
 impl RowLedger.postinit -> None {
@@ -430,8 +355,10 @@ impl Session.postinit -> None {
     self._flushing = None;
     self._read_scopes = 0;
     self._ro_units = 0;
+    self._ro_retry_raised = None;
     self._unit_stack = [];
     self._snapshot_reads = set();
+    self._txn_gen = 0;
     self._foreign_refs = set();
     self._contended = set();
     self._hop_writes = 0;
@@ -520,7 +447,7 @@ impl Session.get(id: UUID) -> (Anchor | None) {
     if id in self._deleted {
         return None;
     }
-    if (hit := self.__mem__.get(id)) is not None {
+    if (hit := self.__mem__.get(id)) is not None and not self._expired(hit) {
         return hit;
     }
     if self.store is None {
@@ -596,7 +523,7 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         if i in self._deleted {
             continue;
         }
-        if (hit := self.__mem__.get(i)) is not None {
+        if (hit := self.__mem__.get(i)) is not None and not self._expired(hit) {
             out[i] = hit;
         } else {
             missing.append(i);
@@ -650,6 +577,13 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
                 } except Exception as e {
                     if not _is_serialization_conflict(e) {
                         self._rollback_txn();
+                        if isinstance(e, WriteConflict) and self._active_units == 0 {
+                            self._dirty.pop(e.anchor_id, None);
+                            self._ensure_txn();
+                            for row in self._store.load_full([e.anchor_id]).values() {
+                                self._materialize(row);
+                            }
+                        }
                         raise;
                     }
                     self._replay_txn(e, exhausted=attempt >= MAX_RETRIES);
@@ -748,7 +682,15 @@ impl Session._raise_ro_retry -> None {
     import from uuid { UUID as _UUID }
     last = self._register_ro_writers();
     self._rollback_txn();
+    self._ro_retry_raised = last;
     raise ReadOnlyRetry(anchor_id=_UUID(int=0), unit_key=last);
+}
+
+
+impl Session.take_ro_retry -> str | None {
+    raised = self._ro_retry_raised;
+    self._ro_retry_raised = None;
+    return raised;
 }
 
 
@@ -764,6 +706,29 @@ impl Session._drop_snapshot_reads -> None {
         }
     }
     self._snapshot_reads.clear();
+}
+
+
+impl Session._expired(anchor: Anchor) -> bool {
+    id = anchor.id;
+    if self._store is None
+        or id is None
+        or not anchor.persistent
+        or anchor.__dict__.get('_txn_gen') == self._txn_gen
+        or id in self._dirty
+        or not anchor.is_populated() {
+        return False;
+    }
+    known = self._rows.current(id);
+    if known is None or frozen_fields(anchor) {
+        return True;
+    }
+    try {
+        h = Serializer.stored_hash(anchor, Serializer.stored_form(anchor));
+    } except Exception {
+        return False;
+    }
+    return h != 0 and h == known.hash;
 }
 
 
@@ -839,6 +804,11 @@ impl Session.unit_exit -> None {
                 self.abort();
                 raise TransactionLost(anchor_id=UUID(int=0));
             }
+            swallowed = self.take_ro_retry();
+            if swallowed is not None {
+                self.abort();
+                raise ReadOnlyRetry(anchor_id=UUID(int=0), unit_key=swallowed);
+            }
             if self._store is None or not self._store.in_txn() {
                 return;
             }
@@ -886,6 +856,7 @@ impl Session._commit_txn -> None {
         self._store.commit();
         self._rows.promote();
     }
+    self._txn_gen += 1;
 }
 
 
@@ -897,6 +868,7 @@ impl Session._rollback_txn -> None {
             logger.debug(f"rollback failed: {type(e).__name__}: {e}");
         }
     }
+    self._txn_gen += 1;
     lost = self._rows.discard();
     if lost.joined {
         self._lost = True;
@@ -1020,8 +992,17 @@ impl Session._flush_locked(full: bool) -> None {
     wrote = bool(unflushed or self._deleted);
     if unflushed {
         rows = [self._serialize(u.anchor, u.stored) for u in unflushed];
+        retyped = [
+            row.id
+            for row in rows
+            if row.kind == 'NodeAnchor'
+                and row.arch_type
+                and (was := self._rows.current(row.id)) is not None
+                and was.arch_type not in ('', row.arch_type)
+        ];
         try {
             store.upsert(rows);
+            store.retype_edges(retyped);
         } except WriteConflict as wc {
             self._last_conflict = {wc.anchor_id};
             raise;
@@ -1033,7 +1014,10 @@ impl Session._flush_locked(full: bool) -> None {
             raise WriteConflict(anchor_id=rows[0].id) from e;
         }
         for (row, u) in zip(rows, unflushed) {
-            self._rows.upserted(row.id, RowState(hash=u.hash, version=row.version));
+            self._rows.upserted(
+                row.id,
+                RowState(hash=u.hash, version=row.version, arch_type=row.arch_type)
+            );
             u.anchor.hash = u.hash;
             _settle_written(u.anchor, u.written);
         }
@@ -1126,10 +1110,20 @@ impl Session._serialize(
     src: (UUID | None) = None;
     dst: (UUID | None) = None;
     undirected = False;
+    src_type = '';
+    dst_type = '';
     if isinstance(anchor, EdgeAnchor) {
         src = anchor.source.ensure_id() if anchor.source is not None else None;
         dst = anchor.target.ensure_id() if anchor.target is not None else None;
         undirected = anchor.is_undirected;
+        src_arch = anchor.source.__dict__.get('archetype')
+            if anchor.source is not None
+            else None;
+        dst_arch = anchor.target.__dict__.get('archetype')
+            if anchor.target is not None
+            else None;
+        src_type = storage_type(type(src_arch)) if src_arch is not None else '';
+        dst_type = storage_type(type(dst_arch)) if dst_arch is not None else '';
     }
     row_id = anchor.ensure_id();
     return AnchorRow(
@@ -1144,6 +1138,8 @@ impl Session._serialize(
         src=src,
         dst=dst,
         undirected=undirected,
+        src_type=src_type,
+        dst_type=dst_type,
         ancestry=_ancestry_of(arch)
     );
 }
@@ -1154,7 +1150,11 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
 
     self._foreign_refs.discard(row.id);
     existing = self.__mem__.get(row.id);
-    if existing is not None and existing.is_populated() {
+    known = self._rows.current(row.id);
+    if existing is not None
+        and existing.is_populated()
+        and (row.id in self._dirty or known is None or known.version == row.version) {
+        existing.__dict__['_txn_gen'] = self._txn_gen;
         return existing;
     }
 
@@ -1181,6 +1181,16 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
         return None;
     }
     anchor: Anchor = got;
+    if existing is not None and existing.is_populated() {
+        archetype = existing.archetype;
+        fields = dict(anchor.archetype.__dict__);
+        fields.pop('__jac__', None);
+        archetype.__dict__.update(fields);
+        existing.__dict__.pop('_frozen', None);
+        existing.__dict__.update(anchor.__dict__);
+        existing.__dict__['archetype'] = archetype;
+        anchor = existing;
+    }
     if isinstance(anchor, NodeAnchor) {
         if self._store is not None {
             anchor.__dict__.pop('edges', None);
@@ -1189,7 +1199,10 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
         anchor.version = row.version;
     }
     self.__mem__[row.id] = anchor;
-    self._rows.loaded(row.id, RowState(hash=anchor.hash, version=row.version));
+    self._rows.loaded(
+        row.id, RowState(hash=anchor.hash, version=row.version, arch_type=row.arch_type)
+    );
+    anchor.__dict__['_txn_gen'] = self._txn_gen;
     if self._store is not None
         and self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
         self._snapshot_reads.add(row.id);
@@ -1249,6 +1262,9 @@ impl Session._begin_writable -> None {
     with self._lock {
         if self._store is None {
             return;
+        }
+        if self._ro_retry_raised is not None {
+            raise ReadOnlyRetry(anchor_id=UUID(int=0), unit_key=self._ro_retry_raised);
         }
         self._reclaim_dead_txn();
         if self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
@@ -1319,30 +1335,10 @@ impl Session.wait_turn -> None {
 glob _SESSION_POOL: list[any] = [];
 
 
-def _session_pool -> any {
-    if not _SESSION_POOL {
-        import from concurrent.futures { ThreadPoolExecutor }
-        _SESSION_POOL.append(
-            ThreadPoolExecutor(
-                max_workers=SESSION_THREADS, thread_name_prefix="jac-session-io"
-            )
-        );
-    }
-    return _SESSION_POOL[0];
-}
+def _session_pool -> any;
 
 
-async def _off_loop(work: Callable) -> any {
-    import asyncio;
-    import contextvars;
-    context = contextvars.copy_context();
-    def in_context -> any {
-        return context.run(work);
-    }
-    return await asyncio.get_running_loop().run_in_executor(
-        _session_pool(), in_context
-    );
-}
+async def _off_loop(work: Callable) -> any;
 
 
 impl Session.acommit(anchor: (Anchor | None) = None) -> None {
@@ -1350,6 +1346,21 @@ impl Session.acommit(anchor: (Anchor | None) = None) -> None {
         self.commit(anchor);
     }
     await _off_loop(settle);
+}
+
+impl Session.aclose -> None {
+    import asyncio;
+    job = asyncio.ensure_future(_off_loop(self.close));
+    try {
+        await asyncio.shield(job);
+    } except asyncio.CancelledError {
+        while not job.done() {
+            try {
+                await asyncio.shield(job);
+            } except asyncio.CancelledError {}
+        }
+        raise;
+    }
 }
 
 
@@ -1495,4 +1506,170 @@ impl Session.hop_store(key: any, by_origin: dict[UUID, list[tuple[any, any]]]) -
         del self._hop_cache[k];
     }
     self._hop_cache[key] = (token, by_origin);
+}
+
+impl _database_config(base_path: (str | None)) -> DatabaseConfig {
+    config = get_config_for_dir(base_path) if base_path else None;
+    return config.database if config is not None else DatabaseConfig();
+}
+
+
+impl _drop_owned_at_exit -> None {
+    if scratch_owner_pid() != os.getpid() {
+        return;
+    }
+    try {
+        drop_owned_databases();
+    } except Exception as e {
+        logger.debug(f"could not drop the databases this process owns: {e}");
+    }
+}
+
+
+impl _ancestry_of(arch: (object | None)) -> list[str] {
+    if arch is None {
+        return [];
+    }
+    stops = (NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype, object);
+    out: list[str] = [];
+    for c in type(arch).__mro__ {
+        if c in stops {
+            break;
+        }
+        import from jaclang.data.type_identity { storage_type }
+        out.append(storage_type(c));
+    }
+    return out;
+}
+
+
+impl _runs_getters(arch: object) -> bool {
+    cls = type(arch);
+    found = _GETTER_CLASSES.get(cls);
+    if found is None {
+        found = any(
+            isinstance(member, property)
+            for klass in cls.__mro__
+            if klass is not object and not klass.__module__.startswith('jaclang.')
+            for member in vars(klass).values()
+        );
+        _GETTER_CLASSES[cls] = found;
+    }
+    return found;
+}
+
+impl _settle_written(anchor: Anchor, seen: int) {
+    if seen and anchor.__dict__.get('_field_written', 0) == seen {
+        anchor.__dict__.pop('_field_written', None);
+    }
+}
+
+
+impl _is_serialization_conflict(e: Exception) -> bool {
+    if isinstance(e, WriteConflict) {
+        return False;
+    }
+    seen = 0;
+    cur: (BaseException | None) = e;
+    while cur is not None and seen < 8 {
+        c: BaseException = cur;
+        for arg in getattr(c, 'args', ()) {
+            if isinstance(arg, dict)
+                and arg.get('C') in ('40001', '40P01', '53200', '55P03', '08006') {
+                return True;
+            }
+        }
+        cur = c.__cause__ or c.__context__;
+        seen += 1;
+    }
+    return False;
+}
+
+
+impl _is_lock_timeout(e: Exception) -> bool {
+    seen = 0;
+    cur: (BaseException | None) = e;
+    while cur is not None and seen < 8 {
+        c: BaseException = cur;
+        for arg in getattr(c, 'args', ()) {
+            if isinstance(arg, dict) and arg.get('C') == '55P03' {
+                return True;
+            }
+        }
+        cur = c.__cause__ or c.__context__;
+        seen += 1;
+    }
+    return False;
+}
+
+
+impl _session_pool -> any {
+    if not _SESSION_POOL {
+        import from concurrent.futures { ThreadPoolExecutor }
+        _SESSION_POOL.append(
+            ThreadPoolExecutor(
+                max_workers=SESSION_THREADS, thread_name_prefix="jac-session-io"
+            )
+        );
+    }
+    return _SESSION_POOL[0];
+}
+
+
+impl _off_loop(work: Callable) -> any {
+    import asyncio;
+    import contextvars;
+    context = contextvars.copy_context();
+    def in_context -> any {
+        return context.run(work);
+    }
+    return await asyncio.get_running_loop().run_in_executor(
+        _session_pool(), in_context
+    );
+}
+
+impl ro_units_enabled -> bool {
+    return os.environ.get(RO_UNITS_ENV, '1').strip().lower()
+        not in ('0', 'false', 'no', 'off');
+}
+
+impl _writer_ttl -> float {
+    try {
+        return max(1.0, float(os.environ.get(RO_WRITER_TTL_ENV, '300') or 300));
+    } except ValueError {
+        return 300.0;
+    }
+}
+
+impl unit_writes_recorded(key: str) -> bool {
+    import time;
+    expiry = _unit_writers.get(key);
+    if expiry is None {
+        return False;
+    }
+    if time.monotonic() >= expiry {
+        _unit_writers.pop(key, None);
+        return False;
+    }
+    return True;
+}
+
+impl record_unit_writes(key: str) {
+    import time;
+    _unit_writers[key] = time.monotonic() + _writer_ttl();
+}
+
+impl Session.new_session(target_path: str) -> Session {
+    if self.store is None {
+        raise RuntimeError('Cannot create a provider session without a bound store');
+    }
+    return Session(
+        _store=self.store.new_session(),
+        base_path=self.base_path,
+        target_path=target_path
+    );
+}
+
+impl Session.preserve_unresolved_ref(id: UUID) -> bool {
+    return id in self._foreign_refs;
 }

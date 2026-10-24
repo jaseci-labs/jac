@@ -1,23 +1,8 @@
 import threading;
 
+def _require_bun -> str;
 
-def _require_bun -> str {
-    return js_runtime_path();
-}
-
-
-def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
-    bun = _require_bun();
-    `entry = resolve_node_tool_entry(build_dir, 'vite');
-    if `entry is None {
-        raise ClientBundleError(
-            f"Vite is not installed under {build_dir / 'node_modules'}. "
-            "Dependencies are installed before every build, so an absent "
-            "vite means that install did not complete."
-        ) from None;
-    }
-    return [bun, str(`entry)] + args;
-}
+def _build_vite_command(build_dir: Path, args: list[str]) -> list[str];
 
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
     if self.build_dir is not None {
@@ -204,7 +189,6 @@ impl client_deps_stale(build_dir: Path) -> bool {
     return marker.read_text(encoding='utf-8').strip() != current;
 }
 
-
 impl ViteBundler.install_packages(
     self: ViteBundler,
     install_dir: Optional[Path] = None,
@@ -354,34 +338,11 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
+def _to_js_expr(value: any) -> str;
 
-def _to_js_expr(value: any) -> str {
-    if value is None {
-        return "null";
-    }
-
-    if isinstance(value, bool) {
-        return "true" if value else "false";
-    }
-
-    if isinstance(value, (int, float)) {
-        return json.dumps(value);
-    }
-
-    if value?.isoformat {
-        return json.dumps(json.dumps(value.isoformat()));
-    }
-
-    if isinstance(value, str) {
-        return json.dumps(json.dumps(value));
-    }
-
-    try {
-        return json.dumps(value);
-    } except (TypeError, ValueError) {
-        return json.dumps(json.dumps(str(value)));
-    }
-}
+def _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]];
 
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
@@ -397,21 +358,9 @@ impl ViteBundler._format_define_entries(
     return ',\n'.join(entries);
 }
 
-def _proxy_entry(key: str, api_port: int) -> str {
-    return (
-        f'\n      "{key}": {{'
-        f'\n        target: "http://localhost:{api_port}",'
-        '\n        changeOrigin: true,'
-        '\n      },'
-    );
-}
+def _proxy_entry(key: str, api_port: int) -> str;
 
-
-def _exact_proxy_key(path: str) -> str {
-    import re;
-    return '^' + re.escape(path).replace('\\', '\\\\') + '$';
-}
-
+def _exact_proxy_key(path: str) -> str;
 
 impl ViteBundler._generate_vite_config_content(
     self: ViteBundler,
@@ -901,8 +850,17 @@ export default defineConfig({{
 }});
 ''';
     } else {
-        build_overrides_str = self._format_config_object(build_config, indent=2)
-            if (isinstance(build_config, dict) and build_config)
+        (build_overrides, rollup_overrides, output_overrides) = _split_build_overrides(
+            build_config if isinstance(build_config, dict) else {}
+        );
+        build_overrides_str = self._format_config_object(build_overrides, indent=2);
+        rollup_overrides_str = newline
+            + self._format_config_object(rollup_overrides, indent=4)
+            if rollup_overrides
+            else '';
+        output_overrides_str = newline
+            + self._format_config_object(output_overrides, indent=6)
+            if output_overrides
             else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
@@ -968,14 +926,14 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages
 {build_overrides_str}
     rollupOptions: {{
-      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
+      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
       output: {{
         entryFileNames: "client.[hash].js", // name of the final js file
         assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css') ? 'styles.css' : '[name].[ext]',
         sourcemapPathTransform: (relativeSourcePath) => {{
           // Transform source map paths to point to original location
           return relativeSourcePath;
-        }},
+        }},{output_overrides_str}
       }},
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output
@@ -1196,65 +1154,31 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     return npmrc_path;
 }
 
-def _toml_config_to_js(config_data: dict[str, any]) -> str {
-    return f"module.exports = {json.dumps(
-        {
-            k: v
-            for (k, v) in config_data.items()
-            if k not in CONFIG_META_KEYS
-        },
-        indent=2
-    )};\n";
-}
+def _toml_config_to_js(config_data: dict[str, any]) -> str;
 
-def _toml_config_from_raw(config_data: dict[str, any]) -> str {
-    content = str(config_data.get('raw', '')).strip();
-    return content + '\n' if content else '';
-}
+def _toml_config_from_raw(config_data: dict[str, any]) -> str;
 
 def _build_vite_dev_command(
     build_dir: Path, config_rel: Path, port: int, host: str = ""
-) -> list[str] {
-    cmd = _build_vite_command(
-        build_dir, ['--config', str(config_rel), '--port', str(port)]
-    );
-    if host {
-        cmd.append('--host');
-        cmd.append(host);
-    } else {
-        cmd.append('--host');
-    }
-    return cmd;
-}
+) -> list[str];
 
-def _is_vite_ready_line(line: str) -> bool {
-    line_lower = line.lower();
-    for pattern in VITE_READY_PATTERNS {
-        if pattern in line_lower {
-            return True;
-        }
-    }
-    return False;
-}
+def _is_vite_ready_line(line: str) -> bool;
 
-def _is_vite_url_line(line: str) -> bool {
-    for pattern in VITE_URL_PATTERNS {
-        if pattern in line {
-            return True;
-        }
-    }
-    return False;
-}
+def _is_vite_url_line(line: str) -> bool;
 
 impl _forward_vite_output(
     proc: any,
     ready_event: any,
     sys_module: any,
     output_buffer: list[str],
-    dispatch: any = None
+    dispatch: any = None,
+    closed_event: any = None
 ) -> None {
     stream = proc.stdout;
     if stream is None {
+        if closed_event is not None {
+            closed_event.set();
+        }
         return;
     }
     try {
@@ -1284,7 +1208,11 @@ impl _forward_vite_output(
                 output_buffer.append(line);
             }
         }
-    } except Exception {}
+    } except Exception {} finally {
+        if closed_event is not None {
+            closed_event.set();
+        }
+    }
 }
 
 impl ViteBundler._dispatch_client_event(self: ViteBundler, line: str) -> None {
@@ -1340,13 +1268,7 @@ impl ViteBundler.start_dev_server(
     return process;
 }
 
-def _dev_head_scripts -> str {
-    config = get_config();
-    client_cfg = config.get_plugin_config('client') if config else None;
-    meta_data = client_cfg.get('app_meta_data', {}) if client_cfg else {};
-    tags = HeaderBuilder(meta_data, 'dev').build_scripts();
-    return ''.join(f'    {tag}\n' for tag in tags);
-}
+def _dev_head -> str;
 
 impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None {
     index_html = build_dir / 'index.html';
@@ -1356,9 +1278,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
     index_content = '''<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jac App (Dev)</title>
+__JAC_DEV_HEAD__
   </head>
   <body>
     <div id="root"></div>
@@ -1415,9 +1335,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
     index_content = index_content.replace(
         '__JAC_DEV_ENTRY__', json.dumps('/' + entry_relative)
     );
-    if head_scripts := _dev_head_scripts() {
-        index_content = index_content.replace('  </head>', f'{head_scripts}  </head>');
-    }
+    index_content = index_content.replace('__JAC_DEV_HEAD__', _dev_head());
     index_html.write_text(index_content, encoding='utf-8');
 }
 
@@ -1592,6 +1510,7 @@ impl ViteBundler._start_vite_with_output_capture(
         text=True
     );
     ready_event = threading.Event();
+    closed_event = threading.Event();
     output_buffer: list[str] = [];
     output_thread = threading.Thread(
         target=_forward_vite_output,
@@ -1600,13 +1519,20 @@ impl ViteBundler._start_vite_with_output_capture(
             ready_event,
             sys_module,
             output_buffer,
-            self._dispatch_client_event
+            self._dispatch_client_event,
+            closed_event
         ),
         daemon=True
     );
     output_thread.start();
 
-    is_ready = ready_event.`wait(timeout=VITE_READY_TIMEOUT_SECONDS);
+    deadline = time.monotonic() + VITE_READY_TIMEOUT_SECONDS;
+    while not ready_event.is_set()
+        and not closed_event.is_set()
+        and time.monotonic() < deadline {
+        ready_event.`wait(timeout=0.1);
+    }
+    is_ready = ready_event.is_set();
     if is_ready {
         port_file = build_dir / '.dev-port';
         for _ in range(40) {
@@ -1621,6 +1547,11 @@ impl ViteBundler._start_vite_with_output_capture(
         console.print("  ✔ Vite dev server ready", style="success");
     } else {
         exit_code = process.poll();
+        if exit_code is None and closed_event.is_set() {
+            try {
+                exit_code = process.`wait(timeout=5);
+            } except subprocess.TimeoutExpired {}
+        }
         if exit_code is not None {
             console.error("  ✖ Vite dev server failed to start");
             if output_buffer {
@@ -1630,6 +1561,15 @@ impl ViteBundler._start_vite_with_output_capture(
                 }
                 sys_module.stdout.flush();
             }
+            last = [
+                line.strip()
+                for line in output_buffer
+                if line.strip()
+            ];
+            raise ClientBundleError(
+                f"Vite exited with code {exit_code} before it was ready"
+                    + (f": {last[-1]}" if last else "")
+            );
         } else {
             console.warning(
                 f"  ⚠ Vite server may not be ready (timeout after {VITE_READY_TIMEOUT_SECONDS}s)"
@@ -1637,4 +1577,148 @@ impl ViteBundler._start_vite_with_output_capture(
         }
     }
     return process;
+}
+
+impl _require_bun -> str {
+    return js_runtime_path();
+}
+
+impl _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
+    bun = _require_bun();
+    `entry = resolve_node_tool_entry(build_dir, 'vite');
+    if `entry is None {
+        raise ClientBundleError(
+            f"Vite is not installed under {build_dir / 'node_modules'}. "
+            "Dependencies are installed before every build, so an absent "
+            "vite means that install did not complete."
+        ) from None;
+    }
+    return [bun, str(`entry)] + args;
+}
+
+impl _to_js_expr(value: any) -> str {
+    if value is None {
+        return "null";
+    }
+
+    if isinstance(value, bool) {
+        return "true" if value else "false";
+    }
+
+    if isinstance(value, (int, float)) {
+        return json.dumps(value);
+    }
+
+    if value?.isoformat {
+        return json.dumps(json.dumps(value.isoformat()));
+    }
+
+    if isinstance(value, str) {
+        return json.dumps(json.dumps(value));
+    }
+
+    try {
+        return json.dumps(value);
+    } except (TypeError, ValueError) {
+        return json.dumps(json.dumps(str(value)));
+    }
+}
+
+impl _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]] {
+    build = dict(build_config);
+    rollup = build.pop('rollupOptions', {});
+    if not isinstance(rollup, dict) {
+        raise ClientBundleError(
+            '[client.vite.build] rollupOptions must be a table'
+        ) from None;
+    }
+    rollup = dict(rollup);
+    output = rollup.pop('output', {});
+    if not isinstance(output, dict) {
+        raise ClientBundleError(
+            '[client.vite.build.rollupOptions] output must be a single table'
+        ) from None;
+    }
+    output = dict(output);
+    ignored: list[str] = [];
+    for key in ('outDir', 'emptyOutDir') {
+        if build.pop(key, None) is not None {
+            ignored.append(key);
+        }
+    }
+    if rollup.pop('input', None) is not None {
+        ignored.append('rollupOptions.input');
+    }
+    for key in ('entryFileNames', 'assetFileNames', 'sourcemapPathTransform') {
+        if output.pop(key, None) is not None {
+            ignored.append(f'rollupOptions.output.{key}');
+        }
+    }
+    if ignored {
+        names = ', '.join(ignored);
+        console.warning(
+            f"[client.vite.build] ignoring {names}: Jac sets these to find and serve the client bundle"
+        );
+    }
+    return (build, rollup, output);
+}
+
+impl _proxy_entry(key: str, api_port: int) -> str {
+    return (
+        f'\n      "{key}": {{'
+        f'\n        target: "http://localhost:{api_port}",'
+        '\n        changeOrigin: true,'
+        '\n      },'
+    );
+}
+
+impl _exact_proxy_key(path: str) -> str {
+    import re;
+    return '^' + re.escape(path).replace('\\', '\\\\') + '$';
+}
+
+impl _toml_config_to_js(config_data: dict[str, any]) -> str {
+    return f"module.exports = {json.dumps(
+        {
+            k: v
+            for (k, v) in config_data.items()
+            if k not in CONFIG_META_KEYS
+        },
+        indent=2
+    )};\n";
+}
+
+impl _toml_config_from_raw(config_data: dict[str, any]) -> str {
+    content = str(config_data.get('raw', '')).strip();
+    return content + '\n' if content else '';
+}
+
+impl _is_vite_ready_line(line: str) -> bool {
+    line_lower = line.lower();
+    for pattern in VITE_READY_PATTERNS {
+        if pattern in line_lower {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl _is_vite_url_line(line: str) -> bool {
+    for pattern in VITE_URL_PATTERNS {
+        if pattern in line {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl _dev_head -> str {
+    config = get_config();
+    client_cfg = config.get_plugin_config('client') if config else None;
+    meta_data = dict(client_cfg.get('app_meta_data', {}) if client_cfg else {});
+    meta_data['title'] = str(meta_data.get('title') or 'Jac App') + ' (Dev)';
+    head = HeaderBuilder(meta_data, 'dev').build_head();
+    return '\n'.join('    ' + line.strip() for line in head.split('\n'));
 }

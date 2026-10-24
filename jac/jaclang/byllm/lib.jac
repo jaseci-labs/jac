@@ -31,10 +31,13 @@ glob `by = JacRuntime.`by,
          'MTIR',
          'MTRuntime',
          'StreamEvent',
+         'Text',
          'Tool',
          'ToolCallResultMsg',
          'Video',
          'register_agent_callback',
+         'register_llm_call_hook',
+         'unregister_llm_call_hook',
          'dispatch_batch',
          'mark_serialize'
      ];

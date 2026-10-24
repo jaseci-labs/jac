@@ -5,7 +5,64 @@ import subprocess;
 import sys;
 import from pathlib { Path }
 
-def _jaclang_src_roots -> list[Path] {
+def _jaclang_src_roots -> list[Path];
+
+def _find_desktop_native_dir -> Path;
+
+def _find_native_asset_dir(subdir: str, marker: str) -> Path;
+
+def _find_webview_dir -> Path;
+
+def _find_cef_dir -> Path;
+
+def _jac_subprocess_env -> dict[str, str];
+
+def _patchelf_rpath(binary: Path, rpath: str) -> bool;
+
+def _patch_host_rpath(binary: Path);
+
+
+def _fused_runtime_dir -> Path;
+
+
+def _stage_fused_runtime(out_dir: Path);
+
+
+def _bundle_runtime(host_binary: Path);
+
+def _jac_bin -> str;
+
+def _cef_bootstrap_js -> str;
+
+def _jac_sdk_js -> str;
+
+def _top_level_import_boundary(lines: list[str]) -> int;
+
+def _inject_platform(host_src: str, platform_src: str) -> str;
+
+def _native_build_cef(
+    cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
+) -> Path;
+
+
+def build_cef_dispatch(cef_dir: Path) -> Path;
+
+def build_cef_subprocess(cef_dir: Path) -> Path;
+
+def serving_app_for(config: any, entry_file: Path, backend: str) -> str;
+
+
+def stage_program(
+    entry_file: Path,
+    project_dir: Path,
+    image_dir: Path,
+    backend: str,
+    dist_dir: (Path | None)
+) -> dict[str, str];
+
+def stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str;
+
+impl _jaclang_src_roots -> list[Path] {
     roots: list[Path] = [];
     jac_src = os.environ.get("JAC_DESKTOP_JAC_SRC");
     if jac_src {
@@ -21,7 +78,7 @@ def _jaclang_src_roots -> list[Path] {
     return roots;
 }
 
-def _find_desktop_native_dir -> Path {
+impl _find_desktop_native_dir -> Path {
     for src in _jaclang_src_roots() {
         native = src / "jaclang" / "client" / "targets" / "desktop" / "native";
         if (
@@ -55,7 +112,7 @@ def _find_desktop_native_dir -> Path {
     );
 }
 
-def _find_native_asset_dir(subdir: str, marker: str) -> Path {
+impl _find_native_asset_dir(subdir: str, marker: str) -> Path {
     if subdir == "webview" and marker == "webview.jac" {
         import from jaclang.toolchains.desktop { source_workspace }
         return source_workspace(_find_desktop_native_dir() / "webview", "webview");
@@ -83,19 +140,19 @@ def _find_native_asset_dir(subdir: str, marker: str) -> Path {
     );
 }
 
-def _find_webview_dir -> Path {
+impl _find_webview_dir -> Path {
     return source_workspace(_find_desktop_native_dir() / "webview", "webview");
 }
 
-def _find_cef_dir -> Path {
+impl _find_cef_dir -> Path {
     return source_workspace(_find_native_asset_dir("cef", "cef.jac"), "cef");
 }
 
-def _jac_subprocess_env -> dict[str, str] {
+impl _jac_subprocess_env -> dict[str, str] {
     return desktop_launch_env();
 }
 
-def _patchelf_rpath(binary: Path, rpath: str) -> bool {
+impl _patchelf_rpath(binary: Path, rpath: str) -> bool {
     patchelf = ensure_patchelf();
     res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
     if res.returncode != 0 {
@@ -107,18 +164,16 @@ def _patchelf_rpath(binary: Path, rpath: str) -> bool {
     return True;
 }
 
-def _patch_host_rpath(binary: Path) {
+impl _patch_host_rpath(binary: Path) {
     _patchelf_rpath(binary, "$ORIGIN");
 }
 
-
-def _fused_runtime_dir -> Path {
+impl _fused_runtime_dir -> Path {
     import jaclang;
     return Path(jaclang.__file__).parent / "dist" / "fused";
 }
 
-
-def _stage_fused_runtime(out_dir: Path) {
+impl _stage_fused_runtime(out_dir: Path) {
     src = _fused_runtime_dir();
     if not (src / "bringup.jac").is_file() {
         raise RuntimeError(
@@ -134,8 +189,35 @@ def _stage_fused_runtime(out_dir: Path) {
     }
 }
 
+impl stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str {
+    """Vendor the self-contained Postgres distribution for an embedded app.
 
-def _bundle_runtime(host_binary: Path) {
+    Returns the app-relative path of the vendored tree, which the host config
+    carries so `host_boot` can point `JAC_PG_DIST` at it and start with no
+    network. A remote-backend app needs no local database and vendors nothing.
+    Only a relocatable distribution is accepted (`bundled_dist_dir` refuses a
+    bare system bin directory), so the bundled tree runs from any machine.
+
+    With `vendor` off (a dev session) nothing is copied: the returned path
+    points at the shared machine cache, which the compiler already populated,
+    so the host finds that distribution instead of a fresh per-app cache.
+    """;
+    if backend != "embedded" {
+        return "";
+    }
+    import from jaclang.data.pg_dist { bundled_dist_dir, cached_dist_dir }
+    if not vendor {
+        return cached_dist_dir();
+    }
+    src = Path(bundled_dist_dir());
+    dst = resources / "pgdist";
+    console.print("  Bundling the embedded postgres distribution…", style="muted");
+    shutil.copytree(src, dst, dirs_exist_ok=True);
+    return "pgdist";
+}
+
+
+impl _bundle_runtime(host_binary: Path) {
     jac_bin = os.path.realpath(os.sys.executable);
 
     if not graft_runtime(jac_bin, str(host_binary)) {
@@ -147,7 +229,7 @@ def _bundle_runtime(host_binary: Path) {
     }
 }
 
-def _jac_bin -> str {
+impl _jac_bin -> str {
     exe = jac_binary();
     if exe {
         return exe;
@@ -159,7 +241,7 @@ def _jac_bin -> str {
     raise RuntimeError("jac CLI not found on PATH.");
 }
 
-def _cef_bootstrap_js -> str {
+impl _cef_bootstrap_js -> str {
     src = (_find_cef_dir() / "cef_dispatch.jac").read_text();
     anchor = "glob BOOTSTRAP_JS: str = \"";
     i = src.find(anchor);
@@ -174,7 +256,7 @@ def _cef_bootstrap_js -> str {
     return src[start:end];
 }
 
-def _jac_sdk_js -> str {
+impl _jac_sdk_js -> str {
     boot = _cef_bootstrap_js();
     start = boot.find("(function(){var _l={}");
     end = boot.find("(function(){try{");
@@ -187,7 +269,7 @@ def _jac_sdk_js -> str {
     return boot[start:end];
 }
 
-def _top_level_import_boundary(lines: list[str]) -> int {
+impl _top_level_import_boundary(lines: list[str]) -> int {
     depth = 0;
     idx = 0;
     for line in lines {
@@ -206,14 +288,14 @@ def _top_level_import_boundary(lines: list[str]) -> int {
     return len(lines);
 }
 
-def _inject_platform(host_src: str, platform_src: str) -> str {
+impl _inject_platform(host_src: str, platform_src: str) -> str {
     plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
     lines = host_src.split("\n");
     at = _top_level_import_boundary(lines);
     return "\n".join(lines[:at] + [plat] + lines[at:]);
 }
 
-def _native_build_cef(
+impl _native_build_cef(
     cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
     with FileLock(cef_dir / ".native-build.lock") {
@@ -239,8 +321,7 @@ def _native_build_cef(
     }
 }
 
-
-def build_cef_dispatch(cef_dir: Path) -> Path {
+impl build_cef_dispatch(cef_dir: Path) -> Path {
     cef_dir = source_workspace(cef_dir, "cef");
     return _native_build_cef(
         cef_dir,
@@ -251,7 +332,7 @@ def build_cef_dispatch(cef_dir: Path) -> Path {
     );
 }
 
-def build_cef_subprocess(cef_dir: Path) -> Path {
+impl build_cef_subprocess(cef_dir: Path) -> Path {
     cef_dir = source_workspace(cef_dir, "cef");
     return _native_build_cef(
         cef_dir,
@@ -262,32 +343,35 @@ def build_cef_subprocess(cef_dir: Path) -> Path {
     );
 }
 
-def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
+impl serving_app_for(config: any, entry_file: Path, backend: str) -> str {
     if config is None or not config.is_workspace or not config.apps {
         return "";
     }
     selected_app = config.app_for_path(str(entry_file.resolve()));
+    if selected_app is not None {
+        return selected_app.name;
+    }
     if backend != "embedded" {
-        return selected_app.name if selected_app is not None else "";
+        return "";
     }
     try {
         chosen = config.resolve_app("");
     } except ValueError {
         chosen = None;
     }
-    if chosen is not None and chosen.has_server {
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         return chosen.name;
     }
-    for app in config.serving_apps() {
+    for app in serving {
         if app.kind == "web-app" {
             return app.name;
         }
     }
-    return selected_app.name if selected_app is not None else "";
+    return "";
 }
 
-
-def stage_program(
+impl stage_program(
     entry_file: Path,
     project_dir: Path,
     image_dir: Path,
@@ -323,4 +407,53 @@ def stage_program(
     );
     build_jab(config, image_dir / "app.jab", app=app, bake_client=False);
     return {"jab": "app.jab"};
+}
+
+def desktop_storage_identifier(
+    identifier: str, project_dir: Path, entry_file: Path, backend: str
+) -> str;
+
+impl desktop_storage_identifier(
+    identifier: str, project_dir: Path, entry_file: Path, backend: str
+) -> str {
+    """Suffix the storage identity with the legacy selected workspace app.
+
+    The `[desktop]` identifier is a project-wide default. A workspace may serve
+    several apps, so each app needs its own data directory. This helper keeps
+    the pre-existing selection order for storage identity: changing which app
+    a release seals must not move an existing install to a new, empty store.""";
+    if not identifier {
+        return identifier;
+    }
+    import from jaclang.project.config { get_config_for_dir }
+    config = get_config_for_dir(str(project_dir));
+    serving = storage_app_for(config, entry_file, backend);
+    return f"{identifier}.{serving}" if serving else identifier;
+}
+
+def storage_app_for(config: any, entry_file: Path, backend: str) -> str;
+
+impl storage_app_for(config: any, entry_file: Path, backend: str) -> str {
+    if config is None or not config.is_workspace or not config.apps {
+        return "";
+    }
+    selected_app = config.app_for_path(str(entry_file.resolve()));
+    if backend != "embedded" {
+        return selected_app.name if selected_app is not None else "";
+    }
+    try {
+        chosen = config.resolve_app("");
+    } except ValueError {
+        chosen = None;
+    }
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
+        return chosen.name;
+    }
+    for app in serving {
+        if app.kind == "web-app" {
+            return app.name;
+        }
+    }
+    return selected_app.name if selected_app is not None else "";
 }

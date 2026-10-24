@@ -1,35 +1,5 @@
 """The _abc module: the _abc_data type and module state over the generated clinic table."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    PyObject,
-    PyUnicode_InternFromString
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    jacpy_binding_module_native_set,
-    jacpy_binding_state_set
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeFlags,
-    TypeHooks
-}
-import from jaclang.runtime.python.bindings.payload {
-    clear_payload,
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.abc { module_methods }
-import from jaclang.runtime.python.modules.abc {
-    AbcModuleState,
-    DATA_TYPE,
-    STATE_NAMES,
-    abc_data_new,
-    abc_data_token
-}
-
 def:priv data_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, abc_data_token.handle);
 }

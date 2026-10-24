@@ -1,14 +1,5 @@
 """The cmath module: its clinic-generated functions and constants."""
 
-import from jaclang.runtime.python.cpython_api { PyFloat_FromDouble, PyObject }
-import from jaclang.runtime.python.object_model.complex { PyComplex_FromDoubles }
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_owned
-}
-import from jaclang.runtime.python.bindings.clinic.cmath { module_doc, module_methods }
-
 # cmath_exec(): pi, e, tau, inf, infj, nan and nanj.
 def:priv execute(module: ptr[PyObject]) -> i32 {
     names = ["pi", "e", "tau", "inf", "nan"];

@@ -380,17 +380,17 @@ impl NaIRGenPass._declare_clib_definitions -> None {
             }
             continue;
         }
-        cfunc = self.clib_extern_fns.get(name) or self.func_symtab.get(name);
+        cfunc = self.clib_extern_fns.get(name) or self.scope.function(name);
         if not isinstance(cfunc, ir.Function) {
             continue;
         }
         self._clib_exports[name] = cfunc;
         self.clib_extern_fns.pop(name, None);
-        self.func_symtab.pop(name, None);
+        self.scope.unbind_function(name);
         self.clib_extern_names.discard(name);
         self._clib_symbol_lib.pop(name, None);
         self._maybe_declare_ability(decl, symbol=f"{name}.jac");
-        jac_fn = self.func_symtab.get(name);
+        jac_fn = self.scope.function(name);
         if isinstance(jac_fn, ir.Function) {
             jac_fn.linkage = "internal";
         }
@@ -412,7 +412,7 @@ impl NaIRGenPass._emit_clib_definitions -> None {
 
 impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
     cfunc = self._clib_exports[name];
-    jac_fn = self.func_symtab.get(name);
+    jac_fn = self.scope.function(name);
     if not isinstance(jac_fn, ir.Function) or cfunc.blocks {
         return;
     }

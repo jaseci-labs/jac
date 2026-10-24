@@ -1,9 +1,7 @@
 import from importlib.metadata { version as _pkg_version }
 glob _JAC_VERSION: str = _pkg_version("jaclang");
 
-def _pkg_norm_name(config: JacConfig) -> str {
-    return normalize_package_name(config.project.name).replace("-", "_");
-}
+def _pkg_norm_name(config: JacConfig) -> str;
 
 impl generate_wheel_file(
     generator_version: str = _JAC_VERSION,
@@ -77,4 +75,8 @@ impl sdist_filename(config: JacConfig) -> str {
         );
     }
     return f"{_pkg_norm_name(config)}-{config.project.version}.tar.gz";
+}
+
+impl _pkg_norm_name(config: JacConfig) -> str {
+    return normalize_package_name(config.project.name).replace("-", "_");
 }

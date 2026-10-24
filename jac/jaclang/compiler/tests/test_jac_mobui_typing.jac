@@ -18,10 +18,6 @@ route every npm import uses, and it must name every export the shim makes.
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
-import from jaclang.compiler.types.type_evaluator { FunctionType, UnknownType }
-import from jaclang.compiler.frontend.unitree { Import, ModuleItem, Name }
 
 
 glob _TOML: str = (

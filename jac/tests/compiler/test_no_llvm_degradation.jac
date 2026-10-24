@@ -98,3 +98,46 @@ for probe, expected in [(Probe.missing(), False), (Probe.hit(Source.CHECKOUT, '/
     );
     assert proc.returncode == 0 , proc.stdout + proc.stderr;
 }
+
+
+"""Importing the LLVM bindings must not call into the shim. `initfini` used to
+ask the shim for its version at import time, so a stale or missing shim broke
+every import of the `native` command, including `jac native build llvm-shim`,
+the command that repairs it. The child makes every shim lookup raise
+`ArtifactUnavailable`, the error a stale or missing shim produces, then imports
+that command module."""
+test "native command module imports while the LLVM shim is unavailable" {
+    script = f"""
+import sys
+sys.path.insert(0, {JAC_ROOT!r})
+import jaclang
+from jaclang.artifacts import router
+from jaclang.artifacts.model import ArtifactUnavailable
+assert not [m for m in sys.modules if ".llvm." in m], "LLVM bindings loaded before the patch"
+_real_require = router.require
+
+def _require(name, *args, **kwargs):
+    if name == "llvm-shim":
+        raise ArtifactUnavailable("stale: simulated by the test")
+    return _real_require(name, *args, **kwargs)
+
+router.require = _require
+import jaclang.cli.commands.native
+print("IMPORTED")
+""";
+    with tempfile.TemporaryDirectory() as work {
+        env: dict[str, str] = dict(os.environ);
+        env["HOME"] = work;
+        env.update(cache_env(os.path.join(work, "cache")));
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=JAC_ROOT,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=600,
+        );
+        out = proc.stdout + proc.stderr;
+        assert proc.returncode == 0 and "IMPORTED" in out , out;
+    }
+}

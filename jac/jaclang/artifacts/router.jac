@@ -31,104 +31,14 @@ obj _BuildingSpan {
     def __exit__(_exc_type: object, _exc_value: object, _traceback: object) -> bool;
 }
 
-def _decide(artifact: Artifact) -> Resolution {
-    if artifact.disabled() {
-        return Resolution(name=artifact.name, reason="being built", quiet=True);
-    }
-    if artifact.name in _omitted(sealed_image=True) {
-        return Resolution(
-            name=artifact.name, reason="this image leaves it out", quiet=True
-        );
-    }
-    sealed = artifact.probe_sealed();
-    if sealed is not None {
-        if sealed.found is not None {
-            return Resolution(name=artifact.name, found=sealed.found);
-        }
-        return Resolution(
-            name=artifact.name,
-            reason="this image ships its floor",
-            quiet=sealed.omitted
-        );
-    }
-    why = artifact.unavailable_reason();
-    if why {
-        return Resolution(name=artifact.name, reason=why);
-    }
-    tree = artifact.probe_checkout();
-    if tree.found is not None {
-        return Resolution(name=artifact.name, found=tree.found);
-    }
-    if artifact.name in _omitted(sealed_image=False) {
-        return Resolution(
-            name=artifact.name, reason="the kit leaves it out", quiet=True
-        );
-    }
-    kit = artifact.probe_kit();
-    if kit.found is not None {
-        return Resolution(name=artifact.name, found=kit.found);
-    }
-    if kit.omitted {
-        return Resolution(
-            name=artifact.name, reason="the kit ships its floor", quiet=True
-        );
-    }
-    return Resolution(name=artifact.name, reason=tree.describe());
-}
+def _decide(artifact: Artifact) -> Resolution;
 
-def omitted_by_image -> frozenset[str] {
-    return _omitted(sealed_image=True) | _omitted(sealed_image=False);
-}
+def omitted_by_image -> frozenset[str];
 
-def _omitted(sealed_image: bool) -> frozenset[str] {
-    if sealed_image {
-        import from jaclang.jac0core { sealed }
-        image = sealed._jaclang_image();
-        return image.omits if image is not None else frozenset();
-    }
+def _omitted(sealed_image: bool) -> frozenset[str];
 
-    found = kit_image();
-    return found[1].omits if found is not None else frozenset();
-}
+def _provision(artifact: Artifact, resolution: Resolution) -> Resolution;
 
-def _provision(artifact: Artifact, resolution: Resolution) -> Resolution {
-    import sys;
+def _to_stderr(line: str);
 
-    if offline_mode() {
-        return Resolution(
-            name=artifact.name,
-            reason=f"{resolution.reason
-                or 'not provisioned'}, and this project is offline ([network] offline)"
-        );
-    }
-    sys.stderr.write(
-        f"jac: provisioning {artifact.summary} ({resolution.reason
-            or 'not provisioned yet'}); "
-        f"`jac native build {artifact.name}` does this ahead of time.\n"
-    );
-    sys.stderr.flush();
-    build([artifact.name], _to_stderr);
-    return resolve(artifact.name);
-}
-
-def _to_stderr(line: str) {
-    import sys;
-    sys.stderr.write(line + "\n");
-}
-
-def _announce(artifact: Artifact, resolution: Resolution) {
-    if artifact.name in _ANNOUNCED
-        or artifact.kind != ArtifactKind.ACCELERATOR
-        or artifact.release == ReleasePolicy.FLOOR {
-        return;
-    }
-    _ANNOUNCED.add(artifact.name);
-    import sys;
-    (on, off) = ("\033[1;33m", "\033[0m") if sys.stderr.isatty() else ("", "");
-    sys.stderr.write(
-        f"{on}jac: {artifact.name} runs on its floor ({artifact.floor}, slower): "
-        f"{resolution.reason}. Run `jac native build {artifact.name}`; "
-        f"`jac native status {artifact.name}` shows what moved.{off}\n"
-    );
-    sys.stderr.flush();
-}
+def _announce(artifact: Artifact, resolution: Resolution);

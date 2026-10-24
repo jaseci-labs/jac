@@ -16,7 +16,30 @@ glob _LC_CTYPE: int = 2,
      _CODESET: int = 0;
 
 
-def:pub loc_categories -> list[int] {
+def:pub loc_categories -> list[int];
+
+
+def:pub loc_query(category: int) -> str;
+
+
+def:pub loc_set(category: int, name: str) -> str;
+
+
+def:pub loc_conv_str(index: int) -> str;
+
+
+def:pub loc_conv_char(index: int) -> int;
+
+
+def:pub loc_codeset -> str;
+
+
+def:pub loc_strcoll(a: str, b: str) -> int;
+
+
+def:pub loc_strxfrm(src: str) -> str;
+
+impl loc_categories -> list[int] {
     out: list[int] = [];
     out.append(_LC_CTYPE);
     out.append(_LC_NUMERIC);
@@ -29,7 +52,7 @@ def:pub loc_categories -> list[int] {
 }
 
 
-def:pub loc_query(category: int) -> str {
+impl loc_query(category: int) -> str {
     p: int = setlocale(i32(category), 0);
     if p == 0 {
         return "";
@@ -38,7 +61,7 @@ def:pub loc_query(category: int) -> str {
 }
 
 
-def:pub loc_set(category: int, name: str) -> str {
+impl loc_set(category: int, name: str) -> str {
     p: int = setlocale(i32(category), strstr(name, ""));
     if p == 0 {
         return "";
@@ -47,7 +70,7 @@ def:pub loc_set(category: int, name: str) -> str {
 }
 
 
-def:pub loc_conv_str(index: int) -> str {
+impl loc_conv_str(index: int) -> str {
     base: int = localeconv();
     if base == 0 {
         return "";
@@ -60,7 +83,7 @@ def:pub loc_conv_str(index: int) -> str {
 }
 
 
-def:pub loc_conv_char(index: int) -> int {
+impl loc_conv_char(index: int) -> int {
     base: int = localeconv();
     if base == 0 {
         return 127;
@@ -70,7 +93,7 @@ def:pub loc_conv_char(index: int) -> int {
 }
 
 
-def:pub loc_codeset -> str {
+impl loc_codeset -> str {
     p: int = nl_langinfo(i32(_CODESET));
     if p == 0 {
         return "";
@@ -79,12 +102,12 @@ def:pub loc_codeset -> str {
 }
 
 
-def:pub loc_strcoll(a: str, b: str) -> int {
+impl loc_strcoll(a: str, b: str) -> int {
     return int(strcoll(a, b));
 }
 
 
-def:pub loc_strxfrm(src: str) -> str {
+impl loc_strxfrm(src: str) -> str {
     probe: bytes = b"\x00";
     need: int = int(strxfrm(probe, src, u64(0)));
     buf: bytes = b"\x00" * (need + 1);

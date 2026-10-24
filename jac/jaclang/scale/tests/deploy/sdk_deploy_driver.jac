@@ -18,7 +18,6 @@ E2E_POD_BASE_IMAGE.
 import json;
 import os;
 import sys;
-import from jaclang.scale.sdk { ProgressEvent, ScaleClient, deploy }
 
 glob SOURCE: str = os.environ.get("SDK_DEPLOY_SOURCE", ""),
      APP_NAME: str = os.environ.get("SDK_DEPLOY_APP_NAME", "sdk-todo"),

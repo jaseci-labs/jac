@@ -5,34 +5,6 @@
 # until compiler values can be separated from the remaining object slots.
 # Its only import is opcode_meta, which defines the NB_* operation kinds.
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_SetFromErrnoWithFilenameObjects,
-    PyObject_IsTrue,
-    PyObject_RichCompare,
-    PyObject_RichCompareBool,
-    PySequence_Fast,
-    PySequence_GetItem,
-    PySequence_Tuple,
-    PyUnicode_Format,
-    _Py_c_pow,
-    _Py_c_quot
-}
-import from jaclang.runtime.python.opcode_meta {
-    NB_ADD,
-    NB_AND,
-    NB_FLOOR_DIVIDE,
-    NB_LSHIFT,
-    NB_MULTIPLY,
-    NB_OR,
-    NB_POWER,
-    NB_REMAINDER,
-    NB_RSHIFT,
-    NB_SUBTRACT,
-    NB_TRUE_DIVIDE,
-    NB_XOR,
-}
-
 #
 # Behavior dispatches through virtual slot methods (CPython's tp_*/nb_*/sq_*/mp_*
 # tables as overridable methods -> na vtable, no function-pointer indirection).

@@ -501,7 +501,8 @@ global_var_assignment ::=
     (NAME | KWESC_NAME) (":" ownership_prefix pipe)? ("=" expression ("=" expression)*)?
 
 impl_def ::=
-    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)* (
+    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)*
+    ("[" type_params "]")? (
         func_signature
         | "(" (atomic_chain ("," atomic_chain)*)? ")"
         | "with" expression? ("entry" | "exit")
@@ -553,12 +554,10 @@ import_wire ::=
     "comptime"? ("include" | "type")? (
         "any"
         | "*"
-        | wire_module_path (
-              "."
-              | "|"
-              | ("any" | "*" | STRING | wire_module_path ("." | "|")?)
-                (wire_payload | ";")
-          )
+        | wire_module_path
+          ("." | "|" | "++>" ("[" (wire_target ","?)* "]" | wire_target ";"))
     )
+
+wire_target ::= ("any" | "*" | STRING | wire_module_path ("." | "|")?) wire_payload?
 
 wire_payload ::= "{" (("*" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)* "}"

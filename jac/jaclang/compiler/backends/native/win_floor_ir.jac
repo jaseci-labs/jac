@@ -30,6 +30,8 @@ glob WIN_FLOOR_KERNEL32: list[str] = [
      WIN_FLOOR_IR: str = r"""
 %struct.ucrt_stat64 = type { i32, i16, i16, i16, i16, i16, i32, i64, i64, i64, i64 }
 %struct.linux_timespec = type { i64, i64 }
+%struct.linux_stat = type { i64, i64, i64, i32, i32, i32, i32, i64, i64, i64, i64, %struct.linux_timespec, %struct.linux_timespec, %struct.linux_timespec, [3 x i64] }
+%struct.linux_passwd = type { ptr, ptr, i32, i32, ptr, ptr, ptr }
 
 $"??_C@_00CNPNBAHC@?$AA@" = comdat any
 
@@ -54,9 +56,11 @@ $"??_C@_0M@DPNKMMOG@USERPROFILE?$AA@" = comdat any
 @stderr = dso_local local_unnamed_addr global ptr null, align 8
 @"??_C@_06PFLEPMKG@?4UTF?98?$AA@" = linkonce_odr dso_local unnamed_addr constant [7 x i8] c".UTF-8\00", comdat, align 1
 @"??_C@_0M@DPNKMMOG@USERPROFILE?$AA@" = linkonce_odr dso_local unnamed_addr constant [12 x i8] c"USERPROFILE\00", comdat, align 1
+@switch.table.__jac_addrinfo_layout = private unnamed_addr constant [5 x i64] [i64 16, i64 32, i64 40, i64 48, i64 23], align 8
+@switch.table.__jac_clock_id = private unnamed_addr constant [6 x i64] [i64 0, i64 1, i64 2, i64 3, i64 4, i64 1], align 8
 
 define dso_local ptr @__errno_location() local_unnamed_addr #0 {
-  %1 = tail call ptr @_errno() #7
+  %1 = tail call ptr @_errno() #10
   ret ptr %1
 }
 
@@ -83,12 +87,12 @@ define dso_local ptr @memmem(ptr noundef %0, i64 noundef %1, ptr noundef %2, i64
   %16 = sub i64 %12, %15
   %17 = load i8, ptr %2, align 1
   %18 = zext i8 %17 to i32
-  %19 = tail call ptr @memchr(ptr noundef %14, i32 noundef %18, i64 noundef %16) #7
+  %19 = tail call ptr @memchr(ptr noundef %14, i32 noundef %18, i64 noundef %16) #10
   %20 = icmp eq ptr %19, null
   br i1 %20, label %27, label %21
 
 21:                                               ; preds = %13
-  %22 = tail call i32 @memcmp(ptr noundef nonnull %19, ptr noundef nonnull %2, i64 noundef %3) #7
+  %22 = tail call i32 @memcmp(ptr noundef nonnull %19, ptr noundef nonnull %2, i64 noundef %3) #10
   %23 = icmp eq i32 %22, 0
   br i1 %23, label %27, label %24
 
@@ -112,13 +116,13 @@ declare void @llvm.lifetime.end.p0(i64 immarg, ptr captures(none)) #2
 
 define dso_local i32 @printf(ptr noundef %0, ...) local_unnamed_addr #0 {
   %2 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %2) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %2) #11
   call void @llvm.va_start.p0(ptr nonnull %2)
   %3 = load ptr, ptr %2, align 8
   %4 = load ptr, ptr @stdout, align 8
-  %5 = call i32 @__stdio_common_vfprintf(i64 noundef 0, ptr noundef %4, ptr noundef %0, ptr noundef null, ptr noundef %3) #7
+  %5 = call i32 @__stdio_common_vfprintf(i64 noundef 0, ptr noundef %4, ptr noundef %0, ptr noundef null, ptr noundef %3) #10
   call void @llvm.va_end.p0(ptr nonnull %2)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %2) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %2) #11
   ret i32 %5
 }
 
@@ -130,17 +134,17 @@ declare void @llvm.va_end.p0(ptr) #3
 
 define dso_local i32 @fprintf(ptr noundef %0, ptr noundef %1, ...) local_unnamed_addr #0 {
   %3 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #11
   call void @llvm.va_start.p0(ptr nonnull %3)
   %4 = load ptr, ptr %3, align 8
-  %5 = call i32 @__stdio_common_vfprintf(i64 noundef 0, ptr noundef %0, ptr noundef %1, ptr noundef null, ptr noundef %4) #7
+  %5 = call i32 @__stdio_common_vfprintf(i64 noundef 0, ptr noundef %0, ptr noundef %1, ptr noundef null, ptr noundef %4) #10
   call void @llvm.va_end.p0(ptr nonnull %3)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #11
   ret i32 %5
 }
 
 define dso_local range(i32 -1, -2147483648) i32 @vsnprintf(ptr noundef %0, i64 noundef %1, ptr noundef %2, ptr noundef %3) local_unnamed_addr #0 {
-  %5 = tail call i32 @__stdio_common_vsprintf(i64 noundef 2, ptr noundef %0, i64 noundef %1, ptr noundef %2, ptr noundef null, ptr noundef %3) #7
+  %5 = tail call i32 @__stdio_common_vsprintf(i64 noundef 2, ptr noundef %0, i64 noundef %1, ptr noundef %2, ptr noundef null, ptr noundef %3) #10
   %6 = tail call i32 @llvm.smax.i32(i32 %5, i32 -1)
   ret i32 %6
 }
@@ -149,36 +153,36 @@ declare dso_local i32 @__stdio_common_vsprintf(i64 noundef, ptr noundef, i64 nou
 
 define dso_local range(i32 -1, -2147483648) i32 @snprintf(ptr noundef %0, i64 noundef %1, ptr noundef %2, ...) local_unnamed_addr #0 {
   %4 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %4) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %4) #11
   call void @llvm.va_start.p0(ptr nonnull %4)
   %5 = load ptr, ptr %4, align 8
-  %6 = call i32 @__stdio_common_vsprintf(i64 noundef 2, ptr noundef %0, i64 noundef %1, ptr noundef %2, ptr noundef null, ptr noundef %5) #7
+  %6 = call i32 @__stdio_common_vsprintf(i64 noundef 2, ptr noundef %0, i64 noundef %1, ptr noundef %2, ptr noundef null, ptr noundef %5) #10
   %7 = call range(i32 -1, -2147483648) i32 @llvm.smax.i32(i32 %6, i32 -1)
   call void @llvm.va_end.p0(ptr nonnull %4)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %4) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %4) #11
   ret i32 %7
 }
 
 define dso_local range(i32 -1, -2147483648) i32 @sprintf(ptr noundef %0, ptr noundef %1, ...) local_unnamed_addr #0 {
   %3 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #11
   call void @llvm.va_start.p0(ptr nonnull %3)
   %4 = load ptr, ptr %3, align 8
-  %5 = call i32 @__stdio_common_vsprintf(i64 noundef 2, ptr noundef %0, i64 noundef -1, ptr noundef %1, ptr noundef null, ptr noundef %4) #7
+  %5 = call i32 @__stdio_common_vsprintf(i64 noundef 2, ptr noundef %0, i64 noundef -1, ptr noundef %1, ptr noundef null, ptr noundef %4) #10
   %6 = call range(i32 -1, -2147483648) i32 @llvm.smax.i32(i32 %5, i32 -1)
   call void @llvm.va_end.p0(ptr nonnull %3)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #11
   ret i32 %6
 }
 
 define dso_local i32 @sscanf(ptr noundef %0, ptr noundef %1, ...) local_unnamed_addr #0 {
   %3 = alloca ptr, align 8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #11
   call void @llvm.va_start.p0(ptr nonnull %3)
   %4 = load ptr, ptr %3, align 8
-  %5 = call i32 @__stdio_common_vsscanf(i64 noundef 0, ptr noundef %0, i64 noundef -1, ptr noundef %1, ptr noundef null, ptr noundef %4) #7
+  %5 = call i32 @__stdio_common_vsscanf(i64 noundef 0, ptr noundef %0, i64 noundef -1, ptr noundef %1, ptr noundef null, ptr noundef %4) #10
   call void @llvm.va_end.p0(ptr nonnull %3)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #11
   ret i32 %5
 }
 
@@ -186,8 +190,8 @@ declare dso_local i32 @__stdio_common_vsscanf(i64 noundef, ptr noundef, i64 noun
 
 define dso_local ptr @fopen(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
   %3 = alloca [16 x i8], align 16
-  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %3) #8
-  %4 = tail call i64 @strlen(ptr noundef %1) #7
+  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %3) #11
+  %4 = tail call i64 @strlen(ptr noundef %1) #10
   %5 = icmp ugt i64 %4, 12
   br i1 %5, label %13, label %6
 
@@ -205,7 +209,7 @@ define dso_local ptr @fopen(ptr noundef %0, ptr noundef %1) local_unnamed_addr #
   br label %35
 
 13:                                               ; preds = %2
-  %14 = tail call ptr @_errno() #7
+  %14 = tail call ptr @_errno() #10
   store i32 22, ptr %14, align 4
   br label %72
 
@@ -282,12 +286,12 @@ define dso_local ptr @fopen(ptr noundef %0, ptr noundef %1) local_unnamed_addr #
   %69 = phi i64 [ %4, %32 ], [ %66, %65 ]
   %70 = getelementptr inbounds nuw [16 x i8], ptr %3, i64 0, i64 %69
   store i8 0, ptr %70, align 1
-  %71 = call ptr @__ucrt_fopen(ptr noundef %0, ptr noundef nonnull %3) #7
+  %71 = call ptr @__ucrt_fopen(ptr noundef %0, ptr noundef nonnull %3) #10
   br label %72
 
 72:                                               ; preds = %68, %13
   %73 = phi ptr [ null, %13 ], [ %71, %68 ]
-  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %3) #11
   ret ptr %73
 }
 
@@ -296,7 +300,7 @@ declare dso_local i64 @strlen(ptr noundef) local_unnamed_addr #1
 declare dso_local ptr @__ucrt_fopen(ptr noundef, ptr noundef) local_unnamed_addr #1
 
 define dso_local range(i32 0, 12) i32 @pthread_key_create(ptr noundef writeonly captures(none) initializes((0, 8)) %0, ptr noundef %1) local_unnamed_addr #0 {
-  %3 = tail call i32 @FlsAlloc(ptr noundef %1) #7
+  %3 = tail call i32 @FlsAlloc(ptr noundef %1) #10
   %4 = zext i32 %3 to i64
   store i64 %4, ptr %0, align 8
   %5 = icmp eq i32 %3, -1
@@ -308,7 +312,7 @@ declare dso_local i32 @FlsAlloc(ptr noundef) local_unnamed_addr #1
 
 define dso_local ptr @pthread_getspecific(i64 noundef %0) local_unnamed_addr #0 {
   %2 = trunc i64 %0 to i32
-  %3 = tail call ptr @FlsGetValue(i32 noundef %2) #7
+  %3 = tail call ptr @FlsGetValue(i32 noundef %2) #10
   ret ptr %3
 }
 
@@ -316,7 +320,7 @@ declare dso_local ptr @FlsGetValue(i32 noundef) local_unnamed_addr #1
 
 define dso_local range(i32 0, 23) i32 @pthread_setspecific(i64 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
   %3 = trunc i64 %0 to i32
-  %4 = tail call i32 @FlsSetValue(i32 noundef %3, ptr noundef %1) #7
+  %4 = tail call i32 @FlsSetValue(i32 noundef %3, ptr noundef %1) #10
   %5 = icmp eq i32 %4, 0
   %6 = select i1 %5, i32 22, i32 0
   ret i32 %6
@@ -325,7 +329,7 @@ define dso_local range(i32 0, 23) i32 @pthread_setspecific(i64 noundef %0, ptr n
 declare dso_local i32 @FlsSetValue(i32 noundef, ptr noundef) local_unnamed_addr #1
 
 define dso_local range(i32 0, 13) i32 @pthread_create(ptr noundef writeonly captures(none) %0, ptr noundef readnone captures(none) %1, ptr noundef %2, ptr noundef %3) local_unnamed_addr #0 {
-  %5 = tail call ptr @malloc(i64 noundef 32) #7
+  %5 = tail call ptr @malloc(i64 noundef 32) #10
   %6 = icmp eq ptr %5, null
   br i1 %6, label %16, label %7
 
@@ -335,14 +339,14 @@ define dso_local range(i32 0, 13) i32 @pthread_create(ptr noundef writeonly capt
   store ptr %3, ptr %8, align 8
   %9 = getelementptr inbounds nuw i8, ptr %5, i64 16
   store ptr null, ptr %9, align 8
-  %10 = tail call ptr @CreateThread(ptr noundef null, i64 noundef 0, ptr noundef nonnull @thread_main, ptr noundef nonnull %5, i32 noundef 0, ptr noundef null) #7
+  %10 = tail call ptr @CreateThread(ptr noundef null, i64 noundef 0, ptr noundef nonnull @thread_main, ptr noundef nonnull %5, i32 noundef 0, ptr noundef null) #10
   %11 = getelementptr inbounds nuw i8, ptr %5, i64 24
   store ptr %10, ptr %11, align 8
   %12 = icmp eq ptr %10, null
   br i1 %12, label %13, label %14
 
 13:                                               ; preds = %7
-  tail call void @free(ptr noundef nonnull %5) #7
+  tail call void @free(ptr noundef nonnull %5) #10
   br label %16
 
 14:                                               ; preds = %7
@@ -363,7 +367,7 @@ define internal noundef i32 @thread_main(ptr noundef captures(none) initializes(
   %2 = load ptr, ptr %0, align 8
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 8
   %4 = load ptr, ptr %3, align 8
-  %5 = tail call ptr %2(ptr noundef %4) #7
+  %5 = tail call ptr %2(ptr noundef %4) #10
   %6 = getelementptr inbounds nuw i8, ptr %0, i64 16
   store ptr %5, ptr %6, align 8
   ret i32 0
@@ -375,9 +379,9 @@ define dso_local noundef i32 @pthread_join(i64 noundef %0, ptr noundef writeonly
   %3 = inttoptr i64 %0 to ptr
   %4 = getelementptr inbounds nuw i8, ptr %3, i64 24
   %5 = load ptr, ptr %4, align 8
-  %6 = tail call i32 @WaitForSingleObject(ptr noundef %5, i32 noundef -1) #7
+  %6 = tail call i32 @WaitForSingleObject(ptr noundef %5, i32 noundef -1) #10
   %7 = load ptr, ptr %4, align 8
-  %8 = tail call i32 @CloseHandle(ptr noundef %7) #7
+  %8 = tail call i32 @CloseHandle(ptr noundef %7) #10
   %9 = icmp eq ptr %1, null
   br i1 %9, label %13, label %10
 
@@ -388,7 +392,7 @@ define dso_local noundef i32 @pthread_join(i64 noundef %0, ptr noundef writeonly
   br label %13
 
 13:                                               ; preds = %10, %2
-  tail call void @free(ptr noundef nonnull %3) #7
+  tail call void @free(ptr noundef nonnull %3) #10
   ret i32 0
 }
 
@@ -399,15 +403,15 @@ declare dso_local i32 @CloseHandle(ptr noundef) local_unnamed_addr #1
 define dso_local range(i32 -1, 1) i32 @stat(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
   %3 = alloca [1040 x i8], align 16
   %4 = alloca %struct.ucrt_stat64, align 8
-  call void @llvm.lifetime.start.p0(i64 1040, ptr nonnull %3) #8
-  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %4) #8
-  %5 = tail call i64 @strlen(ptr noundef %0) #7
+  call void @llvm.lifetime.start.p0(i64 1040, ptr nonnull %3) #11
+  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %4) #11
+  %5 = tail call i64 @strlen(ptr noundef %0) #10
   %6 = add i64 %5, 1
   %7 = icmp ugt i64 %6, 1040
   br i1 %7, label %24, label %8
 
 8:                                                ; preds = %2
-  %9 = call ptr @memcpy(ptr noundef nonnull %3, ptr noundef %0, i64 noundef %6) #7
+  %9 = call ptr @memcpy(ptr noundef nonnull %3, ptr noundef %0, i64 noundef %6) #10
   %10 = icmp ugt i64 %5, 1
   br i1 %10, label %11, label %26
 
@@ -435,17 +439,17 @@ define dso_local range(i32 -1, 1) i32 @stat(ptr noundef %0, ptr noundef %1) loca
   br i1 %23, label %11, label %26
 
 24:                                               ; preds = %2
-  %25 = tail call ptr @_errno() #7
+  %25 = tail call ptr @_errno() #10
   store i32 2, ptr %25, align 4
   br label %65
 
 26:                                               ; preds = %16, %20, %11, %8
-  %27 = call i32 @_stat64(ptr noundef nonnull %3, ptr noundef nonnull %4) #7
+  %27 = call i32 @_stat64(ptr noundef nonnull %3, ptr noundef nonnull %4) #10
   %28 = icmp eq i32 %27, 0
   br i1 %28, label %29, label %65
 
 29:                                               ; preds = %26
-  %30 = call ptr @memset(ptr noundef %1, i32 noundef 0, i64 noundef 144) #7
+  %30 = call ptr @memset(ptr noundef %1, i32 noundef 0, i64 noundef 144) #10
   %31 = load i32, ptr %4, align 8
   %32 = zext i32 %31 to i64
   store i64 %32, ptr %1, align 8
@@ -495,27 +499,27 @@ define dso_local range(i32 -1, 1) i32 @stat(ptr noundef %0, ptr noundef %1) loca
 
 65:                                               ; preds = %26, %29, %24
   %66 = phi i32 [ 0, %29 ], [ -1, %24 ], [ -1, %26 ]
-  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %4) #8
-  call void @llvm.lifetime.end.p0(i64 1040, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %4) #11
+  call void @llvm.lifetime.end.p0(i64 1040, ptr nonnull %3) #11
   ret i32 %66
 }
 
 declare dso_local i32 @_stat64(ptr noundef, ptr noundef) local_unnamed_addr #1
 
 define dso_local range(i32 -1, 1) i32 @lstat(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
-  %3 = tail call i32 @stat(ptr noundef %0, ptr noundef %1) #9
+  %3 = tail call i32 @stat(ptr noundef %0, ptr noundef %1) #12
   ret i32 %3
 }
 
 define dso_local range(i32 -1, 1) i32 @fstat(i32 noundef %0, ptr noundef %1) local_unnamed_addr #0 {
   %3 = alloca %struct.ucrt_stat64, align 8
-  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %3) #8
-  %4 = call i32 @_fstat64(i32 noundef %0, ptr noundef nonnull %3) #7
+  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %3) #11
+  %4 = call i32 @_fstat64(i32 noundef %0, ptr noundef nonnull %3) #10
   %5 = icmp eq i32 %4, 0
   br i1 %5, label %6, label %42
 
 6:                                                ; preds = %2
-  %7 = call ptr @memset(ptr noundef %1, i32 noundef 0, i64 noundef 144) #7
+  %7 = call ptr @memset(ptr noundef %1, i32 noundef 0, i64 noundef 144) #10
   %8 = load i32, ptr %3, align 8
   %9 = zext i32 %8 to i64
   store i64 %9, ptr %1, align 8
@@ -565,7 +569,7 @@ define dso_local range(i32 -1, 1) i32 @fstat(i32 noundef %0, ptr noundef %1) loc
 
 42:                                               ; preds = %2, %6
   %43 = phi i32 [ 0, %6 ], [ -1, %2 ]
-  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %3) #11
   ret i32 %43
 }
 
@@ -578,14 +582,14 @@ define dso_local i32 @open(ptr noundef %0, i32 noundef %1, ...) local_unnamed_ad
   br i1 %5, label %10, label %6
 
 6:                                                ; preds = %2
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #11
   call void @llvm.va_start.p0(ptr nonnull %3)
   %7 = load ptr, ptr %3, align 8
   %8 = getelementptr inbounds nuw i8, ptr %7, i64 8
   store ptr %8, ptr %3, align 8
   %9 = load i32, ptr %7, align 8
   call void @llvm.va_end.p0(ptr nonnull %3)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #11
   br label %10
 
 10:                                               ; preds = %6, %2
@@ -609,7 +613,7 @@ define dso_local i32 @open(ptr noundef %0, i32 noundef %1, ...) local_unnamed_ad
   %28 = or disjoint i32 %27, %23
   %29 = or disjoint i32 %28, %25
   %30 = or disjoint i32 %29, %11
-  %31 = call i32 @_open(ptr noundef %0, i32 noundef %30, i32 noundef %19) #7
+  %31 = call i32 @_open(ptr noundef %0, i32 noundef %30, i32 noundef %19) #10
   ret i32 %31
 }
 
@@ -622,14 +626,14 @@ define dso_local i32 @openat(i32 noundef %0, ptr noundef %1, i32 noundef %2, ...
   br i1 %6, label %11, label %7
 
 7:                                                ; preds = %3
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %4) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %4) #11
   call void @llvm.va_start.p0(ptr nonnull %4)
   %8 = load ptr, ptr %4, align 8
   %9 = getelementptr inbounds nuw i8, ptr %8, i64 8
   store ptr %9, ptr %4, align 8
   %10 = load i32, ptr %8, align 8
   call void @llvm.va_end.p0(ptr nonnull %4)
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %4) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %4) #11
   br label %11
 
 11:                                               ; preds = %7, %3
@@ -638,7 +642,7 @@ define dso_local i32 @openat(i32 noundef %0, ptr noundef %1, i32 noundef %2, ...
   br i1 %13, label %16, label %14
 
 14:                                               ; preds = %11
-  %15 = call ptr @_errno() #7
+  %15 = call ptr @_errno() #10
   store i32 38, ptr %15, align 4
   br label %37
 
@@ -662,7 +666,7 @@ define dso_local i32 @openat(i32 noundef %0, ptr noundef %1, i32 noundef %2, ...
   %33 = or disjoint i32 %32, %28
   %34 = or disjoint i32 %33, %30
   %35 = or disjoint i32 %34, %24
-  %36 = call i32 @_open(ptr noundef %1, i32 noundef %35, i32 noundef %23) #7
+  %36 = call i32 @_open(ptr noundef %1, i32 noundef %35, i32 noundef %23) #10
   br label %37
 
 37:                                               ; preds = %16, %14
@@ -678,12 +682,12 @@ define dso_local i32 @creat(ptr noundef %0, i32 noundef %1) local_unnamed_addr #
   %7 = icmp eq i32 %6, 0
   %8 = select i1 %7, i32 0, i32 128
   %9 = or disjoint i32 %5, %8
-  %10 = tail call i32 @_open(ptr noundef %0, i32 noundef 33537, i32 noundef %9) #7
+  %10 = tail call i32 @_open(ptr noundef %0, i32 noundef 33537, i32 noundef %9) #10
   ret i32 %10
 }
 
 define dso_local i32 @mkdir(ptr noundef %0, i32 noundef %1) local_unnamed_addr #0 {
-  %3 = tail call i32 @_mkdir(ptr noundef %0) #7
+  %3 = tail call i32 @_mkdir(ptr noundef %0) #10
   ret i32 %3
 }
 
@@ -691,62 +695,62 @@ declare dso_local i32 @_mkdir(ptr noundef) local_unnamed_addr #1
 
 define dso_local i32 @access(ptr noundef %0, i32 noundef %1) local_unnamed_addr #0 {
   %3 = and i32 %1, 6
-  %4 = tail call i32 @_access(ptr noundef %0, i32 noundef %3) #7
+  %4 = tail call i32 @_access(ptr noundef %0, i32 noundef %3) #10
   ret i32 %4
 }
 
 declare dso_local i32 @_access(ptr noundef, i32 noundef) local_unnamed_addr #1
 
 define dso_local range(i32 -1, 1) i32 @rename(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
-  %3 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %0, i32 noundef -1, ptr noundef null, i32 noundef 0) #7
+  %3 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %0, i32 noundef -1, ptr noundef null, i32 noundef 0) #10
   %4 = icmp slt i32 %3, 1
   br i1 %4, label %5, label %7
 
 5:                                                ; preds = %2
-  %6 = tail call ptr @_errno() #7
+  %6 = tail call ptr @_errno() #10
   store i32 22, ptr %6, align 4
   br label %43
 
 7:                                                ; preds = %2
   %8 = shl nuw i32 %3, 1
   %9 = zext i32 %8 to i64
-  %10 = tail call ptr @malloc(i64 noundef %9) #7
+  %10 = tail call ptr @malloc(i64 noundef %9) #10
   %11 = icmp eq ptr %10, null
   br i1 %11, label %12, label %14
 
 12:                                               ; preds = %7
-  %13 = tail call ptr @_errno() #7
+  %13 = tail call ptr @_errno() #10
   store i32 12, ptr %13, align 4
   br label %43
 
 14:                                               ; preds = %7
-  %15 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %0, i32 noundef -1, ptr noundef nonnull %10, i32 noundef %3) #7
-  %16 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %1, i32 noundef -1, ptr noundef null, i32 noundef 0) #7
+  %15 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %0, i32 noundef -1, ptr noundef nonnull %10, i32 noundef %3) #10
+  %16 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %1, i32 noundef -1, ptr noundef null, i32 noundef 0) #10
   %17 = icmp slt i32 %16, 1
   br i1 %17, label %23, label %18
 
 18:                                               ; preds = %14
   %19 = shl nuw i32 %16, 1
   %20 = zext i32 %19 to i64
-  %21 = tail call ptr @malloc(i64 noundef %20) #7
+  %21 = tail call ptr @malloc(i64 noundef %20) #10
   %22 = icmp eq ptr %21, null
   br i1 %22, label %23, label %26
 
 23:                                               ; preds = %18, %14
   %24 = phi i32 [ 22, %14 ], [ 12, %18 ]
-  %25 = tail call ptr @_errno() #7
+  %25 = tail call ptr @_errno() #10
   store i32 %24, ptr %25, align 4
-  tail call void @free(ptr noundef nonnull %10) #7
+  tail call void @free(ptr noundef nonnull %10) #10
   br label %43
 
 26:                                               ; preds = %18
-  %27 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %1, i32 noundef -1, ptr noundef nonnull %21, i32 noundef %16) #7
-  %28 = tail call i32 @MoveFileExW(ptr noundef nonnull %10, ptr noundef nonnull %21, i32 noundef 3) #7
+  %27 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef %1, i32 noundef -1, ptr noundef nonnull %21, i32 noundef %16) #10
+  %28 = tail call i32 @MoveFileExW(ptr noundef nonnull %10, ptr noundef nonnull %21, i32 noundef 3) #10
   %29 = icmp eq i32 %28, 0
   br i1 %29, label %30, label %41
 
 30:                                               ; preds = %26
-  %31 = tail call i32 @GetLastError() #7
+  %31 = tail call i32 @GetLastError() #10
   switch i32 %31, label %37 [
     i32 2, label %38
     i32 3, label %38
@@ -788,13 +792,13 @@ define dso_local range(i32 -1, 1) i32 @rename(ptr noundef %0, ptr noundef %1) lo
 
 38:                                               ; preds = %30, %30, %30, %30, %30, %30, %30, %32, %33, %34, %35, %36, %37
   %39 = phi i32 [ 5, %37 ], [ 13, %32 ], [ 12, %33 ], [ 17, %34 ], [ 20, %35 ], [ 22, %36 ], [ 2, %30 ], [ 2, %30 ], [ 2, %30 ], [ 2, %30 ], [ 2, %30 ], [ 2, %30 ], [ 2, %30 ]
-  %40 = tail call ptr @_errno() #7
+  %40 = tail call ptr @_errno() #10
   store i32 %39, ptr %40, align 4
   br label %41
 
 41:                                               ; preds = %38, %26
-  tail call void @free(ptr noundef nonnull %10) #7
-  tail call void @free(ptr noundef nonnull %21) #7
+  tail call void @free(ptr noundef nonnull %10) #10
+  tail call void @free(ptr noundef nonnull %21) #10
   %42 = sext i1 %29 to i32
   br label %43
 
@@ -814,12 +818,12 @@ define dso_local range(i32 -1, 1) i32 @renameat(i32 noundef %0, ptr noundef %1, 
   br i1 %7, label %8, label %10
 
 8:                                                ; preds = %4
-  %9 = tail call ptr @_errno() #7
+  %9 = tail call ptr @_errno() #10
   store i32 38, ptr %9, align 4
   br label %12
 
 10:                                               ; preds = %4
-  %11 = tail call i32 @rename(ptr noundef %1, ptr noundef %3) #9
+  %11 = tail call i32 @rename(ptr noundef %1, ptr noundef %3) #12
   br label %12
 
 12:                                               ; preds = %10, %8
@@ -830,15 +834,15 @@ define dso_local range(i32 -1, 1) i32 @renameat(i32 noundef %0, ptr noundef %1, 
 define dso_local ptr @realpath(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
   %3 = alloca %struct.ucrt_stat64, align 8
   %4 = alloca [1040 x i8], align 16
-  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %3) #8
-  call void @llvm.lifetime.start.p0(i64 1040, ptr nonnull %4) #8
-  %5 = tail call i64 @strlen(ptr noundef %0) #7
+  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %3) #11
+  call void @llvm.lifetime.start.p0(i64 1040, ptr nonnull %4) #11
+  %5 = tail call i64 @strlen(ptr noundef %0) #10
   %6 = add i64 %5, 1
   %7 = icmp ugt i64 %6, 1040
   br i1 %7, label %47, label %8
 
 8:                                                ; preds = %2
-  %9 = call ptr @memcpy(ptr noundef nonnull %4, ptr noundef %0, i64 noundef %6) #7
+  %9 = call ptr @memcpy(ptr noundef nonnull %4, ptr noundef %0, i64 noundef %6) #10
   %10 = icmp ugt i64 %5, 1
   br i1 %10, label %11, label %24
 
@@ -866,7 +870,7 @@ define dso_local ptr @realpath(ptr noundef %0, ptr noundef %1) local_unnamed_add
   br i1 %23, label %11, label %24
 
 24:                                               ; preds = %16, %20, %11, %8
-  %25 = call i32 @_stat64(ptr noundef nonnull %4, ptr noundef nonnull %3) #7
+  %25 = call i32 @_stat64(ptr noundef nonnull %4, ptr noundef nonnull %3) #10
   %26 = icmp eq i32 %25, 0
   br i1 %26, label %27, label %47
 
@@ -875,22 +879,22 @@ define dso_local ptr @realpath(ptr noundef %0, ptr noundef %1) local_unnamed_add
   br i1 %28, label %29, label %35
 
 29:                                               ; preds = %27
-  %30 = call ptr @malloc(i64 noundef 4096) #7
+  %30 = call ptr @malloc(i64 noundef 4096) #10
   %31 = icmp eq ptr %30, null
   br i1 %31, label %47, label %32
 
 32:                                               ; preds = %29
-  %33 = call ptr @_fullpath(ptr noundef nonnull %30, ptr noundef nonnull %4, i64 noundef 4096) #7
+  %33 = call ptr @_fullpath(ptr noundef nonnull %30, ptr noundef nonnull %4, i64 noundef 4096) #10
   %34 = icmp eq ptr %33, null
   br i1 %34, label %38, label %39
 
 35:                                               ; preds = %27
-  %36 = call ptr @_fullpath(ptr noundef nonnull %1, ptr noundef nonnull %4, i64 noundef 4096) #7
+  %36 = call ptr @_fullpath(ptr noundef nonnull %1, ptr noundef nonnull %4, i64 noundef 4096) #10
   %37 = icmp eq ptr %36, null
   br i1 %37, label %47, label %39
 
 38:                                               ; preds = %32
-  call void @free(ptr noundef nonnull %30) #7
+  call void @free(ptr noundef nonnull %30) #10
   br label %47
 
 39:                                               ; preds = %35, %32
@@ -915,14 +919,14 @@ define dso_local ptr @realpath(ptr noundef %0, ptr noundef %1) local_unnamed_add
 
 47:                                               ; preds = %38, %35, %29, %24, %2
   %48 = phi i32 [ 2, %2 ], [ 2, %24 ], [ 12, %29 ], [ 34, %35 ], [ 34, %38 ]
-  %49 = call ptr @_errno() #7
+  %49 = call ptr @_errno() #10
   store i32 %48, ptr %49, align 4
   br label %50
 
 50:                                               ; preds = %41, %47
   %51 = phi ptr [ null, %47 ], [ %40, %41 ]
-  call void @llvm.lifetime.end.p0(i64 1040, ptr nonnull %4) #8
-  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 1040, ptr nonnull %4) #11
+  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %3) #11
   ret ptr %51
 }
 
@@ -931,7 +935,7 @@ declare dso_local ptr @_fullpath(ptr noundef, ptr noundef, i64 noundef) local_un
 define dso_local ptr @getcwd(ptr noundef %0, i64 noundef %1) local_unnamed_addr #0 {
   %3 = tail call i64 @llvm.umin.i64(i64 %1, i64 2147483647)
   %4 = trunc nuw nsw i64 %3 to i32
-  %5 = tail call ptr @_getcwd(ptr noundef %0, i32 noundef %4) #7
+  %5 = tail call ptr @_getcwd(ptr noundef %0, i32 noundef %4) #10
   %6 = icmp eq ptr %5, null
   br i1 %6, label %13, label %7
 
@@ -958,7 +962,7 @@ define dso_local ptr @getcwd(ptr noundef %0, i64 noundef %1) local_unnamed_addr 
 declare dso_local ptr @_getcwd(ptr noundef, i32 noundef) local_unnamed_addr #1
 
 define dso_local noundef i64 @readlink(ptr noundef readnone captures(none) %0, ptr noundef readnone captures(none) %1, i64 noundef %2) local_unnamed_addr #0 {
-  %4 = tail call ptr @_errno() #7
+  %4 = tail call ptr @_errno() #10
   store i32 22, ptr %4, align 4
   ret i64 -1
 }
@@ -966,15 +970,15 @@ define dso_local noundef i64 @readlink(ptr noundef readnone captures(none) %0, p
 define dso_local ptr @opendir(ptr noundef %0) local_unnamed_addr #0 {
   %2 = alloca %struct.ucrt_stat64, align 8
   %3 = alloca [1044 x i8], align 16
-  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %2) #8
-  call void @llvm.lifetime.start.p0(i64 1044, ptr nonnull %3) #8
-  %4 = tail call i64 @strlen(ptr noundef %0) #7
+  call void @llvm.lifetime.start.p0(i64 56, ptr nonnull %2) #11
+  call void @llvm.lifetime.start.p0(i64 1044, ptr nonnull %3) #11
+  %4 = tail call i64 @strlen(ptr noundef %0) #10
   %5 = add i64 %4, 1
   %6 = icmp ugt i64 %5, 1040
   br i1 %6, label %26, label %7
 
 7:                                                ; preds = %1
-  %8 = call ptr @memcpy(ptr noundef nonnull %3, ptr noundef %0, i64 noundef %5) #7
+  %8 = call ptr @memcpy(ptr noundef nonnull %3, ptr noundef %0, i64 noundef %5) #10
   %9 = icmp ugt i64 %4, 1
   br i1 %9, label %10, label %23
 
@@ -1002,12 +1006,12 @@ define dso_local ptr @opendir(ptr noundef %0) local_unnamed_addr #0 {
   br i1 %22, label %10, label %23
 
 23:                                               ; preds = %15, %19, %10, %7
-  %24 = call i32 @_stat64(ptr noundef nonnull %3, ptr noundef nonnull %2) #7
+  %24 = call i32 @_stat64(ptr noundef nonnull %3, ptr noundef nonnull %2) #10
   %25 = icmp eq i32 %24, 0
   br i1 %25, label %28, label %26
 
 26:                                               ; preds = %1, %23
-  %27 = call ptr @_errno() #7
+  %27 = call ptr @_errno() #10
   store i32 2, ptr %27, align 4
   br label %64
 
@@ -1019,12 +1023,12 @@ define dso_local ptr @opendir(ptr noundef %0) local_unnamed_addr #0 {
   br i1 %32, label %35, label %33
 
 33:                                               ; preds = %28
-  %34 = call ptr @_errno() #7
+  %34 = call ptr @_errno() #10
   store i32 20, ptr %34, align 4
   br label %64
 
 35:                                               ; preds = %28
-  %36 = call i64 @strlen(ptr noundef nonnull %3) #7
+  %36 = call i64 @strlen(ptr noundef nonnull %3) #10
   %37 = add i64 %36, -1
   %38 = getelementptr inbounds nuw [1044 x i8], ptr %3, i64 0, i64 %37
   %39 = load i8, ptr %38, align 1
@@ -1046,18 +1050,18 @@ define dso_local ptr @opendir(ptr noundef %0) local_unnamed_addr #0 {
   store i8 42, ptr %46, align 1
   %47 = getelementptr inbounds nuw [1044 x i8], ptr %3, i64 0, i64 %45
   store i8 0, ptr %47, align 1
-  %48 = call ptr @malloc(i64 noundef 600) #7
+  %48 = call ptr @malloc(i64 noundef 600) #10
   %49 = icmp eq ptr %48, null
   br i1 %49, label %50, label %52
 
 50:                                               ; preds = %43
-  %51 = call ptr @_errno() #7
+  %51 = call ptr @_errno() #10
   store i32 12, ptr %51, align 4
   br label %64
 
 52:                                               ; preds = %43
   %53 = getelementptr inbounds nuw i8, ptr %48, i64 16
-  %54 = call i64 @_findfirst64(ptr noundef nonnull %3, ptr noundef nonnull %53) #7
+  %54 = call i64 @_findfirst64(ptr noundef nonnull %3, ptr noundef nonnull %53) #10
   store i64 %54, ptr %48, align 8
   %55 = icmp ne i64 %54, -1
   %56 = zext i1 %55 to i32
@@ -1067,19 +1071,19 @@ define dso_local ptr @opendir(ptr noundef %0) local_unnamed_addr #0 {
   br i1 %58, label %59, label %64
 
 59:                                               ; preds = %52
-  %60 = call ptr @_errno() #7
+  %60 = call ptr @_errno() #10
   %61 = load i32, ptr %60, align 4
   %62 = icmp eq i32 %61, 2
   br i1 %62, label %64, label %63
 
 63:                                               ; preds = %59
-  call void @free(ptr noundef nonnull %48) #7
+  call void @free(ptr noundef nonnull %48) #10
   br label %64
 
 64:                                               ; preds = %50, %63, %59, %52, %33, %26
   %65 = phi ptr [ null, %26 ], [ null, %33 ], [ null, %63 ], [ null, %50 ], [ %48, %59 ], [ %48, %52 ]
-  call void @llvm.lifetime.end.p0(i64 1044, ptr nonnull %3) #8
-  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %2) #8
+  call void @llvm.lifetime.end.p0(i64 1044, ptr nonnull %3) #11
+  call void @llvm.lifetime.end.p0(i64 56, ptr nonnull %2) #11
   ret ptr %65
 }
 
@@ -1097,16 +1101,16 @@ define dso_local ptr @readdir(ptr noundef %0) local_unnamed_addr #0 {
   br i1 %7, label %8, label %17
 
 8:                                                ; preds = %4
-  %9 = tail call ptr @_errno() #7
+  %9 = tail call ptr @_errno() #10
   %10 = load i32, ptr %9, align 4
   %11 = getelementptr inbounds nuw i8, ptr %0, i64 16
   %12 = load i64, ptr %0, align 8
-  %13 = tail call i32 @_findnext64(i64 noundef %12, ptr noundef nonnull %11) #7
+  %13 = tail call i32 @_findnext64(i64 noundef %12, ptr noundef nonnull %11) #10
   %14 = icmp eq i32 %13, 0
   br i1 %14, label %17, label %15
 
 15:                                               ; preds = %8
-  %16 = tail call ptr @_errno() #7
+  %16 = tail call ptr @_errno() #10
   store i32 %10, ptr %16, align 4
   br label %33
 
@@ -1114,11 +1118,11 @@ define dso_local ptr @readdir(ptr noundef %0) local_unnamed_addr #0 {
   store i32 0, ptr %5, align 8
   %18 = getelementptr inbounds nuw i8, ptr %0, i64 16
   %19 = getelementptr inbounds nuw i8, ptr %0, i64 56
-  %20 = tail call i64 @strlen(ptr noundef nonnull %19) #7
+  %20 = tail call i64 @strlen(ptr noundef nonnull %19) #10
   %21 = tail call i64 @llvm.umin.i64(i64 %20, i64 255)
   %22 = getelementptr inbounds nuw i8, ptr %0, i64 320
   %23 = getelementptr inbounds nuw i8, ptr %0, i64 339
-  %24 = tail call ptr @memcpy(ptr noundef nonnull %23, ptr noundef nonnull %19, i64 noundef %21) #7
+  %24 = tail call ptr @memcpy(ptr noundef nonnull %23, ptr noundef nonnull %19, i64 noundef %21) #10
   %25 = getelementptr inbounds nuw [256 x i8], ptr %23, i64 0, i64 %21
   store i8 0, ptr %25, align 1
   store i64 1, ptr %22, align 8
@@ -1149,11 +1153,11 @@ define dso_local noundef i32 @closedir(ptr noundef %0) local_unnamed_addr #0 {
   br i1 %3, label %6, label %4
 
 4:                                                ; preds = %1
-  %5 = tail call i32 @_findclose(i64 noundef %2) #7
+  %5 = tail call i32 @_findclose(i64 noundef %2) #10
   br label %6
 
 6:                                                ; preds = %4, %1
-  tail call void @free(ptr noundef nonnull %0) #7
+  tail call void @free(ptr noundef nonnull %0) #10
   ret i32 0
 }
 
@@ -1164,17 +1168,17 @@ define dso_local range(i32 -1, 1) i32 @setenv(ptr noundef %0, ptr noundef %1, i3
   br i1 %4, label %5, label %8
 
 5:                                                ; preds = %3
-  %6 = tail call ptr @getenv(ptr noundef %0) #7
+  %6 = tail call ptr @getenv(ptr noundef %0) #10
   %7 = icmp eq ptr %6, null
   br i1 %7, label %8, label %13
 
 8:                                                ; preds = %5, %3
-  %9 = tail call i32 @_putenv_s(ptr noundef %0, ptr noundef %1) #7
+  %9 = tail call i32 @_putenv_s(ptr noundef %0, ptr noundef %1) #10
   %10 = icmp eq i32 %9, 0
   br i1 %10, label %13, label %11
 
 11:                                               ; preds = %8
-  %12 = tail call ptr @_errno() #7
+  %12 = tail call ptr @_errno() #10
   store i32 22, ptr %12, align 4
   br label %13
 
@@ -1188,12 +1192,12 @@ declare dso_local ptr @getenv(ptr noundef) local_unnamed_addr #1
 declare dso_local i32 @_putenv_s(ptr noundef, ptr noundef) local_unnamed_addr #1
 
 define dso_local range(i32 -1, 1) i32 @unsetenv(ptr noundef %0) local_unnamed_addr #0 {
-  %2 = tail call i32 @_putenv_s(ptr noundef %0, ptr noundef nonnull @"??_C@_00CNPNBAHC@?$AA@") #7
+  %2 = tail call i32 @_putenv_s(ptr noundef %0, ptr noundef nonnull @"??_C@_00CNPNBAHC@?$AA@") #10
   %3 = icmp eq i32 %2, 0
   br i1 %3, label %6, label %4
 
 4:                                                ; preds = %1
-  %5 = tail call ptr @_errno() #7
+  %5 = tail call ptr @_errno() #10
   store i32 22, ptr %5, align 4
   br label %6
 
@@ -1224,7 +1228,7 @@ define dso_local range(i32 0, 35) i32 @getpwuid_r(i32 noundef %0, ptr noundef %1
   br i1 %6, label %7, label %9
 
 7:                                                ; preds = %5
-  %8 = tail call fastcc i32 @current_user(ptr noundef %1, ptr noundef %2, i64 noundef %3, ptr noundef nonnull %4) #9
+  %8 = tail call fastcc i32 @current_user(ptr noundef %1, ptr noundef %2, i64 noundef %3, ptr noundef nonnull %4) #12
   br label %9
 
 9:                                                ; preds = %5, %7
@@ -1233,8 +1237,8 @@ define dso_local range(i32 0, 35) i32 @getpwuid_r(i32 noundef %0, ptr noundef %1
 }
 
 define internal fastcc range(i32 0, 35) i32 @current_user(ptr noundef %0, ptr noundef %1, i64 noundef %2, ptr noundef writeonly captures(none) initializes((0, 8)) %3) unnamed_addr #0 {
-  %5 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_08JMMIJEMM@USERNAME?$AA@") #7
-  %6 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_0M@DPNKMMOG@USERPROFILE?$AA@") #7
+  %5 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_08JMMIJEMM@USERNAME?$AA@") #10
+  %6 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_0M@DPNKMMOG@USERPROFILE?$AA@") #10
   store ptr null, ptr %3, align 8
   %7 = icmp ne ptr %5, null
   %8 = icmp ne ptr %6, null
@@ -1242,9 +1246,9 @@ define internal fastcc range(i32 0, 35) i32 @current_user(ptr noundef %0, ptr no
   br i1 %9, label %10, label %37
 
 10:                                               ; preds = %4
-  %11 = tail call i64 @strlen(ptr noundef nonnull %5) #7
+  %11 = tail call i64 @strlen(ptr noundef nonnull %5) #10
   %12 = add i64 %11, 1
-  %13 = tail call i64 @strlen(ptr noundef nonnull %6) #7
+  %13 = tail call i64 @strlen(ptr noundef nonnull %6) #10
   %14 = add i64 %13, 1
   %15 = add i64 %14, %12
   %16 = add i64 %15, 1
@@ -1252,9 +1256,9 @@ define internal fastcc range(i32 0, 35) i32 @current_user(ptr noundef %0, ptr no
   br i1 %17, label %37, label %18
 
 18:                                               ; preds = %10
-  %19 = tail call ptr @memcpy(ptr noundef %1, ptr noundef nonnull %5, i64 noundef %12) #7
+  %19 = tail call ptr @memcpy(ptr noundef %1, ptr noundef nonnull %5, i64 noundef %12) #10
   %20 = getelementptr inbounds nuw i8, ptr %1, i64 %12
-  %21 = tail call ptr @memcpy(ptr noundef %20, ptr noundef nonnull %6, i64 noundef %14) #7
+  %21 = tail call ptr @memcpy(ptr noundef %20, ptr noundef nonnull %6, i64 noundef %14) #10
   br label %22
 
 22:                                               ; preds = %26, %18
@@ -1299,25 +1303,25 @@ define internal fastcc range(i32 0, 35) i32 @current_user(ptr noundef %0, ptr no
 }
 
 define dso_local range(i32 0, 35) i32 @getpwnam_r(ptr noundef %0, ptr noundef %1, ptr noundef %2, i64 noundef %3, ptr noundef writeonly captures(none) initializes((0, 8)) %4) local_unnamed_addr #0 {
-  %6 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_08JMMIJEMM@USERNAME?$AA@") #7
+  %6 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_08JMMIJEMM@USERNAME?$AA@") #10
   store ptr null, ptr %4, align 8
   %7 = icmp eq ptr %6, null
   br i1 %7, label %18, label %8
 
 8:                                                ; preds = %5
-  %9 = tail call i64 @strlen(ptr noundef nonnull %6) #7
-  %10 = tail call i64 @strlen(ptr noundef %0) #7
+  %9 = tail call i64 @strlen(ptr noundef nonnull %6) #10
+  %10 = tail call i64 @strlen(ptr noundef %0) #10
   %11 = icmp eq i64 %9, %10
   br i1 %11, label %12, label %18
 
 12:                                               ; preds = %8
-  %13 = tail call i64 @strlen(ptr noundef %0) #7
-  %14 = tail call i32 @memcmp(ptr noundef nonnull %6, ptr noundef %0, i64 noundef %13) #7
+  %13 = tail call i64 @strlen(ptr noundef %0) #10
+  %14 = tail call i32 @memcmp(ptr noundef nonnull %6, ptr noundef %0, i64 noundef %13) #10
   %15 = icmp eq i32 %14, 0
   br i1 %15, label %16, label %18
 
 16:                                               ; preds = %12
-  %17 = tail call fastcc i32 @current_user(ptr noundef %1, ptr noundef %2, i64 noundef %3, ptr noundef nonnull %4) #9
+  %17 = tail call fastcc i32 @current_user(ptr noundef %1, ptr noundef %2, i64 noundef %3, ptr noundef nonnull %4) #12
   br label %18
 
 18:                                               ; preds = %5, %8, %12, %16
@@ -1337,8 +1341,8 @@ define dso_local range(i32 -1, 1) i32 @clock_gettime(i32 noundef %0, ptr noundef
   br i1 %10, label %11, label %18
 
 11:                                               ; preds = %2
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #8
-  call void @GetSystemTimePreciseAsFileTime(ptr noundef nonnull %3) #7
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %3) #11
+  call void @GetSystemTimePreciseAsFileTime(ptr noundef nonnull %3) #10
   %12 = load i64, ptr %3, align 8
   %13 = add i64 %12, -116444736000000000
   %14 = udiv i64 %13, 10000000
@@ -1347,7 +1351,7 @@ define dso_local range(i32 -1, 1) i32 @clock_gettime(i32 noundef %0, ptr noundef
   %16 = mul nuw nsw i64 %15, 100
   %17 = getelementptr inbounds nuw i8, ptr %1, i64 8
   store i64 %16, ptr %17, align 8
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %3) #11
   br label %54
 
 18:                                               ; preds = %2
@@ -1357,20 +1361,20 @@ define dso_local range(i32 -1, 1) i32 @clock_gettime(i32 noundef %0, ptr noundef
 
 21:                                               ; preds = %18
   %22 = icmp eq i32 %0, 2
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %4) #8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %6) #8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %7) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %4) #11
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #11
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %6) #11
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %7) #11
   br i1 %22, label %23, label %26
 
 23:                                               ; preds = %21
-  %24 = tail call ptr @GetCurrentProcess() #7
-  %25 = call i32 @GetProcessTimes(ptr noundef %24, ptr noundef nonnull %4, ptr noundef nonnull %5, ptr noundef nonnull %6, ptr noundef nonnull %7) #7
+  %24 = tail call ptr @GetCurrentProcess() #10
+  %25 = call i32 @GetProcessTimes(ptr noundef %24, ptr noundef nonnull %4, ptr noundef nonnull %5, ptr noundef nonnull %6, ptr noundef nonnull %7) #10
   br label %29
 
 26:                                               ; preds = %21
-  %27 = tail call ptr @GetCurrentThread() #7
-  %28 = call i32 @GetThreadTimes(ptr noundef %27, ptr noundef nonnull %4, ptr noundef nonnull %5, ptr noundef nonnull %6, ptr noundef nonnull %7) #7
+  %27 = tail call ptr @GetCurrentThread() #10
+  %28 = call i32 @GetThreadTimes(ptr noundef %27, ptr noundef nonnull %4, ptr noundef nonnull %5, ptr noundef nonnull %6, ptr noundef nonnull %7) #10
   br label %29
 
 29:                                               ; preds = %26, %23
@@ -1379,7 +1383,7 @@ define dso_local range(i32 -1, 1) i32 @clock_gettime(i32 noundef %0, ptr noundef
   br i1 %31, label %32, label %34
 
 32:                                               ; preds = %29
-  %33 = call ptr @_errno() #7
+  %33 = call ptr @_errno() #10
   store i32 22, ptr %33, align 4
   br label %42
 
@@ -1397,17 +1401,17 @@ define dso_local range(i32 -1, 1) i32 @clock_gettime(i32 noundef %0, ptr noundef
 
 42:                                               ; preds = %34, %32
   %43 = phi i32 [ 0, %34 ], [ -1, %32 ]
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %7) #8
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %6) #8
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #8
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %4) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %7) #11
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %6) #11
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #11
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %4) #11
   br label %54
 
 44:                                               ; preds = %18
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %8) #8
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %9) #8
-  %45 = call i32 @QueryPerformanceCounter(ptr noundef nonnull %8) #7
-  %46 = call i32 @QueryPerformanceFrequency(ptr noundef nonnull %9) #7
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %8) #11
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %9) #11
+  %45 = call i32 @QueryPerformanceCounter(ptr noundef nonnull %8) #10
+  %46 = call i32 @QueryPerformanceFrequency(ptr noundef nonnull %9) #10
   %47 = load i64, ptr %8, align 8
   %48 = load i64, ptr %9, align 8
   %49 = sdiv i64 %47, %48
@@ -1417,8 +1421,8 @@ define dso_local range(i32 -1, 1) i32 @clock_gettime(i32 noundef %0, ptr noundef
   %52 = sdiv i64 %51, %48
   %53 = getelementptr inbounds nuw i8, ptr %1, i64 8
   store i64 %52, ptr %53, align 8
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %9) #8
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %8) #8
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %9) #11
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %8) #11
   br label %54
 
 54:                                               ; preds = %44, %42, %11
@@ -1441,7 +1445,7 @@ declare dso_local i32 @QueryPerformanceCounter(ptr noundef) local_unnamed_addr #
 declare dso_local i32 @QueryPerformanceFrequency(ptr noundef) local_unnamed_addr #1
 
 define dso_local noundef i32 @clock_settime(i32 noundef %0, ptr noundef readnone captures(none) %1) local_unnamed_addr #0 {
-  %3 = tail call ptr @_errno() #7
+  %3 = tail call ptr @_errno() #10
   store i32 1, ptr %3, align 4
   ret i32 -1
 }
@@ -1465,14 +1469,14 @@ define dso_local range(i32 -1, 1) i32 @nanosleep(ptr noundef readonly captures(n
   br i1 %8, label %9, label %11
 
 9:                                                ; preds = %5, %2
-  %10 = tail call ptr @_errno() #7
+  %10 = tail call ptr @_errno() #10
   store i32 22, ptr %10, align 4
   br label %17
 
 11:                                               ; preds = %5
   %12 = mul nuw nsw i64 %3, 1000000000
   %13 = add nuw nsw i64 %7, %12
-  tail call fastcc void @sleep_ns(i64 noundef %13) #9
+  tail call fastcc void @sleep_ns(i64 noundef %13) #12
   %14 = icmp eq ptr %1, null
   br i1 %14, label %17, label %15
 
@@ -1493,36 +1497,36 @@ define internal fastcc void @sleep_ns(i64 noundef %0) unnamed_addr #0 {
   br i1 %3, label %22, label %4
 
 4:                                                ; preds = %1
-  %5 = tail call ptr @CreateWaitableTimerExW(ptr noundef null, ptr noundef null, i32 noundef 2, i32 noundef 2031619) #7
+  %5 = tail call ptr @CreateWaitableTimerExW(ptr noundef null, ptr noundef null, i32 noundef 2, i32 noundef 2031619) #10
   %6 = icmp eq ptr %5, null
   br i1 %6, label %18, label %7
 
 7:                                                ; preds = %4
-  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %2) #8
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %2) #11
   %8 = add nuw nsw i64 %0, 99
   %9 = udiv i64 %8, 100
   %10 = sub nsw i64 0, %9
   store i64 %10, ptr %2, align 8
-  %11 = call i32 @SetWaitableTimer(ptr noundef nonnull %5, ptr noundef nonnull %2, i32 noundef 0, ptr noundef null, ptr noundef null, i32 noundef 0) #7
+  %11 = call i32 @SetWaitableTimer(ptr noundef nonnull %5, ptr noundef nonnull %2, i32 noundef 0, ptr noundef null, ptr noundef null, i32 noundef 0) #10
   %12 = icmp eq i32 %11, 0
   br i1 %12, label %13, label %15
 
 13:                                               ; preds = %7
-  %14 = call i32 @CloseHandle(ptr noundef nonnull %5) #7
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %2) #8
+  %14 = call i32 @CloseHandle(ptr noundef nonnull %5) #10
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %2) #11
   br label %18
 
 15:                                               ; preds = %7
-  %16 = call i32 @WaitForSingleObject(ptr noundef nonnull %5, i32 noundef -1) #7
-  %17 = call i32 @CloseHandle(ptr noundef nonnull %5) #7
-  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %2) #8
+  %16 = call i32 @WaitForSingleObject(ptr noundef nonnull %5, i32 noundef -1) #10
+  %17 = call i32 @CloseHandle(ptr noundef nonnull %5) #10
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %2) #11
   br label %22
 
 18:                                               ; preds = %13, %4
   %19 = add nuw nsw i64 %0, 999999
   %20 = udiv i64 %19, 1000000
   %21 = trunc i64 %20 to i32
-  call void @Sleep(i32 noundef %21) #7
+  call void @Sleep(i32 noundef %21) #10
   br label %22
 
 22:                                               ; preds = %15, %18, %1
@@ -1545,20 +1549,20 @@ define dso_local range(i32 0, 23) i32 @clock_nanosleep(i32 noundef %0, i32 nound
   br i1 %14, label %23, label %15
 
 15:                                               ; preds = %9
-  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %5) #8
-  %16 = call i32 @clock_gettime(i32 noundef %0, ptr noundef nonnull %5) #9
+  call void @llvm.lifetime.start.p0(i64 16, ptr nonnull %5) #11
+  %16 = call i32 @clock_gettime(i32 noundef %0, ptr noundef nonnull %5) #12
   %17 = load i64, ptr %5, align 8
   %18 = getelementptr inbounds nuw i8, ptr %5, i64 8
   %19 = load i64, ptr %18, align 8
   %20 = mul i64 %17, -1000000000
   %21 = sub i64 %12, %19
   %22 = add i64 %21, %20
-  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %5) #8
+  call void @llvm.lifetime.end.p0(i64 16, ptr nonnull %5) #11
   br label %23
 
 23:                                               ; preds = %15, %9
   %24 = phi i64 [ %22, %15 ], [ %12, %9 ]
-  tail call fastcc void @sleep_ns(i64 noundef %24) #9
+  tail call fastcc void @sleep_ns(i64 noundef %24) #12
   %25 = icmp eq ptr %3, null
   br i1 %25, label %28, label %26
 
@@ -1576,19 +1580,19 @@ define dso_local range(i32 0, 23) i32 @clock_nanosleep(i32 noundef %0, i32 nound
 define dso_local noundef i32 @usleep(i32 noundef %0) local_unnamed_addr #0 {
   %2 = zext i32 %0 to i64
   %3 = mul nuw nsw i64 %2, 1000
-  tail call fastcc void @sleep_ns(i64 noundef %3) #9
+  tail call fastcc void @sleep_ns(i64 noundef %3) #12
   ret i32 0
 }
 
 define dso_local noundef i32 @sleep(i32 noundef %0) local_unnamed_addr #0 {
   %2 = zext i32 %0 to i64
   %3 = mul nuw nsw i64 %2, 1000000000
-  tail call fastcc void @sleep_ns(i64 noundef %3) #9
+  tail call fastcc void @sleep_ns(i64 noundef %3) #12
   ret i32 0
 }
 
 define dso_local noundef ptr @gmtime_r(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
-  %3 = tail call i32 @_gmtime64_s(ptr noundef %1, ptr noundef %0) #7
+  %3 = tail call i32 @_gmtime64_s(ptr noundef %1, ptr noundef %0) #10
   %4 = icmp eq i32 %3, 0
   br i1 %4, label %5, label %8
 
@@ -1608,21 +1612,21 @@ declare dso_local i32 @_gmtime64_s(ptr noundef, ptr noundef) local_unnamed_addr 
 
 define dso_local noundef ptr @localtime_r(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
   %3 = alloca [9 x i32], align 16
-  %4 = tail call i32 @_localtime64_s(ptr noundef %1, ptr noundef %0) #7
+  %4 = tail call i32 @_localtime64_s(ptr noundef %1, ptr noundef %0) #10
   %5 = icmp eq i32 %4, 0
   br i1 %5, label %6, label %13
 
 6:                                                ; preds = %2
-  call void @llvm.lifetime.start.p0(i64 36, ptr nonnull %3) #8
-  %7 = call ptr @memcpy(ptr noundef nonnull %3, ptr noundef %1, i64 noundef 36) #7
-  %8 = call i64 @_mkgmtime64(ptr noundef nonnull %3) #7
+  call void @llvm.lifetime.start.p0(i64 36, ptr nonnull %3) #11
+  %7 = call ptr @memcpy(ptr noundef nonnull %3, ptr noundef %1, i64 noundef 36) #10
+  %8 = call i64 @_mkgmtime64(ptr noundef nonnull %3) #10
   %9 = load i64, ptr %0, align 8
   %10 = sub nsw i64 %8, %9
   %11 = getelementptr inbounds nuw i8, ptr %1, i64 40
   store i64 %10, ptr %11, align 8
   %12 = getelementptr inbounds nuw i8, ptr %1, i64 48
   store ptr @"??_C@_00CNPNBAHC@?$AA@", ptr %12, align 8
-  call void @llvm.lifetime.end.p0(i64 36, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 36, ptr nonnull %3) #11
   br label %13
 
 13:                                               ; preds = %2, %6
@@ -1639,41 +1643,41 @@ define dso_local ptr @dlopen(ptr noundef %0, i32 noundef %1) local_unnamed_addr 
   br i1 %3, label %4, label %6
 
 4:                                                ; preds = %2
-  %5 = tail call ptr @GetModuleHandleW(ptr noundef null) #7
+  %5 = tail call ptr @GetModuleHandleW(ptr noundef null) #10
   br label %24
 
 6:                                                ; preds = %2
-  %7 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %0, i32 noundef -1, ptr noundef null, i32 noundef 0) #7
+  %7 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %0, i32 noundef -1, ptr noundef null, i32 noundef 0) #10
   %8 = icmp slt i32 %7, 1
   br i1 %8, label %14, label %9
 
 9:                                                ; preds = %6
   %10 = shl nuw i32 %7, 1
   %11 = zext i32 %10 to i64
-  %12 = tail call ptr @malloc(i64 noundef %11) #7
+  %12 = tail call ptr @malloc(i64 noundef %11) #10
   %13 = icmp eq ptr %12, null
   br i1 %13, label %14, label %17
 
 14:                                               ; preds = %9, %6
   %15 = phi i32 [ 22, %6 ], [ 12, %9 ]
-  %16 = tail call ptr @_errno() #7
+  %16 = tail call ptr @_errno() #10
   store i32 %15, ptr %16, align 4
   store i32 87, ptr @dl_last_error, align 4
   br label %24
 
 17:                                               ; preds = %9
-  %18 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %0, i32 noundef -1, ptr noundef nonnull %12, i32 noundef %7) #7
-  %19 = tail call ptr @LoadLibraryW(ptr noundef nonnull %12) #7
+  %18 = tail call i32 @MultiByteToWideChar(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %0, i32 noundef -1, ptr noundef nonnull %12, i32 noundef %7) #10
+  %19 = tail call ptr @LoadLibraryW(ptr noundef nonnull %12) #10
   %20 = icmp eq ptr %19, null
   br i1 %20, label %21, label %23
 
 21:                                               ; preds = %17
-  %22 = tail call i32 @GetLastError() #7
+  %22 = tail call i32 @GetLastError() #10
   store i32 %22, ptr @dl_last_error, align 4
   br label %23
 
 23:                                               ; preds = %21, %17
-  tail call void @free(ptr noundef nonnull %12) #7
+  tail call void @free(ptr noundef nonnull %12) #10
   br label %24
 
 24:                                               ; preds = %14, %23, %4
@@ -1686,12 +1690,12 @@ declare dso_local ptr @GetModuleHandleW(ptr noundef) local_unnamed_addr #1
 declare dso_local ptr @LoadLibraryW(ptr noundef) local_unnamed_addr #1
 
 define dso_local ptr @dlsym(ptr noundef %0, ptr noundef %1) local_unnamed_addr #0 {
-  %3 = tail call ptr @GetProcAddress(ptr noundef %0, ptr noundef %1) #7
+  %3 = tail call ptr @GetProcAddress(ptr noundef %0, ptr noundef %1) #10
   %4 = icmp eq ptr %3, null
   br i1 %4, label %5, label %7
 
 5:                                                ; preds = %2
-  %6 = tail call i32 @GetLastError() #7
+  %6 = tail call i32 @GetLastError() #10
   store i32 %6, ptr @dl_last_error, align 4
   br label %7
 
@@ -1702,7 +1706,7 @@ define dso_local ptr @dlsym(ptr noundef %0, ptr noundef %1) local_unnamed_addr #
 declare dso_local ptr @GetProcAddress(ptr noundef, ptr noundef) local_unnamed_addr #1
 
 define dso_local range(i32 -1, 1) i32 @dlclose(ptr noundef %0) local_unnamed_addr #0 {
-  %2 = tail call i32 @FreeLibrary(ptr noundef %0) #7
+  %2 = tail call i32 @FreeLibrary(ptr noundef %0) #10
   %3 = icmp eq i32 %2, 0
   %4 = sext i1 %3 to i32
   ret i32 %4
@@ -1716,7 +1720,7 @@ define dso_local noundef ptr @dlerror() local_unnamed_addr #0 {
   br i1 %2, label %5, label %3
 
 3:                                                ; preds = %0
-  %4 = tail call i32 (ptr, i64, ptr, ...) @snprintf(ptr noundef nonnull @dlerror.text, i64 noundef 48, ptr noundef nonnull @"??_C@_0BB@OGGFDLON@Windows?5error?5?$CFu?$AA@", i32 noundef %1) #9
+  %4 = tail call i32 (ptr, i64, ptr, ...) @snprintf(ptr noundef nonnull @dlerror.text, i64 noundef 48, ptr noundef nonnull @"??_C@_0BB@OGGFDLON@Windows?5error?5?$CFu?$AA@", i32 noundef %1) #12
   store i32 0, ptr @dl_last_error, align 4
   br label %5
 
@@ -1727,8 +1731,8 @@ define dso_local noundef ptr @dlerror() local_unnamed_addr #0 {
 
 define dso_local range(i64 0, 2147483648) i64 @__jac_win_executable_path(ptr noundef %0, i64 noundef %1) local_unnamed_addr #0 {
   %3 = alloca [1024 x i16], align 16
-  call void @llvm.lifetime.start.p0(i64 2048, ptr nonnull %3) #8
-  %4 = call i32 @GetModuleFileNameW(ptr noundef null, ptr noundef nonnull %3, i32 noundef 1024) #7
+  call void @llvm.lifetime.start.p0(i64 2048, ptr nonnull %3) #11
+  %4 = call i32 @GetModuleFileNameW(ptr noundef null, ptr noundef nonnull %3, i32 noundef 1024) #10
   %5 = add i32 %4, -1024
   %6 = icmp ult i32 %5, -1023
   br i1 %6, label %21, label %7
@@ -1736,7 +1740,7 @@ define dso_local range(i64 0, 2147483648) i64 @__jac_win_executable_path(ptr nou
 7:                                                ; preds = %2
   %8 = trunc i64 %1 to i32
   %9 = add nsw i32 %8, -1
-  %10 = call i32 @WideCharToMultiByte(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %3, i32 noundef %4, ptr noundef %0, i32 noundef %9, ptr noundef null, ptr noundef null) #7
+  %10 = call i32 @WideCharToMultiByte(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %3, i32 noundef %4, ptr noundef %0, i32 noundef %9, ptr noundef null, ptr noundef null) #10
   %11 = icmp slt i32 %10, 1
   br i1 %11, label %21, label %12
 
@@ -1764,7 +1768,7 @@ define dso_local range(i64 0, 2147483648) i64 @__jac_win_executable_path(ptr nou
 
 21:                                               ; preds = %15, %7, %2
   %22 = phi i64 [ 0, %2 ], [ 0, %7 ], [ %13, %15 ]
-  call void @llvm.lifetime.end.p0(i64 2048, ptr nonnull %3) #8
+  call void @llvm.lifetime.end.p0(i64 2048, ptr nonnull %3) #11
   ret i64 %22
 }
 
@@ -1772,16 +1776,281 @@ declare dso_local i32 @GetModuleFileNameW(ptr noundef, ptr noundef, i32 noundef)
 
 declare dso_local i32 @WideCharToMultiByte(i32 noundef, i32 noundef, ptr noundef, i32 noundef, ptr noundef, i32 noundef, ptr noundef, ptr noundef) local_unnamed_addr #1
 
+define dso_local ptr @__jac_errno() local_unnamed_addr #0 {
+  %1 = tail call ptr @_errno() #10
+  ret ptr %1
+}
+
+define dso_local ptr @__jac_stdio(i32 noundef %0) local_unnamed_addr #6 {
+  %2 = icmp eq i32 %0, 1
+  %3 = icmp eq i32 %0, 0
+  %4 = load ptr, ptr @stdin, align 8
+  %5 = load ptr, ptr @stdout, align 8
+  %6 = load ptr, ptr @stderr, align 8
+  %7 = select i1 %2, ptr %5, ptr %6
+  %8 = select i1 %3, ptr %4, ptr %7
+  ret ptr %8
+}
+
+define dso_local noundef i32 @__jac_platform_id() local_unnamed_addr #4 {
+  ret i32 2
+}
+
+define dso_local range(i32 -1, 1) i32 @__jac_stat(ptr noundef %0, ptr noundef writeonly captures(none) %1) local_unnamed_addr #0 {
+  %3 = alloca %struct.linux_stat, align 8
+  call void @llvm.lifetime.start.p0(i64 144, ptr nonnull %3) #11
+  %4 = call i32 @stat(ptr noundef %0, ptr noundef nonnull %3) #12
+  %5 = icmp eq i32 %4, 0
+  br i1 %5, label %6, label %16
+
+6:                                                ; preds = %2
+  %7 = getelementptr inbounds nuw i8, ptr %3, i64 24
+  %8 = load i32, ptr %7, align 8
+  %9 = zext i32 %8 to i64
+  store i64 %9, ptr %1, align 8
+  %10 = getelementptr inbounds nuw i8, ptr %3, i64 48
+  %11 = load i64, ptr %10, align 8
+  %12 = getelementptr inbounds nuw i8, ptr %1, i64 8
+  store i64 %11, ptr %12, align 8
+  %13 = getelementptr inbounds nuw i8, ptr %3, i64 88
+  %14 = getelementptr inbounds nuw i8, ptr %1, i64 16
+  %15 = load <2 x i64>, ptr %13, align 8
+  store <2 x i64> %15, ptr %14, align 8
+  br label %16
+
+16:                                               ; preds = %2, %6
+  %17 = phi i32 [ 0, %6 ], [ -1, %2 ]
+  call void @llvm.lifetime.end.p0(i64 144, ptr nonnull %3) #11
+  ret i32 %17
+}
+
+define dso_local ptr @__jac_opendir(ptr noundef %0) local_unnamed_addr #0 {
+  %2 = tail call ptr @opendir(ptr noundef %0) #12
+  ret ptr %2
+}
+
+define dso_local ptr @__jac_readdir(ptr noundef %0) local_unnamed_addr #0 {
+  %2 = tail call ptr @readdir(ptr noundef %0) #12
+  ret ptr %2
+}
+
+define dso_local noundef i32 @__jac_closedir(ptr noundef %0) local_unnamed_addr #0 {
+  %2 = load i64, ptr %0, align 8
+  %3 = icmp eq i64 %2, -1
+  br i1 %3, label %6, label %4
+
+4:                                                ; preds = %1
+  %5 = tail call i32 @_findclose(i64 noundef %2) #10
+  br label %6
+
+6:                                                ; preds = %1, %4
+  tail call void @free(ptr noundef nonnull %0) #10
+  ret i32 0
+}
+
+define dso_local nonnull ptr @__jac_dirent_name(ptr noundef readnone captures(ret: address, provenance) %0) local_unnamed_addr #4 {
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 19
+  ret ptr %2
+}
+
+define dso_local noundef i32 @__jac_at_fdcwd() local_unnamed_addr #4 {
+  ret i32 -100
+}
+
+define dso_local range(i64 -1, 2147483648) i64 @__jac_executable_path(ptr noundef %0, i64 noundef %1) local_unnamed_addr #0 {
+  %3 = alloca [1024 x i16], align 16
+  call void @llvm.lifetime.start.p0(i64 2048, ptr nonnull %3) #11
+  %4 = call i32 @GetModuleFileNameW(ptr noundef null, ptr noundef nonnull %3, i32 noundef 1024) #10
+  %5 = add i32 %4, -1024
+  %6 = icmp ult i32 %5, -1023
+  br i1 %6, label %21, label %7
+
+7:                                                ; preds = %2
+  %8 = trunc i64 %1 to i32
+  %9 = add nsw i32 %8, -1
+  %10 = call i32 @WideCharToMultiByte(i32 noundef 65001, i32 noundef 0, ptr noundef nonnull %3, i32 noundef %4, ptr noundef %0, i32 noundef %9, ptr noundef null, ptr noundef null) #10
+  %11 = icmp slt i32 %10, 1
+  br i1 %11, label %21, label %12
+
+12:                                               ; preds = %7
+  %13 = zext nneg i32 %10 to i64
+  %14 = getelementptr inbounds nuw i8, ptr %0, i64 %13
+  store i8 0, ptr %14, align 1
+  br label %15
+
+15:                                               ; preds = %19, %12
+  %16 = phi ptr [ %0, %12 ], [ %20, %19 ]
+  %17 = load i8, ptr %16, align 1
+  switch i8 %17, label %19 [
+    i8 0, label %21
+    i8 92, label %18
+  ]
+
+18:                                               ; preds = %15
+  store i8 47, ptr %16, align 1
+  br label %19
+
+19:                                               ; preds = %18, %15
+  %20 = getelementptr inbounds nuw i8, ptr %16, i64 1
+  br label %15
+
+21:                                               ; preds = %15, %7, %2
+  %22 = phi i64 [ -1, %2 ], [ -1, %7 ], [ %13, %15 ]
+  call void @llvm.lifetime.end.p0(i64 2048, ptr nonnull %3) #11
+  ret i64 %22
+}
+
+define dso_local range(i64 -1, 49) i64 @__jac_addrinfo_layout(i32 noundef %0) local_unnamed_addr #4 {
+  %2 = icmp ult i32 %0, 5
+  br i1 %2, label %3, label %7
+
+3:                                                ; preds = %1
+  %4 = zext nneg i32 %0 to i64
+  %5 = getelementptr inbounds nuw [5 x i64], ptr @switch.table.__jac_addrinfo_layout, i64 0, i64 %4
+  %6 = load i64, ptr %5, align 8
+  br label %7
+
+7:                                                ; preds = %1, %3
+  %8 = phi i64 [ %6, %3 ], [ -1, %1 ]
+  ret i64 %8
+}
+
+define dso_local range(i32 0, 65536) i32 @__jac_sockaddr_family(ptr noundef readonly captures(none) %0) local_unnamed_addr #7 {
+  %2 = load i16, ptr %0, align 1
+  %3 = zext i16 %2 to i32
+  ret i32 %3
+}
+
+define dso_local i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2) local_unnamed_addr #0 {
+  %4 = alloca %struct.linux_passwd, align 8
+  %5 = alloca ptr, align 8
+  %6 = alloca [1024 x i8], align 16
+  call void @llvm.lifetime.start.p0(i64 48, ptr nonnull %4) #11
+  call void @llvm.lifetime.start.p0(i64 8, ptr nonnull %5) #11
+  call void @llvm.lifetime.start.p0(i64 1024, ptr nonnull %6) #11
+  %7 = load i8, ptr %0, align 1
+  %8 = icmp eq i8 %7, 0
+  br i1 %8, label %20, label %9
+
+9:                                                ; preds = %3
+  %10 = tail call ptr @getenv(ptr noundef nonnull @"??_C@_08JMMIJEMM@USERNAME?$AA@") #10
+  store ptr null, ptr %5, align 8
+  %11 = icmp eq ptr %10, null
+  br i1 %11, label %23, label %12
+
+12:                                               ; preds = %9
+  %13 = tail call i64 @strlen(ptr noundef nonnull %10) #10
+  %14 = tail call i64 @strlen(ptr noundef nonnull %0) #10
+  %15 = icmp eq i64 %13, %14
+  br i1 %15, label %16, label %23
+
+16:                                               ; preds = %12
+  %17 = tail call i64 @strlen(ptr noundef nonnull %0) #10
+  %18 = tail call i32 @memcmp(ptr noundef nonnull %10, ptr noundef nonnull %0, i64 noundef %17) #10
+  %19 = icmp eq i32 %18, 0
+  br i1 %19, label %20, label %23
+
+20:                                               ; preds = %3, %16
+  %21 = call fastcc i32 @current_user(ptr noundef nonnull %4, ptr noundef nonnull %6, i64 noundef 1024, ptr noundef nonnull %5) #12
+  %22 = icmp ne i32 %21, 0
+  br label %23
+
+23:                                               ; preds = %20, %16, %12, %9
+  %24 = phi i1 [ false, %16 ], [ false, %12 ], [ false, %9 ], [ %22, %20 ]
+  %25 = load ptr, ptr %5, align 8
+  %26 = icmp eq ptr %25, null
+  %27 = select i1 %24, i1 true, i1 %26
+  br i1 %27, label %39, label %28
+
+28:                                               ; preds = %23
+  %29 = getelementptr inbounds nuw i8, ptr %4, i64 32
+  %30 = load ptr, ptr %29, align 8
+  %31 = icmp eq ptr %30, null
+  br i1 %31, label %39, label %32
+
+32:                                               ; preds = %28
+  %33 = call i64 @strlen(ptr noundef nonnull %30) #10
+  %34 = icmp slt i64 %33, %2
+  br i1 %34, label %35, label %39
+
+35:                                               ; preds = %32
+  %36 = add nsw i64 %33, 1
+  %37 = load ptr, ptr %29, align 8
+  %38 = call ptr @memcpy(ptr noundef %1, ptr noundef %37, i64 noundef %36) #10
+  br label %39
+
+39:                                               ; preds = %32, %35, %28, %23
+  %40 = phi i64 [ -1, %23 ], [ -2, %28 ], [ %33, %35 ], [ %33, %32 ]
+  call void @llvm.lifetime.end.p0(i64 1024, ptr nonnull %6) #11
+  call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #11
+  call void @llvm.lifetime.end.p0(i64 48, ptr nonnull %4) #11
+  ret i64 %40
+}
+
+define dso_local range(i64 -1, 5) i64 @__jac_clock_id(i32 noundef %0) local_unnamed_addr #4 {
+  %2 = icmp ult i32 %0, 6
+  br i1 %2, label %3, label %7
+
+3:                                                ; preds = %1
+  %4 = zext nneg i32 %0 to i64
+  %5 = getelementptr inbounds nuw [6 x i64], ptr @switch.table.__jac_clock_id, i64 0, i64 %4
+  %6 = load i64, ptr %5, align 8
+  br label %7
+
+7:                                                ; preds = %1, %3
+  %8 = phi i64 [ %6, %3 ], [ -1, %1 ]
+  ret i64 %8
+}
+
+define dso_local noundef i32 @__jac_sleep_ns(i64 noundef %0) local_unnamed_addr #0 {
+  tail call fastcc void @sleep_ns(i64 noundef %0) #12
+  ret i32 0
+}
+
+define dso_local i64 @__jac_malloc_size(ptr noundef %0) local_unnamed_addr #0 {
+  %2 = tail call i64 @_msize(ptr noundef %0) #10
+  ret i64 %2
+}
+
+declare dso_local i64 @_msize(ptr noundef) local_unnamed_addr #1
+
+define dso_local noundef double @__jac_fmadd(double noundef %0, double noundef %1, double noundef %2) local_unnamed_addr #4 {
+  %4 = fmul double %0, %1
+  %5 = fadd double %4, %2
+  ret double %5
+}
+
+define dso_local ptr @__jac_va_list(ptr noundef readonly captures(none) %0) local_unnamed_addr #7 {
+  %2 = load ptr, ptr %0, align 8
+  ret ptr %2
+}
+
+define dso_local i64 @__jac_va_i64(ptr noundef captures(none) %0) local_unnamed_addr #8 {
+  %2 = load ptr, ptr %0, align 8
+  %3 = getelementptr inbounds nuw i8, ptr %2, i64 8
+  store ptr %3, ptr %0, align 8
+  %4 = load i64, ptr %2, align 8
+  ret i64 %4
+}
+
+define dso_local double @__jac_va_f64(ptr noundef captures(none) %0) local_unnamed_addr #8 {
+  %2 = load ptr, ptr %0, align 8
+  %3 = getelementptr inbounds nuw i8, ptr %2, i64 8
+  store ptr %3, ptr %0, align 8
+  %4 = load double, ptr %2, align 8
+  ret double %4
+}
+
 define dso_local void @__jac_win_floor_init() local_unnamed_addr #0 {
-  %1 = tail call ptr @__acrt_iob_func(i32 noundef 0) #7
+  %1 = tail call ptr @__acrt_iob_func(i32 noundef 0) #10
   store ptr %1, ptr @stdin, align 8
-  %2 = tail call ptr @__acrt_iob_func(i32 noundef 1) #7
+  %2 = tail call ptr @__acrt_iob_func(i32 noundef 1) #10
   store ptr %2, ptr @stdout, align 8
-  %3 = tail call ptr @__acrt_iob_func(i32 noundef 2) #7
+  %3 = tail call ptr @__acrt_iob_func(i32 noundef 2) #10
   store ptr %3, ptr @stderr, align 8
-  %4 = tail call ptr @setlocale(i32 noundef 2, ptr noundef nonnull @"??_C@_06PFLEPMKG@?4UTF?98?$AA@") #7
-  %5 = tail call i32 @SetConsoleOutputCP(i32 noundef 65001) #7
-  %6 = tail call i32 @SetConsoleCP(i32 noundef 65001) #7
+  %4 = tail call ptr @setlocale(i32 noundef 2, ptr noundef nonnull @"??_C@_06PFLEPMKG@?4UTF?98?$AA@") #10
+  %5 = tail call i32 @SetConsoleOutputCP(i32 noundef 65001) #10
+  %6 = tail call i32 @SetConsoleCP(i32 noundef 65001) #10
   ret void
 }
 
@@ -1803,9 +2072,9 @@ declare dso_local i32 @SetWaitableTimer(ptr noundef, ptr noundef, i32 noundef, p
 
 declare dso_local void @Sleep(i32 noundef) local_unnamed_addr #1
 
-declare i32 @llvm.smax.i32(i32, i32) #6
+declare i32 @llvm.smax.i32(i32, i32) #9
 
-declare i64 @llvm.umin.i64(i64, i64) #6
+declare i64 @llvm.umin.i64(i64, i64) #9
 
 attributes #0 = { nounwind uwtable "no-builtins" }
 attributes #1 = { "no-builtins" }
@@ -1813,8 +2082,11 @@ attributes #2 = { mustprogress nocallback nofree nosync nounwind willreturn memo
 attributes #3 = { mustprogress nocallback nofree nosync nounwind willreturn }
 attributes #4 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable "no-builtins" }
 attributes #5 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write) uwtable "no-builtins" }
-attributes #6 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #7 = { nobuiltin nounwind "no-builtins" }
-attributes #8 = { nounwind }
-attributes #9 = { nobuiltin "no-builtins" }
+attributes #6 = { mustprogress nofree norecurse nosync nounwind willreturn memory(read, argmem: none, inaccessiblemem: none) uwtable "no-builtins" }
+attributes #7 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) uwtable "no-builtins" }
+attributes #8 = { mustprogress nofree norecurse nosync nounwind willreturn memory(read, argmem: readwrite, inaccessiblemem: none) uwtable "no-builtins" }
+attributes #9 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #10 = { nobuiltin nounwind "no-builtins" }
+attributes #11 = { nounwind }
+attributes #12 = { nobuiltin "no-builtins" }
 """;

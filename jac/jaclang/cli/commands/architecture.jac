@@ -7,7 +7,8 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
                  kind=ArgKind.POSITIONAL,
                  `default="graph",
                  help="Action: init (write archwire.jac from the current imports, sealing "
-                 "the directory), sync (add the wires its modules are missing), graph "
+                 "the directory), sync (add the wires its modules are missing, and "
+                 "with --prune drop the ones they never use), graph "
                  "(render the wiring; default)"
              ),
              Arg.create(
@@ -24,6 +25,14 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
                  help="With init or sync: remove the imports that archwire.jac now provides "
                  "from its modules (the same fix `jac fmt --lintfix` applies)",
                  short="s"
+             ),
+             Arg.create(
+                 "prune",
+                 typ=bool,
+                 `default=False,
+                 help="With sync: also remove wired names their consumers never use "
+                 "(a one-time cleanup, not a workflow)",
+                 short=""
              ),
              Arg.create(
                  "force",
@@ -62,6 +71,7 @@ comptime SPEC_ARCH: CommandSpec = CommandSpec(
                  "Add a wire for every import a module writes that its archwire.jac does "
                  "not declare"
              ),
+             ("jac arch sync --prune", "Also remove the wired names no consumer uses"),
              ("jac arch graph", "Print the wiring as a mermaid diagram"),
              (
                  "jac arch graph --format json -o wiring.json",
@@ -77,6 +87,7 @@ def arch(
     action: str = "graph",
     scope: str = "",
     strip: bool = False,
+    prune: bool = False,
     force: bool = False,
     format: str = "mermaid",
     output: str = ""

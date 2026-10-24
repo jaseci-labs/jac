@@ -1,32 +1,5 @@
 """The unicodedata module: the UCD type, ucd_3_2_0 and the name capsule."""
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_release,
-    PyModule_Add,
-    PyModule_AddStringConstant,
-    PyModule_AddType,
-    PyObject
-}
-import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHooks }
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags
-}
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.unicodedata { UCD_methods }
-import from jaclang.runtime.python.modules.unicodedata {
-    UCD_token,
-    new_previous_version,
-    ucd_3_2_0_version,
-    unicodedata_create_capi
-}
-import from jaclang.runtime.python.modules.unicodedata_db { UNIDATA_VERSION }
-import from jaclang.runtime.python.bindings.members { MemberField, MemberType }
-
 def:priv ucd_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, UCD_token.handle);
 }

@@ -5,40 +5,6 @@ framing and cursor progression are Jac policies. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyByteArray_Resize,
-    PyErr_GetRaisedException,
-    PyErr_SetRaisedException,
-    PyExc_EOFError,
-    PyExc_OverflowError,
-    PyExc_TypeError,
-    PyLong_FromLongLong,
-    PyObject,
-    PyObject_Call,
-    PyObject_CallOneArg,
-    Py_NewRef,
-    jacpy_bytearray_new,
-    jacpy_bytes_address,
-    jacpy_bytes_from_memory,
-    jacpy_bytes_length,
-    jacpy_exception_context,
-    jacpy_is_bytes,
-    jacpy_memory_copy,
-    jacpy_release,
-    jacpy_set_exception
-}
-import from jaclang.runtime.python.capi {
-    required,
-    checked,
-    boundary_failure,
-    object_error,
-    object_tuple,
-    memory_byte,
-    memory_set
-}
-import from jaclang.runtime.python.modules.binary_scalars { read_bits, write_bits }
-
 def stream_error(kind: ptr[PyObject], message: str) {
     cause = PyErr_GetRaisedException();
     try {

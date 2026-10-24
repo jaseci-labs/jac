@@ -1,20 +1,5 @@
 """Decode Python source values using native encoding detection."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyErr_ExceptionMatches,
-    PyExc_UnicodeError,
-    PyObject,
-    jacpy_decode,
-    jacpy_error_pending,
-    jacpy_release,
-    jacpy_source_bytes,
-    jacpy_source_kind,
-    jacpy_utf8
-}
-import from jaclang.compiler.frontend.python.source_encoding { source_encoding }
-import from jaclang.runtime.python.native_services { take_buffer, take_error_text }
-import from jaclang.runtime.python.capi { read_buffer, boundary_failure }
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 def decode_source_value(source: ptr[PyObject]) -> str {
     kind = int(jacpy_source_kind(source));
     if kind < 0 and jacpy_error_pending() != 0 {

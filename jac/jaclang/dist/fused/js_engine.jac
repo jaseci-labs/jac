@@ -8,11 +8,19 @@ import from c {
     }
 }
 
-def:pub is_node_name(argv0: str) -> bool {
+def:pub is_node_name(argv0: str) -> bool;
+
+def link_target(path: str) -> str;
+
+def:pub engine_dir(rt: str, argv0: str, exe_path: str) -> str;
+
+def:pub run_node(rt: str, argv: list[str], exe_path: str) -> int;
+
+impl is_node_name(argv0: str) -> bool {
     return os.path.basename(argv0) == "node";
 }
 
-def link_target(path: str) -> str {
+impl link_target(path: str) -> str {
     buf = b"\x00" * 4096;
     n = readlink(path, buf, 4095);
     if n <= 0 {
@@ -21,7 +29,7 @@ def link_target(path: str) -> str {
     return buf[0:n].decode();
 }
 
-def:pub engine_dir(rt: str, argv0: str, exe_path: str) -> str {
+impl engine_dir(rt: str, argv0: str, exe_path: str) -> str {
     candidates: list[str] = [];
     if "/" in argv0 {
         candidates.append(argv0);
@@ -41,7 +49,7 @@ def:pub engine_dir(rt: str, argv0: str, exe_path: str) -> str {
     return rt + "/js";
 }
 
-def:pub run_node(rt: str, argv: list[str], exe_path: str) -> int {
+impl run_node(rt: str, argv: list[str], exe_path: str) -> int {
     export_ca_bundle(rt);
     js = engine_dir(rt, argv[0], exe_path);
     node_link = js + "/bin/node";

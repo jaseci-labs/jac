@@ -20,7 +20,42 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
      LEGACY_META_PACKAGES: set = {"jac-client-node", "@jac-client/dev-deps"};
 
 
-def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
+def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str];
+
+
+def _app_wants_client(config: JacConfig, app: any) -> bool;
+
+
+def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]];
+
+
+def regenerate_and_install(project_dir: Path);
+
+
+obj NpmProvider(EcosystemProvider) {
+    has name: str = "npm",
+        manifest_key: str = "npm",
+        cli_flag: str = "--npm";
+
+    override def resolve(
+        config: JacConfig, include_dev: bool = False
+    ) -> list[ResolvedDependency];
+
+    override def parse_spec(spec: str) -> tuple[str, str];
+    override def install_all(
+        config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
+    ) -> bool;
+
+    override def add_package(
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
+    ) -> str | None;
+
+    override def remove_package(
+        config: JacConfig, name: str, dev: bool, ctx: InstallContext
+    ) -> bool;
+}
+
+impl target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
     npm_plugin_deps: dict[str, str] = dict(config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};
     key1 = str(target_name or "").strip();
@@ -41,13 +76,11 @@ def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str
     return deps;
 }
 
-
-def _app_wants_client(config: JacConfig, app: any) -> bool {
+impl _app_wants_client(config: JacConfig, app: any) -> bool {
     return app.implicit or kind_has_client(app.kind);
 }
 
-
-def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
+impl app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
     (base_deps, base_dev) = manifest_plugin_deps(config, "npm");
     out: list[tuple[str, str, str, bool]] = [];
     seen: dict[tuple[str, bool], tuple[str, str]] = {};
@@ -99,8 +132,7 @@ def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
     return out;
 }
 
-
-def regenerate_and_install(project_dir: Path) {
+impl regenerate_and_install(project_dir: Path) {
     bun = js_runtime_path();
 
     bundler = ViteBundler(project_dir);
@@ -113,172 +145,165 @@ def regenerate_and_install(project_dir: Path) {
     }
 }
 
-
-obj NpmProvider(EcosystemProvider) {
-    has name: str = "npm",
-        manifest_key: str = "npm",
-        cli_flag: str = "--npm";
-
-    override def resolve(
-        config: JacConfig, include_dev: bool = False
-    ) -> list[ResolvedDependency] {
-        (deps, dev_deps) = manifest_plugin_deps(config, "npm");
-        is_client = "client" in config.plugins;
-        resolved: list[ResolvedDependency] = [];
-        for (pkg, version) in deps.items() {
-            if is_client and pkg in LEGACY_META_PACKAGES {
-                continue;
-            }
-            resolved.append(
-                ResolvedDependency(
-                    name=pkg,
-                    version=version,
-                    ecosystem="npm",
-                    source="npm",
-                    origin="manifest"
-                )
-            );
+impl NpmProvider.resolve(
+    config: JacConfig, include_dev: bool = False
+) -> list[ResolvedDependency] {
+    (deps, dev_deps) = manifest_plugin_deps(config, "npm");
+    is_client = "client" in config.plugins;
+    resolved: list[ResolvedDependency] = [];
+    for (pkg, version) in deps.items() {
+        if is_client and pkg in LEGACY_META_PACKAGES {
+            continue;
         }
+        resolved.append(
+            ResolvedDependency(
+                name=pkg,
+                version=version,
+                ecosystem="npm",
+                source="npm",
+                origin="manifest"
+            )
+        );
+    }
 
-        for (pkg, version) in dev_deps.items() {
-            if is_client and pkg in LEGACY_META_PACKAGES {
-                continue;
-            }
-            resolved.append(
-                ResolvedDependency(
-                    name=pkg,
-                    version=version,
-                    ecosystem="npm",
-                    source="npm",
-                    origin="manifest",
-                    dev=True
-                )
-            );
+    for (pkg, version) in dev_deps.items() {
+        if is_client and pkg in LEGACY_META_PACKAGES {
+            continue;
         }
-        if is_client {
-            core_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-            for (pkg, version) in core_runtime.items() {
-                if pkg not in deps {
-                    resolved.append(
-                        ResolvedDependency(
-                            name=pkg,
-                            version=version,
-                            ecosystem="npm",
-                            source="npm",
-                            origin="self-heal:client-core"
-                        )
-                    );
-                }
-            }
-            for (pkg, version) in CORE_DEV_DEPS.items() {
-                if pkg not in dev_deps {
-                    resolved.append(
-                        ResolvedDependency(
-                            name=pkg,
-                            version=version,
-                            ecosystem="npm",
-                            source="npm",
-                            origin="self-heal:client-core",
-                            dev=True
-                        )
-                    );
-                }
-            }
-            for (pkg, version, origin, is_dev) in app_npm_deps(config) {
+        resolved.append(
+            ResolvedDependency(
+                name=pkg,
+                version=version,
+                ecosystem="npm",
+                source="npm",
+                origin="manifest",
+                dev=True
+            )
+        );
+    }
+    if is_client {
+        core_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+        for (pkg, version) in core_runtime.items() {
+            if pkg not in deps {
                 resolved.append(
                     ResolvedDependency(
                         name=pkg,
                         version=version,
                         ecosystem="npm",
                         source="npm",
-                        origin=origin,
-                        dev=is_dev
+                        origin="self-heal:client-core"
                     )
                 );
             }
         }
-        return resolved;
+        for (pkg, version) in CORE_DEV_DEPS.items() {
+            if pkg not in dev_deps {
+                resolved.append(
+                    ResolvedDependency(
+                        name=pkg,
+                        version=version,
+                        ecosystem="npm",
+                        source="npm",
+                        origin="self-heal:client-core",
+                        dev=True
+                    )
+                );
+            }
+        }
+        for (pkg, version, origin, is_dev) in app_npm_deps(config) {
+            resolved.append(
+                ResolvedDependency(
+                    name=pkg,
+                    version=version,
+                    ecosystem="npm",
+                    source="npm",
+                    origin=origin,
+                    dev=is_dev
+                )
+            );
+        }
+    }
+    return resolved;
+}
+
+impl NpmProvider.parse_spec(spec: str) -> tuple[str, str] {
+    import re;
+    spec = spec.strip();
+    scoped = re.`match(r"^(@[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+)@(.+)$", spec);
+    if scoped {
+        return (scoped.group(1), scoped.group(2));
+    }
+    plain = re.`match(r"^([a-zA-Z0-9_.-]+)@(.+)$", spec);
+    if plain {
+        return (plain.group(1), plain.group(2));
+    }
+    return (spec, "");
+}
+
+impl NpmProvider.install_all(
+    config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
+) -> bool {
+    if not deps {
+        return True;
     }
 
-    override def parse_spec(spec: str) -> tuple[str, str] {
-        import re;
-        spec = spec.strip();
-        scoped = re.`match(r"^(@[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+)@(.+)$", spec);
-        if scoped {
-            return (scoped.group(1), scoped.group(2));
-        }
-        plain = re.`match(r"^([a-zA-Z0-9_.-]+)@(.+)$", spec);
-        if plain {
-            return (plain.group(1), plain.group(2));
-        }
-        return (spec, "");
+    import os;
+    if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
+        return True;
     }
+    if config.project_root is None {
+        raise RuntimeError("No project root found");
+    }
+    regenerate_and_install(Path(str(config.project_root)));
+    return True;
+}
 
-    override def install_all(
-        config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
-    ) -> bool {
-        if not deps {
-            return True;
-        }
+impl NpmProvider.add_package(
+    config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
+) -> str | None {
+    if config.project_root is None {
+        raise RuntimeError("No project root found");
+    }
+    package_version: str = version or "latest";
 
-        import os;
-        if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
-            return True;
-        }
-        if config.project_root is None {
-            raise RuntimeError("No project root found");
-        }
+    (deps, dev_deps) = manifest_plugin_deps(config, "npm");
+    previous = (dev_deps if dev else deps).get(name);
+    config.add_dependency(name, package_version, dev=dev, dep_type="npm");
+    config.save();
+    try {
         regenerate_and_install(Path(str(config.project_root)));
-        return True;
-    }
-
-    override def add_package(
-        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
-    ) -> str | None {
-        if config.project_root is None {
-            raise RuntimeError("No project root found");
+    } except Exception {
+        if previous is not None {
+            config.add_dependency(name, previous, dev=dev, dep_type="npm");
+        } else {
+            config.remove_dependency(name, dev=dev, dep_type="npm");
         }
-        package_version: str = version or "latest";
-
-        (deps, dev_deps) = manifest_plugin_deps(config, "npm");
-        previous = (dev_deps if dev else deps).get(name);
-        config.add_dependency(name, package_version, dev=dev, dep_type="npm");
         config.save();
-        try {
-            regenerate_and_install(Path(str(config.project_root)));
-        } except Exception {
-            if previous is not None {
-                config.add_dependency(name, previous, dev=dev, dep_type="npm");
-            } else {
-                config.remove_dependency(name, dev=dev, dep_type="npm");
-            }
+        raise;
+    }
+    return package_version;
+}
+
+impl NpmProvider.remove_package(
+    config: JacConfig, name: str, dev: bool, ctx: InstallContext
+) -> bool {
+    if config.project_root is None {
+        raise RuntimeError("No project root found");
+    }
+    (deps, dev_deps) = manifest_plugin_deps(config, "npm");
+    previous = (dev_deps if dev else deps).get(name);
+    if not config.remove_dependency(name, dev=dev, dep_type="npm") {
+        return False;
+    }
+    config.save();
+    try {
+        regenerate_and_install(Path(str(config.project_root)));
+    } except Exception {
+        if previous is not None {
+            config.add_dependency(name, previous, dev=dev, dep_type="npm");
             config.save();
-            raise;
         }
-        return package_version;
+        raise;
     }
-
-    override def remove_package(
-        config: JacConfig, name: str, dev: bool, ctx: InstallContext
-    ) -> bool {
-        if config.project_root is None {
-            raise RuntimeError("No project root found");
-        }
-        (deps, dev_deps) = manifest_plugin_deps(config, "npm");
-        previous = (dev_deps if dev else deps).get(name);
-        if not config.remove_dependency(name, dev=dev, dep_type="npm") {
-            return False;
-        }
-        config.save();
-        try {
-            regenerate_and_install(Path(str(config.project_root)));
-        } except Exception {
-            if previous is not None {
-                config.add_dependency(name, previous, dev=dev, dep_type="npm");
-                config.save();
-            }
-            raise;
-        }
-        return True;
-    }
+    return True;
 }

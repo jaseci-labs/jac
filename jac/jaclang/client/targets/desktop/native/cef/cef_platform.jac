@@ -6,11 +6,26 @@ glob CEF_ABI_MAJOR: int = 119,
      CEF_ABI_PATCH: int = 7;
 glob g_abi_checked: int = 0;
 
-def _eprint(msg: str) {
+def _eprint(msg: str);
+
+def _write_uint(n: int);
+
+def _assert_cef_abi;
+
+def cef_stub_add_ref(self: int);
+def cef_stub_release(self: int) -> int;
+
+def cef_stub_has_one_ref(self: int) -> int;
+
+def cef_stub_has_at_least_one_ref(self: int) -> int;
+
+def cef_main_args_create -> int;
+
+impl _eprint(msg: str) {
     write(2, msg, strlen(msg));
 }
 
-def _write_uint(n: int) {
+impl _write_uint(n: int) {
     if n < 0 {
         return;
     }
@@ -23,7 +38,7 @@ def _write_uint(n: int) {
     free(digit_buf);
 }
 
-def _assert_cef_abi {
+impl _assert_cef_abi {
     if g_abi_checked != 0 {
         return;
     }
@@ -49,20 +64,21 @@ def _assert_cef_abi {
     abort();
 }
 
-def cef_stub_add_ref(self: int) {}
-def cef_stub_release(self: int) -> int {
+impl cef_stub_add_ref(self: int) {}
+
+impl cef_stub_release(self: int) -> int {
     return 0;
 }
 
-def cef_stub_has_one_ref(self: int) -> int {
+impl cef_stub_has_one_ref(self: int) -> int {
     return 1;
 }
 
-def cef_stub_has_at_least_one_ref(self: int) -> int {
+impl cef_stub_has_at_least_one_ref(self: int) -> int {
     return 1;
 }
 
-def cef_main_args_create -> int {
+impl cef_main_args_create -> int {
     pw: cef_ptr_wrap_t = cef_ptr_wrap_t();
     argv_wrap: cef_ptr_wrap_t = cef_ptr_wrap_t();
     fd: i32 = open("/proc/self/cmdline", 0);

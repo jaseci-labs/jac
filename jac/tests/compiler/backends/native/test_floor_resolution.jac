@@ -100,6 +100,27 @@ test "a sealed image and a kit serve their own python/floor" {
     }
 }
 
+test "a runtime being sealed serves the floor staged beside it" {
+    import jaclang;
+    rt = tempfile.mkdtemp();
+    pkg = _touch(os.path.join(rt, "site", "jaclang", "__init__.py"));
+    staged = _mk(os.path.join(rt, "python", "floor", "macos-aarch64"));
+    _touch(os.path.join(staged, "libcrypto.a"));
+    with patch("jaclang.artifacts.kit.kit_image", return_value=None) {
+        with patch.object(jaclang, "__file__", pkg) {
+            found = floors.CFloorArtifact(variant="macos-aarch64").probe_kit();
+            assert found.found is not None and found.found.path == staged;
+        }
+        bare = _touch(
+            os.path.join(tempfile.mkdtemp(), "site", "jaclang", "__init__.py")
+        );
+        with patch.object(jaclang, "__file__", bare) {
+            assert floors.CFloorArtifact(variant="macos-aarch64").probe_kit().found
+                is None;
+        }
+    }
+}
+
 test "a wasm libc floor is current only while its manifest matches wasm_rt" {
     libc = tempfile.mkdtemp();
     _touch(os.path.join(libc, "libc.bc"));

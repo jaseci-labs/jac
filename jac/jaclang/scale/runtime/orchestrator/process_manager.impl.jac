@@ -1,144 +1,35 @@
 import from pathlib { Path as _Path }
 
-def _pidfile_path(name: str) -> _Path {
-    return _Path(".jac/run") / f"{name}.pid";
-}
+def _pidfile_path(name: str) -> _Path;
 
-def _write_pidfile(name: str, pid: int) {
-    run_dir = _Path(".jac/run");
-    run_dir.mkdir(parents=True, exist_ok=True);
-    _pidfile_path(name).write_text(str(pid));
-}
+def _write_pidfile(name: str, pid: int);
 
-def _read_pidfile(name: str) -> int | None {
-    path = _pidfile_path(name);
-    try {
-        if not path.exists() {
-            return None;
-        }
-        content: str = path.read_text().strip();
-        if not content {
-            return None;
-        }
-        return int(content);
-    } except (ValueError, OSError) {
-        return None;
-    }
-}
+def _read_pidfile(name: str) -> int | None;
 
-def _remove_pidfile(name: str) {
-    path = _pidfile_path(name);
-    try {
-        if path.exists() {
-            path.unlink();
-        }
-    } except OSError {}
-    _remove_portfile(name);
-}
+def _remove_pidfile(name: str);
 
-def _portfile_path(name: str) -> _Path {
-    return _Path(".jac/run") / f"{name}.port";
-}
+def _portfile_path(name: str) -> _Path;
 
-def _write_portfile(name: str, port: int) {
-    run_dir = _Path(".jac/run");
-    run_dir.mkdir(parents=True, exist_ok=True);
-    _portfile_path(name).write_text(str(port));
-}
+def _write_portfile(name: str, port: int);
 
-def _read_portfile(name: str) -> int | None {
-    path = _portfile_path(name);
-    try {
-        if not path.exists() {
-            return None;
-        }
-        content: str = path.read_text().strip();
-        if not content {
-            return None;
-        }
-        return int(content);
-    } except (ValueError, OSError) {
-        return None;
-    }
-}
+def _read_portfile(name: str) -> int | None;
 
-def _remove_portfile(name: str) {
-    path = _portfile_path(name);
-    try {
-        if path.exists() {
-            path.unlink();
-        }
-    } except OSError {}
-}
+def _remove_portfile(name: str);
 
-def _log_size(name: str) -> int {
-    try {
-        return (_Path(".jac/logs") / f"{name}.log").stat().st_size;
-    } except OSError {
-        return 0;
-    }
-}
+def _log_size(name: str) -> int;
 
 
-def _log_tail(name: str, lines: int = 8) -> str {
-    try {
-        content = (_Path(".jac/logs") / f"{name}.log").read_text(
-            encoding="utf-8", errors="replace"
-        );
-        return "\n".join(content.strip().splitlines()[-lines:]);
-    } except OSError {
-        return "";
-    }
-}
+def _log_tail(name: str, lines: int = 8) -> str;
 
-def _report_exit(name: str, exit_code: int, context: str) {
-    tail = _log_tail(name);
-    suffix = f"; last log lines:\n{tail}" if tail else "";
-    logger.error(f"{name} exited with code {exit_code} {context}{suffix}");
-}
+def _report_exit(name: str, exit_code: int, context: str);
 
-def _owns_group(pid: int) -> bool {
-    import os;
-    try {
-        pgid = os.getpgid(pid);
-    } except (ProcessLookupError, OSError) {
-        return False;
-    }
-    return pgid == pid and pgid != os.getpgrp();
-}
+def _owns_group(pid: int) -> bool;
 
 
-def _signal_group(pid: int, sig: int) -> None {
-    import os;
-    if pid <= 0 {
-        return;
-    }
-    if _owns_group(pid) {
-        try {
-            os.killpg(pid, sig);
-            return;
-        } except (ProcessLookupError, PermissionError, OSError) {}
-    }
-    try {
-        os.kill(pid, sig);
-    } except (ProcessLookupError, OSError) {}
-}
+def _signal_group(pid: int, sig: int) -> None;
 
 
-def _pid_alive(pid: int) -> bool {
-    import os;
-    if pid <= 0 {
-        return False;
-    }
-    try {
-        os.kill(pid, 0);
-        return True;
-    } except ProcessLookupError {
-        return False;
-    } except OSError {
-        return False;
-    }
-}
+def _pid_alive(pid: int) -> bool;
 
 impl ServiceProcessManager._url_for(service_entry: ServiceEntry) -> str {
     if self.deployer is not None {
@@ -501,23 +392,7 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
 }
 
 
-def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None {
-    while not stop_event.is_set() {
-        settled: bool = False;
-        try {
-            results = pm.check_all_health();
-            settled = bool(results) and all(results.values());
-        } except Exception as e {
-            logger.warning(f"health monitor iteration failed: {e}");
-        }
-        current: float = pm._health_monitor_interval
-            if settled
-            else min(pm._health_monitor_interval, interval);
-        if stop_event.`wait(current) {
-            return;
-        }
-    }
-}
+def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None;
 
 
 impl ServiceProcessManager.start_health_monitor(interval: float | None = None) -> None {
@@ -559,5 +434,164 @@ impl ServiceProcessManager.end_boot -> None {
     self._booting = False;
     for name in list(self._failure_counts.keys()) {
         self._failure_counts[name] = 0;
+    }
+}
+
+impl _pidfile_path(name: str) -> _Path {
+    return _Path(".jac/run") / f"{name}.pid";
+}
+
+impl _write_pidfile(name: str, pid: int) {
+    run_dir = _Path(".jac/run");
+    run_dir.mkdir(parents=True, exist_ok=True);
+    _pidfile_path(name).write_text(str(pid));
+}
+
+impl _read_pidfile(name: str) -> int | None {
+    path = _pidfile_path(name);
+    try {
+        if not path.exists() {
+            return None;
+        }
+        content: str = path.read_text().strip();
+        if not content {
+            return None;
+        }
+        return int(content);
+    } except (ValueError, OSError) {
+        return None;
+    }
+}
+
+impl _remove_pidfile(name: str) {
+    path = _pidfile_path(name);
+    try {
+        if path.exists() {
+            path.unlink();
+        }
+    } except OSError {}
+    _remove_portfile(name);
+}
+
+impl _portfile_path(name: str) -> _Path {
+    return _Path(".jac/run") / f"{name}.port";
+}
+
+impl _write_portfile(name: str, port: int) {
+    run_dir = _Path(".jac/run");
+    run_dir.mkdir(parents=True, exist_ok=True);
+    _portfile_path(name).write_text(str(port));
+}
+
+impl _read_portfile(name: str) -> int | None {
+    path = _portfile_path(name);
+    try {
+        if not path.exists() {
+            return None;
+        }
+        content: str = path.read_text().strip();
+        if not content {
+            return None;
+        }
+        return int(content);
+    } except (ValueError, OSError) {
+        return None;
+    }
+}
+
+impl _remove_portfile(name: str) {
+    path = _portfile_path(name);
+    try {
+        if path.exists() {
+            path.unlink();
+        }
+    } except OSError {}
+}
+
+impl _log_size(name: str) -> int {
+    try {
+        return (_Path(".jac/logs") / f"{name}.log").stat().st_size;
+    } except OSError {
+        return 0;
+    }
+}
+
+
+impl _log_tail(name: str, lines: int = 8) -> str {
+    try {
+        content = (_Path(".jac/logs") / f"{name}.log").read_text(
+            encoding="utf-8", errors="replace"
+        );
+        return "\n".join(content.strip().splitlines()[-lines:]);
+    } except OSError {
+        return "";
+    }
+}
+
+impl _report_exit(name: str, exit_code: int, context: str) {
+    tail = _log_tail(name);
+    suffix = f"; last log lines:\n{tail}" if tail else "";
+    logger.error(f"{name} exited with code {exit_code} {context}{suffix}");
+}
+
+impl _owns_group(pid: int) -> bool {
+    import os;
+    try {
+        pgid = os.getpgid(pid);
+    } except (ProcessLookupError, OSError) {
+        return False;
+    }
+    return pgid == pid and pgid != os.getpgrp();
+}
+
+
+impl _signal_group(pid: int, sig: int) -> None {
+    import os;
+    if pid <= 0 {
+        return;
+    }
+    if _owns_group(pid) {
+        try {
+            os.killpg(pid, sig);
+            return;
+        } except (ProcessLookupError, PermissionError, OSError) {}
+    }
+    try {
+        os.kill(pid, sig);
+    } except (ProcessLookupError, OSError) {}
+}
+
+
+impl _pid_alive(pid: int) -> bool {
+    import os;
+    if pid <= 0 {
+        return False;
+    }
+    try {
+        os.kill(pid, 0);
+        return True;
+    } except ProcessLookupError {
+        return False;
+    } except OSError {
+        return False;
+    }
+}
+
+
+impl _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None {
+    while not stop_event.is_set() {
+        settled: bool = False;
+        try {
+            results = pm.check_all_health();
+            settled = bool(results) and all(results.values());
+        } except Exception as e {
+            logger.warning(f"health monitor iteration failed: {e}");
+        }
+        current: float = pm._health_monitor_interval
+            if settled
+            else min(pm._health_monitor_interval, interval);
+        if stop_event.`wait(current) {
+            return;
+        }
     }
 }

@@ -3,17 +3,6 @@
 Derived from CPython 3.14.6 Modules/_typingmodule.c; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyObject,
-    _PyTypeAlias_Type,
-    _PyUnion_Type,
-    _Py_NoDefaultStruct,
-    jacpy_typing_types
-}
-import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHooks }
-import from jaclang.runtime.python.bindings.runtime_objects { export_runtime_objects }
-import from jaclang.runtime.python.bindings.clinic.typing { module_methods }
-
 # Positions in jacpy_typing_types(), the interpreter's cached typing types in
 # the declaration order of struct _Py_interp_cached_objects.
 glob:priv CACHED: list[tuple[str, int]] = [

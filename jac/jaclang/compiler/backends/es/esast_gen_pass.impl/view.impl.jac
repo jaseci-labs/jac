@@ -380,9 +380,9 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
 }
 
 impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
-    owner: (uni.UniNode | None) = here.parent;
+    owner: (uni.UniNode | None) = here.decl_parent;
     while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
-        owner = owner.parent;
+        owner = owner.decl_parent;
     }
     if isinstance(owner, uni.Archetype) or not here.in_client_context() {
         here.gen.es_ast = None;

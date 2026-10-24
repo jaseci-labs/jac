@@ -13,16 +13,6 @@ already provisions headroom for that; the Kubernetes provisioner shipped the
 stock defaults, which is the configuration the incident ran on.
 """
 
-import from jaclang.scale.deploy.database.kubernetes_postgres {
-    KubernetesPostgresProvider
-}
-import from jaclang.data.pgembed {
-    PG_MAX_CONNECTIONS,
-    PG_MAX_PRED_LOCKS_PER_TXN,
-    pg_tuning_settings,
-    predicate_lock_shortfall
-}
-
 glob OBSERVED_PEAK_SIREAD_LOCKS = 17406,
      OBSERVED_SIREAD_LOCKS_PER_CONN = 870;
 

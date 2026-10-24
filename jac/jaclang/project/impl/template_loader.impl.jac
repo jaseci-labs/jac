@@ -3,15 +3,7 @@ import from pathlib { Path }
 import importlib;
 import base64;
 
-def _read_file_content(file_path: Path) -> str {
-    try {
-        return file_path.read_text(encoding="utf-8");
-    } except UnicodeDecodeError {
-        binary_content = file_path.read_bytes();
-        encoded = base64.b64encode(binary_content).decode("ascii");
-        return "base64:" + encoded;
-    }
-}
+def _read_file_content(file_path: Path) -> str;
 
 impl load_template_from_directory(
     template_dir: Path,
@@ -321,5 +313,15 @@ impl _append_overlay_tables(
     }
     for (sub, sub_table) in nested {
         _append_overlay_tables(lines, parts + (sub, ), sub_table);
+    }
+}
+
+impl _read_file_content(file_path: Path) -> str {
+    try {
+        return file_path.read_text(encoding="utf-8");
+    } except UnicodeDecodeError {
+        binary_content = file_path.read_bytes();
+        encoded = base64.b64encode(binary_content).decode("ascii");
+        return "base64:" + encoded;
     }
 }

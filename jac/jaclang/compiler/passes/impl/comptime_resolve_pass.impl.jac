@@ -1,0 +1,100 @@
+impl _is_comptime_marker(nd: UniNode) -> bool {
+    if isinstance(nd, GlobalVars) {
+        return nd.is_frozen;
+    }
+    if isinstance(
+        nd,
+        (
+            Ability,
+            AssertStmt,
+            Assignment,
+            IfStmt,
+            Import,
+            InForStmt,
+            ParamVar,
+            TypeParam
+        )
+    ) {
+        return nd.is_comptime;
+    }
+    return False;
+}
+
+impl comptime_reach(top: UniNode) -> set[int] {
+    keep: set[int] = set();
+    stack: list[UniNode] = [top];
+    marked: list[UniNode] = [];
+    while stack {
+        nd = stack.pop();
+        if _is_comptime_marker(nd) {
+            marked.append(nd);
+        }
+        for k in [nd->:Kid:->] {
+            if k {
+                stack.append(k);
+            }
+        }
+    }
+    for m in marked {
+        cur: (UniNode | None) = m;
+        while cur is not None and id(cur) not in keep {
+            keep.add(id(cur));
+            cur = cur.parent;
+        }
+        inner: list[UniNode] = [m];
+        while inner {
+            nd = inner.pop();
+            keep.add(id(nd));
+            for k in [nd->:Kid:->] {
+                if k {
+                    inner.append(k);
+                }
+            }
+        }
+    }
+    return keep;
+}
+
+impl ComptimeResolvePass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
+    self._keep = comptime_reach(self.module);
+    self._armed = bool(self._keep) and not self.module.ct_resolved;
+    if self._armed {
+        self._insert_builtin_symbols();
+        self._install_client_state_setters();
+    }
+}
+
+impl ComptimeResolvePass.finish with exit {
+    if self.ctx.nested_depth {
+        return;
+    }
+    if not self._armed {
+        return;
+    }
+    self.module.ct_resolved = True;
+}
+
+impl ComptimeResolvePass.enter_walk with UniNode entry {
+    if self.ctx.is_canceled() or here.ct_pruned {
+        osp_skip_rest();
+        return;
+    }
+    self.ctx.current_node = here;
+    if not self._armed or id(here) not in self._keep {
+        osp_skip_rest();
+    }
+}
+
+impl ComptimeResolvePass.exit_walk with UniNode exit {
+    if here.ct_pruned {
+        osp_skip_rest();
+        return;
+    }
+    self.ctx.current_node = here;
+    if self.ctx.is_canceled() or not self._armed or id(here) not in self._keep {
+        osp_skip_rest();
+    }
+}

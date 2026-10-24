@@ -2,17 +2,7 @@ import asyncio;
 import json;
 import from urllib.parse { urlparse, parse_qs }
 import from unittest.mock { MagicMock, patch, AsyncMock }
-import from jaclang.scale.sso.oauth_session {
-    OAuthSession,
-    challenge_of,
-    complete_identity
-}
-import from jaclang.scale.sso.provider { SSOUserInfo }
-import from jaclang.scale.sso.github { GithubSSOProvider }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.identity.user_manager { SessionGrant }
 
-import from .oauth_fixtures { FakeTokens, fake_users, provider }
 
 test "OAuth state is random scoped and PKCE protected" {
     tokens: any = FakeTokens();

@@ -187,7 +187,9 @@ impl AuthTokenStore._delete_user(
     return len(to_delete);
 }
 
-def _is_expired(record: dict[str, any]) -> bool {
+def _is_expired(record: dict[str, any]) -> bool;
+
+impl _is_expired(record: dict[str, any]) -> bool {
     raw_expires = record.get('expires_at');
     if raw_expires is None {
         return False;

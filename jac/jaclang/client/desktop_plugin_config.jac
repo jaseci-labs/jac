@@ -8,25 +8,14 @@ obj PluginMetadata {
         version: str,
         description: str;
 
-    def to_dict -> dict[str, str] {
-        return {
-            'name': self.name,
-            'version': self.version,
-            'description': self.description
-        };
-    }
+    def to_dict -> dict[str, str];
 }
 
 
-def desktop_sdk_path -> str {
-    this_dir = os.path.dirname(os.path.abspath(__file__));
-    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.jac');
-}
+def desktop_sdk_path -> str;
 
 
-def desktop_sdk_exports -> list[str] {
-    return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
-}
+def desktop_sdk_exports -> list[str];
 
 obj ConfigOptionSpec {
     has type: str,
@@ -41,79 +30,123 @@ obj ConfigOptionSpec {
         value_is_empty_dict: bool = False,
         nested: dict[str, ConfigOptionSpec] = {};
 
-    def _default_value -> object {
-        if self.value_is_int {
-            return self.value_int;
-        }
-        if self.value_is_bool {
-            return self.value_bool;
-        }
-        if self.value_is_list {
-            return self.value_list;
-        }
-        if self.value_is_empty_dict {
-            return {};
-        }
-        return self.value_str;
-    }
-
-    def to_dict -> dict[str, object] {
-        if self.nested {
-            nested_out: dict[str, object] = {};
-            for (k, spec) in self.nested.items() {
-                nested_out[k] = spec.to_dict();
-            }
-            return {
-                'type': self.type,
-                'default': self._default_value(),
-                'description': self.description,
-                'nested': nested_out
-            };
-        }
-        return {
-            'type': self.type,
-            'default': self._default_value(),
-            'description': self.description
-        };
-    }
+    def _default_value -> object;
+    def to_dict -> dict[str, object];
 }
 
 obj PluginConfigSchema {
     has section: str,
         options: dict[str, ConfigOptionSpec];
 
-    def to_dict -> dict[str, object] {
-        options_out: dict[str, object] = {};
-        for (k, spec) in self.options.items() {
-            options_out[k] = spec.to_dict();
-        }
-        return {'section': self.section, 'options': options_out};
-    }
+    def to_dict -> dict[str, object];
 }
 
-def schema_str_option(value: str, description: str) -> ConfigOptionSpec {
+def schema_str_option(value: str, description: str) -> ConfigOptionSpec;
+
+def schema_int_option(value: int, description: str) -> ConfigOptionSpec;
+
+def schema_bool_option(value: bool, description: str) -> ConfigOptionSpec;
+
+def schema_list_option(value: list[str], description: str) -> ConfigOptionSpec;
+
+def schema_dict_option(
+    description: str, nested: dict[str, ConfigOptionSpec] | None = None
+) -> ConfigOptionSpec;
+
+def _desktop_config_schema -> PluginConfigSchema;
+
+class JacDesktopPluginConfig {
+    static def get_plugin_metadata -> dict[str, str];
+    static def get_config_schema -> dict[str, object];
+    static def desktop_project_template -> dict[str, object] | None;
+}
+
+def _load_desktop_template -> dict[str, object] | None;
+
+impl PluginMetadata.to_dict -> dict[str, str] {
+    return {
+        'name': self.name,
+        'version': self.version,
+        'description': self.description
+    };
+}
+
+impl desktop_sdk_path -> str {
+    this_dir = os.path.dirname(os.path.abspath(__file__));
+    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.jac');
+}
+
+impl desktop_sdk_exports -> list[str] {
+    return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
+}
+
+impl ConfigOptionSpec._default_value -> object {
+    if self.value_is_int {
+        return self.value_int;
+    }
+    if self.value_is_bool {
+        return self.value_bool;
+    }
+    if self.value_is_list {
+        return self.value_list;
+    }
+    if self.value_is_empty_dict {
+        return {};
+    }
+    return self.value_str;
+}
+
+impl ConfigOptionSpec.to_dict -> dict[str, object] {
+    if self.nested {
+        nested_out: dict[str, object] = {};
+        for (k, spec) in self.nested.items() {
+            nested_out[k] = spec.to_dict();
+        }
+        return {
+            'type': self.type,
+            'default': self._default_value(),
+            'description': self.description,
+            'nested': nested_out
+        };
+    }
+    return {
+        'type': self.type,
+        'default': self._default_value(),
+        'description': self.description
+    };
+}
+
+impl PluginConfigSchema.to_dict -> dict[str, object] {
+    options_out: dict[str, object] = {};
+    for (k, spec) in self.options.items() {
+        options_out[k] = spec.to_dict();
+    }
+    return {'section': self.section, 'options': options_out};
+}
+
+impl schema_str_option(value: str, description: str) -> ConfigOptionSpec {
     return ConfigOptionSpec(type="str", value_str=value, description=description);
 }
 
-def schema_int_option(value: int, description: str) -> ConfigOptionSpec {
+impl schema_int_option(value: int, description: str) -> ConfigOptionSpec {
     return ConfigOptionSpec(
         type="int", value_int=value, value_is_int=True, description=description
     );
 }
 
-def schema_bool_option(value: bool, description: str) -> ConfigOptionSpec {
+impl schema_bool_option(value: bool, description: str) -> ConfigOptionSpec {
     return ConfigOptionSpec(
         type="bool", value_bool=value, value_is_bool=True, description=description
     );
 }
 
-def schema_list_option(value: list[str], description: str) -> ConfigOptionSpec {
+impl schema_list_option(value: list[str], description: str) -> ConfigOptionSpec {
     return ConfigOptionSpec(
         type="list", value_list=value, value_is_list=True, description=description
     );
 }
 
-def schema_dict_option(
+impl schema_dict_option(
     description: str, nested: dict[str, ConfigOptionSpec] | None = None
 ) -> ConfigOptionSpec {
     nested_opts = nested if nested is not None else {};
@@ -125,7 +158,7 @@ def schema_dict_option(
     );
 }
 
-def _desktop_config_schema -> PluginConfigSchema {
+impl _desktop_config_schema -> PluginConfigSchema {
     return PluginConfigSchema(
         section="desktop",
         options={
@@ -203,24 +236,22 @@ def _desktop_config_schema -> PluginConfigSchema {
     );
 }
 
-class JacDesktopPluginConfig {
-    static def get_plugin_metadata -> dict[str, str] {
-        return PluginMetadata(
-            name="desktop",
-            version=pkg_version("jaclang"),
-            description="Jac-native desktop target (webview + native build)."
-        ).to_dict();
-    }
-
-    static def get_config_schema -> dict[str, object] {
-        return _desktop_config_schema().to_dict();
-    }
-
-    static def desktop_project_template -> dict[str, object] | None {
-        return _load_desktop_template();
-    }
+impl JacDesktopPluginConfig.get_plugin_metadata -> dict[str, str] {
+    return PluginMetadata(
+        name="desktop",
+        version=pkg_version("jaclang"),
+        description="Jac-native desktop target (webview + native build)."
+    ).to_dict();
 }
 
-def _load_desktop_template -> dict[str, object] | None {
+impl JacDesktopPluginConfig.get_config_schema -> dict[str, object] {
+    return _desktop_config_schema().to_dict();
+}
+
+impl JacDesktopPluginConfig.desktop_project_template -> dict[str, object] | None {
+    return _load_desktop_template();
+}
+
+impl _load_desktop_template -> dict[str, object] | None {
     return _load_template("desktop");
 }

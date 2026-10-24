@@ -620,7 +620,7 @@ impl TypeEvaluator.declaring_class_of(
     if symbol.decl is None {
         return None;
     }
-    arch = symbol.decl.find_parent_of_type(Archetype);
+    arch = symbol.decl.enclosing_decl(Archetype);
     if arch is None {
         return None;
     }
@@ -1074,11 +1074,7 @@ impl TypeEvaluator._iterable_elem_contrib(args: list[Expr]) -> TypeBase | None {
 }
 
 impl TypeEvaluator._get_enclosing_class(nd: UniNode) -> Archetype | None {
-    impl_ := nd.find_parent_of_type(ImplDef);
-    if impl_ and isinstance(impl_.decl_link, Archetype) {
-        return impl_.decl_link;
-    }
-    return nd.find_parent_of_type(Archetype);
+    return nd.enclosing_decl(Archetype);
 }
 
 impl TypeEvaluator._get_enclosing_method(nd: UniNode) -> Ability | None {
@@ -1106,6 +1102,9 @@ impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
                 return True;
             }
         } elif isinstance(cur, ImplDef) {
+            if isinstance(cur.decl_link, ArchSpec) {
+                return False;
+            }
             if child is not cur.spec
                 and child not in (cur.decorators or [])
                 and child not in (cur.target or []) {
@@ -1124,9 +1123,9 @@ impl TypeEvaluator._in_function_body(nd: UniNode) -> bool {
 
 impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool {
     def enclosing_fn(n: UniNode) -> (UniNode | None) {
-        cur = n.parent;
-        while cur is not None and not isinstance(cur, (Ability, ImplDef, LambdaExpr)) {
-            cur = cur.parent;
+        cur = n.decl_parent;
+        while cur is not None and not isinstance(cur, (Ability, LambdaExpr)) {
+            cur = cur.decl_parent;
         }
         return cur;
     }
@@ -1135,6 +1134,10 @@ impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool
         return False;
     }
     for use in symbol.uses {
+        owner = use.parent;
+        if isinstance(owner, AtomTrailer) and owner.is_attr and owner.right is use {
+            continue;
+        }
         if isinstance(use, Name)
             and use.expr_ctx == ExprCtx.STORE
             and enclosing_fn(use) is fn {
@@ -1147,15 +1150,9 @@ impl TypeEvaluator._stored_in_same_function(symbol: Symbol, nd: UniNode) -> bool
 impl TypeEvaluator._get_enclosing_return_scope(
     nd: UniNode
 ) -> Ability | LambdaExpr | None {
-    while nd := nd.parent {
-        if isinstance(nd, LambdaExpr) {
+    while nd := nd.decl_parent {
+        if isinstance(nd, (LambdaExpr, Ability)) {
             return nd;
-        }
-        if isinstance(nd, Ability) {
-            return nd;
-        }
-        if isinstance(nd, ImplDef) and isinstance(nd.decl_link, Ability) {
-            return nd.decl_link;
         }
     }
     return None;
@@ -1217,15 +1214,7 @@ impl TypeEvaluator._get_declared_return_type(
 }
 
 impl TypeEvaluator._get_enclosing_function(nd: UniNode) -> Ability | None {
-    while nd := nd.parent {
-        if isinstance(nd, Ability) {
-            return nd;
-        }
-        if isinstance(nd, ImplDef) and isinstance(nd.decl_link, Ability) {
-            return nd.decl_link;
-        }
-    }
-    return None;
+    return nd.enclosing_decl(Ability);
 }
 
 
@@ -2303,8 +2292,7 @@ impl TypeEvaluator.validate_typevar_variance(func: Ability) -> None {
 
 impl TypeEvaluator.validate_typevar_scope(expr: Expr, type_var: TypeVarType) -> None {
     if type_var.is_self {
-        if expr.find_parent_of_type(Archetype) is not None
-            or expr.find_parent_of_type(ImplDef) is not None {
+        if expr.enclosing_decl(Archetype) is not None {
             return;
         }
     }
@@ -2312,16 +2300,16 @@ impl TypeEvaluator.validate_typevar_scope(expr: Expr, type_var: TypeVarType) -> 
         sym_decl = expr.sym.decl;
         if sym_decl {
             is_module_level = False;
-            decl_parent = sym_decl.parent;
-            while decl_parent {
-                if isinstance(decl_parent, Module) {
+            owner = sym_decl.decl_parent;
+            while owner {
+                if isinstance(owner, Module) {
                     is_module_level = True;
                     break;
                 }
-                if isinstance(decl_parent, (Archetype, Ability)) {
+                if isinstance(owner, (Archetype, Ability)) {
                     break;
                 }
-                decl_parent = decl_parent.parent;
+                owner = owner.decl_parent;
             }
 
             if is_module_level {
@@ -2392,7 +2380,7 @@ impl TypeEvaluator._type_var_bound_in_scope(node_: UniNode, name: str) -> bool {
 
 impl TypeEvaluator._get_outer_scope_type_params(node_: UniNode) -> list[TypeVarType] {
     type_params: list[TypeVarType] = [];
-    current: UniNode | None = node_.parent;
+    current: UniNode | None = node_.decl_parent;
 
     while current {
         if isinstance(current, Archetype) {
@@ -2408,7 +2396,7 @@ impl TypeEvaluator._get_outer_scope_type_params(node_: UniNode) -> list[TypeVarT
                 type_params.append(tp);
             }
         }
-        current = current.parent;
+        current = current.decl_parent;
     }
     return type_params;
 }

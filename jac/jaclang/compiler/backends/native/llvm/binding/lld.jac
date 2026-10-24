@@ -1,5 +1,4 @@
 import from ctypes { c_int, c_uint, c_char_p, c_size_t, POINTER }
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
 
 glob _LLD_SPENT: list[bool] = [];
 

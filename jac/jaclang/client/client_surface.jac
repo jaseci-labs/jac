@@ -11,7 +11,27 @@ glob _REACT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
          RuntimeSymbol(name="forwardRef", source="react")
      ];
 
-def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
+def runtime_symbol(name: str) -> (RuntimeSymbol | None);
+
+glob WASM_HOST_MODULE: str = "@jac/wasm_host";
+
+def injected_virtual_modules(backend: FrameworkBackend) -> list[str];
+
+def runtime_import_source(name: str, backend: (FrameworkBackend | None) = None) -> str;
+
+def backend_jsx_factory_name(backend: (FrameworkBackend | None) = None) -> str;
+
+def _required_runtime_globals(
+    backend: (FrameworkBackend | None) = None
+) -> tuple[list[str], str];
+
+def with_runtime_globals(
+    js_code: str, backend: (FrameworkBackend | None) = None
+) -> str;
+
+def prepend_active_runtime_globals(js_code: str) -> str;
+
+impl runtime_symbol(name: str) -> (RuntimeSymbol | None) {
     for sym in _REACT_RUNTIME_SURFACE {
         if sym.name == name {
             return sym;
@@ -20,13 +40,13 @@ def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
     return None;
 }
 
-glob WASM_HOST_MODULE: str = "@jac/wasm_host";
-
-def injected_virtual_modules(backend: FrameworkBackend) -> list[str] {
+impl injected_virtual_modules(backend: FrameworkBackend) -> list[str] {
     return [backend.runtime_module(), WASM_HOST_MODULE];
 }
 
-def runtime_import_source(name: str, backend: (FrameworkBackend | None) = None) -> str {
+impl runtime_import_source(
+    name: str, backend: (FrameworkBackend | None) = None
+) -> str {
     if backend is not None {
         src = backend.import_source(name);
         if isinstance(src, str) and src {
@@ -40,7 +60,7 @@ def runtime_import_source(name: str, backend: (FrameworkBackend | None) = None) 
     return "@jac/runtime";
 }
 
-def backend_jsx_factory_name(backend: (FrameworkBackend | None) = None) -> str {
+impl backend_jsx_factory_name(backend: (FrameworkBackend | None) = None) -> str {
     if backend is not None {
         name = backend.jsx_factory_name();
         if isinstance(name, str) and name {
@@ -50,7 +70,7 @@ def backend_jsx_factory_name(backend: (FrameworkBackend | None) = None) -> str {
     return "__jacJsx";
 }
 
-def _required_runtime_globals(
+impl _required_runtime_globals(
     backend: (FrameworkBackend | None) = None
 ) -> tuple[list[str], str] {
     if backend is not None {
@@ -68,7 +88,7 @@ def _required_runtime_globals(
     return (default_names, "@jac/runtime");
 }
 
-def with_runtime_globals(
+impl with_runtime_globals(
     js_code: str, backend: (FrameworkBackend | None) = None
 ) -> str {
     (names, src) = _required_runtime_globals(backend);
@@ -90,6 +110,6 @@ def with_runtime_globals(
     return line + '\n' + js_code;
 }
 
-def prepend_active_runtime_globals(js_code: str) -> str {
+impl prepend_active_runtime_globals(js_code: str) -> str {
     return with_runtime_globals(js_code, resolve_active_backend());
 }

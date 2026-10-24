@@ -11,11 +11,6 @@ import from logging.handlers { MemoryHandler }
 import glob;
 import from pathlib { Path }
 import from typing { cast }
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data
-}
 
 """Generate HMAC-SHA256 signature for webhook payload."""
 def _generate_webhook_signature(payload: bytes, secret: str) -> str {

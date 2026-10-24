@@ -14,17 +14,6 @@ import datetime;
 import socket;
 import threading;
 import from tempfile { mkdtemp }
-import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.data.store { PgStore }
-import from jaclang.testing.requires { require_module }
-import from jaclang.scale.scheduler.scheduler {
-    JOBS_CHANGED_CHANNEL,
-    JacScaleScheduler,
-    PgJobStore,
-    TriggerSpec,
-    new_engine
-}
-import from jaclang.server.task_scheduler { Scheduler, ScheduleSpec, tick_of }
 
 glob _holder: dict[str, any] = {};
 
@@ -76,7 +65,6 @@ obj _Server {
 
 
 def _unreachable_store -> PgStore {
-    import from jaclang.server.session { conninfo_from_url }
     probe = socket.socket();
     probe.bind(('127.0.0.1', 0));
     port = probe.getsockname()[1];

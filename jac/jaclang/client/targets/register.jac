@@ -1,4 +1,6 @@
-def register_targets {
+def register_targets;
+
+impl register_targets {
     registry = get_target_registry();
     registry.register(WebTarget());
     registry.register(StaticTarget());

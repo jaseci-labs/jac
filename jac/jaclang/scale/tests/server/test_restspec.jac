@@ -1,11 +1,5 @@
 """Test for restspec decorator functionality."""
 
-import from jaclang.scale.tests.scale_test_client {
-    ScaleTestClient,
-    make_client,
-    extract_data
-}
-
 def _as_any(v: any) -> any {
     return v;
 }

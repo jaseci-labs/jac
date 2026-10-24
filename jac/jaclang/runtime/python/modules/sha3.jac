@@ -6,37 +6,6 @@ the registry links for _sha3. The six types share one implementation; a
 type's slot in the module state selects its HACL* algorithm.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyBytes_FromStringAndSize,
-    PyErr_NoMemory,
-    PyExc_SystemError,
-    PyExc_ValueError,
-    PyLong_FromLong,
-    PyMem_Free,
-    PyMem_Malloc,
-    PyObject,
-    PyType_GetModule,
-    PyUnicode_FromString,
-    Py_TYPE,
-    _Py_strhex,
-    jacpy_bytes_from_memory,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.modules.hashlib {
-    HashLock,
-    UINT32_MAX,
-    data_argument,
-    hash_digest,
-    hash_initial_data,
-    hash_object_new,
-    hash_state_of,
-    hash_update
-}
 import from c {
     def _Py_LibHacl_Hacl_Hash_SHA3_malloc(a: u8) -> ptr;  def _Py_LibHacl_Hacl_Hash_SHA3_free(
         state: ptr

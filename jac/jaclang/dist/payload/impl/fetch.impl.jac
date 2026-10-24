@@ -15,11 +15,7 @@ impl HttpSource.get_range(url: str, start: int, end: int) -> bytes {
     return http_get_range(url, start, end);
 }
 
-def _open(url: str, headers: dict[str, str]) -> http.client.HTTPResponse {
-    hdrs = {"User-Agent": USER_AGENT};
-    hdrs.update(headers);
-    return urllib.request.urlopen(urllib.request.Request(url, headers=hdrs));
-}
+def _open(url: str, headers: dict[str, str]) -> http.client.HTTPResponse;
 
 impl http_get(url: str) -> bytes {
     status = 0;
@@ -76,13 +72,7 @@ impl bun_asset_name(osarch: str) -> str | None {
     );
 }
 
-def _gunzip(gz: bytes) -> bytes {
-    try {
-        return gzip.decompress(gz);
-    } except (OSError, EOFError, zlib.error) as e {
-        raise PayloadDie(f"gzip decompress failed: {type(e).__name__}: {e}");
-    }
-}
+def _gunzip(gz: bytes) -> bytes;
 
 impl fetch_typeshed(repo_root: str) {
     vendor = os.path.join(repo_root, TYPESHED_VENDOR);
@@ -254,48 +244,11 @@ impl member_data(run: bytes, run_start: int, m: ZipMember) -> bytes {
     return run[data_off:data_off + m.csize];
 }
 
-def _manifest_sha_map(manifest: bytes, rel: LlvmSlice) -> dict[str, str] {
-    ms = sha256_hex(manifest);
-    if ms != rel.manifest_sha256 {
-        die(
-            f"fetch-llvm: manifest checksum mismatch\n  expected {rel.manifest_sha256}\n  actual   {ms}"
-        );
-    }
-    try {
-        parsed = json.loads(manifest);
-    } except ValueError as e {
-        die(f"fetch-llvm: manifest parse failed: {e}");
-    }
-    sha_map: dict[str, str] = {};
-    libs = parsed.get("libs") if isinstance(parsed, dict) else None;
-    if isinstance(libs, dict) {
-        for o in libs.values() {
-            if not isinstance(o, dict) {
-                continue;
-            }
-            fv = o.get("file");
-            sv = o.get("sha256");
-            if isinstance(fv, str) and isinstance(sv, str) {
-                sha_map[fv] = sv;
-            }
-        }
-    }
-    return sha_map;
-}
+def _manifest_sha_map(manifest: bytes, rel: LlvmSlice) -> dict[str, str];
 
-def _run_end(members: list[ZipMember], i: int, cd_off: int) -> int {
-    return members[i + 1].lho if i + 1 < len(members) else cd_off;
-}
+def _run_end(members: list[ZipMember], i: int, cd_off: int) -> int;
 
-def _write_slice_member(slice_root: str, m: ZipMember, data: bytes) {
-    rel_path = os.path.join(slice_root, m.name);
-    if m.name.endswith("/") {
-        make_dirs(rel_path);
-        return;
-    }
-    make_dirs(os.path.dirname(rel_path));
-    write_bytes(rel_path, data);
-}
+def _write_slice_member(slice_root: str, m: ZipMember, data: bytes);
 
 impl fetch_llvm_slice(dest: str, rel: LlvmSlice, src: HttpSource, macos: bool) {
     llvm = pins().llvm;
@@ -446,4 +399,61 @@ impl fetch_bun(osarch: str, dest: str) {
     }
     write_bun_record(out_path);
     log(f"fetch-bun: ready at {out_path} ({len(bun_bytes) >> 20} MiB)");
+}
+
+impl _open(url: str, headers: dict[str, str]) -> http.client.HTTPResponse {
+    hdrs = {"User-Agent": USER_AGENT};
+    hdrs.update(headers);
+    return urllib.request.urlopen(urllib.request.Request(url, headers=hdrs));
+}
+
+impl _gunzip(gz: bytes) -> bytes {
+    try {
+        return gzip.decompress(gz);
+    } except (OSError, EOFError, zlib.error) as e {
+        raise PayloadDie(f"gzip decompress failed: {type(e).__name__}: {e}");
+    }
+}
+
+impl _manifest_sha_map(manifest: bytes, rel: LlvmSlice) -> dict[str, str] {
+    ms = sha256_hex(manifest);
+    if ms != rel.manifest_sha256 {
+        die(
+            f"fetch-llvm: manifest checksum mismatch\n  expected {rel.manifest_sha256}\n  actual   {ms}"
+        );
+    }
+    try {
+        parsed = json.loads(manifest);
+    } except ValueError as e {
+        die(f"fetch-llvm: manifest parse failed: {e}");
+    }
+    sha_map: dict[str, str] = {};
+    libs = parsed.get("libs") if isinstance(parsed, dict) else None;
+    if isinstance(libs, dict) {
+        for o in libs.values() {
+            if not isinstance(o, dict) {
+                continue;
+            }
+            fv = o.get("file");
+            sv = o.get("sha256");
+            if isinstance(fv, str) and isinstance(sv, str) {
+                sha_map[fv] = sv;
+            }
+        }
+    }
+    return sha_map;
+}
+
+impl _run_end(members: list[ZipMember], i: int, cd_off: int) -> int {
+    return members[i + 1].lho if i + 1 < len(members) else cd_off;
+}
+
+impl _write_slice_member(slice_root: str, m: ZipMember, data: bytes) {
+    rel_path = os.path.join(slice_root, m.name);
+    if m.name.endswith("/") {
+        make_dirs(rel_path);
+        return;
+    }
+    make_dirs(os.path.dirname(rel_path));
+    write_bytes(rel_path, data);
 }

@@ -6,28 +6,9 @@ import threading;
 import logging;
 import from typing { IO }
 
-def _extract_error_info(alert: object) -> dict[str, any] {
-    return {
-        "line": alert?.loc?.first_line or 0,
-        "col": alert?.loc?.col_start or 0,
-        "message": alert?.msg or str(alert)
-    };
-}
+def _extract_error_info(alert: object) -> dict[str, any];
 
-def _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object {
-    def _run -> object {
-        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
-        }
-        try {
-            return worker(tmp_path);
-        } finally {
-            os.unlink(tmp_path);
-        }
-    }
-    return _run;
-}
+def _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object;
 
 impl run_with_timeout(func: object, timeout: int = 10) -> tuple[bool, any] {
     result_holder: list[object] = [None];
@@ -51,49 +32,9 @@ impl run_with_timeout(func: object, timeout: int = 10) -> tuple[bool, any] {
     return (True, result_holder[0]);
 }
 
-def _cap_read(stream: IO[bytes], holder: list[bytes | None], cap: int) {
-    try {
-        chunks: list[bytes] = [];
-        total: int = 0;
-        while True {
-            want: int = min(4096, cap - total);
-            if want <= 0 {
-                break;
-            }
-            chunk: bytes = stream.read(want);
-            if not chunk {
-                break;
-            }
-            chunks.append(chunk);
-            total += len(chunk);
-        }
-        data: bytes = b"".join(chunks);
-        if total >= cap {
-            if stream.read(1) {
-                while stream.read(65536) {}
-                holder[0] = data + OUTPUT_TRUNCATION_MARKER.encode();
-            } else {
-                holder[0] = data;
-            }
-        } else {
-            holder[0] = data;
-        }
-    } finally {
-        try {
-            stream.close();
-        } except Exception {}
-    }
-}
+def _cap_read(stream: IO[bytes], holder: list[bytes | None], cap: int);
 
-def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
-    t.join(timeout=deadline);
-    if t.is_alive() {
-        logging.getLogger("jac.mcp").warning(
-            f"{name} reader thread still alive {deadline}s after "
-            "process teardown; pipe may be held open by a descendant"
-        );
-    }
-}
+def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0);
 
 impl CompilerBridge.parse_snippet(
     code: str, filename: str = "snippet.jac"
@@ -669,4 +610,71 @@ impl CompilerBridge.create_project(
         };
     }
     return result;
+}
+
+impl _extract_error_info(alert: object) -> dict[str, any] {
+    return {
+        "line": alert?.loc?.first_line or 0,
+        "col": alert?.loc?.col_start or 0,
+        "message": alert?.msg or str(alert)
+    };
+}
+
+impl _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object {
+    def _run -> object {
+        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as f {
+            f.write(code);
+            tmp_path = f.name;
+        }
+        try {
+            return worker(tmp_path);
+        } finally {
+            os.unlink(tmp_path);
+        }
+    }
+    return _run;
+}
+
+impl _cap_read(stream: IO[bytes], holder: list[bytes | None], cap: int) {
+    try {
+        chunks: list[bytes] = [];
+        total: int = 0;
+        while True {
+            want: int = min(4096, cap - total);
+            if want <= 0 {
+                break;
+            }
+            chunk: bytes = stream.read(want);
+            if not chunk {
+                break;
+            }
+            chunks.append(chunk);
+            total += len(chunk);
+        }
+        data: bytes = b"".join(chunks);
+        if total >= cap {
+            if stream.read(1) {
+                while stream.read(65536) {}
+                holder[0] = data + OUTPUT_TRUNCATION_MARKER.encode();
+            } else {
+                holder[0] = data;
+            }
+        } else {
+            holder[0] = data;
+        }
+    } finally {
+        try {
+            stream.close();
+        } except Exception {}
+    }
+}
+
+impl _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
+    t.join(timeout=deadline);
+    if t.is_alive() {
+        logging.getLogger("jac.mcp").warning(
+            f"{name} reader thread still alive {deadline}s after "
+            "process teardown; pipe may be held open by a descendant"
+        );
+    }
 }

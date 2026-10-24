@@ -1,18 +1,4 @@
 """Exact compiler constant identity, shared by pooling and CPython constant output."""
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyInt,
-    PyBool,
-    PyFloat,
-    PyComplex,
-    PyStr,
-    PyBytes,
-    PyTuple,
-    PySet,
-    PySlice,
-    PyCode
-}
-import from jaclang.runtime.python.compiler_integer { PyBigInt, integer_decimal }
 
 # Normalize finite IEEE doubles using exact powers of two. This works in both
 # Jac backends and avoids the native formatter rounding distinct constants to

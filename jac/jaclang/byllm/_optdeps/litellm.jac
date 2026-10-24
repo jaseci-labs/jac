@@ -36,14 +36,6 @@ class LiteLLMMessage(metaclass=DeferredClassMeta) {
         _deferred_path: str = "types.utils.Message";
 }
 
-def _disable_debugging {
-    if HAS_LITELLM {
-        importlib.import_module("litellm._logging")._disable_debugging();
-    }
-}
+def _disable_debugging;
 
-def when_litellm_loaded(callback: any) {
-    if HAS_LITELLM {
-        when_loaded("litellm", callback);
-    }
-}
+def when_litellm_loaded(callback: any);

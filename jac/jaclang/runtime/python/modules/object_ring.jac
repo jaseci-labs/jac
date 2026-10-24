@@ -1,5 +1,3 @@
-import from jaclang.runtime.python.cpython_api { NULL, PyObject }
-
 """Circular storage shared by native Python queues and deques.
 
 Slots contain owned CPython handles. Push/pop transfer ownership without calling

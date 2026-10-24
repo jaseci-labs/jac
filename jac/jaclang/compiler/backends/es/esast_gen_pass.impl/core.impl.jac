@@ -275,7 +275,7 @@ impl EsastGenPass._target_rebound(loop: uni.InForStmt) -> bool {
             continue;
         }
         for site in binding_sites(nm.sym) {
-            if not is_within(site, loop.target) {
+            if not site.is_within(loop.target) {
                 return True;
             }
         }
@@ -284,15 +284,12 @@ impl EsastGenPass._target_rebound(loop: uni.InForStmt) -> bool {
 }
 
 impl EsastGenPass._frame_scope_of(nd: uni.UniNode) -> (ScopeInfo | None) {
-    cur = nd.parent;
+    cur = nd.decl_parent;
     while cur is not None {
-        if isinstance(cur, uni.ImplDef) and isinstance(cur.decl_link, uni.Ability) {
-            return self.scope_map.get(cur.decl_link);
-        }
         if isinstance(cur, (uni.Module, uni.Ability, uni.Test, uni.LambdaExpr)) {
             return self.scope_map.get(cur);
         }
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return None;
 }
@@ -437,16 +434,8 @@ impl EsastGenPass._declaring_scope_for(name_node: uni.UniNode) -> (ScopeInfo | N
         }
         return loop_scope;
     }
-    if not isinstance(
-        owner, (uni.Module, uni.Ability, uni.ImplDef, uni.Test, uni.LambdaExpr)
-    ) {
+    if not isinstance(owner, (uni.Module, uni.Ability, uni.Test, uni.LambdaExpr)) {
         return None;
-    }
-    if isinstance(owner, uni.ImplDef) {
-        if not isinstance(owner.decl_link, uni.Ability) {
-            return None;
-        }
-        owner = owner.decl_link;
     }
     for scope in reversed(self.scope_stack) {
         if scope.nd is owner {
@@ -583,7 +572,7 @@ impl EsastGenPass.sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -
 }
 
 impl EsastGenPass.exit_walk with uni.UniNode exit {
-    if here.ct_pruned {
+    if here.ct_pruned or self.reached_by_syntax(here) {
         osp_skip_rest();
         return;
     }
@@ -596,7 +585,7 @@ impl EsastGenPass.exit_walk with uni.UniNode exit {
         isinstance(here, uni.ElementStmt)
         and isinstance(here, uni.ContextAwareNode)
         and here.code_context != CodeContext.CLIENT
-        and ((here.parent is None) or isinstance(here.parent, uni.Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, uni.Module))
     ) {
         is_sv_import = isinstance(here, uni.Import)
             and self._is_service_bridge_import(here);
@@ -627,7 +616,7 @@ impl EsastGenPass.finish_scope with uni.UniScopeNode exit {
 }
 
 impl EsastGenPass.enter_walk with uni.UniNode entry {
-    if self.ctx.is_canceled() or here.ct_pruned {
+    if self.ctx.is_canceled() or here.ct_pruned or self.reached_by_syntax(here) {
         osp_skip_rest();
         return;
     }
@@ -636,7 +625,7 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
         isinstance(here, uni.ElementStmt)
         and isinstance(here, uni.ContextAwareNode)
         and here.code_context != CodeContext.CLIENT
-        and ((here.parent is None) or isinstance(here.parent, uni.Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, uni.Module))
     ) {
         is_sv_import = isinstance(here, uni.Import)
             and self._is_service_bridge_import(here);
@@ -653,7 +642,7 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
             return;
         }
     }
-    if isinstance(here, uni.UniScopeNode) {
+    if isinstance(here, uni.UniScopeNode) and not here.folded {
         scope_to_finalize = self._alt_branch_scope_to_finalize(here);
         if scope_to_finalize is not None {
             self._pop_scope(scope_to_finalize);
@@ -687,7 +676,6 @@ impl EsastGenPass.prepare with entry {
         self.module.client_viols_reported = True;
     }
     self.client_manifest = ClientManifest();
-    self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
         self.module.gen.interop_manifest.endpoint_effects

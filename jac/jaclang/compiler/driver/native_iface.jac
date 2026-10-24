@@ -1,324 +1,36 @@
 import hashlib;
 import json;
 import os;
-import from jaclang.compiler.frontend.codeinfo {
-    NATIVE_ABI_VERSION,
-    NativeFieldInfo,
-    NativeEnumLayout,
-    NativeFuncLayout,
-    NativeModuleLayout,
-    NativeStructLayout,
-    NativeTupleLayout,
-    native_unit_identity,
-    native_unit_root
-}
-import from jaclang.compiler.kernel_target { target_pkg_root }
 
-def native_unit_ref(path: str) -> str {
-    """How one unit names another in what it writes to disk: by package
-    identity when the other lives under a root, so the reference survives
-    the package moving, and by real path otherwise.""";
-    rp = os.path.realpath(path);
-    ident = native_unit_identity(rp);
-    return ident if ident != rp else rp;
-}
+def native_unit_ref(path: str) -> str;
 
-def resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
-    """The path a unit reference names here: an absolute path is itself;
-    `jaclang/...` is under this process's jaclang; another root's identity
-    is looked for as the anchor unit's own root, beside it, then under each
-    import path. A reference found nowhere names a path that cannot exist,
-    never one relative to the working directory, so its unit reads as
-    missing and is rebuilt.""";
-    if not ref or os.path.isabs(ref) {
-        return ref;
-    }
-    (root_name, _sep, rel) = ref.partition("/");
-    if not rel {
-        return ref;
-    }
-    if root_name == "jaclang" {
-        return os.path.join(os.path.dirname(target_pkg_root()), ref);
-    }
-    if anchor {
-        anchor_root = native_unit_root(os.path.dirname(os.path.realpath(anchor)));
-        if anchor_root is not None {
-            if os.path.basename(anchor_root) == root_name {
-                return os.path.join(anchor_root, rel);
-            }
-            sibling = os.path.join(os.path.dirname(anchor_root), ref);
-            if os.path.isfile(sibling) {
-                return sibling;
-            }
-        }
-    }
-    import from jaclang.compiler.frontend.host { active_host }
-    import from jaclang.compiler.backends.native.na_constants {
-        FACT_IMPORT_PATHS,
-        FACT_PACKAGE_STORE,
-        FACT_SEP
-    }
-    for search_dir in active_host().native_fact(FACT_IMPORT_PATHS, "").split(
-        FACT_SEP
-    ) {
-        if search_dir and os.path.isabs(search_dir) {
-            candidate = os.path.join(search_dir, ref);
-            if os.path.isfile(candidate) {
-                return candidate;
-            }
-        }
-    }
-    """A package from the store is rooted at its `<version>-<sha>` directory
-    under `<store>/<org>/<name>/`, a place no consumer's root or import path
-    leads to.""";
-    store = active_host().native_fact(FACT_PACKAGE_STORE, "");
-    if store and os.path.isdir(store) {
-        for org in sorted(os.listdir(store)) {
-            org_dir = os.path.join(store, org);
-            if not os.path.isdir(org_dir) {
-                continue;
-            }
-            for name in sorted(os.listdir(org_dir)) {
-                candidate = os.path.join(org_dir, name, ref);
-                if os.path.isfile(candidate) {
-                    return candidate;
-                }
-            }
-        }
-    }
-    return os.path.join(os.path.abspath(os.sep), "<unresolved native unit>", ref);
-}
+def resolve_native_unit_ref(ref: str, anchor: str = "") -> str;
 
-def _json_dict(raw: any) -> dict[str, any] {
-    if isinstance(raw, dict) {
-        table: dict[str, any] = raw;
-        return table;
-    }
-    return {};
-}
+def _json_dict(raw: any) -> dict[str, any];
 
-def _json_list(raw: any) -> list[any] {
-    if isinstance(raw, list) {
-        items: list[any] = raw;
-        return items;
-    }
-    return [];
-}
+def _json_list(raw: any) -> list[any];
 
-def _json_str_list(raw: any) -> list[str] {
-    out: list[str] = [];
-    for x in _json_list(raw) {
-        out.append(str(x));
-    }
-    return out;
-}
+def _json_str_list(raw: any) -> list[str];
 
-def _json_opt_str(raw: any) -> (str | None) {
-    if isinstance(raw, str) {
-        return raw;
-    }
-    return None;
-}
+def _json_opt_str(raw: any) -> (str | None);
 
-def _json_opt_str_list(raw: any) -> (list[str | None] | None) {
-    if raw is None {
-        return None;
-    }
-    out: list[str | None] = [];
-    for x in _json_list(raw) {
-        out.append(_json_opt_str(x));
-    }
-    return out;
-}
+def _json_opt_str_list(raw: any) -> (list[str | None] | None);
 
-def _enum_members_json(members: list[tuple[str, any, int]]) -> list[any] {
-    out: list[any] = [];
-    for (name, value, ordinal) in members {
-        row: list[any] = [name, value, ordinal];
-        out.append(row);
-    }
-    return out;
-}
+def _enum_members_json(members: list[tuple[str, any, int]]) -> list[any];
 
-def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None) {
-    if t is None {
-        return None;
-    }
-    return {
-        "key": t.key,
-        "element_types": list(t.element_types),
-        "element_struct_hints": list(t.element_struct_hints)
-    };
-}
+def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None);
 
-def _func_layout_to_dict(f: NativeFuncLayout) -> dict[str, any] {
-    return {
-        "name": f.name,
-        "param_types": list(f.param_types),
-        "param_names": list(f.param_names),
-        "ret_type": f.ret_type,
-        "ret_struct_name": f.ret_struct_name,
-        "ret_tuple_layout": _tuple_layout_to_dict(f.ret_tuple_layout),
-        "ret_enum_type": f.ret_enum_type,
-        "ret_elem_keys": (
-            list(f.ret_elem_keys) if f.ret_elem_keys is not None else None
-        )
-    };
-}
+def _func_layout_to_dict(f: NativeFuncLayout) -> dict[str, any];
 
-def native_layout_to_dict(layout: NativeModuleLayout) -> dict[str, any] {
-    return {
-        "abi_version": layout.abi_version,
-        "structs": {
-            name: {
-                "name": s.name,
-                "has_vtable": s.has_vtable,
-                "accessors": {
-                    fname: dict(kinds) for (fname, kinds) in s.accessors.items()
-                },
-                "fields": [
-                    {
-                        "name": fld.name,
-                        "llvm_type": fld.llvm_type,
-                        "index": fld.index,
-                        "enum_type": fld.enum_type,
-                        "is_func_ptr": fld.is_func_ptr,
-                        "func_param_types": (
-                            list(fld.func_param_types)
-                                if fld.func_param_types is not None
-                                else None
-                        ),
-                        "func_ret_type": fld.func_ret_type,
-                        "elem_keys": (
-                            list(fld.elem_keys) if fld.elem_keys is not None else None
-                        ),
-                        "foreign": fld.foreign
-                    } for fld in s.fields
-                ]
-            } for (name, s) in layout.structs.items()
-        },
-        "enums": {
-            name: {
-                "name": e.name,
-                "is_string_valued": e.is_string_valued,
-                "members": _enum_members_json(e.members)
-            } for (name, e) in layout.enums.items()
-        },
-        "functions": {
-            name: _func_layout_to_dict(f) for (name, f) in layout.functions.items()
-        },
-        "methods": {
-            name: _func_layout_to_dict(f) for (name, f) in layout.methods.items()
-        },
-        "list_elem_types": dict(layout.list_elem_types),
-        "tuples": {key: _tuple_layout_to_dict(t) for (key, t) in layout.tuples.items()},
-        "str_headerless": layout.str_headerless
-    };
-}
+def native_layout_to_dict(layout: NativeModuleLayout) -> dict[str, any];
 
-def _tuple_layout_from_dict(raw: any) -> (NativeTupleLayout | None) {
-    if not isinstance(raw, dict) {
-        return None;
-    }
-    d: dict[str, any] = raw;
-    return NativeTupleLayout(
-        key=str(d.get("key", "")),
-        element_types=_json_str_list(d.get("element_types")),
-        element_struct_hints=_json_opt_str_list(d.get("element_struct_hints")) or []
-    );
-}
+def _tuple_layout_from_dict(raw: any) -> (NativeTupleLayout | None);
 
-def _func_layout_from_dict(raw: any) -> NativeFuncLayout {
-    d: dict[str, any] = raw;
-    return NativeFuncLayout(
-        name=str(d.get("name", "")),
-        param_types=_json_str_list(d.get("param_types")),
-        param_names=_json_str_list(d.get("param_names")),
-        ret_type=str(d.get("ret_type", "i64")),
-        ret_struct_name=_json_opt_str(d.get("ret_struct_name")),
-        ret_tuple_layout=_tuple_layout_from_dict(d.get("ret_tuple_layout")),
-        ret_enum_type=_json_opt_str(d.get("ret_enum_type")),
-        ret_elem_keys=_json_opt_str_list(d.get("ret_elem_keys"))
-    );
-}
+def _func_layout_from_dict(raw: any) -> NativeFuncLayout;
 
-def _field_info_from_dict(raw: any) -> NativeFieldInfo {
-    fd: dict[str, any] = raw;
-    fpt: any = fd.get("func_param_types");
-    return NativeFieldInfo(
-        name=str(fd.get("name", "")),
-        llvm_type=str(fd.get("llvm_type", "i64")),
-        index=int(fd.get("index", 0)),
-        enum_type=_json_opt_str(fd.get("enum_type")),
-        is_func_ptr=bool(fd.get("is_func_ptr", False)),
-        func_param_types=_json_str_list(fpt) if fpt is not None else None,
-        func_ret_type=_json_opt_str(fd.get("func_ret_type")),
-        elem_keys=_json_opt_str_list(fd.get("elem_keys")),
-        foreign=bool(fd.get("foreign", False))
-    );
-}
+def _field_info_from_dict(raw: any) -> NativeFieldInfo;
 
-def native_layout_from_dict(raw: any) -> NativeModuleLayout {
-    d: dict[str, any] = raw;
-    layout = NativeModuleLayout(
-        abi_version=int(d.get("abi_version", NATIVE_ABI_VERSION)),
-        str_headerless=d.get("str_headerless")
-    );
-    structs: dict[str, any] = d.get("structs") or {};
-    for (name, sraw) in structs.items() {
-        sd: dict[str, any] = sraw;
-        fields: list[NativeFieldInfo] = [];
-        for fd in _json_list(sd.get("fields")) {
-            fields.append(_field_info_from_dict(fd));
-        }
-        accessors: dict[str, dict[str, str]] = {};
-        raw_acc: dict[str, any] = sd.get("accessors") or {};
-        for (fn_name, kinds) in raw_acc.items() {
-            kind_map: dict[str, any] = kinds;
-            accessors[str(fn_name)] = {str(k): str(v) for (k, v) in kind_map.items()};
-        }
-        layout.structs[str(name)] = NativeStructLayout(
-            name=str(sd.get("name", name)),
-            fields=fields,
-            has_vtable=bool(sd.get("has_vtable", False)),
-            accessors=accessors
-        );
-    }
-    enums: dict[str, any] = d.get("enums") or {};
-    for (name, eraw) in enums.items() {
-        ed: dict[str, any] = eraw;
-        members: list[tuple[str, any, int]] = [];
-        for mraw in _json_list(ed.get("members")) {
-            parts = _json_list(mraw);
-            if len(parts) == 3 {
-                members.append((str(parts[0]), parts[1], int(parts[2])));
-            }
-        }
-        layout.enums[str(name)] = NativeEnumLayout(
-            name=str(ed.get("name", name)),
-            is_string_valued=bool(ed.get("is_string_valued", False)),
-            members=members
-        );
-    }
-    functions: dict[str, any] = d.get("functions") or {};
-    for (name, fraw) in functions.items() {
-        layout.functions[str(name)] = _func_layout_from_dict(fraw);
-    }
-    methods: dict[str, any] = d.get("methods") or {};
-    for (name, mraw) in methods.items() {
-        layout.methods[str(name)] = _func_layout_from_dict(mraw);
-    }
-    elem_types: dict[str, any] = d.get("list_elem_types") or {};
-    layout.list_elem_types = {str(k): str(v) for (k, v) in elem_types.items()};
-    tuples: dict[str, any] = d.get("tuples") or {};
-    for (key, traw) in tuples.items() {
-        t = _tuple_layout_from_dict(traw);
-        if t is not None {
-            layout.tuples[str(key)] = t;
-        }
-    }
-    return layout;
-}
+def native_layout_from_dict(raw: any) -> NativeModuleLayout;
 
 glob NIFACE_FORMAT: int = 5,
      NIFACE_HASH_LEN: int = 64,
@@ -340,33 +52,8 @@ obj NativeExport {
         ret_type: str = "",
         ownership: list[str] = [];
 
-    def to_dict -> dict[str, any] {
-        return {
-            "name": self.name,
-            "symbol": self.symbol,
-            "kind": self.kind,
-            "is_pub": self.is_pub,
-            "param_types": list(self.param_types),
-            "param_names": list(self.param_names),
-            "param_defaults": list(self.param_defaults),
-            "ret_type": self.ret_type,
-            "ownership": list(self.ownership)
-        };
-    }
-
-    static def from_dict(d: dict[str, any]) -> NativeExport {
-        return NativeExport(
-            name=str(d.get("name", "")),
-            symbol=str(d.get("symbol", "")),
-            kind=str(d.get("kind", EXPORT_FUNCTION)),
-            is_pub=bool(d.get("is_pub", False)),
-            param_types=_json_str_list(d.get("param_types")),
-            param_names=_json_str_list(d.get("param_names")),
-            param_defaults=_json_str_list(d.get("param_defaults")),
-            ret_type=str(d.get("ret_type", "")),
-            ownership=_json_str_list(d.get("ownership"))
-        );
-    }
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> NativeExport;
 }
 
 obj NativeValueSchema {
@@ -377,38 +64,8 @@ obj NativeValueSchema {
         key_offset: int = 0,
         order_offset: int = 0;
 
-    def to_dict -> dict[str, any] {
-        out: dict[str, any] = {"code": self.code};
-        if self.code == "obj" {
-            out["class"] = self.class_name;
-        } elif self.code in ("list", "dict", "set") {
-            if self.element is not None {
-                out["element"] = self.element.to_dict();
-            }
-            if self.code != "set" {
-                out["data_offset"] = self.data_offset;
-            }
-            if self.code != "list" {
-                out["key_offset"] = self.key_offset;
-                out["order_offset"] = self.order_offset;
-            }
-        }
-        return out;
-    }
-
-    static def from_dict(d: dict[str, any]) -> NativeValueSchema {
-        child = d.get("element");
-        return NativeValueSchema(
-            code=str(d["code"]),
-            class_name=str(d.get("class", "")),
-            element=(
-                NativeValueSchema.from_dict(child) if isinstance(child, dict) else None
-            ),
-            data_offset=int(d.get("data_offset", 0)),
-            key_offset=int(d.get("key_offset", 0)),
-            order_offset=int(d.get("order_offset", 0))
-        );
-    }
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> NativeValueSchema;
 }
 
 obj NativeFieldSlot {
@@ -418,33 +75,8 @@ obj NativeFieldSlot {
         aux: str = "",
         schema: (NativeValueSchema | None) = None;
 
-    def to_dict -> dict[str, any] {
-        out: dict[str, any] = {
-            "index": self.index,
-            "offset": self.offset,
-            "code": self.code,
-            "aux": self.aux
-        };
-        if self.schema is not None {
-            out["schema"] = self.schema.to_dict();
-        }
-        return out;
-    }
-
-    static def from_dict(d: dict[str, any]) -> NativeFieldSlot {
-        schema = d.get("schema");
-        return NativeFieldSlot(
-            index=int(d.get("index", -1)),
-            offset=int(d.get("offset", -1)),
-            code=str(d.get("code", "opaque")),
-            aux=str(d.get("aux", "")),
-            schema=(
-                NativeValueSchema.from_dict(schema)
-                    if isinstance(schema, dict)
-                    else None
-            )
-        );
-    }
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> NativeFieldSlot;
 }
 
 obj NativeClassLayout {
@@ -457,41 +89,11 @@ obj NativeClassLayout {
         vtable: list[str] = [],
         is_node: bool = False;
 
-    def to_dict -> dict[str, any] {
-        return {
-            "name": self.name,
-            "size": self.size,
-            "tag": self.tag,
-            "tag_offset": self.tag_offset,
-            "fields": {k: v.to_dict() for (k, v) in self.fields.items()},
-            "bases": list(self.bases),
-            "vtable": list(self.vtable),
-            "is_node": self.is_node
-        };
-    }
-
-    static def from_dict(d: dict[str, any]) -> NativeClassLayout {
-        fields: dict[str, NativeFieldSlot] = {};
-        for (k, v) in _json_dict(d.get("fields")).items() {
-            fields[str(k)] = NativeFieldSlot.from_dict(_json_dict(v));
-        }
-        return NativeClassLayout(
-            name=str(d.get("name", "")),
-            size=int(d.get("size", 0)),
-            tag=int(d.get("tag", 0)),
-            tag_offset=int(d.get("tag_offset", -1)),
-            fields=fields,
-            bases=_json_str_list(d.get("bases")),
-            vtable=_json_str_list(d.get("vtable")),
-            is_node=bool(d.get("is_node", False))
-        );
-    }
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> NativeClassLayout;
 }
 
-def _fields_digest(fields: dict[str, any]) -> str {
-    body = json.dumps(fields, sort_keys=True, separators=(",", ":"));
-    return hashlib.sha256(body.encode("utf-8")).hexdigest();
-}
+def _fields_digest(fields: dict[str, any]) -> str;
 
 obj NativeIface {
     has format: int = NIFACE_FORMAT,
@@ -513,259 +115,24 @@ obj NativeIface {
         runtime_globals: list[str] = [],
         init_reads: list[str] = [];
 
-    def digest_fields -> dict[str, any] {
-        return {
-            "format": self.format,
-            "module": self.module,
-            "prefix": self.prefix,
-            "exports": {
-                k: self.exports[k].to_dict() for k in sorted(self.exports.keys())
-            },
-            "classes": {
-                k: self.classes[k].to_dict() for k in sorted(self.classes.keys())
-            },
-            "enums": {k: list(self.enums[k]) for k in sorted(self.enums.keys())},
-            "init": self.init_symbol,
-            "entry": self.entry_symbol,
-            "demoted": sorted(self.demoted),
-            "clib_paths": list(self.clib_paths),
-            "python_imports": sorted(self.python_imports),
-            "clib_symbol_lib": {
-                k: self.clib_symbol_lib[k] for k in sorted(self.clib_symbol_lib.keys())
-            },
-            "layout": (
-                native_layout_to_dict(self.layout) if self.layout is not None else None
-            ),
-            "headerless": self.headerless
-        };
-    }
-
-    def digest -> str {
-        return _fields_digest(self.digest_fields());
-    }
-
-    def to_dict -> dict[str, any] {
-        return self._with_references(self.digest_fields());
-    }
-
-    def _with_references(fields: dict[str, any]) -> dict[str, any] {
-        fields["deps"] = [native_unit_ref(x) for x in self.deps];
-        fields["coverage"] = dict(self.coverage);
-        fields["runtime_globals"] = list(self.runtime_globals);
-        fields["init_reads"] = list(self.init_reads);
-        return fields;
-    }
-
-    def resolve_deps(anchor: str) {
-        """Dependencies read from disk are references; the unit's own path
-        tells where a same-package reference lives.""";
-        self.deps = [resolve_native_unit_ref(x, anchor) for x in self.deps];
-    }
-
-    def to_bytes -> bytes {
-        fields = self.digest_fields();
-        digest = _fields_digest(fields);
-        body = json.dumps(
-            self._with_references(fields), sort_keys=True, separators=(",", ":")
-        );
-        return digest.encode("ascii") + body.encode("utf-8");
-    }
-
-    static def from_dict(d: dict[str, any]) -> (NativeIface | None) {
-        if not isinstance(d, dict) or d.get("format") != NIFACE_FORMAT {
-            return None;
-        }
-        layout_d = d.get("layout");
-        exports: dict[str, NativeExport] = {};
-        for (k, v) in _json_dict(d.get("exports")).items() {
-            exports[str(k)] = NativeExport.from_dict(_json_dict(v));
-        }
-        classes: dict[str, NativeClassLayout] = {};
-        for (k, v) in _json_dict(d.get("classes")).items() {
-            classes[str(k)] = NativeClassLayout.from_dict(_json_dict(v));
-        }
-        enums: dict[str, list[str]] = {};
-        for (k, v) in _json_dict(d.get("enums")).items() {
-            enums[str(k)] = _json_str_list(v);
-        }
-        clib_symbol_lib: dict[str, str] = {};
-        for (k, v) in _json_dict(d.get("clib_symbol_lib")).items() {
-            clib_symbol_lib[str(k)] = str(v);
-        }
-        coverage: dict[str, any] = {};
-        for (k, v) in _json_dict(d.get("coverage")).items() {
-            coverage[k] = v;
-        }
-        return NativeIface(
-            module=str(d.get("module", "")),
-            prefix=str(d.get("prefix", "")),
-            exports=exports,
-            classes=classes,
-            enums=enums,
-            init_symbol=str(d.get("init", "")),
-            entry_symbol=str(d.get("entry", "")),
-            demoted=_json_str_list(d.get("demoted")),
-            clib_paths=_json_str_list(d.get("clib_paths")),
-            python_imports=_json_str_list(d.get("python_imports")),
-            clib_symbol_lib=clib_symbol_lib,
-            layout=(
-                native_layout_from_dict(layout_d)
-                    if isinstance(layout_d, dict)
-                    else None
-            ),
-            deps=_json_str_list(d.get("deps")),
-            coverage=coverage,
-            headerless=bool(d.get("headerless", False)),
-            runtime_globals=_json_str_list(d.get("runtime_globals")),
-            init_reads=_json_str_list(d.get("init_reads"))
-        );
-    }
-
-    static def from_bytes(raw: (bytes | None)) -> (NativeIface | None) {
-        """A stored interface is trusted only when its body hashes to the digest
-        it is prefixed with: a truncated or corrupted entry decodes to nothing and
-        its unit is recompiled, instead of one reader taking the prefix and
-        another the body.""";
-        if raw is None or len(raw) <= NIFACE_HASH_LEN {
-            return None;
-        }
-        recorded = NativeIface.read_digest(raw);
-        if recorded is None {
-            return None;
-        }
-        try {
-            parsed: any = json.loads(raw[NIFACE_HASH_LEN:].decode("utf-8"));
-            if not isinstance(parsed, dict) {
-                return None;
-            }
-            iface = NativeIface.from_dict(parsed);
-        } except Exception {
-            return None;
-        }
-        if iface is None or iface.digest() != recorded {
-            return None;
-        }
-        return iface;
-    }
-
-    static def verified_digest(raw: (bytes | None)) -> (str | None) {
-        """The recorded digest of a stored interface whose body agrees with it.""";
-        if NativeIface.from_bytes(raw) is None {
-            return None;
-        }
-        return NativeIface.read_digest(raw);
-    }
-
-    static def read_digest(raw: (bytes | None)) -> (str | None) {
-        if raw is None or len(raw) <= NIFACE_HASH_LEN {
-            return None;
-        }
-        try {
-            return raw[:NIFACE_HASH_LEN].decode("ascii");
-        } except Exception {
-            return None;
-        }
-    }
-
-    def pub_symbols -> list[str] {
-        out: list[str] = [];
-        for name in sorted(self.exports.keys()) {
-            ex = self.exports[name];
-            if ex.is_pub and ex.symbol not in out {
-                out.append(ex.symbol);
-            }
-        }
-        return out;
-    }
-
-    def symbol_of(name: str) -> (str | None) {
-        ex = self.exports.get(name);
-        return ex.symbol if ex is not None else None;
-    }
-
-    def is_demoted(name: str) -> bool {
-        return name in self.demoted;
-    }
-
-    def classes_json -> dict[str, any] {
-        out: dict[str, any] = {};
-        for name in sorted(self.classes.keys()) {
-            lay = self.classes[name];
-            out[name] = {
-                "size": lay.size,
-                "tag": lay.tag,
-                "tag_offset": lay.tag_offset,
-                "fields": {k: v.to_dict() for (k, v) in lay.fields.items()},
-                "bases": list(lay.bases),
-                "vtable": list(lay.vtable),
-                "is_node": lay.is_node
-            };
-        }
-        return out;
-    }
+    def digest_fields -> dict[str, any];
+    def digest -> str;
+    def to_dict -> dict[str, any];
+    def _with_references(fields: dict[str, any]) -> dict[str, any];
+    def resolve_deps(anchor: str);
+    def to_bytes -> bytes;
+    static def from_dict(d: dict[str, any]) -> (NativeIface | None);
+    static def from_bytes(raw: (bytes | None)) -> (NativeIface | None);
+    static def verified_digest(raw: (bytes | None)) -> (str | None);
+    static def read_digest(raw: (bytes | None)) -> (str | None);
+    def pub_symbols -> list[str];
+    def symbol_of(name: str) -> (str | None);
+    def is_demoted(name: str) -> bool;
+    def classes_json -> dict[str, any];
 }
 
-def _rekey_class_refs(value: any, keys: dict[str, str]) -> any {
-    if isinstance(value, dict) {
-        out: dict[str, any] = {};
-        for (k, v) in value.items() {
-            if k in ("aux", "class") and isinstance(v, str) {
-                out[k] = keys.get(v, v);
-            } else {
-                out[k] = _rekey_class_refs(v, keys);
-            }
-        }
-        return out;
-    }
-    if isinstance(value, list) {
-        return [_rekey_class_refs(v, keys) for v in value];
-    }
-    return value;
-}
+def _rekey_class_refs(value: any, keys: dict[str, str]) -> any;
 
-def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any] {
-    by_name: dict[str, dict[str, tuple[any, str]]] = {};
-    for iface in ifaces {
-        bodies = iface.classes_json();
-        for (name, lay) in iface.classes.items() {
-            ident = lay.name or name;
-            body = bodies[name];
-            same_name = by_name.setdefault(name, {});
-            prev = same_name.get(ident);
-            if prev is None {
-                same_name[ident] = (body, iface.module);
-                continue;
-            }
-            if json.dumps(prev[0], sort_keys=True)
-                != json.dumps(body, sort_keys=True) {
-                raise ValueError(
-                    f"native layout disagreement for class '{name}': "
-                    f"{prev[1]} and {iface.module} lay it out differently"
-                );
-            }
-        }
-    }
-    merged: dict[str, any] = {};
-    keys: dict[str, str] = {};
-    for (name, idents) in by_name.items() {
-        if len(idents) == 1 {
-            ident = list(idents.keys())[0];
-            merged[name] = list(idents.values())[0][0];
-            keys[ident] = name;
-            continue;
-        }
-        for (ident, found) in idents.items() {
-            merged[ident] = found[0];
-            keys[ident] = ident;
-        }
-    }
-    for (key, body) in list(merged.items()) {
-        merged[key] = _rekey_class_refs(body, keys);
-    }
-    return {k: merged[k] for k in sorted(merged.keys())};
-}
+def merge_class_layouts(ifaces: list[NativeIface]) -> dict[str, any];
 
-def layout_digest(classes: dict[str, any]) -> str {
-    body = json.dumps(classes, sort_keys=True, separators=(",", ":"));
-    return hashlib.sha256(body.encode("utf-8")).hexdigest();
-}
+def layout_digest(classes: dict[str, any]) -> str;

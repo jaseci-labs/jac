@@ -1,119 +1,32 @@
 def _totp_credentials(
     credentials: list[dict[str, any]], status: str = ''
-) -> list[dict[str, any]] {
-    return [
-        c
-        for c in credentials
-        if c.get('type') == TOTP_CREDENTIAL
-            and (not status or c.get('status') == status)
-    ];
-}
+) -> list[dict[str, any]];
 
 
-def _factor_view(credential: dict[str, any]) -> dict[str, any] {
-    return {
-        'id': str(credential.get('id') or ''),
-        'type': TOTP_CREDENTIAL,
-        'status': str(credential.get('status') or FACTOR_UNVERIFIED),
-        'created_at': credential.get('created_at'),
-        'verified_at': credential.get('verified_at')
-    };
-}
+def _factor_view(credential: dict[str, any]) -> dict[str, any];
 
 
-def _refused(code: str) -> dict[str, any] {
-    return {'ok': False, 'code': code};
-}
+def _refused(code: str) -> dict[str, any];
 
 
-def _limited(retry: int) -> dict[str, any] {
-    return {'ok': False, 'code': 'RATE_LIMITED', 'retry_after': retry};
-}
+def _limited(retry: int) -> dict[str, any];
 
 
-def _claim_attempt(user_id: str) -> int {
-    settings = auth_settings();
-    retry = consume_limit(
-        ATTEMPT_SCOPE,
-        user_id,
-        max(1, int(settings.second_factor.attempts)),
-        max(1, int(settings.second_factor.lockout_seconds))
-    );
-    if retry < 0 {
-        raise SecondFactorUnavailable();
-    }
-    return retry;
-}
+def _claim_attempt(user_id: str) -> int;
 
 
-def _first_use(kind: str, subject: str, seconds: int) -> bool {
-    db = shared_store();
-    if db is None {
-        raise SecondFactorUnavailable();
-    }
-    key = 'second-factor-used:'
-        + hashlib.sha256((kind + ':' + subject).encode('utf-8')).hexdigest();
-    try {
-        rows = db.rows(
-            """
-            INSERT INTO kv_state (key, value, expires_at)
-            VALUES (:k, '1', now() + make_interval(secs => CAST(:ttl AS float8)))
-            ON CONFLICT (key) DO NOTHING
-            RETURNING key
-            """,
-            {'k': key, 'ttl': seconds}
-        );
-    } except Exception as error {
-        logger.error(f"second factor replay ledger failed: {error}");
-        raise SecondFactorUnavailable() from error;
-    }
-    return bool(rows);
-}
+def _first_use(kind: str, subject: str, seconds: int) -> bool;
 
 
 def _matching_factor(
     credentials: list[dict[str, any]], code: str, status: str, factor_id: str = ''
-) -> (tuple[str, int] | None) {
-    matched: (tuple[str, int] | None) = None;
-    for credential in _totp_credentials(credentials, status) {
-        candidate = str(credential.get('id') or '');
-        if factor_id and candidate != factor_id {
-            continue;
-        }
-        step = matching_step(str(credential.get('secret') or ''), code);
-        if step is not None and matched is None {
-            matched = (candidate, step);
-        }
-    }
-    return matched;
-}
+) -> (tuple[str, int] | None);
 
 
-def _recovery_hash(recovery_code: str) -> str {
-    text = ''.join(
-        [
-            ch
-            for ch in recovery_code.lower()
-            if ch.isalnum()
-        ]
-    );
-    return hashlib.sha256(text.encode('utf-8')).hexdigest();
-}
+def _recovery_hash(recovery_code: str) -> str;
 
 
-def _new_recovery_codes -> list[str] {
-    codes: list[str] = [];
-    for index in range(RECOVERY_CODE_COUNT) {
-        raw = ''.join(
-            [
-                secrets.choice(RECOVERY_CODE_ALPHABET)
-                for position in range(RECOVERY_CODE_LENGTH)
-            ]
-        );
-        codes.append('-'.join([raw[i:i + 4] for i in range(0, len(raw), 4)]));
-    }
-    return codes;
-}
+def _new_recovery_codes -> list[str];
 
 
 def _consume_recovery_code(
@@ -121,71 +34,12 @@ def _consume_recovery_code(
     user_id: str,
     credentials: list[dict[str, any]],
     recovery_code: str
-) -> bool {
-    if not isinstance(recovery_code, str)
-        or not recovery_code
-        or len(recovery_code) > 64 {
-        return False;
-    }
-    presented = _recovery_hash(recovery_code);
-    hit = '';
-    for credential in credentials {
-        if credential.get('type') != RECOVERY_CREDENTIAL {
-            continue;
-        }
-        for stored in (credential.get('code_hashes') or []) {
-            if hmac.compare_digest(
-                str(stored).encode('ascii'), presented.encode('ascii')
-            ) {
-                hit = str(stored);
-            }
-        }
-    }
-    if not hit {
-        return False;
-    }
-    if not _first_use('recovery', user_id + ':' + hit, USED_RECOVERY_SECONDS) {
-        return False;
-    }
-    for credential in credentials {
-        if credential.get('type') == RECOVERY_CREDENTIAL {
-            credential['code_hashes'] = [
-                h
-                for h in (credential.get('code_hashes') or [])
-                if str(h) != hit
-            ];
-        }
-    }
-    storage._update_credentials(user_id, credentials);
-    return True;
-}
+) -> bool;
 
 
 def _verified_proof(
     storage: IdentityStorage, user_id: str, code: str, recovery_code: str
-) -> (dict[str, any] | None) {
-    credentials = storage._get_credentials(user_id);
-    if not _totp_credentials(credentials, FACTOR_VERIFIED) {
-        return None;
-    }
-    if code {
-        matched = _matching_factor(credentials, code, FACTOR_VERIFIED);
-        if matched is None {
-            return None;
-        }
-        if not _first_use(
-            'totp', matched[0] + ':' + str(matched[1]), USED_CODE_SECONDS
-        ) {
-            return None;
-        }
-        return {'ok': True, 'method': METHOD_TOTP, 'factor_id': matched[0]};
-    }
-    if recovery_code
-        and _consume_recovery_code(storage, user_id, credentials, recovery_code) {
-        return {'ok': True, 'method': METHOD_RECOVERY, 'factor_id': ''};
-    }
-    return None;
-}
+) -> (dict[str, any] | None);
 
 
 impl SecondFactorManager.factors(user_id: str) -> list[dict[str, any]] {
@@ -401,4 +255,193 @@ impl SecondFactorManager.complete_login(
             if record
             else METHOD_PASSWORD
     };
+}
+
+impl _totp_credentials(
+    credentials: list[dict[str, any]], status: str = ''
+) -> list[dict[str, any]] {
+    return [
+        c
+        for c in credentials
+        if c.get('type') == TOTP_CREDENTIAL
+            and (not status or c.get('status') == status)
+    ];
+}
+
+
+impl _factor_view(credential: dict[str, any]) -> dict[str, any] {
+    return {
+        'id': str(credential.get('id') or ''),
+        'type': TOTP_CREDENTIAL,
+        'status': str(credential.get('status') or FACTOR_UNVERIFIED),
+        'created_at': credential.get('created_at'),
+        'verified_at': credential.get('verified_at')
+    };
+}
+
+
+impl _refused(code: str) -> dict[str, any] {
+    return {'ok': False, 'code': code};
+}
+
+
+impl _limited(retry: int) -> dict[str, any] {
+    return {'ok': False, 'code': 'RATE_LIMITED', 'retry_after': retry};
+}
+
+
+impl _claim_attempt(user_id: str) -> int {
+    settings = auth_settings();
+    retry = consume_limit(
+        ATTEMPT_SCOPE,
+        user_id,
+        max(1, int(settings.second_factor.attempts)),
+        max(1, int(settings.second_factor.lockout_seconds))
+    );
+    if retry < 0 {
+        raise SecondFactorUnavailable();
+    }
+    return retry;
+}
+
+
+impl _first_use(kind: str, subject: str, seconds: int) -> bool {
+    db = shared_store();
+    if db is None {
+        raise SecondFactorUnavailable();
+    }
+    key = 'second-factor-used:'
+        + hashlib.sha256((kind + ':' + subject).encode('utf-8')).hexdigest();
+    try {
+        rows = db.rows(
+            """
+            INSERT INTO kv_state (key, value, expires_at)
+            VALUES (:k, '1', now() + make_interval(secs => CAST(:ttl AS float8)))
+            ON CONFLICT (key) DO NOTHING
+            RETURNING key
+            """,
+            {'k': key, 'ttl': seconds}
+        );
+    } except Exception as error {
+        logger.error(f"second factor replay ledger failed: {error}");
+        raise SecondFactorUnavailable() from error;
+    }
+    return bool(rows);
+}
+
+
+impl _matching_factor(
+    credentials: list[dict[str, any]], code: str, status: str, factor_id: str = ''
+) -> (tuple[str, int] | None) {
+    matched: (tuple[str, int] | None) = None;
+    for credential in _totp_credentials(credentials, status) {
+        candidate = str(credential.get('id') or '');
+        if factor_id and candidate != factor_id {
+            continue;
+        }
+        step = matching_step(str(credential.get('secret') or ''), code);
+        if step is not None and matched is None {
+            matched = (candidate, step);
+        }
+    }
+    return matched;
+}
+
+
+impl _recovery_hash(recovery_code: str) -> str {
+    text = ''.join(
+        [
+            ch
+            for ch in recovery_code.lower()
+            if ch.isalnum()
+        ]
+    );
+    return hashlib.sha256(text.encode('utf-8')).hexdigest();
+}
+
+
+impl _new_recovery_codes -> list[str] {
+    codes: list[str] = [];
+    for index in range(RECOVERY_CODE_COUNT) {
+        raw = ''.join(
+            [
+                secrets.choice(RECOVERY_CODE_ALPHABET)
+                for position in range(RECOVERY_CODE_LENGTH)
+            ]
+        );
+        codes.append('-'.join([raw[i:i + 4] for i in range(0, len(raw), 4)]));
+    }
+    return codes;
+}
+
+
+impl _consume_recovery_code(
+    storage: IdentityStorage,
+    user_id: str,
+    credentials: list[dict[str, any]],
+    recovery_code: str
+) -> bool {
+    if not isinstance(recovery_code, str)
+        or not recovery_code
+        or len(recovery_code) > 64 {
+        return False;
+    }
+    presented = _recovery_hash(recovery_code);
+    hit = '';
+    for credential in credentials {
+        if credential.get('type') != RECOVERY_CREDENTIAL {
+            continue;
+        }
+        for stored in (credential.get('code_hashes') or []) {
+            if hmac.compare_digest(
+                str(stored).encode('ascii'), presented.encode('ascii')
+            ) {
+                hit = str(stored);
+            }
+        }
+    }
+    if not hit {
+        return False;
+    }
+    if not _first_use('recovery', user_id + ':' + hit, USED_RECOVERY_SECONDS) {
+        return False;
+    }
+    for credential in credentials {
+        if credential.get('type') == RECOVERY_CREDENTIAL {
+            credential['code_hashes'] = [
+                h
+                for h in (credential.get('code_hashes') or [])
+                if str(h) != hit
+            ];
+        }
+    }
+    storage._update_credentials(user_id, credentials);
+    return True;
+}
+
+
+impl _verified_proof(
+    storage: IdentityStorage, user_id: str, code: str, recovery_code: str
+) -> (dict[str, any] | None) {
+    credentials = storage._get_credentials(user_id);
+    if not _totp_credentials(credentials, FACTOR_VERIFIED) {
+        return None;
+    }
+    if code {
+        matched = _matching_factor(credentials, code, FACTOR_VERIFIED);
+        if matched is None {
+            return None;
+        }
+        if not _first_use(
+            'totp', matched[0] + ':' + str(matched[1]), USED_CODE_SECONDS
+        ) {
+            return None;
+        }
+        return {'ok': True, 'method': METHOD_TOTP, 'factor_id': matched[0]};
+    }
+    if recovery_code
+        and _consume_recovery_code(storage, user_id, credentials, recovery_code) {
+        return {'ok': True, 'method': METHOD_RECOVERY, 'factor_id': ''};
+    }
+    return None;
 }

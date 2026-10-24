@@ -1,7 +1,10 @@
 walker DocIRGenPass(TreePass) {
     static has contract: PassContract = PassContract();
     has _live_comment_ids: (set[int] | None) = None,
-        _emitted_comment_ids: (set[int] | None) = None;
+        _emitted_comment_ids: (set[int] | None) = None,
+        _rescue_nd: (uni.Module | None) = None,
+        _rescue_idx: int = 0,
+        _rescue_own_ids: (set[int] | None) = None;
 
     def _comment_is_live(c: uni.CommentToken) -> bool;
     def _rescue_lost_comments(
@@ -191,10 +194,12 @@ walker DocIRGenPass(TreePass) {
     can exit_jsx_comment with uni.JsxComment exit;
     can exit_graph_import with uni.GraphImport exit;
     can exit_import_wire with uni.ImportWire exit;
+    can exit_wire_target with uni.WireTarget exit;
     can exit_import_rule with uni.ImportRule exit;
     can exit_module_pattern with uni.ModulePattern exit;
     can exit_wire_item with uni.WireItem exit;
     def _wiring_stmt_doc_ir(nd: uni.UniNode) -> doc.DocType;
+    def _payload_doc_ir(items: list[doc.DocType]) -> doc.DocType;
     can doc_ir_default_exit with uni.UniNode exit;
     can finish_doc_comments with uni.UniNode exit;
 }

@@ -12,7 +12,6 @@ be deploying. So these also cover which toolchain the host build steps run.
 These drive the real ManifestBuilder against real project folders (the broken
 build runs the actual `jac build` subprocess); no mocks."""
 import from unittest.mock { patch }
-import from jaclang.scale.tests.toolchain_http { mock_downloads }
 
 import hashlib;
 import json;
@@ -22,15 +21,6 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import jaclang.scale.injector.binary as binary_mod;
-import from jaclang.cli.manifest_route { resolve_cli_version }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.injector.bundle { release_binary_env }
-import from jaclang.scale.runtime.context.util { jac_executable }
-import from jaclang.scale.tests.support { require_pod_binary }
 
 # No jac release carries this version, so it can never collide with the jac
 # running the suite.

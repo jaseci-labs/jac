@@ -1,14 +1,3 @@
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.project.jac_version { version_key }
-import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-
-import from jaclang.scale.runtime.fleet { fleet_of }
-
-
 def _builder(
     services: dict[str, any], k8s_config: KubernetesConfig | None = None
 ) -> ManifestBuilder {
@@ -198,10 +187,6 @@ test "deploy loads the cluster config before it resolves the pod arch" {
     import unittest.mock;
     import tempfile;
     import from pathlib { Path }
-    import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
-    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig
-    }
     import from jaclang.scale.config.app_config { AppConfig }
     import jaclang.scale.injector.binary as binary_mod;
     import from jaclang.cli.manifest_route { resolve_cli_version }

@@ -363,3 +363,67 @@ test "emitted tree digest tracks content not just mtimes" {
     assert first != second , "content changes must change the digest even at equal mtimes";
     assert emitted_tree_digest(Path(tmp) / "missing") == "" , "missing tree digests empty";
 }
+
+"""A client compile error names the module that failed. Its errors are read
+from the program that compiled it (an app's own compilation context, not the
+root program), and when they were recorded by an earlier compile only the
+errors in that module and the modules it imports are shown, never an unrelated
+module's errors left in the program."""
+test "a failed client compile reports the module's errors, not unrelated ones" {
+    import shutil;
+    import tempfile;
+    import from jaclang.compiler.driver.program { JacProgram }
+    tmp = tempfile.mkdtemp(prefix="jac-client-errors-");
+    base = Path(tmp);
+    try {
+        (base / 'other.jac').write_text(
+            "def:pub Other -> JsxElement {\n    return <i>{OTHER_MISSING.size}</i>;\n}\n"
+        );
+        (base / 'card.jac').write_text(
+            "def:pub Card(count: int) -> JsxElement {\n"
+                + "    return <b>{CARD_MISSING.size + count}</b>;\n}\n"
+        );
+        main = base / 'main.jac';
+        main.write_text(
+            "import from card { Card }\n\n"
+                + "def:pub app -> JsxElement {\n"
+                + "    return <section><Card count={2}/></section>;\n}\n"
+        );
+        for (app_entry, entry_first) in (
+            ('main', False),
+            ('main', True),
+            ('card', False)
+        ) {
+            (base / 'jac.toml').write_text(
+                '[project]\nname="clerr"\n[apps.web]\nkind="web-app"\n'
+                    + f'entry-point="{app_entry}"\n'
+            );
+            program = JacProgram();
+            program.compile(str(base / 'other.jac'));
+            assert program.errors_had , "the unrelated module should leave errors";
+            builder = ClientBundleBuilder(program=program);
+            if entry_first {
+                try {
+                    builder._compile_to_js(main);
+                } except ClientBundleError {}
+            }
+            for attempt in range(2) {
+                message = '';
+                try {
+                    builder._compile_to_js(base / 'card.jac');
+                } except ClientBundleError as err {
+                    message = str(err);
+                }
+                details = message.partition('for client bundle:')[2];
+                assert 'card.jac' in details , (
+                    f"{app_entry} attempt {attempt + 1} lost the module's errors:\n{message}"
+                );
+                assert 'other.jac' not in details , (
+                    f"{app_entry} attempt {attempt + 1} reported another module:\n{message}"
+                );
+            }
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

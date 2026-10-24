@@ -1,45 +1,6 @@
 """The _sha2 module: SHA224Type and SHA256Type over SHA256Type's generated
 methods, SHA384Type and SHA512Type over SHA512Type's."""
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyLong_FromLong,
-    PyModule_AddIntConstant,
-    PyObject,
-    PyUnicode_FromString,
-    Py_TYPE
-}
-import from jaclang.runtime.python.bindings.module {
-    ModuleDefinition,
-    ModuleHooks,
-    add_state_owned
-}
-import from jaclang.runtime.python.bindings.type {
-    TypeDefinition,
-    TypeHooks,
-    TypeFlags,
-    PropertyDefinition,
-    PropertyCallbacks
-}
-import from jaclang.runtime.python.bindings.converters { ClassToken }
-import from jaclang.runtime.python.bindings.payload {
-    dispose_payload,
-    traverse_payload
-}
-import from jaclang.runtime.python.bindings.clinic.sha2 {
-    SHA256Type_methods,
-    SHA512Type_methods,
-    module_methods
-}
-import from jaclang.runtime.python.modules.hashlib { HASHLIB_GIL_MINSIZE }
-import from jaclang.runtime.python.modules.sha2 {
-    SHA256Type_token,
-    SHA512Type_token,
-    SHA256_BLOCKSIZE,
-    SHA512_BLOCKSIZE,
-    sha2_of
-}
-
 def:priv sha256_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, SHA256Type_token.definition_of(Py_TYPE(instance)));
 }

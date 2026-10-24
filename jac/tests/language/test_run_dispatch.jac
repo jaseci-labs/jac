@@ -23,13 +23,11 @@ import from jaclang.project.kinds {
     plan_workspace,
     resolve_app_kind,
     resolve_entry,
-    is_valid_kind,
-    kind_entry,
-    kind_spec,
     RunPlan,
     KIND_SPECS,
     VALID_KINDS
 }
+import from jaclang.project.app_kinds { is_valid_kind, kind_entry, kind_spec }
 
 glob _tmp_dirs: list[str] = [];
 

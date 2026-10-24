@@ -5,44 +5,6 @@ Record layouts come from resource_records.<os>.jac and the limit and usage
 constants from resource_constants.<os>.jac.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_errno,
-    jacpy_long_u64_checked,
-    jacpy_release,
-    NULL,
-    Py_NewRef,
-    PyErr_SetFromErrno,
-    PyExc_OSError,
-    PyExc_OverflowError,
-    PyExc_ValueError,
-    PyFloat_FromDouble,
-    PyLong_FromLong,
-    PyLong_FromUnsignedLongLong,
-    PyLong_IsNegative,
-    PyNumber_Index,
-    PyObject,
-    PySequence_Tuple,
-    PySys_AuditTuple,
-    PyTuple_GetItem,
-    PyTuple_Size
-}
-import from jaclang.runtime.python.object_model.structseq {
-    PyStructSequence_New,
-    PyStructSequence_SetItem
-}
-import from jaclang.runtime.python.capi { object_error, object_tuple }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_state_get }
-import from jaclang.runtime.python.modules.resource_records {
-    rusage,
-    rlimit,
-    timeval,
-    prlimit
-}
-import from jaclang.runtime.python.modules.resource_constants {
-    RLIM_INFINITY,
-    RLIM_NLIMITS
-}
 import from c {
     def getrusage(who: i32, usage: &mut rusage) -> i32;  def getrlimit(
         resource: i32, limit: &mut rlimit

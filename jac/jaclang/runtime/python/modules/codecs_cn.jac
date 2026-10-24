@@ -2,45 +2,6 @@
 encodings: gb2312, gbk, gb18030 and hz) in native Jac. See ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.modules.cjkcodecs {
-    DecodeWriter,
-    Gb18030Range,
-    MBERR_EXCEPTION,
-    MBERR_TOOFEW,
-    MBERR_TOOSMALL,
-    MultibyteCodec,
-    MultibyteCodec_State,
-    NOCHAR,
-    UNIINV,
-    getcodec,
-    inbyte,
-    inchar,
-    map_decode,
-    map_encode,
-    next_in,
-    next_inchar,
-    next_out,
-    no_codec_init,
-    no_decode_reset,
-    no_encode_reset,
-    no_state_init,
-    outbyte,
-    outchar,
-    register_maps,
-    set_state_byte,
-    state_byte
-}
-import from jaclang.runtime.python.modules.cjkcodecs_mappings_cn {
-    CJK_CN_MAPPINGS,
-    cjk_cn_mappings,
-    cjk_gb18030_to_unibmp_ranges,
-    cjk_gb18030ext_map,
-    cjk_gb2312_map,
-    cjk_gbcommon_map,
-    cjk_gbkext_map
-}
-
 # codecs in this file use the first byte of MultibyteCodec_State.c[8]
 # to store a 0 or 1 state value
 glob:priv CN_STATE_OFFSET: int = 0;

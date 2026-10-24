@@ -1,9 +1,6 @@
 import hashlib;
 import os;
 import types;
-import from jaclang.jac0core.ext_registry { base_stem }
-import type from jaclang.runtime.semantic { Info }
-import type from jaclang.client.compiler { ViteCompiler }
 
 obj ModuleIndex {
     has size: tuple[int, int],
@@ -38,79 +35,19 @@ obj PreparedApplication {
 glob _applications: dict[str, PreparedApplication] = {},
      _realpaths: dict[str, str] = {};
 
-def _realpath(path: str) -> str {
-    resolved = _realpaths.get(path);
-    if resolved is None {
-        resolved = os.path.realpath(path);
-        _realpaths[path] = resolved;
-    }
-    return resolved;
-}
+def _realpath(path: str) -> str;
 
-def publish(application: PreparedApplication) {
-    import sys;
-    import from jaclang.runtime.prepared_loader { PreparedFinder }
-    if not any(isinstance(finder, PreparedFinder) for finder in sys.meta_path) {
-        sys.meta_path.insert(0, PreparedFinder());
-    }
-    import from jaclang.data.type_identity { index_application }
-    index_application(application);
-    _applications[os.path.realpath(application.entry)] = application;
-    for child in application.applications {
-        index_application(child);
-        _applications[os.path.realpath(child.entry)] = child;
-    }
-}
+def publish(application: PreparedApplication);
 
-def application_for(path: str, module_name: str = "") -> (PreparedApplication | None) {
-    resolved = _realpath(path);
-    for application in _applications.values() {
-        if (
-            module_name == application_namespace(application)
-            or module_name.startswith(application_namespace(application) + '.')
-        )
-            and (resolved in application.code or resolved in application.manifests) {
-            return application;
-        }
-    }
-    exact = _applications.get(resolved);
-    if exact is not None {
-        return exact;
-    }
-    for application in reversed(`list(_applications.values())) {
-        if ((resolved in application.code) or (resolved in application.manifests)) {
-            return application;
-        }
-    }
-    return None;
-}
+def application_for(path: str, module_name: str = "") -> (PreparedApplication | None);
 
-def application_of(target: object) -> PreparedApplication | None {
-    import sys;
-    name = getattr(target, '__module__', '');
-    module = sys.modules.get(name);
-    source = getattr(module, '__file__', '');
-    return application_for(source, name) if source else None;
-}
+def application_of(target: object) -> PreparedApplication | None;
 
-def prepared_code(path: str) -> (types.CodeType | None) {
-    application = application_for(path);
-    return application.code.get(os.path.realpath(path)) if application else None;
-}
+def prepared_code(path: str) -> (types.CodeType | None);
 
-def prepared_manifest(path: str) -> (dict[str, any] | None) {
-    application = application_for(path);
-    return application.manifests.get(os.path.realpath(path)) if application else None;
-}
+def prepared_manifest(path: str) -> (dict[str, any] | None);
 
-def forget(`entry: str) {
-    previous = _applications.pop(os.path.realpath(`entry), None);
-    if previous is not None {
-        for child in previous.applications {
-            _applications.pop(os.path.realpath(child.entry), None);
-        }
-    }
-}
+def forget(`entry: str);
 
 glob NON_APPLICATION_DIRS: tuple[str, ...] = (
          'node_modules',
@@ -119,330 +56,44 @@ glob NON_APPLICATION_DIRS: tuple[str, ...] = (
          'site-packages'
      );
 
-def holds_application_code(relative_path: str) -> bool {
-    return not any(
-        part.startswith('.') or part in NON_APPLICATION_DIRS
-        for part in relative_path.split(os.sep)
-    );
-}
+def holds_application_code(relative_path: str) -> bool;
 
 def containing_application(
     path: str, module_name: str = ""
-) -> (PreparedApplication | None) {
-    if module_name == 'jaclang' or module_name.startswith('jaclang.') {
-        return None;
-    }
-    resolved = os.path.realpath(path);
-    for application in _applications.values() {
-        if module_name.startswith(application_namespace(application) + '.') {
-            if resolved.startswith(application.root + os.sep) {
-                return application;
-            }
-        }
-    }
-    candidates = [
-        a
-        for a in _applications.values()
-        if resolved.startswith((a.root + os.sep))
-            and holds_application_code(os.path.relpath(resolved, a.root))
-    ];
-    return max(candidates, key=lambda (a: any) { len(a.root); }, `default=None);
-}
+) -> (PreparedApplication | None);
 
 def load_prepared_module(
     path: str, application: PreparedApplication | None = None, as_main: bool = False
-) -> types.ModuleType {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import sys;
-    path = os.path.realpath(path);
-    if (prepared_code(path) is None) {
-        raise RuntimeError(f'No prepared executable artifact for {path}');
-    }
-    application = application or application_for(path);
-    if application is None {
-        raise RuntimeError(f'No prepared application owns {path}');
-    }
-    if not as_main {
-        return import_prepared(path, application);
-    }
-    ensure_namespace(application);
-    target = qualified_module(path, application);
-    modules = Jac.jac_import(
-        target=target, base_path=application.root, lng='jac', override_name='__main__'
-    );
-    if not modules {
-        raise RuntimeError(f'Prepared module did not initialize: {path}');
-    }
-    sys.modules[target] = modules[0];
-    return modules[0];
-}
+) -> types.ModuleType;
 
 def initialize_application(
     application: PreparedApplication, config: any = None, served: any = None
-) -> types.ModuleType {
-    module = load_prepared_module(application.entry);
-    if ((config is not None) and (served is not None)) {
-        import from jaclang.server.assembly { assemble_served_program }
-        assemble_served_program(config, served, application.root, application);
-    }
-    return module;
-}
+) -> types.ModuleType;
 
-def clear {
-    _applications.clear();
-    _realpaths.clear();
-}
+def clear;
 
 
-def application_namespace(application: PreparedApplication) -> str {
-    if application.namespace {
-        return application.namespace;
-    }
-    return '_jac_app_' + hashlib.sha256(application.entry.encode()).hexdigest()[:16];
-}
+def application_namespace(application: PreparedApplication) -> str;
 
-def ensure_namespace(application: PreparedApplication, name: str = '') -> str {
-    import sys;
-    import importlib.machinery;
-    import importlib.util;
-    name = name or application_namespace(application);
-    if name not in sys.modules {
-        initializer = next(
-            (
-                p
-                for p in application.code
-                if os.path.dirname(p) == application.root
-                    and os.path.basename(p).startswith('__init__.')
-            ),
-            ''
-        );
-        if initializer {
-            import from jaclang.runtime.prepared_loader { PreparedLoader }
-            loader = PreparedLoader(application);
-            spec = importlib.util.spec_from_file_location(
-                name,
-                initializer,
-                loader=loader,
-                submodule_search_locations=[application.root]
-            );
-            if spec is None {
-                raise ImportError(f"Cannot load prepared package {initializer}");
-            }
-            package = importlib.util.module_from_spec(spec);
-            sys.modules[name] = package;
-            try {
-                loader.exec_module(package);
-            } except BaseException {
-                sys.modules.pop(name, None);
-                raise;
-            }
-        } else {
-            package = types.ModuleType(name);
-            package.__path__ = [application.root];
-            package.__package__ = name;
-            package.__spec__ = importlib.machinery.ModuleSpec(
-                name, loader=None, is_package=True
-            );
-            package.__spec__.submodule_search_locations = [application.root];
-            sys.modules[name] = package;
-        }
-    }
-    return name;
-}
+def ensure_namespace(application: PreparedApplication, name: str = '') -> str;
 
-def relative_module(path: str, application: PreparedApplication) -> str {
-    relative = os.path.relpath(os.path.dirname(path), application.root);
-    stem = base_stem(path);
-    parts = [] if relative == '.' else relative.split(os.sep);
-    if stem != '__init__' {
-        parts.append(stem);
-    }
-    return '.'.join(parts);
-}
+def relative_module(path: str, application: PreparedApplication) -> str;
 
-def qualified_module(path: str, application: PreparedApplication) -> str {
-    relative = relative_module(path, application);
-    namespace = application_namespace(application);
-    return f'{namespace}.{relative}' if relative else namespace;
-}
+def qualified_module(path: str, application: PreparedApplication) -> str;
 
-def module_index(application: PreparedApplication) -> ModuleIndex {
-    size = (len(application.code), len(application.origins));
-    index = application.index;
-    if index is not None and index.size == size {
-        return index;
-    }
-    index = ModuleIndex(size);
-    for source in application.code {
-        index.names.setdefault(relative_module(source, application), source);
-        directory = os.path.dirname(source);
-        while directory not in index.packages {
-            index.packages.add(directory);
-            parent = os.path.dirname(directory);
-            if parent == directory {
-                break;
-            }
-            directory = parent;
-        }
-    }
-    for (path, origin) in application.origins.items() {
-        index.sources.setdefault(origin, path);
-    }
-    application.index = index;
-    return index;
-}
+def module_index(application: PreparedApplication) -> ModuleIndex;
 
-def import_prepared(path: str, application: PreparedApplication) -> types.ModuleType {
-    import importlib;
-    ensure_namespace(application);
-    return importlib.import_module(qualified_module(path, application));
-}
+def import_prepared(path: str, application: PreparedApplication) -> types.ModuleType;
 
-def entry_alias(fullname: str) -> tuple[str, str] | None {
-    if not fullname.startswith('_jac_app_') {
-        return None;
-    }
-    for consumer in _applications.values() {
-        prefix = application_namespace(consumer) + '.';
-        if not fullname.startswith(prefix) {
-            continue;
-        }
-        for provider in _applications.values() {
-            if provider is consumer {
-                continue;
-            }
-            origin = provider.origins.get(provider.entry, '');
-            source = os.path.join(consumer.root, origin) if origin else provider.entry;
-            local_name = qualified_module(source, consumer);
-            if fullname == local_name {
-                ensure_namespace(provider);
-                return (qualified_module(provider.entry, provider), provider.entry);
-            }
-        }
-    }
-    return None;
-}
+def entry_alias(fullname: str) -> tuple[str, str] | None;
 
-def module_builtins(application: PreparedApplication, source: str) -> dict[str, any] {
-    import builtins;
-    import importlib;
-    if not application.scope_imports {
-        return dict(vars(builtins));
-    }
-    original = builtins.__import__;
-    def scoped_import(
-        name: str,
-        globals: any = None,
-        locals: any = None,
-        fromlist: any = (),
-        level: int = 0
-    ) -> any {
-        if level or name.startswith('_jac_app_') {
-            return original(name, globals, locals, fromlist, level);
-        }
-        for base in dict.fromkeys([os.path.dirname(source), application.root]) {
-            candidate = os.path.join(base, *name.split('.'));
-            selected = application;
-            for suffix in ('.jac', '.py') {
-                declared = _applications.get(os.path.realpath(candidate + suffix));
-                if declared is not None {
-                    selected = declared;
-                    break;
-                }
-            }
-            local = any(
-                candidate + suffix in selected.code for suffix in ('.jac', '.py')
-            )
-                or candidate in module_index(selected).packages;
-            if not local {
-                continue;
-            }
-            relative = os.path.relpath(candidate, selected.root).replace(os.sep, '.');
-            prefix = ensure_namespace(selected);
-            result = original(prefix + '.' + relative, globals, locals, fromlist, 0);
-            if fromlist {
-                return result;
-            }
-            first = relative.split('.')[:len(relative.split('.')) - len(name.split('.'))
-                + 1];
-            return importlib.import_module(prefix + '.' + '.'.join(first));
-        }
-        return original(name, globals, locals, fromlist, level);
-    }
-    result = dict(vars(builtins));
-    result['__import__'] = scoped_import;
-    return result;
-}
+def module_builtins(application: PreparedApplication, source: str) -> dict[str, any];
 
-def execute_module(module: types.ModuleType, application: PreparedApplication) {
-    filename = module.__file__;
-    if filename is None {
-        raise ImportError(f'Prepared module {module.__name__} has no source path');
-    }
-    source = os.path.realpath(filename);
-    if module.__name__ == '__main__' {
-        import from jaclang.runtime.runtime { JacRuntime as Jac }
-        Jac.load_module(qualified_module(source, application), module, force=True);
-    }
-    code = application.code.get(source);
-    if code is None {
-        raise ImportError(f'No prepared executable artifact for {source}');
-    }
-    if not module.__name__.startswith('jaclang.') {
-        import from jaclang.runtime.runtime { JacRuntime as Jac }
-        Jac.load_module(module.__name__, module);
-    }
-    (native_engine, callbacks) = application.native.get(source, (None, None));
-    if native_engine is not None {
-        import from jaclang.runtime.interop_bridge { NativeLibrary }
-        if isinstance(native_engine, NativeLibrary) {
-            native_engine.initialize();
-        }
-        module.__dict__['__jac_native_engine__'] = native_engine;
-    }
-    if callbacks is not None {
-        module.__dict__['__jac_interop_py_funcs__'] = callbacks;
-    }
-    facts = application.manifests.get(source, {}).get('persistence', ());
-    if facts {
-        module.__dict__['__jac_persistence__'] = tuple(facts);
-    }
-    module.__dict__['__builtins__'] = module_builtins(application, source);
-    exec(code, module.__dict__);
-}
+def execute_module(module: types.ModuleType, application: PreparedApplication);
 
-def semantic_for_scope(scope: str) -> Info | None {
-    import sys;
-    import from jaclang.jac0core.ext_registry { base_stem }
-    parts = scope.split('.');
-    for end in range(len(parts) - 1, 0, -1) {
-        name = '.'.join(parts[:end]);
-        module = sys.modules.get(name);
-        source = getattr(module, '__file__', '');
-        if not source {
-            continue;
-        }
-        application = application_for(source, name);
-        if application is None {
-            continue;
-        }
-        key = '.'.join([base_stem(source), *parts[end:]]);
-        return application.semantic.get(os.path.realpath(source), {}).get(key);
-    }
-    return None;
-}
+def semantic_for_scope(scope: str) -> Info | None;
 
 
-def origin_for_source(path: str) -> str {
-    application = application_for(path);
-    if application is None {
-        return path;
-    }
-    origin = application.origins.get(os.path.realpath(path));
-    return os.path.realpath(os.path.join(application.root, origin)) if origin else path;
-}
+def origin_for_source(path: str) -> str;
 
-def source_for_origin(application: PreparedApplication, origin: str) -> str {
-    source = module_index(application).sources.get(origin);
-    return source or os.path.realpath(os.path.join(application.root, origin));
-}
+def source_for_origin(application: PreparedApplication, origin: str) -> str;

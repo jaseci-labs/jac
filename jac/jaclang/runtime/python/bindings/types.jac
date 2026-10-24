@@ -3,37 +3,6 @@
 Derived from CPython 3.14.6 Modules/_typesmodule.c; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyAsyncGen_Type,
-    PyCFunction_Type,
-    PyCapsule_Type,
-    PyCell_Type,
-    PyClassMethodDescr_Type,
-    PyCode_Type,
-    PyCoro_Type,
-    PyDictProxy_Type,
-    PyEllipsis_Type,
-    PyFrame_Type,
-    PyFunction_Type,
-    PyGen_Type,
-    PyGetSetDescr_Type,
-    PyMemberDescr_Type,
-    PyMethodDescr_Type,
-    PyMethod_Type,
-    PyModule_Type,
-    PyObject,
-    PyTraceBack_Type,
-    PyWrapperDescr_Type,
-    Py_GenericAliasType,
-    _PyMethodWrapper_Type,
-    _PyNamespace_Type,
-    _PyNone_Type,
-    _PyNotImplemented_Type,
-    _PyUnion_Type
-}
-import from jaclang.runtime.python.bindings.module { ModuleDefinition, ModuleHooks }
-import from jaclang.runtime.python.bindings.runtime_objects { export_runtime_objects }
-
 glob:priv TYPES: list[tuple[str, ptr[PyObject]]] = [
          ("AsyncGeneratorType", addressof(PyAsyncGen_Type)),
          ("BuiltinFunctionType", addressof(PyCFunction_Type)),

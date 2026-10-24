@@ -1,16 +1,5 @@
 """Native BOM and coding-cookie detection for Python source input."""
 
-import from jaclang.runtime.python.cpython_api {
-    PyErr_ExceptionMatches,
-    PyExc_LookupError,
-    PyObject,
-    jacpy_codec_valid,
-    jacpy_fd_line
-}
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-
-import from jaclang.runtime.python.native_services { take_error_text }
-import from jaclang.runtime.python.capi { boundary_failure }
 def normal_encoding(name: str) -> str {
     prefix = name[:12].lower().replace("_", "-");
     if prefix == "utf-8" or prefix.startswith("utf-8-") {

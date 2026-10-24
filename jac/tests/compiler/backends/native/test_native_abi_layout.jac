@@ -35,3 +35,17 @@ test "a nullable boolean does not add eight bytes of padding" {
     example.set_body(ir.IntType(8), small, ir.IntType(8));
     assert struct_layouts(module)["Example"] == ([0, 1, 3], 4);
 }
+
+test "an array member and a vector member of the same shape lay out apart" {
+    binding.initialize_native_target();
+    target = binding.Target.from_default_triple().create_target_machine();
+    sizes: list[int] = [];
+    for member in [ir.ArrayType(ir.FloatType(), 4), ir.VectorType(ir.FloatType(), 4)] {
+        module = ir.Module(context=ir.Context());
+        module.data_layout = str(target.target_data);
+        pair = module.context.get_identified_type("Pair");
+        pair.set_body(member, ir.IntType(8));
+        sizes.append(struct_layouts(module)["Pair"][1]);
+    }
+    assert sizes == [20, 32] , sizes;
+}

@@ -29,7 +29,9 @@ glob __all__ = [
          'make_client_bundle_builder': 'jaclang.client.vite_client_bundle'
      };
 
-def __getattr__(name: str) -> object {
+def __getattr__(name: str) -> object;
+
+impl __getattr__(name: str) -> object {
     mod_path = _LAZY_EXPORTS.get(name);
     if mod_path is None {
         raise AttributeError(f"module 'jaclang.client' has no attribute {name!r}");

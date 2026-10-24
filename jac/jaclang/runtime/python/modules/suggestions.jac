@@ -3,21 +3,6 @@
 The Levenshtein search itself is Python/suggestions.c, which tracebacks share.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_Occurred,
-    PyExc_TypeError,
-    PyList_GetItem,
-    PyList_Size,
-    PyObject,
-    Py_NewRef,
-    _Py_CalculateSuggestions,
-    jacpy_is_exact_list,
-    jacpy_is_unicode
-}
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.capi { object_error }
-
 def _suggestions__generate_suggestions_impl(
     module: ptr[PyObject], candidates: ptr[PyObject], item: ptr[PyObject]
 ) -> ptr[PyObject] {

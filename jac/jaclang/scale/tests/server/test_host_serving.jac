@@ -22,11 +22,7 @@ import tempfile;
 import urllib.request;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.application { prepare_application }
-import from jaclang.project.config { set_config }
 import from jaclang.server { sv_client }
-import from jaclang.server.server { JacAPIServer }
-import from jaclang.server.settings { ServeSettings }
 
 
 glob _TOML: str = (

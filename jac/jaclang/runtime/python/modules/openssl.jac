@@ -9,22 +9,6 @@ The macro values are generated in openssl_constants.jac. OpenSSL objects are
 opaque `ptr`s; a C string OpenSSL returns is a `ptr[u8]`.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_Format,
-    PyErr_SetString,
-    PyObject
-}
-import from jaclang.runtime.python.capi { c_string_copy }
-import from jaclang.runtime.python.modules.openssl_constants {
-    ERR_LIB_MASK,
-    ERR_LIB_OFFSET,
-    ERR_LIB_SYS,
-    ERR_REASON_MASK,
-    ERR_SYSTEM_FLAG,
-    ERR_SYSTEM_MASK
-}
-
 import from c {
     # crypto.h, err.h
     def OpenSSL_version_num -> u64;  def OpenSSL_version(kind: i32) -> ptr[u8];  def CRYPTO_free(

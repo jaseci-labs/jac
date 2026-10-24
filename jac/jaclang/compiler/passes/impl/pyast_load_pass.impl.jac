@@ -2243,3 +2243,25 @@ impl PyastBuildPass._strip_string_continuations(seg: str) -> str {
 impl PyastBuildPass.run_walk with PythonModuleAst entry {
     self.module = self._run_impl(here);
 }
+
+impl PyastBuildPass.proc_ellipsis(nd: py_ast.Constant) {}
+
+impl PyastBuildPass.proc_function_type(nd: py_ast.FunctionType) {}
+
+impl PyastBuildPass.proc_interactive(nd: py_ast.Interactive) {}
+
+impl PyastBuildPass.proc_param_spec(nd: py_ast.ParamSpec) {}
+
+impl PyastBuildPass.proc_type_alias(nd: py_ast.TypeAlias) {}
+
+impl PyastBuildPass.proc_type_var(nd: py_ast.TypeVar) {}
+
+impl PyastBuildPass.proc_type_var_tuple(nd: py_ast.TypeVarTuple) {}
+
+impl build_python_module(py_mod: PythonModuleAst) -> Module {
+    walk = PyastBuildPass(module=py_mod, ctx=new_context(PyastBuildPass, py_mod));
+    walk_pass(walk);
+    built = walk.module;
+    assert isinstance(built, Module);
+    return built;
+}

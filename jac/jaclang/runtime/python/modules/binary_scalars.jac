@@ -3,14 +3,6 @@
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyLong_FromLongLong,
-    PyLong_FromUnsignedLongLong,
-    PyObject
-}
-import from jaclang.runtime.python.capi { required, memory_byte, memory_set }
-
 def read_bits(address: ptr, size: int, little: bool) -> u64 {
     bits: u64 = 0;
     for i in range(size) {

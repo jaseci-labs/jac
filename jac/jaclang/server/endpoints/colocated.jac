@@ -4,66 +4,22 @@ import os;
 glob logger: logging.Logger = logging.getLogger('jaclang.serve');
 
 
-def colocated_providers -> dict[str, any] {
-    return dict(_local_providers);
-}
+def colocated_providers -> dict[str, any];
 
 
-def provider_route(config: any, provider_app: str) -> str {
-    provider_cfg = config.app(provider_app) if config is not None else None;
-    route: str = str(provider_cfg.effective_route())
-        if provider_cfg is not None
-        else f"/api/{provider_app}";
-    return route.rstrip('/');
-}
+def provider_route(config: any, provider_app: str) -> str;
 
 
-def _body(request: Request) -> (dict[str, any] | None) {
-    if not request.body {
-        return {};
-    }
-    try {
-        parsed = request.json_sync();
-    } except Exception {
-        return None;
-    }
-    return parsed if isinstance(parsed, dict) else {};
-}
+def _body(request: Request) -> (dict[str, any] | None);
 
 
-def _fail(code: str, message: str, status: int) -> TransportResponse {
-    return TransportResponse.fail(
-        code=code, message=message, meta=Meta(extra={'http_status': status})
-    );
-}
+def _fail(code: str, message: str, status: int) -> TransportResponse;
 
 
-def _unit_failed(result: any) -> bool {
-    return isinstance(result, dict) and 'error' in result;
-}
+def _unit_failed(result: any) -> bool;
 
 
-def _outcome(result: any, fallback: str) -> (TransportResponse | Response) {
-    if _unit_failed(result) {
-        if result.get('error') == 'User not found' {
-            return _fail('UNAUTHORIZED', 'Unauthorized: unknown user', 401);
-        }
-        return TransportResponse.fail(
-            code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
-            message=result.get('error', fallback),
-            meta=Meta(
-                extra={
-                    'http_status': int(
-                        result.get('http_status') or refusal_status() or 500
-                    )
-                }
-            )
-        );
-    }
-    return settle_envelope(
-        TransportResponse.success(data=result, meta=Meta(extra={'http_status': 200}))
-    );
-}
+def _outcome(result: any, fallback: str) -> (TransportResponse | Response);
 
 
 def _walker_callback(
@@ -72,45 +28,7 @@ def _walker_callback(
     walker_name: str,
     intro: ModuleIntrospector,
     requires_auth: bool
-) -> Callable[..., (TransportResponse | Response)] {
-    async def callback(
-        request: Request, /, nd: (str | None) = None, **kwargs: JsonValue
-    ) -> (TransportResponse | Response) {
-        username = request_caller(server, request);
-        if requires_auth and not username {
-            return _fail('UNAUTHORIZED', 'Unauthorized', 401);
-        }
-        fields = _body(request);
-        if fields is None {
-            return _fail('INVALID_JSON', 'Invalid JSON', 400);
-        }
-        if nd {
-            fields['_jac_spawn_node'] = nd;
-        }
-        walker_cls = intro.target(walker_name);
-        mismatch = check_endpoint_contract(
-            request, walker_cls, "walker", walker_name, provider_app
-        );
-        if mismatch is not None {
-            return mismatch;
-        }
-        caller = username or Con.GUEST.value;
-        key = idempotency_key(request, caller, provider_app, walker_name);
-        replay = replay_cached(key);
-        if replay is not None {
-            return replay;
-        }
-        result = await server.execution_manager.spawn_walker(
-            walker_cls, fields, caller
-        );
-        return remember_response(
-            key,
-            _outcome(result, 'Walker execution failed'),
-            committed=not _unit_failed(result)
-        );
-    }
-    return callback;
-}
+) -> Callable[..., (TransportResponse | Response)];
 
 
 def _function_callback(
@@ -119,187 +37,21 @@ def _function_callback(
     func_name: str,
     intro: ModuleIntrospector,
     requires_auth: bool
-) -> Callable[..., (TransportResponse | Response)] {
-    async def callback(
-        request: Request, /, **kwargs: JsonValue
-    ) -> (TransportResponse | Response) {
-        username = request_caller(server, request);
-        if requires_auth and not username {
-            return _fail('UNAUTHORIZED', 'Unauthorized', 401);
-        }
-        args = _body(request);
-        if args is None {
-            return _fail('INVALID_JSON', 'Invalid JSON', 400);
-        }
-        func_obj = intro.target(func_name);
-        mismatch = check_endpoint_contract(
-            request, func_obj, "func", func_name, provider_app
-        );
-        if mismatch is not None {
-            return mismatch;
-        }
-        caller = username or Con.GUEST.value;
-        key = idempotency_key(request, caller, provider_app, func_name);
-        replay = replay_cached(key);
-        if replay is not None {
-            return replay;
-        }
-        result = await server.execution_manager.execute_function(
-            func_obj, args, caller
-        );
-        return remember_response(
-            key,
-            _outcome(result, 'Function execution failed'),
-            committed=not _unit_failed(result)
-        );
-    }
-    return callback;
-}
+) -> Callable[..., (TransportResponse | Response)];
 
 
-def _listing(names: list[str], key: str) -> Callable[..., TransportResponse] {
-    async def callback(request: Request, /, **kwargs: JsonValue) -> TransportResponse {
-        return TransportResponse.success(
-            data={key: list[str](names)}, meta=Meta(extra={'http_status': 200})
-        );
-    }
-    return callback;
-}
+def _listing(names: list[str], key: str) -> Callable[..., TransportResponse];
 
 
 def _mount_provider(
     server: JacAPIServer, provider_app: str, route: str, intro: ModuleIntrospector
-) {
-    walkers = [
-        rec.name
-        for rec in intro.served('walker')
-        if not intro.is_scheduled(rec.name)
-    ];
-    functions = [
-        rec.name
-        for rec in intro.served('function')
-        if not intro.is_scheduled(rec.name)
-    ];
-    server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path=f"{route}/walkers",
-            callback=_listing(walkers, 'walkers'),
-            parameters=[],
-            tags=['Colocated'],
-            summary=f"Walkers of {provider_app}",
-            description=f"Walkers served for the colocated app {provider_app}.",
-            forward_undeclared_query_params=False
-        )
-    );
-    server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path=f"{route}/functions",
-            callback=_listing(functions, 'functions'),
-            parameters=[],
-            tags=['Colocated'],
-            summary=f"Functions of {provider_app}",
-            description=f"Functions served for the colocated app {provider_app}.",
-            forward_undeclared_query_params=False
-        )
-    );
-    for walker_name in walkers {
-        walker_auth = intro.is_auth_required_for_walker(walker_name);
-        cb = _walker_callback(server, provider_app, walker_name, intro, walker_auth);
-        server.add_endpoint(
-            JEndPoint(
-                method=HTTPMethod.POST,
-                path=f"{route}/walker/{walker_name}/{{nd}}",
-                callback=cb,
-                parameters=[APIParameter(name='nd', kind=ParameterType.PATH)],
-                tags=['Colocated'],
-                summary=f"{provider_app}.{walker_name}",
-                description=f"Spawn {walker_name} in the colocated app {provider_app} on a node.",
-                requires_auth=walker_auth,
-                forward_undeclared_query_params=False,
-                yields_to_declared=True
-            )
-        );
-        server.add_endpoint(
-            JEndPoint(
-                method=HTTPMethod.POST,
-                path=f"{route}/walker/{walker_name}",
-                callback=cb,
-                parameters=[],
-                tags=['Colocated'],
-                summary=f"{provider_app}.{walker_name}",
-                description=f"Spawn {walker_name} in the colocated app {provider_app}.",
-                requires_auth=walker_auth,
-                forward_undeclared_query_params=False
-            )
-        );
-    }
-    for func_name in functions {
-        func_auth = intro.is_auth_required_for_function(func_name);
-        server.add_endpoint(
-            JEndPoint(
-                method=HTTPMethod.POST,
-                path=f"{route}/function/{func_name}",
-                callback=_function_callback(
-                    server, provider_app, func_name, intro, func_auth
-                ),
-                parameters=[],
-                tags=['Colocated'],
-                summary=f"{provider_app}.{func_name}",
-                description=f"Call {func_name} in the colocated app {provider_app}.",
-                requires_auth=func_auth,
-                forward_undeclared_query_params=False
-            )
-        );
-    }
-}
+);
 
 
-def served_app_route(server: JacAPIServer) -> tuple[str, str, any] {
-    served = consumer_app();
-    if not served {
-        return ('', '', None);
-    }
-    config = get_config_for_dir(server.base_path) if server.base_path else None;
-    if config is None {
-        config = get_config();
-    }
-    if config is None or served not in (config.apps or {}) {
-        return ('', '', config);
-    }
-    return (served, provider_route(config, served), config);
-}
+def served_app_route(server: JacAPIServer) -> tuple[str, str, any];
 
-def register_colocated_endpoints(server: JacAPIServer) {
-    (served, served_route, config) = served_app_route(server);
-    if served and served_route {
-        _mount_provider(server, served, served_route, server.introspector);
-    }
-    providers = colocated_providers();
-    if not providers {
-        return;
-    }
-    if config is None {
-        config = get_config();
-    }
-    for (provider_app, provider_module) in providers.items() {
-        mod_file = provider_module?.__file__;
-        intro = ModuleIntrospector(
-            module_name=str(provider_module?.__name__ or provider_app),
-            base_path=(os.path.dirname(mod_file) if mod_file else server.base_path),
-            module_file=mod_file
-        );
-        try {
-            intro.load();
-        } except Exception as exc {
-            logger.warning(
-                f"Colocated app '{provider_app}' could not be introspected: {exc}"
-            );
-            continue;
-        }
-        _mount_provider(
-            server, provider_app, provider_route(config, provider_app), intro
-        );
-    }
-}
+def provider_introspector(
+    server: JacAPIServer, provider_app: str, provider_module: any
+) -> (ModuleIntrospector | None);
+
+def register_colocated_endpoints(server: JacAPIServer);

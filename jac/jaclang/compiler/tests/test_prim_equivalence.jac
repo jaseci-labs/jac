@@ -1,16 +1,4 @@
 import ctypes;
-import from jaclang.testing.test { parametrize }
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_with_both,
-    run_py_fixture,
-    compile_fixture_to_js,
-    run_js_function,
-    compile_native,
-    compile_native_errors,
-    get_func,
-    compare_results
-}
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 # (case, fixture, py fn, cl fn, na fn, [backends that must run])
 """Rows `prim_str`'s native lane does not produce yet.
@@ -493,6 +481,31 @@ glob STR_NA_GAPS: list[any] = [
              "errno_na",
              ["na"]
          ),
+         (
+             "fcntl bundled",
+             "prim_fcntl.jac",
+             "fcntl_py",
+             "fcntl_cl",
+             "fcntl_na",
+             ["na"]
+         ),
+         (
+             "termios bundled",
+             "prim_termios.jac",
+             "termios_py",
+             "termios_cl",
+             "termios_na",
+             ["na"]
+         ),
+         ("tty bundled", "prim_tty.jac", "tty_py", "tty_cl", "tty_na", ["na"]),
+         (
+             "select bundled",
+             "prim_select.jac",
+             "select_py",
+             "select_cl",
+             "select_na",
+             ["na"]
+         ),
          ("glob bundled", "prim_glob.jac", "glob_py", "glob_cl", "glob_na", ["na"]),
          ("stat bundled", "prim_stat.jac", "stat_py", "stat_cl", "stat_na", ["na"]),
          (
@@ -632,6 +645,32 @@ glob STR_NA_GAPS: list[any] = [
              "sqlite3_py",
              "sqlite3_cl",
              "sqlite3_na",
+             ["na"]
+         ),
+         (
+             "string bundled",
+             "prim_string.jac",
+             "string_py",
+             "string_cl",
+             "string_na",
+             ["na"]
+         ),
+         ("re bundled", "prim_re.jac", "re_py", "re_cl", "re_na", ["na"]),
+         ("re pins bundled", "prim_re.jac", "pins_py", "pins_cl", "pins_na", ["na"]),
+         (
+             "re fuzz bundled",
+             "prim_re_fuzz.jac",
+             "re_fuzz_py",
+             "re_fuzz_cl",
+             "re_fuzz_na",
+             ["na"]
+         ),
+         (
+             "reprlib bundled",
+             "prim_reprlib.jac",
+             "reprlib_py",
+             "reprlib_cl",
+             "reprlib_na",
              ["na"]
          ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),

@@ -14,9 +14,7 @@ class HostOnlyError(RuntimeError) {}
 
 obj HostAsker {
     def ask(method: str, key: str) -> str abst;
-    def record_interface(
-        program: JacProgram, module: Module, products: UnitProducts
-    ) {}
+    def record_interface(program: JacProgram, module: Module, products: UnitProducts);
 }
 
 enum HostEventKind { NOTE, COVERAGE, COLLECT }
@@ -41,194 +39,43 @@ obj HostCensus {
         delegated: dict[str, int] = {},
         buffered: dict[str, int] = {};
 
-    def count(method: str) {
-        if self.trace {
-            sys.stderr.write(f"[kernel host] {method}\n");
-            sys.stderr.flush();
-        }
-        self.calls[method] = self.calls.get(method, 0) + 1;
-    }
-
-    def miss(method: str, key: str) {
-        self.misses[method] = self.misses.get(method, 0) + 1;
-        self.miss_keys.append(method + ": " + key.replace(KEY_SEP, " | "));
-    }
-
-    def delegate(method: str) {
-        self.delegated[method] = self.delegated.get(method, 0) + 1;
-    }
-
-    def buffer(method: str) {
-        self.buffered[method] = self.buffered.get(method, 0) + 1;
-    }
-
-    def total_misses -> int {
-        return sum(self.misses.values());
-    }
-
-    def merge(other: HostCensus) {
-        self.sessions += other.sessions;
-        self.snapshot_seconds += other.snapshot_seconds;
-        self.scanned_modules += other.scanned_modules;
-        for (name, n) in other.calls.items() {
-            self.calls[name] = self.calls.get(name, 0) + n;
-        }
-        for (name, n) in other.misses.items() {
-            self.misses[name] = self.misses.get(name, 0) + n;
-        }
-        for key in other.miss_keys {
-            self.miss_keys.append(
-                f"[{other.entry_path}] {key}" if other.entry_path else key
-            );
-        }
-        for (name, n) in other.delegated.items() {
-            self.delegated[name] = self.delegated.get(name, 0) + n;
-        }
-        for (name, n) in other.buffered.items() {
-            self.buffered[name] = self.buffered.get(name, 0) + n;
-        }
-    }
-
-    def summary -> str {
-        lines = [
-            f"kernel host census: {self.sessions} session(s), "
-            f"{sum(self.calls.values())} calls, {self.total_misses()} misses; "
-            f"snapshots scanned {self.scanned_modules} modules in "
-            f"{self.snapshot_seconds:.2f}s"
-        ];
-        for name in sorted(self.calls) {
-            tags: list[str] = [];
-            if name in self.misses {
-                tags.append(f"{self.misses[name]} missed");
-            }
-            if name in self.delegated {
-                tags.append(f"{self.delegated[name]} to host");
-            }
-            if name in self.buffered {
-                tags.append(f"{self.buffered[name]} buffered");
-            }
-            suffix = f" ({', '.join(tags)})" if tags else "";
-            lines.append(f"  {name}: {self.calls[name]}{suffix}");
-        }
-        for key in self.miss_keys {
-            lines.append(f"  miss {key}");
-        }
-        return "\n".join(lines);
-    }
+    def count(method: str);
+    def miss(method: str, key: str);
+    def delegate(method: str);
+    def buffer(method: str);
+    def total_misses -> int;
+    def merge(other: HostCensus);
+    def summary -> str;
 }
 
 obj HostTurn {
     has host: HostServices,
         previous: (HostServices | None) = None;
 
-    def __enter__ -> HostServices {
-        self.previous = active_host();
-        install_host(self.host);
-        return self.host;
-    }
-
-    def __exit__(exc_type: any, exc: any, trace: any) -> bool {
-        if self.previous is not None {
-            install_host(self.previous);
-        }
-        return False;
-    }
+    def __enter__ -> HostServices;
+    def __exit__(exc_type: any, exc: any, trace: any) -> bool;
 }
 
 obj KernelSession(SessionHooks) {
     has host: KernelHost,
         closure: (CompileOptions | None) = None;
 
-    def closure_options -> (CompileOptions | None) {
-        return self.closure;
-    }
-
+    def closure_options -> (CompileOptions | None);
     def run_module(
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None),
         options: CompileOptions
-    ) -> Module {
-        host = self.host;
-        if host.fallback is None {
-            host.census.count("run_module");
-            task = analyze_module(target_program, file_path, options, use_str)
-                if options.no_cgen or options.symtab_ir_only
-                else compile_task(self, target_program, file_path, options, use_str);
-            host.analyses[os.path.realpath(file_path)] = task;
-            host.record_unit(task);
-            return task.module;
-        }
-        with host.delegating("run_module") as fallback {
-            answer = fallback.run_module_pipeline(
-                target_program, file_path, use_str, options
-            );
-        }
-        return answer;
-    }
+    ) -> Module;
 }
 
 obj ProgramResolver(CatalogResolver) {
     has program: JacProgram;
 
-    def resolve_module(path: str) -> (Module | None) {
-        if not path {
-            return None;
-        }
-        resolved = os.path.realpath(path);
-        if not resolved.endswith(".pyi") {
-            found = self.program.find_module(resolved);
-            if found is not None {
-                return found;
-            }
-        }
-        try {
-            return self.program.load_dependency_module(resolved);
-        } except Exception {
-            return None;
-        }
-    }
-
+    def resolve_module(path: str) -> (Module | None);
     def resolve_shared(
         module_path: str, dotted: str, class_name: str
-    ) -> (ClassDetailsShared | None) {
-        mod = self.resolve_module(module_path);
-        if mod is None or not dotted {
-            return None;
-        }
-        parts = dotted.split(".");
-        scope: (UniScopeNode | None) = mod;
-        for part in parts[:-1] {
-            if scope is None {
-                return None;
-            }
-            scope = scope.find_scope(part);
-        }
-        if scope is None {
-            return None;
-        }
-        sym = scope.names_in_scope.get(parts[-1]);
-        if sym is None {
-            return None;
-        }
-        resolved_type: (TypeBase | None) = None;
-        try {
-            provider = sym.provider;
-            if provider is not None {
-                resolved_type = provider.resolve_type(sym);
-            } else {
-                resolved_type = self.program.get_type_evaluator().get_type_of_symbol(
-                    sym
-                );
-            }
-        } except Exception {
-            return None;
-        }
-        if isinstance(resolved_type, ClassType) {
-            return resolved_type._shared;
-        }
-        return None;
-    }
+    ) -> (ClassDetailsShared | None);
 }
 
 obj ServedInterface {
@@ -263,671 +110,73 @@ obj KernelHost(HostServices) {
         _indexed: list[int] = [0, 0, 0, 0, 0],
         _session: (KernelSession | None) = None;
 
-    def postinit {
-        self.index_answers();
-        self._session = KernelSession(host=self, closure=self.closure);
-    }
-
-    def index_answers {
-        inputs = self.inputs;
-        seen = self._indexed;
-        while seen[0] < len(inputs.imports) {
-            resolution = inputs.imports[seen[0]];
-            self._imports[resolution.key()] = resolution;
-            seen[0] += 1;
-        }
-        while seen[1] < len(inputs.local_imports) {
-            local = inputs.local_imports[seen[1]];
-            self._locals[local.key()] = local;
-            seen[1] += 1;
-        }
-        while seen[2] < len(inputs.npm) {
-            answer = inputs.npm[seen[2]];
-            self._npm[answer.key()] = answer;
-            seen[2] += 1;
-        }
-        while seen[3] < len(inputs.declared) {
-            declared = inputs.declared[seen[3]];
-            self._declared[declared.key()] = declared;
-            seen[3] += 1;
-        }
-        while seen[4] < len(inputs.python_ifaces) {
-            iface = inputs.python_ifaces[seen[4]];
-            self._python[os.path.realpath(iface.path)] = iface;
-            seen[4] += 1;
-        }
-    }
-
-    def ask(method: str, key: str) -> bool {
-        asker = self.asker;
-        if self.fallback is not None or (asker is None and not self.kernel_asker) {
-            return False;
-        }
-        tag = method + KEY_SEP + key;
-        if tag in self._asked {
-            return False;
-        }
-        self._asked.add(tag);
-        self.census.count("ask");
-        text = "";
-        if asker is not None {
-            text = asker.ask(method, key);
-        } else {
-            import from jaclang.compiler.jc_ask { ask_host }
-            text = ask_host(method, key);
-        }
-        if not text {
-            return False;
-        }
-        raw = json_map(json.loads(text));
-        merge_answers(self.inputs, raw);
-        self.index_answers();
-        reason = str(raw.get(HOST_ONLY_ANSWER, ""));
-        if reason {
-            cut = reason.partition(": ");
-            self.census.miss(cut[0], cut[2]);
-            raise HostOnlyError(reason);
-        }
-        return True;
-    }
-
-    def wants_unit(path: str) -> bool {
-        if not self.inputs.emit_closure {
-            return False;
-        }
-        if path in self.grown {
-            return True;
-        }
-        if path not in self.inputs.emit_of {
-            self.ask(EMIT_QUESTION, path);
-        }
-        return self.inputs.emit_of.get(path, False);
-    }
-
-    def host(method: str = "") -> HostServices {
-        if self.fallback is None {
-            raise HostOnlyError(
-                f"the kernel host has no host to answer {method or 'a question'} "
-                "outside its inputs"
-            );
-        }
-        return self.fallback;
-    }
-
-    def in_kernel -> bool {
-        return self.fallback is None;
-    }
-
-    def kernel_only(method: str) -> bool {
-        if self.fallback is not None {
-            return False;
-        }
-        self.census.count(method);
-        return True;
-    }
-
-    def open_stub_catalog -> (StubCatalog | None) {
-        if self._catalog is not None {
-            return self._catalog;
-        }
-        inputs = self.inputs;
-        if not inputs.stub_catalog_active or not inputs.stub_catalog_file {
-            return None;
-        }
-        key = f"{inputs.stub_catalog_file}:{inputs.stub_catalog_offset}:{inputs.stub_catalog_length}";
-        found = _CATALOGS.get(key);
-        if found is None {
-            found = open_catalog_region(
-                inputs.stub_catalog_file,
-                inputs.stub_catalog_offset,
-                inputs.stub_catalog_length,
-                inputs.stub_catalog_dir
-            );
-            if found is None {
-                return None;
-            }
-            _CATALOGS.clear();
-            _CATALOGS[key] = found;
-        }
-        self._catalog = found;
-        return found;
-    }
-
-    def python_module(program: JacProgram, file_path: str) -> (Module | None) {
-        resolved = os.path.realpath(file_path);
-        served = self._served.get(resolved);
-        if served is not None {
-            return served.module;
-        }
-        iface = self._python.get(resolved);
-        if iface is None {
-            return None;
-        }
-        self.census.count("python_interface");
-        catalog = open_module_iface(
-            iface.data, iface.pkg_dir, resolver=ProgramResolver(program=program)
-        );
-        if catalog is None {
-            return None;
-        }
-        mod = iface_module(catalog);
-        if mod is None {
-            return None;
-        }
-        self._served[resolved] = ServedInterface(catalog=catalog, module=mod);
-        program.stamp_app_facts(mod);
-        if iface.effects {
-            mod.gen.callable_effects = json.loads(iface.effects);
-        }
-        if iface.placement {
-            import from jaclang.compiler.placement.placement { summary_store }
-            import from jaclang.compiler.placement.placement_export {
-                summary_from_dict
-            }
-            restored = summary_from_dict(json.loads(iface.placement));
-            if restored is not None {
-                summary_store(program)[os.path.abspath(resolved)] = restored;
-            }
-        }
-        return mod;
-    }
-
-    def close_over(options: CompileOptions) {
-        self.closure = options;
-        if self._session is not None {
-            self._session.closure = options;
-        }
-    }
-
-    def record_unit(task: ModuleAnalysis) {
-        module = task.module;
-        if task.parse_failed or task.blocked or not module.gen.jcir {
-            return;
-        }
-        real = os.path.realpath(task.path);
-        products = unit_products(module, task.program);
-        if not products.path {
-            products.path = real;
-        }
-        """A dependency lowered for an importer (`lower_dependency`) was
-        compiled under native-import options, which select a context program
-        of their own, so the module recorded here is not the one that was
-        lowered. The unit carries that lowering's products: without them the
-        host registers no interface for the dependency, and the importer
-        records the dependency's digest as empty.""";
-        lowered = self._lowered.get(real);
-        if lowered is not None and lowered is not module and not products.native_ir {
-            native_products(lowered, products);
-        }
-        asker = self.asker;
-        if real.endswith(".jac") and asker is not None {
-            asker.record_interface(task.program, module, products);
-        }
-        self.units[real] = products;
-    }
-
-    def host_turn(method: str = "") -> HostTurn {
-        return HostTurn(host=self.host(method));
-    }
-
-    def missing(method: str, key: str) -> HostTurn {
-        if self.ask(method, key) {
-            return HostTurn(host=self);
-        }
-        self.census.miss(method, key);
-        return self.host_turn(method);
-    }
-
-    def delegating(method: str) -> HostTurn {
-        self.census.count(method);
-        self.census.delegate(method);
-        return self.host_turn(method);
-    }
-
-    def buffer(event: HostEvent, method: str) {
-        self.census.count(method);
-        self.census.buffer(method);
-        self.events.append(event);
-    }
-
-    def event_rows -> list[list[str]] {
-        rows: list[list[str]] = [];
-        for event in self.events {
-            if event.kind == HostEventKind.NOTE {
-                rows.append(
-                    [EVENT_NOTE, event.path, event.text, event.code, event.detail]
-                );
-            } elif event.kind == HostEventKind.COVERAGE {
-                rows.append(
-                    [EVENT_COVERAGE, event.path, event.text, event.code, event.detail]
-                );
-            }
-        }
-        return rows;
-    }
-
-    def replay(target: HostServices) {
-        pending = list(self.events);
-        self.events.clear();
-        for event in pending {
-            replay_event(target, event);
-        }
-    }
-
+    def postinit;
+    def index_answers;
+    def ask(method: str, key: str) -> bool;
+    def wants_unit(path: str) -> bool;
+    def host(method: str = "") -> HostServices;
+    def in_kernel -> bool;
+    def kernel_only(method: str) -> bool;
+    def open_stub_catalog -> (StubCatalog | None);
+    def python_module(program: JacProgram, file_path: str) -> (Module | None);
+    def close_over(options: CompileOptions);
+    def record_unit(task: ModuleAnalysis);
+    def host_turn(method: str = "") -> HostTurn;
+    def missing(method: str, key: str) -> HostTurn;
+    def delegating(method: str) -> HostTurn;
+    def buffer(event: HostEvent, method: str);
+    def event_rows -> list[list[str]];
+    def replay(target: HostServices);
     @contextmanager
-    def session -> Iterator[None] {
-        self.census.count("session");
-        yield ;
-    }
+    def session -> Iterator[None];
 
-    def project_defaults -> (ProjectDefaults | None) {
-        self.census.count("project_defaults");
-        return self.inputs.project_defaults;
-    }
-
-    def check_settings(target_app: str) -> CheckSettings {
-        self.census.count("check_settings");
-        found = self.inputs.check_settings.get(target_app);
-        if found is not None {
-            return found;
-        }
-        with self.missing("check_settings", target_app) as host {
-            answer = host.check_settings(target_app);
-        }
-        self.inputs.check_settings[target_app] = answer;
-        return answer;
-    }
-
-    def project_facts(path: str) -> (ProjectFacts | None) {
-        self.census.count("project_facts");
-        if path in self.inputs.facts_of {
-            owner_root = self.inputs.facts_of[path];
-            return self.inputs.project_facts.get(owner_root) if owner_root else None;
-        }
-        with self.missing("project_facts", path) as host {
-            answer = host.project_facts(path);
-        }
-        owner_root = answer.project_root if answer is not None else "";
-        self.inputs.facts_of[path] = owner_root;
-        if answer is not None {
-            self.inputs.project_facts[owner_root] = answer;
-        }
-        return answer;
-    }
-
-    def lint_settings(path: str) -> LintSettings {
-        self.census.count("lint_settings");
-        found = self.inputs.lint_of.get(path);
-        if found is not None {
-            return found;
-        }
-        with self.missing("lint_settings", path) as host {
-            answer = host.lint_settings(path);
-        }
-        self.inputs.lint_of[path] = answer;
-        return answer;
-    }
-
-    def workspace(path: str) -> (WorkspaceSpec | None) {
-        self.census.count("workspace");
-        if not path {
-            return None;
-        }
-        if path in self.inputs.workspace_of {
-            owner_root = self.inputs.workspace_of[path];
-            return self.inputs.workspaces.get(owner_root) if owner_root else None;
-        }
-        with self.missing("workspace", path) as host {
-            answer = host.workspace(path);
-        }
-        owner_root = answer.project_root if answer is not None else "";
-        self.inputs.workspace_of[path] = owner_root;
-        if answer is not None {
-            self.inputs.workspaces[owner_root] = answer;
-        }
-        return answer;
-    }
-
-    def app_for_path(path: str) -> (AppSpec | None) {
-        self.census.count("app_for_path");
-        if path in self.inputs.app_of and path in self.inputs.workspace_of {
-            name = self.inputs.app_of[path];
-            ws = self.inputs.workspaces.get(self.inputs.workspace_of[path]);
-            return ws.apps.get(name) if (ws is not None and name) else None;
-        }
-        with self.missing("app_for_path", path) as host {
-            answer = host.app_for_path(path);
-        }
-        self.inputs.app_of[path] = answer.name if answer is not None else "";
-        if path not in self.inputs.workspace_of {
-            with self.host_turn() as host {
-                ws = host.workspace(path);
-            }
-            owner_root = ws.project_root if ws is not None else "";
-            self.inputs.workspace_of[path] = owner_root;
-            if ws is not None {
-                self.inputs.workspaces[owner_root] = ws;
-            }
-        }
-        return answer;
-    }
-
-    def project_root(path: str) -> (str | None) {
-        self.census.count("project_root");
-        if path in self.inputs.project_root_of {
-            return self.inputs.project_root_of[path] or None;
-        }
-        with self.missing("project_root", path) as host {
-            answer = host.project_root(path);
-        }
-        self.inputs.project_root_of[path] = answer or "";
-        return answer;
-    }
-
+    def project_defaults -> (ProjectDefaults | None);
+    def check_settings(target_app: str) -> CheckSettings;
+    def project_facts(path: str) -> (ProjectFacts | None);
+    def lint_settings(path: str) -> LintSettings;
+    def workspace(path: str) -> (WorkspaceSpec | None);
+    def app_for_path(path: str) -> (AppSpec | None);
+    def project_root(path: str) -> (str | None);
     def resolve_module(
         target: str, base_path: str, string_spec: bool = False
-    ) -> tuple[str, str] {
-        self.census.count("resolve_module");
-        key = resolution_key(target, base_path, string_spec);
-        found = self._imports.get(key);
-        if found is not None {
-            return (found.path, found.language);
-        }
-        with self.missing("resolve_module", key) as host {
-            (path, language) = host.resolve_module(
-                target, base_path, string_spec=string_spec
-            );
-        }
-        resolution = ImportResolution(
-            target=target,
-            base_path=base_path,
-            string_spec=string_spec,
-            path=path,
-            language=language
-        );
-        self._imports[key] = resolution;
-        self.inputs.imports.append(resolution);
-        return (path, language);
-    }
+    ) -> tuple[str, str];
 
-    def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None) {
-        self.census.count("resolve_local_module");
-        key = local_key(base, parts);
-        found = self._locals.get(key);
-        if found is None {
-            found = self.learn_local_module(base, parts, key);
-        }
-        if not found.found {
-            return None;
-        }
-        return (found.path, found.language);
-    }
-
-    def learn_local_module(base: str, parts: list[str], key: str) -> LocalResolution {
-        with self.missing("resolve_local_module", key) as host {
-            answer = host.resolve_local_module(base, parts);
-        }
-        local = LocalResolution(base=base, parts=list(parts));
-        if answer is not None {
-            local.found = True;
-            local.path = answer[0];
-            local.language = answer[1];
-        }
-        self._locals[key] = local;
-        self.inputs.local_imports.append(local);
-        return local;
-    }
-
-    def jac_virtual_module_path(target: str) -> (str | None) {
-        self.census.count("jac_virtual_module_path");
-        if target in self.inputs.virtual_modules {
-            return self.inputs.virtual_modules[target] or None;
-        }
-        with self.missing("jac_virtual_module_path", target) as host {
-            answer = host.jac_virtual_module_path(target);
-        }
-        self.inputs.virtual_modules[target] = answer or "";
-        return answer;
-    }
-
-    def is_path_alias(target: str, base_path: str) -> bool {
-        self.census.count("is_path_alias");
-        key = pair_key(target, base_path);
-        if key in self.inputs.path_aliases {
-            return self.inputs.path_aliases[key];
-        }
-        with self.missing("is_path_alias", key) as host {
-            answer = host.is_path_alias(target, base_path);
-        }
-        self.inputs.path_aliases[key] = answer;
-        return answer;
-    }
-
-    def is_untyped_third_party(path: str) -> bool {
-        self.census.count("is_untyped_third_party");
-        if not path.endswith(".py") {
-            return False;
-        }
-        if path in self.inputs.untyped {
-            return self.inputs.untyped[path];
-        }
-        with self.missing("is_untyped_third_party", path) as host {
-            answer = host.is_untyped_third_party(path);
-        }
-        self.inputs.untyped[path] = answer;
-        return answer;
-    }
-
-    def in_typeshed_tree(path: str) -> bool {
-        self.census.count("in_typeshed_tree");
-        return "/vendor/typeshed/" in path.replace("\\", "/");
-    }
-
-    def sibling_declaration(js_path: str) -> (str | None) {
-        self.census.count("sibling_declaration");
-        if js_path in self.inputs.siblings {
-            return self.inputs.siblings[js_path] or None;
-        }
-        with self.missing("sibling_declaration", js_path) as host {
-            answer = host.sibling_declaration(js_path);
-        }
-        self.inputs.siblings[js_path] = answer or "";
-        return answer;
-    }
-
-    def client_pulls(path: str) -> str {
-        self.census.count("client_pulls");
-        if self.fallback is None and not self.inputs.emit_closure {
-            return "";
-        }
-        if path in self.inputs.client_pulls {
-            return self.inputs.client_pulls[path];
-        }
-        with self.missing("client_pulls", path) as host {
-            answer = host.client_pulls(path);
-        }
-        self.inputs.client_pulls[path] = answer;
-        return answer;
-    }
-
-    def client_pull_grew(path: str) {
-        self.grown.add(path);
-    }
-
-    def npm_answer(spec: str, base_path: str, method: str) -> NpmAnswer {
-        key = pair_key(spec, base_path);
-        found = self._npm.get(key);
-        if found is not None {
-            return found;
-        }
-        with self.missing(method, key) as host {
-            installed = host.has_npm_package(spec, base_path);
-        }
-        answer = NpmAnswer(spec=spec, base_path=base_path, installed=installed);
-        self._npm[key] = answer;
-        self.inputs.npm.append(answer);
-        return answer;
-    }
-
-    def has_npm_package(spec: str, base_path: str) -> bool {
-        self.census.count("has_npm_package");
-        return self.npm_answer(spec, base_path, "has_npm_package").installed;
-    }
-
-    def resolve_npm_package(spec: str, base_path: str) -> (str | None) {
-        self.census.count("resolve_npm_package");
-        answer = self.npm_answer(spec, base_path, "resolve_npm_package");
-        if not answer.entry_known {
-            with self.missing(
-                "resolve_npm_package", pair_key(spec, base_path)
-            ) as host {
-                answer.package_entry = host.resolve_npm_package(spec, base_path);
-            }
-            answer.entry_known = True;
-        }
-        return answer.package_entry;
-    }
-
-    def npm_declarations(spec: str, base_path: str) -> (str | None) {
-        self.census.count("npm_declarations");
-        answer = self.npm_answer(spec, base_path, "npm_declarations");
-        if not answer.declarations_known {
-            with self.missing("npm_declarations", pair_key(spec, base_path)) as host {
-                answer.declarations = host.npm_declarations(spec, base_path);
-            }
-            answer.declarations_known = True;
-        }
-        return answer.declarations;
-    }
-
+    def resolve_local_module(base: str, parts: list[str]) -> (tuple[str, str] | None);
+    def learn_local_module(base: str, parts: list[str], key: str) -> LocalResolution;
+    def jac_virtual_module_path(target: str) -> (str | None);
+    def is_path_alias(target: str, base_path: str) -> bool;
+    def is_untyped_third_party(path: str) -> bool;
+    def in_typeshed_tree(path: str) -> bool;
+    def sibling_declaration(js_path: str) -> (str | None);
+    def client_pulls(path: str) -> str;
+    def client_pull_grew(path: str);
+    def npm_answer(spec: str, base_path: str, method: str) -> NpmAnswer;
+    def has_npm_package(spec: str, base_path: str) -> bool;
+    def resolve_npm_package(spec: str, base_path: str) -> (str | None);
+    def npm_declarations(spec: str, base_path: str) -> (str | None);
     def declared_dependencies(
         module_path: str, fallback_app: str
-    ) -> (list[str] | None) {
-        self.census.count("declared_dependencies");
-        key = pair_key(module_path, fallback_app);
-        found = self._declared.get(key);
-        if found is not None {
-            return list(found.names) if found.names is not None else None;
-        }
-        with self.missing("declared_dependencies", key) as host {
-            answer = host.declared_dependencies(module_path, fallback_app);
-        }
-        declared = DeclaredDependencies(
-            module_path=module_path,
-            fallback_app=fallback_app,
-            names=list(answer) if answer is not None else None
-        );
-        self._declared[key] = declared;
-        self.inputs.declared.append(declared);
-        return answer;
-    }
+    ) -> (list[str] | None);
 
-    def note(message: str, style: str = "dim") {
-        self.buffer(
-            HostEvent(kind=HostEventKind.NOTE, text=message, code=style), "note"
-        );
-    }
-
-    def stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
-        if self.kernel_only("stub_catalog_for") {
-            return self.open_stub_catalog();
-        }
-        with self.delegating("stub_catalog_for") as host {
-            answer = host.stub_catalog_for(program);
-        }
-        return answer;
-    }
-
+    def note(message: str, style: str = "dim");
+    def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
     def parse_python(
         source_str: str, file_path: str, program: JacProgram
-    ) -> tuple[Module, bool] {
-        if self.in_kernel() {
-            self.census.miss("parse_python", file_path);
-            raise HostOnlyError(f"{file_path}: Python sources are parsed by the host");
-        }
-        with self.delegating("parse_python") as host {
-            answer = host.parse_python(source_str, file_path, program);
-        }
-        return answer;
-    }
+    ) -> tuple[Module, bool];
 
-    def ct_environment -> CtEnvironment {
-        self.census.count("ct_environment");
-        return self.inputs.ct_environment;
-    }
-
-    def path_facts(path: str) -> PathFacts {
-        self.census.count("path_facts");
-        return path_facts_of(self.inputs.layout, path);
-    }
-
-    def host_platform -> HostPlatform {
-        self.census.count("host_platform");
-        return self.inputs.host_platform;
-    }
-
-    def read_source(path: str) -> str {
-        self.census.count("read_source");
-        text = read_utf8_source(path);
-        if text is not None {
-            return text;
-        }
-        with self.missing("read_source", path) as host {
-            answer = host.read_source(path);
-        }
-        return answer;
-    }
-
-    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
-        self.census.count("annex_files");
-        return annex_files_of(self.inputs.layout, path, suffix, list_directory);
-    }
-
-    def base_file(annex_path: str) -> (str | None) {
-        self.census.count("base_file");
-        return base_file_of(self.inputs.layout, annex_path);
-    }
-
-    def is_annex_path_of(candidate: str, base: str) -> bool {
-        self.census.count("is_annex_path_of");
-        return is_annex_path_of(self.inputs.layout, candidate, base);
-    }
-
-    def package_init(directory: str) -> (str | None) {
-        self.census.count("package_init");
-        return package_init_of(self.inputs.layout, directory);
-    }
-
-    def wiring_file(path: str) -> (str | None) {
-        self.census.count("wiring_file");
-        if is_arch_file(path) {
-            return None;
-        }
-        return arch_file_for(path);
-    }
-
-    def is_seed_source(rel_path: str) -> bool {
-        self.census.count("is_seed_source");
-        return self.inputs.manifest.is_seed(rel_path);
-    }
-
-    def wiring_records(digest: str) -> str {
-        if self.kernel_only("wiring_records") {
-            return "";
-        }
-        with self.delegating("wiring_records") as host {
-            answer = host.wiring_records(digest);
-        }
-        return answer;
-    }
-
-    def keep_wiring_records(digest: str, text: str) {
-        self.census.count("keep_wiring_records");
-        if self.fallback is not None {
-            self.fallback.keep_wiring_records(digest, text);
-        }
-    }
-
+    def stub_interface(program: JacProgram, file_path: str) -> (Module | None);
+    def ct_environment -> CtEnvironment;
+    def path_facts(path: str) -> PathFacts;
+    def host_platform -> HostPlatform;
+    def read_source(path: str) -> str;
+    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];
+    def base_file(annex_path: str) -> (str | None);
+    def is_annex_path_of(candidate: str, base: str) -> bool;
+    def package_init(directory: str) -> (str | None);
+    def wiring_file(path: str) -> (str | None);
+    def is_seed_source(rel_path: str) -> bool;
+    def wiring_records(digest: str) -> str;
+    def keep_wiring_records(digest: str, text: str);
     def native_parse(
         source_str: str,
         file_path: str,
@@ -935,547 +184,86 @@ obj KernelHost(HostServices) {
         annexes: list[WovenAnnex],
         early_context: str = "",
         load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None) {
-        if self.kernel_only("native_parse") {
-            return None;
-        }
-        with self.delegating("native_parse") as host {
-            answer = host.native_parse(
-                source_str, file_path, program, annexes, early_context, load_kernel
-            );
-        }
-        return answer;
-    }
+    ) -> (tuple[Module, bool] | None);
 
-    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None) {
-        if self.kernel_only("woven_module") {
-            return None;
-        }
-        with self.delegating("woven_module") as host {
-            answer = host.woven_module(path, program);
-        }
-        return answer;
-    }
-
-    def place_wired_imports(module: Module) {
-        if self.kernel_only("place_wired_imports") {
-            dedupe_generated_imports(module);
-            return;
-        }
-        with self.delegating("place_wired_imports") as host {
-            host.place_wired_imports(module);
-        }
-    }
-
-    def drop_python_lane_products(path: str, program: JacProgram) {
-        if self.kernel_only("drop_python_lane_products") {
-            return;
-        }
-        with self.delegating("drop_python_lane_products") as host {
-            host.drop_python_lane_products(path, program);
-        }
-    }
-
-    def compiler_for(program: JacProgram) -> JacCompiler {
-        with self.delegating("compiler_for") as host {
-            answer = host.compiler_for(program);
-        }
-        return answer;
-    }
-
-    def iface_registry_for(program: JacProgram) -> IfaceRegistry {
-        with self.delegating("iface_registry_for") as host {
-            answer = host.iface_registry_for(program);
-        }
-        return answer;
-    }
-
+    def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
+    def place_wired_imports(module: Module);
+    def drop_python_lane_products(path: str, program: JacProgram);
+    def compiler_for(program: JacProgram) -> JacCompiler;
+    def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def held_native_iface(
         program: JacProgram, path: str, options: CompileOptions
-    ) -> str {
-        self.census.count("held_native_iface");
-        key = pair_key(os.path.realpath(path), options.unit_codegen_identity(path));
-        if key in self.inputs.native_ifaces {
-            return self.inputs.native_ifaces[key];
-        }
-        with self.missing("held_native_iface", key) as host {
-            answer = host.held_native_iface(program, path, options);
-        }
-        self.inputs.native_ifaces[key] = answer;
-        return answer;
-    }
+    ) -> str;
 
     def native_dep_iface(
         program: JacProgram, path: str, options: CompileOptions
-    ) -> (NativeIface | None) {
-        if self.fallback is not None {
-            with self.delegating("native_dep_iface") as host {
-                answer = host.native_dep_iface(program, path, options);
-            }
-            return answer;
-        }
-        self.census.count("native_dep_iface");
-        real = os.path.realpath(path);
-        known = self._native_ifaces.get(real);
-        if known is not None {
-            return known;
-        }
-        if real in self._lowering {
-            return None;
-        }
-        found: (NativeIface | None) = None;
-        text = self.held_native_iface(program, real, options);
-        if text {
-            found = NativeIface.from_bytes(text.encode("utf-8"));
-            if found is not None {
-                found.resolve_deps(real);
-            }
-        } else {
-            found = self.lower_dependency(program, real, options);
-        }
-        if found is not None {
-            self._native_ifaces[real] = found;
-        }
-        return found;
-    }
+    ) -> (NativeIface | None);
 
-    def native_dep_discovery_open(program: JacProgram) -> bool {
-        if self.fallback is not None {
-            with self.delegating("native_dep_discovery_open") as host {
-                answer = host.native_dep_discovery_open(program);
-            }
-            return answer;
-        }
-        return False;
-    }
-
-    def native_deps_deferred(program: JacProgram) -> bool {
-        if self.fallback is not None {
-            with self.delegating("native_deps_deferred") as host {
-                answer = host.native_deps_deferred(program);
-            }
-            return answer;
-        }
-        return False;
-    }
-
+    def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_deps_deferred(program: JacProgram) -> bool;
     def lower_dependency(
         program: JacProgram, real: str, options: CompileOptions
-    ) -> (NativeIface | None) {
-        self._lowering.add(real);
-        previous = program.options;
-        codespace = get_effective_default_codespace_override();
-        mark = len(program.errors_had);
-        try {
-            opts = options.clone_for_native_import();
-            opts.no_cgen = True;
-            module = self.compile_module(program, real, None, opts);
-            if len(program.errors_had) > mark {
-                return None;
-            }
-            opts.no_cgen = False;
-            program.options = opts;
-            set_effective_default_codespace("native");
-            import from jaclang.compiler.driver.pipeline { product_ready, require }
-            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
-            if not product_ready(program, module, CompilationProduct.ANALYSIS)
-                and not require(program, module, CompilationProduct.ANALYSIS) {
-                return None;
-            }
-            require(program, module, CompilationProduct.NATIVE_LOWER);
-            if len(program.errors_had) > mark {
-                return None;
-            }
-            if module.gen.native_iface is not None {
-                self.grown.add(real);
-                self._lowered[real] = module;
-            }
-            return module.gen.native_iface;
-        } finally {
-            program.options = previous;
-            set_effective_default_codespace(codespace);
-            self._lowering.discard(real);
-        }
-    }
+    ) -> (NativeIface | None);
 
-    def native_fact(kind: str, key: str) -> str {
-        self.census.count("native_fact");
-        tag = pair_key(kind, key);
-        if tag in self.inputs.native_facts {
-            return self.inputs.native_facts[tag];
-        }
-        with self.missing("native_fact", tag) as host {
-            answer = host.native_fact(kind, key);
-        }
-        self.inputs.native_facts[tag] = answer;
-        return answer;
-    }
-
-    def save_native_debug_ir(path: str, text: str) {
-        self.census.count("save_native_debug_ir");
-        if self.fallback is not None {
-            self.fallback.save_native_debug_ir(path, text);
-        }
-    }
-
-    def native_lowering_failed(program: JacProgram, path: str, detail: str) {
-        self.census.count("native_lowering_failed");
-        if self.fallback is not None {
-            self.fallback.native_lowering_failed(program, path, detail);
-            return;
-        }
-        self.native_failures[os.path.realpath(path)] = detail;
-    }
-
-    def native_units_for(program: JacProgram) -> NativeUnitRegistry {
-        with self.delegating("native_units_for") as host {
-            answer = host.native_units_for(program);
-        }
-        return answer;
-    }
-
-    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None) {
-        if self.kernel_only("client_boundary_facts") {
-            return None;
-        }
-        with self.delegating("client_boundary_facts") as host {
-            answer = host.client_boundary_facts(program, path);
-        }
-        return answer;
-    }
-
-    def in_compiler_tree(path: str) -> bool {
-        if self.kernel_only("in_compiler_tree") {
-            return False;
-        }
-        with self.delegating("in_compiler_tree") as host {
-            answer = host.in_compiler_tree(path);
-        }
-        return answer;
-    }
-
-    def schedule_import_failed(err: ImportError) {
-        if self.kernel_only("schedule_import_failed") {
-            return;
-        }
-        with self.delegating("schedule_import_failed") as host {
-            host.schedule_import_failed(err);
-        }
-    }
-
-    def client_osp_core_js -> str {
-        self.census.count("client_osp_core_js");
-        if self.inputs.osp_core_js {
-            return self.inputs.osp_core_js;
-        }
-        with self.missing("client_osp_core_js", "") as host {
-            answer = host.client_osp_core_js();
-        }
-        self.inputs.osp_core_js = answer;
-        return answer;
-    }
-
-    def client_stub_globals -> list[str] {
-        self.census.count("client_stub_globals");
-        if self.inputs.client_stub_globals_known {
-            return list(self.inputs.client_stub_globals);
-        }
-        with self.missing("client_stub_globals", "") as host {
-            answer = host.client_stub_globals();
-        }
-        self.inputs.client_stub_globals = list(answer);
-        self.inputs.client_stub_globals_known = True;
-        return answer;
-    }
-
+    def native_fact(kind: str, key: str) -> str;
+    def save_native_debug_ir(path: str, text: str);
+    def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def native_units_for(program: JacProgram) -> NativeUnitRegistry;
+    def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
+    def in_compiler_tree(path: str) -> bool;
+    def schedule_import_failed(err: ImportError);
+    def client_osp_core_js -> str;
+    def client_stub_globals -> list[str];
     def kernel_compile(
         program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None) {
-        if self.kernel_only("kernel_compile") {
-            return None;
-        }
-        with self.delegating("kernel_compile") as host {
-            answer = host.kernel_compile(program, path, options);
-        }
-        return answer;
-    }
+    ) -> (CompileReport | None);
 
     def native_session_declares(
         program: JacProgram, source: str, element: str
-    ) -> (bool | None) {
-        self.census.count("native_session_declares");
-        if not self.inputs.native_session_active {
-            return None;
-        }
-        with self.missing(
-            "native_session_declares", pair_key(source, element)
-        ) as host {
-            answer = host.native_session_declares(program, source, element);
-        }
-        return answer;
-    }
+    ) -> (bool | None);
 
-    def native_session_active(program: JacProgram) -> bool {
-        if self.kernel_only("native_session_active") {
-            return False;
-        }
-        with self.delegating("native_session_active") as host {
-            answer = host.native_session_active(program);
-        }
-        return answer;
-    }
-
+    def native_session_active(program: JacProgram) -> bool;
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
-    ) {
-        self.buffer(
-            HostEvent(
-                kind=HostEventKind.COVERAGE,
-                path=path,
-                text=outcome,
-                code=code,
-                detail=detail
-            ),
-            "record_native_coverage"
-        );
-    }
+    );
 
-    def format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
-        with self.delegating("format_file") as host {
-            answer = host.format_file(file_path, auto_lint);
-        }
-        return answer;
-    }
-
+    def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
         source_str: str, file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
-        with self.delegating("format_source") as host {
-            answer = host.format_source(source_str, file_path, auto_lint);
-        }
-        return answer;
-    }
+    ) -> JacProgram;
 
-    def lint_file(file_path: str) -> JacProgram {
-        with self.delegating("lint_file") as host {
-            answer = host.lint_file(file_path);
-        }
-        return answer;
-    }
-
-    def native_pipeline_available -> tuple[bool, str] {
-        self.census.count("native_pipeline_available");
-        if self.inputs.native_pipeline_known {
-            return (self.inputs.native_pipeline, self.inputs.native_pipeline_reason);
-        }
-        with self.missing("native_pipeline_available", "") as host {
-            (available, reason) = host.native_pipeline_available();
-        }
-        self.inputs.native_pipeline = available;
-        self.inputs.native_pipeline_reason = reason;
-        self.inputs.native_pipeline_known = True;
-        return (available, reason);
-    }
-
+    def lint_file(file_path: str) -> JacProgram;
+    def native_pipeline_available -> tuple[bool, str];
     def compile_module(
         program: JacProgram,
         file_path: str,
         use_str: (str | None),
         options: CompileOptions
-    ) -> Module {
-        owned = program.internal or package_owned(file_path, program, options);
-        tree_wanted = False;
-        if file_path.endswith(".jac") and not program.internal {
-            import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
-            stdlib_dir = native_stdlib_root();
-            tree_wanted = stdlib_dir is not None
-                and os.path.realpath(file_path).startswith(
-                    os.path.realpath(stdlib_dir) + os.sep
-                );
-        }
-        if tree_wanted {
-            owned = False;
-        }
-        if self.in_kernel() and not tree_wanted {
-            served = self.python_module(program, file_path);
-            if served is None and (owned or not file_path.endswith(".jac")) {
-                if self.ask("compile_module", file_path) {
-                    served = self.python_module(program, file_path);
-                }
-            }
-            if served is not None {
-                self.census.count("compile_module");
-                return served;
-            }
-        }
-        if owned {
-            if self.in_kernel() {
-                self.census.miss("compile_module", file_path);
-            }
-            with self.delegating("compile_module") as host {
-                answer = host.compile_module(program, file_path, use_str, options);
-            }
-            return answer;
-        }
-        self.census.count("compile_module");
-        assert self._session is not None;
-        return compile_in_session(self._session, file_path, program, use_str, options);
-    }
+    ) -> Module;
 
     def build_module(
         program: JacProgram, file_path: str, use_str: (str | None)
-    ) -> Module {
-        self.census.count("build_module");
-        return self.compile_module(program, file_path, use_str, CompileOptions());
-    }
+    ) -> Module;
 
-    def internal_program(program: JacProgram) -> (JacProgram | None) {
-        if self.kernel_only("internal_program") {
-            return None;
-        }
-        with self.delegating("internal_program") as host {
-            answer = host.internal_program(program);
-        }
-        return answer;
-    }
-
-    def bind_context_program(context_root: JacProgram, program: JacProgram) {
-        if self.kernel_only("bind_context_program") {
-            return;
-        }
-        with self.delegating("bind_context_program") as host {
-            host.bind_context_program(context_root, program);
-        }
-    }
-
-    def note_program_dependency(program: JacProgram, resolved_path: str) {
-        if self.kernel_only("note_program_dependency") {
-            return;
-        }
-        with self.delegating("note_program_dependency") as host {
-            host.note_program_dependency(program, resolved_path);
-        }
-    }
-
-    def forget_program_products(program: JacProgram, resolved_path: str) {
-        if self.kernel_only("forget_program_products") {
-            return;
-        }
-        with self.delegating("forget_program_products") as host {
-            host.forget_program_products(program, resolved_path);
-        }
-    }
-
-    def release_program_products(program: JacProgram, retain_stubs: bool) {
-        if self.kernel_only("release_program_products") {
-            return;
-        }
-        with self.delegating("release_program_products") as host {
-            host.release_program_products(program, retain_stubs);
-        }
-    }
-
-    def prepare_interface(program: JacProgram, path: str, module: Module) -> bool {
-        if self.kernel_only("prepare_interface") {
-            return False;
-        }
-        with self.delegating("prepare_interface") as host {
-            answer = host.prepare_interface(program, path, module);
-        }
-        return answer;
-    }
-
-    def collect_released_memory {
-        self.buffer(HostEvent(kind=HostEventKind.COLLECT), "collect_released_memory");
-    }
-
-    def load_modules(names: list[str]) {
-        self.census.count("load_modules");
-    }
-
-    def module_in_flight(names: list[str]) -> str {
-        self.census.count("module_in_flight");
-        return "";
-    }
-
-    def import_in_flight(path: str) -> bool {
-        self.census.count("import_in_flight");
-        return False;
-    }
-
-    def has_active_stub_catalog -> bool {
-        self.census.count("has_active_stub_catalog");
-        return self.inputs.stub_catalog_active;
-    }
-
-    def is_native_only_source(rel: str) -> bool {
-        self.census.count("is_native_only_source");
-        return self.inputs.manifest.is_native_only(rel);
-    }
-
-    def is_native_lowered_source(rel: str) -> bool {
-        self.census.count("is_native_lowered_source");
-        return self.inputs.manifest.is_native_lowered(rel);
-    }
-
-    def host_side -> HostServices {
-        if self.fallback is not None {
-            return self.fallback;
-        }
-        return self.loader if self.loader is not None else self;
-    }
-
-    def default_target_triple -> str {
-        self.census.count("default_target_triple");
-        if self.inputs.target_triple_known {
-            return self.inputs.target_triple;
-        }
-        with self.missing("default_target_triple", "") as host {
-            answer = host.default_target_triple();
-        }
-        self.inputs.target_triple = answer;
-        self.inputs.target_triple_known = True;
-        return answer;
-    }
+    def internal_program(program: JacProgram) -> (JacProgram | None);
+    def bind_context_program(context_root: JacProgram, program: JacProgram);
+    def note_program_dependency(program: JacProgram, resolved_path: str);
+    def forget_program_products(program: JacProgram, resolved_path: str);
+    def release_program_products(program: JacProgram, retain_stubs: bool);
+    def prepare_interface(program: JacProgram, path: str, module: Module) -> bool;
+    def collect_released_memory;
+    def load_modules(names: list[str]);
+    def module_in_flight(names: list[str]) -> str;
+    def import_in_flight(path: str) -> bool;
+    def has_active_stub_catalog -> bool;
+    def is_native_only_source(rel: str) -> bool;
+    def is_native_lowered_source(rel: str) -> bool;
+    def host_side -> HostServices;
+    def default_target_triple -> str;
 }
 
-def read_utf8_source(path: str) -> (str | None) {
-    with open(path, "rb") as f {
-        data = f.read();
-    }
-    if data.startswith(b"\xef\xbb\xbf") {
-        data = data[3:];
-    }
-    try {
-        text = data.decode("utf-8");
-    } except UnicodeDecodeError {
-        return None;
-    }
-    if "\r" in text {
-        text = text.replace("\r\n", "\n").replace("\r", "\n");
-    }
-    return text;
-}
+def read_utf8_source(path: str) -> (str | None);
 
-def replay_event_rows(target: HostServices, rows: list[list[str]]) {
-    for row in rows {
-        if len(row) != 5 {
-            continue;
-        }
-        if row[0] == EVENT_NOTE {
-            target.note(row[2], row[3]);
-        } elif row[0] == EVENT_COVERAGE {
-            target.record_native_coverage(row[1], row[2], row[3], row[4]);
-        }
-    }
-}
+def replay_event_rows(target: HostServices, rows: list[list[str]]);
 
-def replay_event(target: HostServices, event: HostEvent) {
-    if event.kind == HostEventKind.NOTE {
-        target.note(event.text, event.code);
-    } elif event.kind == HostEventKind.COVERAGE {
-        target.record_native_coverage(event.path, event.text, event.code, event.detail);
-    } elif event.kind == HostEventKind.COLLECT {
-        target.collect_released_memory();
-    }
-}
+def replay_event(target: HostServices, event: HostEvent);

@@ -4,46 +4,78 @@ import from enum { StrEnum }
 
 enum ArchAction(StrEnum) { INIT = "init", SYNC = "sync", GRAPH = "graph" }
 
-glob WIRE_LINE_WIDTH: int = 88;
+def _parse_action(action: str) -> (ArchAction | None);
 
-obj WireRow {
-    has provider: str,
-        form: str,
-        alias: str = "",
-        items: list[tuple[str, str]] = [],
-        consumers: list[str] = [];
+def _project_root -> (str | None);
 
-    def key -> tuple[str, str, str, tuple[tuple[str, str], ...]] {
-        return (self.provider, self.form, self.alias, tuple(self.items));
+def _empty_spec(root_dir: str) -> WiringSpec;
+
+def _module_files(spec: WiringSpec) -> list[tuple[str, str]];
+
+def _parse_imports(path: str) -> list[tuple[Import, (list[str] | None)]];
+
+def _collect_facts(
+    spec: WiringSpec, modules: list[tuple[str, str]]
+) -> list[tuple[str, WireBinding]];
+
+def _unused_facts(
+    spec: WiringSpec, modules: list[tuple[str, str]]
+) -> set[tuple[str, tuple[str, str, str, str]]];
+
+def _feeds(spec: WiringSpec, consumer: str, module: str) -> bool;
+
+def _write_arch(arch_path: str, text: str) -> bool;
+
+def _strip_modules(paths: list[str]) -> int;
+
+def _arch_target(directory: str) -> (str | None);
+
+def _arch_files(root_dir: str) -> list[str];
+
+def _arch_init(force: bool, strip: bool, directory: str) -> int;
+
+def _arch_sync(strip: bool, directory: str, prune: bool = False) -> int;
+
+def _sync_one(arch_path: str, strip: bool, prune: bool) -> int;
+
+def _node_id(name: str) -> str;
+
+def _render_mermaid(spec: WiringSpec) -> str;
+
+def _render_json(spec: WiringSpec) -> str;
+
+def _arch_graph(fmt: str, output: str, directory: str) -> int;
+
+impl arch(
+    action: str = "graph",
+    scope: str = "",
+    strip: bool = False,
+    prune: bool = False,
+    force: bool = False,
+    format: str = "mermaid",
+    output: str = ""
+) -> int {
+    verb = _parse_action(action);
+    if verb is None {
+        console.error(f"unknown action: {action} (expected init, sync or graph)");
+        return 2;
     }
-
-    def text(scope: str) -> str {
-        left = self.provider;
-        if scope and left.startswith(scope + ".") {
-            left = left[len(scope) + 1:];
-        }
-        words = [
-            w
-            for w in self.form.split(" ")
-            if w in ("comptime", "include", "type")
-        ];
-        head = (" ".join(words) + " " if words else "") + left;
-        right = " | ".join(self.consumers);
-        if "from" in self.form {
-            payload = ", ".join(
-                [
-                    name + (" as " + alias if alias else "")
-                    for (name, alias) in self.items
-                ]
-            );
-            return f"{head} --> {right} {{ {payload} }}";
-        }
-        alias = " as " + self.alias if self.alias else "";
-        return f"{head}{alias} --> {right};";
+    if scope and not os.path.isdir(scope) {
+        console.error(
+            f"'{scope}' is not a directory; `jac arch` takes the directory an archwire.jac governs"
+        );
+        return 2;
     }
+    if verb == ArchAction.INIT {
+        return _arch_init(force, strip, scope);
+    }
+    if verb == ArchAction.SYNC {
+        return _arch_sync(strip, scope, prune);
+    }
+    return _arch_graph(format, output, scope);
 }
 
-def _parse_action(action: str) -> (ArchAction | None) {
+impl _parse_action(action: str) -> (ArchAction | None) {
     try {
         return ArchAction(action);
     } except ValueError {
@@ -51,7 +83,7 @@ def _parse_action(action: str) -> (ArchAction | None) {
     }
 }
 
-def _project_root -> (str | None) {
+impl _project_root -> (str | None) {
     cfg = get_config();
     if cfg is None or cfg.project_root is None {
         console.error(
@@ -63,11 +95,11 @@ def _project_root -> (str | None) {
     return str(cfg.project_root);
 }
 
-def _empty_spec(root_dir: str) -> WiringSpec {
+impl _empty_spec(root_dir: str) -> WiringSpec {
     return WiringSpec(root_dir=root_dir, path=os.path.join(root_dir, ARCH_FILE_NAME));
 }
 
-def _module_files(spec: WiringSpec) -> list[tuple[str, str]] {
+impl _module_files(spec: WiringSpec) -> list[tuple[str, str]] {
     out: list[tuple[str, str]] = [];
     for name in spec.project_modules() {
         path = spec.module_file(name);
@@ -78,7 +110,7 @@ def _module_files(spec: WiringSpec) -> list[tuple[str, str]] {
     return out;
 }
 
-def _parse_imports(path: str) -> list[tuple[Import, (list[str] | None)]] {
+impl _parse_imports(path: str) -> list[tuple[Import, (list[str] | None)]] {
     try {
         (mod, _err) = parse_woven(read_file_with_encoding(path), path, None, []);
     } except Exception {
@@ -91,211 +123,70 @@ def _parse_imports(path: str) -> list[tuple[Import, (list[str] | None)]] {
     return out;
 }
 
-def _collect_rows(spec: WiringSpec, modules: list[tuple[str, str]]) -> list[WireRow] {
-    rows: dict[tuple[str, str, str, tuple[tuple[str, str], ...]], list[WireRow]] = {};
-    owner_of: dict[str, str] = {};
+impl _collect_facts(
+    spec: WiringSpec, modules: list[tuple[str, str]]
+) -> list[tuple[str, WireBinding]] {
+    facts: list[tuple[str, WireBinding]] = [];
+    seen: set[tuple[str, tuple[str, str, str, str]]] = set();
     for (module, path) in modules {
-        payloads: dict[tuple[str, str, str], list[tuple[str, str]]] = {};
-        module_rows: list[tuple[str, WireRow]] = [];
-        provided_by_scope: dict[str, dict[tuple[str, str, str, str], WireRec]] = {};
-        sources = [path, *discover_annex_files(path, ".impl.jac")];
-        for src in sources {
+        for src in [path, *discover_annex_files(path, ".impl.jac")] {
             for (imp, scope) in _parse_imports(src) {
                 if scope is None {
                     continue;
                 }
                 consumer = ".".join([module, *scope]);
-                if consumer not in provided_by_scope {
-                    provided_by_scope[consumer] = spec.consumer_bindings(module, scope);
-                }
-                provided = provided_by_scope[consumer];
-                from_loc = imp.from_loc;
-                if from_loc is not None {
-                    provider = spec.import_provider(from_loc);
-                    if provider is None or provider == module {
+                provided = spec.consumer_bindings(module, scope);
+                injected = not is_positional_import(imp);
+                for (binding, _item) in spec.import_bindings(imp) {
+                    binding.injected = injected;
+                    key = (consumer, binding.key());
+                    if binding.provider == module
+                        or binding.key() in provided
+                        or key in seen {
                         continue;
                     }
-                    form = import_form(
-                        imp.is_absorb, imp.is_typed, imp.is_comptime, True
-                    );
-                    bucket = payloads.setdefault((provider, form, consumer), []);
-                    for item in imp.items {
-                        if not isinstance(item, ModuleItem) {
-                            continue;
-                        }
-                        alias = item.alias.value if item.alias is not None else "";
-                        if (provider, form, item.name.value, alias) in provided {
-                            continue;
-                        }
-                        item_entry = (item.name.value, alias);
-                        if item_entry not in bucket {
-                            bucket.append(item_entry);
-                        }
-                    }
-                    continue;
-                }
-                form = import_form(imp.is_absorb, imp.is_typed, imp.is_comptime, False);
-                for item in imp.items {
-                    if not isinstance(item, ModulePath) {
-                        continue;
-                    }
-                    provider = spec.import_provider(item);
-                    if provider is None or provider == module {
-                        continue;
-                    }
-                    alias = item.alias.value if item.alias is not None else "";
-                    if (provider, form, "", alias) in provided {
-                        continue;
-                    }
-                    module_rows.append(
-                        (consumer, WireRow(provider=provider, form=form, alias=alias))
-                    );
+                    seen.add(key);
+                    facts.append((consumer, binding));
                 }
             }
         }
-        for ((provider, form, consumer), items) in payloads.items() {
-            if items {
-                module_rows.append(
-                    (
-                        consumer,
-                        WireRow(provider=provider, form=form, items=sorted(items))
-                    )
-                );
-            }
-        }
-        for (consumer, row) in module_rows {
-            candidates = rows.setdefault(row.key(), []);
-            target: (WireRow | None) = None;
-            for cand in candidates {
-                if consumer in cand.consumers {
-                    target = cand;
-                    break;
-                }
-                if not any([owner_of[c] == module for c in cand.consumers]) {
-                    target = cand;
-                    break;
-                }
-            }
-            if target is None {
-                target = WireRow(
-                    provider=row.provider,
-                    form=row.form,
-                    alias=row.alias,
-                    items=row.items
-                );
-                candidates.append(target);
-            }
-            if consumer not in target.consumers {
-                target.consumers.append(consumer);
-                owner_of[consumer] = module;
-            }
-        }
     }
-    out: list[WireRow] = [];
-    for group in rows.values() {
-        for row in group {
-            if (
-                len(row.consumers) == 1
-                or len(row.text(_scope_of(row.provider))) + 4 <= WIRE_LINE_WIDTH
-            ) {
-                out.append(row);
-                continue;
-            }
-            for consumer in sorted(row.consumers) {
-                out.append(
-                    WireRow(
-                        provider=row.provider,
-                        form=row.form,
-                        alias=row.alias,
-                        items=row.items,
-                        consumers=[consumer]
-                    )
-                );
-            }
-        }
-    }
-    return sorted(
-        out,
-        key=lambda (r: WireRow) { (
-            r.provider,
-            r.consumers[0] if r.consumers else "",
-            r.form
-        ); }
-    );
+    return facts;
 }
 
-def _scope_of(provider: str) -> str {
-    return provider.rsplit(".", 1)[0] if "." in provider else "";
-}
-
-def _merge_into(spec: WiringSpec, rows: list[WireRow]) -> str {
-    source = read_file_with_encoding(spec.path) if os.path.isfile(spec.path) else "";
-    blocks: list[GraphImport] = [];
-    if source {
-        parsed = parse_woven(source, spec.path, None, []);
-        for stmt in parsed[0].body {
-            if isinstance(stmt, GraphImport) {
-                blocks.append(stmt);
-            }
+impl _unused_facts(
+    spec: WiringSpec, modules: list[tuple[str, str]]
+) -> set[tuple[str, tuple[str, str, str, str]]] {
+    unused: set[tuple[str, tuple[str, str, str, str]]] = set();
+    host = active_host();
+    for (module, path) in modules {
+        mod = host.woven_module(path, None) if spec.is_covered(module) else None;
+        if mod is None {
+            continue;
+        }
+        for found in unused_wire_bindings(mod) {
+            unused.add((found.consumer, found.binding.key()));
         }
     }
-    lines = source.split("\n");
-    insertions: list[tuple[int, list[str]]] = [];
-    appended: list[str] = [];
-    groups: dict[str, list[WireRow]] = {};
-    for row in rows {
-        groups.setdefault(_scope_of(row.provider), []).append(row);
-    }
-    for scope in sorted(groups.keys()) {
-        block: (GraphImport | None) = None;
-        for candidate in blocks {
-            if candidate.scope_prefix == scope {
-                block = candidate;
-            }
-        }
-        texts = ["    " + row.text(scope) for row in groups[scope]];
-        if block is None {
-            head = "graph import" + (" " + scope if scope else " ") + "{";
-            appended.append("\n".join([head, *texts, "}"]));
-        } else {
-            insertions.append((block.loc.last_line - 1, texts));
-        }
-    }
-    for (line_idx, texts) in sorted(insertions, reverse=True) {
-        lines[line_idx:line_idx] = texts;
-    }
-    text = "\n".join(lines).rstrip("\n");
-    if appended {
-        text = (text + "\n\n" if text else "") + "\n\n".join(appended);
-    }
-    return text + "\n";
+    return unused;
 }
 
-def _render_blocks(rows: list[WireRow]) -> str {
-    groups: dict[str, list[WireRow]] = {};
-    for row in rows {
-        groups.setdefault(_scope_of(row.provider), []).append(row);
-    }
-    blocks: list[str] = [];
-    for scope in sorted(groups.keys()) {
-        head = "graph import" + (" " + scope if scope else "") + " {";
-        lines = [head, *["    " + row.text(scope) for row in groups[scope]], "}"];
-        blocks.append("\n".join(lines));
-    }
-    return "\n\n".join(blocks) + "\n";
+impl _feeds(spec: WiringSpec, consumer: str, module: str) -> bool {
+    split = spec.split_consumer(consumer);
+    return (split[0] if split is not None else consumer) == module;
 }
 
-def _format_source(text: str, path: str) -> str {
-    prog = JacProgram.jac_str_formatter(text, path);
-    if prog.errors_had or prog.mod.main is None {
-        return text;
-    }
-    return prog.mod.main.gen.jac;
-}
-
-def _write_arch(arch_path: str, text: str) {
+impl _write_arch(arch_path: str, text: str) -> bool {
     import tempfile;
-    formatted = _format_source(text, arch_path);
+    prog = JacProgram.jac_str_formatter(text, arch_path);
+    if prog.errors_had or prog.mod.main is None {
+        console.error(
+            f"refusing to write {arch_path}: the rendered wiring does not parse",
+            hint=str(prog.errors_had[0]) if prog.errors_had else None
+        );
+        return False;
+    }
+    formatted = prog.mod.main.gen.jac;
     (fd, tmp) = tempfile.mkstemp(
         dir=os.path.dirname(arch_path) or ".", prefix=".arch.", suffix=".tmp"
     );
@@ -310,9 +201,10 @@ def _write_arch(arch_path: str, text: str) {
         }
         raise err;
     }
+    return True;
 }
 
-def _strip_modules(paths: list[str]) -> int {
+impl _strip_modules(paths: list[str]) -> int {
     changed = 0;
     for path in paths {
         annexes = [
@@ -326,7 +218,7 @@ def _strip_modules(paths: list[str]) -> int {
             );
             stripped = any(
                 [
-                    w.code is not None and w.code.code == "W3053"
+                    w.code is not None and w.code.code in ("W3053", "W3054")
                     for w in prog.warnings_had
                 ]
             );
@@ -345,14 +237,14 @@ def _strip_modules(paths: list[str]) -> int {
     return changed;
 }
 
-def _arch_target(directory: str) -> (str | None) {
+impl _arch_target(directory: str) -> (str | None) {
     if directory {
         return os.path.abspath(directory);
     }
     return _project_root();
 }
 
-def _arch_files(root_dir: str) -> list[str] {
+impl _arch_files(root_dir: str) -> list[str] {
     found: list[str] = [];
     for (dirpath, dirnames, filenames) in os.walk(root_dir) {
         dirnames[:] = sorted(
@@ -371,7 +263,7 @@ def _arch_files(root_dir: str) -> list[str] {
     return drop_git_ignored(found, cwd=root_dir);
 }
 
-def _arch_init(force: bool, strip: bool, directory: str) -> int {
+impl _arch_init(force: bool, strip: bool, directory: str) -> int {
     root_dir = _arch_target(directory);
     if root_dir is None {
         return 1;
@@ -404,10 +296,15 @@ def _arch_init(force: bool, strip: bool, directory: str) -> int {
             return 1;
         }
     }
-    rows = _collect_rows(spec, modules);
-    _write_arch(arch_path, _render_blocks(rows) if rows else "");
+    facts = _collect_facts(spec, modules);
+    rules = propose_rules(spec, facts, []);
+    if not _write_arch(arch_path, render_wiring(spec, facts, rules)) {
+        return 1;
+    }
     console.success(
-        f"wrote {ARCH_FILE_NAME}: {len(rows)} wires sealing {len(modules)} modules"
+        f"wrote {ARCH_FILE_NAME}: {len(facts)} wired names and {len(
+            rules
+        )} rules sealing {len(modules)} modules"
     );
     if strip {
         changed = _strip_modules([path for (_name, path) in modules]);
@@ -416,14 +313,7 @@ def _arch_init(force: bool, strip: bool, directory: str) -> int {
     return 0;
 }
 
-def _row_bindings(row: WireRow) -> list[tuple[str, str, str, str]] {
-    if "from" in row.form {
-        return [(row.provider, row.form, name, alias) for (name, alias) in row.items];
-    }
-    return [(row.provider, row.form, "", row.alias)];
-}
-
-def _arch_sync(strip: bool, directory: str) -> int {
+impl _arch_sync(strip: bool, directory: str, prune: bool = False) -> int {
     root_dir = _arch_target(directory);
     if root_dir is None {
         return 1;
@@ -439,12 +329,12 @@ def _arch_sync(strip: bool, directory: str) -> int {
     }
     status = 0;
     for arch_path in targets {
-        status = max(status, _sync_one(arch_path, strip));
+        status = max(status, _sync_one(arch_path, strip, prune));
     }
     return status;
 }
 
-def _sync_one(arch_path: str, strip: bool) -> int {
+impl _sync_one(arch_path: str, strip: bool, prune: bool) -> int {
     spec = wiring_for_path(arch_path) if os.path.isfile(arch_path) else None;
     if spec is None {
         console.error(f"{arch_path} does not exist", hint="run `jac arch init` first");
@@ -455,25 +345,48 @@ def _sync_one(arch_path: str, strip: bool) -> int {
         return 1;
     }
     modules = _module_files(spec);
-    rows = _collect_rows(spec, modules);
-    if rows {
-        _write_arch(arch_path, _merge_into(spec, rows));
-        console.success(f"added {len(rows)} wires to {arch_path}");
-    } else {
-        console.print(f"{arch_path} already declares every import of its modules");
+    added = _collect_facts(spec, modules);
+    dropped = _unused_facts(spec, modules) if prune else set();
+    facts = [
+        (consumer, binding)
+        for (consumer, binding) in wiring_facts(spec.wires) + added
+        if (consumer, binding.key()) not in dropped
+    ];
+    rules = propose_rules(spec, facts, spec.rules);
+    before = {rule_text(r) for r in spec.rules};
+    admitted = len(
+        [
+            r
+            for r in rules
+            if rule_text(r) not in before
+        ]
+    );
+    if not _write_arch(arch_path, render_wiring(spec, facts, rules)) {
+        return 1;
     }
-    if strip {
-        changed = _strip_modules([path for (_name, path) in modules]);
-        console.print(f"stripped wired imports from {changed} files");
+    console.success(
+        f"{arch_path}: added {len(added)} wired names, removed {len(dropped)} unused,"
+        f" {admitted} rules added or widened"
+    );
+    pruned = [
+        path
+        for (name, path) in modules
+        if any([_feeds(spec, c, name) for (c, _key) in dropped])
+    ];
+    if strip or pruned {
+        changed = _strip_modules(
+            [path for (_name, path) in modules] if strip else pruned
+        );
+        console.print(f"stripped wired and dead imports from {changed} files");
     }
     return 0;
 }
 
-def _node_id(name: str) -> str {
+impl _node_id(name: str) -> str {
     return name.replace(".", "_").replace("-", "_");
 }
 
-def _render_mermaid(spec: WiringSpec) -> str {
+impl _render_mermaid(spec: WiringSpec) -> str {
     lines: list[str] = ["graph LR"];
     for rule in spec.rules {
         srcs = " | ".join([p.text for p in rule.sources]);
@@ -514,7 +427,7 @@ def _render_mermaid(spec: WiringSpec) -> str {
     return "\n".join(lines) + "\n";
 }
 
-def _render_json(spec: WiringSpec) -> str {
+impl _render_json(spec: WiringSpec) -> str {
     wires = [
         {
             "provider": wire.provider,
@@ -535,7 +448,6 @@ def _render_json(spec: WiringSpec) -> str {
     rules = [
         {
             "name": rule.name,
-            "scope": rule.scope,
             "sources": [p.text for p in rule.sources],
             "targets": [p.text for p in rule.targets],
             "names": None if rule.is_open else sorted(rule.item_names)
@@ -544,7 +456,7 @@ def _render_json(spec: WiringSpec) -> str {
     return json.dumps({"wires": wires, "rules": rules}, indent=2) + "\n";
 }
 
-def _arch_graph(fmt: str, output: str, directory: str) -> int {
+impl _arch_graph(fmt: str, output: str, directory: str) -> int {
     root_dir = _arch_target(directory);
     if root_dir is None {
         return 1;
@@ -565,32 +477,4 @@ def _arch_graph(fmt: str, output: str, directory: str) -> int {
     }
     console.print(text, end="");
     return 0;
-}
-
-impl arch(
-    action: str = "graph",
-    scope: str = "",
-    strip: bool = False,
-    force: bool = False,
-    format: str = "mermaid",
-    output: str = ""
-) -> int {
-    verb = _parse_action(action);
-    if verb is None {
-        console.error(f"unknown action: {action} (expected init, sync or graph)");
-        return 2;
-    }
-    if scope and not os.path.isdir(scope) {
-        console.error(
-            f"'{scope}' is not a directory; `jac arch` takes the directory an archwire.jac governs"
-        );
-        return 2;
-    }
-    if verb == ArchAction.INIT {
-        return _arch_init(force, strip, scope);
-    }
-    if verb == ArchAction.SYNC {
-        return _arch_sync(strip, scope);
-    }
-    return _arch_graph(format, output, scope);
 }

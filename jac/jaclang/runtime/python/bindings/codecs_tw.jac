@@ -1,17 +1,5 @@
 """The _codecs_tw module: getcodec() and the module's map capsules."""
 
-import from jaclang.runtime.python.cpython_api { PyObject }
-import from jaclang.runtime.python.bindings.module {
-    MethodCallbacks,
-    MethodDefinition,
-    ModuleDefinition,
-    ModuleHooks
-}
-import from jaclang.runtime.python.modules.codecs_tw {
-    codecs_tw_exec,
-    codecs_tw_getcodec
-}
-
 def:priv execute(module: ptr[PyObject]) -> i32 {
     return codecs_tw_exec(module);
 }

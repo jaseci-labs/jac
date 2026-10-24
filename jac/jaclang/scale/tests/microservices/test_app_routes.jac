@@ -7,22 +7,10 @@ served over a real socket), so the gateway learns routes from the exact
 
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.tests.scale_test_client { ScaleTestClient, make_client }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.scale.runtime.gateway.route_table {
-    ServiceRouteTable,
-    literal_prefix
-}
 
 
 """Serve the in-process jac app over a real socket; returns (server, port)."""
 def _expose_backend(client: ScaleTestClient) -> tuple[any, ...] {
-    import from jaclang.server.serving.server { ServingServer }
     backend = client._server;
     assert backend is not None , "client has no in-process server";
     # Build the real spec before advertising the backend as healthy. Route

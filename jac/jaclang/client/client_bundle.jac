@@ -7,6 +7,8 @@ def _client_target_module(source_key: str, program: any) -> (Module | None);
 
 def _ensure_js_generated(mod: Module, program: any) -> None;
 
+def _errors_reaching(program: any, source: str) -> list[any];
+
 obj ClientBuildInputs {
     has module_name: str,
         client_functions: list[str],
@@ -40,7 +42,9 @@ obj ClientBundleBuilder {
 def emitted_tree_digest(tree_root: Path) -> str;
 
 
-def client_program(program: JacProgram | None) -> JacProgram {
+def client_program(program: JacProgram | None) -> JacProgram;
+
+impl client_program(program: JacProgram | None) -> JacProgram {
     if program is not None {
         return program;
     }

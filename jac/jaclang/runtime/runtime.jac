@@ -9,64 +9,10 @@ import from collections { OrderedDict, deque }
 import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { make_object }
 import from inspect { getfile }
 import from logging { getLogger }
 import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }
 import from uuid { UUID }
-import from jaclang.runtime.archetype {
-    GenericEdge,
-    ObjectAnchor,
-    ObjectSpatialFunction,
-    Root,
-    anchor_key,
-    same_anchor,
-    _deref,
-    _edge_subtypes,
-    _light_edge_types,
-    edge_subtypes,
-    is_light_edge_type,
-    light_clear_hop,
-    light_connect,
-    light_disconnect,
-    light_edge_view,
-    light_hop,
-    light_hop_answers,
-    new_connect_edge
-}
-import from jaclang.runtime.constants { EdgeDir, colors }
-import from jaclang.runtime.graph_query { GraphQuery, QHop, QPred, filter_query_nodes }
-import from jaclang.runtime.constructs {
-    AccessLevel,
-    access_level_cast,
-    Anchor,
-    Archetype,
-    EdgeAnchor,
-    EdgeArchetype,
-    JsxElement,
-    NodeAnchor,
-    NodeArchetype,
-    PermissionDenied,
-    WalkerAnchor,
-    WalkerArchetype
-}
-import from jaclang.project.modresolver {
-    infer_language,
-    find_jac_project_root,
-    push_import_base,
-    pop_import_base
-}
-import from jaclang.runtime.semantic { Info }
-import type from jaclang.byllm.mtir { MTRuntime }
-import type from jaclang.cli.console { JacConsole as ConsoleImpl }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.selfhost { SelfHostCache }
-import type from jaclang.client.client_bundle { ClientBundle, ClientBundleBuilder }
-import type from jaclang.runtime.context { ExecutionContext }
-import type from jaclang.server.server { JacAPIServer as JacServer }
-import type from jaclang.server.identity.user_manager { UserManager }
-import type from jaclang.server.server { ModuleIntrospector, ServerExtension }
 
 glob logger = getLogger(__name__),
      T = TypeVar('T'),
@@ -91,88 +37,19 @@ glob _scale_provider_cache: list[type | None] = [],
 
 glob _persistent_memory_provider: list[Callable | None] = [None];
 
-def _scale_provider -> any {
-    if _scale_provider_cache {
-        return _scale_provider_cache[0];
-    }
-    result: any = None;
-    try {
-        import from jaclang.scale.runtime.provider { JacScaleRuntime }
-        result = JacScaleRuntime;
-    } except ImportError as e {
-        _scale_provider_error[0] = e;
-    }
-    _scale_provider_cache.append(result);
-    return result;
-}
+def _scale_provider -> any;
 
-def scale_provider_error -> Exception | None {
-    return _scale_provider_error[0];
-}
+def scale_provider_error -> Exception | None;
 
-def _all_grant(anchor: Anchor) -> AccessLevel {
-    perm = anchor.access;
-    return AccessLevel.NO_ACCESS if perm is None else perm.all;
-}
+def _all_grant(anchor: Anchor) -> AccessLevel;
 
 def _light_disconnect_between(
     a: NodeAnchor, b: NodeAnchor, dirv: int, filter: (Callable | None)
-) -> bool {
-    occurred = False;
-    if dirv != 1 and a.out_light {
-        for cls in `list(a.out_light.keys()) {
-            if filter and not filter(light_edge_view(cls, a, b)) {
-                continue;
-            }
-            while light_disconnect(a, cls, b) {
-                occurred = True;
-            }
-        }
-    }
-    if dirv != 2 and a.in_light {
-        for cls in `list(a.in_light.keys()) {
-            if filter and not filter(light_edge_view(cls, b, a)) {
-                continue;
-            }
-            while light_disconnect(b, cls, a) {
-                occurred = True;
-            }
-        }
-    }
-    return occurred;
-}
+) -> bool;
 
 def resolve_ref(
     stub: (Anchor | None), referrer: (Anchor | None) = None
-) -> (Anchor | None) {
-    if stub is None {
-        return None;
-    }
-    if stub.is_populated() {
-        return stub;
-    }
-    stub.populate();
-    if stub.is_populated() {
-        return stub;
-    }
-    ctx = JacRuntimeInterface.get_context();
-
-    if ctx.mem.preserve_unresolved_ref(stub.ensure_id()) {
-        return None;
-    }
-
-    ref_repr = referrer.id if referrer is not None else '?';
-    logger.error(
-        f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
-        f"{ref_repr} does not resolve; quarantining and pruning"
-    );
-    try {
-        ctx.mem.quarantine_ref(referrer, stub);
-    } except Exception as e {
-        logger.debug(f"heal of dangling ref {stub.id} failed: {e}");
-    }
-    return None;
-}
+) -> (Anchor | None);
 
 class JacClassReferences {
     with entry {

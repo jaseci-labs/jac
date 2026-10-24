@@ -14,6 +14,7 @@ walker CFGBuildPass(TreePass) {
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
     def _exit_wired(nd: UniCFGNode) -> bool;
+    def _in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool;
     def _connect_tails(parent: UniNode, target: UniCFGNode) -> None;
     def _link_body_tails_to_header(
         nd: WhileStmt | ForeverStmt | InForStmt | IterForStmt
@@ -86,6 +87,7 @@ walker CFGBuildPass(TreePass) {
     can exit_typed_ctx_block with TypedCtxBlock exit;
     can exit_open_stmt with OpenStmt exit;
     can exit_jsx_slot with JsxSlot exit;
+    can exit_lambda_expr with LambdaExpr exit;
     can exit_ability with Ability exit;
     can exit_archetype with Archetype exit;
     can exit_impl_def with ImplDef exit;
@@ -95,18 +97,8 @@ walker CFGBuildPass(TreePass) {
 
 def is_structural_child(nd: UniNode) -> bool;
 
-def _unwrap_parens(expr: Expr) -> Expr {
-    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
-        expr = expr.value;
-    }
-    return expr;
-}
+def _unwrap_parens(expr: Expr) -> Expr;
 
-def unwrap_to_bool(cfg: CfgExpr) -> BoolExpr | None {
-    inner = _unwrap_parens(cfg.expr);
-    return inner if isinstance(inner, BoolExpr) else None;
-}
+def unwrap_to_bool(cfg: CfgExpr) -> BoolExpr | None;
 
-def _bool_is_and(expr: BoolExpr) -> bool {
-    return isinstance(expr.op, Token) and expr.op.name == Tok.KW_AND;
-}
+def _bool_is_and(expr: BoolExpr) -> bool;

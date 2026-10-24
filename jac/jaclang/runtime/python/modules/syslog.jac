@@ -5,31 +5,6 @@ The logger is process-wide, so the open flag and the ident string it keeps
 alive are process globals, and only the main interpreter may open or close it.
 """
 
-import from jaclang.runtime.python.cpython_api {
-    NULL,
-    PyErr_Clear,
-    PyErr_Occurred,
-    PyExc_RuntimeError,
-    PyInterpreterState_Get,
-    PyInterpreterState_Main,
-    PyList_GetItem,
-    PyList_Size,
-    PyLong_FromLong,
-    PyObject,
-    PySys_AuditTuple,
-    PyUnicode_AsUTF8,
-    PyUnicode_FindChar,
-    PyUnicode_FromString,
-    PyUnicode_GetLength,
-    PyUnicode_Substring,
-    Py_NewRef,
-    _PySys_GetOptionalAttrString,
-    jacpy_is_unicode,
-    jacpy_release
-}
-import from jaclang.runtime.python.capi { object_error, object_tuple }
-import from jaclang.runtime.python.bindings.converters { borrowed_none }
-import from jaclang.runtime.python.modules.syslog_constants { LOG_USER, LOG_INFO }
 import from c {
     def openlog(ident: ptr[u8], option: i32, facility: i32);  def closelog;  def setlogmask(
         mask: i32

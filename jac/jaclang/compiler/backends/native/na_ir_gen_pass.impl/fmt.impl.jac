@@ -21,5 +21,5 @@ impl NaIRGenPass._get_fmt_kernel_fn(name: str) -> (ir.Function | None) {
     }
     module = self._fmt_kernel_mod;
     assert isinstance(module, uni.Module);
-    return self._module_functions.get((os.path.realpath(module.loc.mod_path), name));
+    return self._module_function((real_path(module.loc.mod_path), name));
 }

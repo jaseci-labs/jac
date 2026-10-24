@@ -1,174 +1,6 @@
 import textwrap;
-import from jaclang.compiler.driver.pipeline_types { PassContract }
-import from jaclang.compiler.frontend.roles { Kid }
 import from collections.abc { Sequence }
-import from jaclang.compiler.frontend.loop_links { LoopLinks, LoopStmt, PassLink }
-import from jaclang.compiler.frontend.unitree {
-    literal_string_value,
-    Ability,
-    ArchHas,
-    Archetype,
-    AssertStmt,
-    AssignCompr,
-    AstAccessNode,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    AtomUnit,
-    AwaitExpr,
-    BinaryExpr,
-    Bool,
-    BoolExpr,
-    BuiltinType,
-    CastExpr,
-    CfgExpr,
-    CodeBlockStmt,
-    CommentToken,
-    CompareExpr,
-    ConcurrentExpr,
-    ConnectOp,
-    ContextAwareNode,
-    CtrlStmt,
-    DeleteStmt,
-    DictCompr,
-    DictVal,
-    DisconnectOp,
-    DisengageStmt,
-    EdgeOpRef,
-    EdgeRefTrailer,
-    Ellipsis,
-    ElseIf,
-    ElseStmt,
-    Enum,
-    EnumBlockStmt,
-    EventSignature,
-    Except,
-    Expr,
-    ExprAsItem,
-    ExprCtx,
-    ExprStmt,
-    FString,
-    FilterCompr,
-    FinallyStmt,
-    Float,
-    ForeverStmt,
-    FormattedValue,
-    FuncCall,
-    FuncSignature,
-    GenCompr,
-    GlobalVars,
-    HasVar,
-    IfElseExpr,
-    IfStmt,
-    ImplDef,
-    Import,
-    InForStmt,
-    IndexSlice,
-    InnerCompr,
-    Int,
-    IterForStmt,
-    JsxComment,
-    JsxElement,
-    JsxElementName,
-    JsxExpression,
-    JsxNormalAttribute,
-    JsxSlot,
-    JsxSpreadAttribute,
-    JsxText,
-    KVPair,
-    KWPair,
-    LambdaExpr,
-    ListCompr,
-    ListVal,
-    MatchArch,
-    MatchAs,
-    MatchCase,
-    MatchKVPair,
-    MatchMapping,
-    MatchOr,
-    MatchPattern,
-    MatchSequence,
-    MatchSingleton,
-    MatchStar,
-    MatchStmt,
-    MatchValue,
-    MatchWild,
-    Module,
-    ModuleCode,
-    ModuleItem,
-    ModulePath,
-    MultiString,
-    Name,
-    NameAtom,
-    Null,
-    OpenStmt,
-    ParamVar,
-    PyInlineCode,
-    RaiseStmt,
-    ReportStmt,
-    ReturnStmt,
-    SemDef,
-    Semi,
-    SetCompr,
-    SetVal,
-    SpecialVarRef,
-    String,
-    SubTag,
-    SwitchStmt,
-    Test,
-    Token,
-    TryStmt,
-    TupleVal,
-    TypeAlias,
-    TypeParam,
-    TypedCtxBlock,
-    UnaryExpr,
-    UniNode,
-    UniScopeNode,
-    VisitStmt,
-    WhileStmt,
-    WithStmt,
-    YieldExpr,
-    is_identifier_slot
-}
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant {
-    CodeContext,
-    is_borrow_kind,
-    OwnershipKind,
-    SymbolStorage
-}
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.runtime.scalars { shape_of }
-import type from jaclang.compiler.types.ct_value { CtInt, CtRecord, CtValue }
 
-import from jaclang.compiler.backends.py.codegen_ir {
-    CodegenIrWriter,
-    int_literal_magnitude
-}
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, InteropBinding }
-import from jaclang.compiler.backends.py.jcir_facts {
-    JCIR_AMBIENT_TYPING_NAMES,
-    JCIR_BUILTIN_NAMES,
-    jcir_is_test_path
-}
-import from jaclang.compiler.passes.context { TreePass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.frontend.diagnostics {
-    E5001,
-    E5002,
-    E5003,
-    E5004,
-    E5005,
-    E5006,
-    E5007,
-    E5008,
-    E5094,
-    W5096,
-    E5098,
-    E5102
-}
 
 glob TOKEN_CLS_BY_NAME: dict[(str, str)] = {
          'KW_AND': 'And',
@@ -257,44 +89,11 @@ obj CgNode(CgItem) {
         c2: int = 0,
         jac_src: (UniNode | None) = None;
 
-    def get(key: str) -> any {
-        i = 0;
-        while i < len(self.keys) {
-            if self.keys[i] == key {
-                return self.vals[i];
-            }
-            i += 1;
-        }
-        raise KeyError(f"CgNode {self.cls} has no field {key}");
-    }
-
-    def setf(key: str, value: any) -> None {
-        i = 0;
-        while i < len(self.keys) {
-            if self.keys[i] == key {
-                self.vals[i] = value;
-                return;
-            }
-            i += 1;
-        }
-        self.keys.append(key);
-        self.vals.append(value);
-    }
-
-    def hasf(key: str) -> bool {
-        return key in self.keys;
-    }
-
-    def items(key: str) -> list[any] {
-        value: list[any] = self.get(key);
-        return value;
-    }
-
-    def push(key: str, item: any) {
-        value = self.items(key);
-        value.append(item);
-        self.setf(key, value);
-    }
+    def get(key: str) -> any;
+    def setf(key: str, value: any) -> None;
+    def hasf(key: str) -> bool;
+    def items(key: str) -> list[any];
+    def push(key: str, item: any);
 }
 
 obj PlacePath {
@@ -317,59 +116,9 @@ obj CgWideInt(CgItem) {
         magnitude: bytes;
 }
 
-def write_ir_value(w: CodegenIrWriter, v: object) {
-    if v is None {
-        w.emit_none();
-    } elif isinstance(v, CgEllipsis) {
-        w.emit_ellipsis();
-    } elif isinstance(v, CgNode) {
-        for item in v.vals {
-            write_ir_value(w, item);
-        }
-        w.emit_loc_needed(v.l1, v.c1, v.l2, v.c2);
-        w.emit_node(v.cls, v.keys);
-    } elif isinstance(v, CgSplice) {
-        w.emit_parse_splice(v.src, v.offset);
-    } elif isinstance(v, CgWideInt) {
-        w.emit_int_wide(v.negative, v.magnitude);
-    } elif isinstance(v, bool) {
-        if v {
-            w.emit_true();
-        } else {
-            w.emit_false();
-        }
-    } elif isinstance(v, int) {
-        w.emit_int(v);
-    } elif isinstance(v, float) {
-        w.emit_float(v);
-    } elif isinstance(v, str) {
-        w.emit_str(v);
-    } elif isinstance(v, bytes) {
-        w.emit_bytes(v);
-    } elif isinstance(v, list) {
-        for item in v {
-            write_ir_value(w, item);
-        }
-        w.emit_list(len(v));
-    } else {
-        raise ValueError(
-            "JCIR emitter produced a value outside the v1 constant domain. "
-            "The whole domain is None, a CgEllipsis marker, a CgNode, a "
-            "CgSplice, bool, int, float, str, bytes, and a list of those; a "
-            "value of any other type reached a recipe slot, most often "
-            "because a producer put a live Python object where an encodable "
-            "one belongs."
-        );
-    }
-}
+def write_ir_value(w: CodegenIrWriter, v: object);
 
-def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes {
-    w = CodegenIrWriter();
-    w.begin_module(mod_path);
-    write_ir_value(w, root_node);
-    w.end_module();
-    return w.to_bytes();
-}
+def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes;
 
 walker JcirGenPass(TreePass) {
     static has contract: PassContract = PassContract();
@@ -585,7 +334,7 @@ walker JcirGenPass(TreePass) {
         doc: (String | None) = None
     ) -> list[CgItem];
 
-    def scope_directive_stmts(scopes: list[UniScopeNode | None]) -> list[CgNode];
+    def scope_directive_stmts(scope: UniScopeNode) -> list[CgNode];
     def _resolve_self_type(nd: Name) -> (CgNode | None);
     def _is_in_type_annotation(nd: UniNode) -> bool;
     def _is_descendant_of(nd: UniNode, ancestor: UniNode) -> bool;

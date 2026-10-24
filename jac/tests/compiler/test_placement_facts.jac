@@ -124,6 +124,7 @@ test "placement_pins imports stay within the documented allowlist" {
         "jaclang/compiler/driver/boundary_classify.jac",
         "jaclang/compiler/driver/impl/program.impl.jac",
         "jaclang/compiler/driver/jir.jac",
+        "jaclang/compiler/driver/impl/jir.impl.jac",
         "jaclang/compiler/driver/na_coverage.jac",
         "jaclang/compiler/native_scope.jac",
         "jaclang/project/modresolver.jac",
@@ -132,7 +133,9 @@ test "placement_pins imports stay within the documented allowlist" {
         "jaclang/compiler/passes/placement_pass.jac",
         "jaclang/lsp/server/impl/engine.impl.jac",
         "jaclang/compiler/placement/placement.jac",
+        "jaclang/compiler/placement/impl/placement.impl.jac",
         "jaclang/compiler/placement/placement_facts.jac",
+        "jaclang/compiler/placement/impl/placement_facts.impl.jac",
         "jaclang/compiler/placement/placement_pins.jac",
         "jaclang/compiler/placement/placement_solver.jac"
     };

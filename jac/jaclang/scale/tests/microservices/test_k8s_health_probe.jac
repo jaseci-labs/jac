@@ -17,14 +17,6 @@ import uuid;
 import requests;
 import from pathlib { Path }
 import from tempfile { mkdtemp }
-import from jaclang.scale.tests.support { get_free_port }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 
 """Serve a real /healthz over HTTP: http.server answering GET /healthz -> 200."""
 def _real_healthz_server(port: int) -> tuple[any, ...] {

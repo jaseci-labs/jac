@@ -62,6 +62,8 @@ obj AnchorRow {
         src: (UUID | None) = None,
         dst: (UUID | None) = None,
         undirected: bool = False,
+        src_type: str = '',
+        dst_type: str = '',
         ancestry: list[str] = [],
         version: int = 0;
 }
@@ -98,6 +100,7 @@ obj Store {
     ) -> list[tuple[int, UUID]] abst;
 
     def upsert(rows_in: list[AnchorRow]) -> None abst;
+    def retype_edges(ids: list[UUID]) -> None abst;
     def delete(ids: list[UUID]) -> None abst;
     def existing(ids: list[UUID]) -> set[UUID] abst;
     def root_ids -> list[UUID] abst;
@@ -124,14 +127,7 @@ obj Store {
 
 
 obj PgStore(Store) {
-    override def new_session -> PgStore {
-        return PgStore(
-            conninfo=self.conninfo,
-            ensure_cb=self.ensure_cb,
-            promotions=dict(self.promotions),
-            auto_schema=self.auto_schema
-        );
-    }
+    override def new_session -> PgStore;
 
     has conninfo: ConnInfo,
         ensure_cb: (any | None) = None,
@@ -176,6 +172,7 @@ obj PgStore(Store) {
     ) -> list[tuple[int, UUID]];
 
     def upsert(rows_in: list[AnchorRow]) -> None;
+    def retype_edges(ids: list[UUID]) -> None;
     def delete(ids: list[UUID]) -> None;
     def existing(ids: list[UUID]) -> set[UUID];
     def root_ids -> list[UUID];
@@ -216,6 +213,7 @@ obj PgStore(Store) {
     def _acquire_schema_lock(fingerprint: str) -> bool;
     def _release_schema_lock -> None;
     def _apply_schema_ddl -> None;
+    def _backfill_endpoint_types -> None;
     def _apply_schema_ddl_resilient -> None;
     def _load_known_types -> None;
     def _peer_sessions -> list[dict[str, any]];

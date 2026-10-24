@@ -29,20 +29,28 @@ def render(w: &RenderView, alpha: float);
 
 def init -> own Game;
 
-def shutdown(w: own Game) {
-    close_window();
-}
+def shutdown(w: own Game);
 
 def frame(w: &mut Game) -> bool;
 
-def get_score(w: &Game) -> int {
+def get_score(w: &Game) -> int;
+
+def get_hp(w: &Game) -> float;
+
+def get_deaths(w: &Game) -> int;
+
+impl shutdown(w: own Game) {
+    close_window();
+}
+
+impl get_score(w: &Game) -> int {
     return w.stats.score;
 }
 
-def get_hp(w: &Game) -> float {
+impl get_hp(w: &Game) -> float {
     return w.player.hp;
 }
 
-def get_deaths(w: &Game) -> int {
+impl get_deaths(w: &Game) -> int {
     return w.stats.deaths;
 }
