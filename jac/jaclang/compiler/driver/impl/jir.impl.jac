@@ -1110,13 +1110,15 @@ impl module_ct_deps_section(mod: any) -> (bytes | None) {
 
 impl _texts_of_spans(real: str, text: str, rows: list[str]) -> dict[str, list[str]] {
     texts: dict[str, list[str]] = {};
+    data = text.encode("utf-8");
     for row in rows {
         parts = row.split(DEF_DEP_SEP);
         if len(parts) != 3 or parts[0] != real or not parts[1] {
             continue;
         }
         (start, _, stop) = parts[2].partition(",");
-        texts.setdefault(parts[1], []).append(text[int(start):int(stop)]);
+        piece = data[int(start):int(stop)];
+        texts.setdefault(parts[1], []).append(piece.decode("utf-8", errors="replace"));
     }
     return texts;
 }
