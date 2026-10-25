@@ -3419,7 +3419,6 @@ graph import {
             | server.static_files { JacRuntime as Jac },
         cli.commands.execution._exec_file
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
-            | client.targets.web_target._get_client_function_name
             | server.hmr.HotReloader._recompile_client_unified
             | server.server.ModuleIntrospector._resolve_declared { JacRuntime as Jac },
         cli.commands.execution._invoke_entrypoint

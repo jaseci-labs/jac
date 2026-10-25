@@ -305,6 +305,12 @@ impl make_sealed_image(
             return None;
         }
 
+        if cache_root.is_dir() {
+            for previous in sorted(cache_root.glob(f"image-*/{name}")) {
+                seed_from_image(previous, pkg_copy);
+                break;
+            }
+        }
         rc = run_precompiler(
             str(stage), ["--seal"] + ([f"--app={app}"] if app else [])
         );
@@ -333,6 +339,31 @@ impl make_sealed_image(
     } finally {
         shutil.rmtree(stage, ignore_errors=True);
     }
+}
+
+impl seed_from_image(previous: Path, pkg_copy: Path) -> int {
+    seeded = 0;
+    images = previous / "_precompiled";
+    if not images.is_dir() {
+        return 0;
+    }
+    for jir_file in images.rglob("*.jir") {
+        parts = jir_file.relative_to(previous).parts;
+        if len(parts) < 3 or ".." in parts {
+            continue;
+        }
+        source = pkg_copy.joinpath(*parts[2:]).with_suffix(".jac");
+        if not source.is_file() {
+            continue;
+        }
+        target = pkg_copy.joinpath(*parts);
+        try {
+            target.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(jir_file, target);
+            seeded += 1;
+        } except OSError {}
+    }
+    return seeded;
 }
 
 impl sealed_image_key(

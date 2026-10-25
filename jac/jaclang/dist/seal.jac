@@ -41,6 +41,8 @@ def sealed_image_key(
     config: any, name: str, app: str, bake_client: bool, ignore: any
 ) -> str;
 
+def seed_from_image(previous: Path, pkg_copy: Path) -> int;
+
 def vendor_jab_deps(config: any, img: Path) -> bool;
 
 
