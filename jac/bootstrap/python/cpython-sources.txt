@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 229 C files / 397,854 lines; 159 headers / 153,997 lines.
-#   Total: 388 files / 551,851 source lines.
+#   Excluded: 232 C files / 404,254 lines; 161 headers / 154,886 lines.
+#   Total: 393 files / 559,140 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -462,7 +462,7 @@ Modules/_scproxy.c
 # Modules/_struct.c  # removed: 2,825 source lines
 # Modules/_suggestions.c  # removed: 69 source lines
 # Modules/_sysconfig.c  # removed: 109 source lines
-Modules/_threadmodule.c
+# Modules/_threadmodule.c  # removed: 2,831 source lines
 # Modules/_tracemalloc.c  # removed: 228 source lines
 # Modules/_typesmodule.c  # removed: 72 source lines
 # Modules/_typingmodule.c  # removed: 99 source lines
@@ -530,7 +530,7 @@ Modules/_threadmodule.c
 # Modules/clinic/_struct.c.h  # removed: 461 source lines
 # Modules/clinic/_suggestions.c.h  # removed: 41 source lines
 # Modules/clinic/_sysconfig.c.h  # removed: 22 source lines
-Modules/clinic/_threadmodule.c.h
+# Modules/clinic/_threadmodule.c.h  # removed: 106 source lines
 # Modules/clinic/_tracemalloc.c.h  # removed: 217 source lines
 # Modules/clinic/_typingmodule.c.h  # removed: 12 source lines
 # Modules/clinic/_weakref.c.h  # removed: 115 source lines
@@ -555,7 +555,7 @@ Modules/clinic/_threadmodule.c.h
 # Modules/clinic/sha1module.c.h  # removed: 175 source lines
 # Modules/clinic/sha2module.c.h  # removed: 510 source lines
 # Modules/clinic/sha3module.c.h  # removed: 291 source lines
-Modules/clinic/signalmodule.c.h
+# Modules/clinic/signalmodule.c.h  # removed: 783 source lines
 # Modules/clinic/socketmodule.c.h  # removed: 376 source lines
 # Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
 # Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
@@ -566,7 +566,7 @@ Modules/clinic/signalmodule.c.h
 # Modules/cmathmodule.c  # removed: 1,315 source lines
 Modules/config.c.in
 # Modules/errnomodule.c  # removed: 988 source lines
-Modules/faulthandler.c
+# Modules/faulthandler.c  # removed: 1,491 source lines
 # Modules/fcntlmodule.c  # removed: 789 source lines
 # Modules/gcmodule.c  # removed: 585 source lines
 # Modules/getaddrinfo.c  # removed: 642 source lines
@@ -596,7 +596,7 @@ Modules/makesetup
 # Modules/sha1module.c  # removed: 411 source lines
 # Modules/sha2module.c  # removed: 954 source lines
 # Modules/sha3module.c  # removed: 680 source lines
-Modules/signalmodule.c
+# Modules/signalmodule.c  # removed: 2,078 source lines
 # Modules/socketmodule.c  # removed: 9,305 source lines
 # Modules/socketmodule.h  # removed: 414 source lines
 # Modules/symtablemodule.c  # removed: 130 source lines

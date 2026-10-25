@@ -32,10 +32,7 @@ glob COMMAND: str = "scripts/jacpython/gen_inittab.jac",
      # empty function is a name sys.builtin_module_names reports whose module
      # the interpreter creates itself.
      C_MODULES: list[tuple[str, str]] = [
-         ("faulthandler", "PyInit_faulthandler"),
-         ("_signal", "PyInit__signal"),
          ("_io", "PyInit__io"),
-         ("_thread", "PyInit__thread"),
          ("marshal", "PyMarshal_Init"),
          ("_imp", "PyInit__imp"),
          ("_ast", "PyInit__ast"),

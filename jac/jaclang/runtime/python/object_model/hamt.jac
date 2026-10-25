@@ -1660,7 +1660,7 @@ impl hamt_tp_iter(op: ptr[PyObject]) -> ptr[PyObject] {
 impl hamt_py_set(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     key = NULL;
     val = NULL;
-    if PyArg_UnpackTuple(args, "set", 2, 2, &mut key, &mut val) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("set"), 2, 2, &mut key, &mut val) == 0 {
         return NULL;
     }
     return ptr[PyObject](_PyHamt_Assoc(hamt_of(op), key, val));
@@ -1669,7 +1669,7 @@ impl hamt_py_set(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
 impl hamt_py_get(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     key = NULL;
     dflt = NULL;
-    if PyArg_UnpackTuple(args, "get", 1, 2, &mut key, &mut dflt) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("get"), 1, 2, &mut key, &mut dflt) == 0 {
         return NULL;
     }
     (res, val) = hamt_find(hamt_of(op), key);

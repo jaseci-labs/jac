@@ -539,7 +539,7 @@ import from c {
         }
         tables_unlock();
 
-        return Py_BuildValue("nn", traced, peak);
+        return Py_BuildValue(ptr[u8]("nn"), traced, peak);
     }  def _PyTraceMalloc_ResetPeak {
         tables_lock();
         if tm_tracing().view(1)[0] != 0 {

@@ -44,6 +44,7 @@ import from common { RUNTIME, archive_texts, format_jac, write_or_check }
 glob OUTPUT: Path = RUNTIME / "modules",
      PATTERNS: list[str] = [
          r"\bADD_INT_MACRO\(\s*\w+\s*,\s*(\w+)\s*\)",
+         r"\bADD_INT_MACRO\(\s*(\w+)\s*\)",
          r"\bADD_INT\(\s*\w+\s*,\s*(\w+)\s*\)",
          r"\bPyModule_AddIntMacro\(\s*\w+\s*,\s*(\w+)\s*\)",
          r"\bINS\(\s*(\w+)\s*\)",
@@ -135,7 +136,12 @@ glob OUTPUT: Path = RUNTIME / "modules",
                  "poll.h"
              ]
          ),
-         "_signal": ("Modules/signalmodule.c", ["signal.h", "sys/time.h"]),
+         # signalmodule.c's headers, and those of the values faulthandler.c
+         # reads (RLIMIT_CORE, errno).
+         "_signal": (
+             "Modules/signalmodule.c",
+             ["signal.h", "sys/time.h", "sys/resource.h", "errno.h"]
+         ),
          # posixmodule.c's own include order.
          "posix": (
              "Modules/posixmodule.c",
@@ -270,6 +276,17 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "SYS_getdents64"
          ],
          "_multiprocessing": ["O_CREAT", "O_EXCL", "SEM_VALUE_MAX"],
+         # The handler flags and error numbers of signalmodule.c and
+         # faulthandler.c.
+         "_signal": [
+             "SA_RESTART",
+             "SA_NODEFER",
+             "SA_ONSTACK",
+             "EINTR",
+             "EAGAIN",
+             "EWOULDBLOCK",
+             "RLIMIT_CORE"
+         ],
          "_socket": [
              "FIONBIO",
              "POLLIN",
@@ -402,7 +419,11 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # Names whose value is not fixed per OS, which the binding reads from the
      # target instead: CHAR_MAX follows the ABI's char signedness (unsigned on
      # Linux aarch64, signed on x86_64 and Apple arm64).
-     EXCLUDED: dict[str, list[str]] = {"_locale": ["CHAR_MAX"]},
+     EXCLUDED: dict[str, list[str]] = {
+         "_locale": ["CHAR_MAX"],
+         # glibc's SIGRTMIN and SIGRTMAX are calls (__libc_current_sigrtmin()).
+         "_signal": ["SIGRTMIN", "SIGRTMAX"]
+     },
      # Macros the C module defines before its includes to expose constants.
      DEFINES: dict[str, list[str]] = {"_socket": ["__APPLE_USE_RFC_3542 1"]},
      # Conditions no supported target meets: the names published only

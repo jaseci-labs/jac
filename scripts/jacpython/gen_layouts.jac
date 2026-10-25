@@ -3731,7 +3731,10 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("Py_T_STRING_INPLACE", "Py_T_STRING_INPLACE", "i32"),
          ("Py_T_LONGLONG", "Py_T_LONGLONG", "i32"),
          ("Py_T_ULONGLONG", "Py_T_ULONGLONG", "i32"),
-         ("_Py_T_NONE", "_Py_T_NONE", "i32")
+         ("_Py_T_NONE", "_Py_T_NONE", "i32"),
+         ("Py_RTFLAGS_THREADS", "Py_RTFLAGS_THREADS", "u64"),
+         ("Py_RTFLAGS_DAEMON_THREADS", "Py_RTFLAGS_DAEMON_THREADS", "u64"),
+         ("_PyThreadState_WHENCE_THREADING", "_PyThreadState_WHENCE_THREADING", "i32")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4747,7 +4750,240 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("CHAR_MIN", "CHAR_MIN", "i64"),
-         ("CHAR_MAX", "CHAR_MAX", "i64")
+         ("CHAR_MAX", "CHAR_MAX", "i64"),
+         ("Py_NSIG", "Py_NSIG", "i64"),
+         (
+             "_PyRuntimeState_SIGNALS_HANDLERS",
+             "offsetof(_PyRuntimeState, signals.handlers)",
+             "i64"
+         ),
+         (
+             "_signals_handler_SIZE",
+             "offsetof(_PyRuntimeState, signals.handlers[1]) - offsetof(_PyRuntimeState, signals.handlers[0])",
+             "i64"
+         ),
+         (
+             "_signals_handler_FUNC",
+             "offsetof(_PyRuntimeState, signals.handlers[0].func) - offsetof(_PyRuntimeState, signals.handlers[0])",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_SIGNALS_WAKEUP_FD",
+             "offsetof(_PyRuntimeState, signals.wakeup.fd)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_SIGNALS_WAKEUP_WARN_ON_FULL_BUFFER",
+             "offsetof(_PyRuntimeState, signals.wakeup.warn_on_full_buffer)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_SIGNALS_IS_TRIPPED",
+             "offsetof(_PyRuntimeState, signals.is_tripped)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_SIGNALS_DEFAULT_HANDLER",
+             "offsetof(_PyRuntimeState, signals.default_handler)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_SIGNALS_IGNORE_HANDLER",
+             "offsetof(_PyRuntimeState, signals.ignore_handler)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_FATAL_ERROR_ENABLED",
+             "offsetof(_PyRuntimeState, faulthandler.fatal_error.enabled)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_FATAL_ERROR_FILE",
+             "offsetof(_PyRuntimeState, faulthandler.fatal_error.file)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_FATAL_ERROR_FD",
+             "offsetof(_PyRuntimeState, faulthandler.fatal_error.fd)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_FATAL_ERROR_ALL_THREADS",
+             "offsetof(_PyRuntimeState, faulthandler.fatal_error.all_threads)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_FATAL_ERROR_INTERP",
+             "offsetof(_PyRuntimeState, faulthandler.fatal_error.interp)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_FATAL_ERROR_C_STACK",
+             "offsetof(_PyRuntimeState, faulthandler.fatal_error.c_stack)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD",
+             "offsetof(_PyRuntimeState, faulthandler.thread)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_SIZE",
+             "sizeof(_PyRuntime.faulthandler.thread)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_FILE",
+             "offsetof(_PyRuntimeState, faulthandler.thread.file)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_FD",
+             "offsetof(_PyRuntimeState, faulthandler.thread.fd)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_TIMEOUT_US",
+             "offsetof(_PyRuntimeState, faulthandler.thread.timeout_us)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_REPEAT",
+             "offsetof(_PyRuntimeState, faulthandler.thread.repeat)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_INTERP",
+             "offsetof(_PyRuntimeState, faulthandler.thread.interp)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_EXIT",
+             "offsetof(_PyRuntimeState, faulthandler.thread.exit)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_HEADER",
+             "offsetof(_PyRuntimeState, faulthandler.thread.header)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_HEADER_LEN",
+             "offsetof(_PyRuntimeState, faulthandler.thread.header_len)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_CANCEL_EVENT",
+             "offsetof(_PyRuntimeState, faulthandler.thread.cancel_event)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_THREAD_RUNNING",
+             "offsetof(_PyRuntimeState, faulthandler.thread.running)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_USER_SIGNALS",
+             "offsetof(_PyRuntimeState, faulthandler.user_signals)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_STACK",
+             "offsetof(_PyRuntimeState, faulthandler.stack)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FAULTHANDLER_OLD_STACK",
+             "offsetof(_PyRuntimeState, faulthandler.old_stack)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_SIZE",
+             "sizeof(struct faulthandler_user_signal)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_ENABLED",
+             "offsetof(struct faulthandler_user_signal, enabled)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_FILE",
+             "offsetof(struct faulthandler_user_signal, file)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_FD",
+             "offsetof(struct faulthandler_user_signal, fd)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_ALL_THREADS",
+             "offsetof(struct faulthandler_user_signal, all_threads)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_CHAIN",
+             "offsetof(struct faulthandler_user_signal, chain)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_PREVIOUS",
+             "offsetof(struct faulthandler_user_signal, previous)",
+             "i64"
+         ),
+         (
+             "faulthandler_user_signal_INTERP",
+             "offsetof(struct faulthandler_user_signal, interp)",
+             "i64"
+         ),
+         ("stack_t_SIZE", "sizeof(stack_t)", "i64"),
+         ("stack_t_SS_SP", "offsetof(stack_t, ss_sp)", "i64"),
+         ("stack_t_SS_SIZE", "offsetof(stack_t, ss_size)", "i64"),
+         ("stack_t_SS_FLAGS", "offsetof(stack_t, ss_flags)", "i64"),
+         ("sigaction_SIZE", "sizeof(struct sigaction)", "i64"),
+         ("sigaction_SA_HANDLER", "offsetof(struct sigaction, sa_handler)", "i64"),
+         ("sigaction_SA_MASK", "offsetof(struct sigaction, sa_mask)", "i64"),
+         ("sigaction_SA_FLAGS", "offsetof(struct sigaction, sa_flags)", "i64"),
+         ("sigset_t_SIZE", "sizeof(sigset_t)", "i64"),
+         ("siginfo_t_SIZE", "sizeof(siginfo_t)", "i64"),
+         ("siginfo_t_SI_SIGNO", "offsetof(siginfo_t, si_signo)", "i64"),
+         ("siginfo_t_SI_CODE", "offsetof(siginfo_t, si_code)", "i64"),
+         ("siginfo_t_SI_ERRNO", "offsetof(siginfo_t, si_errno)", "i64"),
+         ("siginfo_t_SI_PID", "offsetof(siginfo_t, si_pid)", "i64"),
+         ("siginfo_t_SI_UID", "offsetof(siginfo_t, si_uid)", "i64"),
+         ("siginfo_t_SI_STATUS", "offsetof(siginfo_t, si_status)", "i64"),
+         ("siginfo_t_SI_BAND", "offsetof(siginfo_t, si_band)", "i64"),
+         (
+             "_PyRuntimeState_THREADS_HANDLES",
+             "offsetof(_PyRuntimeState, threads.handles)",
+             "i64"
+         ),
+         (
+             "_pythread_runtime_state_HANDLES",
+             "offsetof(struct _pythread_runtime_state, handles)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_MAIN_THREAD",
+             "offsetof(_PyRuntimeState, main_thread)",
+             "i64"
+         ),
+         (
+             "PyThreadState_THREADING_LOCAL_KEY",
+             "offsetof(PyThreadState, threading_local_key)",
+             "i64"
+         ),
+         (
+             "PyThreadState_THREADING_LOCAL_SENTINEL",
+             "offsetof(PyThreadState, threading_local_sentinel)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_THREADS_COUNT",
+             "offsetof(PyInterpreterState, threads.count)",
+             "i64"
+         )
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

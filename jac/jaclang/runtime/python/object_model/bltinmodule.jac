@@ -2030,12 +2030,12 @@ impl filter_new(
         or int(type.view(1)[0].tp_init) == int(base_tp.view(1)[0].tp_init)
     )
         and kwds
-        and _PyArg_NoKeywords("filter", kwds) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("filter"), kwds) == 0 {
         return NULL;
     }
     func = NULL;
     seq = NULL;
-    if PyArg_UnpackTuple(args, "filter", 2, 2, &mut func, &mut seq) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("filter"), 2, 2, &mut func, &mut seq) == 0 {
         return NULL;
     }
     it = PyObject_GetIter(seq);
@@ -2059,12 +2059,12 @@ impl filter_vectorcall(
     tp = ptr[PyTypeObject](type);
     if tp == addressof(PyFilter_Type)
         and kwnames
-        and _PyArg_NoKwnames("filter", kwnames) == 0 {
+        and _PyArg_NoKwnames(ptr[u8]("filter"), kwnames) == 0 {
         return NULL;
     }
     nargs = vectorcall_nargs(nargsf);
     if not check_positional(nargs, 2, 2)
-        and _PyArg_CheckPositional("filter", nargs, 2, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("filter"), nargs, 2, 2) == 0 {
         return NULL;
     }
     it = PyObject_GetIter(arg_at(args, 1));
@@ -2136,7 +2136,7 @@ impl filter_next(self_: ptr[PyObject]) -> ptr[PyObject] {
 impl filter_reduce(self_: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     lz = ptr[filterobject](self_);
     return Py_BuildValue(
-        "O(OO)", ptr[PyObject](object_type(self_)), lz.view(1)[0].func, lz.view(1)[0].it
+        ptr[u8]("O(OO)"), ptr[PyObject](object_type(self_)), lz.view(1)[0].func, lz.view(1)[0].it
     );
 }
 
@@ -2150,7 +2150,7 @@ impl builtin_format(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 1, 2)
-        and _PyArg_CheckPositional("format", nargs, 1, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("format"), nargs, 1, 2) == 0 {
         return NULL;
     }
     value = arg_at(args, 0);
@@ -2158,7 +2158,7 @@ impl builtin_format(
     if nargs >= 2 {
         spec = arg_at(args, 1);
         if not unicode_check(spec) {
-            _PyArg_BadArgument("format", "argument 2", "str", spec);
+            _PyArg_BadArgument(ptr[u8]("format"), ptr[u8]("argument 2"), ptr[u8]("str"), spec);
             return NULL;
         }
         format_spec = spec;
@@ -2285,7 +2285,7 @@ impl builtin_compile(
     }
     mode_obj = arg_at(fast, 2);
     if not unicode_check(mode_obj) {
-        _PyArg_BadArgument("compile", "argument 'mode'", "str", mode_obj);
+        _PyArg_BadArgument(ptr[u8]("compile"), ptr[u8]("argument 'mode'"), ptr[u8]("str"), mode_obj);
         return compile_done(filename_slot, NULL);
     }
     mode_length: i64 = 0;
@@ -2362,7 +2362,7 @@ impl compile_done(
 
 impl builtin_dir(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     arg = NULL;
-    if PyArg_UnpackTuple(args, "dir", 0, 1, &mut arg) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("dir"), 0, 1, &mut arg) == 0 {
         return NULL;
     }
     return PyObject_Dir(arg);
@@ -2378,7 +2378,7 @@ impl builtin_divmod(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 2, 2)
-        and _PyArg_CheckPositional("divmod", nargs, 2, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("divmod"), nargs, 2, 2) == 0 {
         return NULL;
     }
     return builtin_divmod_impl(module, arg_at(args, 0), arg_at(args, 1));
@@ -2736,7 +2736,7 @@ impl builtin_getattr(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 2, 3)
-        and _PyArg_CheckPositional("getattr", nargs, 2, 3) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("getattr"), nargs, 2, 3) == 0 {
         return NULL;
     }
     v = arg_at(args, 0);
@@ -2789,7 +2789,7 @@ impl builtin_hasattr(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 2, 2)
-        and _PyArg_CheckPositional("hasattr", nargs, 2, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("hasattr"), nargs, 2, 2) == 0 {
         return NULL;
     }
     return builtin_hasattr_impl(module, arg_at(args, 0), arg_at(args, 1));
@@ -2814,7 +2814,7 @@ impl map_new(
             return NULL;
         }
         parsed = PyArg_ParseTupleAndKeywords(
-            empty, kwds, "|$p:map", ptr(addressof(map_kwlist)), &mut strict
+            empty, kwds, ptr[u8]("|$p:map"), ptr(addressof(map_kwlist)), &mut strict
         );
         object_decref(empty);
         if parsed == 0 {
@@ -3000,9 +3000,9 @@ impl map_reduce(self_: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
         tuple_set_item(args, i + 1, object_new_ref(tuple_get_item(iters, i)));
     }
     if lz.view(1)[0].strict != 0 {
-        return Py_BuildValue("ONO", ptr[PyObject](object_type(self_)), args, py_true());
+        return Py_BuildValue(ptr[u8]("ONO"), ptr[PyObject](object_type(self_)), args, py_true());
     }
-    return Py_BuildValue("ON", ptr[PyObject](object_type(self_)), args);
+    return Py_BuildValue(ptr[u8]("ON"), ptr[PyObject](object_type(self_)), args);
 }
 
 impl map_setstate(self_: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
@@ -3018,7 +3018,7 @@ impl builtin_next(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 1, 2)
-        and _PyArg_CheckPositional("next", nargs, 1, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("next"), nargs, 1, 2) == 0 {
         return NULL;
     }
     it = arg_at(args, 0);
@@ -3066,7 +3066,7 @@ impl builtin_setattr(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 3, 3)
-        and _PyArg_CheckPositional("setattr", nargs, 3, 3) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("setattr"), nargs, 3, 3) == 0 {
         return NULL;
     }
     return builtin_setattr_impl(
@@ -3087,7 +3087,7 @@ impl builtin_delattr(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 2, 2)
-        and _PyArg_CheckPositional("delattr", nargs, 2, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("delattr"), nargs, 2, 2) == 0 {
         return NULL;
     }
     return builtin_delattr_impl(module, arg_at(args, 0), arg_at(args, 1));
@@ -3109,7 +3109,7 @@ impl builtin_iter(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 1, 2)
-        and _PyArg_CheckPositional("iter", nargs, 1, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("iter"), nargs, 1, 2) == 0 {
         return NULL;
     }
     v = arg_at(args, 0);
@@ -3158,7 +3158,7 @@ impl builtin_anext(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 1, 2)
-        and _PyArg_CheckPositional("anext", nargs, 1, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("anext"), nargs, 1, 2) == 0 {
         return NULL;
     }
     default_value = NULL;
@@ -3884,7 +3884,7 @@ impl builtin_input(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not check_positional(nargs, 0, 1)
-        and _PyArg_CheckPositional("input", nargs, 0, 1) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("input"), nargs, 0, 1) == 0 {
         return NULL;
     }
     prompt = NULL;
@@ -3973,7 +3973,7 @@ impl builtin_sorted(
 
 impl builtin_vars(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     v = NULL;
-    if PyArg_UnpackTuple(args, "vars", 0, 1, &mut v) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("vars"), 0, 1, &mut v) == 0 {
         return NULL;
     }
     d = NULL;
@@ -4257,7 +4257,7 @@ impl builtin_sum(
 impl builtin_isinstance(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs != 2 and _PyArg_CheckPositional("isinstance", nargs, 2, 2) == 0 {
+    if nargs != 2 and _PyArg_CheckPositional(ptr[u8]("isinstance"), nargs, 2, 2) == 0 {
         return NULL;
     }
     retval = PyObject_IsInstance(arg_at(args, 0), arg_at(args, 1));
@@ -4270,7 +4270,7 @@ impl builtin_isinstance(
 impl builtin_issubclass(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs != 2 and _PyArg_CheckPositional("issubclass", nargs, 2, 2) == 0 {
+    if nargs != 2 and _PyArg_CheckPositional(ptr[u8]("issubclass"), nargs, 2, 2) == 0 {
         return NULL;
     }
     retval = PyObject_IsSubclass(arg_at(args, 0), arg_at(args, 1));
@@ -4290,7 +4290,7 @@ impl zip_new(
             return NULL;
         }
         parsed = PyArg_ParseTupleAndKeywords(
-            empty, kwds, "|$p:zip", ptr(addressof(zip_kwlist)), &mut strict
+            empty, kwds, ptr[u8]("|$p:zip"), ptr(addressof(zip_kwlist)), &mut strict
         );
         object_decref(empty);
         if parsed == 0 {

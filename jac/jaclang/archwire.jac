@@ -15767,6 +15767,7 @@ graph import runtime.python {
             | modules.datetime_delta
             | modules.datetime_time
             | modules.datetime_tzinfo
+            | modules.faulthandler
             | modules.lzma
             | modules.multibytecodec
             | modules.select
@@ -15781,6 +15782,7 @@ graph import runtime.python {
             keywords_of_dict
         },
         modules.math { vector_tuple },
+        modules.thread { ArgumentFormat, check_positional },
         object_model.bytearray
             | object_model.bytes
             | object_model.long
@@ -15930,6 +15932,7 @@ graph import runtime.python {
     bindings.decimal ++> inittab { PyInit__decimal }
     bindings.elementtree ++> inittab { PyInit__elementtree }
     bindings.errno ++> inittab { PyInit_errno }
+    bindings.faulthandler ++> inittab { PyInit_faulthandler }
     bindings.fcntl ++> inittab { PyInit_fcntl }
     bindings.functools ++> inittab { PyInit__functools }
     bindings.grp ++> inittab { PyInit_grp }
@@ -15965,6 +15968,7 @@ graph import runtime.python {
             | modules.datetime_date
             | modules.decimal_context
             | modules.socket_object
+            | modules.thread
             | object_model.bltinmodule
             | object_model.bytearray
             | object_model.bytes
@@ -16160,6 +16164,7 @@ graph import runtime.python {
     bindings.sha1 ++> inittab { PyInit__sha1 }
     bindings.sha2 ++> inittab { PyInit__sha2 }
     bindings.sha3 ++> inittab { PyInit__sha3 }
+    bindings.signal ++> inittab { PyInit__signal }
     bindings.socket ++> inittab { PyInit__socket }
     bindings.sqlite3 ++> inittab { PyInit__sqlite3 }
     bindings.sre ++> inittab { PyInit__sre }
@@ -16208,6 +16213,7 @@ graph import runtime.python {
     bindings.sysconfig ++> inittab { PyInit__sysconfig }
     bindings.syslog ++> inittab { PyInit_syslog }
     bindings.termios ++> inittab { PyInit_termios }
+    bindings.thread ++> inittab { PyInit__thread }
     bindings.time ++> inittab { PyInit_time }
     bindings.tracemalloc ++> inittab { PyInit__tracemalloc }
     bindings.type ++> [
@@ -16361,6 +16367,7 @@ graph import runtime.python {
             | bindings.clinic.sha1
             | bindings.clinic.sha2
             | bindings.clinic.sha3
+            | bindings.clinic.signal
             | bindings.clinic.socket
             | bindings.clinic.sqlite3
             | bindings.clinic.sre
@@ -16371,6 +16378,7 @@ graph import runtime.python {
             | bindings.clinic.sysconfig
             | bindings.clinic.syslog
             | bindings.clinic.termios
+            | bindings.clinic.thread
             | bindings.clinic.time
             | bindings.clinic.tracemalloc
             | bindings.clinic.typing
@@ -16384,7 +16392,10 @@ graph import runtime.python {
             | modules.datetime_delta
             | modules.datetime_time
             | modules.datetime_tzinfo
-            | modules.posix_core { boundary_failure },
+            | modules.faulthandler
+            | modules.posix_core
+            | modules.signal
+            | modules.thread { boundary_failure },
         bindings.collections {
             boundary_failure,
             object_error,
@@ -16884,7 +16895,9 @@ graph import runtime.python {
             | bindings.clinic.pyexpat
             | bindings.clinic.sha1
             | bindings.clinic.sha2
+            | bindings.clinic.signal
             | bindings.clinic.syslog
+            | bindings.clinic.thread
             | bindings.clinic.zlib { NULL, PyMem_Free, PyObject },
         bindings.clinic.asyncio
             | bindings.clinic.collections
@@ -17178,6 +17191,7 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
+        bindings.faulthandler { PyMethodDef, PyModuleDef, PyObject },
         bindings.fcntl { PyExc_ImportError, PyObject, jacpy_module_add_int_text },
         bindings.functools {
             NULL,
@@ -17405,6 +17419,20 @@ graph import runtime.python {
             PyObject,
             Py_TYPE
         },
+        bindings.signal {
+            NULL,
+            PyDict_SetItemString,
+            PyErr_NewException,
+            PyExc_OSError,
+            PyMethodDef,
+            PyModuleDef,
+            PyModule_AddIntConstant,
+            PyModule_AddType,
+            PyModule_GetDict,
+            PyObject,
+            Py_None,
+            jacpy_module_add_int_text
+        },
         bindings.socket {
             NULL,
             PyErr_NewException,
@@ -17535,6 +17563,7 @@ graph import runtime.python {
             PyObject,
             jacpy_module_add_int_text
         },
+        bindings.thread { NULL, PyModuleDef, PyObject },
         bindings.time {
             PyExc_ImportError,
             PyModule_AddIntConstant,
@@ -19226,6 +19255,47 @@ graph import runtime.python {
             jacpy_unicode_from_text
         },
         modules.expat { PyMem_Free, PyMem_Malloc, PyMem_Realloc },
+        modules.faulthandler {
+            NULL,
+            PyBool_FromLong,
+            PyBool_Type,
+            PyErr_CheckSignals,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetFromErrno,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_RuntimeWarning,
+            PyExc_ValueError,
+            PyImport_ImportModuleAttrString,
+            PyInterpreterState,
+            PyLong_AsInt,
+            PyLong_AsLong,
+            PyLong_FromLong,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyObject_CallNoArgs,
+            PyThreadState,
+            PyThreadState_GetInterpreter,
+            PyThread_acquire_lock,
+            PyThread_allocate_lock,
+            PyThread_free_lock,
+            PyThread_release_lock,
+            Py_None,
+            _PyRuntime,
+            _PyTime_FromSecondsObject,
+            jacpy_errno,
+            jacpy_set_errno
+        },
         modules.fcntl {
             NULL,
             PyErr_CheckSignals,
@@ -20912,6 +20982,54 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
+        modules.signal {
+            NULL,
+            PyCallable_Check,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetFromErrno,
+            PyErr_SetNone,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_KeyboardInterrupt,
+            PyExc_OSError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_FromDouble,
+            PyImport_ImportModule,
+            PyInterpreterState,
+            PyLong_AsInt,
+            PyLong_FromLong,
+            PyLong_FromVoidPtr,
+            PyLong_Type,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyObject_RichCompareBool,
+            PySet_Add,
+            PySet_New,
+            PySys_Audit,
+            PyThreadState,
+            PyTuple_New,
+            PyUnicode_FromString,
+            Py_BuildValue,
+            Py_None,
+            _PyDeadline_Get,
+            _PyDeadline_Init,
+            _PyRuntime,
+            _PyTime_AsTimespec,
+            _PyTime_AsTimeval,
+            _PyTime_FromSecondsObject,
+            _Py_fstat,
+            _Py_get_blocking,
+            jacpy_errno,
+            jacpy_set_errno
+        },
         modules.socket {
             NULL,
             PyArg_ParseTuple,
@@ -21641,6 +21759,100 @@ graph import runtime.python {
             jacpy_is_list,
             jacpy_is_long,
             jacpy_release
+        },
+        modules.thread {
+            NULL,
+            PyArg_UnpackTuple,
+            PyBaseObject_Type,
+            PyBool_FromLong,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
+            PyCallable_Check,
+            PyDict_DelItem,
+            PyDict_GetItemRef,
+            PyDict_New,
+            PyDict_Pop,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyDict_Size,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetFromErrno,
+            PyErr_SetNone,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_AttributeError,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_PythonFinalizationError,
+            PyExc_RuntimeError,
+            PyExc_SystemExit,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_FromDouble,
+            PyIndex_Check,
+            PyLong_AsSsize_t,
+            PyLong_AsUnsignedLongLong,
+            PyLong_AsUnsignedLongLongMask,
+            PyLong_FromLong,
+            PyLong_FromSize_t,
+            PyLong_FromSsize_t,
+            PyLong_FromUnsignedLong,
+            PyLong_FromUnsignedLongLong,
+            PyMem_RawCalloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyModuleDef,
+            PyModule_Add,
+            PyModule_AddIntConstant,
+            PyModule_AddType,
+            PyModule_GetDict,
+            PyMutex,
+            PyNumber_Index,
+            PyObject,
+            PyObject_Call,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_UnTrack,
+            PyObject_GetAttrString,
+            PyObject_GetOptionalAttr,
+            PyObject_IsTrue,
+            PyObject_RichCompareBool,
+            PySet_Add,
+            PySet_Discard,
+            PySet_New,
+            PySys_Audit,
+            PyThreadState,
+            PyThreadState_Get,
+            PyTime_AsSecondsDouble,
+            PyTuple_GetItem,
+            PyTuple_New,
+            PyTuple_Size,
+            PyType_FromModuleAndSpec,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsEncodedString,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_FromFormat,
+            PyWeakref_NewRef,
+            Py_BuildValue,
+            Py_MakePendingCalls,
+            Py_None,
+            _PyArg_NoKeywords,
+            _PyDeadline_Get,
+            _PyDeadline_Init,
+            _PyRuntime,
+            _PyTime_FromSeconds,
+            _PyTime_FromSecondsObject,
+            jacpy_set_errno
         },
         modules.time {
             NULL,
@@ -24931,9 +25143,22 @@ graph import runtime.python {
         },
         modules.asyncio.call_with_task { PyObject_Call },
     ]
-    interpreter.ceval_gil ++> object_model.tracemalloc {
-        pymutex_lock_flags,
-        pymutex_unlock
+    interpreter.ceval_gil ++> [
+        bindings.signal { is_main_interpreter, tstate_interp },
+        modules.signal {
+            ensure_tstate_not_null,
+            eval_breaker_bit_is_set,
+            thread_can_handle_signals,
+            tstate_interp,
+            unset_eval_breaker_bit
+        },
+        modules.thread { head_lock, head_unlock, is_main_interpreter, tstate_interp },
+        object_model.tracemalloc { pymutex_lock_flags, pymutex_unlock },
+    ]
+    interpreter.lock ++> modules.thread {
+        PyThread_get_thread_ident_ex,
+        load_u8,
+        lot_llist_insert_tail
     }
     layouts ++> [
         bindings.arguments
@@ -25043,7 +25268,33 @@ graph import runtime.python {
             Py_tp_token,
             Py_tp_traverse
         },
+        bindings.faulthandler {
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_VARARGS,
+            ModuleDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyTypeObject,
+            Py_mod_exec,
+            Py_mod_gil,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         bindings.posix { METH_COEXIST, METH_NOARGS, PyTypeObject as TypeLayout },
+        bindings.signal {
+            ModuleDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyStructSequence_Desc,
+            PyStructSequence_Field,
+            PyTypeObject,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         bindings.socket {
             PY_SOCKET_API_SIZE,
             PY_SOCKET_FAMILY_OFFSET,
@@ -25937,8 +26188,25 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
+        modules.faulthandler {
+            PY_LOCK_ACQUIRED,
+            PyStatus,
+            PyTypeObject,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK,
+            _PyTime_ROUND_TIMEOUT,
+            _Py_ID_fileno,
+            _Py_ID_stderr
+        },
         modules.posix_fileio { PY_BUFFER_SIZE },
         modules.posix_stat { PyTypeObject as TypeLayout },
+        modules.signal {
+            PyTypeObject,
+            Py_EQ,
+            _PY_GC_SCHEDULED_BIT,
+            _PyTime_ROUND_CEILING,
+            _Py_PENDING_MAINTHREADONLY
+        },
         modules.socket_address {
             PY_BUFFER_SIZE,
             PySocketSockObject,
@@ -25954,6 +26222,63 @@ graph import runtime.python {
         modules.socket_object { PY_BUFFER_SIZE, PySocketSockObject, PyTypeObject },
         modules.sre { PyBUF_SIMPLE, PyTypeObject, PyVarObject, Py_EQ, Py_NE, _object },
         modules.ssl_core { PySocketSockObject, _PyTime_ROUND_CEILING },
+        modules.thread {
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_O,
+            METH_VARARGS,
+            ModuleDef,
+            PY_LOCK_ACQUIRED,
+            PY_LOCK_INTR,
+            PyGetSetDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyStructSequence_Desc,
+            PyStructSequence_Field,
+            PyTypeObject,
+            Py_EQ,
+            Py_PRINT_RAW,
+            Py_READONLY,
+            Py_RTFLAGS_DAEMON_THREADS,
+            Py_RTFLAGS_THREADS,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DICT_SUBCLASS,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_TPFLAGS_LONG_SUBCLASS,
+            Py_TPFLAGS_MANAGED_WEAKREF,
+            Py_TPFLAGS_TUPLE_SUBCLASS,
+            Py_T_PYSSIZET,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            Py_tp_alloc,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getattro,
+            Py_tp_getset,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_setattro,
+            Py_tp_traverse,
+            _PY_LOCK_DETACH,
+            _PY_LOCK_HANDLE_SIGNALS,
+            _PyThreadState_WHENCE_THREADING,
+            _PyTime_ROUND_TIMEOUT,
+            _Py_ID___dict__,
+            _Py_ID_name,
+            _Py_ID_stderr,
+            _Py_ONCE_INITIALIZED,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _Py_UNLOCKED,
+            _object,
+            llist_node
+        },
         modules.zoneinfo { PyDateTime_CAPI, PyDateTime_DateTime },
         object_model.abstract {
             PYGEN_ERROR,
@@ -28399,6 +28724,7 @@ graph import runtime.python {
         },
     ]
     layouts_platform ++> [
+        bindings.signal { Py_NSIG },
         interpreter.ceval {
             MI_PLATFORM_LINUX,
             PyInterpreterState_BUILTINS,
@@ -28642,6 +28968,77 @@ graph import runtime.python {
             _PyRuntimeState_THREADS_CONDATTR_VAL,
             _PyRuntimeState_THREADS_INITIALIZED,
             _SC_THREAD_STACK_MIN
+        },
+        modules.faulthandler {
+            Py_NSIG,
+            _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_ALL_THREADS,
+            _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_C_STACK,
+            _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_ENABLED,
+            _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_FD,
+            _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_FILE,
+            _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_INTERP,
+            _PyRuntimeState_FAULTHANDLER_OLD_STACK,
+            _PyRuntimeState_FAULTHANDLER_STACK,
+            _PyRuntimeState_FAULTHANDLER_THREAD,
+            _PyRuntimeState_FAULTHANDLER_THREAD_CANCEL_EVENT,
+            _PyRuntimeState_FAULTHANDLER_THREAD_EXIT,
+            _PyRuntimeState_FAULTHANDLER_THREAD_FD,
+            _PyRuntimeState_FAULTHANDLER_THREAD_FILE,
+            _PyRuntimeState_FAULTHANDLER_THREAD_HEADER,
+            _PyRuntimeState_FAULTHANDLER_THREAD_HEADER_LEN,
+            _PyRuntimeState_FAULTHANDLER_THREAD_INTERP,
+            _PyRuntimeState_FAULTHANDLER_THREAD_REPEAT,
+            _PyRuntimeState_FAULTHANDLER_THREAD_RUNNING,
+            _PyRuntimeState_FAULTHANDLER_THREAD_SIZE,
+            _PyRuntimeState_FAULTHANDLER_THREAD_TIMEOUT_US,
+            _PyRuntimeState_FAULTHANDLER_USER_SIGNALS,
+            faulthandler_user_signal_ALL_THREADS,
+            faulthandler_user_signal_CHAIN,
+            faulthandler_user_signal_ENABLED,
+            faulthandler_user_signal_FD,
+            faulthandler_user_signal_FILE,
+            faulthandler_user_signal_INTERP,
+            faulthandler_user_signal_PREVIOUS,
+            faulthandler_user_signal_SIZE,
+            sigaction_SA_FLAGS,
+            sigaction_SA_HANDLER,
+            sigaction_SA_MASK,
+            sigaction_SIZE,
+            stack_t_SIZE,
+            stack_t_SS_FLAGS,
+            stack_t_SS_SIZE,
+            stack_t_SS_SP
+        },
+        modules.signal {
+            Py_NSIG,
+            _PyRuntimeState_SIGNALS_DEFAULT_HANDLER,
+            _PyRuntimeState_SIGNALS_HANDLERS,
+            _PyRuntimeState_SIGNALS_IGNORE_HANDLER,
+            _PyRuntimeState_SIGNALS_IS_TRIPPED,
+            _PyRuntimeState_SIGNALS_WAKEUP_FD,
+            _PyRuntimeState_SIGNALS_WAKEUP_WARN_ON_FULL_BUFFER,
+            _signals_handler_FUNC,
+            _signals_handler_SIZE,
+            sigaction_SA_FLAGS,
+            siginfo_t_SI_BAND,
+            siginfo_t_SI_CODE,
+            siginfo_t_SI_ERRNO,
+            siginfo_t_SI_PID,
+            siginfo_t_SI_SIGNO,
+            siginfo_t_SI_STATUS,
+            siginfo_t_SI_UID,
+            sigset_t_SIZE
+        },
+        modules.thread {
+            PyInterpreterState_FEATURE_FLAGS,
+            PyInterpreterState_FINALIZING,
+            PyInterpreterState_THREADS_COUNT,
+            PyInterpreterState_UNICODE_FS_CODEC_ENCODING,
+            PyThreadState_THREADING_LOCAL_KEY,
+            PyThreadState_THREADING_LOCAL_SENTINEL,
+            _PyRuntimeState_MAIN_THREAD,
+            _PyRuntimeState_THREADS_HANDLES,
+            _pythread_runtime_state_HANDLES
         },
         object_model.bltinmodule { PyConfig_OPTIMIZATION_LEVEL },
         object_model.bootstrap_hash {
@@ -29892,6 +30289,24 @@ graph import runtime.python {
         XML_PARAM_ENTITY_PARSING_NEVER,
         XML_PARAM_ENTITY_PARSING_UNLESS_STANDALONE
     }
+    modules.faulthandler ++> bindings.faulthandler {
+        PyExec_faulthandler,
+        faulthandler_cancel_dump_traceback_later_py,
+        faulthandler_disable_py,
+        faulthandler_dump_c_stack_py,
+        faulthandler_dump_traceback_later,
+        faulthandler_dump_traceback_py,
+        faulthandler_fatal_error_c_thread,
+        faulthandler_is_enabled,
+        faulthandler_py_enable,
+        faulthandler_read_null,
+        faulthandler_register_py,
+        faulthandler_sigabrt,
+        faulthandler_sigfpe,
+        faulthandler_sigsegv,
+        faulthandler_stack_overflow,
+        faulthandler_unregister_py
+    }
     modules.fcntl ++> bindings.clinic.fcntl {
         fcntl_fcntl_impl,
         fcntl_flock_impl,
@@ -31141,6 +31556,49 @@ graph import runtime.python {
             get_suffix
         },
     ]
+    modules.signal ++> [
+        bindings.clinic.signal {
+            convert__Py_Sigset_Converter,
+            signal_alarm_impl,
+            signal_default_int_handler_impl,
+            signal_getitimer_impl,
+            signal_getsignal_impl,
+            signal_pause_impl,
+            signal_pidfd_send_signal_impl,
+            signal_pthread_kill_impl,
+            signal_pthread_sigmask_impl,
+            signal_raise_signal_impl,
+            signal_set_wakeup_fd_impl,
+            signal_setitimer_impl,
+            signal_siginterrupt_impl,
+            signal_signal_impl,
+            signal_sigpending_impl,
+            signal_sigtimedwait_impl,
+            signal_sigwait_impl,
+            signal_sigwaitinfo_impl,
+            signal_strsignal_impl,
+            signal_valid_signals_impl
+        },
+        bindings.signal {
+            PyOS_getsig,
+            PyOS_setsig,
+            default_handler,
+            get_handler,
+            get_signal_state,
+            ignore_handler,
+            set_handler,
+            signal_handler
+        },
+    ]
+    modules.signal_constants ++> bindings.signal { CONSTANTS, SIGINT }
+    modules.signal_platform ++> bindings.signal {
+        HAS_PIDFD_SEND_SIGNAL,
+        HAS_RT_SIGNALS,
+        HAS_SIGTIMEDWAIT,
+        HAS_SIGWAITINFO,
+        sigrtmax,
+        sigrtmin
+    }
     modules.socket ++> [
         bindings.clinic.socket {
             _socket_htonl_impl,
@@ -31725,6 +32183,18 @@ graph import runtime.python {
     }
     modules.termios_constants ++> bindings.termios { CONSTANTS }
     modules.termios_records ++> bindings.termios { PLATFORM }
+    modules.thread ++> [
+        bindings.clinic.thread { _thread__get_name_impl, _thread_set_name_impl },
+        bindings.thread {
+            clinic_methods_installed,
+            install_clinic_methods,
+            thread_module,
+            thread_module_clear,
+            thread_module_free,
+            thread_module_traverse
+        },
+    ]
+    modules.thread_platform ++> bindings.thread { HAS_THREAD_NAMES }
     modules.time ++> [
         bindings.clinic.time {
             convert_time_clockid_converter,
@@ -31991,6 +32461,10 @@ graph import runtime.python {
         constant_input { take_buffer },
         tokenize { parse_float, parse_integer, take_buffer },
     ]
+    object_model.abstract ++> [
+        bindings.signal { PyMapping_GetItemString },
+        modules.faulthandler { call_method_no_args, long_check },
+    ]
     object_model.bool ++> [
         bindings.converters
             | bindings.stat
@@ -32075,6 +32549,7 @@ graph import runtime.python {
         interpreter.instrumentation { parse_varint },
         interpreter.ops_arith | interpreter.ops_attr { frame_initialize },
     ]
+    object_model.gen ++> modules.signal { frame_get_frame_object }
     object_model.genericalias ++> bindings.array
         | bindings.asyncio
         | bindings.collections
@@ -32084,6 +32559,12 @@ graph import runtime.python {
         | bindings.queue
         | bindings.sre { Py_GenericAlias }
     object_model.header ++> [
+        bindings.signal {
+            current_tstate,
+            object_decref,
+            object_new_ref,
+            object_xdecref
+        },
         interpreter.ceval {
             current_interp,
             current_tstate,
@@ -32231,8 +32712,39 @@ graph import runtime.python {
             | modules.socket_core
             | modules.socket_object
             | modules.sqlite3 { object_type },
+        modules.faulthandler {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_type,
+            object_xdecref
+        },
+        modules.signal {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_new_ref,
+            object_type,
+            object_xdecref,
+            tuple_set_item
+        },
         modules.sre { object_size, object_type, tuple_get_item, tuple_set_item },
         modules.struct { tuple_get_item, tuple_set_item },
+        modules.thread {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item,
+            type_has_feature
+        },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
     object_model.long ++> [
@@ -32245,6 +32757,9 @@ graph import runtime.python {
         },
     ]
     object_model.method ++> bindings.functools { PyMethod_New }
+    object_model.module ++> bindings.faulthandler | bindings.signal | bindings.thread {
+        PyModuleDef_Init
+    }
     object_model.namespace ++> modules.time { _PyNamespace_New }
     object_model.object ++> [
         interpreter.gc {
@@ -32259,6 +32774,7 @@ graph import runtime.python {
         interpreter.ops_attr { managed_dict },
         interpreter.specialize { type_is_ready },
     ]
+    object_model.obmalloc ++> modules.thread { llist_init, llist_remove }
     object_model.pytime ++> interpreter.thread {
         pytime_add,
         pytime_as_microseconds,
@@ -32275,6 +32791,7 @@ graph import runtime.python {
         PySlice_Unpack
     }
     object_model.structseq ++> [
+        bindings.signal | modules.thread { PyStructSequence_NewType },
         interpreter.thread {
             PyStructSequence_New,
             _PyStructSequence_FiniBuiltin,
@@ -32285,7 +32802,8 @@ graph import runtime.python {
             | modules.posix_fileio
             | modules.posix_ids
             | modules.pwd
-            | modules.resource { PyStructSequence_New, PyStructSequence_SetItem },
+            | modules.resource
+            | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
         modules.posix_process | modules.posix_stat | modules.time {
             PyStructSequence_GetItem,
             PyStructSequence_New,
@@ -32299,7 +32817,9 @@ graph import runtime.python {
     object_model.type ++> [
         interpreter.ceval { dict_check_exact, py_id, tuple_check, tuple_check_exact },
         interpreter.gc { inline_values_size, type_preheader_size },
-        interpreter.ops_iter | interpreter.specialize { py_id },
+        interpreter.ops_iter | interpreter.specialize | modules.faulthandler { py_id },
+        modules.signal { thread_state_get_frame },
+        modules.thread { object_xnewref, py_id, weakref_get_ref },
     ]
     object_model.unicode ++> interpreter.ops_build { unicode_get_empty }
     objects ++> [
@@ -32450,7 +32970,8 @@ graph import runtime.python.bindings {
             | clinic.cmath
             | clinic.codecs
             | clinic.hashopenssl
-            | clinic.math {
+            | clinic.math
+            | clinic.signal {
             CallSignature,
             PARSE_KEYWORDS,
             check_positional,
@@ -32463,7 +32984,8 @@ graph import runtime.python.bindings {
             | clinic.grp
             | clinic.opcode
             | clinic.pyexpat
-            | clinic.syslog {
+            | clinic.syslog
+            | clinic.thread {
             CallSignature,
             PARSE_KEYWORDS,
             invoke_stack,
@@ -32920,6 +33442,7 @@ graph import runtime.python.bindings {
     clinic.sha1 ++> sha1 { SHA1Type_methods, module_methods }
     clinic.sha2 ++> sha2 { SHA256Type_methods, SHA512Type_methods, module_methods }
     clinic.sha3 ++> sha3 { py_sha3_new_new, sha3_224_methods, shake_128_methods }
+    clinic.signal ++> signal { module_methods }
     clinic.socket ++> socket { module_methods, sock_initobj_init, socket_methods }
     clinic.sqlite3 ++> sqlite3 {
         Blob_methods,
@@ -32971,6 +33494,7 @@ graph import runtime.python.bindings {
     clinic.sysconfig ++> sysconfig { module_methods }
     clinic.syslog ++> syslog { module_methods }
     clinic.termios ++> termios { module_methods }
+    clinic.thread ++> thread { module_methods }
     clinic.time ++> time { module_methods }
     clinic.tracemalloc ++> tracemalloc { module_methods }
     clinic.typing ++> typing { module_methods }
@@ -33082,7 +33606,10 @@ graph import runtime.python.bindings {
             convert_int,
             convert_unsigned_long
         },
-        clinic.grp | clinic.suggestions { argument_label, convert_unicode },
+        clinic.grp | clinic.suggestions | clinic.thread {
+            argument_label,
+            convert_unicode
+        },
         clinic.hashopenssl {
             argument_label,
             borrowed_none,
@@ -33232,6 +33759,14 @@ graph import runtime.python.bindings {
             new_checks_arguments
         },
         clinic.sha3 { argument_label, convert_bool, convert_unsigned_long },
+        clinic.signal {
+            argument_label,
+            borrowed_none,
+            convert_bool,
+            convert_int,
+            convert_unsigned_long,
+            return_long
+        },
         clinic.socket {
             convert_PyUnicode_FSConverter,
             convert_buffer,
@@ -33456,6 +33991,7 @@ graph import runtime.python.bindings {
             | clinic.sha1
             | clinic.sha2
             | clinic.sha3
+            | clinic.signal
             | clinic.socket
             | clinic.sqlite3
             | clinic.sre
@@ -33466,6 +34002,7 @@ graph import runtime.python.bindings {
             | clinic.sysconfig
             | clinic.syslog
             | clinic.termios
+            | clinic.thread
             | clinic.time
             | clinic.tracemalloc
             | clinic.typing
@@ -33658,6 +34195,7 @@ graph import runtime.python.bindings {
             jacpy_binding_state_set
         },
         sha3 { MethodDefinition, ModuleDefinition, ModuleHooks, add_state_owned },
+        signal { MethodDefinition, method_table, visit_reference },
         socket {
             MethodCallbacks,
             MethodDefinition,
@@ -33712,6 +34250,7 @@ graph import runtime.python.bindings {
             add_state_owned,
             jacpy_binding_exception
         },
+        thread { MethodDefinition, method_table },
         type { MethodDefinition, install_methods },
         zlib {
             ModuleDefinition,
@@ -36599,6 +37138,7 @@ graph import runtime.python.modules {
     }
     resource_constants ++> resource { RLIM_INFINITY, RLIM_NLIMITS }
     resource_records ++> [
+        faulthandler { rlimit },
         posix_process { rusage, timeval },
         resource { prlimit, rlimit, rusage, timeval },
         time { rusage },
@@ -36640,6 +37180,28 @@ graph import runtime.python.modules {
         timeval_from,
         timeval_usec
     }
+    signal ++> faulthandler | thread { SignalBuffer }
+    signal_constants ++> [
+        faulthandler {
+            RLIMIT_CORE,
+            SA_NODEFER,
+            SA_ONSTACK,
+            SA_RESTART,
+            SIGABRT,
+            SIGBUS,
+            SIGFPE,
+            SIGILL,
+            SIGSEGV,
+            SIG_SETMASK
+        },
+        signal { EAGAIN, EINTR, EWOULDBLOCK, SA_RESTART, SIGINT, SIGPIPE, SIGXFSZ },
+        thread { SIGINT },
+    ]
+    signal_platform ++> [
+        faulthandler { min_signal_stack_size },
+        signal { pidfd_send_signal, timed_wait, wait_info },
+    ]
+    signal_stack ++> faulthandler { SIGSTKSZ }
     socket_address ++> [
         socket {
             free_addrbuf,
@@ -37116,7 +37678,9 @@ graph import runtime.python.modules {
         },
     ]
     stat ++> posix_stat { S_IFDIR, S_IFLNK, S_IFMT, S_IFREG }
-    stat_records ++> mmap | posix_stat | posix_stat_platform { _Py_stat_struct }
+    stat_records ++> mmap | posix_stat | posix_stat_platform | signal {
+        _Py_stat_struct
+    }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     tee ++> itertools {
         TeeBindings,
@@ -37143,6 +37707,12 @@ graph import runtime.python.modules {
         set_input_speed,
         set_output_speed
     }
+    thread_platform ++> thread {
+        HAS_THREAD_NAMES,
+        PYTHREAD_NAME_MAXLEN,
+        get_thread_name,
+        set_thread_name
+    }
     time_constants ++> time {
         CLOCKS_PER_SEC,
         CLOCK_MONOTONIC,
@@ -37156,7 +37726,7 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
-        core_platform | select { timespec, timeval },
+        core_platform | select | signal { timespec, timeval },
         datetime_date | datetime_datetime | datetime_format { tm },
         posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
         time { timespec, timeval, tm, tms },

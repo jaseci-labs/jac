@@ -96,3 +96,6 @@ _ssl            test.test_ssl                           -lssl -lcrypto
 _asyncio        test.test_asyncio,test.test_contextlib_async
 posix           test.test_os,test.test_posix,test.test_shutil,test.test_glob,test.test_tempfile   linux:-lutil
 _contextvars    test.test_context
+faulthandler    test.test_faulthandler
+_signal         test.test_signal
+_thread         test.test_thread,test.test_threading,test.test_threading_local

@@ -935,7 +935,7 @@ impl _contextvars_Context_get_impl(
 impl _contextvars_Context_get(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("get", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("get"), nargs, 1, 2) == 0 {
         return NULL;
     }
     key = args.view(1)[0];
@@ -1097,7 +1097,7 @@ impl contextvar_tp_new(
     if PyArg_ParseTupleAndKeywords(
         args,
         kwds,
-        "O|$O:ContextVar",
+        ptr[u8]("O|$O:ContextVar"),
         ptr(addressof(contextvar_kwlist)),
         &mut name,
         &mut dflt
@@ -1192,7 +1192,7 @@ impl _contextvars_ContextVar_get_impl(
 impl _contextvars_ContextVar_get(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("get", nargs, 0, 1) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("get"), nargs, 0, 1) == 0 {
         return NULL;
     }
     default_value = NULL;
@@ -1337,7 +1337,7 @@ impl token_exit_impl(
 impl token_exit(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("__exit__", nargs, 3, 3) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("__exit__"), nargs, 3, 3) == 0 {
         return NULL;
     }
     return token_exit_impl(

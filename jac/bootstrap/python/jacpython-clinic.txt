@@ -67,3 +67,5 @@ _ssl
 _hashlib        hashopenssl
 _asyncio
 posix
+_signal
+_thread

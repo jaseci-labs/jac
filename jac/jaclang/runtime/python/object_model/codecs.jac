@@ -583,7 +583,7 @@ import from c {
             outp = outp + 1;
             i += 1;
         }
-        restuple = Py_BuildValue("(Nn)", res, end);
+        restuple = Py_BuildValue(ptr[u8]("(Nn)"), res, end);
         object_decref(obj_);
         return restuple;
     }
@@ -671,7 +671,7 @@ import from c {
             i += 1;
         }
 
-        restuple = Py_BuildValue("(Nn)", res, imax);
+        restuple = Py_BuildValue(ptr[u8]("(Nn)"), res, imax);
         object_decref(obj_);
         return restuple;
     }
@@ -1092,7 +1092,7 @@ impl _PyCodec_IgnoreError(exc: ptr[PyObject], as_bytes: bool) -> ptr[PyObject] {
         return NULL;
     }
     object_decref(obj_);
-    return Py_BuildValue("(Nn)", Py_GetConstant(Py_CONSTANT_EMPTY_STR), end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), Py_GetConstant(Py_CONSTANT_EMPTY_STR), end);
 }
 
 impl _PyCodec_ReplaceUnicodeEncodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1106,7 +1106,7 @@ impl _PyCodec_ReplaceUnicodeEncodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     memset(ptr(uo_data(res)), i32(63), u64(slen));
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_ReplaceUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1119,7 +1119,7 @@ impl _PyCodec_ReplaceUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
     if not res {
         return NULL;
     }
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_ReplaceUnicodeTranslateError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1132,7 +1132,7 @@ impl _PyCodec_ReplaceUnicodeTranslateError(exc: ptr[PyObject]) -> ptr[PyObject] 
     if not res {
         return NULL;
     }
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_BackslashReplaceUnicodeEncodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1167,7 +1167,7 @@ impl _PyCodec_BackslashReplaceUnicodeEncodeError(exc: ptr[PyObject]) -> ptr[PyOb
         i += 1;
     }
     object_decref(obj_);
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_BackslashReplaceUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1195,7 +1195,7 @@ impl _PyCodec_BackslashReplaceUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyOb
         i += 1;
     }
     object_decref(obj_);
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_BackslashReplaceUnicodeTranslateError(
@@ -1351,7 +1351,7 @@ impl _PyCodec_SurrogatePassUnicodeEncodeError(exc: ptr[PyObject]) -> ptr[PyObjec
     }
 
     object_decref(obj_);
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_SurrogatePassUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1412,7 +1412,7 @@ impl _PyCodec_SurrogatePassUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObjec
     if not res {
         return NULL;
     }
-    return Py_BuildValue("(Nn)", res, start + i64(bytelength));
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, start + i64(bytelength));
 }
 
 impl PyCodec_SurrogatePassErrors(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1453,7 +1453,7 @@ impl _PyCodec_SurrogateEscapeUnicodeEncodeError(exc: ptr[PyObject]) -> ptr[PyObj
     }
     object_decref(obj_);
 
-    return Py_BuildValue("(Nn)", res, end);
+    return Py_BuildValue(ptr[u8]("(Nn)"), res, end);
 }
 
 impl _PyCodec_SurrogateEscapeUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObject] {
@@ -1485,7 +1485,7 @@ impl _PyCodec_SurrogateEscapeUnicodeDecodeError(exc: ptr[PyObject]) -> ptr[PyObj
     if not str_ {
         return NULL;
     }
-    return Py_BuildValue("(Nn)", str_, start + consumed);
+    return Py_BuildValue(ptr[u8]("(Nn)"), str_, start + consumed);
 }
 
 impl PyCodec_SurrogateEscapeErrors(exc: ptr[PyObject]) -> ptr[PyObject] {
