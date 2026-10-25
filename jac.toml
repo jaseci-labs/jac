@@ -131,6 +131,10 @@ exclude = [
     # single binary's cold start and its failures to stderr before CPython (and
     # so the console) exists -- bare print() is its mechanism too.
     "fused/report.jac",
+    # wheel_archive.jac is exported as the sdist build backend, which runs
+    # without jaclang: an impl in an annex compiles to a jaclib decorator, so
+    # its impls stay in the module and impls-in-annex must not move them.
+    "dist/publish/wheel_archive.jac",
     # llvm/*.jac is the vendored llvmlite port (ir + binding); its comments are
     # load-bearing, so it is NOT deslopped -- it keeps upstream's
     # docstring/property style so diffs against llvmlite stay reviewable.

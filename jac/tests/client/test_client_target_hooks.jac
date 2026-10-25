@@ -6,6 +6,7 @@ a `get_client_targets` hook. These tests pin that direct-registration contract.
 """
 
 import from pathlib { Path }
+import from tests.support { unit_source }
 
 glob _client_dir = Path(__file__).parent.parent.parent / "jaclang" / "client",
      _register_jac = _client_dir / "targets" / "register.jac",
@@ -70,7 +71,7 @@ test "every client kind maps onto a registered target" {
 }
 
 test "register.jac registers built-in targets without a plugin group" {
-    content = _register_jac.read_text().replace("\r\n", "\n");
+    content = unit_source(_register_jac).replace("\r\n", "\n");
     # Direct registration: each built-in target is registered on the registry.
     assert "def register_targets" in content;
     assert "registry.register(WebTarget())" in content;
@@ -100,7 +101,7 @@ test "targets register lazily on first registry access" {
     # no longer calls register_targets() eagerly, and with the `--client`
     # flag gone (the kind picks the target) nothing at import time needs to
     # read the registry either.
-    cli_content = _cli_jac.read_text().replace("\r\n", "\n");
+    cli_content = unit_source(_cli_jac).replace("\r\n", "\n");
     assert "sync_client_target_choices" not in cli_content;
     assert "--client" not in cli_content , "the --client flag is gone from the client CLI";
     assert "get_target_factory" not in cli_content , "targets resolve by kind now";
@@ -109,7 +110,7 @@ test "targets register lazily on first registry access" {
     # The eager register_targets() call must not have returned to cli.jac.
     assert "register_targets();" not in cli_content;
 
-    registry_content = _registry_jac.read_text().replace("\r\n", "\n");
+    registry_content = unit_source(_registry_jac).replace("\r\n", "\n");
     # Lazy self-registration: register_targets() runs on first access, before
     # the registry is handed back to any caller (so before sync reads it).
     assert "register_targets();" in registry_content;
@@ -194,7 +195,7 @@ asks every target for readiness before dispatching build, dev or start, so any
 target that flips `requires_setup` gets lazy provisioning without further
 wiring. The explicit `jac setup` path stays on `target.setup(...)`."""
 test "the client dispatcher calls ensure_ready before build, dev and start" {
-    content = _cli_jac.read_text().replace("\r\n", "\n");
+    content = unit_source(_cli_jac).replace("\r\n", "\n");
     build_section = content.split("impl run_client_build(")[1].split(
         "impl run_client_start("
     )[0];
