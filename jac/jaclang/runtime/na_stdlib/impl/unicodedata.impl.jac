@@ -1,37 +1,53 @@
-impl _load_runs(data: str, starts: list[int], values: list[int]) -> None {
-    i = 0;
-    n = len(data);
-    while i + 8 <= n {
-        starts.append(int(data[i:i + 6], 16));
-        values.append(int(data[i + 6:i + 8], 16));
-        i += 8;
-    }
+impl _range_value(index: int) -> int {
+    offset = index * 4;
+    return int(UNICODE_PROPERTY_RANGES[offset])
+        | (int(UNICODE_PROPERTY_RANGES[offset + 1]) << 8)
+        | (int(UNICODE_PROPERTY_RANGES[offset + 2]) << 16)
+        | (int(UNICODE_PROPERTY_RANGES[offset + 3]) << 24);
 }
 
-impl _lookup(cp: int, starts: list[int], values: list[int]) -> int {
-    lo = 0;
-    hi = len(starts) - 1;
-    while lo < hi {
-        mid = (lo + hi + 1) // 2;
-        if starts[mid] <= cp {
-            lo = mid;
+impl category(chr: str) -> str {
+    if len(chr) != 1 {
+        raise TypeError("category() argument must be a unicode character, not str");
+    }
+    code = ord(chr);
+    low = 0;
+    high = len(UNICODE_PROPERTY_RANGES) // 16;
+    while low < high {
+        middle = (low + high) // 2;
+        start = _range_value(middle * 4);
+        end = _range_value(middle * 4 + 1);
+        if code < start {
+            high = middle;
+        } elif code > end {
+            low = middle + 1;
         } else {
-            hi = mid - 1;
+            return UNICODE_CATEGORIES[_range_value(middle * 4 + 2)];
         }
     }
-    return values[lo];
+    return "Cn";
 }
 
-impl category(ch: str) -> str {
-    if not _cat_starts {
-        _load_runs(CATEGORY_RUNS, _cat_starts, _cat_values);
+impl east_asian_width(chr: str) -> str {
+    if len(chr) != 1 {
+        raise TypeError(
+            "east_asian_width() argument must be a unicode character, not str"
+        );
     }
-    return CATEGORY_NAMES[_lookup(ord(ch), _cat_starts, _cat_values)];
-}
-
-impl east_asian_width(ch: str) -> str {
-    if not _width_starts {
-        _load_runs(WIDTH_RUNS, _width_starts, _width_values);
+    code = ord(chr);
+    low = 0;
+    high = len(UNICODE_PROPERTY_RANGES) // 16;
+    while low < high {
+        middle = (low + high) // 2;
+        start = _range_value(middle * 4);
+        end = _range_value(middle * 4 + 1);
+        if code < start {
+            high = middle;
+        } elif code > end {
+            low = middle + 1;
+        } else {
+            return UNICODE_EAST_ASIAN_WIDTHS[_range_value(middle * 4 + 3)];
+        }
     }
-    return WIDTH_NAMES[_lookup(ord(ch), _width_starts, _width_values)];
+    return "N";
 }

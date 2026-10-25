@@ -592,9 +592,7 @@ impl CFGBuildPass._link_on_pass(step: UniCFGNode, nxt: UniCFGNode) -> None {
 }
 
 impl CFGBuildPass.exit_ctrl_stmt with CtrlStmt exit {
-    loop = self._find_parent_of_types(
-        here, (WhileStmt, ForeverStmt, InForStmt, IterForStmt)
-    );
+    loop = enclosing_loop(here);
     if not loop {
         return;
     }

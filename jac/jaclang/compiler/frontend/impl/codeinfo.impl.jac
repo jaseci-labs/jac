@@ -2,6 +2,13 @@ impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
 
+impl InteropBinding.native_callable.getter -> bool {
+    return self.source_context == InteropContext.SERVER
+        and InteropContext.NATIVE in self.callers
+        and self.kind == 'function'
+        and bool(self.symbol);
+}
+
 impl InteropManifest.boundary_types_for(scope: str) -> dict[str, BoundaryTypeInfo] {
     return {
         name: self.boundary_types[type_id]
@@ -23,8 +30,8 @@ impl InteropManifest.native_imports.getter -> list[InteropBinding] {
 impl InteropManifest.callable_native_imports.getter -> list[InteropBinding] {
     return [
         b
-        for b in self.native_imports
-        if b.kind == 'function'
+        for b in self.bindings.values()
+        if b.native_callable
     ];
 }
 
@@ -437,6 +444,12 @@ impl native_module_key(path: str) -> str {
 
 impl native_unit_prefix(path: str) -> str {
     return native_safe_sym(native_module_key(path));
+}
+
+impl interop_callback_symbol(provider_path: str, name: str) -> str {
+    return f"__jac_na_import_{native_unit_prefix(provider_path)}_{native_safe_sym(
+        name
+    )}";
 }
 
 impl native_symbol_name(prefix: str, name: str) -> str {

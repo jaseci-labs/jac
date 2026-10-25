@@ -154,7 +154,8 @@ impl interop_record(module: uni.Module) -> dict[str, any] {
             'kind': binding.kind,
             'provider_app': binding.provider_app,
             'native_contract': binding.native_contract,
-            'endpoint_id': binding.endpoint_id
+            'endpoint_id': binding.endpoint_id,
+            'symbol': binding.symbol
         };
     }
     return {
@@ -194,7 +195,8 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
             kind=data.get('kind', 'function'),
             provider_app=data['provider_app'],
             native_contract=data['native_contract'],
-            endpoint_id=data['endpoint_id']
+            endpoint_id=data['endpoint_id'],
+            symbol=data.get('symbol', '')
         );
     }
     surface: dict[str, dict[str, any]] = record.get('surface', {}) or {};
