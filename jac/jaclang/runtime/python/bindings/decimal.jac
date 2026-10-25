@@ -2018,7 +2018,7 @@ impl set_module_name(type: ptr[PyObject]) -> bool {
 }
 
 impl register_numbers(module: ptr[PyObject]) -> bool {
-    numbers = PyImport_ImportModule("numbers");
+    numbers = PyImport_ImportModule(ptr[u8]("numbers"));
     if not numbers {
         return False;
     }
@@ -2041,7 +2041,7 @@ impl register_numbers(module: ptr[PyObject]) -> bool {
 }
 
 impl create_decimal_tuple(module: ptr[PyObject]) -> bool {
-    collections = PyImport_ImportModule("collections");
+    collections = PyImport_ImportModule(ptr[u8]("collections"));
     if not collections {
         return False;
     }
@@ -2064,7 +2064,7 @@ impl create_decimal_tuple(module: ptr[PyObject]) -> bool {
 }
 
 impl create_signal_dict(module: ptr[PyObject]) -> bool {
-    collections_abc = PyImport_ImportModule("collections.abc");
+    collections_abc = PyImport_ImportModule(ptr[u8]("collections.abc"));
     if not collections_abc {
         return False;
     }

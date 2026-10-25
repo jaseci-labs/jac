@@ -32,7 +32,7 @@ impl normalize_identifier(value: str) -> str {
     module: ptr[PyObject] = NULL;
     result: ptr[PyObject] = NULL;
     try {
-        module = required(PyImport_ImportModule("unicodedata"));
+        module = required(PyImport_ImportModule(ptr[u8]("unicodedata")));
         result = required(PyObject_CallMethod(module, "normalize", "sO", "NFKC", text));
         return text_value(result);
     } finally {

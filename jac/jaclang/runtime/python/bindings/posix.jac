@@ -144,8 +144,14 @@ impl have_functions -> list[tuple[str, bool]] {
         ("HAVE_LUTIMES", bool(HAVE_LUTIMES)),
         ("HAVE_MEMFD_CREATE", bool(HAVE_MEMFD_CREATE)),
         ("HAVE_MKDIRAT", bool(HAVE_MKDIRAT)),
-        ("HAVE_MKFIFOAT", bool(HAVE_MKFIFOAT) and bool(runtime_function("mkfifoat"))),
-        ("HAVE_MKNODAT", bool(HAVE_MKNODAT) and bool(runtime_function("mknodat"))),
+        (
+            "HAVE_MKFIFOAT",
+            bool(HAVE_MKFIFOAT) and bool(runtime_function(ptr[u8]("mkfifoat")))
+        ),
+        (
+            "HAVE_MKNODAT",
+            bool(HAVE_MKNODAT) and bool(runtime_function(ptr[u8]("mknodat")))
+        ),
         ("HAVE_OPENAT", bool(HAVE_OPENAT)),
         ("HAVE_READLINKAT", bool(HAVE_READLINKAT)),
         ("HAVE_RENAMEAT", bool(HAVE_RENAMEAT)),

@@ -374,7 +374,9 @@ impl unpickle_state.extension(code: i64) {
     registered: ptr[PyObject] = NULL;
     try {
         cache = required(
-            PyImport_ImportModuleAttrString("copyreg", "_extension_cache")
+            PyImport_ImportModuleAttrString(
+                ptr[u8]("copyreg"), ptr[u8]("_extension_cache")
+            )
         );
         value = jacpy_dict_get(cache, key);
         if value != 0 {
@@ -385,7 +387,9 @@ impl unpickle_state.extension(code: i64) {
             raise boundary_failure();
         }
         registry = required(
-            PyImport_ImportModuleAttrString("copyreg", "_inverted_registry")
+            PyImport_ImportModuleAttrString(
+                ptr[u8]("copyreg"), ptr[u8]("_inverted_registry")
+            )
         );
         registered = jacpy_dict_get(registry, key);
         if registered == 0 {

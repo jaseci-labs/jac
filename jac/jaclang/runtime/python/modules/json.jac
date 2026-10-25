@@ -222,7 +222,11 @@ impl json_input.whitespace {
 }
 
 impl json_input.error(message: str, position: int) {
-    type = required(PyImport_ImportModuleAttrString("json.decoder", "JSONDecodeError"));
+    type = required(
+        PyImport_ImportModuleAttrString(
+            ptr[u8]("json.decoder"), ptr[u8]("JSONDecodeError")
+        )
+    );
     try {
         text = text_object(message);
         try {

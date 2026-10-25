@@ -898,7 +898,9 @@ impl zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyOb
         return NULL;
     }
     if zone.source == SOURCE_FILE {
-        pickle_error = PyImport_ImportModuleAttrString("pickle", "PicklingError");
+        pickle_error = PyImport_ImportModuleAttrString(
+            ptr[u8]("pickle"), ptr[u8]("PicklingError")
+        );
         if not pickle_error {
             return NULL;
         }
@@ -1840,7 +1842,7 @@ impl clear_strong_cache(state: ZoneInfoModuleState, type: ptr[PyObject]) {
 
 impl new_weak_cache -> ptr[PyObject] {
     weak_value_dictionary = PyImport_ImportModuleAttrString(
-        "weakref", "WeakValueDictionary"
+        ptr[u8]("weakref"), ptr[u8]("WeakValueDictionary")
     );
     if not weak_value_dictionary {
         return NULL;
@@ -1856,16 +1858,16 @@ impl datetime_import -> ptr[PyDateTime_CAPI] {
 
 impl populate_module_state(state: ZoneInfoModuleState) -> bool {
     state.tzpath_find_tzfile = PyImport_ImportModuleAttrString(
-        "zoneinfo._tzpath", "find_tzfile"
+        ptr[u8]("zoneinfo._tzpath"), ptr[u8]("find_tzfile")
     );
     if not state.tzpath_find_tzfile {
         return False;
     }
-    state.io_open = PyImport_ImportModuleAttrString("io", "open");
+    state.io_open = PyImport_ImportModuleAttrString(ptr[u8]("io"), ptr[u8]("open"));
     if not state.io_open {
         return False;
     }
-    state.common_mod = PyImport_ImportModule("zoneinfo._common");
+    state.common_mod = PyImport_ImportModule(ptr[u8]("zoneinfo._common"));
     if not state.common_mod {
         return False;
     }

@@ -764,7 +764,7 @@ import from c {
 
         codecs_initialized(interp).view(1)[0] = 1;
 
-        mod = PyImport_ImportModule("encodings");
+        mod = PyImport_ImportModule(ptr[u8]("encodings"));
         if not mod {
             return PyStatus_Error(ptr[u8]("Failed to import encodings module"));
         }

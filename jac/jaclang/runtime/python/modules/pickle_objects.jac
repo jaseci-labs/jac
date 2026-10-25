@@ -38,8 +38,12 @@ def mapped_names(
     try {
         names = required(
             PyImport_ImportModuleAttrString(
-                "_compat_pickle", "REVERSE_NAME_MAPPING" if reverse else "NAME_MAPPING"
+                ptr[u8]("_compat_pickle"), ptr[u8]("REVERSE_NAME_MAPPING")
             )
+                if reverse
+                else PyImport_ImportModuleAttrString(
+                    ptr[u8]("_compat_pickle"), ptr[u8]("NAME_MAPPING")
+                )
         );
         key = object_tuple([module, name]);
         pair = jacpy_dict_get(names, key);
@@ -51,9 +55,12 @@ def mapped_names(
         }
         modules = required(
             PyImport_ImportModuleAttrString(
-                "_compat_pickle",
-                "REVERSE_IMPORT_MAPPING" if reverse else "IMPORT_MAPPING"
+                ptr[u8]("_compat_pickle"), ptr[u8]("REVERSE_IMPORT_MAPPING")
             )
+                if reverse
+                else PyImport_ImportModuleAttrString(
+                    ptr[u8]("_compat_pickle"), ptr[u8]("IMPORT_MAPPING")
+                )
         );
         mapped = jacpy_dict_get(modules, module);
         if jacpy_error_pending() != 0 {
@@ -150,7 +157,9 @@ def global_names(
             module = NULL;
         }
         if module == 0 {
-            live = required(PyImport_ImportModuleAttrString("sys", "modules"));
+            live = required(
+                PyImport_ImportModuleAttrString(ptr[u8]("sys"), ptr[u8]("modules"))
+            );
             snapshot: ptr[PyObject] = NULL;
             keys: ptr[PyObject] = NULL;
             try {

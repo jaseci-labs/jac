@@ -304,7 +304,12 @@ impl c_string_equal(a: ptr[u8], b: ptr[u8]) -> bool {
 }
 
 impl importmap(modname: str, symbol: str) -> ptr[DbcsMap] {
-    mod = PyImport_ImportModule(modname);
+    module_name = jacpy_unicode_from_text(modname);
+    if not module_name {
+        return ptr[DbcsMap]();
+    }
+    mod = PyImport_Import(module_name);
+    jacpy_release(module_name);
     if not mod {
         return ptr[DbcsMap]();
     }
@@ -352,7 +357,9 @@ impl destroy_codec_capsule(capsule: ptr[PyObject]) {
 }
 
 impl create_codec(module: ptr[PyObject], codec: ptr[MultibyteCodec]) -> ptr[PyObject] {
-    cofunc = PyImport_ImportModuleAttrString("_multibytecodec", "__create_codec");
+    cofunc = PyImport_ImportModuleAttrString(
+        ptr[u8]("_multibytecodec"), ptr[u8]("__create_codec")
+    );
     if not cofunc {
         return NULL;
     }

@@ -827,7 +827,7 @@ impl display_source_line(
             return (i32(0), False, i32(0), NULL);
         }
     }
-    io = PyImport_ImportModule("io");
+    io = PyImport_ImportModule(ptr[u8]("io"));
     if not io {
         return (i32(-1), False, i32(0), NULL);
     }

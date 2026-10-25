@@ -337,7 +337,11 @@ def accepted(conv: any) -> set[str] {
 
 # Built-in modules the interpreter core defines rather than Setup: their C
 # source under Python/, by module name.
-glob CORE_SOURCES: dict[str, str] = {"_warnings": "Python/_warnings.c"};
+glob CORE_SOURCES: dict[str, str] = {
+    "_warnings": "Python/_warnings.c",
+    "_imp": "Python/import.c",
+    "marshal": "Python/marshal.c"
+};
 
 # A module's C sources: those Setup lists, each followed by the local `.c`
 # files it textually includes (_ssl.c's `#include "_ssl/cert.c"`), whose clinic

@@ -70,3 +70,5 @@ posix
 _signal
 _thread
 _warnings
+_imp
+marshal

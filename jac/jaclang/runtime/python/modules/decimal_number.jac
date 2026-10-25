@@ -486,7 +486,9 @@ impl pydec_format(
 ) -> ptr[PyObject] {
     pydecimal = state_value(module, STATE_PYDECIMAL);
     if not pydecimal {
-        pydecimal = PyImport_ImportModuleAttrString("_pydecimal", "Decimal");
+        pydecimal = PyImport_ImportModuleAttrString(
+            ptr[u8]("_pydecimal"), ptr[u8]("Decimal")
+        );
         if not pydecimal {
             return NULL;
         }

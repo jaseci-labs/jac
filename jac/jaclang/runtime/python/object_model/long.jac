@@ -3443,7 +3443,7 @@ impl pylong_int_to_decimal_string(
 ) -> tuple[i32, ptr[PyObject], ptr[u8]] {
     bytes_str = bytes_str_in;
     output = NULL;
-    mod = PyImport_ImportModule("_pylong");
+    mod = PyImport_ImportModule(ptr[u8]("_pylong"));
     if not mod {
         return (i32(-1), NULL, bytes_str);
     }
@@ -3869,7 +3869,7 @@ impl long_from_binary_base(
 impl pylong_int_from_string(
     start: ptr[u8], end: ptr[u8]
 ) -> tuple[i32, ptr[PyLongObject]] {
-    mod = PyImport_ImportModule("_pylong");
+    mod = PyImport_ImportModule(ptr[u8]("_pylong"));
     if not mod {
         return (i32(0), ptr[PyLongObject]());
     }
@@ -4932,7 +4932,7 @@ impl pylong_int_divmod(
     v: ptr[PyLongObject], w: ptr[PyLongObject], want_div: bool, want_mod: bool
 ) -> tuple[i32, ptr[PyLongObject], ptr[PyLongObject]] {
     nul = ptr[PyLongObject]();
-    mod = PyImport_ImportModule("_pylong");
+    mod = PyImport_ImportModule(ptr[u8]("_pylong"));
     if not mod {
         return (i32(-1), nul, nul);
     }

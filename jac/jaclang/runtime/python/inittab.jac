@@ -10,12 +10,11 @@ import from c {
     obj _inittab {
         has name: ptr[u8],
             initfunc: ptr;
-    }  def PyInit__io -> ptr[PyObject];  def PyMarshal_Init -> ptr[PyObject];  def PyInit__imp -> ptr[
+    }  def PyInit__io -> ptr[PyObject];  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[
         PyObject
-    ];  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[PyObject];  def PyInit__symtable -> ptr[
+    ];  def PyInit__symtable -> ptr[PyObject];  def PyInit_gc -> ptr[PyObject];  def PyInit__string -> ptr[
         PyObject
-    ];  def PyInit_gc -> ptr[PyObject];  def PyInit__string -> ptr[PyObject];  glob _PyImport_Inittab:
-             list[_inittab] = [
+    ];  glob _PyImport_Inittab: list[_inittab] = [
              _inittab(name=ptr[u8]("_bisect"), initfunc=ptr(PyInit__bisect)),
              _inittab(name=ptr[u8]("_heapq"), initfunc=ptr(PyInit__heapq)),
              _inittab(name=ptr[u8]("_random"), initfunc=ptr(PyInit__random)),
@@ -116,9 +115,9 @@ import from c {
              _inittab(
                  name=ptr[u8]("_interpqueues"), initfunc=ptr(PyInit__interpqueues)
              ),
-             _inittab(name=ptr[u8]("_io"), initfunc=ptr(PyInit__io)),
-             _inittab(name=ptr[u8]("marshal"), initfunc=ptr(PyMarshal_Init)),
+             _inittab(name=ptr[u8]("marshal"), initfunc=ptr(PyInit_marshal)),
              _inittab(name=ptr[u8]("_imp"), initfunc=ptr(PyInit__imp)),
+             _inittab(name=ptr[u8]("_io"), initfunc=ptr(PyInit__io)),
              _inittab(name=ptr[u8]("_ast"), initfunc=ptr(PyInit__ast)),
              _inittab(name=ptr[u8]("_tokenize"), initfunc=ptr(PyInit__tokenize)),
              _inittab(name=ptr[u8]("_symtable"), initfunc=ptr(PyInit__symtable)),

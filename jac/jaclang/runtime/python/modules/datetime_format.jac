@@ -262,7 +262,9 @@ impl wrap_strftime(
     timetuple: ptr[PyObject],
     tzinfoarg: ptr[PyObject]
 ) -> ptr[PyObject] {
-    strftime_function = PyImport_ImportModuleAttrString("time", "strftime");
+    strftime_function = PyImport_ImportModuleAttrString(
+        ptr[u8]("time"), ptr[u8]("strftime")
+    );
     if not strftime_function {
         return NULL;
     }
@@ -396,7 +398,7 @@ impl rewrite_and_format(
 }
 
 impl time_time -> ptr[PyObject] {
-    function = PyImport_ImportModuleAttrString("time", "time");
+    function = PyImport_ImportModuleAttrString(ptr[u8]("time"), ptr[u8]("time"));
     if not function {
         return NULL;
     }
@@ -408,7 +410,9 @@ impl time_time -> ptr[PyObject] {
 impl build_struct_time(
     y: int, m: int, d: int, hh: int, mm: int, ss: int, dstflag: int
 ) -> ptr[PyObject] {
-    struct_time = PyImport_ImportModuleAttrString("time", "struct_time");
+    struct_time = PyImport_ImportModuleAttrString(
+        ptr[u8]("time"), ptr[u8]("struct_time")
+    );
     if not struct_time {
         return NULL;
     }

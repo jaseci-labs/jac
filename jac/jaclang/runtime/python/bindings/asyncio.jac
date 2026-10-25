@@ -658,7 +658,9 @@ impl set_attribute_state(
 }
 
 impl module_init(module: ptr[PyObject]) -> bool {
-    if not set_state(module, STATE_ASYNCIO_MOD, PyImport_ImportModule("asyncio"))
+    if not set_state(
+        module, STATE_ASYNCIO_MOD, PyImport_ImportModule(ptr[u8]("asyncio"))
+    )
         or not set_state(module, STATE_ISCOROUTINE_TYPECACHE, PySet_New(NULL))
         or not set_state(
             module,
@@ -688,7 +690,12 @@ impl module_init(module: ptr[PyObject]) -> bool {
         ("asyncio.coroutines", [(STATE_ISCOROUTINE_FUNC, "iscoroutine")]),
         ("traceback", [(STATE_TRACEBACK_EXTRACT_STACK, "extract_stack")])
     ] {
-        source = PyImport_ImportModule(name);
+        module_name = jacpy_unicode_from_text(name);
+        if not module_name {
+            return False;
+        }
+        source = PyImport_Import(module_name);
+        jacpy_release(module_name);
         if not source {
             return False;
         }
@@ -700,7 +707,7 @@ impl module_init(module: ptr[PyObject]) -> bool {
         }
         jacpy_release(source);
     }
-    weakref = PyImport_ImportModule("weakref");
+    weakref = PyImport_ImportModule(ptr[u8]("weakref"));
     if not weakref {
         return False;
     }

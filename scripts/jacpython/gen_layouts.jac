@@ -115,7 +115,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/cpython/pylifecycle.h",
          "Include/internal/pycore_crossinterp.h",
          "Include/internal/pycore_asdl.h",
-         "Include/internal/pycore_ast_state.h"
+         "Include/internal/pycore_ast_state.h",
+         "Include/cpython/import.h",
+         "Include/internal/pycore_import.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -261,7 +263,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "osdefs.h",
          "internal/pycore_initconfig.h",
          "internal/pycore_ast.h",
-         "internal/pycore_ast_state.h"
+         "internal/pycore_ast_state.h",
+         "internal/pycore_magic_number.h",
+         "internal/pycore_import.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -417,7 +421,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyXI_excinfo_type", "struct _excinfo_type"),
          ("_PyBytes_data_t", "_PyBytes_data_t"),
          ("asdl_seq", "asdl_seq"),
-         ("ast_state", "struct ast_state")
+         ("ast_state", "struct ast_state"),
+         ("_frozen", "struct _frozen"),
+         ("_module_alias", "struct _module_alias")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -4320,7 +4326,71 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_STR_str_replace_inf",
              "offsetof(struct _Py_global_strings, literals._py_str_replace_inf)",
              "i64"
-         )
+         ),
+         ("PYC_MAGIC_NUMBER_TOKEN", "PYC_MAGIC_NUMBER_TOKEN", "i64"),
+         ("_PyThreadState_WHENCE_EXEC", "_PyThreadState_WHENCE_EXEC", "i32"),
+         (
+             "_Py_ID___package__",
+             "offsetof(struct _Py_global_strings, identifiers._py___package__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___path__",
+             "offsetof(struct _Py_global_strings, identifiers._py___path__)",
+             "i64"
+         ),
+         (
+             "_Py_ID__find_and_load",
+             "offsetof(struct _Py_global_strings, identifiers._py__find_and_load)",
+             "i64"
+         ),
+         (
+             "_Py_ID__fix_up_module",
+             "offsetof(struct _Py_global_strings, identifiers._py__fix_up_module)",
+             "i64"
+         ),
+         (
+             "_Py_ID__get_sourcefile",
+             "offsetof(struct _Py_global_strings, identifiers._py__get_sourcefile)",
+             "i64"
+         ),
+         (
+             "_Py_ID__handle_fromlist",
+             "offsetof(struct _Py_global_strings, identifiers._py__handle_fromlist)",
+             "i64"
+         ),
+         (
+             "_Py_ID__lock_unlock_module",
+             "offsetof(struct _Py_global_strings, identifiers._py__lock_unlock_module)",
+             "i64"
+         ),
+         (
+             "_Py_ID_parent",
+             "offsetof(struct _Py_global_strings, identifiers._py_parent)",
+             "i64"
+         ),
+         (
+             "_Py_ID_read",
+             "offsetof(struct _Py_global_strings, identifiers._py_read)",
+             "i64"
+         ),
+         (
+             "_Py_ID_readinto",
+             "offsetof(struct _Py_global_strings, identifiers._py_readinto)",
+             "i64"
+         ),
+         (
+             "_Py_ID_reload",
+             "offsetof(struct _Py_global_strings, identifiers._py_reload)",
+             "i64"
+         ),
+         (
+             "_Py_ID_replace",
+             "offsetof(struct _Py_global_strings, identifiers._py_replace)",
+             "i64"
+         ),
+         ("PyModuleDef_Base_SIZE", "sizeof(PyModuleDef_Base)", "i64"),
+         ("_inittab_SIZE", "sizeof(struct _inittab)", "i64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -6070,7 +6140,82 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ),
          ("PyInterpreterState_XI", "offsetof(PyInterpreterState, xi)", "i64"),
          ("_PyRuntimeState_XI", "offsetof(_PyRuntimeState, xi)", "i64"),
-         ("PyInterpreterState_AST", "offsetof(PyInterpreterState, ast)", "i64")
+         ("PyInterpreterState_AST", "offsetof(PyInterpreterState, ast)", "i64"),
+         (
+             "_PyRuntimeState_IMPORTS_INITTAB",
+             "offsetof(_PyRuntimeState, imports.inittab)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_IMPORTS_LAST_MODULE_INDEX",
+             "offsetof(_PyRuntimeState, imports.last_module_index)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_IMPORTS_EXTENSIONS_HASHTABLE",
+             "offsetof(_PyRuntimeState, imports.extensions.hashtable)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_MODULES",
+             "offsetof(PyInterpreterState, imports.modules)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_MODULES_BY_INDEX",
+             "offsetof(PyInterpreterState, imports.modules_by_index)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_IMPORTLIB",
+             "offsetof(PyInterpreterState, imports.importlib)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_OVERRIDE_FROZEN_MODULES",
+             "offsetof(PyInterpreterState, imports.override_frozen_modules)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_OVERRIDE_MULTI_INTERP_EXTENSIONS_CHECK",
+             "offsetof(PyInterpreterState, imports.override_multi_interp_extensions_check)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_DLOPENFLAGS",
+             "offsetof(PyInterpreterState, imports.dlopenflags)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_IMPORT_FUNC",
+             "offsetof(PyInterpreterState, imports.import_func)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_LOCK",
+             "offsetof(PyInterpreterState, imports.lock)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_LOCK_THREAD",
+             "offsetof(PyInterpreterState, imports.lock.thread)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_FIND_AND_LOAD_IMPORT_LEVEL",
+             "offsetof(PyInterpreterState, imports.find_and_load.import_level)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_FIND_AND_LOAD_ACCUMULATED",
+             "offsetof(PyInterpreterState, imports.find_and_load.accumulated)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_IMPORTS_FIND_AND_LOAD_HEADER",
+             "offsetof(PyInterpreterState, imports.find_and_load.header)",
+             "i64"
+         )
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

@@ -1267,7 +1267,9 @@ impl faulthandler_stack_overflow(
 }
 
 impl faulthandler_init_enable -> i32 {
-    enable = PyImport_ImportModuleAttrString("faulthandler", "enable");
+    enable = PyImport_ImportModuleAttrString(
+        ptr[u8]("faulthandler"), ptr[u8]("enable")
+    );
     if not enable {
         return -1;
     }

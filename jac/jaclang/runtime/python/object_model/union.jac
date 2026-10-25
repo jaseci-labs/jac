@@ -510,7 +510,7 @@ impl union_getattro(op: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
 impl call_typing_type_check(
     arg: ptr[PyObject], message: ptr[PyObject]
 ) -> ptr[PyObject] {
-    typing = PyImport_ImportModule("typing");
+    typing = PyImport_ImportModule(ptr[u8]("typing"));
     if not typing {
         return NULL;
     }

@@ -3985,7 +3985,9 @@ impl subclass_clinic_state_Element_Type(
 }
 
 impl import_expat_capi(state: ElementTreeState) -> bool {
-    capsule = PyImport_ImportModuleAttrString("pyexpat", "expat_CAPI");
+    capsule = PyImport_ImportModuleAttrString(
+        ptr[u8]("pyexpat"), ptr[u8]("expat_CAPI")
+    );
     if not capsule {
         return False;
     }

@@ -194,11 +194,13 @@ impl execute(module: ptr[PyObject]) -> i32 {
     if not state.XMLParser_Type {
         return i32(-1);
     }
-    state.deepcopy_obj = PyImport_ImportModuleAttrString("copy", "deepcopy");
+    state.deepcopy_obj = PyImport_ImportModuleAttrString(
+        ptr[u8]("copy"), ptr[u8]("deepcopy")
+    );
     if not state.deepcopy_obj {
         return i32(-1);
     }
-    state.elementpath_obj = PyImport_ImportModule("xml.etree.ElementPath");
+    state.elementpath_obj = PyImport_ImportModule(ptr[u8]("xml.etree.ElementPath"));
     if not state.elementpath_obj {
         return i32(-1);
     }

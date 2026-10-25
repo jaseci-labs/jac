@@ -439,7 +439,7 @@ impl template_values_get(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 }
 
 impl template_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    module = PyImport_ImportModule("string.templatelib");
+    module = PyImport_ImportModule(ptr[u8]("string.templatelib"));
     if not module {
         return NULL;
     }

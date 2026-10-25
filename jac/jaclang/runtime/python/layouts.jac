@@ -1286,6 +1286,14 @@ import from c {
             values: ptr[PyObject],
             vararg: ptr[PyObject],
             withitem_type: ptr[PyObject];
+    }  obj _frozen {
+        has name: ptr[u8],
+            code: ptr[u8],
+            size: i32,
+            is_package: i32;
+    }  obj _module_alias {
+        has name: ptr[u8],
+            orig: ptr[u8];
     }
 }
 
@@ -2917,4 +2925,20 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      _Py_ID_inf: Final[i64] = 25512,
      _Py_STR_dbl_open_br: Final[i64] = 544,
      _Py_STR_dbl_close_br: Final[i64] = 496,
-     _Py_STR_str_replace_inf: Final[i64] = 1080;
+     _Py_STR_str_replace_inf: Final[i64] = 1080,
+     PYC_MAGIC_NUMBER_TOKEN: Final[i64] = 168627755,
+     _PyThreadState_WHENCE_EXEC: Final[i32] = 5,
+     _Py_ID___package__: Final[i64] = 8032,
+     _Py_ID___path__: Final[i64] = 8144,
+     _Py_ID__find_and_load: Final[i64] = 11968,
+     _Py_ID__fix_up_module: Final[i64] = 12024,
+     _Py_ID__get_sourcefile: Final[i64] = 12128,
+     _Py_ID__handle_fromlist: Final[i64] = 12184,
+     _Py_ID__lock_unlock_module: Final[i64] = 12640,
+     _Py_ID_parent: Final[i64] = 33088,
+     _Py_ID_read: Final[i64] = 34496,
+     _Py_ID_readinto: Final[i64] = 34696,
+     _Py_ID_reload: Final[i64] = 35184,
+     _Py_ID_replace: Final[i64] = 35280,
+     PyModuleDef_Base_SIZE: Final[i64] = 40,
+     _inittab_SIZE: Final[i64] = 16;

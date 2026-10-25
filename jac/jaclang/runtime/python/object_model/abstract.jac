@@ -541,7 +541,9 @@ import from c {
         itemsize: i64 = -1;
         fmt = NULL;
         res = NULL;
-        calcsize = PyImport_ImportModuleAttrString("struct", "calcsize");
+        calcsize = PyImport_ImportModuleAttrString(
+            ptr[u8]("struct"), ptr[u8]("calcsize")
+        );
         if calcsize {
             fmt = unicode_from_c(format);
             if fmt {

@@ -1299,7 +1299,9 @@ impl kqueue_tracking_after_fork(
 }
 
 impl kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState) {
-    register_at_fork = PyImport_ImportModuleAttrString("posix", "register_at_fork");
+    register_at_fork = PyImport_ImportModuleAttrString(
+        ptr[u8]("posix"), ptr[u8]("register_at_fork")
+    );
     if register_at_fork {
         callback = builtin_function(
             MethodDefinition(

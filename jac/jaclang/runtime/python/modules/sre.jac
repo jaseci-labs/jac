@@ -1113,7 +1113,9 @@ impl compile_template(
 ) -> ptr[PyObject] {
     func = jacpy_binding_state_get(module, i64(STATE_COMPILE_TEMPLATE));
     if not func {
-        imported = PyImport_ImportModuleAttrString("re", "_compile_template");
+        imported = PyImport_ImportModuleAttrString(
+            ptr[u8]("re"), ptr[u8]("_compile_template")
+        );
         if not imported {
             return NULL;
         }

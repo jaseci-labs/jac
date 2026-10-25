@@ -33,8 +33,6 @@ glob COMMAND: str = "scripts/jacpython/gen_inittab.jac",
      # the interpreter creates itself.
      C_MODULES: list[tuple[str, str]] = [
          ("_io", "PyInit__io"),
-         ("marshal", "PyMarshal_Init"),
-         ("_imp", "PyInit__imp"),
          ("_ast", "PyInit__ast"),
          ("_tokenize", "PyInit__tokenize"),
          ("_symtable", "PyInit__symtable"),

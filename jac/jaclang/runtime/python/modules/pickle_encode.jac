@@ -313,7 +313,9 @@ impl pickle_state.bytes(value: ptr[PyObject], mutable: bool) {
             callable = required(jacpy_object_type(value));
             args = object_tuple([]);
         } else {
-            callable = required(PyImport_ImportModuleAttrString("_codecs", "encode"));
+            callable = required(
+                PyImport_ImportModuleAttrString(ptr[u8]("_codecs"), ptr[u8]("encode"))
+            );
             content = required(jacpy_bytes_decode(value, "latin1", "strict"));
             encoding = text_object("latin1");
             args = object_tuple([content, encoding]);
@@ -485,7 +487,9 @@ impl pickle_state.global(value: ptr[PyObject], preferred: ptr[PyObject]) {
         name = required(jacpy_tuple_item(names, 1));
         if self.protocol >= 2 {
             registry = required(
-                PyImport_ImportModuleAttrString("copyreg", "_extension_registry")
+                PyImport_ImportModuleAttrString(
+                    ptr[u8]("copyreg"), ptr[u8]("_extension_registry")
+                )
             );
             code: ptr[PyObject] = NULL;
             try {
@@ -527,7 +531,9 @@ impl pickle_state.global(value: ptr[PyObject], preferred: ptr[PyObject]) {
             try {
                 if len(parts) > 1 {
                     attribute_get = required(
-                        PyImport_ImportModuleAttrString("builtins", "getattr")
+                        PyImport_ImportModuleAttrString(
+                            ptr[u8]("builtins"), ptr[u8]("getattr")
+                        )
                     );
                     try {
                         for _ in range(1, len(parts)) {
@@ -767,7 +773,9 @@ impl pickle_state.reduce_value(value: ptr[PyObject], reduced: ptr[PyObject]) {
                     self.emit(opcode.NEWOBJ_EX);
                 } else {
                     partial_type = required(
-                        PyImport_ImportModuleAttrString("functools", "partial")
+                        PyImport_ImportModuleAttrString(
+                            ptr[u8]("functools"), ptr[u8]("partial")
+                        )
                     );
                     new_method: ptr[PyObject] = NULL;
                     prefix: ptr[PyObject] = NULL;

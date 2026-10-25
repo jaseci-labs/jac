@@ -1469,7 +1469,7 @@ impl constevaluator_alloc(value: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl call_typing_func_object(name: str, args: list[ptr[PyObject]]) -> ptr[PyObject] {
-    typing = PyImport_ImportModule("typing");
+    typing = PyImport_ImportModule(ptr[u8]("typing"));
     if not typing {
         return NULL;
     }
@@ -1537,7 +1537,7 @@ impl caller -> ptr[PyObject] {
 }
 
 impl unpack(self: ptr[PyObject]) -> ptr[PyObject] {
-    typing = PyImport_ImportModule("typing");
+    typing = PyImport_ImportModule(ptr[u8]("typing"));
     if not typing {
         return NULL;
     }
@@ -2634,7 +2634,7 @@ impl typealias_new(
 impl call_typing_args_kwargs(
     name: str, cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    typing = PyImport_ImportModule("typing");
+    typing = PyImport_ImportModule(ptr[u8]("typing"));
     if not typing {
         return NULL;
     }

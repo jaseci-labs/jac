@@ -432,7 +432,9 @@ impl execute(module: ptr[PyObject]) -> i32 {
         or PyModule_AddObjectRef(module, ptr[u8]("converters"), state.converters) < 0 {
         return i32(-1);
     }
-    state.lru_cache = PyImport_ImportModuleAttrString("functools", "lru_cache");
+    state.lru_cache = PyImport_ImportModuleAttrString(
+        ptr[u8]("functools"), ptr[u8]("lru_cache")
+    );
     if not state.lru_cache {
         return i32(-1);
     }

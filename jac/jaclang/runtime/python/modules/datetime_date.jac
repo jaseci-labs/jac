@@ -317,7 +317,7 @@ impl strptime_via(
     } except boundary_failure {
         return NULL;
     }
-    module = PyImport_ImportModule("_strptime");
+    module = PyImport_ImportModule(ptr[u8]("_strptime"));
     if not module {
         return NULL;
     }

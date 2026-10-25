@@ -556,7 +556,9 @@ impl execute(module: ptr[PyObject]) -> i32 {
     }
     held = ReferenceState(
         references=[
-            PyImport_ImportModuleAttrString("collections.abc", "MutableSequence"),
+            PyImport_ImportModuleAttrString(
+                ptr[u8]("collections.abc"), ptr[u8]("MutableSequence")
+            ),
             NULL
         ]
     );

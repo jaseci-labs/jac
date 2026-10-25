@@ -225,8 +225,8 @@ import from c {
         arg0: i32
     );  def PyImport_GetModule(name: ptr[PyObject]) -> ptr[PyObject];  def PyImport_Import(
         name: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyImport_ImportModule(name: str) -> ptr[PyObject];  def PyImport_ImportModuleAttrString(
-        mod_name: str, attr_name: str
+    ) -> ptr[PyObject];  def PyImport_ImportModule(name: ptr[u8]) -> ptr[PyObject];  def PyImport_ImportModuleAttrString(
+        mod_name: ptr[u8], attr_name: ptr[u8]
     ) -> ptr[PyObject];  def PyIndex_Check(arg0: ptr[PyObject]) -> i32;  def PyInterpreterState_Get -> ptr[
         PyInterpreterState
     ];  def PyInterpreterState_GetDict(

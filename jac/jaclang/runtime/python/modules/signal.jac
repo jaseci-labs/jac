@@ -946,7 +946,7 @@ impl signal_install_handlers -> i32 {
     PyOS_setsig(i32(SIGPIPE), ptr(SIG_IGN));
     PyOS_setsig(i32(SIGXFSZ), ptr(SIG_IGN));
 
-    module = PyImport_ImportModule("_signal");
+    module = PyImport_ImportModule(ptr[u8]("_signal"));
     if not module {
         return -1;
     }

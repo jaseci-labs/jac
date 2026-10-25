@@ -1634,7 +1634,7 @@ impl wait_helper(
     if pid == 0 {
         ru = rusage();
     }
-    struct_rusage = PyImport_ImportModuleAttrString("resource", "struct_rusage");
+    struct_rusage = PyImport_ImportModuleAttrString(ptr[u8]("resource"), ptr[u8]("struct_rusage"));
     if not struct_rusage {
         return NULL;
     }

@@ -680,7 +680,9 @@ impl time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
 }
 
 impl time_strptime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    func = PyImport_ImportModuleAttrString("_strptime", "_strptime_time");
+    func = PyImport_ImportModuleAttrString(
+        ptr[u8]("_strptime"), ptr[u8]("_strptime_time")
+    );
     if not func {
         return NULL;
     }
@@ -767,7 +769,7 @@ impl time_mktime(module: ptr[PyObject], tm_tuple: ptr[PyObject]) -> ptr[PyObject
 }
 
 impl time_tzset(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    m = PyImport_ImportModule("time");
+    m = PyImport_ImportModule(ptr[u8]("time"));
     if not m {
         return NULL;
     }

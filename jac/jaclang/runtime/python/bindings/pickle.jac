@@ -255,12 +255,14 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         or not retain_state(
             module,
             Slot.BYTESIO.value,
-            PyImport_ImportModuleAttrString("_io", "BytesIO")
+            PyImport_ImportModuleAttrString(ptr[u8]("_io"), ptr[u8]("BytesIO"))
         )
         or not retain_state(
             module,
             Slot.DISPATCH.value,
-            PyImport_ImportModuleAttrString("copyreg", "dispatch_table")
+            PyImport_ImportModuleAttrString(
+                ptr[u8]("copyreg"), ptr[u8]("dispatch_table")
+            )
         )
         or not add_owned(
             module, "PickleBuffer", builtin_type(builtin_kind.PICKLE_BUFFER)

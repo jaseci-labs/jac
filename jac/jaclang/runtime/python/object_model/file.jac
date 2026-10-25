@@ -92,7 +92,7 @@ import from c {
         newline: ptr[u8],
         closefd: i32
     ) -> ptr[PyObject] {
-        open = PyImport_ImportModuleAttrString("_io", "open");
+        open = PyImport_ImportModuleAttrString(ptr[u8]("_io"), ptr[u8]("open"));
         if not open {
             return NULL;
         }
@@ -304,7 +304,7 @@ import from c {
             return call.view(1)[0].call(path, jacpy_open_code_userdata().view(1)[0]);
         }
         f = NULL;
-        open = PyImport_ImportModuleAttrString("_io", "open");
+        open = PyImport_ImportModuleAttrString(ptr[u8]("_io"), ptr[u8]("open"));
         if open {
             f = PyObject_CallFunction(open, "Os", path, ptr[u8]("rb"));
             jacpy_release(open);

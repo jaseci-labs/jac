@@ -964,7 +964,7 @@ impl _lsprof_Profiler_enable_impl(
     }
     set_subcalls(state, subcalls);
     set_builtins(state, builtins);
-    monitoring = PyImport_ImportModuleAttrString("sys", "monitoring");
+    monitoring = PyImport_ImportModuleAttrString(ptr[u8]("sys"), ptr[u8]("monitoring"));
     if not monitoring {
         return NULL;
     }
@@ -1022,7 +1022,9 @@ impl _lsprof_Profiler_disable_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if state.flags & POF_ENABLED {
-        monitoring = PyImport_ImportModuleAttrString("sys", "monitoring");
+        monitoring = PyImport_ImportModuleAttrString(
+            ptr[u8]("sys"), ptr[u8]("monitoring")
+        );
         if not monitoring {
             return NULL;
         }
@@ -1071,7 +1073,7 @@ impl profiler_init_impl(
     state.external_timer = Py_NewRef(timer) if timer else NULL;
     jacpy_release(previous);
     state.tool_id = PY_MONITORING_PROFILER_ID;
-    monitoring = PyImport_ImportModuleAttrString("sys", "monitoring");
+    monitoring = PyImport_ImportModuleAttrString(ptr[u8]("sys"), ptr[u8]("monitoring"));
     if not monitoring {
         return i32(-1);
     }

@@ -2452,7 +2452,7 @@ impl unpacker_free(x: StructUnpacker) {
 }
 
 impl struct_get_unpacker(fmt: ptr[u8], itemsize: i64) -> StructUnpacker {
-    struct_type = PyImport_ImportModuleAttrString("struct", "Struct");
+    struct_type = PyImport_ImportModuleAttrString(ptr[u8]("struct"), ptr[u8]("Struct"));
     if not struct_type {
         return StructUnpacker();
     }

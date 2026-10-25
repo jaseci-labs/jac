@@ -15838,7 +15838,9 @@ graph import runtime.python {
             | modules.fcntl
             | modules.hashlib
             | modules.hashopenssl
+            | modules.imp
             | modules.lzma
+            | modules.marshal
             | modules.multibytecodec
             | modules.pickle
             | modules.posix_fileio
@@ -15919,6 +15921,7 @@ graph import runtime.python {
             ClassToken,
             borrowed_none
         },
+        modules.imp { bad_argument },
         modules.multiprocessing {
             ClassToken,
             borrowed_false,
@@ -15943,6 +15946,7 @@ graph import runtime.python {
     bindings.hashopenssl ++> inittab { PyInit__hashlib }
     bindings.heapq ++> inittab { PyInit__heapq }
     bindings.hmac ++> inittab { PyInit__hmac }
+    bindings.imp ++> inittab { PyInit__imp }
     bindings.interpchannels ++> inittab { PyInit__interpchannels }
     bindings.interpqueues ++> inittab { PyInit__interpqueues }
     bindings.interpreters ++> inittab { PyInit__interpreters }
@@ -15951,6 +15955,7 @@ graph import runtime.python {
     bindings.locale ++> inittab { PyInit__locale }
     bindings.lsprof ++> inittab { PyInit__lsprof }
     bindings.lzma ++> inittab { PyInit__lzma }
+    bindings.marshal ++> inittab { PyInit_marshal }
     bindings.math ++> inittab { PyInit_math }
     bindings.md5 ++> inittab { PyInit__md5 }
     bindings.members ++> [
@@ -16356,10 +16361,12 @@ graph import runtime.python {
             | bindings.clinic.hashopenssl
             | bindings.clinic.heapq
             | bindings.clinic.hmac
+            | bindings.clinic.imp
             | bindings.clinic.itertools
             | bindings.clinic.locale
             | bindings.clinic.lsprof
             | bindings.clinic.lzma
+            | bindings.clinic.marshal
             | bindings.clinic.math
             | bindings.clinic.md5
             | bindings.clinic.mmap
@@ -16824,6 +16831,7 @@ graph import runtime.python {
         bindings.asyncio {
             NULL,
             PyDict_Next,
+            PyImport_Import,
             PyImport_ImportModule,
             PyMethodDef,
             PyModule_AddType,
@@ -16844,7 +16852,8 @@ graph import runtime.python {
             Py_None,
             jacpy_dict_size,
             jacpy_object_getattr_text,
-            jacpy_release
+            jacpy_release,
+            jacpy_unicode_from_text
         },
         bindings.atexit
             | bindings.bisect
@@ -16856,7 +16865,9 @@ graph import runtime.python {
             | bindings.codecs_jp
             | bindings.codecs_kr
             | bindings.codecs_tw
+            | bindings.imp
             | bindings.itertools
+            | bindings.marshal
             | bindings.posixshmem
             | bindings.statistics
             | bindings.suggestions
@@ -16908,6 +16919,8 @@ graph import runtime.python {
             | bindings.clinic.grp
             | bindings.clinic.hashopenssl
             | bindings.clinic.hmac
+            | bindings.clinic.imp
+            | bindings.clinic.marshal
             | bindings.clinic.math
             | bindings.clinic.md5
             | bindings.clinic.opcode
@@ -17957,6 +17970,147 @@ graph import runtime.python {
             Py_GetConstant,
             Py_None
         },
+        interpreter.importdl {
+            FILE,
+            NULL,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_UnicodeEncodeError,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyObject,
+            PyObject_GetAttrString,
+            PyUnicode_AsEncodedString,
+            PyUnicode_AsUTF8,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_DecodeLocale,
+            PyUnicode_EncodeFSDefault,
+            PyUnicode_FindChar,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_GetLength,
+            PyUnicode_Substring,
+            _PyErr_FormatFromCause,
+            _Py_fstat
+        },
+        interpreter.importing {
+            NULL,
+            PyDict_Copy,
+            PyDict_New,
+            PyDict_Pop,
+            PyDict_Type,
+            PyDict_Update,
+            PyErr_BadInternalCall,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_ImportError,
+            PyExc_KeyError,
+            PyExc_MemoryError,
+            PyExc_RuntimeError,
+            PyExc_SystemError,
+            PyList_Append,
+            PyList_New,
+            PyList_SetItem,
+            PyList_SetSlice,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyModuleDef,
+            PyModule_AddObjectRef,
+            PyModule_GetDict,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyObject,
+            PyObject_DelItem,
+            PyObject_GetOptionalAttr,
+            PyObject_SetItem,
+            PyThreadState,
+            PyThreadState_Swap,
+            PyUnicode_AsUTF8,
+            PyUnicode_CompareWithASCIIString,
+            PyUnicode_FromString,
+            PyUnicode_InternFromString,
+            PyWeakref_NewRef,
+            Py_HashBuffer,
+            Py_None,
+            _PyErr_ChainExceptions1,
+            _PyInterpreterState_Main,
+            _PyRuntime,
+            _PyUnicode_AsUTF8NoNUL,
+            _PyUnicode_Copy,
+            _PyUnicode_EqualToASCIIString
+        },
+        interpreter.importing_api {
+            NULL,
+            PyDict_Contains,
+            PyDict_GetItemRef,
+            PyDict_GetItemStringRef,
+            PyDict_New,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_Occurred,
+            PyErr_Print,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyExc_DeprecationWarning,
+            PyExc_ImportError,
+            PyExc_KeyError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyException_GetTraceback,
+            PyException_SetTraceback,
+            PyImport_GetModule,
+            PyList_Append,
+            PyList_GetItem,
+            PyList_Insert,
+            PyList_New,
+            PyList_Size,
+            PyModule_GetDict,
+            PyObject,
+            PyObject_CallFunction,
+            PyObject_CallMethod,
+            PyObject_CallMethodObjArgs,
+            PyObject_CallOneArg,
+            PyObject_GetAttr,
+            PyObject_GetAttrString,
+            PyObject_GetItem,
+            PyObject_HasAttrWithError,
+            PyObject_IsTrue,
+            PyObject_RichCompareBool,
+            PySequence_Contains,
+            PyThreadState,
+            PyTime_PerfCounterRaw,
+            PyType_IsSubtype,
+            PyUnicode_AsUTF8,
+            PyUnicode_Compare,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_FindChar,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_InternFromString,
+            PyUnicode_Substring,
+            Py_BuildValue,
+            Py_None,
+            _PyUnicode_AsUTF8NoNUL,
+            _PyUnicode_EqualToASCIIString
+        },
         interpreter.instrumentation {
             NULL,
             PyCode_Type,
@@ -18849,7 +19003,7 @@ graph import runtime.python {
             PyExc_LookupError,
             PyExc_TypeError,
             PyExc_ValueError,
-            PyImport_ImportModule,
+            PyImport_Import,
             PyImport_ImportModuleAttrString,
             PyMem_Free,
             PyMem_Malloc,
@@ -18862,7 +19016,8 @@ graph import runtime.python {
             jacpy_is_unicode,
             jacpy_module_add_text,
             jacpy_object_getattr_text,
-            jacpy_release
+            jacpy_release,
+            jacpy_unicode_from_text
         },
         modules.cmath {
             NULL,
@@ -19821,6 +19976,42 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
+        modules.imp {
+            FILE,
+            NULL,
+            PyBool_FromLong,
+            PyBuffer_Release,
+            PyBytes_FromStringAndSize,
+            PyCode_Type,
+            PyErr_Format,
+            PyErr_SetString,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyInterpreterState,
+            PyList_Append,
+            PyList_New,
+            PyLong_FromLong,
+            PyModule_Add,
+            PyModule_AddIntConstant,
+            PyMutex,
+            PyObject,
+            PyObject_CheckBuffer,
+            PyObject_GetAttrString,
+            PyObject_GetBuffer,
+            PySys_Audit,
+            PyTuple_Pack,
+            PyUnicode_FromString,
+            PyUnicode_FromWideChar,
+            Py_None,
+            Py_buffer,
+            Py_fopen,
+            _PyArg_BadArgument,
+            _PyImport_AcquireLock,
+            _PyImport_ReleaseLock,
+            _PyInterpreterState_Main,
+            _Py_FalseStruct,
+            _Py_TrueStruct
+        },
         modules.interpchannels {
             NULL,
             PyArg_ParseTupleAndKeywords,
@@ -20234,6 +20425,79 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_equal_text,
             jacpy_unicode_intern_text
+        },
+        modules.marshal {
+            NULL,
+            PyBuffer_Release,
+            PyBytes_FromStringAndSize,
+            PyBytes_Type,
+            PyCode_Type,
+            PyComplex_Type,
+            PyDict_New,
+            PyDict_Next,
+            PyDict_SetItem,
+            PyDict_Type,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_EOFError,
+            PyExc_StopIteration,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_FromDouble,
+            PyFloat_Type,
+            PyFrozenSet_New,
+            PyFrozenSet_Type,
+            PyList_Append,
+            PyList_New,
+            PyList_Sort,
+            PyList_Type,
+            PyLongExport,
+            PyLongWriter,
+            PyLongWriter_Create,
+            PyLongWriter_Finish,
+            PyLong_AsLongAndOverflow,
+            PyLong_Export,
+            PyLong_FreeExport,
+            PyLong_FromLong,
+            PyLong_GetNativeLayout,
+            PyLong_Type,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_Realloc,
+            PyModule_AddIntConstant,
+            PyNumber_AsSsize_t,
+            PyOS_double_to_string,
+            PyOS_string_to_double,
+            PyObject,
+            PyObject_CallNoArgs,
+            PyObject_CheckBuffer,
+            PyObject_GetBuffer,
+            PyObject_VectorcallMethod,
+            PySet_Add,
+            PySet_New,
+            PySet_Type,
+            PySlice_New,
+            PySlice_Type,
+            PySys_Audit,
+            PySys_AuditTuple,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyTuple_Type,
+            PyUnicode_AsEncodedString,
+            PyUnicode_FromKindAndData,
+            PyUnicode_Type,
+            Py_Ellipsis,
+            Py_GetConstant,
+            Py_None,
+            Py_buffer,
+            Py_complex,
+            _PyBytes_Resize,
+            _PyLong_FromByteArray,
+            _PyRuntime,
+            _Py_fstat_noraise
         },
         modules.math {
             NULL,
@@ -26170,6 +26434,10 @@ graph import runtime.python {
         },
         modules.asyncio.call_with_task { PyObject_Call },
     ]
+    inittab ++> interpreter.importing | interpreter.importing_api {
+        _PyImport_Inittab,
+        _inittab
+    }
     interpreter.ceval_gil ++> [
         bindings.signal { is_main_interpreter, tstate_interp },
         modules.signal {
@@ -26182,6 +26450,37 @@ graph import runtime.python {
         modules.thread { head_lock, head_unlock, is_main_interpreter, tstate_interp },
         object_model.tracemalloc { pymutex_lock_flags, pymutex_unlock },
     ]
+    interpreter.importdl ++> modules.imp {
+        ExtModuleLoaderInfo,
+        _PyImport_GetModInitFunc,
+        _Py_ext_module_loader_info_clear,
+        _Py_ext_module_loader_info_init_from_spec
+    }
+    interpreter.importing ++> modules.imp {
+        _extensions_cache_delete,
+        create_builtin,
+        exec_builtin_or_dynamic,
+        get_modules_dict,
+        import_add_module,
+        import_find_extension,
+        import_run_extension,
+        is_builtin
+    }
+    interpreter.importing_api ++> modules.imp {
+        FROZEN_BAD_NAME,
+        FROZEN_DISABLED,
+        FROZEN_EXCLUDED,
+        FROZEN_INVALID,
+        FROZEN_NOT_FOUND,
+        FROZEN_OKAY,
+        FrozenInfo,
+        PyImport_ImportFrozenModuleObject,
+        find_frozen,
+        list_frozen_module_names,
+        set_frozen_error,
+        unmarshal_frozen_code,
+        update_compiled_module
+    }
     interpreter.lock ++> [
         modules.thread { PyThread_get_thread_ident_ex, load_u8, lot_llist_insert_tail },
         modules.warnings {
@@ -26593,6 +26892,49 @@ graph import runtime.python {
             Py_TPFLAGS_TUPLE_SUBCLASS,
             Py_TPFLAGS_UNICODE_SUBCLASS,
             _PyStatus_TYPE_OK
+        },
+        interpreter.importdl { PyModuleObject, PyTypeObject, _Py_ID_replace },
+        interpreter.importing {
+            ModuleDef,
+            PYC_MAGIC_NUMBER_TOKEN,
+            PYTHON_API_VERSION,
+            PyListObject,
+            PyModuleDef_Base,
+            PyModuleDef_Base_SIZE,
+            PyModuleObject,
+            PyTypeObject,
+            Py_RTFLAGS_MULTI_INTERP_EXTENSIONS,
+            _PyThreadState_WHENCE_EXEC,
+            _Py_ID___spec__,
+            _Py_ID__lock_unlock_module,
+            _Py_hashtable_entry_t,
+            _Py_hashtable_t,
+            _inittab_SIZE
+        },
+        interpreter.importing_api {
+            PyCodeObject_CONSTS,
+            PyCodeObject_FILENAME,
+            PyCodeObject_NAME,
+            PyStatus,
+            PyThreadState_INTERP,
+            PyTracebackObject_TB_FRAME,
+            PyTracebackObject_TB_NEXT,
+            Py_EQ,
+            _Py_ID___builtins__,
+            _Py_ID___import__,
+            _Py_ID___name__,
+            _Py_ID___package__,
+            _Py_ID___path__,
+            _Py_ID___spec__,
+            _Py_ID__find_and_load,
+            _Py_ID__fix_up_module,
+            _Py_ID__get_sourcefile,
+            _Py_ID__handle_fromlist,
+            _Py_ID_importlib,
+            _Py_ID_parent,
+            _Py_ID_reload,
+            _frozen,
+            _module_alias
         },
         interpreter.instrumentation {
             ADAPTIVE_WARMUP_BACKOFF,
@@ -27414,6 +27756,7 @@ graph import runtime.python {
             _Py_ID_fileno,
             _Py_ID_stderr
         },
+        modules.imp { PYC_MAGIC_NUMBER_TOKEN, PyBUF_READ, PyBUF_SIMPLE, PyTypeObject },
         modules.interpchannels {
             METH_KEYWORDS,
             METH_NOARGS,
@@ -27486,6 +27829,61 @@ graph import runtime.python {
             _object
         },
         modules.interpreters_common { PyTypeObject, _PyXIData_getdata_t, _PyXIData_t },
+        modules.marshal {
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            PyASCIIObject_LENGTH,
+            PyASCIIObject_SIZE,
+            PyASCIIObject_STATE,
+            PyBUF_ND,
+            PyBUF_SIMPLE,
+            PyBUF_WRITABLE,
+            PyBytesObject_OB_SVAL,
+            PyCodeObject_ARGCOUNT,
+            PyCodeObject_CONSTS,
+            PyCodeObject_EXCEPTIONTABLE,
+            PyCodeObject_FILENAME,
+            PyCodeObject_FIRSTLINENO,
+            PyCodeObject_FLAGS,
+            PyCodeObject_KWONLYARGCOUNT,
+            PyCodeObject_LINETABLE,
+            PyCodeObject_LOCALSPLUSKINDS,
+            PyCodeObject_LOCALSPLUSNAMES,
+            PyCodeObject_NAME,
+            PyCodeObject_NAMES,
+            PyCodeObject_POSONLYARGCOUNT,
+            PyCodeObject_QUALNAME,
+            PyCodeObject_STACKSIZE,
+            PyFloatObject,
+            PyListObject,
+            PyLongObject,
+            PySetObject,
+            PySliceObject,
+            PyUnicodeObject_DATA,
+            Py_CONSTANT_EMPTY_STR,
+            Py_TPFLAGS_BYTES_SUBCLASS,
+            _PyCodeConstructor_ARGCOUNT,
+            _PyCodeConstructor_CODE,
+            _PyCodeConstructor_CONSTS,
+            _PyCodeConstructor_EXCEPTIONTABLE,
+            _PyCodeConstructor_FILENAME,
+            _PyCodeConstructor_FIRSTLINENO,
+            _PyCodeConstructor_FLAGS,
+            _PyCodeConstructor_KWONLYARGCOUNT,
+            _PyCodeConstructor_LINETABLE,
+            _PyCodeConstructor_LOCALSPLUSKINDS,
+            _PyCodeConstructor_LOCALSPLUSNAMES,
+            _PyCodeConstructor_NAME,
+            _PyCodeConstructor_NAMES,
+            _PyCodeConstructor_POSONLYARGCOUNT,
+            _PyCodeConstructor_QUALNAME,
+            _PyCodeConstructor_STACKSIZE,
+            _Py_ID_read,
+            _Py_ID_readinto,
+            _Py_ID_write,
+            _Py_hashtable_entry_t,
+            _Py_hashtable_t,
+            _object
+        },
         modules.posix_fileio { PY_BUFFER_SIZE },
         modules.posix_stat { PyTypeObject as TypeLayout },
         modules.signal {
@@ -30412,6 +30810,40 @@ graph import runtime.python {
             _PyInterpreterFrame_STACKPOINTER
         },
         interpreter.getpath { MAXPATHLEN, PyConfig_PATHCONFIG_WARNINGS },
+        interpreter.importing {
+            PyConfig_IMPORT_TIME,
+            PyConfig_VERBOSE,
+            PyInterpreterState_BUILTINS_COPY,
+            PyInterpreterState_FEATURE_FLAGS,
+            PyInterpreterState_IMPORTS_DLOPENFLAGS,
+            PyInterpreterState_IMPORTS_FIND_AND_LOAD_HEADER,
+            PyInterpreterState_IMPORTS_FIND_AND_LOAD_IMPORT_LEVEL,
+            PyInterpreterState_IMPORTS_IMPORTLIB,
+            PyInterpreterState_IMPORTS_LOCK,
+            PyInterpreterState_IMPORTS_LOCK_THREAD,
+            PyInterpreterState_IMPORTS_MODULES,
+            PyInterpreterState_IMPORTS_MODULES_BY_INDEX,
+            PyInterpreterState_IMPORTS_OVERRIDE_MULTI_INTERP_EXTENSIONS_CHECK,
+            PyInterpreterState_SYSDICT_COPY,
+            _PyRuntimeState_IMPORTS_EXTENSIONS_HASHTABLE,
+            _PyRuntimeState_IMPORTS_EXTENSIONS_MUTEX,
+            _PyRuntimeState_IMPORTS_INITTAB,
+            _PyRuntimeState_IMPORTS_LAST_MODULE_INDEX
+        },
+        interpreter.importing_api {
+            PyConfig_IMPORT_TIME,
+            PyConfig_USE_FROZEN_MODULES,
+            PyConfig_VERBOSE,
+            PyInterpreterState_BUILTINS,
+            PyInterpreterState_IMPORTS_FIND_AND_LOAD_ACCUMULATED,
+            PyInterpreterState_IMPORTS_FIND_AND_LOAD_HEADER,
+            PyInterpreterState_IMPORTS_FIND_AND_LOAD_IMPORT_LEVEL,
+            PyInterpreterState_IMPORTS_IMPORTLIB,
+            PyInterpreterState_IMPORTS_IMPORT_FUNC,
+            PyInterpreterState_IMPORTS_MODULES,
+            PyInterpreterState_IMPORTS_MODULES_BY_INDEX,
+            PyInterpreterState_IMPORTS_OVERRIDE_FROZEN_MODULES
+        },
         interpreter.instrumentation {
             PyInterpreterState_CEVAL_INSTRUMENTATION_VERSION,
             PyInterpreterState_LAST_RESTART_VERSION,
@@ -30866,6 +31298,13 @@ graph import runtime.python {
             stack_t_SS_SIZE,
             stack_t_SS_SP
         },
+        modules.imp {
+            PyConfig_CHECK_HASH_PYCS_MODE,
+            PyInterpreterState_IMPORTS_LOCK,
+            PyInterpreterState_IMPORTS_OVERRIDE_FROZEN_MODULES,
+            PyInterpreterState_IMPORTS_OVERRIDE_MULTI_INTERP_EXTENSIONS_CHECK
+        },
+        modules.marshal { _PyRuntimeState_GLOBAL_STRINGS },
         modules.signal {
             Py_NSIG,
             _PyRuntimeState_SIGNALS_DEFAULT_HANDLER,
@@ -32503,6 +32942,31 @@ graph import runtime.python {
         },
         bindings.hmac { HMAC_TYPE, HMAC_token, UNKNOWN_HASH_ERROR, hmac_repr },
     ]
+    modules.imp ++> [
+        bindings.clinic.imp {
+            _imp__fix_co_filename_impl,
+            _imp__frozen_module_names_impl,
+            _imp__override_frozen_modules_for_tests_impl,
+            _imp__override_multi_interp_extensions_check_impl,
+            _imp_acquire_lock_impl,
+            _imp_create_builtin_impl,
+            _imp_create_dynamic_impl,
+            _imp_exec_builtin_impl,
+            _imp_exec_dynamic_impl,
+            _imp_extension_suffixes_impl,
+            _imp_find_frozen_impl,
+            _imp_get_frozen_object_impl,
+            _imp_init_frozen_impl,
+            _imp_is_builtin_impl,
+            _imp_is_frozen_impl,
+            _imp_is_frozen_package_impl,
+            _imp_lock_held_impl,
+            _imp_release_lock_impl,
+            _imp_source_hash_impl,
+            subclass_PyCode_Type
+        },
+        bindings.imp { imp_module_exec },
+    ]
     modules.interpchannels ++> bindings.interpchannels {
         interpchannels_moduledef,
         module_clear,
@@ -32675,6 +33139,16 @@ graph import runtime.python {
             lzma_compressor_new,
             lzma_encode_filter_properties
         },
+    ]
+    modules.marshal ++> [
+        bindings.clinic.marshal {
+            Py_MARSHAL_VERSION,
+            marshal_dump_impl,
+            marshal_dumps_impl,
+            marshal_load_impl,
+            marshal_loads_impl
+        },
+        bindings.marshal { marshal_module_exec },
     ]
     modules.math ++> [
         bindings.clinic.math {
@@ -34209,6 +34683,7 @@ graph import runtime.python {
     }
     modules.stat_records ++> cpython_api
         | interpreter.getpath
+        | interpreter.importdl
         | interpreter.lifecycle
         | interpreter.pymain
         | object_model.bootstrap_hash
@@ -34567,7 +35042,15 @@ graph import runtime.python {
     ]
     object_model.abstract ++> [
         bindings.signal { PyMapping_GetItemString },
+        interpreter.importdl { bytes_data, unicode_check },
+        interpreter.importing {
+            PyMapping_SetItemString,
+            bytes_data,
+            call_method_one_arg
+        },
+        interpreter.importing_api { unicode_check, unicode_length },
         modules.faulthandler { call_method_no_args, long_check },
+        modules.imp { unicode_check },
         modules.interpchannels { long_check },
         modules.warnings {
             long_check_exact,
@@ -34576,6 +35059,7 @@ graph import runtime.python {
             unicode_length
         },
     ]
+    object_model.bltinmodule ++> interpreter.importing { _PyInterpreterState_GetConfig }
     object_model.bool ++> [
         bindings.converters
             | bindings.stat
@@ -34615,9 +35099,12 @@ graph import runtime.python {
         },
     ]
     object_model.call ++> [
-        interpreter.gc | interpreter.lifecycle | interpreter.ops_build {
-            exception_raised
-        },
+        interpreter.gc
+            | interpreter.importing_api
+            | interpreter.lifecycle
+            | interpreter.ops_build
+            | modules.imp { exception_raised },
+        interpreter.importing { _Py_FatalErrorFormat, exception_raised, thread_state },
         interpreter.instrumentation { vectorcall_tstate },
         modules.interpchannels { thread_state },
         modules.interpreters { exception_raised, thread_state },
@@ -34631,6 +35118,10 @@ graph import runtime.python {
         modules.multibytecodec { PyCapsule_GetPointer, PyCapsule_IsValid },
         modules.pyexpat { PyCapsule_GetPointer, PyCapsule_New },
     ]
+    object_model.cfunction ++> interpreter.importdl | interpreter.importing {
+        module_check
+    }
+    object_model.code ++> interpreter.importing_api { code_check }
     object_model.complex ++> [
         bindings.cmath | modules.decimal_number { PyComplex_FromDoubles },
         constant_input { PyComplex_ImagAsDouble, PyComplex_RealAsDouble },
@@ -34648,7 +35139,8 @@ graph import runtime.python {
     }
     object_model.dict ++> [
         interpreter.gc { object_is_immortal },
-        interpreter.lifecycle { dict_check },
+        interpreter.importing { object_xincref },
+        interpreter.importing_api | interpreter.lifecycle { dict_check },
         interpreter.ops_attr { add_to_insertion_order, notify_event },
         interpreter.specialize {
             dk_is_unicode,
@@ -34658,6 +35150,23 @@ graph import runtime.python {
             managed_dict
         },
         modules.warnings { dict_check, object_xincref, unicode_check_exact },
+    ]
+    object_model.errors ++> [
+        interpreter.importdl { PyErr_SetImportError },
+        interpreter.importing {
+            _PyErr_Clear,
+            _PyErr_ExceptionMatches,
+            _PyErr_GetRaisedException,
+            _PyErr_SetString
+        },
+        interpreter.importing_api {
+            PyErr_SetImportError,
+            _PyErr_Clear,
+            _PyErr_ExceptionMatches,
+            _PyErr_GetRaisedException,
+            _PyErr_SetObject,
+            _PyErr_SetRaisedException
+        },
     ]
     object_model.exceptions ++> modules.warnings {
         PyExc_ImportWarning,
@@ -34670,6 +35179,7 @@ graph import runtime.python {
         modules.warnings { PyFile_WriteObject, PyFile_WriteString },
     ]
     object_model.frame ++> [
+        interpreter.importing_api { PyFrame_GetCode },
         interpreter.instrumentation { parse_varint },
         interpreter.ops_arith | interpreter.ops_attr { frame_initialize },
         modules.warnings {
@@ -34688,6 +35198,15 @@ graph import runtime.python {
         | bindings.posix
         | bindings.queue
         | bindings.sre { Py_GenericAlias }
+    object_model.getargs ++> interpreter.importing {
+        PyThreadState_Clear,
+        PyThreadState_Delete
+    }
+    object_model.hashtable ++> interpreter.importing {
+        _Py_hashtable_destroy,
+        _Py_hashtable_new_full,
+        _Py_hashtable_set
+    }
     object_model.header ++> [
         bindings.signal {
             current_tstate,
@@ -34754,6 +35273,35 @@ graph import runtime.python {
             object_xdecref,
             tuple_get_item,
             type_has_feature
+        },
+        interpreter.importdl {
+            current_interp,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_type,
+            object_type_check,
+            object_xdecref
+        },
+        interpreter.importing {
+            current_interp,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref
+        },
+        interpreter.importing_api {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item
         },
         interpreter.instrumentation {
             PyType_Type,
@@ -34901,6 +35449,15 @@ graph import runtime.python {
             object_type,
             object_xdecref
         },
+        modules.imp {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_new_ref,
+            object_type,
+            object_type_check,
+            object_xdecref
+        },
         modules.interpchannels {
             current_interp,
             object_decref,
@@ -34924,6 +35481,18 @@ graph import runtime.python {
             object_type,
             object_xdecref,
             type_has_feature
+        },
+        modules.marshal {
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
         },
         modules.signal {
             current_interp,
@@ -34963,7 +35532,9 @@ graph import runtime.python {
         },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
-    object_model.list ++> interpreter.lifecycle | modules.warnings { list_check }
+    object_model.list ++> interpreter.importing_api
+        | interpreter.lifecycle
+        | modules.warnings { list_check }
     object_model.long ++> [
         interpreter.ops { get_small_int },
         interpreter.specialize {
@@ -34982,9 +35553,20 @@ graph import runtime.python {
             | bindings.interpreters
             | bindings.signal
             | bindings.thread { PyModuleDef_Init },
+        interpreter.importdl { PyModuleDef_Type },
+        interpreter.importing {
+            PyModule_ExecDef,
+            PyModule_FromDefAndSpec2,
+            PyModule_GetDef,
+            PyModule_GetState,
+            PyModule_NewObject,
+            _PyModuleSpec_IsInitializing
+        },
         interpreter.lifecycle { module_check, module_get_dict },
     ]
-    object_model.namespace ++> modules.time { _PyNamespace_New }
+    object_model.namespace ++> interpreter.importing_api | modules.time {
+        _PyNamespace_New
+    }
     object_model.object ++> [
         interpreter.gc {
             gc_finalized,
@@ -34993,6 +35575,8 @@ graph import runtime.python {
             object_is_gc,
             var_size
         },
+        interpreter.importing { _Py_SetImmortalUntracked, interp_of, stderr_stream },
+        interpreter.importing_api { status_err, status_ok },
         interpreter.instrumentation | interpreter.lifecycle | modules.interpreters {
             unicode_check
         },
@@ -35003,6 +35587,12 @@ graph import runtime.python {
         modules.interpchannels { type_check },
     ]
     object_model.obmalloc ++> [
+        interpreter.importing {
+            _PyMem_DefaultRawFree,
+            _PyMem_DefaultRawMalloc,
+            _PyMem_DefaultRawRealloc,
+            _Py_FatalErrorFunc
+        },
         modules.thread { llist_init, llist_remove },
         modules.warnings { PyOS_snprintf },
     ]
@@ -35055,12 +35645,15 @@ graph import runtime.python {
     object_model.type ++> [
         interpreter.ceval { dict_check_exact, py_id, tuple_check, tuple_check_exact },
         interpreter.gc { inline_values_size, type_preheader_size },
-        interpreter.lifecycle { dict_check_exact, py_id, weakref_get_ref },
-        interpreter.ops_iter
+        interpreter.importdl
+            | interpreter.importing_api
+            | interpreter.ops_iter
             | interpreter.pystate
             | interpreter.specialize
             | modules.faulthandler
             | modules.warnings { py_id },
+        interpreter.importing { py_id, weakref_get_ref },
+        interpreter.lifecycle { dict_check_exact, py_id, weakref_get_ref },
         modules.signal { thread_state_get_frame },
         modules.thread { object_xnewref, py_id, weakref_get_ref },
     ]
@@ -35221,6 +35814,7 @@ graph import runtime.python.bindings {
             | clinic.cmath
             | clinic.codecs
             | clinic.hashopenssl
+            | clinic.imp
             | clinic.math
             | clinic.signal {
             CallSignature,
@@ -35233,6 +35827,7 @@ graph import runtime.python.bindings {
             | clinic.csv
             | clinic.functools
             | clinic.grp
+            | clinic.marshal
             | clinic.opcode
             | clinic.pyexpat
             | clinic.syslog
@@ -35386,7 +35981,9 @@ graph import runtime.python.bindings {
             | clinic.bz2
             | clinic.codecs
             | clinic.hashopenssl
+            | clinic.imp
             | clinic.lzma
+            | clinic.marshal
             | clinic.mmap
             | clinic.multibytecodec
             | clinic.posix
@@ -35511,6 +36108,7 @@ graph import runtime.python.bindings {
     }
     clinic.heapq ++> heapq { __about__, module_doc, module_methods }
     clinic.hmac ++> hmac { HMAC_getset, HMAC_methods, module_methods }
+    clinic.imp ++> imp { module_methods }
     clinic.itertools ++> itertools {
         _tee_doc,
         accumulate_doc,
@@ -35588,6 +36186,7 @@ graph import runtime.python.bindings {
         _lzma_LZMADecompressor_new,
         module_methods
     }
+    clinic.marshal ++> marshal { module_doc, module_methods }
     clinic.math ++> math {
         math_acos_doc,
         math_acosh_doc,
@@ -35876,6 +36475,16 @@ graph import runtime.python.bindings {
         },
         clinic.heapq { argument_label, bad_argument },
         clinic.hmac { defining_class },
+        clinic.imp {
+            argument_label,
+            borrowed_none,
+            convert_bool,
+            convert_buffer,
+            convert_int,
+            convert_long,
+            convert_unicode,
+            return_int
+        },
         clinic.itertools {
             argument_label,
             bad_argument,
@@ -35899,6 +36508,7 @@ graph import runtime.python.bindings {
             convert_int,
             convert_ssize
         },
+        clinic.marshal { argument_label, convert_bool, convert_buffer, convert_int },
         clinic.math { borrowed_none, convert_double, return_bool, return_double },
         clinic.md5 | clinic.sha1 | clinic.sha2 { convert_bool, defining_class },
         clinic.mmap {
@@ -36228,10 +36838,12 @@ graph import runtime.python.bindings {
             | clinic.hashopenssl
             | clinic.heapq
             | clinic.hmac
+            | clinic.imp
             | clinic.itertools
             | clinic.locale
             | clinic.lsprof
             | clinic.lzma
+            | clinic.marshal
             | clinic.math
             | clinic.md5
             | clinic.mmap
@@ -36342,6 +36954,8 @@ graph import runtime.python.bindings {
         },
         errno
             | fcntl
+            | imp
+            | marshal
             | opcode
             | posixsubprocess
             | types
@@ -36751,6 +37365,12 @@ graph import runtime.python.bindings {
 }
 
 graph import runtime.python.interpreter {
+    ceval ++> importing_api {
+        PyEval_EvalCode,
+        PyEval_GetBuiltins,
+        PyEval_GetGlobals,
+        _PyEval_EnsureBuiltinsWithModule
+    }
     ceval_gil ++> [
         ceval | instrumentation | legacy_tracing { head_lock, head_unlock },
         pystate {
@@ -36778,6 +37398,39 @@ graph import runtime.python.interpreter {
             intrinsic_func2_info
         },
     ]
+    importdl ++> importing {
+        EXT_MODULE_KIND_MULTIPHASE,
+        EXT_MODULE_KIND_SINGLEPHASE,
+        EXT_MODULE_ORIGIN_CORE,
+        ExtModuleLoaderInfo,
+        ExtModuleLoaderResult,
+        _PyImport_RunModInitFunc,
+        _Py_ext_module_loader_info_clear,
+        _Py_ext_module_loader_info_init_for_builtin,
+        _Py_ext_module_loader_result_apply_error,
+        _Py_ext_module_loader_result_clear
+    }
+    importing ++> importing_api {
+        PyImport_AddModuleRef,
+        _PyImport_SetModuleString,
+        _extensions_cache_clear_all,
+        builtin_inittab,
+        clear_inittab_copy,
+        create_builtin,
+        exec_builtin_or_dynamic,
+        fini_builtin_modules_table,
+        import_add_module,
+        import_ensure_initialized,
+        import_get_module,
+        init_builtin_modules_table,
+        remove_module
+    }
+    importing_api ++> importing { remove_importlib_frames }
+    lock ++> importing {
+        PyThread_get_thread_ident_ex,
+        _PyRecursiveMutex_Lock,
+        _PyRecursiveMutex_Unlock
+    }
     ops ++> [
         dispatch { HandlerSlot },
         eval {
@@ -38075,6 +38728,7 @@ graph import runtime.python.modules {
             unary_op
         },
     ]
+    dynload_platform ++> imp { _PyImport_DynLoadFiletab }
     errno_constants ++> [
         locale { ERANGE },
         multiprocessing { EAGAIN, EINTR, ETIMEDOUT },
@@ -39961,7 +40615,7 @@ graph import runtime.python.modules {
         },
     ]
     stat ++> posix_stat { S_IFDIR, S_IFLNK, S_IFMT, S_IFREG }
-    stat_records ++> mmap | posix_stat | posix_stat_platform | signal {
+    stat_records ++> marshal | mmap | posix_stat | posix_stat_platform | signal {
         _Py_stat_struct
     }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }

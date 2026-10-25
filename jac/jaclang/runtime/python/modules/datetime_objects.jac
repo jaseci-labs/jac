@@ -567,7 +567,7 @@ impl get_current_state -> ptr[PyObject] {
         return NULL;
     }
     if not module {
-        module = PyImport_ImportModule("_datetime");
+        module = PyImport_ImportModule(ptr[u8]("_datetime"));
     }
     return module;
 }

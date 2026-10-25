@@ -3331,7 +3331,9 @@ impl pysqlite_connection_iterdump_impl(
     if con is None or not check_connection(receiver, con) {
         return NULL;
     }
-    iterdump = PyImport_ImportModuleAttrString("sqlite3.dump", "_iterdump");
+    iterdump = PyImport_ImportModuleAttrString(
+        ptr[u8]("sqlite3.dump"), ptr[u8]("_iterdump")
+    );
     if not iterdump {
         if not PyErr_Occurred() {
             object_error(

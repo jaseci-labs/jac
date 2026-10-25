@@ -59,6 +59,8 @@
 #include "internal/pycore_initconfig.h"
 #include "internal/pycore_ast.h"
 #include "internal/pycore_ast_state.h"
+#include "internal/pycore_magic_number.h"
+#include "internal/pycore_import.h"
 #include <stddef.h>
 #ifdef _Py_FORCE_UTF8_FS_ENCODING
 #define JAC_FORCE_UTF8_FS_ENCODING 1
@@ -3001,6 +3003,26 @@ FIELD(struct ast_state, withitem_type, 1968, 8);
 KIND(struct ast_state, withitem_type, 5);
 LAYOUT(struct ast_state, 1976, 8);
 
+/* _frozen */
+FIELD(struct _frozen, name, 0, 8);
+KIND(struct _frozen, name, 5);
+FIELD(struct _frozen, code, 8, 8);
+KIND(struct _frozen, code, 5);
+FIELD(struct _frozen, size, 16, 4);
+KIND(struct _frozen, size, 1);
+SIGNED(struct _frozen, size, 1);
+FIELD(struct _frozen, is_package, 20, 4);
+KIND(struct _frozen, is_package, 1);
+SIGNED(struct _frozen, is_package, 1);
+LAYOUT(struct _frozen, 24, 8);
+
+/* _module_alias */
+FIELD(struct _module_alias, name, 0, 8);
+KIND(struct _module_alias, name, 5);
+FIELD(struct _module_alias, orig, 8, 8);
+KIND(struct _module_alias, orig, 5);
+LAYOUT(struct _module_alias, 16, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(_Py_IMMORTAL_INITIAL_REFCNT, 3221225472LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
@@ -4630,6 +4652,22 @@ CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_inf), 25512LL);
 CONSTANT(offsetof(struct _Py_global_strings, literals._py_dbl_open_br), 544LL);
 CONSTANT(offsetof(struct _Py_global_strings, literals._py_dbl_close_br), 496LL);
 CONSTANT(offsetof(struct _Py_global_strings, literals._py_str_replace_inf), 1080LL);
+CONSTANT(PYC_MAGIC_NUMBER_TOKEN, 168627755LL);
+CONSTANT(_PyThreadState_WHENCE_EXEC, 5LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___package__), 8032LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___path__), 8144LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__find_and_load), 11968LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__fix_up_module), 12024LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__get_sourcefile), 12128LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__handle_fromlist), 12184LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__lock_unlock_module), 12640LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_parent), 33088LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_read), 34496LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_readinto), 34696LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_reload), 35184LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_replace), 35280LL);
+CONSTANT(sizeof(PyModuleDef_Base), 40LL);
+CONSTANT(sizeof(struct _inittab), 16LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -5153,6 +5191,21 @@ CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 2328LL
 CONSTANT(offsetof(PyInterpreterState, xi), 10648LL);
 CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 CONSTANT(offsetof(PyInterpreterState, ast), 79944LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.inittab), 2704LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.last_module_index), 2712LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.extensions.hashtable), 2728LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules), 7688LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules_by_index), 7696LL);
+CONSTANT(offsetof(PyInterpreterState, imports.importlib), 7704LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_frozen_modules), 7712LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_multi_interp_extensions_check), 7716LL);
+CONSTANT(offsetof(PyInterpreterState, imports.dlopenflags), 7720LL);
+CONSTANT(offsetof(PyInterpreterState, imports.import_func), 7728LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock), 7736LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5674,6 +5727,21 @@ CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 2328LL
 CONSTANT(offsetof(PyInterpreterState, xi), 10664LL);
 CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 CONSTANT(offsetof(PyInterpreterState, ast), 79960LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.inittab), 2704LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.last_module_index), 2712LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.extensions.hashtable), 2728LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules), 7688LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules_by_index), 7696LL);
+CONSTANT(offsetof(PyInterpreterState, imports.importlib), 7704LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_frozen_modules), 7712LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_multi_interp_extensions_check), 7716LL);
+CONSTANT(offsetof(PyInterpreterState, imports.dlopenflags), 7720LL);
+CONSTANT(offsetof(PyInterpreterState, imports.import_func), 7728LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock), 7736LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6195,6 +6263,21 @@ CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 1800LL
 CONSTANT(offsetof(PyInterpreterState, xi), 10696LL);
 CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 CONSTANT(offsetof(PyInterpreterState, ast), 79992LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.inittab), 2192LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.last_module_index), 2200LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.extensions.hashtable), 2216LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules), 7688LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules_by_index), 7696LL);
+CONSTANT(offsetof(PyInterpreterState, imports.importlib), 7704LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_frozen_modules), 7712LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_multi_interp_extensions_check), 7716LL);
+CONSTANT(offsetof(PyInterpreterState, imports.dlopenflags), 7720LL);
+CONSTANT(offsetof(PyInterpreterState, imports.import_func), 7728LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock), 7736LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6716,6 +6799,21 @@ CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 1800LL
 CONSTANT(offsetof(PyInterpreterState, xi), 10696LL);
 CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 CONSTANT(offsetof(PyInterpreterState, ast), 79992LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.inittab), 2192LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.last_module_index), 2200LL);
+CONSTANT(offsetof(_PyRuntimeState, imports.extensions.hashtable), 2216LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules), 7688LL);
+CONSTANT(offsetof(PyInterpreterState, imports.modules_by_index), 7696LL);
+CONSTANT(offsetof(PyInterpreterState, imports.importlib), 7704LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_frozen_modules), 7712LL);
+CONSTANT(offsetof(PyInterpreterState, imports.override_multi_interp_extensions_check), 7716LL);
+CONSTANT(offsetof(PyInterpreterState, imports.dlopenflags), 7720LL);
+CONSTANT(offsetof(PyInterpreterState, imports.import_func), 7728LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock), 7736LL);
+CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
+CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif
