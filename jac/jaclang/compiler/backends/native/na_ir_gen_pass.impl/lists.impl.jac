@@ -684,7 +684,7 @@ impl NaIRGenPass._codegen_index(
     index_val = self._emit_list_index_check(
         index_val, len_val, "list index out of range", [target_val], "idx"
     );
-    _got = self.builder.call(
+    _got: ir.Value = self.builder.call(
         helpers["get"], [target_val, index_val], name="list.get", attrs=_slow_attrs
     );
     if anchor is not None and fast_bb is not None and join_bb is not None {
@@ -1244,14 +1244,14 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                 if not self._anchor_container(nd.collection) {
                     return False;
                 }
-            } elif kind == "BinaryExpr" {
+            } elif isinstance(nd, uni.BinaryExpr) {
                 if not (isinstance(nd.op, uni.Token) and nd.op.name == Tok.WALRUS_EQ)
                     and not (
                         self._anchor_plain(nd.left) and self._anchor_plain(nd.right)
                     ) {
                     return False;
                 }
-            } elif kind == "CompareExpr" {
+            } elif isinstance(nd, uni.CompareExpr) {
                 ops = [str(getattr(op, "value", "")) for op in (nd.ops or [])];
                 if not all(op in ("is", "is not") for op in ops)
                     and not all(
@@ -1259,15 +1259,15 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                     ) {
                     return False;
                 }
-            } elif kind == "BoolExpr" {
+            } elif isinstance(nd, uni.BoolExpr) {
                 if not all(self._anchor_plain(v) for v in (nd.values or [])) {
                     return False;
                 }
-            } elif kind == "UnaryExpr" {
+            } elif isinstance(nd, uni.UnaryExpr) {
                 if not self._anchor_plain(nd.operand) {
                     return False;
                 }
-            } elif kind == "FormattedValue" {
+            } elif isinstance(nd, uni.FormattedValue) {
                 if not self._anchor_plain(nd.format_part) {
                     return False;
                 }
@@ -1296,7 +1296,7 @@ impl NaIRGenPass._anchor_plain(e: object) -> bool {
     Using such a value (an operator, a comparison, a truth test, formatting,
     hashing) runs no user code. A value of unknown type is not plain.
     """;
-    while type(e).__name__ == "CfgExpr" {
+    while isinstance(e, uni.CfgExpr) {
         e = e.expr;
     }
     if not isinstance(e, uni.Expr) or e.type is None {
@@ -1350,7 +1350,7 @@ impl NaIRGenPass._anchor_container(e: object) -> bool {
     whatever it holds. A dict or set hashes and compares keys, so its keys
     have to be plain as well.
     """;
-    while type(e).__name__ == "CfgExpr" {
+    while isinstance(e, uni.CfgExpr) {
         e = e.expr;
     }
     if not isinstance(e, uni.Expr) or e.type is None {
