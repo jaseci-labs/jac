@@ -684,7 +684,13 @@ impl ProjectModel.new_files -> list[str] {
                         self.dir_mtimes[sub] = os.path.getmtime(sub);
                     } except OSError {}
                     for f in files {
-                        if f.endswith(".jac") and f != ARCH_FILE_NAME {
+                        if f == ARCH_FILE_NAME {
+                            arch = os.path.realpath(os.path.join(sub, f));
+                            if arch not in self.arch_mtimes
+                                and arch not in self.found {
+                                self.found.append(arch);
+                            }
+                        } elif f.endswith(".jac") {
                             path = os.path.realpath(os.path.join(sub, f));
                             if path not in self.by_file and path not in self.found {
                                 self.found.append(path);
@@ -692,7 +698,12 @@ impl ProjectModel.new_files -> list[str] {
                         }
                     }
                 }
-            } elif name.endswith(".jac") and name != ARCH_FILE_NAME {
+            } elif name == ARCH_FILE_NAME {
+                arch = os.path.realpath(full);
+                if arch not in self.arch_mtimes and arch not in self.found {
+                    self.found.append(arch);
+                }
+            } elif name.endswith(".jac") {
                 path = os.path.realpath(full);
                 if path not in self.by_file and path not in self.found {
                     self.found.append(path);

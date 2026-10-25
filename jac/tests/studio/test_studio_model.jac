@@ -119,3 +119,25 @@ test "refreshing a package keeps its children's symbols, and new files are found
         assert not model.stale_files() , "a deleted file is retried forever";
     }
 }
+
+test "a wiring file created while the workspace is open is wired in" {
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp) / "late";
+        (base / "core").mkdir(parents=True);
+        (base / "jac.toml").write_text("[project]\nname = \"late\"\n");
+        (base / "core" / "a.jac").write_text("def one -> int {\n    return 1;\n}\n");
+        (base / "main.jac").write_text("with entry {\n    print(1);\n}\n");
+        model = ProjectModel(root_dir=str(base));
+        model.build(index=False);
+        assert not model.wires;
+        arch = base / "archwire.jac";
+        arch.write_text("graph import {\n    core.a ++> main { one }\n}\n");
+        stale = model.stale_files();
+        assert os.path.realpath(str(arch)) in stale , stale;
+        for path in stale {
+            model.refresh(path);
+        }
+        assert [(w.provider, w.consumer) for w in model.wires]
+            == [("core.a", "main")] , [(w.provider, w.consumer) for w in model.wires];
+    }
+}

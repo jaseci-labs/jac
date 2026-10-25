@@ -95,7 +95,7 @@ impl NativeAgentSession.prompt(blocks: list[dict[str, any]]) -> None {
 
 impl NativeAgentSession._run_turn(blocks: list[dict[str, any]], gen: int) -> None {
     llm = self.llm;
-    tools = self.make_tools();
+    tools = self.make_tools(gen);
     conv = list(self.history);
     self._thought = "";
     request = blocks_text(blocks);
@@ -247,51 +247,65 @@ impl NativeAgentSession.stop -> None {
     }
 }
 
-impl NativeAgentSession.make_tools -> list[any] {
+impl NativeAgentSession._live(gen: int) -> bool {
+    return not self._cancel and (gen < 0 or gen == self._gen);
+}
+
+impl NativeAgentSession.make_tools(gen: int = -1) -> list[any] {
     def read_file(path: str, start_line: int = 1, max_lines: int = 400) -> str {
-        return self.t_read_file(path, start_line, max_lines);
+        return self.t_read_file(path, start_line, max_lines)
+            if self._live(gen)
+            else "error: cancelled";
     }
     read_file.__doc__ = "Read a text file of the project. Returns numbered lines starting at start_line (1-based), at most max_lines of them.";
     def list_dir(path: str = ".") -> str {
-        return self.t_list_dir(path);
+        return self.t_list_dir(path) if self._live(gen) else "error: cancelled";
     }
     list_dir.__doc__ = "List a directory of the project; directories end with '/'.";
     def search(
         pattern: str, path: str = ".", file_glob: str = "*.jac", max_results: int = 80
     ) -> str {
-        return self.t_search(pattern, path, file_glob, max_results);
+        return self.t_search(pattern, path, file_glob, max_results)
+            if self._live(gen)
+            else "error: cancelled";
     }
     search.__doc__ = "Search file contents with a regular expression under path (a directory or file), in files whose name matches file_glob (use '*' for every text file). Returns path:line: text.";
     def write_file(path: str, content: str) -> str {
-        return self.t_write_file(path, content);
+        return self.t_write_file(path, content, gen)
+            if self._live(gen)
+            else "error: cancelled";
     }
     write_file.__doc__ = "Write the complete new content of a project file. The user reviews every write; a rejection comes back with the reason.";
     def run_command(command: str, timeout_sec: int = 120) -> str {
-        return self.t_run_command(command, timeout_sec);
+        return self.t_run_command(command, timeout_sec, gen)
+            if self._live(gen)
+            else "error: cancelled";
     }
     run_command.__doc__ = "Run a shell command in the project root (the user approves it first). Returns the exit code and the output.";
     def find_symbol(query: str, kind: str = "") -> str {
-        return self.t_find_symbol(query, kind);
+        return self.t_find_symbol(query, kind)
+            if self._live(gen)
+            else "error: cancelled";
     }
     find_symbol.__doc__ = "Find modules and symbols (archetypes, abilities, fields) in the project model by name or dotted key. kind narrows it: module, obj, node, edge, walker, def, can, method, has, enum.";
     def symbol_context(key: str) -> str {
-        return self.t_symbol_context(key);
+        return self.t_symbol_context(key) if self._live(gen) else "error: cancelled";
     }
     symbol_context.__doc__ = "Show a symbol or module by key (e.g. pkg.mod.Name.method): location, signature, the wires that carry it, rules, its declaration and its .impl.jac body.";
     def symbol_uses(name: str) -> str {
-        return self.t_symbol_uses(name);
+        return self.t_symbol_uses(name) if self._live(gen) else "error: cancelled";
     }
     symbol_uses.__doc__ = "List where a symbol is defined and used across the project, from the compiler's symbol tables. Takes a plain name or a dotted key.";
     def archwire(module: str) -> str {
-        return self.t_archwire(module);
+        return self.t_archwire(module) if self._live(gen) else "error: cancelled";
     }
     archwire.__doc__ = "Show a module's architecture neighbourhood: the wires that feed it and that it feeds (with payload names) and the archwire rules governing it.";
     def architecture(scope: str = "") -> str {
-        return self.t_architecture(scope);
+        return self.t_architecture(scope) if self._live(gen) else "error: cancelled";
     }
     architecture.__doc__ = "Show the architecture one package level at a time: the groups under scope (a package such as pkg.sub, a module shown among its siblings, or empty for the whole project) in provider-first layers, a matrix of wire counts between them, the backward wires that break the layering, and cycles.";
     def insight(view: str, key: str = "") -> str {
-        return self.t_insight(view, key);
+        return self.t_insight(view, key) if self._live(gen) else "error: cancelled";
     }
     insight.__doc__ = "Higher-level views of the wiring. view: roles (foundations, hubs, entry points under key), interface (names crossing the boundary of key), rules (rule use, unused permissions, violations), slice (what module key rests on), blast (what depends on a module or name key), clusters (natural clusters vs packages under key), tour (an onboarding tour of key), diff (architecture changes since git revision key).";
     return [
@@ -455,8 +469,8 @@ impl NativeAgentSession.t_search(
     return "\n".join(hits) or "no matches";
 }
 
-impl NativeAgentSession.t_write_file(path: str, content: str) -> str {
-    if self._cancel {
+impl NativeAgentSession.t_write_file(path: str, content: str, gen: int = -1) -> str {
+    if not self._live(gen) {
         return "error: cancelled";
     }
     if not self.inside(path) {
@@ -475,8 +489,10 @@ impl NativeAgentSession.t_write_file(path: str, content: str) -> str {
     return f"ok: wrote {self.rel(full)} ({len(content.splitlines())} lines)";
 }
 
-impl NativeAgentSession.t_run_command(command: str, timeout_sec: int) -> str {
-    if self._cancel {
+impl NativeAgentSession.t_run_command(
+    command: str, timeout_sec: int, gen: int = -1
+) -> str {
+    if not self._live(gen) {
         return "error: cancelled";
     }
     if not self.auto_approve_commands {
@@ -506,6 +522,9 @@ impl NativeAgentSession.t_run_command(command: str, timeout_sec: int) -> str {
         if choice != "allow" {
             return "rejected: the user did not allow this command";
         }
+    }
+    if not self._live(gen) {
+        return "error: cancelled";
     }
     tid = self.next_request_id("term");
     self.emit("terminal", {"terminal_id": tid, "command": command, "output": ""});

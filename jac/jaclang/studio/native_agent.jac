@@ -62,7 +62,8 @@ obj NativeAgentSession(AgentSession) {
     def _forward(ev: any, gen: int) -> None;
     def _emit_if(gen: int, kind: str, data: dict[str, any]) -> None;
     def _finish(gen: int, reason: str) -> None;
-    def make_tools -> list[any];
+    def make_tools(gen: int = -1) -> list[any];
+    def _live(gen: int) -> bool;
     def model -> any;
     def intel -> any;
     def rel(path: str) -> str;
@@ -70,8 +71,8 @@ obj NativeAgentSession(AgentSession) {
     def t_read_file(path: str, start_line: int, max_lines: int) -> str;
     def t_list_dir(path: str) -> str;
     def t_search(pattern: str, path: str, file_glob: str, max_results: int) -> str;
-    def t_write_file(path: str, content: str) -> str;
-    def t_run_command(command: str, timeout_sec: int) -> str;
+    def t_write_file(path: str, content: str, gen: int = -1) -> str;
+    def t_run_command(command: str, timeout_sec: int, gen: int = -1) -> str;
     def t_find_symbol(query: str, kind: str) -> str;
     def t_symbol_context(key: str) -> str;
     def t_symbol_uses(name: str) -> str;
