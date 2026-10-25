@@ -1287,9 +1287,9 @@ impl NativeStrEmitter.emit_rpartition(
     notfound_bb = func.append_basic_block(name="rpart.no");
     merge_bb = func.append_basic_block(name="rpart.merge");
 
-    last_match_alloca = b.alloca(i8p, name="rpart.last");
+    last_match_alloca = p._stack_entry_alloca(i8p, "rpart.last");
     b.store(ir.Constant(i8p, None), last_match_alloca);
-    cur_alloca = b.alloca(i8p, name="rpart.cur");
+    cur_alloca = p._stack_entry_alloca(i8p, "rpart.cur");
     b.store(target, cur_alloca);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
@@ -4254,7 +4254,7 @@ impl NativeSetEmitter._emit_set_elem_loop(
         }
     }
     n = b.call(src_helpers["len"], [src_set], name=f"{prefix}.len");
-    iv = b.alloca(i64, name=f"{prefix}.i");
+    iv = p._stack_entry_alloca(i64, f"{prefix}.i");
     b.store(ir.Constant(i64, 0), iv);
     func = b.basic_block.function;
     loop_bb = func.append_basic_block(name=f"{prefix}.loop");
@@ -4596,7 +4596,7 @@ impl NativeSetEmitter._emit_set_relation(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    res_a = b.alloca(i64, name=f"{prefix}.res");
+    res_a = p._stack_entry_alloca(i64, f"{prefix}.res");
     b.store(ir.Constant(i64, 1), res_a);
 
     def _probe(b2: ir.IRBuilder, ev: ir.Value) {
@@ -5887,7 +5887,7 @@ impl NativeBuiltinEmitter._int_from_c_string(
         );
     }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
-    endptr_alloca = b.alloca(i8p, name="endptr");
+    endptr_alloca = p._stack_entry_alloca(i8p, "endptr");
     result_val = b.call(
         strtol_fn,
         [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
@@ -5971,7 +5971,7 @@ impl NativeBuiltinEmitter.emit_float(
         strtod_fn = p._get_or_declare_extern(
             "strtod", ir.DoubleType(), [i8p, i8p.as_pointer()]
         );
-        endptr_alloca = b.alloca(i8p, name="float.endptr");
+        endptr_alloca = p._stack_entry_alloca(i8p, "float.endptr");
         result = b.call(strtod_fn, [arg_val, endptr_alloca], name="float.result");
         endptr_val = b.load(endptr_alloca, name="float.endptr.val");
         no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="float.noparse");
