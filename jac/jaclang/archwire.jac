@@ -20336,7 +20336,7 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
-        modules.posix_fileio_platform { jacpy_set_errno },
+        modules.posix_fileio_platform | object_model.mystrtoul { jacpy_set_errno },
         modules.posix_files {
             NULL,
             PyBytes_AsString,
@@ -22627,6 +22627,7 @@ graph import runtime.python {
             jacpy_unicode_intern_text,
             jacpy_unicode_kind
         },
+        object_model.dtoa { PyMem_Free, PyMem_Malloc, jacpy_set_errno },
         object_model.enumerate {
             NULL,
             PyArg_ParseTupleAndKeywords,
@@ -22880,6 +22881,30 @@ graph import runtime.python {
             jacpy_float_from_bits,
             jacpy_memory_copy,
             jacpy_set_errno
+        },
+        object_model.formatter_unicode {
+            NULL,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_OverflowError,
+            PyExc_SystemError,
+            PyExc_ValueError,
+            PyFloat_AsDouble,
+            PyLong_AsLong,
+            PyMem_Free,
+            PyNumber_Float,
+            PyOS_double_to_string,
+            PyObject,
+            PyObject_Str,
+            PyUnicode_FromKindAndData,
+            PyUnicode_FromOrdinal,
+            Py_GetConstant,
+            _PyMem_Strdup,
+            _PyUnicode_ToDecimalDigit,
+            _Py_GetLocaleconvNumeric,
+            lconv
         },
         object_model.frame {
             NULL,
@@ -23696,6 +23721,28 @@ graph import runtime.python {
             Py_None,
             Py_buffer,
             jacpy_release
+        },
+        object_model.pystrhex {
+            NULL,
+            PyBytes_FromStringAndSize,
+            PyErr_NoMemory,
+            PyErr_SetString,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyObject,
+            PyUnicode_New
+        },
+        object_model.pystrtod {
+            NULL,
+            PyErr_BadInternalCall,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyExc_ValueError,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            jacpy_errno,
+            jacpy_set_errno
         },
         object_model.range {
             NULL,
@@ -26106,6 +26153,17 @@ graph import runtime.python {
             dictiterobject,
             dictiterobject_SIZE
         },
+        object_model.dtoa {
+            Bigint_Kmax,
+            Bigint_PREALLOC_SIZE,
+            Bigint_Pow5size,
+            Bigint_SIGN,
+            Bigint_SIZE,
+            Bigint_X,
+            PyStatus,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK
+        },
         object_model.enumerate {
             METH_CLASS,
             METH_NOARGS,
@@ -26255,6 +26313,7 @@ graph import runtime.python {
             _Py_freelists_FLOATS,
             _object
         },
+        object_model.formatter_unicode { Py_CONSTANT_EMPTY_STR },
         object_model.frame {
             CO_FAST_CELL,
             CO_FAST_FREE,
@@ -26994,6 +27053,7 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
+        object_model.pystrtod { Py_DTSF_ADD_DOT_0, Py_DTSF_SIGN },
         object_model.range {
             METH_NOARGS,
             METH_O,
@@ -28030,6 +28090,12 @@ graph import runtime.python {
             PyInterpreterState_DICT_NEXT_KEYS_VERSION,
             PyInterpreterState_DICT_WATCHERS
         },
+        object_model.dtoa {
+            PyInterpreterState_DTOA_FREELIST,
+            PyInterpreterState_DTOA_P5S,
+            PyInterpreterState_DTOA_PREALLOCATED,
+            PyInterpreterState_DTOA_PREALLOCATED_NEXT
+        },
         object_model.exceptions {
             PyInterpreterState_EXC_ERRNOMAP,
             PyInterpreterState_EXC_GROUP,
@@ -28160,6 +28226,7 @@ graph import runtime.python {
             _PyThreadStateImpl_MEM_FREE_QUEUE,
             _PyThreadStateImpl_QSBR
         },
+        object_model.pymath { HAVE_X87_CONTROL_WORD },
         object_model.tuple {
             _PyRuntimeState_REF_TRACER_DATA,
             _PyRuntimeState_REF_TRACER_FUNC,
@@ -29110,6 +29177,7 @@ graph import runtime.python {
     modules.errno_constants ++> [
         bindings.errno { CONSTANTS, PLATFORM },
         object_model.complex { EDOM, ERANGE },
+        object_model.dtoa | object_model.pystrtod { ENOMEM, ERANGE },
         object_model.exceptions {
             EACCES,
             EAGAIN,
@@ -29132,7 +29200,7 @@ graph import runtime.python {
             EWOULDBLOCK
         },
         object_model.file { EAGAIN, ENXIO },
-        object_model.float { ERANGE },
+        object_model.float | object_model.mystrtoul { ERANGE },
     ]
     modules.expat ++> bindings.pyexpat {
         XML_PARAM_ENTITY_PARSING_ALWAYS,
@@ -36530,6 +36598,8 @@ graph import runtime.python.object_model {
             py_isspace,
             py_isxdigit
         },
+        mystrtoul { py_isspace },
+        pystrcmp | pystrtod { py_tolower },
         unicode {
             bl_count,
             bl_fastsearch,
@@ -36789,6 +36859,7 @@ graph import runtime.python.object_model {
             tuple_set_item,
             type_has_feature
         },
+        dtoa { current_interp },
         enumerate {
             PyType_Type,
             object_gc_untrack,
@@ -36832,6 +36903,7 @@ graph import runtime.python.object_model {
             tuple_set_item,
             type_has_feature
         },
+        formatter_unicode { object_decref, object_type, object_xdecref },
         frame {
             current_tstate,
             object_decref,
@@ -37215,6 +37287,8 @@ graph import runtime.python.object_model {
     long ++> [
         bltinmodule { compact_value, long_is_compact },
         bytearray | bytes { get_small_int },
+        formatter_unicode { long_check_exact },
+        mystrtoul { digit_value },
     ]
     method ++> func { PyMethod_New }
     object ++> [
@@ -37239,7 +37313,29 @@ graph import runtime.python.object_model {
     structseq ++> float | long { PyStructSequence_New }
     tuple ++> bytes | float | long | unicode { reftracer_track }
     type ++> bltinmodule { py_id }
-    unicode ++> bltinmodule { uo_read_char }
+    unicode ++> [
+        bltinmodule { uo_read_char },
+        formatter_unicode {
+            UnicodeWriter,
+            ch_read,
+            ch_write,
+            unicode_check_exact,
+            uo_data,
+            uo_kind,
+            uo_length,
+            uo_max_char_value,
+            uo_read_char,
+            writer_prepare
+        },
+        pystrhex {
+            bytes_check,
+            bytes_data,
+            unicode_check,
+            uo_data,
+            uo_kind,
+            uo_read_char
+        },
+    ]
     unicodetype_db ++> unicodectype {
         LINEBREAK_LENGTH,
         NUMERIC_LENGTH,

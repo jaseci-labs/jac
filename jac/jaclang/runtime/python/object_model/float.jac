@@ -433,7 +433,7 @@ import from c {
             length = object_size(s_buffer);
         }
         result = _Py_string_to_number_with_underscores(
-            ptr(s), length, "float", v, ptr(v), ptr(float_from_string_inner)
+            ptr(s), length, ptr[u8]("float"), v, ptr(v), ptr(float_from_string_inner)
         );
         if view {
             PyBuffer_Release(view);

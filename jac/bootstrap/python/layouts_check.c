@@ -85,6 +85,11 @@
 #ifndef VM_FLAGS_SUPERPAGE_SIZE_2MB
 #define VM_FLAGS_SUPERPAGE_SIZE_2MB 0
 #endif
+#if defined(__x86_64__) || defined(__i386__)
+#define JAC_HAVE_X87 1
+#else
+#define JAC_HAVE_X87 0
+#endif
 
 /* The private object structs of the ported Objects/ files, as the
  * pinned sources define them. */
@@ -3442,6 +3447,15 @@ CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_encoding), 21008LL)
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_errors), 21432LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___round__), 9192LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_sort), 37216LL);
+CONSTANT(Bigint_Kmax, 7LL);
+CONSTANT(Bigint_Pow5size, 8LL);
+CONSTANT(Bigint_PREALLOC_SIZE, 288LL);
+CONSTANT(sizeof(struct Bigint), 32LL);
+CONSTANT(offsetof(struct Bigint, k), 8LL);
+CONSTANT(offsetof(struct Bigint, maxwds), 12LL);
+CONSTANT(offsetof(struct Bigint, sign), 16LL);
+CONSTANT(offsetof(struct Bigint, wds), 20LL);
+CONSTANT(offsetof(struct Bigint, x), 24LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -3653,6 +3667,11 @@ CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
 CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.p5s), 11816LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11880LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11944LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14248LL);
+CONSTANT(JAC_HAVE_X87, 1LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3862,6 +3881,11 @@ CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
 CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.p5s), 11832LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11896LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11960LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14264LL);
+CONSTANT(JAC_HAVE_X87, 0LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4071,6 +4095,11 @@ CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
 CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.p5s), 11864LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11928LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11992LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14296LL);
+CONSTANT(JAC_HAVE_X87, 1LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4280,6 +4309,11 @@ CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
 CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.p5s), 11864LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11928LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11992LL);
+CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14296LL);
+CONSTANT(JAC_HAVE_X87, 0LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

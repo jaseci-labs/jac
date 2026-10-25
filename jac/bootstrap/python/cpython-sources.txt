@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 205 C files / 373,447 lines; 155 headers / 152,397 lines.
-#   Total: 360 files / 525,844 source lines.
+#   Excluded: 215 C files / 380,131 lines; 155 headers / 152,397 lines.
+#   Total: 370 files / 532,528 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -132,14 +132,14 @@ Python/context.c
 Python/crossinterp.c
 Python/crossinterp_data_lookup.h
 Python/crossinterp_exceptions.h
-Python/dtoa.c
+# Python/dtoa.c  # removed: 2,843 source lines
 Python/dynamic_annotations.c
 Python/dynload_shlib.c
 Python/errors.c
 # Python/executor_cases.c.h  # pruned: 7,163 source lines
 Python/fileutils.c
 # Python/flowgraph.c  # removed: 4,167 source lines
-Python/formatter_unicode.c
+# Python/formatter_unicode.c  # removed: 1,726 source lines
 # Python/frame.c  # removed: 159 source lines
 Python/frozen.c
 Python/frozen_modules/
@@ -170,8 +170,8 @@ Python/interpconfig.c
 # Python/lock.c  # removed: 638 source lines
 Python/marshal.c
 Python/modsupport.c
-Python/mysnprintf.c
-Python/mystrtoul.c
+# Python/mysnprintf.c  # removed: 80 source lines
+# Python/mystrtoul.c  # removed: 297 source lines
 # Python/object_stack.c  # removed: 66 source lines
 # Python/opcode_targets.h  # removed: 766 source lines
 Python/optimizer.c
@@ -184,15 +184,15 @@ Python/pathconfig.c
 # Python/perf_trampoline.c  # removed: 641 source lines
 Python/preconfig.c
 Python/pyarena.c
-Python/pyctype.c
-Python/pyfpe.c
+# Python/pyctype.c  # removed: 214 source lines
+# Python/pyfpe.c  # removed: 18 source lines
 Python/pyhash.c
 Python/pylifecycle.c
-Python/pymath.c
+# Python/pymath.c  # removed: 19 source lines
 Python/pystate.c
-Python/pystrcmp.c
-Python/pystrhex.c
-Python/pystrtod.c
+# Python/pystrcmp.c  # removed: 30 source lines
+# Python/pystrhex.c  # removed: 171 source lines
+# Python/pystrtod.c  # removed: 1,286 source lines
 Python/pythonrun.c
 Python/pytime.c
 # Python/qsbr.c  # removed: 290 source lines

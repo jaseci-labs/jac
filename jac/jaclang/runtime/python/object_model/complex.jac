@@ -1072,7 +1072,7 @@ impl complex_subtype_from_string(
     length = i64(0);
     s = PyUnicode_AsUTF8AndSize(s_buffer, &mut length);
     result = _Py_string_to_number_with_underscores(
-        s, length, "complex", v, ptr(type), ptr(complex_from_string_inner)
+        s, length, ptr[u8]("complex"), v, ptr(type), ptr(complex_from_string_inner)
     );
     jacpy_release(s_buffer);
     return result;

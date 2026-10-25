@@ -170,6 +170,11 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "#endif",
          "#ifndef VM_FLAGS_SUPERPAGE_SIZE_2MB",
          "#define VM_FLAGS_SUPERPAGE_SIZE_2MB 0",
+         "#endif",
+         "#if defined(__x86_64__) || defined(__i386__)",
+         "#define JAC_HAVE_X87 1",
+         "#else",
+         "#define JAC_HAVE_X87 0",
          "#endif"
      ],
      # Headers the constant probe and layouts_check.c include after Python.h
@@ -3581,7 +3586,16 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_ID_sort",
              "offsetof(struct _Py_global_strings, identifiers._py_sort)",
              "i64"
-         )
+         ),
+         ("Bigint_Kmax", "Bigint_Kmax", "i64"),
+         ("Bigint_Pow5size", "Bigint_Pow5size", "i64"),
+         ("Bigint_PREALLOC_SIZE", "Bigint_PREALLOC_SIZE", "i64"),
+         ("Bigint_SIZE", "sizeof(struct Bigint)", "i64"),
+         ("Bigint_K", "offsetof(struct Bigint, k)", "i64"),
+         ("Bigint_MAXWDS", "offsetof(struct Bigint, maxwds)", "i64"),
+         ("Bigint_SIGN", "offsetof(struct Bigint, sign)", "i64"),
+         ("Bigint_WDS", "offsetof(struct Bigint, wds)", "i64"),
+         ("Bigint_X", "offsetof(struct Bigint, x)", "i64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4359,7 +4373,28 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "PyConfig_OPTIMIZATION_LEVEL",
              "offsetof(PyConfig, optimization_level)",
              "i64"
-         )
+         ),
+         (
+             "PyInterpreterState_DTOA_P5S",
+             "offsetof(PyInterpreterState, dtoa.p5s)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_DTOA_FREELIST",
+             "offsetof(PyInterpreterState, dtoa.freelist)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_DTOA_PREALLOCATED",
+             "offsetof(PyInterpreterState, dtoa.preallocated)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_DTOA_PREALLOCATED_NEXT",
+             "offsetof(PyInterpreterState, dtoa.preallocated_next)",
+             "i64"
+         ),
+         ("HAVE_X87_CONTROL_WORD", "JAC_HAVE_X87", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

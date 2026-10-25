@@ -893,7 +893,7 @@ import from c {
     ) -> i32;  def _Py_skiproot(
         path: ptr[i32], size: i64, drvsize: &mut i64, rootsize: &mut i64
     );  def _Py_strhex(argbuf: ptr, arglen: i64) -> ptr[PyObject];  def _Py_string_to_number_with_underscores(
-        str_: ptr, len_: i64, what: str, obj_: ptr[PyObject], arg: ptr, arg5: ptr
+        str_: ptr, len_: i64, what: ptr[u8], obj_: ptr[PyObject], arg: ptr, arg5: ptr
     ) -> ptr[PyObject];  def _Py_typing_type_repr(
         arg0: ptr[PyUnicodeWriter], arg1: ptr[PyObject]
     ) -> i32;  def _Py_write(fd: i32, buf: ptr, count: u64) -> i64;  def _Py_write_noraise(
