@@ -2734,7 +2734,7 @@ impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
 }
 
 impl JacAutoLintPass._is_sibling_annex(annex: str) -> bool {
-    base = discover_base_file(annex);
+    base = active_host().base_file(annex);
     return base is not None
         and os.path.dirname(os.path.realpath(base))
             == os.path.dirname(os.path.realpath(annex));

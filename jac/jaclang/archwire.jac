@@ -5629,9 +5629,7 @@ graph import compiler {
         backends.native.kernel_stage0.unit_line_count | tools.code_intel {
             discover_annex_files
         },
-        tests.test_batch_decl_identity
-            | tests.test_global_narrowing
-            | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex {
+        tests.test_batch_decl_identity | tests.test_global_narrowing {
             discover_base_file
         },
     ]
@@ -7277,6 +7275,7 @@ graph import compiler {
         },
         driver.pass_driver { CheckSettings, active_host },
         driver.program.JacProgram.jac_str_formatter
+            | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },
