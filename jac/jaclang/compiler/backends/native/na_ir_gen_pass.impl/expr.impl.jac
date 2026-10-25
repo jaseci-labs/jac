@@ -2396,6 +2396,21 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
             }
         }
         if then_val.type != else_val.type {
+            _opt_tup = self._optional_tuple_meet_type(nd, then_val, else_val);
+            if _opt_tup is not None {
+                if then_open {
+                    self.builder.position_at_end(then_end_bb);
+                    then_val = self._meet_optional_tuple_side(then_val, _opt_tup);
+                    then_end_bb = self.builder.block;
+                }
+                if else_open {
+                    self.builder.position_at_end(else_end_bb);
+                    else_val = self._meet_optional_tuple_side(else_val, _opt_tup);
+                    else_end_bb = self.builder.block;
+                }
+            }
+        }
+        if then_val.type != else_val.type {
             _uni_ty = self._unify_repr_lowering([then_val.type, else_val.type]);
             if _uni_ty is not None and then_val.type != _uni_ty and then_open {
                 self.builder.position_at_end(then_end_bb);
@@ -2484,6 +2499,45 @@ impl NaIRGenPass._object_meet_type(nd: uni.Expr) -> (ir.Type | None) {
         return None;
     }
     return _lowered;
+}
+
+impl NaIRGenPass._optional_tuple_meet_type(
+    nd: uni.Expr, then_val: ir.Value, else_val: ir.Value
+) -> (ir.Type | None) {
+    _tuple_and_none = (
+        isinstance(then_val.type, ir.LiteralStructType)
+        and self._is_null_ptr_const(else_val)
+    )
+        or (
+            isinstance(else_val.type, ir.LiteralStructType)
+            and self._is_null_ptr_const(then_val)
+        );
+    if not _tuple_and_none or nd.type is None {
+        return None;
+    }
+    _lowered = self._lower_type(nd.type);
+    _payload = self._opt_payload_of(_lowered) if _lowered is not None else None;
+    if isinstance(_payload, ir.PointerType)
+        and isinstance(_payload.pointee, ir.LiteralStructType) {
+        return _payload;
+    }
+    return None;
+}
+
+impl NaIRGenPass._meet_optional_tuple_side(
+    value: ir.Value, target: ir.Type
+) -> ir.Value {
+    if self._is_null_ptr_const(value) {
+        return ir.Constant(target, None);
+    }
+    if isinstance(value.type, ir.LiteralStructType)
+        and isinstance(target, ir.PointerType)
+        and isinstance(target.pointee, ir.LiteralStructType) {
+        return self._box_value_tuple(
+            self._coerce_tuple_to_struct(value, target.pointee)
+        );
+    }
+    return value;
 }
 
 impl NaIRGenPass._recast_object(value: ir.Value, target: ir.Type) -> ir.Value {

@@ -1650,6 +1650,11 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     def _object_meet_type(nd: uni.Expr) -> (ir.Type | None);
     def _recast_object(value: ir.Value, target: ir.Type) -> ir.Value;
+    def _optional_tuple_meet_type(
+        nd: uni.Expr, then_val: ir.Value, else_val: ir.Value
+    ) -> (ir.Type | None);
+
+    def _meet_optional_tuple_side(value: ir.Value, target: ir.Type) -> ir.Value;
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str,
