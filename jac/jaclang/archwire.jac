@@ -1673,6 +1673,12 @@ graph import {
             | client.vite_bundler.ViteBundler.build
             | compiler.driver.ifacecache.IfaceRegistry._event
             | compiler.driver.nativecache.NativeUnitRegistry._event { stat_note },
+        client.compiler.ViteCompiler._wasm_input_key
+            | client.vite_bundler.ViteBundler._build_inputs_digest
+            | compiler.backends.native.kernel_resolve._sha256_file
+            | compiler.driver.jir.compute_content_sha256
+            | dist.jab.materialize_jab
+            | dist.seal.sealed_image_key { file_sha256 },
         client.js_runtime.JsEngineArtifact.build
             | compiler.backends.native.kernel_resolve._inspect
             | compiler.backends.native.link_plan
@@ -1694,11 +1700,6 @@ graph import {
             | toolchains.cef
             | toolchains.desktop
             | toolchains.store { FileLock },
-        client.vite_bundler.ViteBundler._build_inputs_digest
-            | compiler.backends.native.kernel_resolve._sha256_file
-            | compiler.driver.jir.compute_content_sha256
-            | dist.jab.materialize_jab
-            | dist.seal.sealed_image_key { file_sha256 },
         compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
         compiler.backends.native.kernel_resolve._verdict_key
             | compiler.driver.jir.read_jir { file_identity },
