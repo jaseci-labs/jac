@@ -3,24 +3,40 @@ impl is_jab(path: str) -> bool {
 }
 
 impl materialize_jab(jab_path: str) -> Path {
-    return _materialize_jab_data(Path(jab_path).read_bytes(), jab_path);
+    return _materialize_jab_data(
+        lambda { Path(jab_path).read_bytes(); }, jab_path, file_sha256(jab_path)
+    );
 }
 
 impl materialize_jab_bytes(data: bytes, expected_sha256: str = "") -> Path {
-    return _materialize_jab_data(data, "<app image>", expected_sha256);
+    return _materialize_jab_data(lambda { data; }, "<app image>", expected_sha256);
 }
 
-impl _materialize_jab_data(data: bytes, label: str, expected_sha256: str = "") -> Path {
-    digest = hashlib.sha256(data).hexdigest();
-    if expected_sha256 and digest != expected_sha256 {
-        raise RuntimeError(
-            f"{label} does not match its recorded sha256 "
-            f"(expected {expected_sha256[:16]}, got {digest[:16]})"
-        );
+impl _materialize_jab_data(
+    load: Callable[[], bytes], label: str, expected_sha256: str = ""
+) -> Path {
+    """The extraction directory is addressed by the image's sha256, and an
+    image is only renamed into it after its bytes matched that digest, so a
+    present directory needs no re-hash.""";
+    data: (bytes | None) = None;
+    digest = expected_sha256;
+    if not digest {
+        data = load();
+        digest = hashlib.sha256(data).hexdigest();
     }
     dest = bucket("apps").path() / digest[:20];
     manifest_path = dest / "_precompiled" / MANIFEST_NAME;
     if not manifest_path.is_file() {
+        if data is None {
+            data = load();
+        }
+        actual = hashlib.sha256(data).hexdigest();
+        if actual != digest {
+            raise RuntimeError(
+                f"{label} does not match its recorded sha256 "
+                f"(expected {digest[:16]}, got {actual[:16]})"
+            );
+        }
         tmp = dest.with_suffix(f".{os.getpid()}.tmp");
         shutil.rmtree(tmp, ignore_errors=True);
         tmp.mkdir(parents=True, exist_ok=True);

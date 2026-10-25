@@ -1697,6 +1697,7 @@ graph import {
         client.vite_bundler.ViteBundler._build_inputs_digest
             | compiler.backends.native.kernel_resolve._sha256_file
             | compiler.driver.jir.compute_content_sha256
+            | dist.jab.materialize_jab
             | dist.seal.sealed_image_key { file_sha256 },
         compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
         compiler.backends.native.kernel_resolve._verdict_key
