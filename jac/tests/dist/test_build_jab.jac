@@ -271,3 +271,56 @@ test "build_jab never seals secrets and leaves out what .jacignore parks" {
         shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
     }
 }
+
+
+"""`.jacignore` rules match a directory by its place in the project, so a
+symlink to a directory outside the project seals like any other directory."""
+test "build_jab seals through a directory symlink while .jacignore is in force" {
+    ws = _workspace();
+    outside = tempfile.mkdtemp(prefix="jac_build_jab_outside_");
+    try {
+        base = Path(ws);
+        Path(outside, "shared.jac").write_text(
+            "def:pub shared -> int {\n    return 1;\n}\n"
+        );
+        Path(outside, ".env").write_text("TOKEN=outside\n");
+        os.symlink(outside, base / "linked");
+        (base / ".jacignore").write_text("notes/\n");
+        config = JacConfig.load(base / "jac.toml");
+        out = base / "out" / "web.jab";
+        build_jab(config, out, app="web", bake_client=False);
+        img = materialize_jab(str(out));
+        assert (img / "linked" / "shared.jac").is_file() , "the linked tree is sealed";
+        assert not (img / "linked" / ".env").exists() , "and its secrets are not";
+    } finally {
+        set_config(None);
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
+        shutil.rmtree(outside, ignore_errors=True);
+    }
+}
+
+
+"""Jac package sources a seal vendors (and a package publish packs) get the same
+never-ship floor as the project itself."""
+test "staged package sources leave out .env files and key material" {
+    import from jaclang.packages.artifact { stage_source_tree }
+    src = tempfile.mkdtemp(prefix="jac_pkg_src_");
+    dest_root = tempfile.mkdtemp(prefix="jac_pkg_dest_");
+    try {
+        Path(src, "jac.toml").write_text("[project]\nname = \"pkg\"\n");
+        Path(src, "lib.jac").write_text("def:pub f -> int {\n    return 1;\n}\n");
+        Path(src, ".env").write_text("API_KEY=secret\n");
+        Path(src, "deploy.pem").write_text("-----BEGIN PRIVATE KEY-----\n");
+        os.makedirs(os.path.join(src, "sub"));
+        Path(src, "sub", ".env.local").write_text("X=1\n");
+        dest = Path(dest_root) / "pkg";
+        stage_source_tree(Path(src), dest);
+        assert (dest / "lib.jac").is_file();
+        for leaked in [".env", "deploy.pem", "sub/.env.local"] {
+            assert not (dest / leaked).exists() , leaked;
+        }
+    } finally {
+        shutil.rmtree(src, ignore_errors=True);
+        shutil.rmtree(dest_root, ignore_errors=True);
+    }
+}

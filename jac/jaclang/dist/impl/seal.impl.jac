@@ -258,12 +258,12 @@ impl make_sealed_image(
         } except ValueError {}
     }
 
-    proj_dir = Path(proj_root).resolve();
+    proj_dir = os.path.abspath(str(proj_root));
     parked = read_jacignore_patterns(str(proj_root));
 
     def copy_ignore(d: str, items: list[str]) -> list[str] {
         skipped = set(seal_copy_ignore(d, items));
-        here = Path(d).resolve();
+        here = os.path.abspath(d);
         if out_names and here == proj_dir {
             skipped |= {
                 it
@@ -275,10 +275,13 @@ impl make_sealed_image(
             if it in skipped {
                 continue;
             }
-            if is_secret_file(it) and (here / it).is_file() {
+            full = os.path.join(here, it);
+            if is_secret_file(it) and os.path.isfile(full) {
                 skipped.add(it);
             } elif parked
-                and path_matches_exclude((here / it).relative_to(proj_dir).as_posix(), parked) {
+                and path_matches_exclude(
+                    os.path.relpath(full, proj_dir).replace(os.sep, "/"), parked
+                ) {
                 skipped.add(it);
             }
         }

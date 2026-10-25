@@ -2312,8 +2312,9 @@ graph import {
             | compiler.passes.pyast_load_pass.PyastBuildPass.convert
             | compiler.tools.lang_tools { pascal_to_snake },
         dist.seal.make_sealed_image { is_secret_file, path_matches_exclude },
+        packages.artifact.package_copy_ignore
+            | scale.injector.bundle.BundleSourceFilter.excludes { is_secret_file },
         runtime.traceback_render { pretty_print_source_location },
-        scale.injector.bundle.BundleSourceFilter.excludes { is_secret_file },
         scale.injector.bundle.BundleSourceFilter.exclusion_reason { is_secret_file },
         scale.injector.bundle.BundleSourceFilter.parks { path_matches_exclude },
     ]
