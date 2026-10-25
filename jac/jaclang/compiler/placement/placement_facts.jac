@@ -52,7 +52,6 @@ def pinned_module_space(source_path: str) -> str;
 def spaces_are_client_only(spaces: set[str]) -> bool;
 
 
-
 def _toolchain_rel(source_path: str) -> (str | None);
 
 def variant_selected(source_path: str) -> (bool | None);
