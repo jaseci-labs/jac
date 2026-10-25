@@ -115,6 +115,7 @@ impl summary_to_dict(ps: PlacementSummary) -> dict[str, any] {
         'client_declared': ps.client_declared,
         'native_declared': ps.native_declared,
         'native_anchor': ps.native_anchor,
+        'spaces': list(ps.spaces),
         'elements': [element_to_dict(e) for e in ps.elements]
     };
 }
@@ -133,6 +134,7 @@ impl summary_from_dict(d: dict[str, any]) -> (PlacementSummary | None) {
     ps.client_declared = bool(d.get('client_declared', False));
     ps.native_declared = bool(d.get('native_declared', False));
     ps.native_anchor = bool(d.get('native_anchor', False));
+    ps.spaces = _str_list(d.get('spaces'));
     ps.elements = [element_from_dict(e) for e in _maps(d.get('elements'))];
     return ps;
 }

@@ -92,6 +92,11 @@ impl discover_spaces(
         ap = os.path.abspath(p);
         mod = hub_module_for_path(ap, target);
         if mod is None {
+            record = module_record(ap, target);
+            if record is not None and record.spaces {
+                out[ap] = set(record.spaces);
+                continue;
+            }
             try {
                 mod = target.compile(file_path=ap, no_cgen=True);
             } except Exception {}

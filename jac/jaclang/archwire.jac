@@ -10033,6 +10033,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
             native_unit as _typed_native_unit
         },
+        driver.ifacecache.IfaceRegistry._persist_in_context { module_spaces },
         driver.module_analysis.run_analysis { settle_server },
         driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
         native_scope.package_host_edge { native_lowered, native_unit },

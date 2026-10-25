@@ -905,7 +905,13 @@ impl IfaceRegistry._persist_in_context(
     try {
         import from jaclang.compiler.placement.placement { get_module_summary }
         import from jaclang.compiler.placement.placement_export { summary_to_bytes }
-        sections[SEC_PLACEMENT] = summary_to_bytes(get_module_summary(mod, self.prog));
+        import from jaclang.compiler.placement.placement_facts { module_spaces }
+        summary = get_module_summary(mod, self.prog);
+
+        summary.spaces = []
+            if self.prog.errors_had[err_start:]
+            else sorted(module_spaces(mod));
+        sections[SEC_PLACEMENT] = summary_to_bytes(summary);
     } except Exception {}
     ct_rows = module_ct_deps_section(mod);
     if ct_rows is not None {
