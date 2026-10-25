@@ -761,7 +761,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
-    def _calling_convention_of(decorators: (list | None)) -> str;
+    def _calling_convention_of(decorators: (Sequence[uni.Expr] | None)) -> str;
     def _field_call_convention(nd: uni.FuncCall) -> str;
     def _emit_intrinsic_c_thread_local(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
