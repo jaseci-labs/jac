@@ -3620,7 +3620,7 @@ impl split_recursive(
     i: i64 = 0;
     while not failed and i < num_excs {
         e = tuple_get_item(excs, i);
-        if Py_EnterRecursiveCall(" in exceptiongroup_split_recursive") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in exceptiongroup_split_recursive")) != 0 {
             failed = True;
             break;
         }
@@ -3721,7 +3721,8 @@ impl collect_leaf_ids(exc: ptr[PyObject], leaf_ids: ptr[PyObject]) -> i32 {
     }
     excs = eg_excs(exc);
     for i in range(object_size(excs)) {
-        if Py_EnterRecursiveCall(" in collect_exception_group_leaf_ids") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in collect_exception_group_leaf_ids"))
+            != 0 {
             return i32(-1);
         }
         res = collect_leaf_ids(tuple_get_item(excs, i), leaf_ids);

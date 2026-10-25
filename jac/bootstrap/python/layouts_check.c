@@ -3156,6 +3156,17 @@ CONSTANT(PY_MONITORING_EVENT_BRANCH_LEFT, 8LL);
 CONSTANT(PY_MONITORING_EVENT_BRANCH_RIGHT, 9LL);
 CONSTANT(PY_MONITORING_EVENT_STOP_ITERATION, 10LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_send), 36168LL);
+CONSTANT(PY_MONITORING_EVENT_PY_THROW, 14LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_get), 23968LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___match_args__), 7072LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___builtins__), 2936LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___import__), 5744LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___spec__), 10024LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_name), 30760LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___enter__), 4248LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___exit__), 4352LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___aenter__), 2040LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___aexit__), 2096LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -3344,6 +3355,15 @@ CONSTANT(offsetof(PyThreadState, tracing), 60LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223240LL);
 CONSTANT(offsetof(PyInterpreterState, jit), 223184LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223240LL);
+CONSTANT(offsetof(PyThreadState, recursion_headroom), 56LL);
+CONSTANT(offsetof(PyThreadState, py_recursion_limit), 52LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_top), 840LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_soft_limit), 848LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_hard_limit), 856LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_base), 920LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_top), 928LL);
+CONSTANT(offsetof(PyInterpreterState, ceval.recursion_limit), 8LL);
+CONSTANT(offsetof(PyInterpreterState, builtins), 7680LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3530,6 +3550,15 @@ CONSTANT(offsetof(PyThreadState, tracing), 60LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223256LL);
 CONSTANT(offsetof(PyInterpreterState, jit), 223200LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223256LL);
+CONSTANT(offsetof(PyThreadState, recursion_headroom), 56LL);
+CONSTANT(offsetof(PyThreadState, py_recursion_limit), 52LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_top), 840LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_soft_limit), 848LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_hard_limit), 856LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_base), 920LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_top), 928LL);
+CONSTANT(offsetof(PyInterpreterState, ceval.recursion_limit), 8LL);
+CONSTANT(offsetof(PyInterpreterState, builtins), 7680LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3716,6 +3745,15 @@ CONSTANT(offsetof(PyThreadState, tracing), 60LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
 CONSTANT(offsetof(PyInterpreterState, jit), 223232LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
+CONSTANT(offsetof(PyThreadState, recursion_headroom), 56LL);
+CONSTANT(offsetof(PyThreadState, py_recursion_limit), 52LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_top), 840LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_soft_limit), 848LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_hard_limit), 856LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_base), 920LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_top), 928LL);
+CONSTANT(offsetof(PyInterpreterState, ceval.recursion_limit), 8LL);
+CONSTANT(offsetof(PyInterpreterState, builtins), 7680LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3902,6 +3940,15 @@ CONSTANT(offsetof(PyThreadState, tracing), 60LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
 CONSTANT(offsetof(PyInterpreterState, jit), 223232LL);
 CONSTANT(offsetof(PyInterpreterState, monitors.tools), 223288LL);
+CONSTANT(offsetof(PyThreadState, recursion_headroom), 56LL);
+CONSTANT(offsetof(PyThreadState, py_recursion_limit), 52LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_top), 840LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_soft_limit), 848LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_hard_limit), 856LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_base), 920LL);
+CONSTANT(offsetof(_PyThreadStateImpl, c_stack_init_top), 928LL);
+CONSTANT(offsetof(PyInterpreterState, ceval.recursion_limit), 8LL);
+CONSTANT(offsetof(PyInterpreterState, builtins), 7680LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

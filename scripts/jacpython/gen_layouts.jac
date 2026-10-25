@@ -3220,6 +3220,59 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_ID_send",
              "offsetof(struct _Py_global_strings, identifiers._py_send)",
              "i64"
+         ),
+         # The evaluator's entry points: the strings they look up and the
+         # monitoring event a generator throw raises.
+         ("PY_MONITORING_EVENT_PY_THROW", "PY_MONITORING_EVENT_PY_THROW", "i32"),
+         (
+             "_Py_ID_get",
+             "offsetof(struct _Py_global_strings, identifiers._py_get)",
+             "i64"
+         ),
+         (
+             "_Py_ID___match_args__",
+             "offsetof(struct _Py_global_strings, identifiers._py___match_args__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___builtins__",
+             "offsetof(struct _Py_global_strings, identifiers._py___builtins__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___import__",
+             "offsetof(struct _Py_global_strings, identifiers._py___import__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___spec__",
+             "offsetof(struct _Py_global_strings, identifiers._py___spec__)",
+             "i64"
+         ),
+         (
+             "_Py_ID_name",
+             "offsetof(struct _Py_global_strings, identifiers._py_name)",
+             "i64"
+         ),
+         (
+             "_Py_ID___enter__",
+             "offsetof(struct _Py_global_strings, identifiers._py___enter__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___exit__",
+             "offsetof(struct _Py_global_strings, identifiers._py___exit__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___aenter__",
+             "offsetof(struct _Py_global_strings, identifiers._py___aenter__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___aexit__",
+             "offsetof(struct _Py_global_strings, identifiers._py___aexit__)",
+             "i64"
          )
      ],
      # Constants whose values differ between the supported platforms, in the
@@ -3892,6 +3945,53 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          (
              "PyInterpreterState_MONITORS",
              "offsetof(PyInterpreterState, monitors.tools)",
+             "i64"
+         ),
+         # The evaluator's recursion and stack limits and the interpreter's
+         # builtins, read by Python/ceval.c's entry points.
+         (
+             "PyThreadState_RECURSION_HEADROOM",
+             "offsetof(PyThreadState, recursion_headroom)",
+             "i64"
+         ),
+         (
+             "PyThreadState_PY_RECURSION_LIMIT",
+             "offsetof(PyThreadState, py_recursion_limit)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_C_STACK_TOP",
+             "offsetof(_PyThreadStateImpl, c_stack_top)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_C_STACK_SOFT_LIMIT",
+             "offsetof(_PyThreadStateImpl, c_stack_soft_limit)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_C_STACK_HARD_LIMIT",
+             "offsetof(_PyThreadStateImpl, c_stack_hard_limit)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_C_STACK_INIT_BASE",
+             "offsetof(_PyThreadStateImpl, c_stack_init_base)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_C_STACK_INIT_TOP",
+             "offsetof(_PyThreadStateImpl, c_stack_init_top)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CEVAL_RECURSION_LIMIT",
+             "offsetof(PyInterpreterState, ceval.recursion_limit)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_BUILTINS",
+             "offsetof(PyInterpreterState, builtins)",
              "i64"
          )
      ],

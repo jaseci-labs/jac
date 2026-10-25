@@ -113,9 +113,9 @@ import from c {
          PyODict_Type: PyTypeObject,
          _Py_TrueStruct: PyObject,
          _Py_FalseStruct: PyObject,
-         _Py_EllipsisObject: PyObject; def Py_EnterRecursiveCall(where: str) -> i32;  def Py_FatalError(
-        message: str
-    );  def _PyType_LookupStackRefAndVersion(
+         _Py_EllipsisObject: PyObject; def Py_EnterRecursiveCall(
+        where: ptr[u8]
+    ) -> i32;  def Py_FatalError(message: str);  def _PyType_LookupStackRefAndVersion(
         type: ptr[PyTypeObject], name: ptr[PyObject], out: &mut u64
     ) -> u32;  def _Py_type_getattro(
         type: ptr[PyObject], name: ptr[PyObject]
@@ -805,7 +805,7 @@ import from c {
         if PyErr_CheckSignals() != 0 {
             return i32(-1);
         }
-        if Py_EnterRecursiveCall(" printing an object") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" printing an object")) != 0 {
             return i32(-1);
         }
 
@@ -930,7 +930,8 @@ import from c {
             return PyUnicode_FromFormat("<%s object at %p>", tp.view(1)[0].tp_name, v);
         }
 
-        if Py_EnterRecursiveCall(" while getting the repr of an object") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" while getting the repr of an object"))
+            != 0 {
             return NULL;
         }
         res = tp.view(1)[0].tp_repr(v);
@@ -962,7 +963,7 @@ import from c {
             return PyObject_Repr(v);
         }
 
-        if Py_EnterRecursiveCall(" while getting the str of an object") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" while getting the str of an object")) != 0 {
             return NULL;
         }
         res = tp.view(1)[0].tp_str(v);
@@ -1081,7 +1082,7 @@ import from c {
             }
             return NULL;
         }
-        if Py_EnterRecursiveCall(" in comparison") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in comparison")) != 0 {
             return NULL;
         }
         return do_richcompare(v, w, op);

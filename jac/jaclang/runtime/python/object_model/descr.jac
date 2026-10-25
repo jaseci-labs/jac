@@ -14,7 +14,7 @@ import from c {
         name: ptr[u8], internal_doc: ptr[u8]
     ) -> ptr[PyObject];  def _PyObject_FunctionStr(
         op: ptr[PyObject]
-    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: str) -> i32;  def Py_LeaveRecursiveCall;  def _PyStack_AsDict(
+    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  def Py_LeaveRecursiveCall;  def _PyStack_AsDict(
         values: ptr[ptr[PyObject]], kwnames: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyObject_RealIsSubclass(
         derived: ptr[PyObject], cls: ptr[PyObject]
@@ -1196,7 +1196,7 @@ impl method_check_args(
 }
 
 impl method_enter_call(func: ptr[PyObject]) -> int {
-    if Py_EnterRecursiveCall(" while calling a Python object") != 0 {
+    if Py_EnterRecursiveCall(ptr[u8](" while calling a Python object")) != 0 {
         return 0;
     }
     return int(method_of(func).view(1)[0].ml_meth);

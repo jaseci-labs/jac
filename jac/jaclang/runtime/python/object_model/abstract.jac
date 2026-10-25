@@ -25,7 +25,7 @@ import from c {
         interp: ptr[PyInterpreterState], func: ptr, arg: ptr
     ) -> i32;  def PyUnicode_FromStringAndSize(
         u: ptr[u8], size: i64
-    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: str) -> i32;  def strlen(
+    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  def strlen(
         s: ptr[u8]
     ) -> u64;  def memcpy(target: ptr, source: ptr, size: u64) -> ptr;  obj StackSlots {
         has s0: ptr[PyObject] = ptr[PyObject](),
@@ -2593,7 +2593,7 @@ impl abstract_issubclass(derived_in: ptr[PyObject], cls: ptr[PyObject]) -> i32 {
         }
         break;
     }
-    if Py_EnterRecursiveCall(" in __issubclass__") != 0 {
+    if Py_EnterRecursiveCall(ptr[u8](" in __issubclass__")) != 0 {
         object_decref(bases);
         return i32(-1);
     }
@@ -2666,7 +2666,7 @@ impl object_recursive_isinstance(inst: ptr[PyObject], cls_in: ptr[PyObject]) -> 
         cls = _Py_union_args(cls);
     }
     if tuple_check(cls) {
-        if Py_EnterRecursiveCall(" in __instancecheck__") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in __instancecheck__")) != 0 {
             return i32(-1);
         }
         r = i32(0);
@@ -2680,7 +2680,7 @@ impl object_recursive_isinstance(inst: ptr[PyObject], cls_in: ptr[PyObject]) -> 
     }
     checker = _PyObject_LookupSpecial(cls, interned_instancecheck());
     if checker {
-        if Py_EnterRecursiveCall(" in __instancecheck__") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in __instancecheck__")) != 0 {
             object_decref(checker);
             return i32(-1);
         }
@@ -2729,7 +2729,7 @@ impl object_issubclass(derived: ptr[PyObject], cls_in: ptr[PyObject]) -> i32 {
         cls = _Py_union_args(cls);
     }
     if tuple_check(cls) {
-        if Py_EnterRecursiveCall(" in __subclasscheck__") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in __subclasscheck__")) != 0 {
             return i32(-1);
         }
         r = i32(0);
@@ -2744,7 +2744,7 @@ impl object_issubclass(derived: ptr[PyObject], cls_in: ptr[PyObject]) -> i32 {
     checker = _PyObject_LookupSpecial(cls, interned_subclasscheck());
     if checker {
         ok = i32(-1);
-        if Py_EnterRecursiveCall(" in __subclasscheck__") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" in __subclasscheck__")) != 0 {
             object_decref(checker);
             return ok;
         }

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 200 C files / 359,029 lines; 150 headers / 137,043 lines.
-#   Total: 350 files / 496,072 source lines.
+#   Excluded: 201 C files / 362,754 lines; 153 headers / 150,776 lines.
+#   Total: 354 files / 513,530 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -108,9 +108,9 @@ Python/bltinmodule.c
 Python/bootstrap_hash.c
 Python/brc.c
 # Python/bytecodes.c  # pruned: 5,549 source lines
-Python/ceval.c
+# Python/ceval.c  # removed: 3,725 source lines
 # Python/ceval_gil.c  # removed: 1,434 source lines
-Python/ceval_macros.h
+# Python/ceval_macros.h  # removed: 439 source lines
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
 Python/clinic/_contextvars.c.h
 Python/clinic/_warnings.c.h
@@ -148,7 +148,7 @@ Python/frozenmain.c
 # Python/gc.c  # removed: 2,057 source lines
 Python/gc_free_threading.c
 # Python/gc_gil.c  # removed: 17 source lines
-Python/generated_cases.c.h
+# Python/generated_cases.c.h  # removed: 12,528 source lines
 Python/getargs.c
 Python/getcompiler.c
 Python/getcopyright.c
@@ -173,7 +173,7 @@ Python/modsupport.c
 Python/mysnprintf.c
 Python/mystrtoul.c
 # Python/object_stack.c  # removed: 66 source lines
-Python/opcode_targets.h
+# Python/opcode_targets.h  # removed: 766 source lines
 Python/optimizer.c
 # Python/optimizer_analysis.c  # pruned: 664 source lines
 # Python/optimizer_cases.c.h  # pruned: 2,520 source lines

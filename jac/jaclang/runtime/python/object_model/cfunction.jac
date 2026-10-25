@@ -9,7 +9,7 @@ import from c {
         tstate: ptr, callable: ptr[PyObject], result: ptr[PyObject], where: ptr[u8]
     ) -> ptr[PyObject];  def _PyObject_FunctionStr(
         op: ptr[PyObject]
-    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: str) -> i32;  obj MethodCall {
+    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  obj MethodCall {
         has one: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]] = 0,
             fast: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]] = 0,
             fast_keywords:
@@ -515,7 +515,7 @@ impl no_keywords(func: ptr[PyObject], kwnames: ptr[PyObject]) -> bool {
 }
 
 impl enter_call(func: ptr[PyObject]) -> ptr {
-    if Py_EnterRecursiveCall(" while calling a Python object") != 0 {
+    if Py_EnterRecursiveCall(ptr[u8](" while calling a Python object")) != 0 {
         return ptr();
     }
     return method_def(func).view(1)[0].ml_meth;

@@ -20,7 +20,7 @@ import from c {
     ) -> i32;  def _PyObject_GetMethod(
         obj_: ptr[PyObject], name: ptr[PyObject], method: &mut ptr[PyObject]
     ) -> i32;  def _PyUnicode_FromId(id: ptr) -> ptr[PyObject];  def Py_EnterRecursiveCall(
-        where: str
+        where: ptr[u8]
     ) -> i32;  def _Py_FatalErrorFormat(func: ptr[u8], format: ptr[u8], *args: any);  def memcpy(
         target: ptr, source: ptr, size: u64
     ) -> ptr;  obj ArgStack {
@@ -260,7 +260,7 @@ import from c {
             }
         }
         result = NULL;
-        if Py_EnterRecursiveCall(" while calling a Python object") == 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" while calling a Python object")) == 0 {
             result = call_ternary(call, callable, argstuple, kwdict);
         }
         object_decref(argstuple);
@@ -322,7 +322,7 @@ import from c {
             object_is_not_callable(callable);
             return NULL;
         }
-        if Py_EnterRecursiveCall(" while calling a Python object") != 0 {
+        if Py_EnterRecursiveCall(ptr[u8](" while calling a Python object")) != 0 {
             return NULL;
         }
 
