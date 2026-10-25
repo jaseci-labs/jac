@@ -400,6 +400,10 @@ walker TypeEvaluator {
         src_type: ClassType, dest_type: ClassType, strict: bool = False
     ) -> bool;
 
+    def _numeric_args_invariant(
+        src_arg: TypeBase, dest_arg: TypeBase, strict: bool = False
+    ) -> bool;
+
     def _is_protocol_class(cls_type: ClassType) -> bool;
     def _solve_protocol_type_args(
         src_type: ClassType, proto_type: ClassType, bindings: dict[str, TypeBase]

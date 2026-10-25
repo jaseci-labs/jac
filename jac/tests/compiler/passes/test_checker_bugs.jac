@@ -2390,3 +2390,46 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
         f"Line 24 reported: {by_line.get(24)}"
     );
 }
+
+# Bug #8580: container argument compatibility was plain covariant subtyping,
+# and int widens to float, so list[int] flowed into list[float]. The native
+# backend stored the appended float in an int-typed element slot and reading
+# it back printed raw float bits as an integer. The same-class branch of
+# _assign_class now also requires the element relation to hold in reverse
+# when both element types are numeric class instances, and the derived-class
+# branch does the same, so a Box[int] subclass does not flow into Box[float].
+test "bug_8580_numeric_container_covariance_rejected" {
+    program = compile_and_check("checker_bug_numeric_container_invariance.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert len(program.errors_had) == 3 , (
+        "Bug #8580: numeric widening must not carry list[int] into "
+        "list[float], an IntBox into Box[float], or dict[str, int] into "
+        f"dict[str, float]. Got: {[str(e) for e in program.errors_had]}"
+    );
+    assert "list[int]" in by_line.get(38, "") and "list[float]" in by_line.get(38, "") , (
+        "Bug #8580: line 38 must reject list[int] into list[float]. "
+        f"Line 38 reported: {by_line.get(38)}"
+    );
+    assert "IntBox" in by_line.get(40, "") and "Box[float]" in by_line.get(40, "") , (
+        "Bug #8580: line 40 must reject IntBox (a Box[int]) into Box[float]. "
+        f"Line 40 reported: {by_line.get(40)}"
+    );
+    assert "dict[str, int]" in by_line.get(42, "") and "dict[str, float]" in by_line.get(42, "") , (
+        "Bug #8580: line 42 must reject dict[str, int] into dict[str, float]. "
+        f"Line 42 reported: {by_line.get(42)}"
+    );
+}
+
+# The numeric invariance guard skips non-numeric elements, literal elements
+# and TypeVar arguments, so idiomatic covariant uses still check.
+test "bug_8580_numeric_covariance_guard_keeps_covariant_uses" {
+    program = compile_and_check("checker_bug_numeric_container_invariance_positive.jac");
+    assert program.errors_had == [] , (
+        "Bug #8580: list[int] into list[object], generic inference and "
+        f"literal widening must keep checking. Got: {[str(e) for e in program.errors_had]}"
+    );
+}

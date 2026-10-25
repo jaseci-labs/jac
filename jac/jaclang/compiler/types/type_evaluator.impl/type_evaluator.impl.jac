@@ -3099,6 +3099,26 @@ impl TypeEvaluator._callable_mismatch(
     return None;
 }
 
+impl TypeEvaluator._numeric_args_invariant(
+    src_arg: TypeBase, dest_arg: TypeBase, strict: bool = False
+) -> bool {
+    if not isinstance(src_arg, ClassType) or not isinstance(dest_arg, ClassType) {
+        return True;
+    }
+    if not src_arg.is_class_instance() or not dest_arg.is_class_instance() {
+        return True;
+    }
+    if src_arg.is_literal_type() or dest_arg.is_literal_type() {
+        return True;
+    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if not JAC_TYPE_REGISTRY.is_numeric(src_arg.shared.class_name)
+        or not JAC_TYPE_REGISTRY.is_numeric(dest_arg.shared.class_name) {
+        return True;
+    }
+    return self.assign_type(dest_arg, src_arg, strict);
+}
+
 impl TypeEvaluator._assign_class(
     src_type: ClassType, dest_type: ClassType, strict: bool = False
 ) -> bool {
@@ -3127,6 +3147,13 @@ impl TypeEvaluator._assign_class(
                     if not self.assign_type(src_arg, dest_arg, strict) {
                         return False;
                     }
+                    # Mutable containers of numeric value elements must be
+                    # invariant: covariant acceptance via numeric widening
+                    # lets e.g. list[int] flow into list[float], and the
+                    # native backend then reads raw float bits as int.
+                    if not self._numeric_args_invariant(src_arg, dest_arg, strict) {
+                        return False;
+                    }
                 }
             }
         }
@@ -3144,24 +3171,14 @@ impl TypeEvaluator._assign_class(
                         dest_type.private.type_args[i]
                     );
 
-                    tp = dest_type.shared.type_params[i]
-                        if (
-                            dest_type.shared.type_params
-                            and i < len(dest_type.shared.type_params)
-                        )
-                        else None;
-                    if tp and tp.is_covariant {
-                        if not self.assign_type(src_arg, dest_arg, strict) {
-                            return False;
-                        }
-                    } elif tp and tp.is_contravariant {
-                        if not self.assign_type(dest_arg, src_arg, strict) {
-                            return False;
-                        }
-                    } else {
-                        if not self.assign_type(src_arg, dest_arg, strict) {
-                            return False;
-                        }
+                    if not self.assign_type(src_arg, dest_arg, strict) {
+                        return False;
+                    }
+                    # Mutable containers of numeric value elements must be
+                    # invariant: a class deriving list[int] must not flow
+                    # into list[float] (raw-bits reinterpretation natively).
+                    if not self._numeric_args_invariant(src_arg, dest_arg, strict) {
+                        return False;
                     }
                 }
             }
