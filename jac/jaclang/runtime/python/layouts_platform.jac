@@ -205,4 +205,5 @@ glob LAYOUTS_PLATFORM: str = "",
      PyThreadState_C_PROFILEFUNC: Final[i64] = 0,
      PyThreadState_C_TRACEFUNC: Final[i64] = 0,
      PyThreadState_C_PROFILEOBJ: Final[i64] = 0,
-     PyThreadState_C_TRACEOBJ: Final[i64] = 0;
+     PyThreadState_C_TRACEOBJ: Final[i64] = 0,
+     PyConfig_OPTIMIZATION_LEVEL: Final[i64] = 0;

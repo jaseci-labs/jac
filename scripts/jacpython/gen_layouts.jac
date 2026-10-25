@@ -104,7 +104,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/internal/pycore_llist.h",
          "Include/internal/pycore_obmalloc.h",
          "Include/internal/pycore_gc.h",
-         "Include/internal/pycore_interp_structs.h"
+         "Include/internal/pycore_interp_structs.h",
+         "Include/cpython/modsupport.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -132,7 +133,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Objects/codeobject.c",
          # The socket object and the _socket.CAPI record: the _socket and
          # _ssl ports define and read them; the header has no C user left.
-         "Modules/socketmodule.h"
+         "Modules/socketmodule.h",
+         "Python/bltinmodule.c"
      ],
      # Configuration macros a constant reads, folded to 0 or 1 for the probe
      # and layouts_check.c (a constant expression cannot use `defined`).
@@ -343,7 +345,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          # ssl.SSLError's tp_str reads an OSError's strerror in place.
          ("PyOSErrorObject", "PyOSErrorObject"),
          ("PySocketSockObject", "PySocketSockObject"),
-         ("PySocketModule_APIObject", "PySocketModule_APIObject")
+         ("PySocketModule_APIObject", "PySocketModule_APIObject"),
+         ("filterobject", "filterobject"),
+         ("mapobject", "mapobject"),
+         ("zipobject", "zipobject"),
+         ("_PyOnceFlag", "_PyOnceFlag"),
+         ("_PyArg_Parser", "struct _PyArg_Parser")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -3505,6 +3512,75 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_PyExecutorObject_VM_DATA_OPARG",
              "offsetof(_PyExecutorObject, vm_data.oparg)",
              "i64"
+         ),
+         ("filterobject_SIZE", "sizeof(filterobject)", "i64"),
+         ("mapobject_SIZE", "sizeof(mapobject)", "i64"),
+         ("zipobject_SIZE", "sizeof(zipobject)", "i64"),
+         ("PyCF_MASK", "PyCF_MASK", "i32"),
+         ("PyCF_MASK_OBSOLETE", "PyCF_MASK_OBSOLETE", "i32"),
+         ("PyCF_COMPILE_MASK", "PyCF_COMPILE_MASK", "i32"),
+         ("PyCF_SOURCE_IS_UTF8", "PyCF_SOURCE_IS_UTF8", "i32"),
+         ("PyCF_ONLY_AST", "PyCF_ONLY_AST", "i32"),
+         ("Py_file_input", "Py_file_input", "i32"),
+         ("Py_eval_input", "Py_eval_input", "i32"),
+         ("Py_single_input", "Py_single_input", "i32"),
+         ("Py_func_type_input", "Py_func_type_input", "i32"),
+         ("PY_MINOR_VERSION", "PY_MINOR_VERSION", "i32"),
+         ("PyCompilerFlags_CF_FLAGS", "offsetof(PyCompilerFlags, cf_flags)", "i64"),
+         (
+             "PyCompilerFlags_CF_FEATURE_VERSION",
+             "offsetof(PyCompilerFlags, cf_feature_version)",
+             "i64"
+         ),
+         (
+             "_Py_ID_metaclass",
+             "offsetof(struct _Py_global_strings, identifiers._py_metaclass)",
+             "i64"
+         ),
+         (
+             "_Py_ID___prepare__",
+             "offsetof(struct _Py_global_strings, identifiers._py___prepare__)",
+             "i64"
+         ),
+         (
+             "_Py_ID_stdin",
+             "offsetof(struct _Py_global_strings, identifiers._py_stdin)",
+             "i64"
+         ),
+         (
+             "_Py_ID_stdout",
+             "offsetof(struct _Py_global_strings, identifiers._py_stdout)",
+             "i64"
+         ),
+         (
+             "_Py_ID_stderr",
+             "offsetof(struct _Py_global_strings, identifiers._py_stderr)",
+             "i64"
+         ),
+         (
+             "_Py_ID_fileno",
+             "offsetof(struct _Py_global_strings, identifiers._py_fileno)",
+             "i64"
+         ),
+         (
+             "_Py_ID_encoding",
+             "offsetof(struct _Py_global_strings, identifiers._py_encoding)",
+             "i64"
+         ),
+         (
+             "_Py_ID_errors",
+             "offsetof(struct _Py_global_strings, identifiers._py_errors)",
+             "i64"
+         ),
+         (
+             "_Py_ID___round__",
+             "offsetof(struct _Py_global_strings, identifiers._py___round__)",
+             "i64"
+         ),
+         (
+             "_Py_ID_sort",
+             "offsetof(struct _Py_global_strings, identifiers._py_sort)",
+             "i64"
          )
      ],
      # Constants whose values differ between the supported platforms, in the
@@ -4278,7 +4354,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ),
          ("PyThreadState_C_TRACEFUNC", "offsetof(PyThreadState, c_tracefunc)", "i64"),
          ("PyThreadState_C_PROFILEOBJ", "offsetof(PyThreadState, c_profileobj)", "i64"),
-         ("PyThreadState_C_TRACEOBJ", "offsetof(PyThreadState, c_traceobj)", "i64")
+         ("PyThreadState_C_TRACEOBJ", "offsetof(PyThreadState, c_traceobj)", "i64"),
+         (
+             "PyConfig_OPTIMIZATION_LEVEL",
+             "offsetof(PyConfig, optimization_level)",
+             "i64"
+         )
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

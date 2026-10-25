@@ -157,54 +157,6 @@
  }
 
  PyObject *
---- a/Python/bltinmodule.c
-+++ b/Python/bltinmodule.c
-@@ -1,6 +1,7 @@
- /* Built-in functions */
-
- #include "Python.h"
-+#include "jac_compile.h"
- #include "pycore_ast.h"           // _PyAST_Validate()
- #include "pycore_call.h"          // _PyObject_CallNoArgs()
- #include "pycore_ceval.h"         // _PyEval_Vector()
-@@ -836,36 +837,7 @@
-     if (is_ast == -1)
-         goto error;
-     if (is_ast) {
--        PyArena *arena = _PyArena_New();
--        if (arena == NULL) {
--            goto error;
--        }
--
--        if (flags & PyCF_ONLY_AST) {
--            mod_ty mod = PyAST_obj2mod(source, arena, compile_mode);
--            if (mod == NULL || !_PyAST_Validate(mod)) {
--                _PyArena_Free(arena);
--                goto error;
--            }
--            int syntax_check_only = ((flags & PyCF_OPTIMIZED_AST) == PyCF_ONLY_AST); /* unoptiomized AST */
--            if (_PyCompile_AstPreprocess(mod, filename, &cf, optimize,
--                                           arena, syntax_check_only) < 0) {
--                _PyArena_Free(arena);
--                goto error;
--            }
--            result = PyAST_mod2obj(mod);
--        }
--        else {
--            mod_ty mod = PyAST_obj2mod(source, arena, compile_mode);
--            if (mod == NULL || !_PyAST_Validate(mod)) {
--                _PyArena_Free(arena);
--                goto error;
--            }
--            result = (PyObject*)_PyAST_Compile(mod, filename,
--                                               &cf, optimize, arena);
--        }
--        _PyArena_Free(arena);
--        goto finally;
-+        return _PyJac_CompileObject(source, filename, start[compile_mode], &cf, optimize);
-     }
-
-     str = _Py_SourceAsString(source, "compile", "string, bytes or AST", &cf, &source_copy);
 --- a/Modules/Setup.bootstrap.in
 +++ b/Modules/Setup.bootstrap.in
 @@ -36,7 +36,6 @@
@@ -342,43 +294,45 @@
 -		Python/assemble.o \
 -		Python/ast.o \
 -		Python/ast_preprocess.o \
-@@ -435,1 +394,0 @@
+@@ -433,1 +392,0 @@
+-		Python/bltinmodule.o \
+@@ -435,1 +393,0 @@
 -		Python/ceval.o \
-@@ -437,2 +395,0 @@
+@@ -437,2 +394,0 @@
 -		Python/codegen.o \
 -		Python/compile.o \
-@@ -440,1 +396,0 @@
+@@ -440,1 +395,0 @@
 -		Python/critical_section.o \
-@@ -444,2 +399,0 @@
+@@ -444,2 +398,0 @@
 -		Python/flowgraph.o \
 -		Python/frame.o \
-@@ -447,2 +400,0 @@
+@@ -447,2 +399,0 @@
 -		Python/future.o \
 -		Python/gc.o \
-@@ -450,1 +401,0 @@
+@@ -450,1 +400,0 @@
 -		Python/gc_gil.o \
-@@ -456,1 +406,0 @@
+@@ -456,1 +405,0 @@
 -		Python/ceval_gil.o \
-@@ -464,6 +413,0 @@
+@@ -464,6 +412,0 @@
 -		Python/instrumentation.o \
 -		Python/instruction_sequence.o \
 -		Python/intrinsics.o \
 -		Python/jit.o \
 -		Python/legacy_tracing.o \
 -		Python/lock.o \
-@@ -474,1 +417,0 @@
+@@ -474,1 +416,0 @@
 -		Python/object_stack.o \
-@@ -476,3 +418,0 @@
+@@ -476,3 +417,0 @@
 -		Python/optimizer_analysis.o \
 -		Python/optimizer_symbols.o \
 -		Python/parking_lot.o \
-@@ -490,1 +429,0 @@
+@@ -490,1 +428,0 @@
 -		Python/qsbr.o \
-@@ -492,1 +430,0 @@
+@@ -492,1 +429,0 @@
 -		Python/specialize.o \
-@@ -495,1 +432,0 @@
+@@ -495,1 +431,0 @@
 -		Python/symtable.o \
-@@ -522,10 +458,0 @@
+@@ -522,10 +457,0 @@
 -		Objects/abstract.o \
 -		Objects/boolobject.o \
 -		Objects/bytes_methods.o \
@@ -389,59 +343,59 @@
 -		Objects/cellobject.o \
 -		Objects/classobject.o \
 -		Objects/codeobject.o \
-@@ -532,2 +458,0 @@
+@@ -532,2 +457,0 @@
 -		Objects/complexobject.o \
 -		Objects/descrobject.o \
-@@ -534,2 +458,0 @@
+@@ -534,2 +457,0 @@
 -		Objects/enumobject.o \
 -		Objects/exceptions.o \
-@@ -536,2 +458,0 @@
+@@ -536,2 +457,0 @@
 -		Objects/genericaliasobject.o \
 -		Objects/genobject.o \
-@@ -538,3 +458,0 @@
+@@ -538,3 +457,0 @@
 -		Objects/fileobject.o \
 -		Objects/floatobject.o \
 -		Objects/frameobject.o \
-@@ -541,5 +458,0 @@
+@@ -541,5 +457,0 @@
 -		Objects/funcobject.o \
 -		Objects/interpolationobject.o \
 -		Objects/iterobject.o \
 -		Objects/listobject.o \
 -		Objects/longobject.o \
-@@ -546,3 +458,0 @@
+@@ -546,3 +457,0 @@
 -		Objects/dictobject.o \
 -		Objects/odictobject.o \
 -		Objects/memoryobject.o \
-@@ -549,5 +458,0 @@
+@@ -549,5 +457,0 @@
 -		Objects/methodobject.o \
 -		Objects/moduleobject.o \
 -		Objects/namespaceobject.o \
 -		Objects/object.o \
 -		Objects/obmalloc.o \
-@@ -554,6 +458,0 @@
+@@ -554,6 +457,0 @@
 -		Objects/picklebufobject.o \
 -		Objects/rangeobject.o \
 -		Objects/setobject.o \
 -		Objects/sliceobject.o \
 -		Objects/structseq.o \
 -		Objects/templateobject.o \
-@@ -560,2 +458,0 @@
+@@ -560,2 +457,0 @@
 -		Objects/tupleobject.o \
 -		Objects/typeobject.o \
-@@ -562,3 +458,0 @@
+@@ -562,3 +457,0 @@
 -		Objects/typevarobject.o \
 -		Objects/unicodeobject.o \
 -		Objects/unicodectype.o \
-@@ -565,2 +458,0 @@
+@@ -565,2 +457,0 @@
 -		Objects/unionobject.o \
 -		Objects/weakrefobject.o \
-@@ -1937,1 +1846,1 @@
+@@ -1937,1 +1845,1 @@
 -Modules/posixmodule.o: $(srcdir)/Modules/posixmodule.c $(srcdir)/Modules/posixmodule.h
 +# posixmodule.c and posixmodule.h are native Jac (jaclang/runtime/python/modules/posix*.jac).
-@@ -1943,1 +1852,1 @@
+@@ -1943,1 +1851,1 @@
 -Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c $(srcdir)/Modules/posixmodule.h
 +Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c
-@@ -1986,8 +1895,2 @@
+@@ -1986,8 +1894,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
 -	@$(MKDIR_P) $(srcdir)/Parser/lexer
@@ -452,7 +406,7 @@
 -	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2015,21 +1918,2 @@
+@@ -2015,21 +1917,2 @@
 -	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
 -	# using Tools/build/generate_token.py
 -	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
@@ -476,10 +430,10 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065,1 +1949,1 @@
+@@ -2065,1 +1948,1 @@
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
-@@ -2201,7 +2084,0 @@
+@@ -2201,7 +2083,0 @@
 -Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
 -                $(srcdir)/Include/internal/pycore_compile.h \
 -                $(srcdir)/Include/internal/pycore_flowgraph.h \
@@ -487,26 +441,26 @@
 -                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
 -                $(srcdir)/Include/internal/pycore_opcode_utils.h
 -
-@@ -2214,3 +2090,0 @@
+@@ -2214,3 +2089,0 @@
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2247,1 +2120,0 @@
+@@ -2247,1 +2119,0 @@
 -Objects/typeobject.o: Objects/typeslots.inc
-@@ -2817,1 +2690,1 @@
+@@ -2817,1 +2689,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822,1 +2695,1 @@
+@@ -2822,1 +2694,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3296,7 @@
+@@ -3422,0 +3295,7 @@
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h
 +Python/jac_runtime.o: $(srcdir)/Python/jac_runtime.c
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
-+Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
++Python/pythonrun.o: $(srcdir)/Python/jac_compile.h
 --- a/Modules/signalmodule.c
 +++ b/Modules/signalmodule.c
 @@ -19,1 +19,11 @@

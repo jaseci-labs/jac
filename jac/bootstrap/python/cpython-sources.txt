@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 204 C files / 369,941 lines; 154 headers / 151,110 lines.
-#   Total: 358 files / 521,051 source lines.
+#   Excluded: 205 C files / 373,447 lines; 155 headers / 152,397 lines.
+#   Total: 360 files / 525,844 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -104,7 +104,7 @@ Python/asdl.c
 # Python/ast.c  # removed: 1,091 source lines
 # Python/ast_preprocess.c  # removed: 990 source lines
 Python/ast_unparse.c
-Python/bltinmodule.c
+# Python/bltinmodule.c  # removed: 3,506 source lines
 Python/bootstrap_hash.c
 Python/brc.c
 # Python/bytecodes.c  # pruned: 5,549 source lines
@@ -114,7 +114,7 @@ Python/brc.c
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
 Python/clinic/_contextvars.c.h
 Python/clinic/_warnings.c.h
-Python/clinic/bltinmodule.c.h
+# Python/clinic/bltinmodule.c.h  # removed: 1,287 source lines
 Python/clinic/context.c.h
 Python/clinic/import.c.h
 # Python/clinic/instruction_sequence.c.h  # removed: 313 source lines

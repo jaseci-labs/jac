@@ -138,6 +138,9 @@ typedef struct { PyObject_HEAD PyObject *obj; } gaiterobject;
 typedef struct { PyObject_HEAD int fd; } PyStdPrinter_Object;
 typedef struct { PyObject_HEAD SOCKET_T sock_fd; int sock_family; int sock_type; int sock_proto; PyObject *(*errorhandler)(void); PyTime_t sock_timeout; struct _socket_state *state; } PySocketSockObject;
 typedef struct { PyTypeObject *Sock_Type; PyObject *error; PyObject *timeout_error; } PySocketModule_APIObject;
+typedef struct { PyObject_HEAD PyObject *func; PyObject *it; } filterobject;
+typedef struct { PyObject_HEAD PyObject *iters; PyObject *func; int strict; } mapobject;
+typedef struct { PyObject_HEAD Py_ssize_t tuplesize; PyObject *ittuple; PyObject *result; int strict; } zipobject;
 
 #define FIELD(type, field, offset, size) \
     _Static_assert(offsetof(type, field) == (offset), #type "." #field " offset"); \
@@ -1975,6 +1978,77 @@ FIELD(PySocketModule_APIObject, timeout_error, 16, 8);
 KIND(PySocketModule_APIObject, timeout_error, 5);
 LAYOUT(PySocketModule_APIObject, 24, 8);
 
+/* filterobject */
+FIELD(filterobject, ob_base, 0, 16);
+KIND(filterobject, ob_base, 12);
+FIELD(filterobject, func, 16, 8);
+KIND(filterobject, func, 5);
+FIELD(filterobject, it, 24, 8);
+KIND(filterobject, it, 5);
+LAYOUT(filterobject, 32, 8);
+
+/* mapobject */
+FIELD(mapobject, ob_base, 0, 16);
+KIND(mapobject, ob_base, 12);
+FIELD(mapobject, iters, 16, 8);
+KIND(mapobject, iters, 5);
+FIELD(mapobject, func, 24, 8);
+KIND(mapobject, func, 5);
+FIELD(mapobject, strict, 32, 4);
+KIND(mapobject, strict, 1);
+SIGNED(mapobject, strict, 1);
+LAYOUT(mapobject, 40, 8);
+
+/* zipobject */
+FIELD(zipobject, ob_base, 0, 16);
+KIND(zipobject, ob_base, 12);
+FIELD(zipobject, tuplesize, 16, 8);
+KIND(zipobject, tuplesize, 1);
+SIGNED(zipobject, tuplesize, 1);
+FIELD(zipobject, ittuple, 24, 8);
+KIND(zipobject, ittuple, 5);
+FIELD(zipobject, result, 32, 8);
+KIND(zipobject, result, 5);
+FIELD(zipobject, strict, 40, 4);
+KIND(zipobject, strict, 1);
+SIGNED(zipobject, strict, 1);
+LAYOUT(zipobject, 48, 8);
+
+/* _PyOnceFlag */
+FIELD(_PyOnceFlag, v, 0, 1);
+KIND(_PyOnceFlag, v, 1);
+SIGNED(_PyOnceFlag, v, 0);
+LAYOUT(_PyOnceFlag, 1, 1);
+
+/* _PyArg_Parser */
+FIELD(struct _PyArg_Parser, format, 0, 8);
+KIND(struct _PyArg_Parser, format, 5);
+FIELD(struct _PyArg_Parser, keywords, 8, 8);
+KIND(struct _PyArg_Parser, keywords, 5);
+FIELD(struct _PyArg_Parser, fname, 16, 8);
+KIND(struct _PyArg_Parser, fname, 5);
+FIELD(struct _PyArg_Parser, custom_msg, 24, 8);
+KIND(struct _PyArg_Parser, custom_msg, 5);
+FIELD(struct _PyArg_Parser, once, 32, 1);
+KIND(struct _PyArg_Parser, once, 12);
+FIELD(struct _PyArg_Parser, is_kwtuple_owned, 36, 4);
+KIND(struct _PyArg_Parser, is_kwtuple_owned, 1);
+SIGNED(struct _PyArg_Parser, is_kwtuple_owned, 1);
+FIELD(struct _PyArg_Parser, pos, 40, 4);
+KIND(struct _PyArg_Parser, pos, 1);
+SIGNED(struct _PyArg_Parser, pos, 1);
+FIELD(struct _PyArg_Parser, min, 44, 4);
+KIND(struct _PyArg_Parser, min, 1);
+SIGNED(struct _PyArg_Parser, min, 1);
+FIELD(struct _PyArg_Parser, max, 48, 4);
+KIND(struct _PyArg_Parser, max, 1);
+SIGNED(struct _PyArg_Parser, max, 1);
+FIELD(struct _PyArg_Parser, kwtuple, 56, 8);
+KIND(struct _PyArg_Parser, kwtuple, 5);
+FIELD(struct _PyArg_Parser, next, 64, 8);
+KIND(struct _PyArg_Parser, next, 5);
+LAYOUT(struct _PyArg_Parser, 72, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(_Py_IMMORTAL_INITIAL_REFCNT, 3221225472LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
@@ -3343,6 +3417,31 @@ CONSTANT(sizeof(PyMonitoringState), 2LL);
 CONSTANT(offsetof(_PyExecutorArray, executors), 8LL);
 CONSTANT(offsetof(_PyExecutorObject, vm_data.opcode), 32LL);
 CONSTANT(offsetof(_PyExecutorObject, vm_data.oparg), 33LL);
+CONSTANT(sizeof(filterobject), 32LL);
+CONSTANT(sizeof(mapobject), 40LL);
+CONSTANT(sizeof(zipobject), 48LL);
+CONSTANT(PyCF_MASK, 33423360LL);
+CONSTANT(PyCF_MASK_OBSOLETE, 16LL);
+CONSTANT(PyCF_COMPILE_MASK, 62976LL);
+CONSTANT(PyCF_SOURCE_IS_UTF8, 256LL);
+CONSTANT(PyCF_ONLY_AST, 1024LL);
+CONSTANT(Py_file_input, 257LL);
+CONSTANT(Py_eval_input, 258LL);
+CONSTANT(Py_single_input, 256LL);
+CONSTANT(Py_func_type_input, 345LL);
+CONSTANT(PY_MINOR_VERSION, 14LL);
+CONSTANT(offsetof(PyCompilerFlags, cf_flags), 0LL);
+CONSTANT(offsetof(PyCompilerFlags, cf_feature_version), 4LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_metaclass), 29720LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___prepare__), 8296LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_stdin), 37784LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_stdout), 37832LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_stderr), 37736LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_fileno), 22728LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_encoding), 21008LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_errors), 21432LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___round__), 9192LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_sort), 37216LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -3553,6 +3652,7 @@ CONSTANT(offsetof(PyThreadState, c_profilefunc), 80LL);
 CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
+CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3761,6 +3861,7 @@ CONSTANT(offsetof(PyThreadState, c_profilefunc), 80LL);
 CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
+CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3969,6 +4070,7 @@ CONSTANT(offsetof(PyThreadState, c_profilefunc), 80LL);
 CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
+CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4177,6 +4279,7 @@ CONSTANT(offsetof(PyThreadState, c_profilefunc), 80LL);
 CONSTANT(offsetof(PyThreadState, c_tracefunc), 88LL);
 CONSTANT(offsetof(PyThreadState, c_profileobj), 96LL);
 CONSTANT(offsetof(PyThreadState, c_traceobj), 104LL);
+CONSTANT(offsetof(PyConfig, optimization_level), 196LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

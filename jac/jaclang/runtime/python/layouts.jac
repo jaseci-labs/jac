@@ -830,6 +830,35 @@ import from c {
         has Sock_Type: ptr[PyTypeObject],
             error: ptr[PyObject],
             timeout_error: ptr[PyObject];
+    }  obj filterobject {
+        has ob_base: _object,
+            func: ptr[PyObject],
+            it: ptr[PyObject];
+    }  obj mapobject {
+        has ob_base: _object,
+            iters: ptr[PyObject],
+            func: ptr[PyObject],
+            strict: i32;
+    }  obj zipobject {
+        has ob_base: _object,
+            tuplesize: i64,
+            ittuple: ptr[PyObject],
+            result: ptr[PyObject],
+            strict: i32;
+    }  obj _PyOnceFlag {
+        has v: u8;
+    }  obj _PyArg_Parser {
+        has format: ptr[u8],
+            keywords: ptr[ptr[u8]],
+            fname: ptr[u8],
+            custom_msg: ptr[u8],
+            once: _PyOnceFlag,
+            is_kwtuple_owned: i32,
+            pos: i32,
+            min: i32,
+            max: i32,
+            kwtuple: ptr[PyObject],
+            next: ptr[_PyArg_Parser];
     }
 }
 
@@ -2200,4 +2229,29 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      PyMonitoringState_SIZE: Final[i64] = 2,
      _PyExecutorArray_EXECUTORS: Final[i64] = 8,
      _PyExecutorObject_VM_DATA_OPCODE: Final[i64] = 32,
-     _PyExecutorObject_VM_DATA_OPARG: Final[i64] = 33;
+     _PyExecutorObject_VM_DATA_OPARG: Final[i64] = 33,
+     filterobject_SIZE: Final[i64] = 32,
+     mapobject_SIZE: Final[i64] = 40,
+     zipobject_SIZE: Final[i64] = 48,
+     PyCF_MASK: Final[i32] = 33423360,
+     PyCF_MASK_OBSOLETE: Final[i32] = 16,
+     PyCF_COMPILE_MASK: Final[i32] = 62976,
+     PyCF_SOURCE_IS_UTF8: Final[i32] = 256,
+     PyCF_ONLY_AST: Final[i32] = 1024,
+     Py_file_input: Final[i32] = 257,
+     Py_eval_input: Final[i32] = 258,
+     Py_single_input: Final[i32] = 256,
+     Py_func_type_input: Final[i32] = 345,
+     PY_MINOR_VERSION: Final[i32] = 14,
+     PyCompilerFlags_CF_FLAGS: Final[i64] = 0,
+     PyCompilerFlags_CF_FEATURE_VERSION: Final[i64] = 4,
+     _Py_ID_metaclass: Final[i64] = 29720,
+     _Py_ID___prepare__: Final[i64] = 8296,
+     _Py_ID_stdin: Final[i64] = 37784,
+     _Py_ID_stdout: Final[i64] = 37832,
+     _Py_ID_stderr: Final[i64] = 37736,
+     _Py_ID_fileno: Final[i64] = 22728,
+     _Py_ID_encoding: Final[i64] = 21008,
+     _Py_ID_errors: Final[i64] = 21432,
+     _Py_ID___round__: Final[i64] = 9192,
+     _Py_ID_sort: Final[i64] = 37216;

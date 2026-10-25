@@ -205,4 +205,5 @@ glob LAYOUTS_PLATFORM: str = "darwin.aarch64",
      PyThreadState_C_PROFILEFUNC: Final[i64] = 80,
      PyThreadState_C_TRACEFUNC: Final[i64] = 88,
      PyThreadState_C_PROFILEOBJ: Final[i64] = 96,
-     PyThreadState_C_TRACEOBJ: Final[i64] = 104;
+     PyThreadState_C_TRACEOBJ: Final[i64] = 104,
+     PyConfig_OPTIMIZATION_LEVEL: Final[i64] = 196;

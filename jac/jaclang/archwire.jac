@@ -15964,6 +15964,7 @@ graph import runtime.python {
             | modules.datetime_date
             | modules.decimal_context
             | modules.socket_object
+            | object_model.bltinmodule
             | object_model.bytearray
             | object_model.bytes
             | object_model.cell
@@ -21965,6 +21966,119 @@ graph import runtime.python {
             _PyObject_LookupSpecial,
             _PyUnion_Type
         },
+        object_model.bltinmodule {
+            NULL,
+            PyArg_ParseTupleAndKeywords,
+            PyArg_UnpackTuple,
+            PyBaseObject_Type,
+            PyBool_FromLong,
+            PyBool_Type,
+            PyByteArray_Type,
+            PyBytes_Type,
+            PyCallable_Check,
+            PyCell_Type,
+            PyCode_Type,
+            PyCompilerFlags,
+            PyComplex_FromDoubles,
+            PyComplex_Type,
+            PyDict_New,
+            PyDict_Pop,
+            PyDict_SetItemString,
+            PyDict_Type,
+            PyEnum_Type,
+            PyErr_CheckSignals,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_Occurred,
+            PyErr_SetNone,
+            PyErr_SetString,
+            PyExc_EOFError,
+            PyExc_KeyboardInterrupt,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_StopIteration,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_FromDouble,
+            PyFloat_Type,
+            PyFrozenSet_Type,
+            PyFunction_Type,
+            PyIter_Check,
+            PyIter_Next,
+            PyList_Append,
+            PyList_AsTuple,
+            PyList_New,
+            PyList_SetSlice,
+            PyList_Type,
+            PyLong_AsDouble,
+            PyLong_AsInt,
+            PyLong_AsLong,
+            PyLong_AsLongAndOverflow,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyLong_FromVoidPtr,
+            PyLong_Type,
+            PyMapping_Check,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMethodDef,
+            PyModuleDef,
+            PyModule_GetDict,
+            PyNumber_Absolute,
+            PyNumber_Add,
+            PyNumber_Divmod,
+            PyNumber_ToBase,
+            PyObject,
+            PyObject_CallOneArg,
+            PyObject_Dir,
+            PyObject_GC_Del,
+            PyObject_GenericGetAttr,
+            PyObject_GetAttr,
+            PyObject_GetIter,
+            PyObject_GetOptionalAttr,
+            PyObject_Hash,
+            PyObject_IsInstance,
+            PyObject_IsSubclass,
+            PyObject_IsTrue,
+            PyObject_Repr,
+            PyObject_RichCompareBool,
+            PyObject_SelfIter,
+            PyObject_SetAttr,
+            PyObject_Str,
+            PyObject_Vectorcall,
+            PyObject_VectorcallMethod,
+            PyRange_Type,
+            PyReversed_Type,
+            PySequence_List,
+            PySet_Type,
+            PySlice_Type,
+            PySys_Audit,
+            PyThreadState,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyTuple_Size,
+            PyTuple_Type,
+            PyType_GenericAlloc,
+            PyUnicode_AsEncodedString,
+            PyUnicode_AsUTF8,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_Decode,
+            PyUnicode_FromOrdinal,
+            PyUnicode_Type,
+            Py_BuildValue,
+            Py_Ellipsis,
+            Py_None,
+            Py_NotImplemented,
+            Py_complex,
+            _PyArg_BadArgument,
+            _PyArg_CheckPositional,
+            _PyArg_NoKeywords,
+            _PyArg_NoKwnames,
+            _PyTuple_FromArray,
+            jacpy_stdio_fileno
+        },
         object_model.bool {
             NULL,
             PyArg_UnpackTuple,
@@ -25464,6 +25578,64 @@ graph import runtime.python {
             Py_buffer_LEN,
             _PyLong_SIGN_MASK
         },
+        object_model.bltinmodule {
+            METH_FASTCALL,
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_O,
+            METH_VARARGS,
+            ModuleDef,
+            PYTHON_API_VERSION,
+            PY_MINOR_VERSION,
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            PyByteArrayObject,
+            PyCF_COMPILE_MASK,
+            PyCF_MASK,
+            PyCF_MASK_OBSOLETE,
+            PyCF_ONLY_AST,
+            PyCF_SOURCE_IS_UTF8,
+            PyCellObject,
+            PyCodeObject_NFREEVARS,
+            PyCompilerFlags_CF_FEATURE_VERSION,
+            PyCompilerFlags_CF_FLAGS,
+            PyListObject,
+            PyLongObject,
+            PyModuleDef_Base,
+            PyTypeObject,
+            PyVarObject,
+            Py_GT,
+            Py_LT,
+            Py_PRINT_RAW,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_eval_input,
+            Py_file_input,
+            Py_func_type_input,
+            Py_single_input,
+            _PY_FASTCALL_SMALL_STACK,
+            _PyArg_Parser,
+            _Py_ID___dict__,
+            _Py_ID___mro_entries__,
+            _Py_ID___prepare__,
+            _Py_ID___round__,
+            _Py_ID_encoding,
+            _Py_ID_errors,
+            _Py_ID_fileno,
+            _Py_ID_metaclass,
+            _Py_ID_sort,
+            _Py_ID_stderr,
+            _Py_ID_stdin,
+            _Py_ID_stdout,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object,
+            filterobject,
+            filterobject_SIZE,
+            mapobject,
+            mapobject_SIZE,
+            zipobject,
+            zipobject_SIZE
+        },
         object_model.bool {
             PyLongObject,
             PyLong_DIGITS_OFFSET,
@@ -27835,6 +28007,7 @@ graph import runtime.python {
             _PyRuntimeState_BYTES_EMPTY,
             _PyRuntimeState_TUPLE_EMPTY
         },
+        object_model.bltinmodule { PyConfig_OPTIMIZATION_LEVEL },
         object_model.bytearray { PyConfig_BYTES_WARNING },
         object_model.bytes {
             PyConfig_BYTES_WARNING,
@@ -36251,11 +36424,26 @@ graph import runtime.python.modules {
 }
 
 graph import runtime.python.object_model {
-    abstract ++> type { type_check, unicode_check }
+    abstract ++> [
+        bltinmodule {
+            bytearray_check,
+            bytes_check,
+            bytes_data,
+            float_check,
+            float_check_exact,
+            float_value,
+            long_check,
+            long_check_exact,
+            tuple_check,
+            tuple_check_exact,
+            unicode_length
+        },
+        type { type_check, unicode_check },
+    ]
     bool ++> [
+        bltinmodule | range { bool_check },
         cfunction | list | odict | tuple | type | weakref { py_false, py_true },
         file { PyBool_FromLong, bool_check },
-        range { bool_check },
     ]
     bytes_methods ++> [
         bytearray {
@@ -36358,6 +36546,12 @@ graph import runtime.python.object_model {
     ]
     call ++> [
         abstract { error_occurred, exception_raised, thread_state, vectorcall_tstate },
+        bltinmodule {
+            exception_raised,
+            thread_state,
+            vectorcall_nargs,
+            vectorcall_tstate
+        },
         type {
             exception_raised,
             stackref_borrow,
@@ -36371,6 +36565,7 @@ graph import runtime.python.object_model {
         descr { PyCMethod_New },
         exceptions { Py_EnterRecursiveCall },
     ]
+    complex ++> bltinmodule { complex_check_exact }
     dict ++> [
         descr { PyObject_Size },
         odict {
@@ -36429,6 +36624,21 @@ graph import runtime.python.object_model {
             object_xdecref,
             tuple_get_item,
             type_has_feature
+        },
+        bltinmodule {
+            PyType_Type,
+            object_decref,
+            object_gc_untrack,
+            object_incref,
+            object_is_type,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_recycle,
+            tuple_set_item
         },
         bool { object_is_type },
         bytearray {
@@ -37002,9 +37212,22 @@ graph import runtime.python.object_model {
         dict { memcmp },
         type { list_check },
     ]
-    long ++> bytearray | bytes { get_small_int }
+    long ++> [
+        bltinmodule { compact_value, long_is_compact },
+        bytearray | bytes { get_small_int },
+    ]
     method ++> func { PyMethod_New }
-    object ++> type { stackref_as_object_steal, type_is_ready, var_size }
+    object ++> [
+        bltinmodule {
+            dict_check,
+            py_false,
+            py_true,
+            reftracer_track,
+            type_check,
+            unicode_check
+        },
+        type { stackref_as_object_steal, type_is_ready, var_size },
+    ]
     set ++> exceptions { Py_FatalError }
     slice ++> [
         bytearray | bytes | list | memory | tuple | unicode {
@@ -37015,6 +37238,8 @@ graph import runtime.python.object_model {
     ]
     structseq ++> float | long { PyStructSequence_New }
     tuple ++> bytes | float | long | unicode { reftracer_track }
+    type ++> bltinmodule { py_id }
+    unicode ++> bltinmodule { uo_read_char }
     unicodetype_db ++> unicodectype {
         LINEBREAK_LENGTH,
         NUMERIC_LENGTH,
