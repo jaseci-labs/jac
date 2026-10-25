@@ -90,6 +90,12 @@ test "diagnostic-only options do not enter the fingerprint" {
         na_debug=True
     );
     assert diag.codegen_fingerprint() == base_fp;
+    # Strict dependency checking only changes diagnostics, so it keys the
+    # diagnostic profile, not the module's cache file.
+    strict = _pinned_opts();
+    strict.strict_dependencies = True;
+    assert strict.module_projection() == _pinned_opts().module_projection();
+    assert strict.analysis_identity() != _pinned_opts().analysis_identity();
 }
 
 

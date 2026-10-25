@@ -113,6 +113,11 @@ impl CompileOptions.codegen_fingerprint -> str {
 }
 
 impl CompileOptions.analysis_identity -> str {
+    return self.artifact_identity()
+        + (";strict_deps=1" if self.strict_dependencies else "");
+}
+
+impl CompileOptions.artifact_identity -> str {
     return ";".join(
         [
             f"native_required={int(self.native_required)}",
@@ -125,8 +130,7 @@ impl CompileOptions.analysis_identity -> str {
             f"app={self.target_app}",
             f"app_kind={self.app_kind}"
         ]
-    )
-        + (";strict_deps=1" if self.strict_dependencies else "");
+    );
 }
 
 impl CompileOptions.analysis_fingerprint -> str {
@@ -180,7 +184,7 @@ impl CompileOptions.dependency_projection(path: str) -> str {
 impl CompileOptions.module_projection -> str {
     return ";".join(
         [
-            self.analysis_identity(),
+            self.artifact_identity(),
             self.codegen_identity(),
             f"aot={int(bool(self.aot_mode))}",
             f"force_cs={self.force_codespace}",

@@ -1489,6 +1489,7 @@ impl BoundaryAnalysisPass.finish with exit {
 }
 
 impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
+    import os;
     if not (self.module and self.module.body) {
         return;
     }
@@ -1503,7 +1504,7 @@ impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
                 kind=item.surface_kind,
                 exposure=item.exposure.value,
                 placement=item.placement_name,
-                module=self.module.loc.mod_path,
+                module=os.path.abspath(self.module.loc.mod_path),
                 explicit_access=item.access is not None,
                 route=route,
                 scheduled=scheduled,

@@ -129,7 +129,9 @@ impl bind_options(
 }
 
 impl context_identity(options: CompileOptions) -> str {
-    return hashlib.sha256(options.module_projection().encode()).hexdigest()[:20];
+    key = options.module_projection()
+        + (";strict_deps=1" if options.strict_dependencies else "");
+    return hashlib.sha256(key.encode()).hexdigest()[:20];
 }
 
 impl context_program(program: JacProgram, options: CompileOptions) -> JacProgram {
