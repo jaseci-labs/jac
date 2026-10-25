@@ -1568,10 +1568,23 @@ impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, byte
             return dict(held[2]);
         }
         table = _decode_sections(data, start_pos);
-        if len(_SECTION_TABLES) >= SECTION_TABLE_CAP {
-            del _SECTION_TABLES[next(iter(_SECTION_TABLES))];
+        if held is not None {
+            _SECTION_TABLE_TOTAL[0] -= 2 * len(held[0]);
+            del _SECTION_TABLES[id(data)];
         }
-        _SECTION_TABLES[id(data)] = (data, start_pos, table);
+        while _SECTION_TABLES
+            and (
+                len(_SECTION_TABLES) >= SECTION_TABLE_CAP
+                or _SECTION_TABLE_TOTAL[0] + 2 * len(data) > JIR_READ_CACHE_BYTES
+            ) {
+            oldest = next(iter(_SECTION_TABLES));
+            _SECTION_TABLE_TOTAL[0] -= 2 * len(_SECTION_TABLES[oldest][0]);
+            del _SECTION_TABLES[oldest];
+        }
+        if 2 * len(data) <= JIR_READ_CACHE_BYTES {
+            _SECTION_TABLES[id(data)] = (data, start_pos, table);
+            _SECTION_TABLE_TOTAL[0] += 2 * len(data);
+        }
         return dict(table);
     }
     return _decode_sections(data, start_pos);

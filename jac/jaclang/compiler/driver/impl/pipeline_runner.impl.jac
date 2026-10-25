@@ -5,7 +5,7 @@ impl wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
 
 impl wasm_ir_units(
     program: JacProgram, file_path: str
-) -> tuple[str, set[str], list[str]] {
+) -> tuple[str, set[str], list[list[str]]] {
     (gc_mode, enf_mods, enf_grand) = _project_gc_settings();
     prev = push_native_target("wasm32-unknown-unknown");
     try {
@@ -52,7 +52,19 @@ impl wasm_ir_units(
         llvm_ir_str = wasm_program_ir(plan);
         app_ir_str = str(ir.gen.llvm_ir);
         app_imports = app_declared_imports(ir, plan);
-        unit_paths = [unit.path for unit in plan.units];
+        registry = program.native_units();
+        unit_paths: list[list[str]] = [];
+        for unit in plan.units {
+            ent = registry.entries.get(os.path.realpath(unit.path));
+            deps = absolutize_ct_deps_section(
+                ent.compile_deps, ent.compile_deps_base
+            ).decode(
+                "utf-8"
+            )
+                if ent is not None and ent.compile_deps
+                else "";
+            unit_paths.append([unit.path, deps]);
+        }
     } finally {
         pop_native_target(prev);
     }
@@ -68,7 +80,7 @@ impl wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> b
 
 impl wasm_artifact_inputs(
     program: JacProgram, file_path: str, exports: list[str]
-) -> tuple[bytes, list[str]] {
+) -> tuple[bytes, list[list[str]]] {
     (llvm_ir, app_imports, units) = wasm_ir_units(program, file_path);
     return (emit_wasm_from_ir(llvm_ir, exports, app_imports=app_imports), units);
 }

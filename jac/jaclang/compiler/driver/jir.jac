@@ -398,7 +398,8 @@ glob JIR_READ_CACHE_CAP: int = 256,
      SECTION_TABLE_CAP: int = 512,
      _JIR_READS: dict[str, tuple[tuple[int, int, int, int], bytes]] = {},
      _JIR_READ_TOTAL: list[int] = [0],
-     _SECTION_TABLES: dict[int, tuple[bytes, int, dict[int, bytes]]] = {};
+     _SECTION_TABLES: dict[int, tuple[bytes, int, dict[int, bytes]]] = {},
+     _SECTION_TABLE_TOTAL: list[int] = [0];
 
 def read_bytecode_only(data: bytes) -> (bytes | None);
 

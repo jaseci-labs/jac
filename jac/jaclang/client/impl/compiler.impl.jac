@@ -93,7 +93,9 @@ impl ViteCompiler._compile_wasm_module(
     inputs_file = cache / "inputs.json";
     try {
         recorded = json.loads(inputs_file.read_text());
-        if recorded.get("key") == self._wasm_input_key(recorded.get("units", [])) {
+        units = recorded.get("units", []);
+        if recorded.get("key") == self._wasm_input_key(units)
+            and all(ct_dep_text_fresh(unit[1]) for unit in units) {
             held = {
                 p.name: p.read_bytes()
                 for p in cache.iterdir()
@@ -129,7 +131,7 @@ impl ViteCompiler._compile_wasm_module(
     return assets;
 }
 
-impl ViteCompiler._wasm_input_key(self: ViteCompiler, units: list[str]) -> str {
+impl ViteCompiler._wasm_input_key(self: ViteCompiler, units: list[list[str]]) -> str {
     import hashlib;
     import os;
     h = hashlib.sha256(running_compiler_digest().encode("utf-8"));
@@ -137,7 +139,7 @@ impl ViteCompiler._wasm_input_key(self: ViteCompiler, units: list[str]) -> str {
     if config.is_file() {
         h.update(file_sha256(str(config)).encode("utf-8"));
     }
-    for path in sorted(units) {
+    for path in sorted(unit[0] for unit in units) {
         if not os.path.isfile(path) {
             return "";
         }

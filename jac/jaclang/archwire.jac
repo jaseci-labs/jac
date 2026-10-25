@@ -760,6 +760,7 @@ graph import {
     type compiler.driver.ifacecache ++> project.compiler_host { IfaceRegistry }
     compiler.driver.jir ++> [
         client.client_bundle.ClientBundleBuilder._signature { ct_dep_digest },
+        client.compiler.ViteCompiler._compile_wasm_module { ct_dep_text_fresh },
         client.compiler.ViteCompiler._wasm_input_key {
             ct_dep_digest,
             running_compiler_digest
@@ -11919,6 +11920,7 @@ graph import compiler.driver {
             stale_ct_dep_rows,
             write_module_cache
         },
+        pipeline_runner.wasm_ir_units { absolutize_ct_deps_section },
         source_products.python_text {
             SEC_PYSRC,
             get_module_cache_path,
