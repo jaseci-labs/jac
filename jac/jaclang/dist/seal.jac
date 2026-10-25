@@ -37,6 +37,10 @@ def make_sealed_image(
     bake_client: bool = True
 ) -> (Path | None);
 
+def sealed_image_key(
+    config: any, name: str, app: str, bake_client: bool, ignore: any
+) -> str;
+
 def vendor_jab_deps(config: any, img: Path) -> bool;
 
 

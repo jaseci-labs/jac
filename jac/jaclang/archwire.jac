@@ -809,6 +809,7 @@ graph import {
             jir_cacheable_source_path,
             precompiled_jir_matches_source
         },
+        dist.seal.sealed_image_key { running_compiler_digest },
         packages.artifact.package_manifest | packages.resolve.resolve_graph {
             jaclang_version
         },
@@ -1695,7 +1696,8 @@ graph import {
             | toolchains.store { FileLock },
         client.vite_bundler.ViteBundler._build_inputs_digest
             | compiler.backends.native.kernel_resolve._sha256_file
-            | compiler.driver.jir.compute_content_sha256 { file_sha256 },
+            | compiler.driver.jir.compute_content_sha256
+            | dist.seal.sealed_image_key { file_sha256 },
         compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
         compiler.backends.native.kernel_resolve._verdict_key
             | compiler.driver.jir.read_jir { file_identity },
@@ -1845,6 +1847,7 @@ graph import {
             load_lock,
             package_npm_requirements
         },
+        dist.seal.sealed_image_key { has_packages },
         dist.seal.vendor_packages { has_packages, sync },
     ]
     packages.migrate ++> cli.commands.fix._fix_dependencies {

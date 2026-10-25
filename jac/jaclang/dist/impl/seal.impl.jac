@@ -273,6 +273,19 @@ impl make_sealed_image(
         return skipped;
     }
 
+    key = sealed_image_key(config, name, app, bake_client, copy_ignore);
+    cache_root = Path(proj_root) / ".jac" / "seal-cache";
+    cached = cache_root / f"image-{key}" / name;
+    if key and cached.is_dir() {
+        parent.mkdir(parents=True, exist_ok=True);
+        dest = parent / name;
+        if dest.exists() {
+            shutil.rmtree(dest);
+        }
+        shutil.copytree(cached, dest, symlinks=True);
+        console.print("  ✔ Sealed image unchanged", style="muted");
+        return dest;
+    }
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));
     try {
         pkg_copy = stage / name;
@@ -306,10 +319,72 @@ impl make_sealed_image(
             shutil.rmtree(dest);
         }
         shutil.move(str(pkg_copy), str(dest));
+        if key {
+            try {
+                if cache_root.is_dir() {
+                    for old in cache_root.glob("image-*") {
+                        shutil.rmtree(old, ignore_errors=True);
+                    }
+                }
+                shutil.copytree(dest, cached, symlinks=True);
+            } except OSError {}
+        }
         return dest;
     } finally {
         shutil.rmtree(stage, ignore_errors=True);
     }
+}
+
+impl sealed_image_key(
+    config: any, name: str, app: str, bake_client: bool, ignore: any
+) -> str {
+    import hashlib;
+    import platform;
+    import sys;
+    if has_packages(config) {
+        return "";
+    }
+    proj_root = str(config.project_root);
+    h = hashlib.sha256();
+    for part in (
+        running_compiler_digest(),
+        sys.version,
+        platform.machine(),
+        name,
+        app,
+        "client" if bake_client else "noclient",
+        os.environ.get("JAC_SEAL_SKIP_VENV", "")
+    ) {
+        h.update(part.encode("utf-8"));
+        h.update(b"\x00");
+    }
+    lock = Path(proj_root) / ".jac" / "client" / "bun.lock";
+    if lock.is_file() {
+        h.update(file_sha256(str(lock)).encode("utf-8"));
+    }
+    for (dirpath, dirnames, filenames) in os.walk(proj_root) {
+        skipped = set(ignore(dirpath, dirnames + filenames));
+        dirnames[:] = sorted(
+            d
+            for d in dirnames
+            if d not in skipped
+        );
+        for fname in sorted(filenames) {
+            if fname in skipped {
+                continue;
+            }
+            full = os.path.join(dirpath, fname);
+            if not os.path.isfile(full) {
+                continue;
+            }
+            rel = os.path.relpath(full, proj_root).replace(os.sep, "/");
+            h.update(rel.encode("utf-8"));
+            h.update(b"\x00");
+            h.update(f"{os.stat(full).st_mode & 0o777:o}".encode("utf-8"));
+            h.update(file_sha256(full).encode("utf-8"));
+        }
+    }
+    return h.hexdigest()[:24];
 }
 
 impl vendor_jab_deps(config: any, img: Path) -> bool {
