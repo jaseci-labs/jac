@@ -17,6 +17,7 @@ instructions move to Jac one table entry at a time.
     jac run scripts/jacpython/gen_eval.jac --check    # fail on drift
 
 - jac/jaclang/runtime/python/interpreter/eval.jac
+- jac/jaclang/runtime/python/interpreter/dispatch.jac (the dispatch table)
 - the `ops* ++> eval` wires of jac/jaclang/archwire.jac's interpreter graph
 """
 import argparse;
@@ -31,6 +32,8 @@ import from instructions { FAMILIES, MACROS, OPS, Family, Macro, Op }
 glob COMMAND: str = "scripts/jacpython/gen_eval.jac",
      TARGET: Path = RUNTIME / "interpreter/eval.jac",
      INTERPRETER: Path = RUNTIME / "interpreter",
+     DISPATCH: Path = RUNTIME / "interpreter/dispatch.jac",
+     OPCODE_META: Path = RUNTIME / "opcode_meta.jac",
      ARCHWIRE: Path = JAC / "jaclang/archwire.jac",
      WIRE_BLOCK: str = "graph import runtime.python.interpreter {\n",
      CONTEXT: list[str] = ["frame", "tstate", "oparg", "this_instr", "next_instr"],
@@ -1086,6 +1089,34 @@ def eval_module -> tuple[str, list[str]] {
     return (text, names);
 }
 
+# The interpreter's dispatch table, `INSTRUCTION_TABLE`, as Jac C data: every
+# opcode below 256 maps to its handler, written in the op modules or generated
+# into eval.jac, and opcodes without an instruction to the unknown-opcode
+# handler. Opcode numbers come from opcode_meta.jac.
+def dispatch_module(names: list[str]) -> str {
+    numbers: dict[int, str] = {};
+    for m in re.finditer(r"\bOP_(\w+): int = (\d+)", OPCODE_META.read_text()) {
+        if int(m.group(2)) < 256 {
+            numbers[int(m.group(2))] = m.group(1);
+        }
+    }
+    have = set(names) | raw_handlers();
+    table: list[str] = [];
+    for code in range(256) {
+        name = numbers.get(code, "");
+        table.append(name if name in have else "UNKNOWN_OPCODE");
+    }
+    externs = [
+        f"    @__preserve_none\n    def _TAIL_CALL_{name}({HANDLER_PARAMS}) -> ptr[PyObject];"
+        for name in sorted(set(table))
+    ];
+    slots = ",\n".join(
+        f"        HandlerSlot(handler=_TAIL_CALL_{name})" for name in table
+    );
+    return "import from c {\n" + "\n".join(externs)
+        + f"\n    glob INSTRUCTION_TABLE: list[HandlerSlot] = [\n{slots}\n    ];\n}}\n";
+}
+
 with entry {
     parser = argparse.ArgumentParser(
         description="Generate the instruction handlers from the instruction table."
@@ -1095,6 +1126,10 @@ with entry {
     (text, names) = eval_module();
     formatted = format_jac(text, TARGET);
     ok = write_or_check(TARGET, formatted, args.check, COMMAND);
+    ok = write_or_check(
+        DISPATCH, format_jac(dispatch_module(names), DISPATCH), args.check, COMMAND
+    )
+        and ok;
     wires = eval_wires(formatted);
     if not wires_current(wires) {
         if args.check {

@@ -16830,6 +16830,7 @@ graph import runtime.python {
             | bindings.sysconfig
             | bindings.tracemalloc
             | inittab
+            | interpreter.dispatch
             | interpreter.eval
             | interpreter.perf_trampoline
             | modules.codecs_cn
@@ -32507,6 +32508,7 @@ graph import runtime.python.interpreter {
         },
     ]
     ops ++> [
+        dispatch { HandlerSlot },
         eval {
             COPY,
             JUMP_FORWARD,
