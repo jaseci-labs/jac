@@ -558,7 +558,7 @@ impl JacCompiler._restore_sections(
         }
     }
     client_bytes = secs.get(SEC_CLIENT);
-    if client_bytes {
+    if client_bytes is not None {
         restored_client = client_artifact_from_bytes(client_bytes);
         if restored_client is not None {
             actual_program.hub.client_artifacts[full_target] = restored_client;
@@ -1123,7 +1123,7 @@ impl JacCompiler.last_client_artifact(
             return None;
         }
     }
-    return client_artifact_from_bytes(raw) if raw else None;
+    return client_artifact_from_bytes(raw) if raw is not None else None;
 }
 
 impl JacCompiler._client_deps_fresh(artifact: ClientArtifact) -> bool {
@@ -1191,9 +1191,6 @@ impl JacCompiler._get_client_artifact(
         else None;
     if held is None and not has_live_tree {
         held = self._cached_client_artifact(full_target);
-        if held is None and client_side_absent(full_target) {
-            return None;
-        }
     }
     if held is not None {
         import from jaclang.compiler.backends.es.backends.registry {
@@ -1316,24 +1313,10 @@ impl cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
     } except Exception {
         return None;
     }
-    if not raw {
+    if raw is None {
         return None;
     }
     return client_artifact_from_bytes(raw);
-}
-
-impl client_side_absent(full_target: str) -> bool {
-    (rebuild, _no_precompile) = cache_mode();
-    if rebuild {
-        return False;
-    }
-    try {
-        cache_path = get_module_cache_path(full_target);
-        return is_module_cache_valid(full_target, cache_path)
-            and read_section_bytes(read_jir(cache_path), SEC_CLIENT) == b"";
-    } except Exception {
-        return False;
-    }
 }
 
 impl cached_client_pulls(full_target: str) -> str {
@@ -1420,9 +1403,7 @@ impl unit_sections(
     if products.interop {
         sections[SEC_INTEROP] = products.interop.encode("utf-8");
     }
-    if products.client == NO_CLIENT_SIDE {
-        sections[SEC_CLIENT] = b"";
-    } elif products.client {
+    if products.client {
         artifact = client_artifact_from_json(products.client);
         if artifact is not None {
             sections[SEC_CLIENT] = client_artifact_bytes(

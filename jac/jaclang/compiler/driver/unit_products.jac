@@ -3,8 +3,7 @@ import json;
 import os;
 
 glob CLIENT_RECORD_VERSION: int = 5,
-     DEF_DEP_SEP: str = "\x1f",
-     NO_CLIENT_SIDE: str = "-";
+     DEF_DEP_SEP: str = "\x1f";
 
 obj UnitProducts {
     has path: str,
