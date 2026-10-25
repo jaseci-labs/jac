@@ -77,7 +77,9 @@ def mapped_names(
 def find_global(
     module: ptr[PyObject], name: ptr[PyObject], protocol: int, fix_imports: bool
 ) -> ptr[PyObject] {
-    checked(i64(PySys_Audit("pickle.find_class", "OO", module, name)));
+    checked(
+        i64(PySys_Audit(ptr[u8]("pickle.find_class"), ptr[u8]("OO"), module, name))
+    );
     names: ptr[PyObject] = NULL;
     mapped_module: ptr[PyObject] = NULL;
     mapped_name: ptr[PyObject] = NULL;

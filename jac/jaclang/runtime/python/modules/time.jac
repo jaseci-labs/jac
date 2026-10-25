@@ -183,7 +183,7 @@ impl c_remainder(value: int, divisor: int) -> int {
 
 impl audit(event: str, value: ptr[PyObject]) -> bool {
     arguments = object_tuple([value]);
-    status = PySys_AuditTuple(event, arguments);
+    status = jacpy_audit_tuple_text(event, arguments);
     jacpy_release(arguments);
     return status >= 0;
 }

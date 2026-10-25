@@ -2946,7 +2946,9 @@ impl import_from_error(
     is_possibly_shadowing_stdlib: i32 = 0;
     if is_possibly_shadowing != 0 {
         stdlib_modules: ptr[PyObject] = NULL;
-        if _PySys_GetOptionalAttrString("stdlib_module_names", &mut stdlib_modules)
+        if _PySys_GetOptionalAttrString(
+            ptr[u8]("stdlib_module_names"), &mut stdlib_modules
+        )
             < 0 {
             return import_from_done(origin, spec, mod_name_or_unknown);
         }

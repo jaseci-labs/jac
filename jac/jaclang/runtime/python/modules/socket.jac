@@ -157,7 +157,7 @@ impl sock_initobj_impl(
 }
 
 impl socket_gethostname(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    if PySys_AuditTuple("socket.gethostname", NULL) < 0 {
+    if PySys_AuditTuple(ptr[u8]("socket.gethostname"), NULL) < 0 {
         return NULL;
     }
     buf = ptr[u8](PyMem_Calloc(1, u64(1024)));
@@ -192,7 +192,7 @@ impl socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
         }
         flag = True;
     }
-    if PySys_Audit("socket.sethostname", "(O)", hnobj) < 0 {
+    if PySys_Audit(ptr[u8]("socket.sethostname"), ptr[u8]("(O)"), hnobj) < 0 {
         if flag {
             jacpy_release(hnobj);
         }
@@ -228,7 +228,7 @@ impl socket_gethostbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     ret = NULL;
-    if PySys_Audit("socket.gethostbyname", "O", args) >= 0 {
+    if PySys_Audit(ptr[u8]("socket.gethostbyname"), ptr[u8]("O"), args) >= 0 {
         addrbuf = new_addrbuf();
         if addrbuf {
             if setipaddr(self, name, addrbuf, SOCKADDR_IN_SIZE, AF_INET) >= 0 {
@@ -359,7 +359,7 @@ impl socket_gethostbyname_ex(
     space = new_host_space();
     if addr
         and space
-        and PySys_Audit("socket.gethostbyname", "O", args) >= 0
+        and PySys_Audit(ptr[u8]("socket.gethostbyname"), ptr[u8]("O"), args) >= 0
         and setipaddr(self, name, addr, SOCK_ADDR_SIZE, AF_INET) >= 0 {
         thread = PyEval_SaveThread();
         if not HAS_GETHOSTBYNAME_R {
@@ -392,7 +392,7 @@ impl socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     space = new_host_space();
     if sa
         and space
-        and PySys_Audit("socket.gethostbyaddr", "O", args) >= 0
+        and PySys_Audit(ptr[u8]("socket.gethostbyaddr"), ptr[u8]("O"), args) >= 0
         and setipaddr(self, ip_num, sa, SOCK_ADDR_SIZE, AF_UNSPEC) >= 0 {
         af = sockaddr_family(sa);
         ap = ptr[u8]();
@@ -434,7 +434,7 @@ impl socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         == 0 {
         return NULL;
     }
-    if PySys_Audit("socket.getservbyname", "ss", name, proto) < 0 {
+    if PySys_Audit(ptr[u8]("socket.getservbyname"), ptr[u8]("ss"), name, proto) < 0 {
         return NULL;
     }
     thread = PyEval_SaveThread();
@@ -460,7 +460,7 @@ impl socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         );
         return NULL;
     }
-    if PySys_Audit("socket.getservbyport", "is", port, proto) < 0 {
+    if PySys_Audit(ptr[u8]("socket.getservbyport"), ptr[u8]("is"), port, proto) < 0 {
         return NULL;
     }
     thread = PyEval_SaveThread();
@@ -797,7 +797,13 @@ impl socket_getaddrinfo(
     }
     if not failed
         and PySys_Audit(
-            "socket.getaddrinfo", "OOiii", hobj, pobj, family, socktype, protocol
+            ptr[u8]("socket.getaddrinfo"),
+            ptr[u8]("OOiii"),
+            hobj,
+            pobj,
+            family,
+            socktype,
+            protocol
         )
             < 0 {
         failed = True;
@@ -896,7 +902,7 @@ impl socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
         );
         return NULL;
     }
-    if PySys_Audit("socket.getnameinfo", "(O)", sa) < 0 {
+    if PySys_Audit(ptr[u8]("socket.getnameinfo"), ptr[u8]("(O)"), sa) < 0 {
         return NULL;
     }
     buffers = ptr[u8](PyMem_Calloc(1, u64(NI_MAXHOST + NI_MAXSERV)));

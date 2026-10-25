@@ -270,7 +270,8 @@ import from c {
         }
         return op;
     }  def PyFile_SetOpenCodeHook(hook: ptr, user_data: ptr) -> i32 {
-        if Py_IsInitialized() != 0 and PySys_AuditTuple("setopencodehook", NULL) < 0 {
+        if Py_IsInitialized() != 0
+            and PySys_AuditTuple(ptr[u8]("setopencodehook"), NULL) < 0 {
             return i32(-1);
         }
         if jacpy_open_code_hook().view(1)[0] {

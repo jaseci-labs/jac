@@ -3341,8 +3341,8 @@ impl code_new_impl(
     ok = True;
 
     if PySys_Audit(
-        "code.__new__",
-        "OOOiiiiii",
+        ptr[u8]("code.__new__"),
+        ptr[u8]("OOOiiiiii"),
         code,
         filename,
         name,
@@ -3867,8 +3867,8 @@ impl code_replace_impl(
     }
 
     if PySys_Audit(
-        "code.__new__",
-        "OOOiiiiii",
+        ptr[u8]("code.__new__"),
+        ptr[u8]("OOOiiiiii"),
         co_code,
         co_filename,
         co_name,

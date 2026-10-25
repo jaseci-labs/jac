@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 256 C files / 429,264 lines; 164 headers / 155,344 lines.
-#   Total: 420 files / 584,608 source lines.
+#   Excluded: 257 C files / 433,787 lines; 166 headers / 157,629 lines.
+#   Total: 423 files / 591,416 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -346,7 +346,7 @@ Python/clinic/import.c.h
 # Python/clinic/instruction_sequence.c.h  # removed: 313 source lines
 # Python/clinic/instrumentation.c.h  # removed: 334 source lines
 Python/clinic/marshal.c.h
-Python/clinic/sysmodule.c.h
+# Python/clinic/sysmodule.c.h  # removed: 1,983 source lines
 # Python/clinic/traceback.c.h  # removed: 135 source lines
 # Python/codecs.c  # removed: 1,708 source lines
 # Python/codegen.c  # removed: 6,485 source lines
@@ -426,11 +426,11 @@ Python/pythonrun.c
 # Python/remote_debugging.c  # removed: 401 source lines
 # Python/specialize.c  # removed: 3,232 source lines
 # Python/stackrefs.c  # removed: 219 source lines
-Python/stdlib_module_names.h
+# Python/stdlib_module_names.h  # removed: 302 source lines
 # Python/structmember.c  # removed: 382 source lines
 # Python/suggestions.c  # removed: 206 source lines
 # Python/symtable.c  # removed: 3,272 source lines
-Python/sysmodule.c
+# Python/sysmodule.c  # removed: 4,523 source lines
 # Python/thread.c  # removed: 301 source lines
 # Python/thread_nt.h  # pruned: 532 source lines
 # Python/thread_pthread.h  # removed: 1,002 source lines

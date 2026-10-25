@@ -4017,6 +4017,24 @@ CONSTANT(offsetof(PyPreConfig, coerce_c_locale_warn), 24LL);
 CONSTANT(offsetof(PyPreConfig, utf8_mode), 28LL);
 CONSTANT(offsetof(PyPreConfig, dev_mode), 32LL);
 CONSTANT(offsetof(PyPreConfig, allocator), 36LL);
+CONSTANT(_PyHASH_MODULUS, 2305843009213693951LL);
+CONSTANT(_PyHASH_INF, 314159LL);
+CONSTANT(_PyHASH_IMAG, 1000003LL);
+CONSTANT(Py_HASH_CUTOFF, 0LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_call), 16560LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_exception), 21752LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_line), 28528LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_return), 35488LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_c_call), 16112LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_c_exception), 16160LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_c_return), 16280LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_opcode), 32328LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___cantrace__), 3104LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_buffer), 15472LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_write), 41256LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_warnoptions), 40848LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__xoptions), 13544LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___sizeof__), 9856LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -4527,6 +4545,14 @@ CONSTANT(offsetof(_PyRuntimeState, orig_argv), 2352LL);
 CONSTANT(BUFSIZ, 8192LL);
 CONSTANT(_IONBF, 2LL);
 CONSTANT(_IOLBF, 1LL);
+CONSTANT(offsetof(PyInterpreterState, config.int_max_str_digits), 8296LL);
+CONSTANT(O_WRONLY, 1LL);
+CONSTANT(O_CREAT, 64LL);
+CONSTANT(O_APPEND, 1024LL);
+CONSTANT(O_NOFOLLOW, 131072LL);
+CONSTANT(F_OK, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX, 1LL);
+CONSTANT(JAC_HAVE_X87, 1LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5035,6 +5061,14 @@ CONSTANT(offsetof(_PyRuntimeState, orig_argv), 2352LL);
 CONSTANT(BUFSIZ, 8192LL);
 CONSTANT(_IONBF, 2LL);
 CONSTANT(_IOLBF, 1LL);
+CONSTANT(offsetof(PyInterpreterState, config.int_max_str_digits), 8312LL);
+CONSTANT(O_WRONLY, 1LL);
+CONSTANT(O_CREAT, 64LL);
+CONSTANT(O_APPEND, 1024LL);
+CONSTANT(O_NOFOLLOW, 32768LL);
+CONSTANT(F_OK, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX, 1LL);
+CONSTANT(JAC_HAVE_X87, 0LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5543,6 +5577,14 @@ CONSTANT(offsetof(_PyRuntimeState, orig_argv), 1840LL);
 CONSTANT(BUFSIZ, 1024LL);
 CONSTANT(_IONBF, 2LL);
 CONSTANT(_IOLBF, 1LL);
+CONSTANT(offsetof(PyInterpreterState, config.int_max_str_digits), 8344LL);
+CONSTANT(O_WRONLY, 1LL);
+CONSTANT(O_CREAT, 512LL);
+CONSTANT(O_APPEND, 8LL);
+CONSTANT(O_NOFOLLOW, 256LL);
+CONSTANT(F_OK, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX, 0LL);
+CONSTANT(JAC_HAVE_X87, 1LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6051,6 +6093,14 @@ CONSTANT(offsetof(_PyRuntimeState, orig_argv), 1840LL);
 CONSTANT(BUFSIZ, 1024LL);
 CONSTANT(_IONBF, 2LL);
 CONSTANT(_IOLBF, 1LL);
+CONSTANT(offsetof(PyInterpreterState, config.int_max_str_digits), 8344LL);
+CONSTANT(O_WRONLY, 1LL);
+CONSTANT(O_CREAT, 512LL);
+CONSTANT(O_APPEND, 8LL);
+CONSTANT(O_NOFOLLOW, 256LL);
+CONSTANT(F_OK, 0LL);
+CONSTANT(JAC_PLATFORM_LINUX, 0LL);
+CONSTANT(JAC_HAVE_X87, 0LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

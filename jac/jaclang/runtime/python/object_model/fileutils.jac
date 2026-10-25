@@ -310,7 +310,7 @@ import from c {
     }  def _Py_open_noraise(pathname: ptr[u8], flags: i32) -> i32 {
         return open_impl(pathname, flags, 0);
     }  def _Py_wfopen(path: ptr[i32], mode: ptr[i32]) -> ptr[FILE] {
-        if PySys_Audit("open", "uui", path, mode, i32(0)) < 0 {
+        if PySys_Audit(ptr[u8]("open"), ptr[u8]("uui"), path, mode, i32(0)) < 0 {
             return ptr[FILE]();
         }
         slots: own FileStack = FileStack();
@@ -335,7 +335,7 @@ import from c {
         }
         return f;
     }  def Py_fopen(path: ptr[PyObject], mode: ptr[u8]) -> ptr[FILE] {
-        if PySys_Audit("open", "Osi", path, mode, i32(0)) < 0 {
+        if PySys_Audit(ptr[u8]("open"), ptr[u8]("Osi"), path, mode, i32(0)) < 0 {
             return ptr[FILE]();
         }
 
@@ -1348,7 +1348,8 @@ impl open_impl(pathname: ptr[u8], flags: i32, gil_held: i32) -> i32 {
         if not pathname_obj {
             return -1;
         }
-        if PySys_Audit("open", "OOi", pathname_obj, Py_None, flags) < 0 {
+        if PySys_Audit(ptr[u8]("open"), ptr[u8]("OOi"), pathname_obj, Py_None, flags)
+            < 0 {
             object_decref(pathname_obj);
             return -1;
         }

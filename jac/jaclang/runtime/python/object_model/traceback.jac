@@ -327,7 +327,8 @@ import from c {
             return i32(-1);
         }
         limitv = NULL;
-        if _PySys_GetOptionalAttrString("tracebacklimit", &mut limitv) < i32(0) {
+        if _PySys_GetOptionalAttrString(ptr[u8]("tracebacklimit"), &mut limitv)
+            < i32(0) {
             return i32(-1);
         } elif limitv and long_check(limitv) {
             overflow = i32(0);

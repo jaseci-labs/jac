@@ -2561,7 +2561,7 @@ impl pysqlite_connection_init_impl(
     uri: bool,
     autocommit: i32
 ) -> i32 {
-    if PySys_Audit("sqlite3.connect", "O", database) < 0 {
+    if PySys_Audit(ptr[u8]("sqlite3.connect"), ptr[u8]("O"), database) < 0 {
         return i32(-1);
     }
     bytes = NULL;
@@ -2656,7 +2656,7 @@ impl pysqlite_connection_init_impl(
     fields[0].InternalError = state.InternalError;
     fields[0].ProgrammingError = state.ProgrammingError;
     fields[0].NotSupportedError = state.NotSupportedError;
-    if PySys_Audit("sqlite3.connect/handle", "O", receiver) < 0 {
+    if PySys_Audit(ptr[u8]("sqlite3.connect/handle"), ptr[u8]("O"), receiver) < 0 {
         return i32(-1);
     }
     con.initialized = True;

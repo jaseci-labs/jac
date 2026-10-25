@@ -309,7 +309,7 @@ impl os_access_impl(
 }
 
 impl os_chdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
-    if PySys_Audit("os.chdir", "(O)", path.object) < 0 {
+    if PySys_Audit(ptr[u8]("os.chdir"), ptr[u8]("(O)"), path.object) < 0 {
         return NULL;
     }
     fd = path.fd;
@@ -329,7 +329,7 @@ impl os_chdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
 }
 
 impl os_fchdir_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.chdir", "(i)", fd) < 0 {
+    if PySys_Audit(ptr[u8]("os.chdir"), ptr[u8]("(i)"), fd) < 0 {
         return NULL;
     }
     return posix_fildes_fd(fd, 2);
@@ -401,7 +401,10 @@ impl os_chmod_impl(
             return NULL;
         }
     }
-    if PySys_Audit("os.chmod", "Oii", path.object, mode, audit_dir_fd(dir_fd)) < 0 {
+    if PySys_Audit(
+        ptr[u8]("os.chmod"), ptr[u8]("Oii"), path.object, mode, audit_dir_fd(dir_fd)
+    )
+        < 0 {
         return NULL;
     }
     fd = path.fd;
@@ -445,7 +448,7 @@ impl os_chmod_impl(
 }
 
 impl os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.chmod", "iii", fd, mode, i32(-1)) < 0 {
+    if PySys_Audit(ptr[u8]("os.chmod"), ptr[u8]("iii"), fd, mode, i32(-1)) < 0 {
         return NULL;
     }
     async_err = False;
@@ -470,7 +473,7 @@ impl os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject] 
 }
 
 impl os_lchmod_impl(module: ptr[PyObject], path: path_t, mode: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.chmod", "Oii", path.object, mode, i32(-1)) < 0 {
+    if PySys_Audit(ptr[u8]("os.chmod"), ptr[u8]("Oii"), path.object, mode, i32(-1)) < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -492,7 +495,7 @@ impl os_chflags_impl(
             return NULL;
         }
     }
-    if PySys_Audit("os.chflags", "Ok", path.object, flags) < 0 {
+    if PySys_Audit(ptr[u8]("os.chflags"), ptr[u8]("Ok"), path.object, flags) < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -513,7 +516,7 @@ impl os_chflags_impl(
 impl os_lchflags_impl(
     module: ptr[PyObject], path: path_t, flags: u64
 ) -> ptr[PyObject] {
-    if PySys_Audit("os.chflags", "Ok", path.object, flags) < 0 {
+    if PySys_Audit(ptr[u8]("os.chflags"), ptr[u8]("Ok"), path.object, flags) < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -569,7 +572,14 @@ impl os_chown_impl(
         or fd_and_follow_symlinks_invalid("chown", path.fd, follow_symlinks) {
         return NULL;
     }
-    if PySys_Audit("os.chown", "OIIi", path.object, uid, gid, audit_dir_fd(dir_fd))
+    if PySys_Audit(
+        ptr[u8]("os.chown"),
+        ptr[u8]("OIIi"),
+        path.object,
+        uid,
+        gid,
+        audit_dir_fd(dir_fd)
+    )
         < 0 {
         return NULL;
     }
@@ -602,7 +612,7 @@ impl os_chown_impl(
 impl os_fchown_impl(
     module: ptr[PyObject], fd: i32, uid: u32, gid: u32
 ) -> ptr[PyObject] {
-    if PySys_Audit("os.chown", "iIIi", fd, uid, gid, i32(-1)) < 0 {
+    if PySys_Audit(ptr[u8]("os.chown"), ptr[u8]("iIIi"), fd, uid, gid, i32(-1)) < 0 {
         return NULL;
     }
     async_err = False;
@@ -629,7 +639,8 @@ impl os_fchown_impl(
 impl os_lchown_impl(
     module: ptr[PyObject], path: path_t, uid: u32, gid: u32
 ) -> ptr[PyObject] {
-    if PySys_Audit("os.chown", "OIIi", path.object, uid, gid, i32(-1)) < 0 {
+    if PySys_Audit(ptr[u8]("os.chown"), ptr[u8]("OIIi"), path.object, uid, gid, i32(-1))
+        < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -669,8 +680,8 @@ impl os_link_impl(
         }
     }
     if PySys_Audit(
-        "os.link",
-        "OOii",
+        ptr[u8]("os.link"),
+        ptr[u8]("OOii"),
         src.object,
         dst.object,
         audit_dir_fd(src_dir_fd),
@@ -704,7 +715,10 @@ impl os_link_impl(
 impl os_mkdir_impl(
     module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32
 ) -> ptr[PyObject] {
-    if PySys_Audit("os.mkdir", "Oii", path.object, mode, audit_dir_fd(dir_fd)) < 0 {
+    if PySys_Audit(
+        ptr[u8]("os.mkdir"), ptr[u8]("Oii"), path.object, mode, audit_dir_fd(dir_fd)
+    )
+        < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -732,8 +746,8 @@ impl internal_rename(
         return NULL;
     }
     if PySys_Audit(
-        "os.rename",
-        "OOii",
+        ptr[u8]("os.rename"),
+        ptr[u8]("OOii"),
         src.object,
         dst.object,
         audit_dir_fd(src_dir_fd),
@@ -771,7 +785,7 @@ impl os_replace_impl(
 }
 
 impl os_rmdir_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.rmdir", "Oi", path.object, audit_dir_fd(dir_fd)) < 0 {
+    if PySys_Audit(ptr[u8]("os.rmdir"), ptr[u8]("Oi"), path.object, audit_dir_fd(dir_fd)) < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -798,7 +812,7 @@ impl os_umask_impl(module: ptr[PyObject], mask: i32) -> ptr[PyObject] {
 }
 
 impl os_unlink_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.remove", "Oi", path.object, audit_dir_fd(dir_fd)) < 0 {
+    if PySys_Audit(ptr[u8]("os.remove"), ptr[u8]("Oi"), path.object, audit_dir_fd(dir_fd)) < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -858,7 +872,13 @@ impl os_symlink_impl(
     target_is_directory: bool,
     dir_fd: i32
 ) -> ptr[PyObject] {
-    if PySys_Audit("os.symlink", "OOi", src.object, dst.object, audit_dir_fd(dir_fd))
+    if PySys_Audit(
+        ptr[u8]("os.symlink"),
+        ptr[u8]("OOi"),
+        src.object,
+        dst.object,
+        audit_dir_fd(dir_fd)
+    )
         < 0 {
         return NULL;
     }
@@ -1100,7 +1120,12 @@ impl os_utime_impl(
         return NULL;
     }
     if PySys_Audit(
-        "os.utime", "OOOi", path.object, times, ns or Py_None, audit_dir_fd(dir_fd)
+        ptr[u8]("os.utime"),
+        ptr[u8]("OOOi"),
+        path.object,
+        times,
+        ns or Py_None,
+        audit_dir_fd(dir_fd)
     )
         < 0 {
         return NULL;
@@ -1254,7 +1279,7 @@ impl os_makedev_impl(module: ptr[PyObject], major: u64, minor: u64) -> u64 {
 }
 
 impl os_ftruncate_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject] {
-    if PySys_Audit("os.truncate", "in", fd, length) < 0 {
+    if PySys_Audit(ptr[u8]("os.truncate"), ptr[u8]("in"), fd, length) < 0 {
         return NULL;
     }
     async_err = False;
@@ -1284,7 +1309,7 @@ impl os_truncate_impl(
     if path.fd != -1 {
         return os_ftruncate_impl(module, path.fd, length);
     }
-    if PySys_Audit("os.truncate", "On", path.object, length) < 0 {
+    if PySys_Audit(ptr[u8]("os.truncate"), ptr[u8]("On"), path.object, length) < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -1356,7 +1381,7 @@ impl os_posix_fadvise_impl(
 impl os_lockf_impl(
     module: ptr[PyObject], fd: i32, command: i32, length: i64
 ) -> ptr[PyObject] {
-    if PySys_Audit("os.lockf", "iiL", fd, command, length) < 0 {
+    if PySys_Audit(ptr[u8]("os.lockf"), ptr[u8]("iiL"), fd, command, length) < 0 {
         return NULL;
     }
     thread = PyEval_SaveThread();
@@ -1401,7 +1426,8 @@ impl os_getxattr_impl(
     if fd_and_follow_symlinks_invalid("getxattr", path.fd, follow_symlinks) {
         return NULL;
     }
-    if PySys_Audit("os.getxattr", "OO", path.object, attribute.object) < 0 {
+    if PySys_Audit(ptr[u8]("os.getxattr"), ptr[u8]("OO"), path.object, attribute.object)
+        < 0 {
         return NULL;
     }
     buffer_sizes: list[i64] = [128, XATTR_SIZE_MAX, 0];
@@ -1454,8 +1480,8 @@ impl os_setxattr_impl(
         return NULL;
     }
     if PySys_Audit(
-        "os.setxattr",
-        "OOy#i",
+        ptr[u8]("os.setxattr"),
+        ptr[u8]("OOy#i"),
         path.object,
         attribute.object,
         value.address(),
@@ -1486,7 +1512,10 @@ impl os_removexattr_impl(
     if fd_and_follow_symlinks_invalid("removexattr", path.fd, follow_symlinks) {
         return NULL;
     }
-    if PySys_Audit("os.removexattr", "OO", path.object, attribute.object) < 0 {
+    if PySys_Audit(
+        ptr[u8]("os.removexattr"), ptr[u8]("OO"), path.object, attribute.object
+    )
+        < 0 {
         return NULL;
     }
     fd = path.fd;
@@ -1507,7 +1536,8 @@ impl os_listxattr_impl(
     if fd_and_follow_symlinks_invalid("listxattr", path.fd, follow_symlinks) {
         return NULL;
     }
-    if PySys_Audit("os.listxattr", "(O)", path.object or Py_None) < 0 {
+    if PySys_Audit(ptr[u8]("os.listxattr"), ptr[u8]("(O)"), path.object or Py_None)
+        < 0 {
         return NULL;
     }
 

@@ -4119,7 +4119,81 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ),
          ("PyPreConfig_UTF8_MODE", "offsetof(PyPreConfig, utf8_mode)", "i64"),
          ("PyPreConfig_DEV_MODE", "offsetof(PyPreConfig, dev_mode)", "i64"),
-         ("PyPreConfig_ALLOCATOR", "offsetof(PyPreConfig, allocator)", "i64")
+         ("PyPreConfig_ALLOCATOR", "offsetof(PyPreConfig, allocator)", "i64"),
+         ("_PyHASH_MODULUS", "_PyHASH_MODULUS", "i64"),
+         ("_PyHASH_INF", "_PyHASH_INF", "i64"),
+         ("_PyHASH_IMAG", "_PyHASH_IMAG", "i64"),
+         ("Py_HASH_CUTOFF", "Py_HASH_CUTOFF", "i64"),
+         (
+             "_Py_ID_call",
+             "offsetof(struct _Py_global_strings, identifiers._py_call)",
+             "i64"
+         ),
+         (
+             "_Py_ID_exception",
+             "offsetof(struct _Py_global_strings, identifiers._py_exception)",
+             "i64"
+         ),
+         (
+             "_Py_ID_line",
+             "offsetof(struct _Py_global_strings, identifiers._py_line)",
+             "i64"
+         ),
+         (
+             "_Py_ID_return",
+             "offsetof(struct _Py_global_strings, identifiers._py_return)",
+             "i64"
+         ),
+         (
+             "_Py_ID_c_call",
+             "offsetof(struct _Py_global_strings, identifiers._py_c_call)",
+             "i64"
+         ),
+         (
+             "_Py_ID_c_exception",
+             "offsetof(struct _Py_global_strings, identifiers._py_c_exception)",
+             "i64"
+         ),
+         (
+             "_Py_ID_c_return",
+             "offsetof(struct _Py_global_strings, identifiers._py_c_return)",
+             "i64"
+         ),
+         (
+             "_Py_ID_opcode",
+             "offsetof(struct _Py_global_strings, identifiers._py_opcode)",
+             "i64"
+         ),
+         (
+             "_Py_ID___cantrace__",
+             "offsetof(struct _Py_global_strings, identifiers._py___cantrace__)",
+             "i64"
+         ),
+         (
+             "_Py_ID_buffer",
+             "offsetof(struct _Py_global_strings, identifiers._py_buffer)",
+             "i64"
+         ),
+         (
+             "_Py_ID_write",
+             "offsetof(struct _Py_global_strings, identifiers._py_write)",
+             "i64"
+         ),
+         (
+             "_Py_ID_warnoptions",
+             "offsetof(struct _Py_global_strings, identifiers._py_warnoptions)",
+             "i64"
+         ),
+         (
+             "_Py_ID__xoptions",
+             "offsetof(struct _Py_global_strings, identifiers._py__xoptions)",
+             "i64"
+         ),
+         (
+             "_Py_ID___sizeof__",
+             "offsetof(struct _Py_global_strings, identifiers._py___sizeof__)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -5844,7 +5918,19 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyRuntimeState_ORIG_ARGV", "offsetof(_PyRuntimeState, orig_argv)", "i64"),
          ("BUFSIZ", "BUFSIZ", "u64"),
          ("_IONBF", "_IONBF", "i32"),
-         ("_IOLBF", "_IOLBF", "i32")
+         ("_IOLBF", "_IOLBF", "i32"),
+         (
+             "PyInterpreterState_CONFIG_INT_MAX_STR_DIGITS",
+             "offsetof(PyInterpreterState, config.int_max_str_digits)",
+             "i64"
+         ),
+         ("O_WRONLY", "O_WRONLY", "i32"),
+         ("O_CREAT", "O_CREAT", "i32"),
+         ("O_APPEND", "O_APPEND", "i32"),
+         ("O_NOFOLLOW", "O_NOFOLLOW", "i32"),
+         ("F_OK", "F_OK", "i32"),
+         ("SYS_PLATFORM_LINUX", "JAC_PLATFORM_LINUX", "i64"),
+         ("SYS_ARCH_X86_64", "JAC_HAVE_X87", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

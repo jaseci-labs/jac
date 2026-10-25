@@ -897,7 +897,7 @@ import from c {
     }  def _Py_DumpPathConfig(tstate: ptr[PyThreadState]) {
         exc = _PyErr_GetRaisedException(tstate);
 
-        PySys_WriteStderr("Python path configuration:\n");
+        PySys_WriteStderr(ptr[u8]("Python path configuration:\n"));
 
         interp = ptr[ptr[u8]](ptr[u8](tstate) + PyThreadState_INTERP).view(1)[0];
         config = _PyInterpreterState_GetConfig(interp);
@@ -908,62 +908,62 @@ import from c {
         dump_config(
             ptr[u8]("program name"), config_wstr(config, PyConfig_PROGRAM_NAME)
         );
-        PySys_WriteStderr("  isolated = %i\n", config_int(config, PyConfig_ISOLATED));
+        PySys_WriteStderr(ptr[u8]("  isolated = %i\n"), config_int(config, PyConfig_ISOLATED));
         PySys_WriteStderr(
-            "  environment = %i\n", config_int(config, PyConfig_USE_ENVIRONMENT)
+            ptr[u8]("  environment = %i\n"), config_int(config, PyConfig_USE_ENVIRONMENT)
         );
         PySys_WriteStderr(
-            "  user site = %i\n", config_int(config, PyConfig_USER_SITE_DIRECTORY)
+            ptr[u8]("  user site = %i\n"), config_int(config, PyConfig_USER_SITE_DIRECTORY)
         );
-        PySys_WriteStderr("  safe_path = %i\n", config_int(config, PyConfig_SAFE_PATH));
+        PySys_WriteStderr(ptr[u8]("  safe_path = %i\n"), config_int(config, PyConfig_SAFE_PATH));
         PySys_WriteStderr(
-            "  import site = %i\n", config_int(config, PyConfig_SITE_IMPORT)
+            ptr[u8]("  import site = %i\n"), config_int(config, PyConfig_SITE_IMPORT)
         );
         PySys_WriteStderr(
-            "  is in build tree = %i\n", config_int(config, PyConfig_IS_PYTHON_BUILD)
+            ptr[u8]("  is in build tree = %i\n"), config_int(config, PyConfig_IS_PYTHON_BUILD)
         );
         dump_config(ptr[u8]("stdlib dir"), config_wstr(config, PyConfig_STDLIB_DIR));
         dump_config(ptr[u8]("sys.path[0]"), config_wstr(config, PyConfig_SYS_PATH_0));
 
         obj_ = NULL;
         dump_sys_name(ptr[u8]("_base_executable"));
-        res = _PySys_GetOptionalAttrString("_base_executable", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("_base_executable"), &mut obj_);
         dump_sys_value(res, obj_);
         obj_ = NULL;
         dump_sys_name(ptr[u8]("base_prefix"));
-        res = _PySys_GetOptionalAttrString("base_prefix", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("base_prefix"), &mut obj_);
         dump_sys_value(res, obj_);
         obj_ = NULL;
         dump_sys_name(ptr[u8]("base_exec_prefix"));
-        res = _PySys_GetOptionalAttrString("base_exec_prefix", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("base_exec_prefix"), &mut obj_);
         dump_sys_value(res, obj_);
         obj_ = NULL;
         dump_sys_name(ptr[u8]("platlibdir"));
-        res = _PySys_GetOptionalAttrString("platlibdir", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("platlibdir"), &mut obj_);
         dump_sys_value(res, obj_);
         obj_ = NULL;
         dump_sys_name(ptr[u8]("executable"));
-        res = _PySys_GetOptionalAttrString("executable", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("executable"), &mut obj_);
         dump_sys_value(res, obj_);
         obj_ = NULL;
         dump_sys_name(ptr[u8]("prefix"));
-        res = _PySys_GetOptionalAttrString("prefix", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("prefix"), &mut obj_);
         dump_sys_value(res, obj_);
         obj_ = NULL;
         dump_sys_name(ptr[u8]("exec_prefix"));
-        res = _PySys_GetOptionalAttrString("exec_prefix", &mut obj_);
+        res = _PySys_GetOptionalAttrString(ptr[u8]("exec_prefix"), &mut obj_);
         dump_sys_value(res, obj_);
 
         sys_path = NULL;
-        _PySys_GetOptionalAttrString("path", &mut sys_path);
+        _PySys_GetOptionalAttrString(ptr[u8]("path"), &mut sys_path);
         if sys_path and list_check(sys_path) {
-            PySys_WriteStderr("  sys.path = [\n");
+            PySys_WriteStderr(ptr[u8]("  sys.path = [\n"));
             count = object_size(sys_path);
             items = ptr[PyListObject](sys_path).view(1)[0].ob_item;
             for i in range(count) {
-                PySys_FormatStderr("    %A,\n", (items + i).view(1)[0]);
+                PySys_FormatStderr(ptr[u8]("    %A,\n"), (items + i).view(1)[0]);
             }
-            PySys_WriteStderr("  ]\n");
+            PySys_WriteStderr(ptr[u8]("  ]\n"));
         }
         object_xdecref(sys_path);
 
@@ -1402,7 +1402,7 @@ import from c {
         object_decref(names);
         return frozen;
     }  def PyConfig_Set(name: ptr[u8], value: ptr[PyObject]) -> i32 {
-        if PySys_Audit("cpython.PyConfig_Set", "sO", name, value) < 0 {
+        if PySys_Audit(ptr[u8]("cpython.PyConfig_Set"), ptr[u8]("sO"), name, value) < 0 {
             return -1;
         }
 
@@ -3614,37 +3614,37 @@ impl global_variables_as_dict -> ptr[PyObject] {
 
 impl init_dump_ascii_wstr(text: ptr[i32]) {
     if not text {
-        PySys_WriteStderr("(not set)");
+        PySys_WriteStderr(ptr[u8]("(not set)"));
         return;
     }
-    PySys_WriteStderr("'");
+    PySys_WriteStderr(ptr[u8]("'"));
     i: i64 = 0;
     while (text + i).view(1)[0] != 0 {
         ch = u32.wrap((text + i).view(1)[0]);
         if ch == u32(39) {
-            PySys_WriteStderr("\\'");
+            PySys_WriteStderr(ptr[u8]("\\'"));
         } elif u32(32) <= ch and ch < u32(127) {
-            PySys_WriteStderr("%c", i32(ch));
+            PySys_WriteStderr(ptr[u8]("%c"), i32(ch));
         } elif ch <= u32(255) {
-            PySys_WriteStderr("\\x%02x", i32(ch));
+            PySys_WriteStderr(ptr[u8]("\\x%02x"), i32(ch));
         } elif ch > u32(65535) {
-            PySys_WriteStderr("\\U%08x", i32.wrap(ch));
+            PySys_WriteStderr(ptr[u8]("\\U%08x"), i32.wrap(ch));
         } else {
-            PySys_WriteStderr("\\u%04x", i32(ch));
+            PySys_WriteStderr(ptr[u8]("\\u%04x"), i32(ch));
         }
         i += 1;
     }
-    PySys_WriteStderr("'");
+    PySys_WriteStderr(ptr[u8]("'"));
 }
 
 impl dump_config(name: ptr[u8], value: ptr[i32]) {
-    PySys_WriteStderr("  %s = ", name);
+    PySys_WriteStderr(ptr[u8]("  %s = "), name);
     init_dump_ascii_wstr(value);
-    PySys_WriteStderr("\n");
+    PySys_WriteStderr(ptr[u8]("\n"));
 }
 
 impl dump_sys_name(name: ptr[u8]) {
-    PySys_FormatStderr("  sys.%s = ", name);
+    PySys_FormatStderr(ptr[u8]("  sys.%s = "), name);
 }
 
 impl dump_sys_value(res: i32, obj_: ptr[PyObject]) {
@@ -3652,12 +3652,12 @@ impl dump_sys_value(res: i32, obj_: ptr[PyObject]) {
         PyErr_Clear();
     }
     if obj_ {
-        PySys_FormatStderr("%A", obj_);
+        PySys_FormatStderr(ptr[u8]("%A"), obj_);
         object_decref(obj_);
     } else {
-        PySys_WriteStderr("(not set)");
+        PySys_WriteStderr(ptr[u8]("(not set)"));
     }
-    PySys_FormatStderr("\n");
+    PySys_FormatStderr(ptr[u8]("\n"));
 }
 
 impl config_usage(error: i32, program: ptr[i32]) {

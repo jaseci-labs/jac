@@ -3357,7 +3357,8 @@ impl monitoring_register_callback_impl(
         PyErr_Format(PyExc_ValueError, ptr[u8]("invalid event %d"), event);
         return NULL;
     }
-    if PySys_Audit("sys.monitoring.register_callback", "O", func_in) < 0 {
+    if PySys_Audit(ptr[u8]("sys.monitoring.register_callback"), ptr[u8]("O"), func_in)
+        < 0 {
         return NULL;
     }
     func = func_in;

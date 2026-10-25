@@ -5041,7 +5041,10 @@ impl check_set_special_type_attr(
         );
         return 0;
     }
-    if PySys_Audit("object.__setattr__", "OsO", ptr[PyObject](type), name, value) < 0 {
+    if PySys_Audit(
+        ptr[u8]("object.__setattr__"), ptr[u8]("OsO"), ptr[PyObject](type), name, value
+    )
+        < 0 {
         return 0;
     }
     return 1;
@@ -8578,7 +8581,13 @@ impl object_set_class(self_: ptr[PyObject], value: ptr[PyObject], closure: ptr) 
         return -1;
     }
     newto = ptr[PyTypeObject](value);
-    if PySys_Audit("object.__setattr__", "OsO", self_, ptr[u8]("__class__"), value)
+    if PySys_Audit(
+        ptr[u8]("object.__setattr__"),
+        ptr[u8]("OsO"),
+        self_,
+        ptr[u8]("__class__"),
+        value
+    )
         < 0 {
         return -1;
     }

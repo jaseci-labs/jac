@@ -54,7 +54,7 @@ import from jaclang.runtime.python.cpython_api {
     PyObject_Repr,
     PyPickleBuffer_Type,
     PySet_Type,
-    PySys_AuditTuple,
+    jacpy_audit_tuple_text,
     PyTuple_New,
     PyTuple_Type,
     PyType_Type,
@@ -277,7 +277,7 @@ impl audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
             for i in range(len(values)) {
                 jacpy_tuple_set_owned(arguments, i64(i), Py_NewRef(values[i]));
             }
-            status = PySys_AuditTuple(event, arguments);
+            status = jacpy_audit_tuple_text(event, arguments);
             jacpy_release(arguments);
         }
     }

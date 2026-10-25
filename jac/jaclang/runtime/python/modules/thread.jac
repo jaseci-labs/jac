@@ -2184,7 +2184,10 @@ impl thread_PyThread_start_new_thread(
     }
 
     shown_kwargs = kwargs or Py_None;
-    if PySys_Audit("_thread.start_new_thread", "OOO", func, args, shown_kwargs) < 0 {
+    if PySys_Audit(
+        ptr[u8]("_thread.start_new_thread"), ptr[u8]("OOO"), func, args, shown_kwargs
+    )
+        < 0 {
         return NULL;
     }
 
@@ -2232,7 +2235,13 @@ impl thread_PyThread_start_joinable_thread(
     }
 
     daemon_flag = i32(1) if daemon else i32(0);
-    if PySys_Audit("_thread.start_joinable_thread", "OiO", func, daemon_flag, hobj)
+    if PySys_Audit(
+        ptr[u8]("_thread.start_joinable_thread"),
+        ptr[u8]("OiO"),
+        func,
+        daemon_flag,
+        hobj
+    )
         < 0 {
         return NULL;
     }

@@ -902,7 +902,8 @@ impl signal_sigtimedwait_impl(
 impl signal_pthread_kill_impl(
     module: ptr[PyObject], thread_id: u64, signalnum: i32
 ) -> ptr[PyObject] {
-    if PySys_Audit("signal.pthread_kill", "ki", thread_id, signalnum) < 0 {
+    if PySys_Audit(ptr[u8]("signal.pthread_kill"), ptr[u8]("ki"), thread_id, signalnum)
+        < 0 {
         return NULL;
     }
 

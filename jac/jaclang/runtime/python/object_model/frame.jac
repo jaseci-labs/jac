@@ -1802,7 +1802,7 @@ impl frame_builtins_get(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
 }
 
 impl frame_code_get(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
-    if PySys_Audit("object.__getattr__", "Os", self, "f_code") < 0 {
+    if PySys_Audit(ptr[u8]("object.__getattr__"), ptr[u8]("Os"), self, "f_code") < 0 {
         return NULL;
     }
     return PyFrame_GetCode(self);

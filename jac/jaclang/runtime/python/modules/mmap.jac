@@ -904,7 +904,7 @@ impl audit_new(fd: i32, map_size: i64, access: int, offset: i64) -> bool {
     if not arguments {
         return False;
     }
-    status = PySys_AuditTuple("mmap.__new__", arguments);
+    status = PySys_AuditTuple(ptr[u8]("mmap.__new__"), arguments);
     jacpy_release(arguments);
     return status >= 0;
 }

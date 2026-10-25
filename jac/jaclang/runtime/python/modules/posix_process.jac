@@ -317,7 +317,7 @@ impl os_setpriority_impl(
 
 impl os_system_impl(module: ptr[PyObject], command: ptr[PyObject]) -> i64 {
     bytes = PyBytes_AsString(command);
-    if PySys_Audit("os.system", "(O)", command) < 0 {
+    if PySys_Audit(ptr[u8]("os.system"), ptr[u8]("(O)"), command) < 0 {
         return -1;
     }
     thread = PyEval_SaveThread();
@@ -539,7 +539,8 @@ impl os_execv_impl(
         free_string_array(argvlist, argc);
         return NULL;
     }
-    if PySys_Audit("os.exec", "OOO", path.object, argv, Py_None) < 0 {
+    if PySys_Audit(ptr[u8]("os.exec"), ptr[u8]("OOO"), path.object, argv, Py_None)
+        < 0 {
         free_string_array(argvlist, argc);
         return NULL;
     }
@@ -594,7 +595,7 @@ impl os_execve_impl(
         free_string_array(argvlist, argc);
         return NULL;
     }
-    if PySys_Audit("os.exec", "OOO", path.object, argv, env) >= 0 {
+    if PySys_Audit(ptr[u8]("os.exec"), ptr[u8]("OOO"), path.object, argv, env) >= 0 {
         if HAVE_FEXECVE and path.fd > -1 {
             fexecve_call(path.fd, argvlist, envlist);
         } else {
@@ -1028,7 +1029,10 @@ impl py_posix_spawn(
             break;
         }
         attrp = attr;
-        if PySys_Audit("os.posix_spawn", "OOO", path.object, argv, env) < 0 {
+        if PySys_Audit(
+            ptr[u8]("os.posix_spawn"), ptr[u8]("OOO"), path.object, argv, env
+        )
+            < 0 {
             break;
         }
         pid = i32(0);
@@ -1274,7 +1278,7 @@ impl os_fork_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if fork_forbidden(False) {
         return NULL;
     }
-    if PySys_AuditTuple("os.fork", NULL) < 0 {
+    if PySys_AuditTuple(ptr[u8]("os.fork"), NULL) < 0 {
         return NULL;
     }
     PyOS_BeforeFork();
@@ -1299,7 +1303,7 @@ impl os_forkpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if fork_forbidden(True) {
         return NULL;
     }
-    if PySys_AuditTuple("os.forkpty", NULL) < 0 {
+    if PySys_AuditTuple(ptr[u8]("os.forkpty"), NULL) < 0 {
         return NULL;
     }
     PyOS_BeforeFork();
@@ -1584,7 +1588,7 @@ impl os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject]
 }
 
 impl os_kill_impl(module: ptr[PyObject], pid: i32, signal: i64) -> ptr[PyObject] {
-    if PySys_Audit("os.kill", "in", pid, signal) < 0 {
+    if PySys_Audit(ptr[u8]("os.kill"), ptr[u8]("in"), pid, signal) < 0 {
         return NULL;
     }
     if kill(pid, i32.wrap(signal)) == -1 {
@@ -1598,7 +1602,7 @@ impl os_kill_impl(module: ptr[PyObject], pid: i32, signal: i64) -> ptr[PyObject]
 }
 
 impl os_killpg_impl(module: ptr[PyObject], pgid: i32, signal: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.killpg", "ii", pgid, signal) < 0 {
+    if PySys_Audit(ptr[u8]("os.killpg"), ptr[u8]("ii"), pgid, signal) < 0 {
         return NULL;
     }
     if killpg(pgid, signal) == -1 {

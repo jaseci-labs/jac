@@ -733,7 +733,7 @@ impl sock_bind(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
         free_addrbuf(addrbuf);
         return NULL;
     }
-    if PySys_Audit("socket.bind", "OO", self, addro) < 0 {
+    if PySys_Audit(ptr[u8]("socket.bind"), ptr[u8]("OO"), self, addro) < 0 {
         free_addrbuf(addrbuf);
         return NULL;
     }
@@ -823,7 +823,7 @@ impl sock_connect(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject] {
         free_addrbuf(addrbuf);
         return NULL;
     }
-    if PySys_Audit("socket.connect", "OO", self, addro) < 0 {
+    if PySys_Audit(ptr[u8]("socket.connect"), ptr[u8]("OO"), self, addro) < 0 {
         free_addrbuf(addrbuf);
         return NULL;
     }
@@ -846,7 +846,7 @@ impl sock_connect_ex(self: ptr[PyObject], addro: ptr[PyObject]) -> ptr[PyObject]
         free_addrbuf(addrbuf);
         return NULL;
     }
-    if PySys_Audit("socket.connect", "OO", self, addro) < 0 {
+    if PySys_Audit(ptr[u8]("socket.connect"), ptr[u8]("OO"), self, addro) < 0 {
         free_addrbuf(addrbuf);
         return NULL;
     }
@@ -1499,7 +1499,8 @@ impl sock_sendto(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     addrlen = getsockaddrarg(s, addro, addrbuf, "sendto");
-    if addrlen < 0 or PySys_Audit("socket.sendto", "OO", self, addro) < 0 {
+    if addrlen < 0
+        or PySys_Audit(ptr[u8]("socket.sendto"), ptr[u8]("OO"), self, addro) < 0 {
         free_addrbuf(addrbuf);
         jacpy_buffer_release(pbuf);
         return NULL;
@@ -1624,13 +1625,13 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
                 message, addrbuf, buffers, cmsg_fast, cmsgs, 0, controlbuf, NULL
             );
         }
-        if PySys_Audit("socket.sendmsg", "OO", self, addr_arg) < 0 {
+        if PySys_Audit(ptr[u8]("socket.sendmsg"), ptr[u8]("OO"), self, addr_arg) < 0 {
             return sendmsg_finally(
                 message, addrbuf, buffers, cmsg_fast, cmsgs, 0, controlbuf, NULL
             );
         }
         set_msg_name(message, ptr(addrbuf), addrlen);
-    } elif PySys_Audit("socket.sendmsg", "OO", self, Py_None) < 0 {
+    } elif PySys_Audit(ptr[u8]("socket.sendmsg"), ptr[u8]("OO"), self, Py_None) < 0 {
         return sendmsg_finally(
             message, addrbuf, buffers, cmsg_fast, cmsgs, 0, controlbuf, NULL
         );
@@ -2041,7 +2042,10 @@ impl sock_init(
     if not module {
         return i32(-1);
     }
-    if PySys_Audit("socket.__new__", "Oiii", self, family, type, proto) < 0 {
+    if PySys_Audit(
+        ptr[u8]("socket.__new__"), ptr[u8]("Oiii"), self, family, type, proto
+    )
+        < 0 {
         return i32(-1);
     }
     fd = INVALID_SOCKET;

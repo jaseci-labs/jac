@@ -640,7 +640,7 @@ impl os_open_impl(
     fd = i32(-1);
     async_err = False;
     flags |= i32(O_CLOEXEC);
-    if PySys_Audit("open", "OOi", path.object, Py_None, flags) < 0 {
+    if PySys_Audit(ptr[u8]("open"), ptr[u8]("OOi"), path.object, Py_None, flags) < 0 {
         return i32(-1);
     }
     while True {

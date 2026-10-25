@@ -490,8 +490,8 @@ import from c {
     ) -> ptr[PyObject];  def PySet_Size(anyset: ptr[PyObject]) -> i64;  def PySlice_New(
         start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
     ) -> ptr[PyObject];  def PySys_Audit(
-        event: str, argFormat: str, *args: any
-    ) -> i32;  def PySys_AuditTuple(event: str, args: ptr[PyObject]) -> i32;  def PyThreadState_Get -> ptr[
+        event: ptr[u8], argFormat: ptr[u8], *args: any
+    ) -> i32;  def PySys_AuditTuple(event: ptr[u8], args: ptr[PyObject]) -> i32;  def PyThreadState_Get -> ptr[
         PyThreadState
     ];  def PyThreadState_GetInterpreter(
         tstate: ptr[PyThreadState]
@@ -765,7 +765,7 @@ import from c {
     ) -> i32;  def _PyStaticType_InitForExtension(
         interp: ptr[PyInterpreterState], self_: ptr[PyObject]
     ) -> i32;  def _PySys_GetOptionalAttrString(
-        arg0: str, arg1: &mut ptr[PyObject]
+        arg0: ptr[u8], arg1: &mut ptr[PyObject]
     ) -> i32;  def _PyThreadState_DeleteList(
         list_: ptr[PyThreadState], is_after_fork: i32
     );  def _PyThreadState_RemoveExcept(
@@ -954,7 +954,9 @@ import from c {
         mod: ptr[PyObject], name: str, value: str
     ) -> i32;  def jacpy_arg_parse_sized_text(
         arg: ptr[PyObject], format: str, data: &mut ptr[u8], size: &mut i64
-    ) -> i32;  def jacpy_unicode_equal_text(op: ptr[PyObject], text: str) -> i32;  def jacpy_unicode_writer_write_text(
+    ) -> i32;  def jacpy_audit_tuple_text(event: str, args: ptr[PyObject]) -> i32;  def jacpy_unicode_equal_text(
+        op: ptr[PyObject], text: str
+    ) -> i32;  def jacpy_unicode_writer_write_text(
         writer: ptr[PyUnicodeWriter], text: str, size: i64
     ) -> i32;  def jacpy_bytes_length(value: ptr[PyObject]) -> i64;  def jacpy_bytes_unescape(
         value: ptr[PyObject]

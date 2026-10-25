@@ -37,7 +37,7 @@ impl is_main_interpreter -> bool {
 
 impl syslog_get_argv -> ptr[PyObject] {
     argv = NULL;
-    if _PySys_GetOptionalAttrString("argv", &mut argv) <= 0 {
+    if _PySys_GetOptionalAttrString(ptr[u8]("argv"), &mut argv) <= 0 {
         return NULL;
     }
     count = PyList_Size(argv);
@@ -85,7 +85,7 @@ impl audit(event: str, values: list[ptr[PyObject]]) -> bool {
     for value in values {
         jacpy_release(value);
     }
-    status = PySys_AuditTuple(event, arguments);
+    status = jacpy_audit_tuple_text(event, arguments);
     jacpy_release(arguments);
     return status >= 0;
 }

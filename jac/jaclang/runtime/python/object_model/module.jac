@@ -1,7 +1,9 @@
 import from c {
-    glob PyType_Type: PyTypeObject; def PySys_FormatStderr(format: str, *args: any);  def PySys_WriteStderr(
-        format: str, *args: any
-    );  def PyUnicode_AsWideChar(unicode: ptr[PyObject], w: ptr, size: i64) -> i64;  def PyUnicode_FromStringAndSize(
+    glob PyType_Type: PyTypeObject; def PySys_FormatStderr(
+        format: ptr[u8], *args: any
+    );  def PySys_WriteStderr(format: ptr[u8], *args: any);  def PyUnicode_AsWideChar(
+        unicode: ptr[PyObject], w: ptr, size: i64
+    ) -> i64;  def PyUnicode_FromStringAndSize(
         u: ptr[u8], size: i64
     ) -> ptr[PyObject];  def _PyImport_GetNextModuleIndex -> i64;  def _PyImport_IsInitialized(
         interp: ptr
@@ -14,7 +16,7 @@ import from c {
     ) -> ptr[PyObject];  def _PyType_AllocNoTrack(
         type: ptr[PyTypeObject], nitems: i64
     ) -> ptr[PyObject];  def _Py_GetConfig -> ptr[u8];  def _PySys_GetOptionalAttrString(
-        name: str, value: &mut ptr[PyObject]
+        name: ptr[u8], value: &mut ptr[PyObject]
     ) -> i32;  def _PyObject_GenericGetAttrWithDict(
         ob: ptr[PyObject], name: ptr[PyObject], dict: ptr[PyObject], suppress: i32
     ) -> ptr[PyObject];  def _PyUnicode_EqualToASCIIString(
@@ -964,7 +966,10 @@ impl clear_names(d: ptr[PyObject], verbose: i32, underscored: bool) {
             s = PyUnicode_AsUTF8(key);
             if s {
                 PySys_WriteStderr(
-                    "#   clear[1] %s\n" if underscored else "#   clear[2] %s\n", s
+                    ptr[u8]("#   clear[1] %s\n")
+                        if underscored
+                        else ptr[u8]("#   clear[2] %s\n"),
+                    s
                 );
             } else {
                 PyErr_Clear();
@@ -1090,7 +1095,9 @@ impl explain_missing(
     is_possibly_shadowing_stdlib = i32(0);
     if is_possibly_shadowing != 0 {
         stdlib_modules: ptr[PyObject] = NULL;
-        if _PySys_GetOptionalAttrString("stdlib_module_names", &mut stdlib_modules)
+        if _PySys_GetOptionalAttrString(
+            ptr[u8]("stdlib_module_names"), &mut stdlib_modules
+        )
             < 0 {
             return;
         }
@@ -1215,7 +1222,7 @@ impl module_dealloc(op: ptr[PyObject]) {
     md = module_of(op);
     object_gc_untrack(op);
     if config_int(PyConfig_VERBOSE) != i32(0) and md.view(1)[0].md_name {
-        PySys_FormatStderr("# destroy %U\n", md.view(1)[0].md_name);
+        PySys_FormatStderr(ptr[u8]("# destroy %U\n"), md.view(1)[0].md_name);
     }
     if md.view(1)[0].md_weaklist {
         PyObject_ClearWeakRefs(op);

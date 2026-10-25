@@ -1716,6 +1716,8 @@ int jacpy_module_add_text(PyObject *mod, const char *name, PyObject *value) { re
 int jacpy_module_add_int_text(PyObject *mod, const char *name, long value) { return PyModule_AddIntConstant(mod, name, value); }
 int jacpy_module_add_string_text(PyObject *mod, const char *name, const char *value) { return PyModule_AddStringConstant(mod, name, value); }
 int jacpy_arg_parse_sized_text(PyObject *arg, const char *format, const char **data, Py_ssize_t *size) { return PyArg_Parse(arg, format, data, size); }
+/* PySys_AuditTuple for a Jac str event name, which arrives as its UTF-8 address. */
+int jacpy_audit_tuple_text(const char *event, PyObject *args) { return PySys_AuditTuple(event, args); }
 
 /* The va_list calls of Objects/call.c, as call.c defines them. The rest of
  * call.c is object_model/call.jac; a Jac definition cannot receive a

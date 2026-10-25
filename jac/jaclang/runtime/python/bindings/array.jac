@@ -159,7 +159,7 @@ impl create_bound(args: BoundArguments) -> ptr[PyObject] {
     if audit == 0 {
         return NULL;
     }
-    status = PySys_AuditTuple("array.__new__", audit);
+    status = PySys_AuditTuple(ptr[u8]("array.__new__"), audit);
     jacpy_release(audit);
     if status < 0 {
         return NULL;

@@ -709,7 +709,7 @@ def add_errno(mapping: ptr[PyObject], type: ptr[PyObject], code: i64) -> bool;
 import from c {
     def _PyErr_NoMemory(tstate: ptr) -> ptr[PyObject] {
         if not object_type(PyExc_MemoryError) {
-            Py_FatalError("Out of memory and PyExc_MemoryError is not initialized yet");
+            Py_FatalError(ptr[u8]("Out of memory and PyExc_MemoryError is not initialized yet"));
         }
         err = get_memory_error(False, NULL, NULL);
         if err {

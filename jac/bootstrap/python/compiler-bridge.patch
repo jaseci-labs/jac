@@ -364,17 +364,18 @@
 -		Python/bootstrap_hash.o \
 -		Python/specialize.o \
 -		Python/stackrefs.o \
-@@ -494,2 +396,0 @@
+@@ -494,3 +396,0 @@
 -		Python/structmember.o \
 -		Python/symtable.o \
-@@ -497,2 +397,0 @@
+-		Python/sysmodule.o \
+@@ -497,2 +396,0 @@
 -		Python/thread.o \
 -		Python/traceback.o \
-@@ -499,3 +397,0 @@
+@@ -499,3 +396,0 @@
 -		Python/tracemalloc.o \
 -		Python/uniqueid.o \
 -		Python/getopt.o \
-@@ -502,7 +397,0 @@
+@@ -502,7 +396,0 @@
 -		Python/pystrcmp.o \
 -		Python/pystrtod.o \
 -		Python/pystrhex.o \
@@ -382,7 +383,7 @@
 -		Python/formatter_unicode.o \
 -		Python/fileutils.o \
 -		Python/suggestions.o \
-@@ -522,10 +410,0 @@
+@@ -522,10 +409,0 @@
 -		Objects/abstract.o \
 -		Objects/boolobject.o \
 -		Objects/bytes_methods.o \
@@ -393,60 +394,62 @@
 -		Objects/cellobject.o \
 -		Objects/classobject.o \
 -		Objects/codeobject.o \
-@@ -532,2 +410,0 @@
+@@ -532,2 +409,0 @@
 -		Objects/complexobject.o \
 -		Objects/descrobject.o \
-@@ -534,2 +410,0 @@
+@@ -534,2 +409,0 @@
 -		Objects/enumobject.o \
 -		Objects/exceptions.o \
-@@ -536,2 +410,0 @@
+@@ -536,2 +409,0 @@
 -		Objects/genericaliasobject.o \
 -		Objects/genobject.o \
-@@ -538,3 +410,0 @@
+@@ -538,3 +409,0 @@
 -		Objects/fileobject.o \
 -		Objects/floatobject.o \
 -		Objects/frameobject.o \
-@@ -541,5 +410,0 @@
+@@ -541,5 +409,0 @@
 -		Objects/funcobject.o \
 -		Objects/interpolationobject.o \
 -		Objects/iterobject.o \
 -		Objects/listobject.o \
 -		Objects/longobject.o \
-@@ -546,3 +410,0 @@
+@@ -546,3 +409,0 @@
 -		Objects/dictobject.o \
 -		Objects/odictobject.o \
 -		Objects/memoryobject.o \
-@@ -549,5 +410,0 @@
+@@ -549,5 +409,0 @@
 -		Objects/methodobject.o \
 -		Objects/moduleobject.o \
 -		Objects/namespaceobject.o \
 -		Objects/object.o \
 -		Objects/obmalloc.o \
-@@ -554,6 +410,0 @@
+@@ -554,6 +409,0 @@
 -		Objects/picklebufobject.o \
 -		Objects/rangeobject.o \
 -		Objects/setobject.o \
 -		Objects/sliceobject.o \
 -		Objects/structseq.o \
 -		Objects/templateobject.o \
-@@ -560,2 +410,0 @@
+@@ -560,2 +409,0 @@
 -		Objects/tupleobject.o \
 -		Objects/typeobject.o \
-@@ -562,3 +410,0 @@
+@@ -562,3 +409,0 @@
 -		Objects/typevarobject.o \
 -		Objects/unicodeobject.o \
 -		Objects/unicodectype.o \
-@@ -565,2 +410,0 @@
+@@ -565,2 +409,0 @@
 -		Objects/unionobject.o \
 -		Objects/weakrefobject.o \
-@@ -572,1 +415,0 @@
+@@ -572,1 +414,0 @@
 -		Modules/getbuildinfo.o \
-@@ -1937,1 +1797,1 @@
+@@ -1447,1 +1305,0 @@
+-		$(srcdir)/Python/stdlib_module_names.h
+@@ -1937,1 +1796,1 @@
 -Modules/posixmodule.o: $(srcdir)/Modules/posixmodule.c $(srcdir)/Modules/posixmodule.h
 +# posixmodule.c and posixmodule.h are native Jac (jaclang/runtime/python/modules/posix*.jac).
-@@ -1943,1 +1802,0 @@
+@@ -1943,1 +1801,0 @@
 -Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c $(srcdir)/Modules/posixmodule.h
-@@ -1986,8 +1845,2 @@
+@@ -1986,8 +1844,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
 -	@$(MKDIR_P) $(srcdir)/Parser/lexer
@@ -457,7 +460,7 @@
 -	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2015,21 +1868,2 @@
+@@ -2015,21 +1867,2 @@
 -	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
 -	# using Tools/build/generate_token.py
 -	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
@@ -481,10 +484,10 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065,1 +1899,1 @@
+@@ -2065,1 +1898,1 @@
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
-@@ -2201,7 +2034,0 @@
+@@ -2201,7 +2033,0 @@
 -Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
 -                $(srcdir)/Include/internal/pycore_compile.h \
 -                $(srcdir)/Include/internal/pycore_flowgraph.h \
@@ -492,19 +495,19 @@
 -                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
 -                $(srcdir)/Include/internal/pycore_opcode_utils.h
 -
-@@ -2214,3 +2040,0 @@
+@@ -2214,3 +2039,0 @@
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2247,1 +2070,0 @@
+@@ -2247,1 +2069,0 @@
 -Objects/typeobject.o: Objects/typeslots.inc
-@@ -2817,1 +2640,1 @@
+@@ -2817,1 +2639,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822,1 +2645,1 @@
+@@ -2822,1 +2644,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3246,7 @@
+@@ -3422,0 +3245,7 @@
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h

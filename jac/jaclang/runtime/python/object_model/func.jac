@@ -1163,7 +1163,8 @@ impl func_get_annotation_dict(op: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl func_get_code(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
-    if PySys_Audit("object.__getattr__", "Os", self, "__code__") < 0 {
+    if PySys_Audit(ptr[u8]("object.__getattr__"), ptr[u8]("Os"), self, "__code__")
+        < 0 {
         return NULL;
     }
     return object_new_ref(field(self, PyFunctionObject_CODE));
@@ -1177,7 +1178,10 @@ impl func_set_code(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> 
         );
         return i32(-1);
     }
-    if PySys_Audit("object.__setattr__", "OsO", self, "__code__", value) < 0 {
+    if PySys_Audit(
+        ptr[u8]("object.__setattr__"), ptr[u8]("OsO"), self, "__code__", value
+    )
+        < 0 {
         return i32(-1);
     }
     nfree = code_i32(value, PyCodeObject_NFREEVARS);
@@ -1250,7 +1254,8 @@ impl func_set_qualname(
 }
 
 impl func_get_defaults(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
-    if PySys_Audit("object.__getattr__", "Os", self, "__defaults__") < 0 {
+    if PySys_Audit(ptr[u8]("object.__getattr__"), ptr[u8]("Os"), self, "__defaults__")
+        < 0 {
         return NULL;
     }
     defaults = field(self, PyFunctionObject_DEFAULTS);
@@ -1272,10 +1277,11 @@ impl set_defaults_attr(
         return i32(-1);
     }
     if value {
-        if PySys_Audit("object.__setattr__", "OsO", self, attr, value) < 0 {
+        if PySys_Audit(ptr[u8]("object.__setattr__"), ptr[u8]("OsO"), self, attr, value)
+            < 0 {
             return i32(-1);
         }
-    } elif PySys_Audit("object.__delattr__", "Os", self, attr) < 0 {
+    } elif PySys_Audit(ptr[u8]("object.__delattr__"), ptr[u8]("Os"), self, attr) < 0 {
         return i32(-1);
     }
     handle_func_event(
@@ -1297,7 +1303,8 @@ impl func_set_defaults(
 }
 
 impl func_get_kwdefaults(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
-    if PySys_Audit("object.__getattr__", "Os", self, "__kwdefaults__") < 0 {
+    if PySys_Audit(ptr[u8]("object.__getattr__"), ptr[u8]("Os"), self, "__kwdefaults__")
+        < 0 {
         return NULL;
     }
     defaults = field(self, PyFunctionObject_KWDEFAULTS);
@@ -1463,7 +1470,7 @@ impl func_new_values(
             );
         }
     }
-    if PySys_Audit("function.__new__", "O", code) < 0 {
+    if PySys_Audit(ptr[u8]("function.__new__"), ptr[u8]("O"), code) < 0 {
         return NULL;
     }
     newfunc = PyFunction_New(code, globals);

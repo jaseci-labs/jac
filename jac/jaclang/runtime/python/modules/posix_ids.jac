@@ -688,7 +688,7 @@ impl os_putenv_impl(
         PyErr_SetString(PyExc_ValueError, ptr[u8]("illegal environment variable name"));
         return NULL;
     }
-    if PySys_Audit("os.putenv", "OO", name, value) < 0 {
+    if PySys_Audit(ptr[u8]("os.putenv"), ptr[u8]("OO"), name, value) < 0 {
         return NULL;
     }
     if setenv(name_string, value_string, i32(1)) != 0 {
@@ -698,7 +698,7 @@ impl os_putenv_impl(
 }
 
 impl os_unsetenv_impl(module: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
-    if PySys_Audit("os.unsetenv", "(O)", name) < 0 {
+    if PySys_Audit(ptr[u8]("os.unsetenv"), ptr[u8]("(O)"), name) < 0 {
         return NULL;
     }
     if HAVE_BROKEN_UNSETENV {

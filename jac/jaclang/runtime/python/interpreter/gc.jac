@@ -6,8 +6,8 @@ import from c {
          PyExc_ResourceWarning: ptr[PyObject]; def memset(
         target: ptr, value: i32, size: u64
     ) -> ptr;  def PyObject_Realloc(p: ptr, size: u64) -> ptr;  def PySys_WriteStderr(
-        format: str, *args: any
-    );  def PySys_FormatStderr(format: str, *args: any);  def PyErr_WarnExplicitFormat(
+        format: ptr[u8], *args: any
+    );  def PySys_FormatStderr(format: ptr[u8], *args: any);  def PyErr_WarnExplicitFormat(
         category: ptr[PyObject],
         filename: ptr[u8],
         lineno: i32,
@@ -401,7 +401,8 @@ import from c {
                     );
                 } else {
                     PySys_WriteStderr(
-                        "      %s\n", ptr[u8](bytes_obj) + PyBytesObject_OB_SVAL
+                        ptr[u8]("      %s\n"),
+                        ptr[u8](bytes_obj) + PyBytesObject_OB_SVAL
                     );
                 }
                 object_xdecref(repr);
@@ -1373,7 +1374,9 @@ impl handle_weakrefs(
 }
 
 impl debug_cycle(msg: ptr[u8], op: ptr[PyObject]) {
-    PySys_FormatStderr("gc: %s <%s %p>\n", msg, object_type(op).view(1)[0].tp_name, op);
+    PySys_FormatStderr(
+        ptr[u8]("gc: %s <%s %p>\n"), msg, object_type(op).view(1)[0].tp_name, op
+    );
 }
 
 impl handle_legacy_finalizers(
@@ -1454,7 +1457,9 @@ impl delete_garbage(
 
 impl show_stats_each_generations(gcstate: ptr[u8]) {
     PySys_FormatStderr(
-        "gc: objects in each generation: %zd %zd %zd\ngc: objects in permanent generation: %zd\n",
+        ptr[u8](
+            "gc: objects in each generation: %zd %zd %zd\ngc: objects in permanent generation: %zd\n"
+        ),
         gc_list_size(gen_head(gcstate, i32(0))),
         gc_list_size(gen_head(gcstate, i32(1))),
         gc_list_size(gen_head(gcstate, i32(2))),
@@ -1585,7 +1590,7 @@ impl gc_collect_main(tstate: ptr[PyThreadState], generation: i32, reason: i32) -
         invoke_gc_callback(tstate, ptr[u8]("start"), gen, 0, 0);
     }
     if (gc_debug(gcstate) & _PyGC_DEBUG_STATS) != 0 {
-        PySys_WriteStderr("gc: collecting generation %d...\n", gen);
+        PySys_WriteStderr(ptr[u8]("gc: collecting generation %d...\n"), gen);
         show_stats_each_generations(gcstate);
 
         PyTime_PerfCounterRaw(&mut t1);
@@ -1673,7 +1678,10 @@ impl gc_collect_main(tstate: ptr[PyThreadState], generation: i32, reason: i32) -
         PyTime_PerfCounterRaw(&mut t2);
         d = PyTime_AsSecondsDouble(t2 - t1);
         PySys_WriteStderr(
-            "gc: done, %zd unreachable, %zd uncollectable, %.4fs elapsed\n", n + m, n, d
+            ptr[u8]("gc: done, %zd unreachable, %zd uncollectable, %.4fs elapsed\n"),
+            n + m,
+            n,
+            d
         );
     }
 
@@ -2078,7 +2086,7 @@ impl gc_get_count(module: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject
 impl gc_get_referrers_impl(
     module: ptr[PyObject], objs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if PySys_Audit("gc.get_referrers", "(O)", objs) < 0 {
+    if PySys_Audit(ptr[u8]("gc.get_referrers"), ptr[u8]("(O)"), objs) < 0 {
         return NULL;
     }
     return _PyGC_GetReferrers(current_interp(), objs);
@@ -2124,7 +2132,7 @@ impl append_referrents(result: ptr[PyObject], args: ptr[PyObject]) -> i32 {
 impl gc_get_referents_impl(
     module: ptr[PyObject], objs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if PySys_Audit("gc.get_referents", "(O)", objs) < 0 {
+    if PySys_Audit(ptr[u8]("gc.get_referents"), ptr[u8]("(O)"), objs) < 0 {
         return NULL;
     }
     result = PyList_New(0);
@@ -2153,7 +2161,7 @@ impl gc_get_referents(
 }
 
 impl gc_get_objects_impl(module: ptr[PyObject], generation: i64) -> ptr[PyObject] {
-    if PySys_Audit("gc.get_objects", "n", generation) < 0 {
+    if PySys_Audit(ptr[u8]("gc.get_objects"), ptr[u8]("n"), generation) < 0 {
         return NULL;
     }
     if generation >= i64(NUM_GENERATIONS) {

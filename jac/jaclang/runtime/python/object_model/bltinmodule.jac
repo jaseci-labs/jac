@@ -2022,7 +2022,7 @@ impl builtin_breakpoint(
     if not hook {
         return NULL;
     }
-    if PySys_Audit("builtins.breakpoint", "O", hook) < 0 {
+    if PySys_Audit(ptr[u8]("builtins.breakpoint"), ptr[u8]("O"), hook) < 0 {
         object_decref(hook);
         return NULL;
     }
@@ -2414,7 +2414,7 @@ impl eval_in(
         return NULL;
     }
     if is_code(source) {
-        if PySys_Audit("exec", "O", source) < 0 {
+        if PySys_Audit(ptr[u8]("exec"), ptr[u8]("O"), source) < 0 {
             return NULL;
         }
         if code_nfree(source) > 0 {
@@ -2609,7 +2609,7 @@ impl exec_in(
                 return NULL;
             }
         }
-        if PySys_Audit("exec", "O", source) < 0 {
+        if PySys_Audit(ptr[u8]("exec"), ptr[u8]("O"), source) < 0 {
             return NULL;
         }
         if not closure {
@@ -2823,7 +2823,7 @@ impl builtin_hasattr(
 
 impl builtin_id(self_: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     id_obj = PyLong_FromVoidPtr(ptr(v));
-    if id_obj and PySys_Audit("builtins.id", "O", id_obj) < 0 {
+    if id_obj and PySys_Audit(ptr[u8]("builtins.id"), ptr[u8]("O"), id_obj) < 0 {
         object_decref(id_obj);
         return NULL;
     }
@@ -3821,7 +3821,7 @@ impl input_tty(
     object_xdecref(po);
     PyMem_Free(ptr(s));
     if result {
-        if PySys_Audit("builtins.input/result", "O", result) < 0 {
+        if PySys_Audit(ptr[u8]("builtins.input/result"), ptr[u8]("O"), result) < 0 {
             return (i32(1), NULL);
         }
     }
@@ -3860,7 +3860,7 @@ impl builtin_input_impl(module: ptr[PyObject], prompt: ptr[PyObject]) -> ptr[PyO
     if not audit_prompt {
         audit_prompt = Py_None;
     }
-    if PySys_Audit("builtins.input", "O", audit_prompt) < 0 {
+    if PySys_Audit(ptr[u8]("builtins.input"), ptr[u8]("O"), audit_prompt) < 0 {
         return input_fail(fin, fout, ferr);
     }
     if _PyFile_Flush(ferr) < 0 {

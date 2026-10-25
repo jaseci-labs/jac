@@ -1813,7 +1813,7 @@ impl gen_getsuspended(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 }
 
 impl gen_getframe_named(gen: ptr[PyObject], name: str) -> ptr[PyObject] {
-    if PySys_Audit("object.__getattr__", "Os", gen, name) < 0 {
+    if PySys_Audit(ptr[u8]("object.__getattr__"), ptr[u8]("Os"), gen, name) < 0 {
         return NULL;
     }
     if frame_state_finished(gen_frame_state(gen)) {
@@ -1827,7 +1827,7 @@ impl gen_getframe(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 }
 
 impl gen_getcode_named(gen: ptr[PyObject], name: str) -> ptr[PyObject] {
-    if PySys_Audit("object.__getattr__", "Os", gen, name) < 0 {
+    if PySys_Audit(ptr[u8]("object.__getattr__"), ptr[u8]("Os"), gen, name) < 0 {
         return NULL;
     }
     return object_new_ref(gen_code(gen));

@@ -279,7 +279,10 @@ glob OPAQUE: list[str] = [
          "_PyArg_CheckPositional": {0},
          "_PyArg_NoKeywords": {0},
          "_PyArg_NoKwnames": {0},
-         "_PyArg_NoPositional": {0}
+         "_PyArg_NoPositional": {0},
+         "PySys_Audit": {0, 1},
+         "PySys_AuditTuple": {0},
+         "_PySys_GetOptionalAttrString": {0}
      },
      # Pointer parameters that take memory the caller holds as a raw address
      # (a HACL* digest buffer, a Py_buffer, a path read after fork(), an

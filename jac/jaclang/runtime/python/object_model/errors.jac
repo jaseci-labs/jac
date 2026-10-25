@@ -1161,11 +1161,11 @@ impl normalize_exception(
         if recursion_depth >= Py_NORMALIZE_RECURSION_LIMIT + 2 {
             if PyErr_GivenExceptionMatches(exc, PyExc_MemoryError) != i32(0) {
                 Py_FatalError(
-                    "Cannot recover from MemoryErrors while normalizing exceptions."
+                    ptr[u8]("Cannot recover from MemoryErrors while normalizing exceptions.")
                 );
             } else {
                 Py_FatalError(
-                    "Cannot recover from the recursive normalization of an exception."
+                    ptr[u8]("Cannot recover from the recursive normalization of an exception.")
                 );
             }
         }

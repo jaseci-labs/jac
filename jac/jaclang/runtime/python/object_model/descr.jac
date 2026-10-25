@@ -1104,7 +1104,10 @@ impl member_get(
     }
     member = member_of(self);
     if (member.view(1)[0].flags & Py_AUDIT_READ) != 0 {
-        if PySys_Audit("object.__getattr__", "Os", ob, member.view(1)[0].name) < 0 {
+        if PySys_Audit(
+            ptr[u8]("object.__getattr__"), ptr[u8]("Os"), ob, member.view(1)[0].name
+        )
+            < 0 {
             return NULL;
         }
     }

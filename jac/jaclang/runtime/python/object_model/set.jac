@@ -2670,5 +2670,5 @@ impl dummy_repr(op: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl dummy_dealloc(op: ptr[PyObject]) {
-    Py_FatalError("deallocating <dummy key>");
+    Py_FatalError(ptr[u8]("deallocating <dummy key>"));
 }

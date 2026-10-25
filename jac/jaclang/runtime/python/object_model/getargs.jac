@@ -1691,12 +1691,12 @@ impl vgetargs1_impl(
             level += 1;
             if level >= 30 {
                 Py_FatalError(
-                    "too many tuple nesting levels in argument format string"
+                    ptr[u8]("too many tuple nesting levels in argument format string")
                 );
             }
         } elif c == CH_RPAREN {
             if level == 0 {
-                Py_FatalError("excess ')' in getargs format");
+                Py_FatalError(ptr[u8]("excess ')' in getargs format"));
             } else {
                 level -= 1;
             }
@@ -1717,7 +1717,7 @@ impl vgetargs1_impl(
         }
     }
     if level != 0 {
-        Py_FatalError("missing ')' in getargs format");
+        Py_FatalError(ptr[u8]("missing ')' in getargs format"));
     }
     if min < 0 {
         min = max;
