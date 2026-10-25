@@ -2136,11 +2136,19 @@ impl NaIRGenPass._record_linked_decl(
 }
 
 impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
-    if self.prog.analysis.provides(dep_mod, AnalysisFact.TYPE_OF) {
+    analysis = self.prog.analysis;
+    if analysis.provides(dep_mod, AnalysisFact.TYPE_OF)
+        or analysis.provides(dep_mod, AnalysisFact.DECL_TYPES) {
         return;
     }
-
-    if not require(self.prog, dep_mod, CompilationProduct.ANALYSIS) {
+    """An importer lowers against a dependency's declarations: its archetypes,
+    fields and their defaults, enums, globals and signatures. Bodies are only
+    lowered here for the functions this unit instantiates or evaluates
+    (generic, comptime), so only a module that has one is analysed whole.""";
+    product = CompilationProduct.ANALYSIS
+        if importer_lowers_bodies(dep_mod)
+        else CompilationProduct.DECLARATIONS;
+    if not require(self.prog, dep_mod, product) {
         raise NativeRefused(
             f"Native dependency analysis failed: {dep_mod.loc.mod_path}"
         );

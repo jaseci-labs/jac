@@ -45,6 +45,8 @@ def flow_passes(request: ProductRequest) -> PassSchedule;
 
 def analysis_passes(request: ProductRequest) -> PassSchedule;
 
+def declaration_passes(request: ProductRequest) -> PassSchedule;
+
 def boundary_passes(request: ProductRequest) -> PassSchedule;
 
 def client_passes(request: ProductRequest) -> PassSchedule;
@@ -177,6 +179,14 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              passes=analysis_passes,
              precheck=require_typeshed_stubs,
              loads=ANALYSIS_LOADS,
+             tiered=True,
+             cached=True
+         ),
+         CompilationProduct.DECLARATIONS: ProductSpec(
+             needs=[CompilationProduct.FLOW],
+             passes=declaration_passes,
+             precheck=require_typeshed_stubs,
+             loads=ANALYSIS_LOADS + ['jaclang.compiler.passes.declaration_type_pass'],
              tiered=True,
              cached=True
          ),
