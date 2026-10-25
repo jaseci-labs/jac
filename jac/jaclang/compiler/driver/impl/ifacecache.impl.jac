@@ -254,6 +254,13 @@ impl IfaceRegistry.dep_rows(resolved_path: str, mod: any) -> list[DepRow] {
     client = self._client_edges(mod) if mod is not None else set();
     out: list[DepRow] = [];
     for (path, digest) in bucket.items() {
+        if not digest {
+            try {
+                digest = SOURCE_DEP_PREFIX + module_cache_key(path);
+            } except Exception {
+                digest = "";
+            }
+        }
         out.append(
             DepRow(path=path, digest=digest, flags="c" if path in client else "")
         );
@@ -414,6 +421,16 @@ impl IfaceRegistry._deps_match(data: bytes, base_dir: str = "") -> bool {
             try {
                 import from jaclang.compiler.driver.jir { compute_stub_module_key }
                 if compute_stub_module_key(dep) != recorded {
+                    return False;
+                }
+            } except Exception {
+                return False;
+            }
+            continue;
+        }
+        if recorded.startswith(SOURCE_DEP_PREFIX) {
+            try {
+                if module_cache_key(dep) != recorded[len(SOURCE_DEP_PREFIX):] {
                     return False;
                 }
             } except Exception {
