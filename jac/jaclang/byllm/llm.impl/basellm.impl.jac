@@ -1152,6 +1152,11 @@ impl BaseLLM._should_retry_stream(
         return False;
     }
     if usage_base >= 0 {
+        switches: list[dict[str, any]] = [];
+        for record in mt_run._usage_history[usage_base:] {
+            switches.extend(record.get("fallbacks", []));
+        }
+        mt_run._fallbacks = switches + mt_run._fallbacks;
         mt_run._usage_history = mt_run._usage_history[:usage_base];
     }
     mt_run._stream_reset_count += 1;

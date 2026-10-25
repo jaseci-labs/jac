@@ -16,7 +16,7 @@ import from jaclang.byllm.lib {
     register_llm_call_hook,
     unregister_llm_call_hook
 }
-import from support { call, chunk_text, mk_run, say, stream_events, text_chunk }
+import from support { call, chunk_text, fail, mk_run, say, stream_events, text_chunk }
 
 
 """The pool's litellm Router, as an untyped handle. ModelPool never exposes it
@@ -547,6 +547,47 @@ test "a stream that fails still reports the switches it made" {
             f"{label}: got {switches} in {[e.event_type for e in events]}"
         );
     }
+}
+
+
+test "a stream retried after its usage chunk keeps the switch it made" {
+    # The second member sends its whole reply, usage included, then the connection
+    # drops. The retry discards that reply's usage record, but not the switch on it.
+    import litellm;
+    import unittest.mock;
+    want = {"from": SILENT_MODEL, "to": ANSWERING_MODEL, "error": "Timeout"};
+    usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15};
+    dropped = litellm.APIConnectionError(
+        message="connection reset after the usage chunk",
+        llm_provider="openai",
+        model=ANSWERING_MODEL
+    );
+    tried: list[str] = [];
+    answers = MockLLM(
+        outputs=[
+            fail(dropped, reply=say("abandoned", usage=usage)),
+            say("42", usage=usage)
+        ]
+    );
+    pool = _pool_with_outage(answers, tried, {PRIMARY});
+
+    def answer(q: str) -> str by pool(stream=True, logging=True);
+
+    with unittest.mock.patch.dict(
+        _byllm_llm_mod._streaming_config, {"retry_backoff": 0.0}
+    ) {
+        events = stream_events(answer("x"));
+    }
+    assert "stream_reset" in [e.event_type for e in events] , "the stream was retried";
+    assert tried == [PRIMARY, SECOND, PRIMARY, SECOND] , f"tried {tried}";
+    switches = [
+        e.data
+        for e in events
+        if e.event_type == "model_fallback"
+    ];
+    assert switches == [want, want] , f"got {switches}";
+    per_call = events[-1].data["per_call"];
+    assert [r.get("fallbacks") for r in per_call] == [[want, want]] , f"usage {per_call}";
 }
 
 
