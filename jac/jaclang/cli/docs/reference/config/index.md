@@ -661,7 +661,7 @@ select = ["combine-has", "remove-empty-parens"]
 | `no-print` | `E3012` | Error on bare `print()` calls (use console abstraction instead) | all |
 | `remove-redundant-semi` | `W3013` | Remove standalone no-op semicolons from any body (`{;}` → `{}`, `x = 1;;` → `x = 1;`); `remove-import-semi` is an accepted alias for this rule | default |
 | `strip-comments` | `W3050` | Remove **all** comments | all |
-| `strip-docstrings` | `W3051` | Remove **all** docstrings | all |
+| `strip-docstrings` | `W3051` | Remove **all** docstrings, and strings written as statements inside a body | all |
 | `separate-impls` | `W3055` | Move every function, method and ability body into an `impl` in its module's `.impl.jac` annex | all |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.

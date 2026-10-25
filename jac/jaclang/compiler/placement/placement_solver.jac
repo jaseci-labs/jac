@@ -115,13 +115,6 @@ walker PlacementApplyPass(CompilerPass) {
 }
 
 impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
-    """What syntax alone decides about placement is decided here, before the
-    module is typed: client seeds, and whether the module's native preference
-    is open. A construct that closes it (an async or by-llm ability, inline
-    Python, an endpoint, a Python-only import, persistent-graph access) is
-    known from the tree, and the checker needs the answer to know whether a
-    native-only idiom is a requirement or an error.""";
-    import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
     if ir_in.loc is not None {
         self.prog.analysis.placement_refusals.pop(
             os.path.realpath(ir_in.loc.mod_path), None

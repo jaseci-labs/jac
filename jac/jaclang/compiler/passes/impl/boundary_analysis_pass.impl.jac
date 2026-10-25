@@ -126,6 +126,64 @@ impl BoundaryAnalysisPass._native_source_module_of(
     return None;
 }
 
+impl BoundaryAnalysisPass._interop_symbol(
+    decl: (UniNode | None), provider: (Module | None), fallback: str, name: str
+) -> str {
+    owner = decl.find_parent_of_type(Module) if decl is not None else None;
+    if owner is None {
+        owner = provider;
+    }
+    path = owner.loc.mod_path if owner is not None and owner.loc is not None else '';
+    path = path or fallback;
+    return interop_callback_symbol(path, name) if path else '';
+}
+
+impl BoundaryAnalysisPass._bind_server_callee(call: FuncCall, local_name: str) -> None {
+    manifest = self.module.gen.interop_manifest;
+    served = manifest.bindings.get(local_name);
+    if served is not None {
+        if served.source_context == InteropContext.SERVER
+            and served.kind == 'function'
+            and not served.provider_app
+            and InteropContext.SERVER in served.callers {
+            served.callers.add(InteropContext.NATIVE);
+        }
+        return;
+    }
+    if not isinstance(call.target, Name) {
+        return;
+    }
+    decl = self._resolved_native_decl(call.target);
+    if decl is None {
+        return;
+    }
+    owner = decl.find_parent_of_type(Module);
+    if owner is None or owner.loc is None or decl.is_comptime {
+        return;
+    }
+    if owner is self.module {
+        if self._get_context(decl) != InteropContext.SERVER {
+            return;
+        }
+    } elif not owner.loc.mod_path.endswith('.jac')
+        or config_module_pin(owner.loc.mod_path) != 'server' {
+        return;
+    }
+    (ret_type, param_types, param_names) = self._signature_of_decl(decl);
+    manifest.bindings[local_name] = InteropBinding(
+        name=decl.sym_name,
+        source_context=InteropContext.SERVER,
+        callers={InteropContext.NATIVE},
+        ret_type=ret_type,
+        param_types=param_types,
+        param_names=param_names,
+        ast_node=decl,
+        source_module=None if owner is self.module else owner.name,
+        kind='function',
+        symbol=self._interop_symbol(decl, owner, '', decl.sym_name)
+    );
+}
+
 impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
     item = nd.items[0];
     if not (isinstance(item, ModulePath) and item.path) {
@@ -181,7 +239,6 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
 impl BoundaryAnalysisPass._caller_context(
     nd: Import, import_context: InteropContext
 ) -> InteropContext {
-    """Interop context of the caller site: client wins, then native.""";
     if (nd.in_client_context()) {
         return InteropContext.CLIENT;
     }
@@ -379,7 +436,13 @@ impl BoundaryAnalysisPass._register_sv_import(
             ast_node=ability_node,
             source_module=module_name,
             kind='function',
-            provider_app=provider_app
+            provider_app=provider_app,
+            symbol=self._interop_symbol(
+                ability_node,
+                provider_mod or parsed_mod,
+                (facts.from_loc_resolved or '') if facts else '',
+                sym_name
+            )
         );
         manifest.bindings[local_name] = binding;
     }
@@ -872,12 +935,15 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
     if not func_name {
         return;
     }
-    if func_name not in self._imported_native_funcs
-        and func_name not in self._func_defs {
-        return;
-    }
     caller_ctx = self._get_context(here);
     manifest = self.module.gen.interop_manifest;
+    if func_name not in self._imported_native_funcs
+        and func_name not in self._func_defs {
+        if caller_ctx == InteropContext.NATIVE or self._in_native_module() {
+            self._bind_server_callee(here, func_name);
+        }
+        return;
+    }
     if (func_name in self._imported_native_funcs) {
         (source_module, import_ctx) = self._imported_native_funcs[func_name];
         if (caller_ctx == InteropContext.NATIVE or self._in_native_module()) {
@@ -919,7 +985,10 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
             ret_type=ret_type,
             param_types=param_types,
             param_names=param_names,
-            ast_node=callee_node
+            ast_node=callee_node,
+            symbol=self._interop_symbol(callee_node, self.module, '', func_name)
+                if callee_ctx == InteropContext.SERVER
+                else ''
         );
         manifest.bindings[func_name] = binding;
     }

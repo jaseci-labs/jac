@@ -143,6 +143,7 @@ def native_module_key(path: str) -> str;
 
 def native_unit_prefix(path: str) -> str;
 
+def interop_callback_symbol(provider_path: str, name: str) -> str;
 def native_symbol_name(prefix: str, name: str) -> str;
 
 def native_glob_init_name(path: str) -> str;
@@ -353,9 +354,11 @@ obj InteropBinding {
         kind: str = 'function',
         provider_app: str = '',
         native_contract: dict[str, any] = {},
-        endpoint_id: str = '';
+        endpoint_id: str = '',
+        symbol: str = '';
 
     has is_cross_module: bool { getter; }
+    has native_callable: bool { getter; }
 }
 
 obj InteropManifest {

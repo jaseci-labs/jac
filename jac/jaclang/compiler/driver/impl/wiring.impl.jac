@@ -206,9 +206,6 @@ impl WiringSpec.wire_for_import(
 }
 
 impl WiringSpec.wire_import(wire: WireRec) -> (Import | None) {
-    """The import one wire generates, parsed on its own at the place the annex
-    puts it. A scope with several owners needs one import each, and a node
-    cannot be copied in native code, so the copies come from the wire.""";
     lines: list[str] = [];
     for (line0, col, text) in self._wire_pieces(wire) {
         while len(lines) <= line0 {

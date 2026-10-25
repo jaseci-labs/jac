@@ -28,12 +28,6 @@ impl host_layout_tables -> LayoutTables {
 }
 
 impl _dir_entries(directory: str) -> (list[str] | None) {
-    """The names in a directory, cached by the directory's mtime. Annex
-    discovery runs for every import of every program in a process, and a
-    directory that has not changed costs one stat instead of a scan. A
-    listing taken within two seconds of the directory's last change is not
-    cached, since a coarse filesystem clock could hide an entry added in
-    that window.""";
     try {
         st = os.stat(directory);
     } except OSError {

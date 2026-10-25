@@ -32,11 +32,18 @@ impl _load_application(record: dict[str, any], base: Path) -> PreparedApplicatio
         metadata['root'] = str(directory);
         application.manifests[path] = metadata;
         if item.get('native') {
-            import from jaclang.runtime.interop_bridge { NativeLibrary, NativeCallback }
+            import from jaclang.runtime.interop_bridge {
+                NativeLibrary,
+                native_callback_of
+            }
             native = item['native'];
+            output = str(artifact_path(directory, native['output']));
             engine = NativeLibrary(
-                str(artifact_path(directory, native['output'])),
-                bindings=[NativeCallback(**binding) for binding in native['callbacks']]
+                output,
+                bindings=[
+                    native_callback_of(binding, output)
+                    for binding in native['callbacks']
+                ]
             );
             application.native[path] = (engine, engine.functions);
         }

@@ -58,6 +58,11 @@ native layout records the emitted name separately from its source-level key.
 
 ## Shipped modules
 
+- **`unicodedata.jac`** (#10325) -- the native floor exposes `category` and
+  `east_asian_width` from the generated Unicode 16.0.0 database. Compact
+  property ranges are generated from the same pinned CPython source by
+  `scripts/jacpython/gen_unicodedata.jac`. This is a deliberately limited
+  surface; other `unicodedata` APIs are not implemented natively.
 - **`os/path.jac`** (#6940 Phase 0, extended #8201) -- pure-string POSIX path
   helpers (`normpath`, `dirname`, `basename`, `split`, `splitext`, `isabs`,
   `join`, `abspath`, plus `relpath` and `normcase`). `relpath` is CPython's

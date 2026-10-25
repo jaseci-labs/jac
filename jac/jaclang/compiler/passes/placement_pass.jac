@@ -58,6 +58,7 @@ def build_native_legality(
 ) -> NativeLegality;
 
 def import_bindings(imp: Import) -> set[str];
+def interop_refusal(mod: Module, nm: Name) -> (NativeRefusal | None);
 def bridged_use_crosses(nm: Name) -> (str | None);
 def binds_module_name(mod: Module, nm: Name) -> bool;
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
@@ -506,6 +507,15 @@ impl build_native_legality(
                 );
                 legality.prefer_against(mod, uses);
             }
+            unprovided = interop_refusal(mod, nm);
+            if unprovided is not None {
+                caller = native_capability_demotion_owner(nm);
+                if caller is None {
+                    legality.refuse_site(mod, unprovided);
+                } else {
+                    legality.refuse_unit(caller, unprovided);
+                }
+            }
             if judging is not None {
                 for gap in binding_gaps(judging, nm, base_dir) {
                     missing = NativeRefusal(
@@ -572,6 +582,40 @@ impl import_bindings(imp: Import) -> set[str] {
         }
     }
     return bound;
+}
+
+impl interop_refusal(mod: Module, nm: Name) -> (NativeRefusal | None) {
+    call = nm.parent;
+    if not isinstance(call, FuncCall) or call.target is not nm {
+        return None;
+    }
+    if nm.sym is not None and not binds_module_name(mod, nm) {
+        return None;
+    }
+    binding = mod.gen.interop_manifest.bindings.get(nm.value);
+    if binding is None
+        or binding.source_context.value != "server"
+        or binding.kind != "function"
+        or binding.native_callable {
+        return None;
+    }
+    why = "the compiler recorded no native call to it";
+    if binding.provider_app {
+        why = f"it is served by the application '{binding.provider_app}', and native "
+        "code cannot call into another application";
+    } elif binding.callers and all(c.value == "client" for c in binding.callers) {
+        why = "it is imported only for client code";
+    } elif not binding.symbol {
+        why = "no Jac module defines it, so native code has nothing to link the call to";
+    }
+    return NativeRefusal(
+        kind="call to Python function",
+        name=nm.value,
+        site=nm,
+        code="E5092",
+        help=f"Native code cannot call '{nm.value}': {why}. Call it from server code "
+        "and pass the result to the native code."
+    );
 }
 
 impl binds_module_name(mod: Module, nm: Name) -> bool {
@@ -792,13 +836,6 @@ impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
 impl settle_native_module(
     mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
 ) -> (NativeRefusal | None) {
-    """The backend refused a module whose native placement was a preference,
-    for a reason the legality rules did not predict. The module was typed for
-    no codespace, so placing it on the server is a restamp of the same tree:
-    the Python backend, which runs after this one, emits it as it is. The
-    module's importers drop what they bound to its native code. A module with
-    an element that must be native (a native-only construct, an element pin,
-    a C declaration) cannot move, so its refusal stays an error.""";
     if not pending or not native_placement_soft(prog, mod) {
         return None;
     }
@@ -879,11 +916,6 @@ impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> No
 }
 
 impl PlacementPass._run_impl(ir_in: Module) -> Module {
-    """Placement is decided once, on the typed module. A module whose
-    codespace was declared has its elements placed already: what remains is
-    to hold that placement to account. Any other module was typed for no
-    codespace, and this is where its elements are placed. Nothing types it
-    again: what was placed is the tree every backend reads.""";
     ir_in.native_viols_reported = True;
     ir_in.client_viols_reported = True;
     self._check_conformance(ir_in);

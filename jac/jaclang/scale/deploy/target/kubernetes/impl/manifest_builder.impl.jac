@@ -1443,15 +1443,6 @@ impl ManifestBuilder._build_service_manifest(svc_name: str) -> dict[str, any] {
 impl ManifestBuilder._resolve_scaling(
     svc_name: str, deployment: dict[str, any], service: dict[str, any]
 ) -> dict[str, any] {
-    """Resolve a service's single, mutually-exclusive scaling decision.
-
-        The one place a service's scaling mode is decided. The scale-target
-        name is read from the Deployment manifest just built (never rebuilt
-        from svc_name), so build, apply, and `jac plan` can never disagree on
-        it. The gateway is forced out of HTTP_ACTIVATION here: it is the
-        ingress entry point and must stay warm, so it must never inherit the
-        shared scale-to-zero default.
-        """;
     scale_target: str = deployment["metadata"]["name"];
     service_name: str = service["metadata"]["name"];
     http: dict[str, any] | None = self._get_http_activation_config(svc_name);
@@ -1521,13 +1512,6 @@ impl ManifestBuilder._resolve_scaling(
 }
 
 impl ManifestBuilder._canonical_rules_fingerprint(rules: list[dict[str, any]]) -> str {
-    """A rules fingerprint that ignores list ordering, so two services
-        with the same match criteria collide in _validate_http_activation_rules
-        even when `hosts`/`paths`/`headers`, or the rules themselves, are
-        written in a different order -- fields within a rule are AND'd and
-        separate rules are OR'd, so reordering never changes what a rule set
-        actually matches.
-        """;
     import json;
     canonical_rules = [];
     for rule in rules {
@@ -1550,10 +1534,6 @@ impl ManifestBuilder._canonical_rules_fingerprint(rules: list[dict[str, any]]) -
 impl ManifestBuilder._validate_http_activation_rules(
     scaling: dict[str, dict[str, any]]
 ) {
-    """Two services sharing the top-level http_activation default with no
-        per-service override resolve to identical routing rules; the interceptor
-        then has no way to tell which target a matching request belongs to.
-        """;
     by_rules: dict[str, list[str]] = {};
     for (svc_name, plan) in scaling.items() {
         if plan.get("mode") != ScalingMode.HTTP_ACTIVATION {

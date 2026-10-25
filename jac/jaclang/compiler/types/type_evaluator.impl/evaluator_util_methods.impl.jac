@@ -180,16 +180,18 @@ impl TypeEvaluator._literal_type_from_expr(val: Expr) -> TypeBase | None {
     if isinstance(val, Bool) {
         base = self.prefetch.bool_class;
         value = val.lit_value;
-    } elif isinstance(val, Int) {
+    } elif isinstance(val, Int)
+        or (
+            isinstance(val, UnaryExpr)
+            and val.op.name == Tok.MINUS
+            and isinstance(val.operand, Int)
+        ) {
+        folded = folded_number(val);
+        if not isinstance(folded, int) {
+            return None;
+        }
         base = self.prefetch.int_class;
-        value = val.lit_value;
-    } elif (
-        isinstance(val, UnaryExpr)
-        and val.op.name == Tok.MINUS
-        and isinstance(val.operand, Int)
-    ) {
-        base = self.prefetch.int_class;
-        value = -val.operand.lit_value;
+        value = folded;
     } elif isinstance(val, String) and isinstance(val.lit_value, str) {
         base = self.prefetch.str_class;
         value = val.lit_value;
@@ -454,14 +456,6 @@ impl TypeEvaluator._scope_has_fields(tab: UniScopeNode | None) -> bool {
 }
 
 impl TypeEvaluator._dataclass_shadows_base_init(class_type: ClassType) -> bool {
-    """Does a field-bearing `obj` replace the `__init__` of a non-`obj` base?
-
-    An `obj` deriving from a builtin class such as `Exception` synthesizes its
-    own `__init__` from its fields, as a dataclass does, and that is the
-    initializer a construction runs: `Coded("msg")` binds `"msg"` to the first
-    field. The base's `__new__` still accepts any arguments, so validating it
-    alone would let a mistyped field argument through.
-    """;
     if not class_type.is_data_class() {
         return False;
     }
