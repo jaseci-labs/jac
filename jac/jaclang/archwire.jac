@@ -15834,6 +15834,7 @@ graph import runtime.python {
             | modules.blake2
             | modules.bz2
             | modules.codecs
+            | modules.ctypes
             | modules.elementtree
             | modules.fcntl
             | modules.hashlib
@@ -15863,6 +15864,7 @@ graph import runtime.python {
         },
     ]
     bindings.bz2 ++> inittab { PyInit__bz2 }
+    bindings.clinic.ctypes ++> modules.ctypes_cfield { PyCField_new_new }
     bindings.clinic.io ++> [
         modules.io_buffered {
             BufferedRWPair_doc,
@@ -15963,7 +15965,11 @@ graph import runtime.python {
             | modules.tracemalloc
             | modules.uuid
             | modules.weakref { borrowed_none },
-        modules.elementtree | modules.itertools { ClassToken, bad_argument },
+        modules.ctypes_callproc { convert_str },
+        modules.ctypes_module | modules.elementtree | modules.itertools {
+            ClassToken,
+            bad_argument
+        },
         modules.hashlib | modules.hashopenssl | modules.lsprof {
             ClassToken,
             borrowed_none
@@ -15982,6 +15988,7 @@ graph import runtime.python {
         modules.ssl { bad_argument, borrowed_false, borrowed_none, borrowed_true },
     ]
     bindings.csv ++> inittab { PyInit__csv }
+    bindings.ctypes ++> inittab { PyInit__ctypes }
     bindings.datetime ++> inittab { PyInit__datetime }
     bindings.decimal ++> inittab { PyInit__decimal }
     bindings.elementtree ++> inittab { PyInit__elementtree }
@@ -16025,6 +16032,13 @@ graph import runtime.python {
     bindings.mmap ++> inittab { PyInit_mmap }
     bindings.module ++> [
         interpreter.frame
+            | modules.ctypes
+            | modules.ctypes_callbacks
+            | modules.ctypes_callproc
+            | modules.ctypes_cdata
+            | modules.ctypes_cfield
+            | modules.ctypes_module
+            | modules.ctypes_objects
             | modules.datetime_date
             | modules.decimal_context
             | modules.interpchannels
@@ -16232,6 +16246,7 @@ graph import runtime.python {
     ]
     bindings.remote_debugging ++> inittab { PyInit__remote_debugging }
     bindings.resource ++> inittab { PyInit_resource }
+    bindings.scproxy ++> inittab { PyInit__scproxy }
     bindings.select ++> inittab { PyInit_select }
     bindings.sha1 ++> inittab { PyInit__sha1 }
     bindings.sha2 ++> inittab { PyInit__sha2 }
@@ -16411,6 +16426,7 @@ graph import runtime.python {
             | bindings.clinic.codecs
             | bindings.clinic.collections
             | bindings.clinic.csv
+            | bindings.clinic.ctypes
             | bindings.clinic.datetime
             | bindings.clinic.elementtree
             | bindings.clinic.fcntl
@@ -16467,6 +16483,7 @@ graph import runtime.python {
             | bindings.clinic.zlib
             | bindings.clinic.zoneinfo
             | bindings.clinic.zstd
+            | modules.ctypes_callproc
             | modules.datetime_date
             | modules.datetime_datetime
             | modules.datetime_delta
@@ -16587,6 +16604,7 @@ graph import runtime.python {
             text_object,
             type_name
         },
+        modules.ctypes_cdata { text_value },
         modules.decimal_number { boundary_failure, c_string_length, c_string_text },
         modules.elementtree { StaticText, dict_get_text, object_error, text_value },
         modules.fcntl | modules.posixsubprocess {
@@ -17023,6 +17041,7 @@ graph import runtime.python {
             jacpy_tuple_items
         },
         bindings.clinic.codecs { NULL, PyMem_Free, PyObject, jacpy_is_bytes },
+        bindings.clinic.ctypes { NULL, PyMem_Free, PyObject, jacpy_is_unicode },
         bindings.clinic.elementtree {
             NULL,
             PyMem_Free,
@@ -17208,6 +17227,22 @@ graph import runtime.python {
             jacpy_tuple_set_owned,
             jacpy_type_check
         },
+        bindings.ctypes {
+            NULL,
+            PyBuffer_Release,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyExc_TypeError,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyModuleDef,
+            PyObject,
+            PyObject_GetBuffer,
+            PyType_Slot,
+            PyUnicode_AsUTF8AndSize,
+            Py_None,
+            Py_buffer
+        },
         bindings.datetime {
             NULL,
             PyInterpreterState,
@@ -17295,7 +17330,7 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
-        bindings.faulthandler | bindings.interpreters {
+        bindings.faulthandler | bindings.interpreters | bindings.scproxy {
             PyMethodDef,
             PyModuleDef,
             PyObject
@@ -19242,6 +19277,343 @@ graph import runtime.python {
             jacpy_tuple_item,
             jacpy_type_check,
             jacpy_unicode_size
+        },
+        modules.ctypes {
+            NULL,
+            PyBuffer_IsContiguous,
+            PyBuffer_Release,
+            PyBytes_FromStringAndSize,
+            PyDict_Contains,
+            PyDict_DelItem,
+            PyDict_GetItemRef,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_OverflowError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyLong_AsSsize_t,
+            PyLong_FromSsize_t,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemoryView_FromObject,
+            PyObject,
+            PyObject_CallNoArgs,
+            PyObject_GC_UnTrack,
+            PyObject_GetAttrString,
+            PyObject_GetBuffer,
+            PyObject_GetOptionalAttr,
+            PyObject_IsInstance,
+            PyObject_IsSubclass,
+            PyObject_SetAttr,
+            PySys_Audit,
+            PyTuple_GetItem,
+            PyType_GetDict,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromWideChar,
+            PyWeakref_GetRef,
+            PyWeakref_NewProxy,
+            Py_LeaveRecursiveCall,
+            Py_None,
+            Py_buffer,
+            _PyUnicode_EqualToASCIIString,
+            jacpy_unicode_from_text
+        },
+        modules.ctypes_callbacks {
+            NULL,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_NoMemory,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyExc_RuntimeError,
+            PyExc_RuntimeWarning,
+            PyExc_TypeError,
+            PyGILState_Ensure,
+            PyGILState_Release,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyObject_CallNoArgs,
+            PyObject_GC_Del,
+            PyObject_GC_Track,
+            PyObject_GC_UnTrack,
+            PyObject_Vectorcall,
+            PyType_Slot,
+            PyType_Spec,
+            Py_None,
+            _PyObject_GC_NewVar,
+            jacpy_errno,
+            jacpy_set_errno
+        },
+        modules.ctypes_callproc {
+            NULL,
+            PyBool_FromLong,
+            PyBytes_AsString,
+            PyDict_GetItemRef,
+            PyDict_SetItem,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetObject,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_FromDouble,
+            PyLong_AsLong,
+            PyLong_AsUnsignedLong,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyLong_FromVoidPtr,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_Realloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyObject,
+            PyObject_Call,
+            PyObject_CallFunction,
+            PyObject_CallOneArg,
+            PyObject_GC_Track,
+            PyObject_GC_UnTrack,
+            PyObject_GetAttrString,
+            PyObject_GetOptionalAttrString,
+            PyObject_Str,
+            PyObject_VectorcallMethod,
+            PySys_Audit,
+            PySys_AuditTuple,
+            PyThreadState,
+            PyTuple_New,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AppendAndDel,
+            PyUnicode_AsUTF8,
+            PyUnicode_AsWideCharString,
+            PyUnicode_FSConverter,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            Py_BuildValue,
+            Py_None,
+            _PyObject_GC_New,
+            _PyTraceback_Add,
+            _PyUnicode_IsPrintable,
+            jacpy_errno,
+            jacpy_set_errno
+        },
+        modules.ctypes_cdata {
+            NULL,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
+            PyCallable_Check,
+            PyDict_GetItemRef,
+            PyDict_New,
+            PyDict_SetItem,
+            PyDict_Update,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyLong_AsInt,
+            PyLong_AsUnsignedLongMask,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyObject,
+            PyObject_CallObject,
+            PyObject_GC_UnTrack,
+            PyObject_GetAttrString,
+            PyObject_GetOptionalAttr,
+            PyObject_IsInstance,
+            PyObject_SetAttrString,
+            PySequence_Tuple,
+            PySys_Audit,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyType_GetDict,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsUTF8,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_Concat,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_InternFromString,
+            Py_BuildValue,
+            Py_LeaveRecursiveCall,
+            Py_None,
+            Py_buffer
+        },
+        modules.ctypes_cfield {
+            NULL,
+            PyBool_FromLong,
+            PyByteArray_AsString,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
+            PyComplex_FromDoubles,
+            PyErr_Format,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_AsDouble,
+            PyFloat_FromDouble,
+            PyLong_AsLongAndOverflow,
+            PyLong_AsNativeBytes,
+            PyLong_AsSsize_t,
+            PyLong_AsUnsignedLongLongMask,
+            PyLong_AsUnsignedLongMask,
+            PyLong_FromInt64,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyLong_FromUInt32,
+            PyLong_FromVoidPtr,
+            PyMem_Free,
+            PyMemberDef,
+            PyNumber_Multiply,
+            PyObject,
+            PyObject_GC_UnTrack,
+            PyObject_IsTrue,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsWideCharString,
+            PyUnicode_FromFormat,
+            PyUnicode_FromObject,
+            PyUnicode_FromWideChar,
+            Py_None
+        },
+        modules.ctypes_header {
+            NULL,
+            PyErr_Format,
+            PyExc_SystemError,
+            PyMethodDef,
+            PyModuleDef,
+            PyObject,
+            PyObject_IsInstance,
+            PyType_GetBaseByToken,
+            PyType_GetModule
+        },
+        modules.ctypes_module {
+            NULL,
+            PyDict_New,
+            PyErr_NewException,
+            PyErr_NoMemory,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyLong_FromVoidPtr,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyModule_Add,
+            PyModule_AddType,
+            PyObject,
+            PyObject_GetAttrString,
+            PyType_FromMetaclass,
+            PyType_Spec,
+            PyUnicode_FromString,
+            PyUnicode_InternFromString
+        },
+        modules.ctypes_objects {
+            NULL,
+            PyArg_UnpackTuple,
+            PyBytes_FromStringAndSize,
+            PyDict_Contains,
+            PyDict_GetItemRef,
+            PyDict_GetItemWithError,
+            PyDict_New,
+            PyDict_Next,
+            PyDict_SetItem,
+            PyDict_Size,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_IndexError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyIndex_Check,
+            PyList_New,
+            PyLong_AsUnsignedLongMask,
+            PyLong_FromSsize_t,
+            PyLong_FromVoidPtr,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMethodDef,
+            PyModuleDef,
+            PyNumber_AsSsize_t,
+            PyObject,
+            PyObject_CallFunction,
+            PyObject_CallFunctionObjArgs,
+            PyObject_CallMethodObjArgs,
+            PyObject_CallNoArgs,
+            PyObject_GC_UnTrack,
+            PyObject_IsInstance,
+            PyObject_SetAttr,
+            PySequence_GetItem,
+            PySequence_Length,
+            PySlice_Type,
+            PySys_Audit,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyType_GetDict,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromFormat,
+            PyUnicode_FromWideChar,
+            Py_GetConstant,
+            Py_None
+        },
+        modules.ctypes_stgdict {
+            NULL,
+            PyArg_ParseTuple,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyImport_ImportModuleAttrString,
+            PyLong_AsSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyObject_GetAttr,
+            PyObject_GetAttrString,
+            PyObject_GetOptionalAttr,
+            PyObject_SetAttr,
+            PyObject_Vectorcall,
+            PySequence_Fast,
+            PySequence_Tuple,
+            PyTuple_Pack,
+            PyType_IsSubtype,
+            PyUnicode_AsUTF8AndSize,
+            Py_None
         },
         modules.datetime { NULL, PyArg_UnpackTuple, PyObject },
         modules.datetime_date {
@@ -22078,6 +22450,22 @@ graph import runtime.python {
             jacpy_errno,
             jacpy_long_u64_checked,
             jacpy_release
+        },
+        modules.scproxy {
+            NULL,
+            PyBool_FromLong,
+            PyDict_New,
+            PyDict_SetItemString,
+            PyErr_NoMemory,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyTuple_New,
+            PyTuple_SetItem,
+            PyUnicode_FromFormat,
+            Py_None
         },
         modules.select {
             NULL,
@@ -26967,6 +27355,7 @@ graph import runtime.python {
             Py_tp_token,
             Py_tp_traverse
         },
+        bindings.ctypes { METH_FASTCALL, PyBUF_SIMPLE },
         bindings.datetime {
             METH_CLASS,
             METH_FASTCALL,
@@ -27067,6 +27456,17 @@ graph import runtime.python {
             _object
         },
         bindings.posix { METH_COEXIST, METH_NOARGS, PyTypeObject as TypeLayout },
+        bindings.scproxy {
+            METH_NOARGS,
+            ModuleDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyTypeObject,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         bindings.signal {
             ModuleDef,
             PyModuleDef_Base,
@@ -28108,6 +28508,173 @@ graph import runtime.python {
         },
         modules.asyncio_core { _object },
         modules.atexit { PyStatus, _PyStatus_TYPE_ERROR, _PyStatus_TYPE_OK },
+        modules.ctypes {
+            PyBUF_SIMPLE,
+            PyBytesObject_OB_SVAL,
+            PyGetSetDef,
+            PyMemoryViewObject_VIEW,
+            PyTypeObject,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_buffer_SIZE,
+            Py_sq_repeat,
+            Py_tp_call,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_methods,
+            Py_tp_setattro,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_ID__abstract_,
+            _Py_ID__as_parameter_,
+            _Py_ID__fields_,
+            _Py_ID__length_,
+            _Py_ID__type_,
+            _object
+        },
+        modules.ctypes_callbacks {
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_traverse
+        },
+        modules.ctypes_callproc {
+            METH_NOARGS,
+            METH_O,
+            METH_VARARGS,
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            Py_READONLY,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_members,
+            Py_tp_repr,
+            Py_tp_traverse,
+            _Py_ID___new__,
+            _Py_T_OBJECT
+        },
+        modules.ctypes_cdata {
+            PyTypeObject,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_INT,
+            Py_bf_getbuffer,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_hash,
+            Py_tp_init,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_ID__argtypes_,
+            _Py_ID__as_parameter_,
+            _Py_ID__check_retval_,
+            _Py_ID__flags_,
+            _Py_ID__restype_,
+            _Py_ID__type_,
+            _Py_ID_from_param,
+            _Py_T_OBJECT
+        },
+        modules.ctypes_cfield {
+            PyGetSetDef,
+            PyLongObject,
+            PyTypeObject,
+            Py_READONLY,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_OBJECT_EX,
+            Py_T_PYSSIZET,
+            Py_T_UBYTE,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_descr_get,
+            Py_tp_descr_set,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_members,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_traverse
+        },
+        modules.ctypes_header { PyGetSetDef, PyTypeObject, PyVarObject, _object },
+        modules.ctypes_module {
+            ModuleDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyTypeObject,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
+        modules.ctypes_objects {
+            METH_CLASS,
+            METH_O,
+            PyBUF_READ,
+            PyBUF_WRITE,
+            PyGetSetDef,
+            PyListObject,
+            PySliceObject,
+            PyTypeObject,
+            Py_CONSTANT_EMPTY_STR,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_bf_getbuffer,
+            Py_mp_ass_subscript,
+            Py_mp_length,
+            Py_mp_subscript,
+            Py_nb_bool,
+            Py_sq_ass_item,
+            Py_sq_item,
+            Py_sq_length,
+            Py_tp_call,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_traverse,
+            _Py_ID___ctypes_from_outparam__,
+            _Py_ID__fields_
+        },
+        modules.ctypes_stgdict {
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            PyListObject,
+            PyTypeObject,
+            _Py_ID__anonymous_,
+            _Py_ID_align,
+            _Py_ID_base,
+            _Py_ID_fields,
+            _Py_ID_format_spec,
+            _Py_ID_is_struct,
+            _Py_ID_size
+        },
         modules.datetime_date {
             PY_DATETIME_DATE_SIZE,
             PyDateTime_Date,
@@ -31957,6 +32524,13 @@ graph import runtime.python {
             _PyRuntimeState_THREADS_INITIALIZED,
             _SC_THREAD_STACK_MIN
         },
+        modules.ctypes_malloc_closure {
+            MAP_ANONYMOUS,
+            MAP_PRIVATE,
+            PROT_READ,
+            PROT_WRITE,
+            _SC_PAGESIZE
+        },
         modules.faulthandler {
             Py_NSIG,
             _PyRuntimeState_FAULTHANDLER_FATAL_ERROR_ALL_THREADS,
@@ -33033,6 +33607,92 @@ graph import runtime.python {
             jacpy_csv_write
         },
     ]
+    modules.ctypes ++> [
+        bindings.clinic.ctypes {
+            CDataType_from_address_impl,
+            CDataType_from_buffer_copy_impl,
+            CDataType_from_buffer_impl,
+            CDataType_from_param_impl,
+            CDataType_in_dll_impl,
+            PyCPointerType_from_param_impl,
+            PyCPointerType_set_type_impl,
+            _ctypes_CType_Type___sizeof___impl,
+            _ctypes_PyCArrayType_Type_raw_get_impl,
+            _ctypes_PyCArrayType_Type_raw_set_impl,
+            _ctypes_PyCArrayType_Type_value_get_impl,
+            _ctypes_PyCArrayType_Type_value_set_impl,
+            c_char_p_from_param_impl,
+            c_void_p_from_param_impl,
+            c_wchar_p_from_param_impl
+        },
+        bindings.ctypes {
+            pycarray_type_slots,
+            pycpointer_type_slots,
+            pycstruct_type_slots,
+            pyctype_type_slots,
+            union_type_slots
+        },
+    ]
+    modules.ctypes_callproc ++> [
+        bindings.clinic.ctypes {
+            _ctypes_addressof_impl,
+            _ctypes_byref_impl,
+            _ctypes_resize_impl,
+            _ctypes_sizeof_impl
+        },
+        bindings.ctypes { _ctypes_module_methods },
+    ]
+    modules.ctypes_cdata ++> [
+        bindings.clinic.ctypes {
+            PyCSimpleType_from_param_impl,
+            _ctypes_CFuncPtr_argtypes_get_impl,
+            _ctypes_CFuncPtr_argtypes_set_impl,
+            _ctypes_CFuncPtr_errcheck_get_impl,
+            _ctypes_CFuncPtr_errcheck_set_impl,
+            _ctypes_CFuncPtr_restype_get_impl,
+            _ctypes_CFuncPtr_restype_set_impl,
+            _ctypes_PyCData___ctypes_from_outparam___impl,
+            _ctypes_PyCData___reduce___impl
+        },
+        bindings.ctypes {
+            _ctypes_PyCData___setstate___impl,
+            pycdata_slots,
+            pycfuncptr_type_slots,
+            pycsimple_type_slots
+        },
+    ]
+    modules.ctypes_cfield ++> bindings.clinic.ctypes { PyCField_new_impl }
+    modules.ctypes_header ++> bindings.ctypes { ctypes_clinic_tables }
+    modules.ctypes_module ++> [
+        bindings.clinic.ctypes {
+            CDataType_token,
+            CType_Type_token,
+            PyCData_token,
+            PyCPointerType_token,
+            PyCSimpleType_token,
+            Simple_token,
+            c_char_p_token,
+            c_void_p_token,
+            c_wchar_p_token,
+            subclass_clinic_state_PyCData_Type
+        },
+        bindings.ctypes {
+            _ctypesmodule,
+            module_clear,
+            module_free,
+            module_traverse,
+            set_class_tokens
+        },
+    ]
+    modules.ctypes_objects ++> [
+        bindings.clinic.ctypes {
+            Simple_from_outparm_impl,
+            _ctypes_Simple_value_get_impl,
+            _ctypes_Simple_value_set_impl
+        },
+        bindings.ctypes { pycfuncptr_slots, pycsimple_slots },
+    ]
+    modules.ctypes_platform ++> bindings.ctypes { HAS_DYLD_SHARED_CACHE }
     modules.datetime ++> [
         bindings.clinic.datetime {
             datetime_date_fromtimestamp_impl,
@@ -34898,6 +35558,7 @@ graph import runtime.python {
     }
     modules.resource_constants ++> bindings.resource { CONSTANTS, RLIM_INFINITY }
     modules.resource_records ++> bindings.resource { HAS_PRLIMIT, PLATFORM }
+    modules.scproxy ++> bindings.scproxy { get_proxies, get_proxy_settings }
     modules.select ++> [
         bindings.clinic.select {
             POLLIN,
@@ -35952,6 +36613,7 @@ graph import runtime.python {
         tokenize { parse_float, parse_integer, take_buffer },
     ]
     object_model.abstract ++> [
+        bindings.ctypes | modules.imp { unicode_check },
         bindings.signal { PyMapping_GetItemString },
         interpreter.importdl { bytes_data, unicode_check },
         interpreter.importing {
@@ -35960,8 +36622,40 @@ graph import runtime.python {
             call_method_one_arg
         },
         interpreter.importing_api { unicode_check, unicode_length },
+        modules.ctypes {
+            Py_EnterRecursiveCall,
+            bytes_check,
+            long_check,
+            long_is_negative,
+            type_check,
+            unicode_check
+        },
+        modules.ctypes_callproc { bytes_check, long_check, tuple_check, unicode_check },
+        modules.ctypes_cdata {
+            PyUnicode_FromStringAndSize,
+            Py_EnterRecursiveCall,
+            bytes_check,
+            long_check,
+            tuple_check,
+            type_check,
+            unicode_check
+        },
+        modules.ctypes_cfield {
+            bytearray_check,
+            bytes_check,
+            long_check,
+            unicode_check,
+            unicode_length
+        },
+        modules.ctypes_header { type_check },
+        modules.ctypes_objects {
+            PySequence_SetItem,
+            Py_GenericAlias,
+            tuple_check,
+            type_check,
+            unicode_check
+        },
         modules.faulthandler { call_method_no_args, long_check },
-        modules.imp { unicode_check },
         modules.interpchannels { long_check },
         modules.io_buffered { bytes_data },
         modules.io_bytesio { bytes_data, long_check, tuple_check },
@@ -35976,7 +36670,10 @@ graph import runtime.python {
             unicode_length
         },
     ]
-    object_model.bltinmodule ++> interpreter.importing { _PyInterpreterState_GetConfig }
+    object_model.bltinmodule ++> [
+        interpreter.importing { _PyInterpreterState_GetConfig },
+        modules.ctypes_cfield { PyComplex_AsCComplex },
+    ]
     object_model.bool ++> [
         bindings.converters
             | bindings.stat
@@ -36033,10 +36730,14 @@ graph import runtime.python {
         bindings.datetime | modules.unicodedata { PyCapsule_New },
         bindings.socket { PyCapsule_GetPointer, PyCapsule_New, _PyCapsule_SetTraverse },
         bindings.ssl | modules.zoneinfo { PyCapsule_Import },
-        modules.cjkcodecs { PyCapsule_GetPointer, PyCapsule_IsValid, PyCapsule_New },
+        modules.cjkcodecs | modules.ctypes_callproc {
+            PyCapsule_GetPointer,
+            PyCapsule_IsValid,
+            PyCapsule_New
+        },
+        modules.ctypes_cfield | modules.pyexpat { PyCapsule_GetPointer, PyCapsule_New },
         modules.elementtree { PyCapsule_GetPointer },
         modules.multibytecodec { PyCapsule_GetPointer, PyCapsule_IsValid },
-        modules.pyexpat { PyCapsule_GetPointer, PyCapsule_New },
     ]
     object_model.cfunction ++> interpreter.importdl | interpreter.importing {
         module_check
@@ -36057,10 +36758,16 @@ graph import runtime.python {
         PyContextVar_Type,
         PyContext_Type
     }
+    object_model.descr ++> [
+        modules.ctypes { PyDescr_NewGetSet },
+        modules.ctypes_cdata { PyDescr_NewClassMethod },
+    ]
     object_model.dict ++> [
+        bindings.ctypes | interpreter.importing_api | interpreter.lifecycle {
+            dict_check
+        },
         interpreter.gc { object_is_immortal },
-        interpreter.importing { object_xincref },
-        interpreter.importing_api | interpreter.lifecycle { dict_check },
+        interpreter.importing | modules.ctypes_stgdict { object_xincref },
         interpreter.ops_attr { add_to_insertion_order, notify_event },
         interpreter.specialize {
             dk_is_unicode,
@@ -36069,6 +36776,8 @@ graph import runtime.python {
             inline_values,
             managed_dict
         },
+        modules.ctypes_cdata { dict_check, dict_check_exact, object_xincref },
+        modules.ctypes_objects { dict_check_exact },
         modules.warnings { dict_check, object_xincref, unicode_check_exact },
     ]
     object_model.errors ++> [
@@ -36087,6 +36796,9 @@ graph import runtime.python {
             _PyErr_SetObject,
             _PyErr_SetRaisedException
         },
+        modules.ctypes | modules.ctypes_callproc | modules.ctypes_cdata {
+            _PyErr_SetLocaleString
+        },
     ]
     object_model.exceptions ++> [
         modules.io | modules.io_textio { PyExc_BlockingIOError, PyExc_EncodingWarning },
@@ -36102,6 +36814,12 @@ graph import runtime.python {
         bindings.converters | modules.select { PyObject_AsFileDescriptor },
         modules.warnings { PyFile_WriteObject, PyFile_WriteString },
     ]
+    object_model.float ++> modules.ctypes_cfield {
+        PyFloat_Pack4,
+        PyFloat_Pack8,
+        PyFloat_Unpack4,
+        PyFloat_Unpack8
+    }
     object_model.frame ++> [
         interpreter.importing_api { PyFrame_GetCode },
         interpreter.instrumentation { parse_varint },
@@ -36122,16 +36840,25 @@ graph import runtime.python {
         | bindings.posix
         | bindings.queue
         | bindings.sre { Py_GenericAlias }
-    object_model.getargs ++> interpreter.importing {
-        PyThreadState_Clear,
-        PyThreadState_Delete
-    }
+    object_model.getargs ++> [
+        interpreter.importing { PyThreadState_Clear, PyThreadState_Delete },
+        modules.ctypes_cfield { Py_FatalError },
+    ]
     object_model.hashtable ++> interpreter.importing {
         _Py_hashtable_destroy,
         _Py_hashtable_new_full,
         _Py_hashtable_set
     }
     object_model.header ++> [
+        bindings.ctypes
+            | modules.decimal_context
+            | modules.decimal_convert
+            | modules.decimal_number
+            | modules.decimal_objects
+            | modules.socket_address
+            | modules.socket_core
+            | modules.socket_object
+            | modules.sqlite3 { object_type },
         bindings.signal {
             current_tstate,
             object_decref,
@@ -36355,15 +37082,74 @@ graph import runtime.python {
             tuple_set_item
         },
         modules.asyncio { freelist_pop, freelist_push },
+        modules.ctypes {
+            PyType_Type,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref
+        },
+        modules.ctypes_callbacks {
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item
+        },
+        modules.ctypes_callproc | modules.ctypes_objects {
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
+        },
+        modules.ctypes_cdata {
+            PyType_Type,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
+        },
+        modules.ctypes_cfield {
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref
+        },
+        modules.ctypes_header {
+            object_decref,
+            object_new_ref,
+            object_type,
+            object_type_check
+        },
+        modules.ctypes_module {
+            PyType_Type,
+            object_decref,
+            object_new_ref,
+            object_type_check
+        },
+        modules.ctypes_stgdict {
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item
+        },
         modules.datetime_objects { object_type, object_type_check },
-        modules.decimal_context
-            | modules.decimal_convert
-            | modules.decimal_number
-            | modules.decimal_objects
-            | modules.socket_address
-            | modules.socket_core
-            | modules.socket_object
-            | modules.sqlite3 { object_type },
         modules.faulthandler {
             current_interp,
             current_tstate,
@@ -36480,6 +37266,7 @@ graph import runtime.python {
             tuple_get_item,
             tuple_set_item
         },
+        modules.scproxy { object_decref, object_new_ref, object_xdecref },
         modules.signal {
             current_interp,
             current_tstate,
@@ -36520,6 +37307,7 @@ graph import runtime.python {
     object_model.iterator ++> modules.sre { PyCallIter_New }
     object_model.list ++> interpreter.importing_api
         | interpreter.lifecycle
+        | modules.ctypes_stgdict
         | modules.warnings { list_check }
     object_model.long ++> [
         interpreter.ops { get_small_int },
@@ -36529,15 +37317,27 @@ graph import runtime.python {
             long_is_nonnegative_compact,
             long_is_zero
         },
-        modules.warnings { long_zero },
+        modules.ctypes | modules.ctypes_callproc | modules.ctypes_cdata {
+            PyLong_AsVoidPtr
+        },
+        modules.ctypes_cfield {
+            PyLong_FromInt32,
+            PyLong_FromUInt64,
+            PyUnstable_Long_CompactValue,
+            PyUnstable_Long_IsCompact
+        },
+        modules.ctypes_objects | modules.warnings { long_zero },
     ]
+    object_model.memory ++> modules.ctypes_objects { PyMemoryView_FromMemory }
     object_model.method ++> bindings.functools { PyMethod_New }
     object_model.module ++> [
-        bindings.faulthandler
+        bindings.ctypes
+            | bindings.faulthandler
             | bindings.interpchannels
             | bindings.interpqueues
             | bindings.interpreters
             | bindings.io
+            | bindings.scproxy
             | bindings.signal
             | bindings.thread { PyModuleDef_Init },
         interpreter.importdl { PyModuleDef_Type },
@@ -36550,6 +37350,8 @@ graph import runtime.python {
             _PyModuleSpec_IsInitializing
         },
         interpreter.lifecycle { module_check, module_get_dict },
+        modules.ctypes | modules.ctypes_cfield { PyUnicode_AsWideChar },
+        modules.ctypes_header { PyModule_GetState },
     ]
     object_model.namespace ++> interpreter.importing_api | modules.time {
         _PyNamespace_New
@@ -36571,6 +37373,7 @@ graph import runtime.python {
         interpreter.ops_attr { managed_dict },
         interpreter.pystate { py_none },
         interpreter.specialize { type_is_ready },
+        modules.ctypes_callproc { PyThreadState_GetDict },
         modules.interpchannels { type_check },
         modules.io | modules.io_textio { bytes_check, unicode_check },
         modules.io_buffered | modules.io_iobase { bytes_check },
@@ -36599,10 +37402,9 @@ graph import runtime.python {
         pytime_system
     }
     object_model.set ++> interpreter.lifecycle { frozenset_check }
-    object_model.slice ++> modules.elementtree | modules.sqlite3 {
-        PySlice_AdjustIndices,
-        PySlice_Unpack
-    }
+    object_model.slice ++> modules.ctypes_objects
+        | modules.elementtree
+        | modules.sqlite3 { PySlice_AdjustIndices, PySlice_Unpack }
     object_model.structseq ++> [
         bindings.signal | modules.thread { PyStructSequence_NewType },
         interpreter.thread {
@@ -36645,6 +37447,17 @@ graph import runtime.python {
             | modules.warnings { py_id },
         interpreter.importing { py_id, weakref_get_ref },
         interpreter.lifecycle { dict_check_exact, py_id, weakref_get_ref },
+        modules.ctypes | modules.ctypes_cdata | modules.ctypes_stgdict {
+            object_xnewref,
+            py_id
+        },
+        modules.ctypes_callproc { PyType_GetName, py_id },
+        modules.ctypes_header {
+            PyObject_GetTypeData,
+            PyType_GetModuleByDef,
+            PyType_GetModuleState
+        },
+        modules.ctypes_objects { PyType_GetModuleByDef, object_xnewref, py_id },
         modules.io | modules.io_fileio | modules.io_stringio { py_clear, py_id },
         modules.io_buffered { object_xincref, py_clear, py_id, py_xsetref },
         modules.io_bytesio { py_clear, py_xsetref },
@@ -36667,6 +37480,7 @@ graph import runtime.python {
             uo_max_char_value,
             uo_read_char
         },
+        modules.scproxy { PyUnicode_DecodeUTF8 },
         modules.warnings {
             PyUnicode_Contains,
             PyUnicode_Tailmatch,
@@ -36674,6 +37488,7 @@ graph import runtime.python {
             uo_read_char
         },
     ]
+    object_model.weakref ++> modules.ctypes { weakref_check_proxy }
     objects ++> [
         compiler_integer { PyInt, PyObj, PyStr },
         constant_input {
@@ -36808,7 +37623,11 @@ graph import runtime.python.bindings {
             invoke_stack,
             unpack_stack
         },
-        clinic.asyncio | clinic.elementtree | clinic.lsprof | clinic.posix {
+        clinic.asyncio
+            | clinic.ctypes
+            | clinic.elementtree
+            | clinic.lsprof
+            | clinic.posix {
             CallSignature,
             PARSE_KEYWORDS,
             PARSE_NO_ARGUMENTS,
@@ -36999,6 +37818,7 @@ graph import runtime.python.bindings {
             | clinic.blake2
             | clinic.bz2
             | clinic.codecs
+            | clinic.ctypes
             | clinic.hashopenssl
             | clinic.imp
             | clinic.io
@@ -37090,6 +37910,21 @@ graph import runtime.python.bindings {
         csv_writerow_doc,
         csv_writerows_doc,
         dialect_reduce_doc,
+        module_methods
+    }
+    clinic.ctypes ++> ctypes {
+        CDataType_methods,
+        CFuncPtr_getset,
+        CType_Type_methods,
+        PyCArrayType_Type_getset,
+        PyCData_methods,
+        PyCPointerType_methods,
+        PyCSimpleType_methods,
+        Simple_getset,
+        Simple_methods,
+        c_char_p_methods,
+        c_void_p_methods,
+        c_wchar_p_methods,
         module_methods
     }
     clinic.datetime ++> datetime {
@@ -37459,6 +38294,16 @@ graph import runtime.python.bindings {
             convert_ssize,
             new_checks_arguments,
             return_int
+        },
+        clinic.ctypes {
+            argument_label,
+            bad_argument,
+            borrowed_none,
+            convert_bool,
+            convert_buffer,
+            convert_ssize,
+            convert_str,
+            defining_class
         },
         clinic.datetime { borrowed_none, convert_int },
         clinic.elementtree {
@@ -37870,6 +38715,7 @@ graph import runtime.python.bindings {
             | clinic.codecs
             | clinic.collections
             | clinic.csv
+            | clinic.ctypes
             | clinic.datetime
             | clinic.elementtree
             | clinic.fcntl
@@ -37966,6 +38812,7 @@ graph import runtime.python.bindings {
             jacpy_binding_state_get,
             visit_reference
         },
+        ctypes { MethodCallbacks, MethodDefinition, method_table },
         datetime {
             MethodCallbacks,
             MethodDefinition,
@@ -38317,6 +39164,7 @@ graph import runtime.python.bindings {
             jacpy_binding_record
         },
         clinic.asyncio
+            | clinic.ctypes
             | clinic.hmac
             | clinic.io
             | clinic.sqlite3
@@ -38347,6 +39195,7 @@ graph import runtime.python.bindings {
             jacpy_binding_owner,
             jacpy_binding_record
         },
+        ctypes { getset_table },
         functools {
             PropertyCallbacks,
             PropertyDefinition,
@@ -39364,6 +40213,338 @@ graph import runtime.python.modules {
         jacpy_combinatorial_new,
         jacpy_combinatorial_next
     }
+    ctypes ++> [
+        ctypes_cdata {
+            _ctypes_alloc_format_string,
+            _ctypes_alloc_format_string_for_type
+        },
+        ctypes_header { pyctype_type_spec },
+        ctypes_module {
+            dictremover_spec,
+            pycarray_type_spec,
+            pycpointer_type_spec,
+            pycstruct_type_spec,
+            pyctype_type_spec,
+            structparam_spec,
+            union_type_spec
+        },
+        ctypes_objects { PyDict_SetItemProxy, _PyDict_GetItemProxy },
+        ctypes_stgdict { ctype_free_stginfo_members },
+        scproxy { strlen },
+    ]
+    ctypes_callbacks ++> [
+        ctypes_cdata { _ctypes_alloc_callback },
+        ctypes_module { cthunk_spec },
+    ]
+    ctypes_callproc ++> [
+        ctypes { PyCArgObject_new },
+        ctypes_callbacks { _ctypes_get_ffi_type, ctypes_errobj },
+        ctypes_cdata { PyCArgObject_new, _ctypes_extend_error },
+        ctypes_module { _ctypes_module_methods, carg_spec },
+        ctypes_objects { PyCArgObject_new, _ctypes_callproc },
+    ]
+    ctypes_cdata ++> [
+        ctypes { KeepRef, PyCData_AtAddress, generic_pycdata_new },
+        ctypes_callbacks { _ctypes_simple_instance },
+        ctypes_callproc { PyCData_FromBaseObj, _ctypes_simple_instance },
+        ctypes_cfield { PyCData_get, PyCData_set },
+        ctypes_module { pycdata_spec, pycfuncptr_type_spec, pycsimple_type_spec },
+        ctypes_objects {
+            GenericPyCData_new,
+            GetKeepedObjects,
+            KeepRef,
+            PyCData_FromBaseObj,
+            PyCData_GetContainer,
+            PyCData_NewGetBuffer,
+            PyCData_clear,
+            PyCData_get,
+            PyCData_set,
+            PyCData_traverse,
+            PyCFuncPtr_new,
+            _ctypes_simple_instance,
+            atomic_xgetref,
+            generic_pycdata_new
+        },
+    ]
+    ctypes_cfield ++> [
+        ctypes | ctypes_callbacks | ctypes_callproc | ctypes_objects {
+            _ctypes_get_fielddesc
+        },
+        ctypes_cdata { _ctypes_get_fielddesc, _ctypes_get_simple_type_chars },
+        ctypes_module { _ctypes_init_fielddesc, cfield_spec },
+    ]
+    ctypes_header ++> [
+        ctypes {
+            ArrayObject_Check,
+            CDataObject,
+            CDataObject_Check,
+            PointerObject_Check,
+            PyCArgObject,
+            PyCArg_CheckExact,
+            PyCFuncPtrObject,
+            PyCFuncPtrObject_Check,
+            PyStgInfo_FromObject,
+            PyStgInfo_FromType,
+            PyStgInfo_Init,
+            SIZEOF_FFI_TYPE,
+            SIZEOF_STGINFO,
+            StgInfo,
+            TYPEFLAG_HASPOINTER,
+            TYPEFLAG_ISPOINTER,
+            _PyStgInfo_FromType_NoState,
+            call_setfunc,
+            carg_value_address,
+            ctypes_clinic_tables,
+            ctypes_state,
+            ffi_type,
+            ffi_type_pointer,
+            get_module_state_by_class,
+            get_module_state_by_def,
+            stginfo_ffi_type,
+            stginfo_set_dict_final_lock_held
+        },
+        ctypes_callbacks {
+            CDataObject,
+            CDataObject_Check,
+            CTHUNK_PCL_EXEC,
+            CThunkObject,
+            FFI_OK,
+            FUNCFLAG_USE_ERRNO,
+            FUNCFLAG_USE_LASTERROR,
+            PyStgInfo_FromType,
+            SIZEOF_CTHUNKOBJECT,
+            SIZEOF_FFI_CIF,
+            SIZEOF_FFI_CLOSURE,
+            SIZEOF_FFI_TYPE,
+            call_getfunc,
+            call_setfunc,
+            ctypes_state,
+            ffi_cif,
+            ffi_prep_cif,
+            ffi_prep_closure_loc,
+            ffi_type,
+            ffi_type_void,
+            fielddesc,
+            get_module_state_by_class,
+            stginfo_ffi_type,
+            thunk_atypes,
+            thunk_cif
+        },
+        ctypes_callproc {
+            CDataObject,
+            CDataObject_Check,
+            CTYPES_MAX_ARGCOUNT,
+            FFI_OK,
+            FFI_TYPE_STRUCT,
+            FUNCFLAG_CDECL,
+            FUNCFLAG_PYTHONAPI,
+            FUNCFLAG_USE_ERRNO,
+            FUNCFLAG_USE_LASTERROR,
+            PYCARG_OBJ,
+            PyCArgObject,
+            PyCArg_CheckExact,
+            PyStgInfo_FromAny,
+            PyStgInfo_FromObject,
+            PyStgInfo_FromType,
+            SIZEOF_FFI_CIF,
+            SIZEOF_PYCARGOBJECT,
+            SIZEOF_VALUE_UNION,
+            _CDataObject_HasExternalBuffer,
+            call_getfunc,
+            call_paramfunc,
+            carg_value,
+            carg_value_address,
+            ctypes_state,
+            ffi_call,
+            ffi_cif,
+            ffi_prep_cif,
+            ffi_prep_cif_var,
+            ffi_type,
+            ffi_type_pointer,
+            ffi_type_sint32,
+            ffi_type_void,
+            fielddesc,
+            get_module_state,
+            stginfo_ffi_type
+        },
+        ctypes_cdata {
+            ArrayObject_Check,
+            CDATA_B_BASE,
+            CDATA_B_NEEDSFREE,
+            CDATA_B_OBJECTS,
+            CDataObject,
+            CDataObject_Check,
+            CTYPES_MAX_ARGCOUNT,
+            PARAMFLAG_FIN,
+            PARAMFLAG_FLCID,
+            PARAMFLAG_FOUT,
+            PyCArgObject,
+            PyCArrayTypeObject_Check,
+            PyCFuncPtrObject,
+            PyCPointerTypeObject_Check,
+            PyCSimpleTypeObject_Check,
+            PyStgInfo_FromObject,
+            PyStgInfo_FromType,
+            PyStgInfo_Init,
+            SIZEOF_CDATAOBJECT,
+            SIZEOF_FFI_TYPE,
+            SIZEOF_VALUE_UNION,
+            StgInfo,
+            TYPEFLAG_HASPOINTER,
+            TYPEFLAG_ISPOINTER,
+            _CDataObject_HasExternalBuffer,
+            call_getfunc,
+            call_setfunc,
+            carg_value_address,
+            cdata_value_address,
+            ctypes_clinic_tables,
+            ctypes_state,
+            ffi_type,
+            ffi_type_pointer,
+            fielddesc,
+            get_module_state_by_class,
+            get_module_state_by_def,
+            stginfo_ffi_type,
+            stginfo_set_dict_final
+        },
+        ctypes_cfield {
+            CDataObject,
+            CDataObject_Check,
+            CFIELD_BIT_OFFSET,
+            CFIELD_BYTE_OFFSET,
+            CFIELD_BYTE_SIZE,
+            CFIELD_NAME,
+            CFIELD_PROTO,
+            CFieldObject,
+            FFI_TYPE_SINT16,
+            FFI_TYPE_SINT32,
+            FFI_TYPE_SINT64,
+            FFI_TYPE_SINT8,
+            FFI_TYPE_UINT16,
+            FFI_TYPE_UINT32,
+            FFI_TYPE_UINT64,
+            FFI_TYPE_UINT8,
+            PyCArrayTypeObject_Check,
+            PyStgInfo_FromType,
+            Py_FFI_COMPLEX_AVAILABLE,
+            ffi_type,
+            ffi_type_complex_double,
+            ffi_type_complex_float,
+            ffi_type_double,
+            ffi_type_float,
+            ffi_type_pointer,
+            ffi_type_sint16,
+            ffi_type_sint32,
+            ffi_type_sint64,
+            ffi_type_sint8,
+            ffi_type_uint16,
+            ffi_type_uint32,
+            ffi_type_uint64,
+            ffi_type_uint8,
+            fielddesc,
+            get_module_state_by_class,
+            stginfo_ffi_type
+        },
+        ctypes_malloc_closure {
+            SIZEOF_FFI_CLOSURE,
+            ffi_closure_alloc,
+            ffi_closure_free
+        },
+        ctypes_module {
+            CTYPES_MAX_ARGCOUNT,
+            FUNCFLAG_CDECL,
+            FUNCFLAG_PYTHONAPI,
+            FUNCFLAG_USE_ERRNO,
+            FUNCFLAG_USE_LASTERROR,
+            SIZEOF_CTYPES_STATE,
+            get_module_state
+        },
+        ctypes_objects {
+            CDataObject,
+            CDataObject_Check,
+            CThunkObject,
+            FUNCFLAG_CDECL,
+            PARAMFLAG_FIN,
+            PARAMFLAG_FLCID,
+            PARAMFLAG_FOUT,
+            PyCArrayTypeObject_Check,
+            PyCFuncPtrObject,
+            PyCFuncPtrTypeObject_Check,
+            PyCPointerTypeObject_Check,
+            PyStgInfo_FromObject,
+            PyStgInfo_FromType,
+            SIZEOF_PYCFUNCPTROBJECT,
+            StgInfo,
+            call_getfunc,
+            call_setfunc,
+            carg_value_address,
+            ctypes_state,
+            ffi_type_pointer,
+            get_module_state,
+            get_module_state_by_class,
+            get_module_state_by_def
+        },
+        ctypes_stgdict {
+            CFieldObject,
+            FFI_TYPE_STRUCT,
+            PyCArrayTypeObject_Check,
+            PyStgInfo_FromType,
+            SIZEOF_FFI_TYPE,
+            SIZEOF_STGINFO,
+            StgInfo,
+            TYPEFLAG_HASPOINTER,
+            TYPEFLAG_ISPOINTER,
+            ctypes_state,
+            ffi_type,
+            get_module_state_by_class,
+            get_module_state_by_def,
+            stginfo_ffi_type,
+            stginfo_get_dict_final,
+            stginfo_set_dict_final_lock_held
+        },
+    ]
+    ctypes_malloc_closure ++> ctypes_callbacks | ctypes_module {
+        Py_ffi_closure_alloc,
+        Py_ffi_closure_free
+    }
+    ctypes_module ++> ctypes_header | ctypes_objects { _ctypesmodule }
+    ctypes_objects ++> [
+        ctypes { PyCArrayType_from_ctype, PyOS_snprintf, _byref },
+        ctypes_cdata { PyOS_snprintf },
+        ctypes_module {
+            cast,
+            memoryview_at,
+            pycarray_spec,
+            pycfuncptr_spec,
+            pycpointer_spec,
+            pycsimple_spec,
+            pycstruct_spec,
+            pycunion_spec,
+            string_at,
+            wstring_at
+        },
+    ]
+    ctypes_platform ++> [
+        ctypes_callbacks { FFI_DEFAULT_ABI },
+        ctypes_callproc {
+            FFI_DEFAULT_ABI,
+            PASS_BY_REF_HACK,
+            RTLD_LOCAL,
+            RTLD_NOW,
+            dyld_shared_cache_contains_path
+        },
+        ctypes_cfield {
+            LONG_DOUBLE_IS_DOUBLE,
+            SIZEOF_LONG_DOUBLE,
+            ffi_type_complex_longdouble_ref,
+            ffi_type_longdouble_ref,
+            long_double_load,
+            long_double_store
+        },
+        ctypes_module { RTLD_GLOBAL, RTLD_LOCAL },
+        ctypes_stgdict { MAX_STRUCT_SIZE },
+    ]
+    ctypes_stgdict ++> ctypes { PyCStgInfo_clone, PyCStructUnionType_update_stginfo }
     datetime_calendar ++> [
         datetime_date {
             DateTimeFields,
@@ -41257,6 +42438,18 @@ graph import runtime.python.modules {
         resource { prlimit, rlimit, rusage, timeval },
         time { rusage },
     ]
+    scproxy_platform ++> scproxy {
+        cf_array_count,
+        cf_array_value,
+        cf_dictionary_value,
+        cf_number_int32,
+        cf_release,
+        cf_string_copy,
+        cf_string_length,
+        cf_string_utf8_pointer,
+        proxies_copy,
+        proxy_key
+    }
     select_constants ++> select {
         EPOLL_CLOEXEC,
         EPOLL_CTL_ADD,

@@ -4700,6 +4700,32 @@ CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_writable), 41200LL)
 CONSTANT(offsetof(struct _Py_global_strings, literals._py_empty), 752LL);
 CONSTANT(Py_bf_getbuffer, 1LL);
 CONSTANT(Py_bf_releasebuffer, 2LL);
+CONSTANT(Py_sq_ass_item, 39LL);
+CONSTANT(Py_sq_item, 44LL);
+CONSTANT(Py_sq_length, 45LL);
+CONSTANT(Py_sq_repeat, 46LL);
+CONSTANT(Py_tp_descr_get, 54LL);
+CONSTANT(Py_tp_descr_set, 55LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___ctypes_from_outparam__), 3696LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___setstate__), 9800LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__abstract_), 11112LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__anonymous_), 11216LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__argtypes_), 11272LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__as_parameter_), 11328LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__check_retval_), 11568LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__fields_), 11800LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__flags_), 12080LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__length_), 12536LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__needs_com_addref_), 12752LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__restype_), 12872LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__type_), 13352LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_align), 14072LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_base), 15064LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_fields), 22520LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_format_spec), 23392LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_from_param), 23504LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_is_struct), 26688LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_size), 36952LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)

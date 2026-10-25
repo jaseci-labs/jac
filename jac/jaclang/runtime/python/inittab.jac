@@ -117,6 +117,8 @@ import from c {
              _inittab(name=ptr[u8]("marshal"), initfunc=ptr(PyInit_marshal)),
              _inittab(name=ptr[u8]("_imp"), initfunc=ptr(PyInit__imp)),
              _inittab(name=ptr[u8]("_io"), initfunc=ptr(PyInit__io)),
+             _inittab(name=ptr[u8]("_ctypes"), initfunc=ptr(PyInit__ctypes)),
+             _inittab(name=ptr[u8]("_scproxy"), initfunc=ptr(PyInit__scproxy)),
              _inittab(name=ptr[u8]("_ast"), initfunc=ptr(PyInit__ast)),
              _inittab(name=ptr[u8]("_tokenize"), initfunc=ptr(PyInit__tokenize)),
              _inittab(name=ptr[u8]("_symtable"), initfunc=ptr(PyInit__symtable)),

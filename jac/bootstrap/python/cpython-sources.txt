@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 281 C files / 487,688 lines; 180 headers / 165,207 lines.
-#   Total: 461 files / 652,895 source lines.
+#   Excluded: 288 C files / 499,823 lines; 184 headers / 167,126 lines.
+#   Total: 472 files / 666,949 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -547,16 +547,16 @@ Modules/Setup.stdlib.in
 # Modules/_codecsmodule.c  # removed: 1,101 source lines
 # Modules/_collectionsmodule.c  # removed: 2,902 source lines
 # Modules/_csv.c  # removed: 1,864 source lines
-Modules/_ctypes/_ctypes.c
-Modules/_ctypes/callbacks.c
-Modules/_ctypes/callproc.c
-Modules/_ctypes/cfield.c
-Modules/_ctypes/clinic/_ctypes.c.h
-Modules/_ctypes/clinic/callproc.c.h
-Modules/_ctypes/clinic/cfield.c.h
-Modules/_ctypes/ctypes.h
-Modules/_ctypes/malloc_closure.c
-Modules/_ctypes/stgdict.c
+# Modules/_ctypes/_ctypes.c  # removed: 6,544 source lines
+# Modules/_ctypes/callbacks.c  # removed: 609 source lines
+# Modules/_ctypes/callproc.c  # removed: 2,034 source lines
+# Modules/_ctypes/cfield.c  # removed: 1,818 source lines
+# Modules/_ctypes/clinic/_ctypes.c.h  # removed: 1,003 source lines
+# Modules/_ctypes/clinic/callproc.c.h  # removed: 145 source lines
+# Modules/_ctypes/clinic/cfield.c.h  # removed: 129 source lines
+# Modules/_ctypes/ctypes.h  # removed: 642 source lines
+# Modules/_ctypes/malloc_closure.c  # removed: 165 source lines
+# Modules/_ctypes/stgdict.c  # removed: 707 source lines
 # Modules/_datetimemodule.c  # removed: 7,787 source lines
 # Modules/_decimal/_decimal.c  # removed: 6,341 source lines
 # Modules/_decimal/docstrings.h  # removed: 966 source lines
@@ -643,7 +643,7 @@ Modules/_hacl/python_hacl_namespaces.h
 # Modules/_queuemodule.c  # removed: 628 source lines
 # Modules/_randommodule.c  # removed: 679 source lines
 # Modules/_remote_debugging_module.c  # removed: 3,666 source lines
-Modules/_scproxy.c
+# Modules/_scproxy.c  # removed: 258 source lines
 # Modules/_sqlite/blob.c  # removed: 631 source lines
 # Modules/_sqlite/blob.h  # removed: 24 source lines
 # Modules/_sqlite/clinic/_sqlite3.connect.c.h  # removed: 31 source lines

@@ -4538,7 +4538,113 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("Py_bf_getbuffer", "Py_bf_getbuffer", "i32"),
-         ("Py_bf_releasebuffer", "Py_bf_releasebuffer", "i32")
+         ("Py_bf_releasebuffer", "Py_bf_releasebuffer", "i32"),
+         ("Py_sq_ass_item", "Py_sq_ass_item", "i32"),
+         ("Py_sq_item", "Py_sq_item", "i32"),
+         ("Py_sq_length", "Py_sq_length", "i32"),
+         ("Py_sq_repeat", "Py_sq_repeat", "i32"),
+         ("Py_tp_descr_get", "Py_tp_descr_get", "i32"),
+         ("Py_tp_descr_set", "Py_tp_descr_set", "i32"),
+         (
+             "_Py_ID___ctypes_from_outparam__",
+             "offsetof(struct _Py_global_strings, identifiers._py___ctypes_from_outparam__)",
+             "i64"
+         ),
+         (
+             "_Py_ID___setstate__",
+             "offsetof(struct _Py_global_strings, identifiers._py___setstate__)",
+             "i64"
+         ),
+         (
+             "_Py_ID__abstract_",
+             "offsetof(struct _Py_global_strings, identifiers._py__abstract_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__anonymous_",
+             "offsetof(struct _Py_global_strings, identifiers._py__anonymous_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__argtypes_",
+             "offsetof(struct _Py_global_strings, identifiers._py__argtypes_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__as_parameter_",
+             "offsetof(struct _Py_global_strings, identifiers._py__as_parameter_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__check_retval_",
+             "offsetof(struct _Py_global_strings, identifiers._py__check_retval_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__fields_",
+             "offsetof(struct _Py_global_strings, identifiers._py__fields_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__flags_",
+             "offsetof(struct _Py_global_strings, identifiers._py__flags_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__length_",
+             "offsetof(struct _Py_global_strings, identifiers._py__length_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__needs_com_addref_",
+             "offsetof(struct _Py_global_strings, identifiers._py__needs_com_addref_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__restype_",
+             "offsetof(struct _Py_global_strings, identifiers._py__restype_)",
+             "i64"
+         ),
+         (
+             "_Py_ID__type_",
+             "offsetof(struct _Py_global_strings, identifiers._py__type_)",
+             "i64"
+         ),
+         (
+             "_Py_ID_align",
+             "offsetof(struct _Py_global_strings, identifiers._py_align)",
+             "i64"
+         ),
+         (
+             "_Py_ID_base",
+             "offsetof(struct _Py_global_strings, identifiers._py_base)",
+             "i64"
+         ),
+         (
+             "_Py_ID_fields",
+             "offsetof(struct _Py_global_strings, identifiers._py_fields)",
+             "i64"
+         ),
+         (
+             "_Py_ID_format_spec",
+             "offsetof(struct _Py_global_strings, identifiers._py_format_spec)",
+             "i64"
+         ),
+         (
+             "_Py_ID_from_param",
+             "offsetof(struct _Py_global_strings, identifiers._py_from_param)",
+             "i64"
+         ),
+         (
+             "_Py_ID_is_struct",
+             "offsetof(struct _Py_global_strings, identifiers._py_is_struct)",
+             "i64"
+         ),
+         (
+             "_Py_ID_size",
+             "offsetof(struct _Py_global_strings, identifiers._py_size)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
