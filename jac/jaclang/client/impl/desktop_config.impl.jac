@@ -85,7 +85,7 @@ impl JacDesktopConfig.get_backend(self: JacDesktopConfig) -> str {
 impl JacDesktopConfig.get_backends(self: JacDesktopConfig) -> dict[str, str] {
     config = self.load();
     raw = config.get('backends', {});
-    if not raw {
+    if 'backends' not in config {
         if 'default_backend' in config {
             raise ValueError(
                 "Desktop configuration error: default_backend needs a [desktop] backends table"
@@ -93,9 +93,9 @@ impl JacDesktopConfig.get_backends(self: JacDesktopConfig) -> dict[str, str] {
         }
         return {};
     }
-    if not isinstance(raw, dict) {
+    if not isinstance(raw, dict) or not raw {
         raise ValueError(
-            "Desktop configuration error: backends must be a table of name = 'embedded' or an http(s) URL"
+            "Desktop configuration error: backends must be a table of at least two name = 'embedded' or http(s) URL entries"
         );
     }
     if 'backend' in config {
