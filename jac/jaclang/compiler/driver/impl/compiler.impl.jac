@@ -398,10 +398,6 @@ impl JacCompiler._adopt_kernel_compile(
 impl JacCompiler.native_entry_engine(
     full_target: str, target_program: JacProgram
 ) -> any {
-    """The engine that runs `full_target`'s entry natively, or None when the
-    module was not placed native. It compiles through the module cache, so a
-    warm run compiles nothing, and an entry placed native is compiled once.""";
-    import from jaclang.compiler.placement.placement { summary_store }
     path = JacProgram.hub_key(full_target);
     if self.get_bytecode(full_target=path, target_program=target_program) is None {
         return None;

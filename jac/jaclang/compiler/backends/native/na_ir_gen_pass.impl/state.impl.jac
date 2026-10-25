@@ -5,11 +5,6 @@ impl NaIRGenPass.emit(
     help_text: (str | None) = None,
     **kwargs: any
 ) -> bool {
-    """A lowering diagnostic is a routing fact before it is a report: the
-demotion of a function is decided by the errors its lowering recorded, so a
-suppressed code must still be recorded here. The pass driver applies the
-policy when it delivers the pass's alerts to the program, so a suppressed
-diagnostic never reaches a user.""";
     saved = self.ctx.policy;
     self.ctx.policy = None;
     try {

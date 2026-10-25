@@ -171,6 +171,8 @@ walker JacAutoLintPass(TreePass) {
     def _drop_impl_return(impl_node: uni.ImplDef) -> None;
     def _strip_docstrings(start: uni.UniNode) -> None;
     def _collect_doc_nodes(start: uni.UniNode) -> list[tuple[uni.UniNode, uni.String]];
+    def _strip_string_stmts(start: uni.UniNode) -> None;
+    def _is_string_stmt(stmt: uni.UniNode) -> bool;
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;

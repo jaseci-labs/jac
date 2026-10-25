@@ -464,13 +464,6 @@ impl KEDAAutoscaler.resource_name_for {
 }
 
 impl KEDAAutoscaler._read_scaled_object {
-    """The live ScaledObject for a target, whichever of its names exists.
-
-    A target is scaled either by the METRIC ScaledObject or by the HTTP
-    add-on's, never both, and which one is live is the thing a caller would
-    otherwise have to derive from the scaling mode before it could ask a
-    question. So both names are tried here and the caller passes a target.
-    """;
     api = self._custom_api or client.CustomObjectsApi();
     names = [autoscaler_name]
         if autoscaler_name
@@ -505,12 +498,6 @@ impl KEDAAutoscaler._read_scaled_object {
 }
 
 impl KEDAAutoscaler._read_hpa {
-    """The HPA KEDA created for a ScaledObject, by the name KEDA reports.
-
-    Never rebuilt from a naming convention: KEDA owns that name and publishes
-    it on the ScaledObject, so reading it back is the only way the two cannot
-    disagree.
-    """;
     hpa_name = str(dict(scaled_object.get("status", {}) or {}).get("hpaName") or "");
     if not hpa_name {
         return None;
@@ -529,30 +516,6 @@ impl KEDAAutoscaler._read_hpa {
 }
 
 impl KEDAAutoscaler.get_runtime_status {
-    """The target's state from the ScaledObject, its HPA and the workload.
-
-    Three things this reads that the Deployment cannot say. The live
-    ScaledObject is the authority on the replica floor, so a target whose
-    Deployment predates the jac-scale.replica-floor annotation is still judged
-    correctly rather than falling back to a floor of 1. The HPA is where a
-    failed external-metric fetch surfaces, and KEDA's own Ready condition can
-    still read True while that is happening, so both are consulted. And when
-    nothing KEDA owns can be read, whether the ScaledObject is absent or RBAC
-    denies it, this degrades to the workload's own state on the deploy-time
-    annotation rather than reporting a scaler failure it never observed.
-
-    One HPA condition has to be read by its reason, not just its status.
-    ScalingActive False with reason ScalingDisabled is the HPA saying it is not
-    scaling because the target sits at zero, which is a statement about replica
-    count rather than scaler health, and every idle scale-to-zero workload
-    reports it. A real problem reaching a metric is FailedGetExternalMetric or
-    FailedGetResourceMetric.
-
-    Comparing replica counts instead would be racy: the HPA and the Deployment
-    are separate objects read moments apart, so just after a deploy the HPA
-    already reports ScalingDisabled while the Deployment still reads its
-    pre-idle replica count.
-    """;
     scaled_object = self._read_scaled_object(
         scale_target_name, namespace, autoscaler_name
     );
@@ -602,18 +565,6 @@ impl KEDAAutoscaler.get_runtime_status {
 }
 
 impl KEDAAutoscaler._apply_autoscaler_view {
-    """Let the autoscaler's own signals override the workload verdict.
-
-    Two things the Deployment cannot say. A scaler that cannot reach its metric
-    endpoint leaves a workload sitting at its floor looking perfectly idle, so
-    that has to become degraded. And a trigger that has fired while no pod is
-    up yet is a scale-up in progress, not a resting workload, which is what
-    separates activation from application readiness.
-
-    The reason names whichever condition actually reports False. Preferring
-    Ready because it carries a message reports KEDA's success reason,
-    ScaledObjectReady, as the cause of an HPA-side failure.
-    """;
     if status.scaler_ready == False {
         failing = None;
         for kind in ["Ready", "ScalingActive"] {
@@ -644,12 +595,6 @@ impl KEDAAutoscaler._target_of {
 }
 
 impl KEDAAutoscaler._list_scale_targets {
-    """Every ScaledObject's target in the namespace, plus the list's version.
-
-    The returned resourceVersion is the list's, not any object's: that is the
-    point a watch resumes from, and starting a watch from an individual
-    object's version replays or skips events.
-    """;
     api = self._custom_api or client.CustomObjectsApi();
     kwargs: dict[str, any] = {
         "group": "keda.sh",
@@ -675,14 +620,6 @@ impl KEDAAutoscaler._list_scale_targets {
 }
 
 impl KEDAAutoscaler._transition_for_event {
-    """One watch event turned into a transition, or None when nothing changed.
-
-    Split out of the stream loop so the decision that matters, whether an event
-    represents a real state change, is reachable without driving a watch. It
-    mutates `last` because that cache is what makes the decision: a relist
-    replays every object it knows about, and comparing against the cache is the
-    only thing separating a genuine transition from that replay.
-    """;
     scaled_object = dict(event.get("object") or {});
     target = self._target_of(scaled_object);
     if not target {
@@ -702,25 +639,6 @@ impl KEDAAutoscaler._transition_for_event {
 }
 
 impl KEDAAutoscaler.watch_scale_targets {
-    """Deduplicated transitions for the namespace's KEDA-scaled targets.
-
-    Watches the ScaledObject rather than the Deployment because the trigger and
-    scaler conditions are the half a Deployment cannot express: a scaler that
-    cannot reach its metric endpoint never changes the Deployment, so watching
-    the workload alone reports nothing at all for the failure this exists to
-    surface. The cost is the reverse gap, a pod becoming ready without the
-    ScaledObject changing, which needs a second watch and is deliberately not
-    here.
-
-    The opening list seeds the cache and emits nothing. An observer starting up
-    has witnessed no transition, and reporting current state as one invents
-    history and floods a fresh subscriber on every restart.
-
-    A 410 Gone means the cached resourceVersion is too old to resume from. The
-    recovery relists and keeps the cache, so targets whose state did not change
-    while the observer was behind stay silent and only real differences emit.
-    """;
-
     api = self._custom_api or client.CustomObjectsApi();
     (targets, version) = self._list_scale_targets(namespace, label_selector);
     last: dict[str, any] = {};

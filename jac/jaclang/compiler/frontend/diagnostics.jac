@@ -367,7 +367,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
-         "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
+         "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment."
      ),
      W0063 = _warn(
          "W0063",
@@ -2112,7 +2112,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Docstring can be removed [strip-docstrings]",
          help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
          "when \"strip-docstrings\" is named in [check.lint] select. "
-         "`jac fmt --lintfix` then removes all docstrings."
+         "`jac fmt --lintfix` then removes all docstrings, and every string "
+         "written as a statement inside a body."
      ),
      W3053 = _warn(
          "W3053",

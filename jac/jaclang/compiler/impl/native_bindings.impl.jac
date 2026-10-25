@@ -114,9 +114,6 @@ impl native_surface(native_mod: Module, stub_module: str) -> dict[str, NativeBin
 }
 
 impl signature_of(overloads: list[FunctionType]) -> InterfaceSig {
-    """The names an interface function can be called with, over every
-    overload. A leading run of parameters taken by position only is counted
-    and not named: the native declaration may call those anything.""";
     sig = InterfaceSig();
     for fn in overloads {
         leading = 0;
@@ -206,8 +203,6 @@ impl overload_symbols(sym: Symbol) -> list[Symbol] {
 impl scope_sig(
     scope: UniScopeNode, name: str, prog: JacProgram
 ) -> (InterfaceSig | None) {
-    """How `name` is called in `scope`, over every declaration of it there:
-    a scope holds each overload of a function as its own symbol.""";
     found: (InterfaceSig | None) = None;
     seen: set[int] = set();
     for sym in declared_symbols(scope, name) {
@@ -227,9 +222,6 @@ impl scope_sig(
 impl interface_type(
     stub_mod: Module, name: str, prog: JacProgram
 ) -> (TypeBase | None) {
-    """The type the Python interface gives `name`. An interface is read from
-    its symbols and their types, never from syntax: in a build the stubs are
-    served from the catalog, which holds no trees.""";
     declared = declared_symbols(stub_mod, name);
     if not declared {
         return None;
@@ -252,9 +244,6 @@ impl class_member_type(
 }
 
 impl constructor_sig(cls: ClassType, prog: JacProgram) -> (InterfaceSig | None) {
-    """How the interface constructs `cls`: the `__new__` and `__init__` of the
-    nearest class in its chain that declares either. Reaching `object` means
-    the interface says nothing, and nothing is held against the native side.""";
     chain: list[ClassType] = list(cls.shared.mro) or [cls];
     for klass in chain {
         if klass.is_builtin("object") {
@@ -427,8 +416,6 @@ impl call_gaps(call: FuncCall, binding: NativeBinding) -> list[str] {
 }
 
 impl interface_module_name(home: Module) -> str {
-    """The dotted name a stub module is imported by, read off its path under
-    the typeshed standard library when it has one.""";
     path = home.loc.mod_path.replace(os.sep, "/") if home.loc is not None else "";
     marker = "/typeshed/stdlib/";
     at = path.rfind(marker);
@@ -446,10 +433,6 @@ impl interface_module_name(home: Module) -> str {
 }
 
 impl binding_gaps(prog: JacProgram, nm: Name, base_dir: str) -> list[str] {
-    """What the native library lacks for a name the checker typed from a
-    Python interface: its module-level function or class, a member of its
-    class, or an argument the call passes. A name that did not resolve into
-    an interface, or whose interface has no native module, has no gap.""";
     sym = nm.sym;
     if sym is None {
         return [];
@@ -631,11 +614,6 @@ impl variant_mismatches(mod: Module, prog: JacProgram) -> list[tuple[UniNode, st
 }
 
 impl import_gaps(prog: JacProgram, imp: Import, base_dir: str) -> list[str] {
-    """What a `from` import of a native library module names that the native
-    module does not provide. The interface may declare such a name under a
-    condition the checker does not resolve, so the import is checked against
-    the native module itself: its public functions, classes, enums, type
-    aliases and globals.""";
     if imp.from_loc is None or imp.is_absorb {
         return [];
     }

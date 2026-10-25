@@ -755,8 +755,6 @@ impl EsastGenPass._fw_binary(
 }
 
 impl EsastGenPass._js_int_spelling(text: str) -> str {
-    """Jac allows an underscore right after a radix prefix (`0x_FF`);
-    JavaScript allows one only between digits.""";
     if len(text) > 2 and text[0] == "0" and text[1] in "xXoObB" and text[2] == "_" {
         return text[:2] + text[3:];
     }

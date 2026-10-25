@@ -178,8 +178,6 @@ impl _mounts_entry(project_root: str) -> tuple[str, str] {
 }
 
 impl project_mounts_dir(project_root: str) -> str {
-    """Where a project mounts its packages, without touching the disk: a
-    caller asking about someone else's package must not mount into it.""";
     return _mounts_entry(project_root)[0];
 }
 

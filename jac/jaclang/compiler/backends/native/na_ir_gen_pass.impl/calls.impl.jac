@@ -761,19 +761,6 @@ impl NaIRGenPass._codegen_bound_args(
 }
 
 impl NaIRGenPass._emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None {
-    """Refuse a call whose callee declares a pack it could not lay out.
-
-    Binding the extras positionally into a slot that is not a pack is the one
-    answer this site may never give: the callee reads that slot as its whole
-    parameter pack, so the mismatch is a silent misread at run time rather
-    than a missing feature.
-
-    Reached only when the signature that declares the pack is the one the
-    called function was built from. A bundled native module whose typeshed
-    stub is variadic while its own definition is fixed-arity -- `os.path.join`
-    is the standing example -- resolves a signature belonging to a different
-    implementation, and positional binding against the real one is correct.
-    """;
     _sink = "*args" if star == "*" else "**kwargs";
     self.emit(
         E5092,
@@ -1296,8 +1283,6 @@ impl NaIRGenPass._native_module_call_target(
 }
 
 impl NaIRGenPass._stdlib_intercept_covers(module_name: str, func_name: str) -> bool {
-    """Whether `module_name.func_name` lowers through a compiler intercept for an
-    imported stdlib module (`os`, `random`, `struct`).""";
     return module_name in self._native_stdlib_modules
         and stdlib_intercepted(module_name, func_name);
 }
@@ -1315,13 +1300,6 @@ impl NaIRGenPass._emit_stdlib_intercept(
 }
 
 impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] | None {
-    """The intercepted (module, function) a bare call names when the name was bound
-    by `import from <module> { function }`: `randint(1, 6)` lowers exactly like
-    `random.randint(1, 6)`. The callee symbol lives in the module's stub, so a
-    local or module definition that shadows the name never matches. The stub is
-    named by its place in the stdlib tree, not its file stem: `os` is a package
-    whose stub is `os/__init__.pyi`.""";
-
     if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
         return None;
     }
@@ -1624,14 +1602,6 @@ impl NaIRGenPass._emit_intrinsic_region_tls(
 impl NaIRGenPass._emit_intrinsic_list_data(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
-    """`__list_data_ptr(lst)` is the address of `lst`'s element buffer, as an
-    integer for the `__mem_*` accessors. It holds until the list next grows
-    past its capacity (an append then moves the buffer) and only while the
-    list is alive; nothing here checks an index, so the caller owns the
-    bounds. The list itself stays the owner of the elements: a store through
-    the pointer is a plain word write, so it is for scalar element types.
-    """;
-
     if not isinstance(args[0], (uni.Name, uni.AtomTrailer)) {
         self._emit_intrinsic_misuse(
             nd,
@@ -1672,14 +1642,6 @@ impl NaIRGenPass._emit_intrinsic_list_data(
 impl NaIRGenPass._emit_intrinsic_alloca(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
-    """`__alloca(n)` reserves `n` bytes of scratch. A constant `n` lowers to an
-    i64-array alloca in the entry block (8-byte ABI alignment for the `__mem_*`
-    i64 accessors), so a call inside a loop reuses one slot instead of churning
-    stack per iteration; a runtime `n` lowers to a call-site dynamic alloca,
-    since an entry-block slot cannot reference a size computed later in the
-    function. Either way the buffer is per-call scratch that must not outlive
-    the invocation (the bundled floors' timespecs).
-    """;
     n = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     if n is None {
         return None;
@@ -2880,15 +2842,6 @@ impl NaIRGenPass._jacval_tags_for_type(name: str) -> list[int] {
 impl NaIRGenPass._isinstance_static_verdict(
     name: str, operand: ir.Value
 ) -> (bool | None) {
-    """Answer the arms whose native representation carries no JacVal tag.
-
-    A native tuple is an unboxed literal struct and a `bytes` / `bytearray` is
-    a pointer to its own runtime struct, so none of the three is reachable
-    through a tag compare -- but each is fully decided by the operand's LLVM
-    type, which is known here. Returning `True`/`False` settles that arm at
-    compile time; `None` means the name is not one of these and falls through
-    to the tag and vtable machinery.
-    """;
     if name == "tuple" {
         return self._tuple_struct_of_value(operand) is not None;
     }
@@ -2905,21 +2858,6 @@ impl NaIRGenPass._isinstance_static_verdict(
 impl NaIRGenPass._isinstance_abc_reduction(
     type_expr: uni.UniNode, name: str
 ) -> (list[str] | None) {
-    """The native shapes an `isinstance` arm naming a stdlib ABC reduces to.
-
-    A `collections.abc` class is a Python object no native unit can host, so a
-    check against one is only answerable by reducing it to the finite set of
-    native runtime shapes that inhabit it. `_NA_ABC_REDUCTIONS` holds the
-    reductions that are exact rather than approximate: every entry is a
-    container ABC whose members, among values a native unit can hold, are
-    precisely the listed builtins. Protocol-shaped ABCs are deliberately absent
-    -- an archetype with `__iter__` inhabits `Iterable` too, so a builtin-only
-    answer there would be silently wrong. Those sit in `_NA_ABC_OPAQUE`.
-
-    `None` means the arm is not a stdlib ABC and the caller should treat it as
-    it always has. An empty list means it is one this backend refuses to guess
-    at, and the caller turns that into a diagnostic rather than an answer.
-    """;
     if name in self.struct_types or name in self.enum_types {
         return None;
     }
@@ -2948,13 +2886,6 @@ impl NaIRGenPass._isinstance_abc_reduction(
 impl NaIRGenPass._isinstance_target_names(
     nd: uni.FuncCall, operand: ir.Value, type_arg: uni.UniNode
 ) -> (list[str] | None) {
-    """Flatten the type argument into the type names the check has to test.
-
-    A tuple argument contributes each of its arms; a stdlib ABC arm expands to
-    the native shapes it reduces to, and keeps its own name too whenever some
-    archetype names it in an MRO, so a user type registered under the ABC still
-    answers through the vtable arm. `None` means a diagnostic was emitted.
-    """;
     raw: list[uni.UniNode] = list(type_arg.values or [])
         if isinstance(type_arg, uni.TupleVal)
         else [type_arg];
@@ -3001,14 +2932,6 @@ impl NaIRGenPass._isinstance_target_names(
 impl NaIRGenPass._isinstance_operand_is_pyb(
     nd: uni.FuncCall, operand: ir.Value
 ) -> bool {
-    """Does the operand's class reach its bases through the Python bridge?
-
-    A class with a Python-side base carries an MRO this unit never modelled --
-    `PyBase(ABC)` in the interop fixtures is exactly that shape -- so which
-    abstract base classes such an instance inhabits is not answerable from the
-    native layout. Only the reduction cares: an archetype arm still answers
-    through the vtable, whose MRO covers the layout-trusted bases.
-    """;
     arch = self._isinstance_operand_arch(nd, operand);
     if arch is None {
         return False;
@@ -4030,16 +3953,6 @@ impl NaIRGenPass._unwrap_cfg_expr(e: any) -> any {
 impl NaIRGenPass._call_args_lowered(
     nd: uni.UniNode, func: ir.Function, func_name: str, coerced: list[ir.Value]
 ) -> bool {
-    """Whether every argument reached the callee's parameter type.
-
-    `_coerce_type` answers with the value unchanged when it has no coercion
-    for a pair, so a lowering that lost a type upstream reaches the builder
-    with an argument the callee cannot take. The builder's `TypeError` is
-    then reported as an internal compiler error, which buries the real
-    defect under a crash. Refusing here demotes the one callable and names
-    the parameter that did not line up, so the coverage records a fact rather
-    than a stack trace.
-    """;
     _n = min(len(coerced), len(func.args));
     for _i in range(_n) {
         if coerced[_i].type == func.args[_i].type {
@@ -4401,8 +4314,6 @@ impl NaIRGenPass._codegen_callable_value(
     }
     if not isinstance(value.type, ir.PointerType)
         or not isinstance(value.type.pointee, ir.FunctionType) {
-        """No call signature to lower against. Refuse loudly: in statement
-        position a silent None would drop the call and its effects.""";
         self.emit(
             E5092,
             node_override=nd,
@@ -4438,14 +4349,6 @@ impl NaIRGenPass._codegen_callable_value(
 }
 
 impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
-    """`ord` of a one-character literal, folded to its code point.
-
-    The call has already resolved to the builtin, so a module's own `ord` never
-    reaches here. Scanners compare characters against literals, as C does with
-    `c == '#'`; folding keeps each of those a constant instead of a runtime
-    decode of a static string.
-    """;
-
     params = list(nd.params or []);
     if len(params) != 1 or not isinstance(params[0], uni.Expr) {
         return None;

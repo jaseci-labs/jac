@@ -622,9 +622,6 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
 impl NaIRGenPass._emit_stat_fields(
     path: ir.Value, prefix: str
 ) -> tuple[ir.Value, ir.Value, ir.Value, ir.Value, ir.Value] {
-    """stat(path) as (ok, mode as i32, size, mtime seconds, mtime nanoseconds).
-    The floor reads the record, so its layout never reaches the lowered code;
-    wasm keeps reading the Linux x86-64 record its libc fills.""";
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i32 = ir.IntType(32);

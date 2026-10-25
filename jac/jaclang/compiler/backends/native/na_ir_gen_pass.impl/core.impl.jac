@@ -112,13 +112,6 @@ impl NaIRGenPass._static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | 
 }
 
 impl NaIRGenPass._settle_module -> None {
-    """Decide the module once its lowering has run. Diagnostics still pending
-    here belong to no unit: on a module whose native placement is a preference
-    they are a refusal the static legality rules did not predict, recorded on
-    the legality table for the driver to place the module in the server
-    codespace. On a module that must be native they stay errors. A backend
-    crash is never a refusal.""";
-
     if self._internal_errors {
         self.ctx.errors_had.extend(self._internal_errors);
         self._internal_errors = [];
@@ -135,13 +128,6 @@ impl NaIRGenPass._settle_module -> None {
 impl NaIRGenPass._internal_error(
     nd: uni.UniNode, kind: str, name: str, exc: Exception, mark: int = 0
 ) -> None {
-    """A backend exception is a compiler defect, reported as one. It is held
-    apart from the pending refusals so no unit or module can absorb it. Two
-    exceptions are not defects. `NativeRefused` is how a deep helper refuses:
-    it joins the pending refusals like any diagnostic. And an exception raised
-    after the unit already recorded a refusal since `mark` says nothing new:
-    the unit is being given up, and what its lowering does past the construct
-    it could not lower is not evidence about the backend.""";
     if isinstance(exc, NativeRefused) {
         self.emit(E5092, node_override=nd, kind=kind, name=f"{name} ({exc})");
         return;
@@ -576,10 +562,6 @@ impl NaIRGenPass._defer_missing_deps -> bool {
 }
 
 impl NaIRGenPass._settle_dep_ifaces -> None {
-    """Read the interface of every unit the imports reach before this unit
-    builds any IR. A unit an import cycle kept from being discovered is lowered
-    now, while this pass holds nothing but its import walk, instead of halfway
-    through registering the imported types.""";
     for (_, imported_mod) in self._native_imports() {
         self._dep_iface(imported_mod);
     }
@@ -588,11 +570,6 @@ impl NaIRGenPass._settle_dep_ifaces -> None {
 impl NaIRGenPass._discover_kernel_deps(
     imported_mods: list[tuple[str, uni.Module]]
 ) -> None {
-    """The kernel units a lowering consults on demand, the formatting kernel
-    from an f-string format spec, `int(...)` or a bytes method and the OSP
-    kernels from an archetype, are asked for while dependencies are still
-    being discovered, so a missing one is lowered before this unit instead
-    of inside it. Only the kernels this unit can reach are asked for.""";
     rels: list[str] = [];
     wants_fmt = any(
         fv.format_spec is not None
@@ -655,13 +632,6 @@ impl NaIRGenPass._discover_kernel_deps(
 }
 
 impl NaIRGenPass._dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool {
-    """Only a dependency that is a native unit has products to consult:
-    one placement makes native, or one this module links against, which the
-    link plan builds as a unit whatever the program placed it as. Lowering
-    against that unit's interface is what makes this lowering the only one:
-    its demotions and layouts are the ones the link plan checks the recorded
-    digests against. Lowering any other import on a cache miss would compile
-    the Python lane's modules as native units, once per consumer.""";
     import os;
     if imported_mod.gen.native_iface is not None
         or imported_mod.decided_codespace == 'native'
@@ -711,13 +681,6 @@ impl NaIRGenPass._stub_refused_unit(
     refusals: list[NativeRefusal],
     keep_func: bool = False
 ) -> bool {
-    """Place a unit the legality analysis already refused on its Python-only
-    implementation without lowering its body. Where the module requires native,
-    the refusals are reported as the errors they are. A unit of a native
-    element in a mixed module has no Python implementation to be placed on,
-    so its refusals are reported too and the module settles on the server as
-    a whole; an element that must be native had its refusals reported by
-    placement.""";
     if not refusals {
         return False;
     }
@@ -753,11 +716,6 @@ impl NaIRGenPass._rename_demoted_symbol(name: str, func: ir.Function) -> None {
 }
 
 impl NaIRGenPass._propagate_seam_demotions -> None {
-    """Demote every lowered function, method, and test that still reaches a seam
-    stub. A caller lowered before its callee demoted holds a direct call to the
-    callee's abort stub: the call-site check only sees demotions that already
-    happened. Demoting such a caller can strand its own earlier callers, so this
-    runs to a fixpoint after the module's bodies are lowered.""";
     if not self._seam_stub_ids {
         return;
     }
@@ -837,8 +795,6 @@ impl NaIRGenPass._propagate_seam_demotions -> None {
 }
 
 impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None) {
-    """The name of a seam stub `func` calls or references, directly or through the
-    private helpers (lambdas, closure bodies) it lowered, or None.""";
     seen.add(id(func));
     for blk in func.blocks {
         for instr in blk.instructions {
@@ -1257,9 +1213,7 @@ impl NaIRGenPass._native_imports(
         wq.append(
             (mod_name, entry_base, None, bool(imp.is_typed), bool(imp.is_comptime))
         );
-        """A name this module imports from a module is bound to that module:
-        another imported module defining a global of the same name (two
-        generated constant tables both named CONSTANTS) must not supply it.""";
+
         if imp.from_loc and imp.items {
             _bound_path = resolve_native_module(mod_name, entry_base)[1];
             if _bound_path is not None {
@@ -1363,8 +1317,6 @@ impl NaIRGenPass._native_imports(
             );
         }
 
-        """Only the full walk follows a module that has code of its own: its
-        dependencies are its own to discover when it is lowered.""";
         if not transitive and self._has_own_code(imported_mod) {
             continue;
         }
@@ -1393,10 +1345,6 @@ impl NaIRGenPass._native_imports(
         if v
     };
 
-    """A module reached only through comptime imports is read while this
-    module compiles and binds nothing at run time. Runtime reach is settled on
-    the whole import graph, since the walk visits each module's imports once
-    and a comptime path may reach a module before a runtime one does.""";
     runtime_reached: set[str] = set();
     _rt_todo: list[str] = list(runtime_edges.get("", []));
     while _rt_todo {
@@ -1418,12 +1366,7 @@ impl NaIRGenPass._native_imports(
         if _direct not in runtime_reached {
             continue;
         }
-        """A module made only of imports and includes is a re-export surface,
-        typed or not: the units behind it are what this module links to. An
-        empty package (its names wired by archwire) has nothing behind it and
-        nothing to link. The question reads the tree the walk loaded; the hub
-        may hold an interface-hydrated stand-in that cannot tell the two
-        apart.""";
+
         if not self._has_own_code(
             walked.get(_direct) or self.prog.mod.hub.get(_direct)
         ) {
@@ -1463,8 +1406,6 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
-    """Keep a name's binding only where the named module defines that global
-    itself; a name it re-exports resolves by walk order as before.""";
     _defined: dict[str, set[str]] = {};
     for (_, _gmod) in imported_mods {
         if _gmod?.loc and _gmod.loc.mod_path {
@@ -1762,15 +1703,6 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
 }
 
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
-    """An imported module's registry also holds the layouts it took from its
-    own imports, and those can be older objects than the ones their defining
-    module holds now: a unit's tree is laid out afresh whenever the link plan
-    reloads it, while a sibling lowered earlier keeps the layouts it adopted
-    then. `_codegen_archetype` reads an archetype's slots from its defining
-    module and `adopt_imported_bases` rewrites the object this registry holds,
-    so the two must be one object: the defining module's layout replaces any
-    copy that reached this registry first.""";
-
     _imp_reg = get_layout_registry(imported_mod, self.prog);
     _cons_reg = get_layout_registry(self.module, self.prog);
     _owned = set(_imp_reg.local_names) - set(_cons_reg.local_names);
@@ -1959,10 +1891,6 @@ impl NaIRGenPass._forward_declare_imported_ability(
     }
     _bound = self.scope.binds_function(name);
     if _bound {
-        """A second imported module defining the same name declares its
-        function under the module-qualified key; the bare name keeps the
-        binding it already has. Two `:pub` definitions share one bare
-        symbol, which the link plan reports as a collision.""";
         if not _owner_name
             or self.scope.binds_function(f"{_owner_name}.{name}")
             or self._func_def_mod.get(name) == _owner_name
@@ -1978,8 +1906,6 @@ impl NaIRGenPass._forward_declare_imported_ability(
         return;
     }
     if bool(nd.access and nd.access.tag.name == Tok.KW_PRIV) {
-        """A private function of another module is not callable from here;
-        it neither declares nor marks its name as demoted.""";
         return;
     }
     _layout = imp_layout if isinstance(imp_layout, NativeModuleLayout) else None;
@@ -2014,9 +1940,6 @@ impl NaIRGenPass._forward_declare_imported_ability(
 }
 
 impl NaIRGenPass._declares_lazily(nd: uni.Ability) -> bool {
-    """Whether an imported function is declared on first reference: one whose
-    declaration only binds its symbol. Generic, compile-time, decorated and
-    generator functions register state the moment they are declared.""";
     return isinstance(nd.signature, uni.FuncSignature)
         and not nd.type_params
         and not nd.is_comptime
@@ -2042,9 +1965,6 @@ impl NaIRGenPass._defer_import(pending: PendingImport, owner_name: str) -> None 
 }
 
 impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None) {
-    """Declare an imported function into the module's outermost scope, whatever
-    scope is lowering when it is first named: under its module-qualified name, and
-    under its bare name only where this module binds that name to it.""";
     nd = pending.decl;
     name = pending.module_key[1];
     _owner = nd.find_parent_of_type(uni.Module);
@@ -2054,8 +1974,7 @@ impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None)
     imports.forget(pending, _owner_name);
     scope = self.scope;
     self.scope = scope.outermost();
-    """The module's own definition of the name, declared since the import was
-    registered, keeps the bare name.""";
+
     binds_bare = pending.binds_bare and self.scope.functions.get(name) is None;
     try {
         _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
@@ -2063,9 +1982,6 @@ impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None)
             self._symbol_for(name, _owner, _is_pub)
         );
         if isinstance(_already, ir.Function) {
-            """The module already declares this symbol (a kernel walk bound it
-            under its bare name without recording the owner): bind it, never
-            declare it twice.""";
             if _owner_name {
                 self.scope.bind_function(f"{_owner_name}.{name}", _already);
             }
@@ -2081,9 +1997,7 @@ impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None)
             self._record_linked_decl(_already, nd);
             return _already;
         }
-        """Declaring records the function under its bare name: its binding, its
-        defining module and its return facts. An import that does not own the
-        bare name hands all of them back to whatever held the name.""";
+
         _prev = self.scope.functions.get(name);
         _prev_def_mod = self._func_def_mod.get(name);
         _prev_ret_type = self.func_ret_type_key.get(name);
@@ -2160,17 +2074,6 @@ impl NaIRGenPass._imported_function_demotions(
 impl NaIRGenPass._check_native_import_names(
     imported_mods: list[tuple[str, uni.Module]]
 ) -> None {
-    """Refuse a name imported from a Jac module that does not define it.
-
-    A use of an imported global lowers to a load of the defining unit's
-    symbol. A name the module never defines has no symbol, and every use of
-    it used to lower to nothing: a call argument or a glob initializer took a
-    NULL in its place and the binary crashed wherever that value was read.
-    The module's own scope is the whole answer (its globals, functions,
-    archetypes, enums and the names it imports); a module that absorbs
-    another (`include`, `*`) is left to the checker, and a stdlib function
-    the compiler intercepts (`os.getpid`) needs no definition.
-    """;
     import os;
 
     by_path: dict[str, uni.Module] = {};

@@ -239,7 +239,6 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
 impl BoundaryAnalysisPass._caller_context(
     nd: Import, import_context: InteropContext
 ) -> InteropContext {
-    """Interop context of the caller site: client wins, then native.""";
     if (nd.in_client_context()) {
         return InteropContext.CLIENT;
     }

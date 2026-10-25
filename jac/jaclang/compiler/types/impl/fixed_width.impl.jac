@@ -198,9 +198,6 @@ impl folded_number(expr: UniNode | None) -> int | float | None {
 }
 
 impl _negated(value: int | float | WideLiteral) -> int | float | WideLiteral {
-    """A literal past a signed 64-bit int stays a `WideLiteral`, so no fold
-    computes a value the native compiler cannot hold; -2**63 is the one
-    negation that crosses back.""";
     if isinstance(value, WideLiteral) {
         if not value.negative and value.magnitude_bits == I64_BOTTOM {
             return I64_BOTTOM;
@@ -234,8 +231,6 @@ impl _wide_unsigned(name: str) -> bool {
 }
 
 impl _range_text(name: str) -> tuple[str, str] {
-    """A u64's top, 2**64 - 1, is no native int, so the range is reported as
-    text.""";
     if _wide_unsigned(name) {
         return ("0", "18446744073709551615");
     }
@@ -474,8 +469,7 @@ impl _is_jac_builtin_fn(evaluator: TypeEvaluator, callee: Expr, name: str) -> bo
     if sym is stub_sym {
         return True;
     }
-    """A module analyzed on demand can bind the name in another load of the
-    same stub, so the builtin is the stub's file, not the stub's object.""";
+
     home = sym.decl.loc.mod_path if sym.decl.loc else "";
     return bool(home) and home == stub.loc.mod_path;
 }

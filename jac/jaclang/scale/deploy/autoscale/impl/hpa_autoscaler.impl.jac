@@ -166,14 +166,6 @@ impl HPAAutoscaler.resource_name_for {
 }
 
 impl HPAAutoscaler.get_runtime_status {
-    """The HPA's view, which has no trigger concept.
-
-    `trigger_active` stays None rather than False: a plain HPA scales on
-    resource utilisation and has nothing that corresponds to a trigger firing,
-    so reporting False would claim something the engine never measured. A
-    minReplicas of 0 is not expressible on an HPA either, so a workload here is
-    never legitimately at zero.
-    """;
     name = autoscaler_name or self.resource_name_for(scale_target_name);
     hpa = None;
     try {
