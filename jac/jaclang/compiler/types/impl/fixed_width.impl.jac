@@ -198,9 +198,6 @@ impl folded_number(expr: UniNode | None) -> int | float | None {
 }
 
 impl _negated(value: int | float | WideLiteral) -> int | float | WideLiteral {
-    """A literal past a signed 64-bit int stays a `WideLiteral`, so no fold
-    computes a value the native compiler cannot hold; -2**63 is the one
-    negation that crosses back.""";
     if isinstance(value, WideLiteral) {
         if not value.negative and value.magnitude_bits == I64_BOTTOM {
             return I64_BOTTOM;
@@ -234,8 +231,6 @@ impl _wide_unsigned(name: str) -> bool {
 }
 
 impl _range_text(name: str) -> tuple[str, str] {
-    """A u64's top, 2**64 - 1, is no native int, so the range is reported as
-    text.""";
     if _wide_unsigned(name) {
         return ("0", "18446744073709551615");
     }

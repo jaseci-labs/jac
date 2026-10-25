@@ -150,10 +150,6 @@ impl client_import_paths(module: uni.Module) -> list[str] {
 }
 
 impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
-    """A module that may not run keeps nothing runnable: not the bytecode the
-    host assembles, not the JCIR the kernel hands the host, not native code.
-    A native module may not run past a codegen error; no module may run past
-    a blocking one (a backend crash, E9003).""";
     mod_path = mod.loc.mod_path if mod?.loc else '';
     if not mod_path {
         return False;

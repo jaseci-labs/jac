@@ -135,12 +135,6 @@ impl host_executable -> str {
 }
 
 impl default_data_dir(system: str, identifier: str, app_name: str) -> str {
-    """The per-user, per-app data directory on this platform.
-
-    Scoped by the app `identifier` (falling back to its name), so two desktop
-    apps never share state, and placed under the OS per-user data location, so
-    the state survives cache clears and never lands in a read-only bundle.
-    """;
     scope = identifier or app_name;
     if system == "Darwin" {
         return os.path.join(os.path.expanduser("~/Library/Application Support"), scope);
@@ -156,23 +150,6 @@ impl default_data_dir(system: str, identifier: str, app_name: str) -> str {
 }
 
 impl _migrate_legacy_data_dir(data_dir: str, app_dir: str) -> None {
-    """Carry pre-existing app state into the per-user data dir, on upgrade.
-
-    Before this, a Linux app kept its graph and session beside the app image
-    (`<app_dir>/.jac/desktop`). Copy that once into the new per-user dir so an
-    upgrade keeps its state instead of starting empty. macOS and Windows were
-    already per-user, so their old and new dirs are equal and this is a no-op.
-    A missing legacy dir, or a new dir that already has state, is left alone.
-
-    The copy lands in a staging directory beside `current` and is published
-    with a rename only once it is complete, so a failed or interrupted
-    migration leaves no partial state behind: the next launch retries. A
-    failure stops the boot instead of starting the app on an empty database
-    while readable legacy state still exists. The staging name carries this
-    process's id, so two instances migrating at once cannot clobber each
-    other; the loser of the publish rename finds `current` in place and
-    succeeds.
-    """;
     if not app_dir or os.path.realpath(data_dir) == os.path.realpath(app_dir) {
         return;
     }
@@ -204,15 +181,6 @@ impl _migrate_legacy_data_dir(data_dir: str, app_dir: str) -> None {
 }
 
 impl embedded_store_env(app_dir: str, data_dir: str, pg_dist: str) -> dict[str, str] {
-    """The environment that gives the embedded store a per-app cluster and the
-    distribution baked beside the app image.
-
-    `JAC_PG_HOME` relocates the whole `pg` cache bucket (cluster and dist cache)
-    under the app's per-user data dir, so two apps never share a cluster and the
-    state is not the machine-wide `<cache>/pg/main`. `JAC_PG_DIST` points at the
-    tree the build vendored, or at the cached tree a dev session passes instead,
-    so the app starts with no network and no system Postgres.
-    """;
     env = {"JAC_PG_HOME": data_dir};
     if pg_dist {
         env["JAC_PG_DIST"] = os.path.join(app_dir, pg_dist);
@@ -221,29 +189,14 @@ impl embedded_store_env(app_dir: str, data_dir: str, pg_dist: str) -> dict[str, 
 }
 
 impl _embedded_cluster_dir(home: str) -> str {
-    """The per-app embedded cluster dir under an app's `JAC_PG_HOME` data dir.
-
-    Mirrors the `pg` cache bucket layout (`<root>/pg`) and the cluster name
-    (`main`) that `shared_pg_data_dir` resolves, so the path this app stops is
-    the cluster it started. A test pins the two together.
-    """;
     return os.path.join(home, "pg", "main");
 }
 
 impl _embedded_user_lock_path(home: str) -> str {
-    """The advisory lock file whose shared holders are the app's running instances.""";
     return os.path.join(home, "pg", ".desktop-users.lock");
 }
 
 impl _join_embedded_store(home: str) -> None {
-    """Hold a shared lock for as long as this process uses the app's cluster.
-
-    Two instances of one app share one cluster, so only the last may stop it.
-    The OS drops the lock when the process exits, even on a crash, so the
-    lock is the shared count of live instances. Joining also begins a new
-    host lifetime in this process, so a stop recorded by an earlier lifetime
-    no longer applies.
-    """;
     if not home or home in _EMBEDDED_LOCKS {
         return;
     }
@@ -261,12 +214,6 @@ impl _join_embedded_store(home: str) -> None {
 }
 
 impl _holds_last_embedded_user(handle: any) -> bool {
-    """True when no other process holds a shared lock on `handle`.
-
-    Converting the shared lock to an exclusive one succeeds only for the sole
-    holder; a peer still using the cluster keeps the lock shared and this
-    fails.
-    """;
     try {
         import fcntl;
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB);
@@ -277,15 +224,6 @@ impl _holds_last_embedded_user(handle: any) -> bool {
 }
 
 impl _enter_embedded_env(env: dict[str, str]) {
-    """Point the process at this app's embedded store.
-
-    The cluster and the vendored distribution are found through the
-    environment, so the values are set process-wide. Remember what was there
-    first: the host restores it on shutdown -- and `boot` does too when it
-    fails after this point -- so an embedding process that boots and stops a
-    host (as the tests do several times) is not left with a stale `JAC_PG_HOME`
-    pointing at a cluster it no longer owns.
-    """;
     for (key, value) in env.items() {
         if key not in _EMBEDDED_ENV_PRIOR {
             _EMBEDDED_ENV_PRIOR[key] = os.environ.get(key);
@@ -308,15 +246,6 @@ impl _leave_embedded_env {
 }
 
 impl _stop_embedded_store(home: str) -> None {
-    """Stop this app's embedded cluster once the last instance exits.
-
-    The shutdown hook and the atexit backstop both call this, so a second call
-    is a no-op. A peer instance that still holds the shared lock keeps the
-    cluster alive -- it stops the cluster on its own exit -- but the process
-    environment still returns to its prior state, so later work here does not
-    reach the peer's storage. When this process
-    holds no lock (a platform without `fcntl`), stop directly, as before.
-    """;
     if not home or home in _EMBEDDED_STOPPED {
         return;
     }

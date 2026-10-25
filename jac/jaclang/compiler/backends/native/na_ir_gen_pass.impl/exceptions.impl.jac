@@ -1589,20 +1589,6 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
 impl NaIRGenPass._unwind_shadow_slots(
     func: ir.Function, slots: list[tuple[str, ir.Value]]
 ) -> dict[int, ir.Value] {
-    """Shadow each registered local the function only loads and stores directly.
-
-    The unwind node needs, for every owned local, a word that holds the
-    local's current value when a raise crosses the frame. Handing the chain
-    the local's own slot publishes its address, and an escaped slot can never
-    be promoted to a register: every call may then read or write it, so the
-    local is reloaded after each one. A slot whose only uses are loads from it
-    and stores into it gets a shadow instead -- its own entry alloca, written
-    right after every store into the slot -- and the chain is handed the
-    shadow. The shadow holds the slot's value at every call, which is the only
-    place a raise can start, and the slot itself stays promotable. A slot used
-    any other way (its address taken, stored, cast or passed on) is handed over
-    as before. Returns the shadow of each shadowed slot, by the slot's id.
-    """;
     plain: dict[int, ir.Value] = {};
     for (_name, slot) in slots {
         plain[id(slot)] = slot;

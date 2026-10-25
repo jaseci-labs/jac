@@ -112,9 +112,6 @@ impl int_literal_value(text: str) -> int {
 }
 
 impl int_literal_limbs(text: str) -> (tuple[int, int] | None) {
-    """The literal as two 32-bit halves `(high, low)`, or None past 64 bits.
-    No intermediate leaves 37 bits, so the native compiler, whose int is 64
-    bits, reads every literal the way the bytecode compiler does.""";
     (body, base) = int_literal_digits(text);
     high = 0;
     low = 0;
@@ -150,9 +147,6 @@ impl int_literal_i64(text: str) -> (int | None) {
 }
 
 impl int_literal_u64_bits(text: str) -> (int | None) {
-    """The literal's 64-bit two's-complement pattern, as the signed int that
-    holds it, when it fits an unsigned 64-bit int: `0xFFFF_FFFF_FFFF_FFFF`
-    is -1. None past 64 bits.""";
     limbs = int_literal_limbs(text);
     if limbs is None {
         return None;
@@ -165,10 +159,6 @@ impl int_literal_u64_bits(text: str) -> (int | None) {
 }
 
 impl int_literal_float(text: str) -> float {
-    """The literal's value as the nearest float, without forming the integer: a
-    literal past 64 bits still has one (`x: f64 = 9223372036854775808`). A
-    power-of-two radix is rounded once, from its bits: the top 53 are the
-    mantissa and the rest decide round-half-to-even.""";
     (body, base) = int_literal_digits(text);
     digits = body.replace("_", "").lower();
     if base == 10 {

@@ -1602,14 +1602,6 @@ impl NaIRGenPass._emit_intrinsic_region_tls(
 impl NaIRGenPass._emit_intrinsic_list_data(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
-    """`__list_data_ptr(lst)` is the address of `lst`'s element buffer, as an
-    integer for the `__mem_*` accessors. It holds until the list next grows
-    past its capacity (an append then moves the buffer) and only while the
-    list is alive; nothing here checks an index, so the caller owns the
-    bounds. The list itself stays the owner of the elements: a store through
-    the pointer is a plain word write, so it is for scalar element types.
-    """;
-
     if not isinstance(args[0], (uni.Name, uni.AtomTrailer)) {
         self._emit_intrinsic_misuse(
             nd,

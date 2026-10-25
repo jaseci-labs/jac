@@ -3111,16 +3111,6 @@ impl NaIRGenPass._str_concat_fresh(
 impl NaIRGenPass._emit_str_concat_inplace(
     left: ir.Value, right: ir.Value, slot: ir.Value
 ) -> (ir.Value | None) {
-    """Append to a string in place when its buffer is uniquely owned.
-
-    The header reads are staged. The refcount word sits inside the two-word
-    header a static literal carries too, where it holds the immortal
-    sentinel; the allocation word two words further back exists only on a
-    heap block. So the refcount is read first, and the allocation word only
-    once it says the string is a uniquely owned heap block: a literal, a
-    shared string, or a null never reaches that load and takes the fresh
-    allocation instead.
-    """;
     if self._nogc_headerless() or self._gc_mode() == "none" {
         return None;
     }

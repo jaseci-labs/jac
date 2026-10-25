@@ -1135,9 +1135,6 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
 }
 
 impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {
-    """An address is an unsigned 64-bit pattern, so an integer literal given as
-    one lowers to its bits even past the signed top (`0xFFFF_FFFF_FFFF_FFF0`),
-    where it is no native int.""";
     if not isinstance(arg, uni.Int) {
         return None;
     }
