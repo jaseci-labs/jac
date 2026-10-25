@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 266 C files / 448,489 lines; 169 headers / 158,786 lines.
-#   Total: 435 files / 607,275 source lines.
+#   Excluded: 270 C files / 468,216 lines; 169 headers / 158,786 lines.
+#   Total: 439 files / 627,002 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -319,17 +319,17 @@ Include/weakrefobject.h
 # Parser/tokenizer/utf8_tokenizer.c  # removed: 55 source lines
 
 # Interpreter and compiler
-Python/Python-ast.c
+# Python/Python-ast.c  # removed: 18,485 source lines
 # Python/Python-tokenize.c  # removed: 445 source lines
 # Python/_contextvars.c  # removed: 68 source lines
 # Python/_warnings.c  # removed: 1,691 source lines
-Python/asdl.c
+# Python/asdl.c  # removed: 6 source lines
 # Python/asm_trampoline.S  # removed: 63 source lines
 # Python/asm_trampoline_aarch64.h  # removed: 56 source lines
 # Python/assemble.c  # removed: 802 source lines
 # Python/ast.c  # removed: 1,091 source lines
 # Python/ast_preprocess.c  # removed: 990 source lines
-Python/ast_unparse.c
+# Python/ast_unparse.c  # removed: 1,029 source lines
 # Python/bltinmodule.c  # removed: 3,506 source lines
 # Python/bootstrap_hash.c  # removed: 598 source lines
 # Python/brc.c  # removed: 208 source lines
@@ -409,7 +409,7 @@ Python/marshal.c
 # Python/perf_jit_trampoline.c  # removed: 1,376 source lines
 # Python/perf_trampoline.c  # removed: 641 source lines
 # Python/preconfig.c  # removed: 978 source lines
-Python/pyarena.c
+# Python/pyarena.c  # removed: 207 source lines
 # Python/pyctype.c  # removed: 214 source lines
 # Python/pyfpe.c  # removed: 18 source lines
 # Python/pyhash.c  # removed: 498 source lines

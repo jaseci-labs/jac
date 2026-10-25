@@ -113,7 +113,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/internal/pycore_hashtable.h",
          "Include/internal/pycore_initconfig.h",
          "Include/cpython/pylifecycle.h",
-         "Include/internal/pycore_crossinterp.h"
+         "Include/internal/pycore_crossinterp.h",
+         "Include/internal/pycore_asdl.h",
+         "Include/internal/pycore_ast_state.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -257,7 +259,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "internal/pycore_hamt.h",
          "internal/pycore_context.h",
          "osdefs.h",
-         "internal/pycore_initconfig.h"
+         "internal/pycore_initconfig.h",
+         "internal/pycore_ast.h",
+         "internal/pycore_ast_state.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -411,7 +415,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyXIData_getdata_t", "_PyXIData_getdata_t"),
          ("_PyXI_session_result", "_PyXI_session_result"),
          ("_PyXI_excinfo_type", "struct _excinfo_type"),
-         ("_PyBytes_data_t", "_PyBytes_data_t")
+         ("_PyBytes_data_t", "_PyBytes_data_t"),
+         ("asdl_seq", "asdl_seq"),
+         ("ast_state", "struct ast_state")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -4268,7 +4274,53 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_PyXIData_regitem_t_SIZE", "sizeof(_PyXIData_regitem_t)", "i64"),
          ("_PyXI_excinfo_SIZE", "sizeof(_PyXI_excinfo)", "i64"),
          ("_PyXI_excinfo_MSG", "offsetof(_PyXI_excinfo, msg)", "i64"),
-         ("_PyXI_excinfo_ERRDISPLAY", "offsetof(_PyXI_excinfo, errdisplay)", "i64")
+         ("_PyXI_excinfo_ERRDISPLAY", "offsetof(_PyXI_excinfo, errdisplay)", "i64"),
+         ("asdl_generic_seq_SIZE", "sizeof(asdl_generic_seq)", "i64"),
+         ("asdl_int_seq_SIZE", "sizeof(asdl_int_seq)", "i64"),
+         (
+             "asdl_generic_seq_TYPED_ELEMENTS",
+             "offsetof(asdl_generic_seq, typed_elements)",
+             "i64"
+         ),
+         (
+             "asdl_int_seq_TYPED_ELEMENTS",
+             "offsetof(asdl_int_seq, typed_elements)",
+             "i64"
+         ),
+         ("ast_state_SIZE", "sizeof(struct ast_state)", "i64"),
+         ("PyCF_ALLOW_TOP_LEVEL_AWAIT", "PyCF_ALLOW_TOP_LEVEL_AWAIT", "i32"),
+         ("PyCF_TYPE_COMMENTS", "PyCF_TYPE_COMMENTS", "i32"),
+         ("PyCF_OPTIMIZED_AST", "PyCF_OPTIMIZED_AST", "i32"),
+         (
+             "_Py_ID_difference_update",
+             "offsetof(struct _Py_global_strings, identifiers._py_difference_update)",
+             "i64"
+         ),
+         (
+             "_Py_ID__field_types",
+             "offsetof(struct _Py_global_strings, identifiers._py__field_types)",
+             "i64"
+         ),
+         (
+             "_Py_ID_inf",
+             "offsetof(struct _Py_global_strings, identifiers._py_inf)",
+             "i64"
+         ),
+         (
+             "_Py_STR_dbl_open_br",
+             "offsetof(struct _Py_global_strings, literals._py_dbl_open_br)",
+             "i64"
+         ),
+         (
+             "_Py_STR_dbl_close_br",
+             "offsetof(struct _Py_global_strings, literals._py_dbl_close_br)",
+             "i64"
+         ),
+         (
+             "_Py_STR_str_replace_inf",
+             "offsetof(struct _Py_global_strings, literals._py_str_replace_inf)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -6017,7 +6069,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("PyInterpreterState_XI", "offsetof(PyInterpreterState, xi)", "i64"),
-         ("_PyRuntimeState_XI", "offsetof(_PyRuntimeState, xi)", "i64")
+         ("_PyRuntimeState_XI", "offsetof(_PyRuntimeState, xi)", "i64"),
+         ("PyInterpreterState_AST", "offsetof(PyInterpreterState, ast)", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

@@ -517,4 +517,5 @@ glob LAYOUTS_PLATFORM: str = "",
      PyInterpreterState_INTERACTIVE_SRC_COUNT: Final[i64] = 0,
      _PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT: Final[i64] = 0,
      PyInterpreterState_XI: Final[i64] = 0,
-     _PyRuntimeState_XI: Final[i64] = 0;
+     _PyRuntimeState_XI: Final[i64] = 0,
+     PyInterpreterState_AST: Final[i64] = 0;
