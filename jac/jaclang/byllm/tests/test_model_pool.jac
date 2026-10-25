@@ -359,6 +359,46 @@ test "a sticky pool wraps round to the next member when the one it stays on fail
 }
 
 
+test "a sticky pool stays on the member a compaction summary moved to" {
+    # The second member answers the turn's two tool calls, then goes down. The
+    # summary compaction asks for falls back to the primary, so the turn's last
+    # call starts there instead of waiting on the second member again.
+    tried: list[str] = [];
+    down = {PRIMARY};
+    big = {"prompt_tokens": 950, "completion_tokens": 5, "total_tokens": 955};
+    answers = MockLLM(
+        outputs=[
+            (call("lookup", {"q": "a" * 400}), big),
+            (call("lookup", {"q": "b" * 400}), big),
+            say("summary of the history"),
+            say("done")
+        ]
+    );
+    pool = _pool_with_outage(answers, tried, down, sticky=True);
+    serve = router(pool).completion;
+
+    def second_goes_down(model: str, **kwargs: object) -> object {
+        reply = serve(model, **kwargs);
+        if tried.count(SECOND) == 2 {
+            down.clear();
+            down.add(SECOND);
+        }
+        return reply;
+    }
+    router(pool).completion = second_goes_down;
+
+    def turn(q: str) -> str by pool(
+        tools=[lookup], ctx_window=1000, keep_recent_iterations=1
+    );
+
+    assert turn("x") == "done";
+    assert "Summarise" in str(answers.seen[2]) , "the third call is the summary";
+    assert tried == [PRIMARY, SECOND, SECOND, SECOND, PRIMARY, PRIMARY] , (
+        f"tried {tried}"
+    );
+}
+
+
 test "every switch is reported as a model_fallback event and on the answering call's usage" {
     want = {"from": SILENT_MODEL, "to": ANSWERING_MODEL, "error": "Timeout"};
     for (label, tools, handled) in [

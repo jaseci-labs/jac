@@ -184,7 +184,7 @@ obj ModelPool(BaseLLM) {
         sticky: bool = False,
         _router: Router | None = None,
         _fallback_model_names: list[str] = [],
-        _start: int = 0,
+        _turn: dict[str, int] = {},
         _run: MTRuntime | None = None;
 
     def postinit -> None;
