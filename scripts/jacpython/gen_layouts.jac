@@ -3444,7 +3444,68 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("_PyCallCache_FUNC_VERSION", "offsetof(_PyCallCache, func_version)", "i64"),
-         ("_PyToBoolCache_VERSION", "offsetof(_PyToBoolCache, version)", "i64")
+         ("_PyToBoolCache_VERSION", "offsetof(_PyToBoolCache, version)", "i64"),
+         ("INSTRUMENTED_LINE", "INSTRUMENTED_LINE", "i32"),
+         ("INSTRUMENTED_INSTRUCTION", "INSTRUMENTED_INSTRUCTION", "i32"),
+         ("ENTER_EXECUTOR", "ENTER_EXECUTOR", "i32"),
+         ("MIN_INSTRUMENTED_OPCODE", "MIN_INSTRUMENTED_OPCODE", "i32"),
+         ("END_FOR", "END_FOR", "i32"),
+         ("END_SEND", "END_SEND", "i32"),
+         ("END_ASYNC_FOR", "END_ASYNC_FOR", "i32"),
+         ("POP_ITER", "POP_ITER", "i32"),
+         ("JUMP_FORWARD", "JUMP_FORWARD", "i32"),
+         ("FOR_ITER", "FOR_ITER", "i32"),
+         ("SEND", "SEND", "i32"),
+         ("JUMP_BACKWARD_NO_INTERRUPT", "JUMP_BACKWARD_NO_INTERRUPT", "i32"),
+         ("PY_MONITORING_EVENT_PY_START", "PY_MONITORING_EVENT_PY_START", "i32"),
+         ("PY_MONITORING_EVENT_LINE", "PY_MONITORING_EVENT_LINE", "i32"),
+         ("PY_MONITORING_EVENT_INSTRUCTION", "PY_MONITORING_EVENT_INSTRUCTION", "i32"),
+         ("PY_MONITORING_EVENT_C_RETURN", "PY_MONITORING_EVENT_C_RETURN", "i32"),
+         ("PY_MONITORING_EVENT_C_RAISE", "PY_MONITORING_EVENT_C_RAISE", "i32"),
+         ("PY_MONITORING_EVENT_BRANCH", "PY_MONITORING_EVENT_BRANCH", "i32"),
+         ("_PY_MONITORING_LOCAL_EVENTS", "_PY_MONITORING_LOCAL_EVENTS", "i32"),
+         ("_PY_MONITORING_UNGROUPED_EVENTS", "_PY_MONITORING_UNGROUPED_EVENTS", "i32"),
+         ("_PY_MONITORING_EVENTS", "_PY_MONITORING_EVENTS", "i32"),
+         ("PY_MONITORING_TOOL_IDS", "PY_MONITORING_TOOL_IDS", "i32"),
+         ("PY_MONITORING_SYS_PROFILE_ID", "PY_MONITORING_SYS_PROFILE_ID", "i32"),
+         ("PY_MONITORING_SYS_TRACE_ID", "PY_MONITORING_SYS_TRACE_ID", "i32"),
+         ("PY_MONITORING_DEBUGGER_ID", "PY_MONITORING_DEBUGGER_ID", "i32"),
+         ("PY_MONITORING_COVERAGE_ID", "PY_MONITORING_COVERAGE_ID", "i32"),
+         ("PY_MONITORING_PROFILER_ID", "PY_MONITORING_PROFILER_ID", "i32"),
+         ("PY_MONITORING_OPTIMIZER_ID", "PY_MONITORING_OPTIMIZER_ID", "i32"),
+         ("_PY_EVAL_EVENTS_BITS", "_PY_EVAL_EVENTS_BITS", "i32"),
+         ("PyTrace_CALL", "PyTrace_CALL", "i32"),
+         ("PyTrace_EXCEPTION", "PyTrace_EXCEPTION", "i32"),
+         ("PyTrace_LINE", "PyTrace_LINE", "i32"),
+         ("PyTrace_RETURN", "PyTrace_RETURN", "i32"),
+         ("PyTrace_C_CALL", "PyTrace_C_CALL", "i32"),
+         ("PyTrace_C_EXCEPTION", "PyTrace_C_EXCEPTION", "i32"),
+         ("PyTrace_C_RETURN", "PyTrace_C_RETURN", "i32"),
+         ("PyTrace_OPCODE", "PyTrace_OPCODE", "i32"),
+         ("PYTHON_API_VERSION", "PYTHON_API_VERSION", "i32"),
+         (
+             "_PyCoMonitoringData_LOCAL_MONITORS",
+             "offsetof(_PyCoMonitoringData, local_monitors)",
+             "i64"
+         ),
+         (
+             "_PyCoMonitoringData_TOOL_VERSIONS",
+             "offsetof(_PyCoMonitoringData, tool_versions)",
+             "i64"
+         ),
+         ("_PyCoMonitoringData_SIZE", "sizeof(_PyCoMonitoringData)", "i64"),
+         ("PyMonitoringState_SIZE", "sizeof(PyMonitoringState)", "i64"),
+         ("_PyExecutorArray_EXECUTORS", "offsetof(_PyExecutorArray, executors)", "i64"),
+         (
+             "_PyExecutorObject_VM_DATA_OPCODE",
+             "offsetof(_PyExecutorObject, vm_data.opcode)",
+             "i64"
+         ),
+         (
+             "_PyExecutorObject_VM_DATA_OPARG",
+             "offsetof(_PyExecutorObject, vm_data.oparg)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4169,7 +4230,55 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "PyInterpreterState_CALLABLE_CACHE_OBJECT_GETATTRIBUTE",
              "offsetof(PyInterpreterState, callable_cache.object__getattribute__)",
              "i64"
-         )
+         ),
+         (
+             "PyInterpreterState_MONITORING_CALLABLES",
+             "offsetof(PyInterpreterState, monitoring_callables)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_MONITORING_TOOL_NAMES",
+             "offsetof(PyInterpreterState, monitoring_tool_names)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_MONITORING_TOOL_VERSIONS",
+             "offsetof(PyInterpreterState, monitoring_tool_versions)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_LAST_RESTART_VERSION",
+             "offsetof(PyInterpreterState, last_restart_version)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_SYS_PROFILING_THREADS",
+             "offsetof(PyInterpreterState, sys_profiling_threads)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_SYS_TRACING_THREADS",
+             "offsetof(PyInterpreterState, sys_tracing_threads)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_SYS_PROFILE_ONCE_FLAG",
+             "offsetof(PyInterpreterState, sys_profile_once_flag)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_SYS_TRACE_ONCE_FLAG",
+             "offsetof(PyInterpreterState, sys_trace_once_flag)",
+             "i64"
+         ),
+         (
+             "PyThreadState_C_PROFILEFUNC",
+             "offsetof(PyThreadState, c_profilefunc)",
+             "i64"
+         ),
+         ("PyThreadState_C_TRACEFUNC", "offsetof(PyThreadState, c_tracefunc)", "i64"),
+         ("PyThreadState_C_PROFILEOBJ", "offsetof(PyThreadState, c_profileobj)", "i64"),
+         ("PyThreadState_C_TRACEOBJ", "offsetof(PyThreadState, c_traceobj)", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 202 C files / 365,986 lines; 153 headers / 150,776 lines.
-#   Total: 355 files / 516,762 source lines.
+#   Excluded: 204 C files / 369,941 lines; 154 headers / 151,110 lines.
+#   Total: 358 files / 521,051 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -118,7 +118,7 @@ Python/clinic/bltinmodule.c.h
 Python/clinic/context.c.h
 Python/clinic/import.c.h
 # Python/clinic/instruction_sequence.c.h  # removed: 313 source lines
-Python/clinic/instrumentation.c.h
+# Python/clinic/instrumentation.c.h  # removed: 334 source lines
 Python/clinic/marshal.c.h
 Python/clinic/sysmodule.c.h
 Python/clinic/traceback.c.h
@@ -162,11 +162,11 @@ Python/importdl.c
 Python/index_pool.c
 Python/initconfig.c
 # Python/instruction_sequence.c  # removed: 483 source lines
-Python/instrumentation.c
+# Python/instrumentation.c  # removed: 3,174 source lines
 Python/interpconfig.c
 # Python/intrinsics.c  # removed: 287 source lines
 # Python/jit.c  # pruned: 523 source lines
-Python/legacy_tracing.c
+# Python/legacy_tracing.c  # removed: 781 source lines
 # Python/lock.c  # removed: 638 source lines
 Python/marshal.c
 Python/modsupport.c
