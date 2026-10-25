@@ -126,6 +126,36 @@ test "nav_pages flattens the manifest in reading order with section trails" {
 }
 
 
+"""A docs tree other than the bundled one (an older release's docs, exported
+from a checkout) reads through the same nav parsing."""
+test "nav_pages reads the manifest of any docs root" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.cli.guide_store { nav_pages }
+    with tempfile.TemporaryDirectory() as tmp {
+        (Path(tmp) / "nav.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "nav": [
+                        {"title": "Start", "page": "index.md"},
+                        {
+                            "title": "Guides",
+                            "items": [{"title": "Walkers", "page": "guides/walkers.md"}]
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8"
+        );
+        pages = nav_pages(Path(tmp));
+        assert [p.page for p in pages] == ["index.md", "guides/walkers.md"];
+        assert pages[1].section == ["Guides"];
+        assert nav_pages(Path(tmp) / "missing") == [];
+    }
+}
+
+
 test "guide --nav prints the tree and --nav --json emits the manifest" {
     payload = _capture_json(lambda { guide(nav=True, as_json=True); });
     assert payload["version"] == 1;

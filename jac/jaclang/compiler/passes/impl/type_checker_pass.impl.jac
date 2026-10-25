@@ -820,7 +820,10 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                     );
                                     if result is None {
                                         result = self.evaluator.get_type_of_magic_method_call(
-                                            right_type, rmagic, [here.value], here.value
+                                            right_type,
+                                            rmagic,
+                                            [here.value],
+                                            here.value
                                         );
                                     }
                                 }

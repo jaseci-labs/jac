@@ -632,6 +632,15 @@ impl UnitCollectBudget.due -> bool {
     }
     def peak_rss_mb -> int {
         try {
+            with open("/proc/self/status", encoding="utf-8") as status {
+                for line in status {
+                    if line.startswith("VmHWM:") {
+                        return int(line.split()[1]) // 1024;
+                    }
+                }
+            }
+        } except (OSError, ValueError, IndexError) {}
+        try {
             import resource;
         } except ImportError {
             return 0;

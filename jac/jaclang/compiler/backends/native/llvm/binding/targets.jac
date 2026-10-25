@@ -57,8 +57,7 @@ def get_default_triple -> str {
     Get the name of the host's CPU, suitable for using with
     :meth:`Target.create_target_machine()`.
     """
-glob llvm_version_major = llvm_version_info[0],
-     _object_formats = {
+glob _object_formats = {
          0: "Unknown",
          1: "COFF",
          2: "DXContainer",

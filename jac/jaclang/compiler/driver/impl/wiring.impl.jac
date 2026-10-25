@@ -169,6 +169,11 @@ impl WiringSpec.split_consumer(path: str) -> (tuple[str, list[str]] | None) {
 }
 
 impl WiringSpec.consumer_scope(consumer: str, wire: WireRec) -> list[str] {
+    scopes = self.consumer_scopes(consumer, wire);
+    return scopes[0] if scopes else [];
+}
+
+impl WiringSpec.consumer_scopes(consumer: str, wire: WireRec) -> list[list[str]] {
     self.consumer_wires(consumer);
     return self._scopes.get((consumer, id(wire)), []);
 }
@@ -307,19 +312,24 @@ impl WiringSpec.consumer_wires(consumer: str) -> list[WireRec] {
     found: list[WireRec] = [];
     for index in sorted(candidates.keys()) {
         wire = candidates[index];
+        scopes: list[list[str]] = [];
         for path in wire.consumers {
             if path != consumer and not path.startswith(dotted) {
                 continue;
             }
             split = self.split_consumer(path);
             owner = split[0] if split is not None else path;
-            if owner == consumer {
-                found.append(wire);
-                self._scopes[(consumer, id(wire))] = split[1]
-                    if split is not None
-                    else [];
-                break;
+            if owner != consumer {
+                continue;
             }
+            scope = split[1] if split is not None else [];
+            if scope not in scopes {
+                scopes.append(scope);
+            }
+        }
+        if scopes {
+            found.append(wire);
+            self._scopes[(consumer, id(wire))] = scopes;
         }
     }
     self._by_consumer[consumer] = found;
@@ -403,21 +413,26 @@ impl WiringSpec.annex_source(consumer: str) -> (str | None) {
 impl WiringSpec.digest_for(consumer: str) -> str {
     rows: list[str] = [];
     for wire in self.consumer_wires(consumer) {
-        scope = ".".join(self.consumer_scope(consumer, wire));
         provider = self.import_name(wire.provider);
-        for binding in wire.bindings() {
-            rows.append(
-                "\x1f".join(
-                    [
-                        scope,
-                        binding.form,
-                        provider,
-                        binding.name,
-                        binding.alias,
-                        "++>" if binding.injected else "-->"
-                    ]
-                )
-            );
+        for scope_parts in self.consumer_scopes(consumer, wire) {
+            scope = ".".join(scope_parts);
+            for (line0, col, text) in self._wire_pieces(wire) {
+                rows.append("\x1f".join([scope, "@", str(line0), str(col), text]));
+            }
+            for binding in wire.bindings() {
+                rows.append(
+                    "\x1f".join(
+                        [
+                            scope,
+                            binding.form,
+                            provider,
+                            binding.name,
+                            binding.alias,
+                            "++>" if binding.injected else "-->"
+                        ]
+                    )
+                );
+            }
         }
     }
     if not rows and not self._policy_digest {
@@ -460,7 +475,7 @@ impl WiringSpec.consumer_bindings(
     want = scope or [];
     out: dict[tuple[str, str, str, str], WireRec] = {};
     for wire in self.consumer_wires(consumer) {
-        if self.consumer_scope(consumer, wire) != want {
+        if want not in self.consumer_scopes(consumer, wire) {
             continue;
         }
         for binding in wire.bindings() {
@@ -1054,20 +1069,35 @@ impl place_wired_imports(mod: Module) -> None {
             continue;
         }
         wire = spec.wire_for_import(stmt, consumer, taken);
-        scope = spec.consumer_scope(consumer, wire) if wire is not None else [];
-        if wire is None or not scope {
+        scopes = spec.consumer_scopes(consumer, wire) if wire is not None else [];
+        if wire is None or not any(scopes) {
             generated.append(stmt);
             continue;
         }
-        scoped.add(id(stmt));
-        if owners is None {
-            owners = scope_owners(mod);
-        }
-        for (n, owner) in enumerate(owners.get(".".join(scope), [])) {
-            placed = stmt if n == 0 else spec.wire_import(wire);
-            if placed is not None {
-                placed.code_context = stmt.code_context;
-                inject_into_scope(owner, placed);
+        used = False;
+        for scope in scopes {
+            if not scope {
+                at_top = stmt if not used else spec.wire_import(wire);
+                if at_top is not None {
+                    at_top.code_context = stmt.code_context;
+                    generated.append(at_top);
+                }
+                used = True;
+                continue;
+            }
+            if owners is None {
+                owners = scope_owners(mod);
+            }
+            for owner in owners.get(".".join(scope), []) {
+                placed = stmt if not used else spec.wire_import(wire);
+                if placed is not None {
+                    if placed is stmt {
+                        scoped.add(id(stmt));
+                    }
+                    placed.code_context = stmt.code_context;
+                    inject_into_scope(owner, placed);
+                }
+                used = True;
             }
         }
     }

@@ -154,7 +154,8 @@ impl interop_record(module: uni.Module) -> dict[str, any] {
             'kind': binding.kind,
             'provider_app': binding.provider_app,
             'native_contract': binding.native_contract,
-            'endpoint_id': binding.endpoint_id
+            'endpoint_id': binding.endpoint_id,
+            'symbol': binding.symbol
         };
     }
     return {
@@ -194,7 +195,8 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
             kind=data.get('kind', 'function'),
             provider_app=data['provider_app'],
             native_contract=data['native_contract'],
-            endpoint_id=data['endpoint_id']
+            endpoint_id=data['endpoint_id'],
+            symbol=data.get('symbol', '')
         );
     }
     surface: dict[str, dict[str, any]] = record.get('surface', {}) or {};
@@ -284,7 +286,10 @@ impl manifest_record(manifest: ClientManifest) -> dict[str, any] {
             k: dict(v) for (k, v) in manifest.server_import_routes.items()
         },
         "page_export": manifest.page_export,
-        "layout_export": manifest.layout_export
+        "layout_export": manifest.layout_export,
+        "linkable": list(manifest.linkable),
+        "components": list(manifest.components),
+        "forwards": {k: list(v) for (k, v) in manifest.forwards.items()}
     };
 }
 
@@ -311,7 +316,10 @@ impl manifest_from_record(raw: dict[str, any]) -> ClientManifest {
             for (key, item) in json_map(raw.get("server_import_routes")).items()
         },
         page_export=json_opt_str(raw.get("page_export")),
-        layout_export=json_opt_str(raw.get("layout_export"))
+        layout_export=json_opt_str(raw.get("layout_export")),
+        linkable=json_str_list(raw.get("linkable")),
+        components=json_str_list(raw.get("components")),
+        forwards=str_list_map(raw.get("forwards"))
     );
 }
 

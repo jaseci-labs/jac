@@ -65,6 +65,8 @@ async def:pub jacLogin(
 
 def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
+def:pub __jacTokenExpired(token: str) -> bool;
+def:pub __jacDropRejectedToken(sent: str) -> bool;
 
 async def:pub jacSsoLogin(
     platform: str, api_base: str = "", operation: str = "login"

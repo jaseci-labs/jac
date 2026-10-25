@@ -13,7 +13,8 @@ def _host_boot_py(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
-    identifier: str = ""
+    identifier: str = "",
+    pg_dist: str = ""
 ) -> str;
 
 
@@ -28,7 +29,8 @@ def _generate_host_source(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
-    identifier: str = ""
+    identifier: str = "",
+    pg_dist: str = ""
 ) -> str;
 
 impl _fused_runtime_import_block -> str {
@@ -48,14 +50,17 @@ impl _host_boot_py(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
-    identifier: str = ""
+    identifier: str = "",
+    pg_dist: str = ""
 ) -> str {
     config = {
         "app_name": app_name,
         "identifier": identifier,
+        "pg_dist": pg_dist,
         "mode": mode,
         "program": dict(program or {}),
         "backend": backend or "embedded",
+        "pg_dist": pg_dist,
         "dispatch": {
             "timeout_s": dispatch_timeout_s,
             "max_queue": dispatch_max_queue,
@@ -83,7 +88,8 @@ impl _generate_host_source(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
-    identifier: str = ""
+    identifier: str = "",
+    pg_dist: str = ""
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -94,7 +100,8 @@ impl _generate_host_source(
         dispatch_max_queue,
         dispatch_debug,
         plugin_configs,
-        identifier
+        identifier,
+        pg_dist
     );
 
     bootstrap_js = (

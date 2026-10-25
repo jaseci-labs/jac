@@ -60,6 +60,12 @@ glob OPS_READ_RULES: list[dict[str, any]] = [
 def ops_role_name(app_name: str) -> str;
 
 
+def ops_sa_name(app_name: str) -> str;
+
+
+def ops_sa_is_ours(labels: (dict[str, str] | None), app_name: str) -> bool;
+
+
 def build_ops_rbac(
     app_name: str, namespace: str, sa_name: str, mutations: bool
 ) -> dict[str, any];

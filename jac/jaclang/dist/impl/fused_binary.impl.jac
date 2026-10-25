@@ -177,3 +177,19 @@ impl running_runtime_entries -> set[str] {
     }
     return names;
 }
+
+
+impl linked_source_dir(runtime_dir: str) -> str {
+    if not runtime_dir {
+        return "";
+    }
+    try {
+        with open(
+            os.path.join(runtime_dir, "site", LINKED_SOURCE_FILE), encoding="utf-8"
+        ) as handle {
+            return handle.read().strip();
+        }
+    } except OSError {
+        return "";
+    }
+}

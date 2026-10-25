@@ -971,6 +971,8 @@ async def handleSignup() -> None {
 }
 ```
 
+When the server sets `[serve.auth.registration] challenge = true`, `jacSignup` fetches the proof-of-work challenge from `POST /user/register/challenge`, solves it, and sends the proof with the registration, so no extra client code is needed. It works the same in the browser and in React Native. If the challenge cannot be fetched, solved, or expires first, the result has `success` false and `error` says why (for example "Verification expired. Please try again.").
+
 ### jacLogout / jacIsLoggedIn
 
 ```jac
@@ -1474,8 +1476,13 @@ Override Vite build options via `[client.vite.build]`:
 [client.vite.build]
 sourcemap = true
 minify = "esbuild"
-outDir = "dist"
+
+# Split vendor libraries into their own chunk
+[client.vite.build.rollupOptions.output.manualChunks]
+vendor = ["react", "react-dom", "react-router-dom"]
 ```
+
+`rollupOptions` entries are merged into Jac's own build settings. Jac always sets `outDir`, `emptyOutDir`, `rollupOptions.input` and the `entryFileNames`, `assetFileNames` and `sourcemapPathTransform` outputs, because it needs them to find and serve the bundle; if you set them, they are ignored with a warning.
 
 #### Dev Server Options
 
@@ -1675,9 +1682,9 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac run [app]` | Start dev server (the app's kind decides the client) |
 | `jac run --dev [app]` | Dev server with HMR |
 | `jac run desktop_app` | Start a `kind = "desktop"` app (see [jac-desktop](jac-desktop.md)) |
-| `jac run mobile` | Build a `kind = "mobile"` app for its platform and launch it on a device/simulator |
-| `jac run --dev mobile` | The mobile app with Metro Fast Refresh |
-| `jac run --dev --platform web mobile` | The mobile app in a browser through react-native-web |
+| `jac run mobile` | Serve a `kind = "mobile"` app to Expo Go: scan the QR code on your phone (Metro Fast Refresh) |
+| `jac run --tunnel mobile` | The same through an Expo tunnel, for a phone that can't reach this machine |
+| `jac run --platform web mobile` | The mobile app in a browser through react-native-web |
 | `jac build [app]` | Build for production (web) |
 | `jac build --all` | Build every app of the workspace into `dist/<app>/` |
 | `jac build --as client [app]` | Build only the app's client bundle |
@@ -1836,6 +1843,7 @@ jac-client extends several core commands:
 | `jac create` | `--app <name> --kind <kind>` | Add a client app to the current project |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs |
+| `jac run` | `--tunnel` | Reach a mobile dev server through an Expo tunnel |
 | `jac build` | `--as client` | Build only the app's client bundle |
 | `jac install` | `--npm` | Add npm (client-side) dependency |
 | `jac install` | `--npm --dev` | Add npm dev dependency |
@@ -1905,7 +1913,7 @@ A mobile app is a **mobUI** app: one source tree that compiles to both native (A
 [apps.mobile]
 kind = "mobile"
 entry-point = "mobile.main"
-platform = "android"      # optional default for `jac run mobile` / `jac build mobile`
+platform = "android"      # optional default for `jac build mobile` (and the device `jac run mobile` opens)
 ```
 
 The kind is an **app** property: it turns on the `@jac/mobui` host-tag guard for every module the app claims (its directory, or its entry file for a file-rooted app) and nothing outside it, so a workspace can hold a mobile app next to an HTML-based web app over the same shared `core/`.
@@ -1913,15 +1921,20 @@ The kind is an **app** property: it turns on the `@jac/mobui` host-tag guard for
 **Run & Build:**
 
 ```bash
-# 1. Development: Fast Refresh on device/emulator. The first run scaffolds the
+# 1. Run it on your phone: scan the QR code with Expo Go (Android) or the
+#    Camera app (iOS). Fast Refresh on save. The first run scaffolds the
 #    Expo/Metro project at .jac/mobile-rn/ and installs its packages (narrated
 #    as a one-time setup); `jac setup mobile` does the same ahead of time.
-jac run --dev mobile
-# Metro serves both platforms; pick the device in the Expo CLI
-# (press `a` for Android, `i` for iOS simulator) or scan the QR in Expo Go.
+jac run mobile
+# Metro serves both platforms; press `a` / `i` in the Expo CLI to open an
+# emulator or simulator, or pass --platform android|ios to open one up front.
+
+# Phone on another network (or this machine behind NAT, e.g. WSL2)? Tunnel it.
+# The API rides the same tunnel through Metro.
+jac run --tunnel mobile
 
 # The same UI in a browser, through react-native-web
-jac run --dev --platform web mobile
+jac run --platform web mobile
 
 # 2. Build for Android (provisions the scaffold too if this is the first native run)
 jac build mobile --platform android
@@ -1931,19 +1944,17 @@ jac build mobile --platform ios
 
 # 4. Build the browser bundle (dist/mobile/ under `jac build --all --platform web`)
 jac build mobile --platform web
-
-# Build for the app's platform, then install + launch on a device/simulator
-jac run mobile
 ```
 
-**Dev-loop knobs:** Metro defaults to port `8081` (override with `JAC_RN_METRO_PORT`); the device-visible host is auto-detected from your LAN IPv4 (override with `JAC_RN_DEV_HOST`). Each `--dev` run starts Metro with `--clear`, so warm starts re-bundle from scratch.
+`jac run` never builds the app: an installable APK or `.app` comes from `jac build`.
+
+**Dev-loop knobs:** Metro defaults to port `8081` (override with `JAC_RN_METRO_PORT`); the device-visible host is auto-detected from your LAN IPv4 (override with `--host` or `JAC_RN_DEV_HOST`) and handed to Expo, so the QR code points at the same host. `--tunnel` swaps the LAN for an Expo tunnel (Expo installs `@expo/ngrok` on first use) and routes the API through Metro at `/__jac_api`. Each run starts Metro with `--clear`, so warm starts re-bundle from scratch.
 
 **Output:**
 
 - Android: APK via `gradlew assembleDebug` (or EAS Build with `android_builder = "eas"`)
 - iOS: simulator `.app` bundle via `xcodebuild` on macOS -- `jac build` prints the
-  `xcrun simctl install booted <app>` command, and `jac run <app>`
-  builds, installs, and launches it for you; a distributable `.ipa` comes from the
+  `xcrun simctl install booted <app>` command; a distributable `.ipa` comes from the
   EAS Build path (`ios_builder = "eas"`)
 - Web: a browser bundle through the Vite pipeline, `dist/mobile/` under `jac build --all --platform web`, mounted by the served web app at `/cl/mobile/`
 
@@ -1953,7 +1964,7 @@ jac run mobile
 [client.react_native]
 project_dir = ".jac/mobile-rn"   # Expo project location (under the .jac build root; override to relocate)
 release = false                  # true for release variants
-default_platform = "android"     # platform used by a plain `jac run <app>` ([apps.<name>] platform wins)
+default_platform = "android"     # platform used by a plain `jac build <app>` ([apps.<name>] platform wins)
 android_builder = "gradle"       # "gradle" (local) or "eas" (EAS Build)
 ios_builder = "xcodebuild"       # "xcodebuild" (local, macOS) or "eas" (EAS Build)
 eas_profile = ""                 # "" -> "production" (release) / "preview" (debug)
@@ -1968,8 +1979,8 @@ Packages only the Expo project needs go under `[dependencies.npm.native]`; `jac 
 **Notes:**
 
 - The Expo project lives at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). The first native `jac run` / `jac run --dev` / `jac build` scaffolds it and installs its packages (narrated as a one-time setup); later runs re-sync the packages only when the manifest or lockfile changed, and `--platform web` never touches it. `jac setup mobile` provisions the same ahead of time; under `[network] offline = true` in `jac.toml` a missing scaffold stops with that hint.
-- Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
-- `jac run <app>` without `--dev` picks its platform from `--platform` (which sets `JAC_MOBILE_PLATFORM` for the run), else `[apps.<name>] platform`, else `[client.react_native].default_platform`, else `android`.
+- Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit; under `--tunnel` the app derives it from Metro's own origin instead.
+- `jac run <app>` always serves the Expo dev server; `--platform android|ios` (or `[apps.<name>] platform`) also opens the app in Expo Go on an emulator or simulator. Expo Go loads only the native modules it ships with; an app that adds its own needs a build (`jac build <app> --platform android`).
 - iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
 - Release/debug variants via `[client.react_native].release = true`.
 - EAS Update integration for OTA updates is opt-in via config -- see [EAS Update (OTA)](#eas-update-ota) below.

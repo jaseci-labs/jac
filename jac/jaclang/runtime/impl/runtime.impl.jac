@@ -299,12 +299,19 @@ impl JacWalker.async_spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
     warch = `walker.archetype;
+    top_level = _current_scope() is None;
     await osp_spawn_async(
-        make_sv_runtime(),
+        make_sv_runtime(commit=False),
         warch,
         desc_for(`type(warch)),
         [a.archetype for a in `walker.next]
     );
+    ctx = JacRuntimeInterface.peek_context();
+    if top_level and ctx is not None {
+        try {
+            await ctx.mem.acommit();
+        } except Exception {}
+    }
     return warch;
 }
 

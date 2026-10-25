@@ -106,11 +106,14 @@ impl run_analysis(task: ModuleAnalysis) {
         and host.base_file(str(task.path)) is not None;
     _unasked = task.options.skip_analysis
         or (program.internal and host.import_in_flight(task.path));
+    _client = module is not None
+        and not task.parse_failed
+        and module.declares_codespace(_CodeCtx.CLIENT, path_hint=task.path);
     _analyze = task.has_full_ir()
         and not _is_decl_stub
         and not _annex_of_base
-        and (candidate or not _unasked);
-    task.placement_only = _analyze and _unasked and not task.native;
+        and (candidate or _client or not _unasked);
+    task.placement_only = _analyze and _unasked and not task.native and not _client;
     errors_mark = len(program.errors_had);
     blocked_before = task.blocked;
     if _analyze
@@ -147,7 +150,11 @@ impl admits_boundaries(task: ModuleAnalysis) -> bool {
 }
 
 impl run_boundaries(task: ModuleAnalysis) {
-    task.require(CompilationProduct.BOUNDARIES);
+    options = task.options;
+    native = options.aot_mode and options.default_codespace == "native";
+    task.require(
+        CompilationProduct.BOUNDARIES, ProductRequest(endpoint_effects=not native)
+    );
 }
 
 impl run_plan(task: ModuleAnalysis, steps: tuple[PlanStep, ...]) {

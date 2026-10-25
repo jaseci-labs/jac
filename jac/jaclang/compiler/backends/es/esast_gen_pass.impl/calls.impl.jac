@@ -790,18 +790,7 @@ impl EsastGenPass._wrap_with_kwargs_temp(
     expr: es.Expression, spread_arg: es.Expression, nd: uni.FuncCall
 ) -> es.Expression {
     temp_id = self.sync_loc(es.Identifier(name='__jac_kwargs'), jac_node=nd);
-    return self.sync_loc(
-        es.CallExpression(
-            callee=self.sync_loc(
-                es.ArrowFunctionExpression(
-                    params=[temp_id], body=expr, expression=True, async_=False
-                ),
-                jac_node=nd
-            ),
-            arguments=[spread_arg]
-        ),
-        jac_node=nd
-    );
+    return self._bind_once(temp_id, expr, spread_arg, nd);
 }
 
 impl EsastGenPass._try_lower_server_rpc_call(
@@ -1044,9 +1033,24 @@ impl EsastGenPass._build_server_forwarder(
 }
 
 impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] {
+    """A boundary type this module declares is emitted into the bundle as a
+    stub under its own name (`_emit_boundary_type_stubs`), so client code that
+    reads it (`Color.RED`) has a binding. Only the name is emitted: the type's
+    own body stays server code and is not audited as client code.""";
     forwarders: list[es.Statement] = [];
     bound: set[str] = set();
+    stubbed: set[str] = set();
+    for info in nd.gen.interop_manifest.boundary_types.values() {
+        if info.type_scope == nd.loc.mod_path {
+            stubbed.add(info.name);
+        }
+    }
     for (ref_name, top) in client_value_ref_targets(nd, self.shared_arch_names) {
+        if isinstance(top, (uni.Archetype, uni.Enum))
+            and top.name is not None
+            and top.name.value in stubbed {
+            continue;
+        }
         if (isinstance(top, uni.Ability) and client_bridged_endpoint(nd, top)) {
             func_name = element_display_name(top);
             if func_name in bound {
@@ -1063,6 +1067,12 @@ impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] 
 }
 
 impl EsastGenPass.exit_func_call with uni.FuncCall exit {
+    links = self._open_null_safe_chain(here.target);
+    self._lower_func_call(here);
+    self._close_null_safe_chain(links, here);
+}
+
+impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
     place_op = self._lower_place_builtin(here);
     if place_op is not None {
         here.gen.es_ast = place_op;
@@ -1171,6 +1181,9 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
         _obj_type = here.target.target?.type;
         _type_name = self._resolve_primitive_type_name(_obj_type);
         _method_name = callee.property.name;
+        _recv = cast(es.Expression, callee.object);
+        _null_safe = callee.optional and here.target.is_null_ok;
+        _recv_ref = self._null_safe_ref(_recv, here) if _null_safe else _recv;
         if _type_name {
             _emitter = self._primitive_emitters.get(_type_name);
             _is_method = _emitter is not None
@@ -1180,7 +1193,7 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
             if _emitter is not None and (_is_method or _is_static) {
                 _unparser = JSCodeGenerator();
                 _ctx = ESEmitCtx(unparser=_unparser);
-                _target_str = _unparser.generate(callee.object);
+                _target_str = _unparser.generate(_recv_ref);
                 _call_args: list[(es.Expression | es.SpreadElement)] = args;
                 _kwargs_temp: (es.Expression | None) = None;
                 _slotted = self._slot_builtin_kwargs(here, args, props, _method_name);
@@ -1219,6 +1232,11 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                             _method_expr, _kwargs_temp, here
                         );
                     }
+                    if _null_safe {
+                        _method_expr = self._null_safe_guard(
+                            _recv, _recv_ref, _method_expr, here
+                        );
+                    }
                     here.gen.es_ast = _method_expr;
                     return;
                 }
@@ -1227,7 +1245,7 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
 
         if self._poly_methods is not None and (_method_name in self._poly_methods) {
             _poly_args: list[(es.Expression | es.SpreadElement)] = [
-                cast(es.Expression, callee.object),
+                _recv_ref,
                 self.sync_loc(es.Literal(value=_method_name), jac_node=here)
             ];
             for _a in args {
@@ -1249,12 +1267,16 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                 computed=False
             );
             self.needs_jac_runtime = True;
-            here.gen.es_ast = self.sync_loc(
+            _poly_call: es.Expression = self.sync_loc(
                 es.CallExpression(
                     callee=cast(es.Expression, _poly_callee), arguments=_poly_args
                 ),
                 jac_node=here
             );
+            if _null_safe {
+                _poly_call = self._null_safe_guard(_recv, _recv_ref, _poly_call, here);
+            }
+            here.gen.es_ast = _poly_call;
             return;
         }
     }
@@ -1347,8 +1369,11 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
 
     field_args = self._field_constructor_args(here, args, props);
     if field_args is not None {
-        here.gen.es_ast = self.sync_loc(
-            es.NewExpression(callee=callee, arguments=[field_args]), jac_node=here
+        here.gen.es_ast = self._null_safe_new(
+            self.sync_loc(
+                es.NewExpression(callee=callee, arguments=[field_args]), jac_node=here
+            ),
+            here
         );
         return;
     }
@@ -1375,7 +1400,8 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
             );
             call_args = ordered_args if ordered_args is not None else [args_obj];
         } else {
-            call_args = [args_obj];
+            call_args = args + [args_obj];
+            use_kwargs_temp = False;
         }
     }
 
@@ -1440,8 +1466,11 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
         _emit_new = _call_kind == "instantiation";
     }
     if _emit_new {
-        result_expr: es.Expression = self.sync_loc(
-            es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=here
+        result_expr: es.Expression = self._null_safe_new(
+            self.sync_loc(
+                es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=here
+            ),
+            here
         );
     } else {
         result_expr = self.sync_loc(

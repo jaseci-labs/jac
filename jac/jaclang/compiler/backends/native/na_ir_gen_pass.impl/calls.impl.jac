@@ -1365,6 +1365,18 @@ impl NaIRGenPass._codegen_intrinsic(
     if _dispatch == IntrinsicDispatch.ALLOCA {
         return self._emit_intrinsic_alloca(nd, intr, positional);
     }
+    if _dispatch == IntrinsicDispatch.BUFFER_DATA {
+        return self._emit_intrinsic_buffer_data(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.REF_ADDR {
+        return self._emit_intrinsic_ref_addr(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.STR_DATA {
+        return self._emit_intrinsic_str_data(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.LIST_DATA {
+        return self._emit_intrinsic_list_data(nd, intr, positional);
+    }
     self.emit(
         E9001,
         node_override=nd,
@@ -1397,6 +1409,9 @@ impl NaIRGenPass._intrinsic_operand(
     if arg_val is None {
         self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
         return None;
+    }
+    if spec == "ref" {
+        return arg_val;
     }
     if spec == "i64" and isinstance(arg_val.type, ir.PointerType) {
         arg_val = self.builder.ptrtoint(arg_val, ir.IntType(64), name="intr.addr");
@@ -1480,6 +1495,63 @@ impl NaIRGenPass._emit_intrinsic_mem_store(
     return None;
 }
 
+impl NaIRGenPass._emit_intrinsic_buffer_data(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if arg_val is None {
+        return None;
+    }
+    if self._opt_ptr_payload_of(arg_val.type) is not None {
+        arg_val = self.builder.extract_value(arg_val, 1, name="buf.opt");
+    }
+    src = self._bytearray_src_of(arg_val);
+    if src is None {
+        self._emit_intrinsic_misuse(nd, intr, "operand is not a bytes/bytearray value");
+        return None;
+    }
+    return self.builder.ptrtoint(src[0], ir.IntType(64), name="buf.data.i64");
+}
+
+impl NaIRGenPass._emit_intrinsic_str_data(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if arg_val is None {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    if self._opt_ptr_payload_of(arg_val.type) is not None {
+        arg_val = self.builder.extract_value(arg_val, 1, name="sd.opt");
+    }
+    if self._str_desc_ty is not None and arg_val.type == self._str_desc_ty {
+        _di: int = 1 if self._str_desc_kind() == "jacstr3" else 0;
+        arg_val = self.builder.extract_value(arg_val, _di, name="sd.data");
+    }
+    if arg_val.type != i8p {
+        self._emit_intrinsic_misuse(nd, intr, "operand is not a str value");
+        return None;
+    }
+    return self.builder.ptrtoint(arg_val, ir.IntType(64), name="str.data.i64");
+}
+
+impl NaIRGenPass._emit_intrinsic_ref_addr(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if arg_val is None {
+        return None;
+    }
+    if self._opt_ptr_payload_of(arg_val.type) is not None {
+        arg_val = self.builder.extract_value(arg_val, 1, name="ref.opt");
+    }
+    if not isinstance(arg_val.type, ir.PointerType) {
+        self._emit_intrinsic_misuse(nd, intr, "operand is not a reference value");
+        return None;
+    }
+    return self.builder.ptrtoint(arg_val, ir.IntType(64), name="ref.addr");
+}
+
 impl NaIRGenPass._emit_intrinsic_atomic_xchg(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
@@ -1525,6 +1597,54 @@ impl NaIRGenPass._emit_intrinsic_region_tls(
     }
     result = self.builder.call(self.extern_funcs[intr.name], operands);
     return None if intr.result_spec == "none" else result;
+}
+
+impl NaIRGenPass._emit_intrinsic_list_data(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    """`__list_data_ptr(lst)` is the address of `lst`'s element buffer, as an
+    integer for the `__mem_*` accessors. It holds until the list next grows
+    past its capacity (an append then moves the buffer) and only while the
+    list is alive; nothing here checks an index, so the caller owns the
+    bounds. The list itself stays the owner of the elements: a store through
+    the pointer is a plain word write, so it is for scalar element types.
+    """;
+
+    if not isinstance(args[0], (uni.Name, uni.AtomTrailer)) {
+        self._emit_intrinsic_misuse(
+            nd,
+            intr,
+            "operand must be a variable, a field or an element (a temporary list is freed with the statement)"
+        );
+        return None;
+    }
+    lst = self._codegen_expr(args[0]);
+    if lst is None {
+        self._emit_intrinsic_misuse(nd, intr, "operand did not lower to a value");
+        return None;
+    }
+    _ld_pointee = lst.type?.pointee;
+    _ld_name = str(getattr(_ld_pointee, "name", "") or "");
+    if not isinstance(lst.type, ir.PointerType) or not _ld_name.startswith("List.") {
+        self._emit_intrinsic_misuse(
+            nd, intr, f"operand of type {lst.type} is not a list"
+        );
+        return None;
+    }
+    if _ld_name not in ("List.i64", "List.f64") {
+        self._emit_intrinsic_misuse(
+            nd,
+            intr,
+            f"{_ld_name} holds managed elements; only scalar lists expose their buffer"
+        );
+        return None;
+    }
+    i32 = ir.IntType(32);
+    _ld_pp = self.builder.gep(
+        lst, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="list.data.pp"
+    );
+    _ld_p = self.builder.load(_ld_pp, name="list.data.p");
+    return self.builder.ptrtoint(_ld_p, ir.IntType(64), name="list.data.i64");
 }
 
 impl NaIRGenPass._emit_intrinsic_alloca(
@@ -1825,10 +1945,30 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
                     if self._str_desc_ty is not None
                         and arg_val.type == self._str_desc_ty {
-                        _len_result = self.builder.extract_value(
+                        _dlen = self.builder.extract_value(
                             arg_val,
                             len(list(self._str_desc_ty.elements)) - 1,
                             name="s.len.o1"
+                        );
+                        _ddata = self.builder.extract_value(
+                            arg_val,
+                            len(list(self._str_desc_ty.elements)) - 2,
+                            name="s.len.data"
+                        );
+                        _droot = _ddata
+                            if self._nogc_headerless()
+                            else self.builder.extract_value(
+                                arg_val, 0, name="s.len.root"
+                            );
+                        _len_result = self._call_utf8_cplen(
+                            self.builder,
+                            _ddata,
+                            _dlen,
+                            self._call_str_isascii(
+                                self.builder, _droot, _ddata, _dlen, name="str.isa"
+                            ),
+                            name="str.cplen",
+                            base=_droot
                         );
                     }
 
@@ -1890,8 +2030,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
                     if _len_result is None
                         and arg_val.type == ir.IntType(8).as_pointer() {
-                        _len_result = self._call_str_len(
-                            self.builder, arg_val, name="str.len"
+                        _sblen = self._call_str_len(
+                            self.builder, arg_val, name="str.blen"
+                        );
+                        _len_result = self._call_utf8_cplen(
+                            self.builder,
+                            arg_val,
+                            _sblen,
+                            self._call_str_isascii(
+                                self.builder, arg_val, arg_val, _sblen, name="str.isa"
+                            ),
+                            name="str.len",
+                            base=arg_val
                         );
                     }
                     if _len_result is not None {
@@ -2431,7 +2581,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if binding is not None
             and func_name not in self.generic_fns
             and (
-                binding.source_context.value == "server"
+                binding.native_callable
                 or (
                     binding.source_context.value == "native"
                     and binding.source_module is not None
@@ -2473,7 +2623,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if sig.return_type is None and clib_import_of(sig) is not None {
                 ret_ir_type = ir.VoidType();
             }
-            _extern_sym = func_name;
+            _extern_sym = binding.symbol if binding.native_callable else func_name;
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(
                     func_name,
@@ -4071,7 +4221,9 @@ impl NaIRGenPass._codegen_sized_builtin_call(
         }
         return None;
     }
-    if func_name is None or func_name in self.local_vars {
+    if func_name is None
+        or func_name in self.local_vars
+        or self._names_user_symbol(nd.target) {
         return None;
     }
     if JAC_TYPE_REGISTRY.is_sized(func_name) {
@@ -4081,6 +4233,14 @@ impl NaIRGenPass._codegen_sized_builtin_call(
         return self._codegen_wrapping(nd, func_name);
     }
     return None;
+}
+
+impl NaIRGenPass._names_user_symbol(target: uni.UniNode) -> bool {
+    if not isinstance(target, uni.Name) or target.sym is None {
+        return False;
+    }
+    scope = target.sym.parent_tab;
+    return not (isinstance(scope, uni.Module) and scope.stub_only);
 }
 
 impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {

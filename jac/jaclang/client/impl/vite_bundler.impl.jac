@@ -340,6 +340,10 @@ impl ViteBundler._resolve_api_base_url(
 
 def _to_js_expr(value: any) -> str;
 
+def _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]];
+
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
 ) -> str {
@@ -846,8 +850,17 @@ export default defineConfig({{
 }});
 ''';
     } else {
-        build_overrides_str = self._format_config_object(build_config, indent=2)
-            if (isinstance(build_config, dict) and build_config)
+        (build_overrides, rollup_overrides, output_overrides) = _split_build_overrides(
+            build_config if isinstance(build_config, dict) else {}
+        );
+        build_overrides_str = self._format_config_object(build_overrides, indent=2);
+        rollup_overrides_str = newline
+            + self._format_config_object(rollup_overrides, indent=4)
+            if rollup_overrides
+            else '';
+        output_overrides_str = newline
+            + self._format_config_object(output_overrides, indent=6)
+            if output_overrides
             else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
@@ -913,14 +926,14 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages
 {build_overrides_str}
     rollupOptions: {{
-      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
+      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
       output: {{
         entryFileNames: "client.[hash].js", // name of the final js file
         assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css') ? 'styles.css' : '[name].[ext]',
         sourcemapPathTransform: (relativeSourcePath) => {{
           // Transform source map paths to point to original location
           return relativeSourcePath;
-        }},
+        }},{output_overrides_str}
       }},
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output
@@ -1158,10 +1171,14 @@ impl _forward_vite_output(
     ready_event: any,
     sys_module: any,
     output_buffer: list[str],
-    dispatch: any = None
+    dispatch: any = None,
+    closed_event: any = None
 ) -> None {
     stream = proc.stdout;
     if stream is None {
+        if closed_event is not None {
+            closed_event.set();
+        }
         return;
     }
     try {
@@ -1191,7 +1208,11 @@ impl _forward_vite_output(
                 output_buffer.append(line);
             }
         }
-    } except Exception {}
+    } except Exception {} finally {
+        if closed_event is not None {
+            closed_event.set();
+        }
+    }
 }
 
 impl ViteBundler._dispatch_client_event(self: ViteBundler, line: str) -> None {
@@ -1247,7 +1268,7 @@ impl ViteBundler.start_dev_server(
     return process;
 }
 
-def _dev_head_scripts -> str;
+def _dev_head -> str;
 
 impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None {
     index_html = build_dir / 'index.html';
@@ -1257,9 +1278,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
     index_content = '''<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jac App (Dev)</title>
+__JAC_DEV_HEAD__
   </head>
   <body>
     <div id="root"></div>
@@ -1316,9 +1335,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
     index_content = index_content.replace(
         '__JAC_DEV_ENTRY__', json.dumps('/' + entry_relative)
     );
-    if head_scripts := _dev_head_scripts() {
-        index_content = index_content.replace('  </head>', f'{head_scripts}  </head>');
-    }
+    index_content = index_content.replace('__JAC_DEV_HEAD__', _dev_head());
     index_html.write_text(index_content, encoding='utf-8');
 }
 
@@ -1493,6 +1510,7 @@ impl ViteBundler._start_vite_with_output_capture(
         text=True
     );
     ready_event = threading.Event();
+    closed_event = threading.Event();
     output_buffer: list[str] = [];
     output_thread = threading.Thread(
         target=_forward_vite_output,
@@ -1501,13 +1519,20 @@ impl ViteBundler._start_vite_with_output_capture(
             ready_event,
             sys_module,
             output_buffer,
-            self._dispatch_client_event
+            self._dispatch_client_event,
+            closed_event
         ),
         daemon=True
     );
     output_thread.start();
 
-    is_ready = ready_event.`wait(timeout=VITE_READY_TIMEOUT_SECONDS);
+    deadline = time.monotonic() + VITE_READY_TIMEOUT_SECONDS;
+    while not ready_event.is_set()
+        and not closed_event.is_set()
+        and time.monotonic() < deadline {
+        ready_event.`wait(timeout=0.1);
+    }
+    is_ready = ready_event.is_set();
     if is_ready {
         port_file = build_dir / '.dev-port';
         for _ in range(40) {
@@ -1522,6 +1547,11 @@ impl ViteBundler._start_vite_with_output_capture(
         console.print("  ✔ Vite dev server ready", style="success");
     } else {
         exit_code = process.poll();
+        if exit_code is None and closed_event.is_set() {
+            try {
+                exit_code = process.`wait(timeout=5);
+            } except subprocess.TimeoutExpired {}
+        }
         if exit_code is not None {
             console.error("  ✖ Vite dev server failed to start");
             if output_buffer {
@@ -1531,6 +1561,15 @@ impl ViteBundler._start_vite_with_output_capture(
                 }
                 sys_module.stdout.flush();
             }
+            last = [
+                line.strip()
+                for line in output_buffer
+                if line.strip()
+            ];
+            raise ClientBundleError(
+                f"Vite exited with code {exit_code} before it was ready"
+                    + (f": {last[-1]}" if last else "")
+            );
         } else {
             console.warning(
                 f"  ⚠ Vite server may not be ready (timeout after {VITE_READY_TIMEOUT_SECONDS}s)"
@@ -1585,6 +1624,47 @@ impl _to_js_expr(value: any) -> str {
     }
 }
 
+impl _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]] {
+    build = dict(build_config);
+    rollup = build.pop('rollupOptions', {});
+    if not isinstance(rollup, dict) {
+        raise ClientBundleError(
+            '[client.vite.build] rollupOptions must be a table'
+        ) from None;
+    }
+    rollup = dict(rollup);
+    output = rollup.pop('output', {});
+    if not isinstance(output, dict) {
+        raise ClientBundleError(
+            '[client.vite.build.rollupOptions] output must be a single table'
+        ) from None;
+    }
+    output = dict(output);
+    ignored: list[str] = [];
+    for key in ('outDir', 'emptyOutDir') {
+        if build.pop(key, None) is not None {
+            ignored.append(key);
+        }
+    }
+    if rollup.pop('input', None) is not None {
+        ignored.append('rollupOptions.input');
+    }
+    for key in ('entryFileNames', 'assetFileNames', 'sourcemapPathTransform') {
+        if output.pop(key, None) is not None {
+            ignored.append(f'rollupOptions.output.{key}');
+        }
+    }
+    if ignored {
+        names = ', '.join(ignored);
+        console.warning(
+            f"[client.vite.build] ignoring {names}: Jac sets these to find and serve the client bundle"
+        );
+    }
+    return (build, rollup, output);
+}
+
 impl _proxy_entry(key: str, api_port: int) -> str {
     return (
         f'\n      "{key}": {{'
@@ -1634,10 +1714,11 @@ impl _is_vite_url_line(line: str) -> bool {
     return False;
 }
 
-impl _dev_head_scripts -> str {
+impl _dev_head -> str {
     config = get_config();
     client_cfg = config.get_plugin_config('client') if config else None;
-    meta_data = client_cfg.get('app_meta_data', {}) if client_cfg else {};
-    tags = HeaderBuilder(meta_data, 'dev').build_scripts();
-    return ''.join(f'    {tag}\n' for tag in tags);
+    meta_data = dict(client_cfg.get('app_meta_data', {}) if client_cfg else {});
+    meta_data['title'] = str(meta_data.get('title') or 'Jac App') + ' (Dev)';
+    head = HeaderBuilder(meta_data, 'dev').build_head();
+    return '\n'.join('    ' + line.strip() for line in head.split('\n'));
 }

@@ -334,8 +334,16 @@ impl write_jac_prelude_file(dir_path: str) -> str {
     import os;
     os.makedirs(dir_path, exist_ok=True);
     out = os.path.join(dir_path, JAC_PRELUDE_BASENAME);
+    text = build_jac_prelude_module();
+    try {
+        with open(out, encoding="utf-8") as handle {
+            if handle.read() == text {
+                return out;
+            }
+        }
+    } except (OSError, UnicodeDecodeError) {}
     with open(out, "w", encoding="utf-8") as handle {
-        handle.write(build_jac_prelude_module());
+        handle.write(text);
     }
     return out;
 }

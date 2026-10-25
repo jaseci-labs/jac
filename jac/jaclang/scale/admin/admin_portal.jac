@@ -3,7 +3,8 @@ import from pathlib { Path }
 obj JacAPIServerAdmin {
     has server: (EndpointHost | None) = None,
         user_manager: (UserManager | None) = None,
-        _metrics: (MetricsCollector | None) = None;
+        _metrics: (MetricsCollector | None) = None,
+        admin_console: (AdminConsole | None) = None;
 
     def _require_user_manager -> UserManager;
     def register_admin_endpoints -> None;
@@ -78,6 +79,5 @@ obj JacAPIServerAdmin {
     def serve_admin_page -> Response;
     def serve_admin_index -> Response;
     def serve_admin_asset(path: str) -> Response;
-    def build_admin_client(force: bool = False) -> bool;
     def get_admin_dist_dir -> Path;
 }

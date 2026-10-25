@@ -230,12 +230,12 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
     i1 = ir.IntType(1);
     state_ptr_type = self.struct_types["StrIterState"].as_pointer();
     if self.str_len_fn is None {
         self._emit_str_len_helpers();
     }
+    self._emit_utf8_helpers();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_str");
     fn.linkage = "private";
@@ -255,22 +255,15 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     );
     idx = b.load(idx_slot, name="sit.idx");
     n = b.call(self.str_len_fn, [s_ptr], name="sit.len");
-    ok = b.icmp_signed("<", idx, n, name="sit.ok");
+    ok = b.icmp_unsigned("<", idx, n, name="sit.ok");
     b.cbranch(ok, cont, stop);
     b.position_at_end(cont);
 
-    char_ptr = b.gep(s_ptr, [idx], name="sit.char.ptr");
-    char_val = b.load(char_ptr, name="sit.char");
-    byte_idx = b.zext(char_val, i64, name="sit.char.idx");
-    cache_gv = self._get_char_cache_gv();
-    ch = b.gep(
-        cache_gv,
-        [ir.Constant(i32, 0), byte_idx, ir.Constant(i32, 2), ir.Constant(i32, 0)],
-        name="sit.char.cached"
-    );
+    ch = b.call(self.utf8_char_at_fn, [s_ptr, n, idx], name="sit.char");
+    idx_next = b.call(self.utf8_cp_len_at_fn, [s_ptr, n, idx], name="sit.adv");
     out_t = b.bitcast(fn.args[1], i8p.as_pointer(), name="sit.out");
     b.store(ch, out_t);
-    b.store(b.add(idx, ir.Constant(i64, 1), name="sit.idx.next"), idx_slot);
+    b.store(b.add(idx, idx_next, name="sit.idx.next"), idx_slot);
     b.ret(ir.Constant(i1, 1));
     b.position_at_end(stop);
     b.ret(ir.Constant(i1, 0));
@@ -1550,19 +1543,18 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         );
         self.builder.branch(cond_bb);
     }
-    self._emit_loop_else(nd, else_bb, end_bb);
     self.loop_stack.pop();
-
-    if _gen_it_spill is not None {
-        _it_end = self._mark_owned(
-            self.builder.load(_gen_it_spill, name="iterf.it.end")
-        );
-        self._emit_rc_release_simple(_it_end, op="iter_end", loc=_loc);
-        self.builder.store(ir.Constant(_it_end.type, None), _gen_it_spill);
-    } elif _it_slot_var is not None {
-        self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
-    } elif owns_iter {
-        self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
+    if else_bb is None {
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+    } else {
+        join_bb = self.builder.function.append_basic_block(name="iterf.join");
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(else_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self._emit_loop_else(nd, else_bb, join_bb);
     }
     return True;
 }

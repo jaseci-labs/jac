@@ -2,6 +2,13 @@ impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
 
+impl InteropBinding.native_callable.getter -> bool {
+    return self.source_context == InteropContext.SERVER
+        and InteropContext.NATIVE in self.callers
+        and self.kind == 'function'
+        and bool(self.symbol);
+}
+
 impl InteropManifest.boundary_types_for(scope: str) -> dict[str, BoundaryTypeInfo] {
     return {
         name: self.boundary_types[type_id]
@@ -23,8 +30,8 @@ impl InteropManifest.native_imports.getter -> list[InteropBinding] {
 impl InteropManifest.callable_native_imports.getter -> list[InteropBinding] {
     return [
         b
-        for b in self.native_imports
-        if b.kind == 'function'
+        for b in self.bindings.values()
+        if b.native_callable
     ];
 }
 
@@ -119,8 +126,12 @@ impl CodeGenTarget.interop_manifest.setter(value: InteropManifest) -> None {
     self._interop_manifest = value;
 }
 
-impl str_len_tag(length: int) -> int {
-    return (length << STR_LEN_TAG_SHIFT) | STR_LEN_TAG_BIT;
+impl str_len_tag(length: int, is_ascii: bool = False) -> int {
+    return (
+        (length << STR_LEN_TAG_SHIFT)
+        | (STR_ASCII_TAG_BIT if is_ascii else 0)
+        | STR_LEN_TAG_BIT
+    );
 }
 
 impl native_safe_sym(src: str) -> str {
@@ -185,13 +196,13 @@ impl _reserved_c_symbols -> frozenset[str] {
         "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
         "opendir readdir closedir getpid getpwuid_r getpwnam_r getuid uname "
         "gnu_get_libc_version errno __error "
-        "pipe poll waitpid posix_spawnp posix_spawn_file_actions_init "
+        "pipe poll fcntl ioctl tcgetattr tcsetattr cfgetispeed cfgetospeed cfsetispeed cfsetospeed waitpid posix_spawnp posix_spawn_file_actions_init "
         "posix_spawn_file_actions_destroy posix_spawn_file_actions_addopen "
         "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
         "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
-        "pthread_setspecific "
+        "pthread_setspecific sched_yield "
         "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "
@@ -429,6 +440,12 @@ impl native_module_key(path: str) -> str {
 
 impl native_unit_prefix(path: str) -> str {
     return native_safe_sym(native_module_key(path));
+}
+
+impl interop_callback_symbol(provider_path: str, name: str) -> str {
+    return f"__jac_na_import_{native_unit_prefix(provider_path)}_{native_safe_sym(
+        name
+    )}";
 }
 
 impl native_symbol_name(prefix: str, name: str) -> str {

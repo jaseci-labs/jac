@@ -5,41 +5,6 @@ impl value_in_range(value: int, t_lo: int, t_hi: int, wide: bool) -> bool {
     return t_lo <= value and value <= t_hi;
 }
 
-impl unbounded_interval_in_range(
-    op: str,
-    left: tuple[int, int],
-    right: tuple[int, int],
-    t_lo: int,
-    t_hi: int,
-    wide: bool
-) -> bool {
-    unsigned_top = 2 * I64_TOP + 1;
-    (a_lo, a_hi) = left;
-    (b_lo, b_hi) = right;
-    if a_hi < a_lo {
-        (a_lo, a_hi) = (0, unsigned_top);
-    }
-    if b_hi < b_lo {
-        (b_lo, b_hi) = (0, unsigned_top);
-    }
-    if wide {
-        (t_lo, t_hi) = (0, unsigned_top);
-    }
-    lo = 0;
-    hi = 0;
-    if op == "+" {
-        (lo, hi) = (a_lo + b_lo, a_hi + b_hi);
-    } elif op == "-" {
-        (lo, hi) = (a_lo - b_hi, a_hi - b_lo);
-    } elif op == "*" {
-        ends = [a_lo * b_lo, a_lo * b_hi, a_hi * b_lo, a_hi * b_hi];
-        (lo, hi) = (min(ends), max(ends));
-    } else {
-        (lo, hi) = (-a_hi, -a_lo);
-    }
-    return t_lo <= lo and hi <= t_hi;
-}
-
 impl corner_in_range(
     op: str, x: int, y: int, t_lo: int, t_hi: int, wide: bool
 ) -> bool {
@@ -146,11 +111,6 @@ impl interval_of_op(
     if not wide {
         (t_lo, t_hi) = JAC_TYPE_REGISTRY.range_of(target);
     }
-    for bound in [a_lo, a_hi, b_lo, b_hi] {
-        if bound > I64_TOP or bound < I64_BOTTOM {
-            return unbounded_interval_in_range(op, left, right, t_lo, t_hi, wide);
-        }
-    }
     a_top = a_hi < a_lo;
     b_top = b_hi < b_lo;
     if a_top and b_top {
@@ -211,7 +171,13 @@ impl folded_number(expr: UniNode | None) -> int | float | None {
         cur = cur.value;
     }
     if isinstance(cur, Int) {
-        return int(cur.lit_value);
+        value = int_literal_i64(cur.value);
+        if value is not None {
+            return value;
+        }
+        return WideLiteral(
+            text=cur.value, magnitude_bits=int_literal_u64_bits(cur.value)
+        );
     }
     if isinstance(cur, Float) {
         return float(cur.lit_value);
@@ -222,16 +188,59 @@ impl folded_number(expr: UniNode | None) -> int | float | None {
             return None;
         }
         if cur.op.name == Tok.MINUS {
-            if isinstance(inner, int) {
-                return -inner;
-            }
-            return -inner;
+            return _negated(inner);
         }
         if cur.op.name == Tok.PLUS {
             return inner;
         }
     }
     return None;
+}
+
+impl _negated(value: int | float | WideLiteral) -> int | float | WideLiteral {
+    """A literal past a signed 64-bit int stays a `WideLiteral`, so no fold
+    computes a value the native compiler cannot hold; -2**63 is the one
+    negation that crosses back.""";
+    if isinstance(value, WideLiteral) {
+        if not value.negative and value.magnitude_bits == I64_BOTTOM {
+            return I64_BOTTOM;
+        }
+        return WideLiteral(
+            text=value.text,
+            negative=not value.negative,
+            magnitude_bits=value.magnitude_bits
+        );
+    }
+    if isinstance(value, int) and value == I64_BOTTOM {
+        return WideLiteral(text="9223372036854775808", magnitude_bits=I64_BOTTOM);
+    }
+    return -value;
+}
+
+impl WideLiteral.fits_u64 -> bool {
+    return not self.negative and self.magnitude_bits is not None;
+}
+
+impl WideLiteral.written -> str {
+    return f"-{self.text}" if self.negative else self.text;
+}
+
+impl _wide_unsigned(name: str) -> bool {
+    `entry = JAC_TYPE_REGISTRY.get(name);
+    return `entry is not None
+        and not `entry.is_float
+        and not `entry.signed
+        and `entry.width >= 64;
+}
+
+impl _range_text(name: str) -> tuple[str, str] {
+    """A u64's top, 2**64 - 1, is no native int, so the range is reported as
+    text.""";
+    if _wide_unsigned(name) {
+        return ("0", "18446744073709551615");
+    }
+    (lo, hi) = JAC_TYPE_REGISTRY.range_of(name);
+    return (str(lo), str(hi));
 }
 
 impl _numeric_dest(evaluator: TypeEvaluator, dest: TypeBase) -> ClassType | None {
@@ -262,12 +271,23 @@ impl annotate_coercion(expr: Expr | None, target: ClassType) {
 impl adopt_literal(
     evaluator: TypeEvaluator,
     expr: Expr,
-    value: int | float,
+    value: int | float | WideLiteral,
     target: ClassType,
     probe: bool = False
 ) -> AssignVerdict {
     name = target.shared.class_name;
-    if JAC_TYPE_REGISTRY.literal_fits(name, value) {
+    fits = False;
+    if not isinstance(value, WideLiteral) {
+        fits = JAC_TYPE_REGISTRY.literal_fits(name, value);
+    } elif JAC_TYPE_REGISTRY.numeric_kind_of(name) == NumericKind.FloatKind {
+        magnitude = int_literal_float(value.text);
+        fits = JAC_TYPE_REGISTRY.literal_fits(
+            name, -magnitude if value.negative else magnitude
+        );
+    } else {
+        fits = value.fits_u64() and _wide_unsigned(name);
+    }
+    if fits {
         if not probe {
             annotate_coercion(expr, target);
         }
@@ -276,16 +296,17 @@ impl adopt_literal(
     if probe {
         return AssignVerdict(ok=False);
     }
+    shown = value.written() if isinstance(value, WideLiteral) else value;
     if JAC_TYPE_REGISTRY.numeric_kind_of(name) == NumericKind.FloatKind {
         import from jaclang.runtime.scalars { float_max }
-        evaluator.emit_diag(E1130, expr, value=value, type=name, max=float_max(name));
+        evaluator.emit_diag(E1130, expr, value=shown, type=name, max=float_max(name));
         return AssignVerdict(ok=False, diagnosed=True);
     }
     if isinstance(value, float) {
         return AssignVerdict(ok=False);
     }
-    (lo, hi) = JAC_TYPE_REGISTRY.range_of(name);
-    evaluator.emit_diag(E1126, expr, value=value, type=name, min=lo, max=hi);
+    (lo, hi) = _range_text(name);
+    evaluator.emit_diag(E1126, expr, value=shown, type=name, min=lo, max=hi);
     return AssignVerdict(ok=False, diagnosed=True);
 }
 
@@ -484,7 +505,7 @@ impl fixed_width_call_type(
         value = folded_number(args[0]);
         if isinstance(target, ClassType)
             and value is not None
-            and isinstance(value, int) {
+            and isinstance(value, (int, WideLiteral)) {
             adopt_literal(evaluator, args[0], value, target);
         }
         return target;

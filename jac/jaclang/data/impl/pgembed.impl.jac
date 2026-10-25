@@ -261,6 +261,22 @@ impl PgRuntime._resolve_binaries -> str {
 }
 
 
+impl stop_cluster(data_dir: str) -> None {
+    """Stop the embedded cluster at `data_dir` if it is running.
+
+    A desktop app owns its per-app cluster and stops it when the app process
+    exits; a missing pidfile or a stopped cluster is a no-op. Failures are
+    logged, never raised: this runs from an exit path.
+    """;
+    rt = PgRuntime(data_dir=data_dir);
+    try {
+        rt.stop();
+    } except Exception as e {
+        logger.warning(f"could not stop the embedded postgres at {data_dir}: {e}");
+    }
+}
+
+
 impl PgRuntime._initdb_if_needed(bin_dir: str) -> None {
     if os.path.isfile(os.path.join(self.data_dir, 'PG_VERSION')) {
         self._grant_dir(self.data_dir);

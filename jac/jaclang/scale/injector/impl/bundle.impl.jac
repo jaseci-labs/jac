@@ -1,13 +1,16 @@
-impl _is_bundle_required(rel: Path) -> bool {
+impl _is_client_dist(rel: Path) -> bool {
     parts = rel.parts;
-    if (
-        len(parts) >= 3
+    return len(parts) >= 3
         and parts[0] == ".jac"
         and parts[1] == "client"
-        and parts[2] == "dist"
-    ) {
+        and parts[2] == "dist";
+}
+
+impl _is_bundle_required(rel: Path) -> bool {
+    if _is_client_dist(rel) {
         return True;
     }
+    parts = rel.parts;
 
     if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
         return True;
@@ -219,6 +222,14 @@ impl bundle_source_files(base: Path) -> list[Path] {
         );
     }
     return kept;
+}
+
+impl client_build_sources(base: Path) -> list[Path] {
+    return [
+        path
+        for path in bundle_source_files(base)
+        if not _is_bundle_required(path.relative_to(base))
+    ];
 }
 
 impl resolve_fleet_entries(project_dir: str, fleet: any) -> dict[str, str] {
@@ -973,7 +984,11 @@ impl _remember_seal(base: Path, key: str, raw: bytes) {
 }
 
 impl pack_jab(
-    project_dir: str, seal_binary: bytes, pod_arch: str = "", fleet: any = None
+    project_dir: str,
+    seal_binary: bytes,
+    pod_arch: str = "",
+    fleet: any = None,
+    client_ready: any = None
 ) -> bytes {
     if not seal_binary {
         raise ValueError(
@@ -1015,13 +1030,21 @@ impl pack_jab(
             tomls
         );
     }
-    key = input_key(base, sources);
+    seal_sources = [
+        path
+        for path in sources
+        if not _is_client_dist(path.relative_to(base))
+    ];
+    key = input_key(base, seal_sources);
     cached = _cached_seal(base, key);
     if cached is not None {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
-        return cached;
+        if client_ready is not None {
+            client_ready();
+        }
+        return _with_client_dist(cached, base);
     }
     staged = _precompile_app(
         base,
@@ -1029,7 +1052,7 @@ impl pack_jab(
         sanitized,
         seal_timeout_setting(project_dir),
         app_name,
-        sources,
+        seal_sources,
         tomls,
         _latest_seal(base)
     );
@@ -1072,7 +1095,7 @@ impl pack_jab(
             with tar {
                 snapshot = [
                     staged / path.relative_to(base)
-                    for path in sources
+                    for path in seal_sources
                     if (staged / path.relative_to(base)).is_file()
                 ];
                 add_source_members(tar, staged, sources=snapshot);
@@ -1144,7 +1167,7 @@ impl pack_jab(
         }
         raw = buf.getvalue();
         try {
-            unchanged = len(snapshot) == len(sources)
+            unchanged = len(snapshot) == len(seal_sources)
                 and input_key(staged, snapshot) == key;
         } except OSError {
             unchanged = False;
@@ -1156,10 +1179,41 @@ impl pack_jab(
                 "The project changed while it was sealed; not keeping this bundle for reuse."
             );
         }
-        return raw;
     } finally {
         remove_stage_root(staged.parent);
     }
+    if client_ready is not None {
+        client_ready();
+    }
+    return _with_client_dist(raw, base);
+}
+
+impl _with_client_dist(raw: bytes, base: Path) -> bytes {
+    dist = [
+        path
+        for path in bundle_source_files(base)
+        if _is_client_dist(path.relative_to(base))
+    ];
+    buf = io.BytesIO();
+    (tar, gz) = open_det_tar(buf);
+    try {
+        with tar {
+            with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as sealed {
+                for member in sealed.getmembers() {
+                    if _is_client_dist(Path(member.name)) {
+                        continue;
+                    }
+                    tar.addfile(
+                        member, sealed.extractfile(member) if member.isfile() else None
+                    );
+                }
+            }
+            add_source_members(tar, base, sources=dist);
+        }
+    } finally {
+        gz.close();
+    }
+    return buf.getvalue();
 }
 
 impl content_address(raw: bytes) -> str {

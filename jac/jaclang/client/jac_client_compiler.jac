@@ -10,6 +10,7 @@ with entry {
 class JacClientCompiler {
     has entry_path: str = "",
         na_wasm_modules: set[str] = set(),
+        link_demand: dict[Path, dict[Path, list[str]]] = {},
         input_files: dict[str, str] = {};
 
     with entry {
@@ -106,7 +107,14 @@ class JacClientCompiler {
 
     def _warn_unrouted_pages(self: JacClientCompiler, scanner: RouteScanner) -> None;
     def _generate_routes_manifest(self: JacClientCompiler) -> bool;
-    def _write_source_map(
+    def _module_text(
+        self: JacClientCompiler,
+        module_path: Path,
+        artifact: ClientArtifact,
+        link: (ClientLink | None) = None
+    ) -> str;
+
+    def _write_js(
         self: JacClientCompiler,
         artifact: ClientArtifact,
         source_file: str,

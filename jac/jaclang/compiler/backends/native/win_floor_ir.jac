@@ -1921,7 +1921,7 @@ define dso_local range(i32 0, 65536) i32 @__jac_sockaddr_family(ptr noundef read
   ret i32 %3
 }
 
-define dso_local range(i64 -9223372036854775808, 9223372036854775807) i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2) local_unnamed_addr #0 {
+define dso_local i64 @__jac_home_dir(ptr noundef %0, ptr noundef %1, i64 noundef %2) local_unnamed_addr #0 {
   %4 = alloca %struct.linux_passwd, align 8
   %5 = alloca ptr, align 8
   %6 = alloca [1024 x i8], align 16
@@ -1979,8 +1979,8 @@ define dso_local range(i64 -9223372036854775808, 9223372036854775807) i64 @__jac
   %38 = call ptr @memcpy(ptr noundef %1, ptr noundef %37, i64 noundef %36) #10
   br label %39
 
-39:                                               ; preds = %35, %32, %28, %23
-  %40 = phi i64 [ -1, %23 ], [ -2, %28 ], [ %33, %35 ], [ -1, %32 ]
+39:                                               ; preds = %32, %35, %28, %23
+  %40 = phi i64 [ -1, %23 ], [ -2, %28 ], [ %33, %35 ], [ %33, %32 ]
   call void @llvm.lifetime.end.p0(i64 1024, ptr nonnull %6) #11
   call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %5) #11
   call void @llvm.lifetime.end.p0(i64 48, ptr nonnull %4) #11

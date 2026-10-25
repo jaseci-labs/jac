@@ -1172,6 +1172,7 @@ test "serve admin asset returns index.html for root" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Portal</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1189,6 +1190,8 @@ test "serve admin asset returns static file" {
     admin_dir = Path(tmp) / "admin";
     assets = admin_dir / "assets";
     assets.mkdir(parents=True);
+    (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
     (assets / "admin.js").write_text("var admin = true;");
 
     reg = ServiceRegistry();
@@ -1196,7 +1199,8 @@ test "serve admin asset returns static file" {
 
     resp = gw.serve_admin_asset("assets/admin.js");
     assert resp is not None;
-    assert b"admin" in resp.body;
+    assert resp.status_code == 200;
+    assert b"var admin = true;" in resp.body;
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1207,6 +1211,7 @@ test "serve admin asset spa fallback for unknown route" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin SPA</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1223,6 +1228,8 @@ test "serve admin asset blocks path traversal" {
     tmp = tempfile.mkdtemp();
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
+    (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1239,6 +1246,7 @@ test "admin redirect via testclient" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
@@ -1259,6 +1267,7 @@ test "admin index served at /admin/" {
     admin_dir = Path(tmp) / "admin";
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Dashboard</html>");
+    (admin_dir / ".staged").touch();
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));

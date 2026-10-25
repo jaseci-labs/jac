@@ -871,7 +871,7 @@ impl stored_wiring_digest(source_path: str) -> str {
     );
     table = _WIRING_DIGESTS.get(stamp);
     store = os.path.join(
-        str(get_jir_cache_dir()), "wiring-v2", stamp[:2], stamp + ".json"
+        str(get_jir_cache_dir()), "wiring-v3", stamp[:2], stamp + ".json"
     );
     if table is None {
         table = {};

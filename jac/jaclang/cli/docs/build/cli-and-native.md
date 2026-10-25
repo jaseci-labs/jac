@@ -58,7 +58,7 @@ Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The nativ
 
 ## Run natively in place {#cli-native}
 
-Set `kind = "cli-native"` in `jac.toml` when you want the *program* to execute through the native pathway rather than producing a distributable artifact -- the same native subset, run as a command. A bare `jac run` then compiles-and-executes it. (`cli` runs on the Python VM; `cli-native` runs the native build; `native-binary` ships the executable.)
+Set `kind = "cli-native"` in `jac.toml` when you want the *program* to execute through the native pathway rather than producing a distributable artifact -- the same native subset, run as a command. A bare `jac run` then compiles-and-executes it. (`cli` runs on the Python VM; `cli-native` runs the native build; `native-binary` runs the same way under `jac run` and ships the executable from `jac build`.)
 
 ## Your learning path
 
