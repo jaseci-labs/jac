@@ -1207,7 +1207,7 @@ impl JacCompiler._get_client_artifact(
     }
     mark = len(actual_program.errors_had);
     if not has_live_tree and not actual_program.internal {
-        (handled, _) = self._adopt_kernel_compile(
+        (handled, adopted) = self._adopt_kernel_compile(
             full_target, actual_program, CompileOptions(skip_native_engine=True)
         );
         if len(actual_program.errors_had) > mark {
@@ -1216,7 +1216,7 @@ impl JacCompiler._get_client_artifact(
         emitted = actual_program.hub.client_artifacts.get(full_target)
             if handled
             else None;
-        if emitted is not None {
+        if emitted is not None or adopted is not None {
             return emitted;
         }
     }
