@@ -2906,6 +2906,108 @@ impl JacAutoLintPass._strip_docstrings(start: uni.UniNode) -> None {
         `node.set_kids(nodes=new_kid if len(new_kid) else [uni.EmptyToken()]);
         `node._invalidate_sub_node_tab();
     }
+    self._strip_string_stmts(start);
+}
+
+impl JacAutoLintPass._is_string_stmt(stmt: uni.UniNode) -> bool {
+    if not isinstance(stmt, uni.ExprStmt) or stmt.in_fstring {
+        return False;
+    }
+    expr = stmt.expr;
+    if isinstance(expr, uni.String) {
+        return True;
+    }
+    return isinstance(expr, uni.MultiString)
+        and all(isinstance(part, uni.String) for part in expr.strings);
+}
+
+impl JacAutoLintPass._strip_string_stmts(start: uni.UniNode) -> None {
+    found: list[tuple[uni.UniNode, uni.UniNode]] = [];
+    stack: list[uni.UniNode] = [start];
+    while stack {
+        current = stack.pop();
+        if isinstance(current, uni.JsxSlot) {
+            continue;
+        }
+        body = self._stmt_body_list(current);
+        if isinstance(body, list) {
+            strs = [
+                s
+                for s in body
+                if self._is_string_stmt(s)
+            ];
+            real = [
+                s
+                for s in body
+                if not isinstance(s, uni.Semi)
+            ];
+            rest = [
+                s
+                for s in real
+                if not self._is_string_stmt(s)
+            ];
+            if strs
+                and not (
+                    isinstance(current, uni.LambdaExpr)
+                    and (
+                        len(real) == 1
+                        or (len(rest) == 1 and isinstance(rest[0], uni.ExprStmt))
+                    )
+                )
+                and not (
+                    isinstance(current, (uni.MatchCase, uni.SwitchCase))
+                    and len(strs) == len(real)
+                ) {
+                for stmt in strs {
+                    found.append((current, stmt));
+                }
+            }
+        }
+        for kid in [current->:Kid:->] {
+            if kid is not None {
+                stack.append(kid);
+            }
+        }
+    }
+    found.sort(
+        key=lambda (item: tuple[uni.UniNode, uni.UniNode]) { (
+            item[1].loc.first_line,
+            item[1].loc.col_start
+        ); }
+    );
+    doomed: dict[int, tuple[uni.UniNode, set[int]]] = {};
+    for (container, stmt) in found {
+        if not self.ctx.emit(W3051, node_override=stmt) or self.report_only {
+            continue;
+        }
+        if id(container) not in doomed {
+            fresh_ids: set[int] = set();
+            doomed[id(container)] = (container, fresh_ids);
+        }
+        doomed[id(container)][1].add(id(stmt));
+    }
+    for (container, stmt_ids) in doomed.values() {
+        body = self._stmt_body_list(container);
+        if not isinstance(body, list) {
+            continue;
+        }
+        container._role_set(
+            BodyRole,
+            [
+                s
+                for s in body
+                if id(s) not in stmt_ids
+            ]
+        );
+        container.set_kids(
+            [
+                k
+                for k in [container->:Kid:->]
+                if id(k) not in stmt_ids
+            ]
+        );
+        container._invalidate_sub_node_tab();
+    }
 }
 
 impl JacAutoLintPass._collect_doc_nodes(

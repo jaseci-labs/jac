@@ -18,14 +18,6 @@ impl active_options -> CompileOptions | None {
 }
 
 impl owned_module_options(path: str, options: CompileOptions) -> CompileOptions {
-    """A module the running compiler package owns is analyzed the way the
-    package analyzes itself, whoever imports it. The consumer's application,
-    codespace and entry are dropped: its placement default would otherwise
-    be inferred over the runtime, its codespace flags would refuse the
-    module's cached interface, and every consumer would key its own analysis
-    of the same module. The consumer's memory model, target and placement
-    policy stay, since they shape the native products the module can offer
-    it.""";
     bound = copy.copy(options);
     bound.package_canonical = True;
     bound.default_codespace = '';
@@ -45,10 +37,6 @@ impl owned_module_options(path: str, options: CompileOptions) -> CompileOptions 
 impl owner_scope_options(
     program: JacProgram, options: (CompileOptions | None) = None
 ) -> (CompileOptions | None) {
-    """The options a cache scope projects: none for the compiler's own program
-    and for a package module's canonical analysis, which then key their
-    entries the way the package's precompile does, and the program's
-    otherwise.""";
     chosen = options if options is not None else program.options;
     if program.internal or chosen.package_canonical {
         return None;

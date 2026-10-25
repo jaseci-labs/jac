@@ -145,7 +145,7 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     copy_into(repo_root, "_jac_finder.py", site);
     copy_into(repo_root, "sitecustomize.py", site);
     if opts.link_source is not None {
-        write_text(os.path.join(site, "jac_linked_source"), opts.link_source);
+        write_text(os.path.join(site, LINKED_SOURCE_FILE), opts.link_source);
     }
 
     write_dist_info(repo_root, site);

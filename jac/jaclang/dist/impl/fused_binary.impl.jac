@@ -116,7 +116,6 @@ impl running_executable -> str {
 }
 
 impl jac_binary -> str {
-    """This process's executable when it is a fused jac binary, else empty.""";
     exe = running_executable();
     return exe if runtime_trailer(exe) is not None else "";
 }
@@ -177,4 +176,20 @@ impl running_runtime_entries -> set[str] {
         names.add(key);
     }
     return names;
+}
+
+
+impl linked_source_dir(runtime_dir: str) -> str {
+    if not runtime_dir {
+        return "";
+    }
+    try {
+        with open(
+            os.path.join(runtime_dir, "site", LINKED_SOURCE_FILE), encoding="utf-8"
+        ) as handle {
+            return handle.read().strip();
+        }
+    } except OSError {
+        return "";
+    }
 }

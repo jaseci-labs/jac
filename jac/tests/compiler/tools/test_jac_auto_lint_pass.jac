@@ -1517,6 +1517,56 @@ test "W3051 strip-docstrings removes all docstrings when selected" {
     assert "# inline comment" in formatted;
 }
 
+test "W3051 strip-docstrings removes string statements inside bodies" {
+    input_path = auto_lint_fixture_path("deslop_string_stmts.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-docstrings"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    for gone in [
+        "FIRST_STMT_DOC",
+        "MID_BODY_DOC",
+        "SINGLE_QUOTED_NOTE",
+        "MULTI_",
+        "NESTED_NOTE",
+        "CASE_NOTE",
+        "LAMBDA_NOTE"
+    ] {
+        assert gone not in formatted , f"{gone} survived:\n{formatted}";
+    }
+    # An f-string can run code, a suppressed line opted out, a case body
+    # cannot be left empty, a lone lambda statement is its return value (so a
+    # string whose removal would leave one expression statement must stay),
+    # and a string in a JSX slot is rendered content.
+    for kept in [
+        "KEPT_FSTRING",
+        "KEPT_SUPPRESSED",
+        "KEPT_LONE_CASE",
+        "KEPT_LAMBDA_RETURN",
+        "KEPT_BEFORE_LONE_EXPR",
+        "KEPT_SLOT_CONTENT"
+    ] {
+        assert kept in formatted , f"{kept} was stripped:\n{formatted}";
+    }
+    assert "return m;" in formatted;
+}
+
+test "W0060 flags every string statement in a body, not only the first" {
+    prog = JacProgram();
+    prog.compile(file_path=auto_lint_fixture_path("deslop_string_stmts.jac"));
+    lines = sorted(
+        w.loc.first_line
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W0060"
+    );
+    assert lines == [2, 8, 9, 10, 12, 14, 29] , f"W0060 lines: {lines}";
+}
+
 test "deslop rules fire under select all" {
     input_path = auto_lint_fixture_path("deslop.jac");
     config = JacConfig();
