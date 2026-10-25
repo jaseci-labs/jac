@@ -390,3 +390,28 @@ test "a relative import in an impl/ annex resolves from its module, as at runtim
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "an absolute import in an annex keeps resolving from the annex, past a sibling of the module" {
+    base = tempfile.mkdtemp(prefix="annex_abs_");
+    try {
+        os.makedirs(os.path.join(base, "mod.impl"));
+        with open(os.path.join(base, "types.jac"), "w") as f {
+            f.write("glob NOTHING: int = 0;\n");
+        }
+        with open(os.path.join(base, "mod.jac"), "w") as f {
+            f.write("def is_gen(x: object) -> bool;\n");
+        }
+        with open(os.path.join(base, "mod.impl", "gen.impl.jac"), "w") as f {
+            f.write(
+                "impl is_gen(x: object) -> bool {\n    import types as _t;\n"
+                "    return isinstance(x, _t.GeneratorType);\n}\n"
+            );
+        }
+        prog = JacProgram();
+        prog.compile(os.path.join(base, "mod.jac"));
+        assert not _codes(prog) , _codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
