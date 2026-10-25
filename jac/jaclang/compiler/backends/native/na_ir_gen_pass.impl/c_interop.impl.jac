@@ -633,6 +633,18 @@ impl NaIRGenPass._codegen_clib_args(
             continue;
         }
         if info.get("borrow") != "scalar" {
+            if isinstance(arg, uni.UnaryExpr)
+                and is_borrow_kind(arg.ownership)
+                and (
+                    is_ptr_type(arg.operand.type)
+                    or self._c_scalar_llvm(arg.operand.type) is not None
+                ) {
+                lent = self._clib_place_ptr(arg);
+                if lent is not None and isinstance(lent.type, ir.PointerType) {
+                    out.append(self.builder.bitcast(lent, i8p, name=f"clib.lend.{i}"));
+                    continue;
+                }
+            }
             val = self._codegen_expr(arg);
             if val is None {
                 return out;
