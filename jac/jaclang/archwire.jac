@@ -991,9 +991,11 @@ graph import {
     ]
     compiler.driver.source_products ++> [
         dist.publish.builder { python_text },
-        dist.publish.runtime_vendor._compile_runtime_module | dist.source.project {
-            python_source
+        dist.publish.runtime_vendor._compile_runtime_module {
+            python_source,
+            python_text
         },
+        dist.source.project { python_source },
     ]
     compiler.driver.toolchain ++> dist.precompile_bytecode.seal_native
         | project.compiler_host.ProjectHost.native_pipeline_available {
@@ -1330,8 +1332,9 @@ graph import {
         },
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
+        dist.publish.runtime_vendor._compile_runtime_module
+            | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
-        testing.cl_test_runner.module_is_client { module_record },
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
