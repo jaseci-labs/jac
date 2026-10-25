@@ -16,7 +16,10 @@ impl _host_boot_py(
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
     identifier: str = "",
-    pg_dist: str = ""
+    pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str {
     config = {
         "app_name": app_name,
@@ -25,7 +28,9 @@ impl _host_boot_py(
         "mode": mode,
         "program": dict(program or {}),
         "backend": backend or "embedded",
-        "pg_dist": pg_dist,
+        "backends": dict(backends or {}),
+        "default_backend": default_backend,
+        "profiles": profiles,
         "dispatch": {
             "timeout_s": dispatch_timeout_s,
             "max_queue": dispatch_max_queue,
@@ -54,7 +59,10 @@ impl _generate_host_source(
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
     identifier: str = "",
-    pg_dist: str = ""
+    pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -66,7 +74,10 @@ impl _generate_host_source(
         dispatch_debug,
         plugin_configs,
         identifier,
-        pg_dist
+        pg_dist,
+        backends,
+        default_backend,
+        profiles
     );
 
     bootstrap_js = (
@@ -164,6 +175,7 @@ impl _generate_host_source(
         "    api.PyEval_RestoreThread(ts);\n"
         "    if healthy {\n"
         "        api.PyRun_SimpleString(\"_ctx.shutdown()\");\n"
+        "        api.PyRun_SimpleString(\"_ctx.relaunch_if_requested()\");\n"
         "    }\n"
         "    api.Py_Finalize();\n"
         "}\n"

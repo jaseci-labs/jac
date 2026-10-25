@@ -1,6 +1,7 @@
 import asyncio;
 import json;
 import queue;
+import threading;
 import webbrowser;
 import from urllib.parse { urlparse }
 
@@ -26,6 +27,9 @@ async def _pull(gen: any) -> any;
 obj DesktopBrokerExtension(ServerExtension) {
     has store: SessionStore,
         host: any = None,
+        choice: BackendChoice | None = None,
+        profiles: ProfileStore | None = None,
+        relaunch_delay_s: float = 0.25,
         opener: Callable[[str], bool] = webbrowser.open,
         prefix: str = DEFAULT_PREFIX,
         pending: PendingAuth = PendingAuth();

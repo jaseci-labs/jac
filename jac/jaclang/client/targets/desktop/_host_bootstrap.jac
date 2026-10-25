@@ -14,7 +14,10 @@ def _host_boot_py(
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
     identifier: str = "",
-    pg_dist: str = ""
+    pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;
 
 
@@ -30,5 +33,8 @@ def _generate_host_source(
     dispatch_debug: bool = False,
     plugin_configs: (dict[str, any] | None) = None,
     identifier: str = "",
-    pg_dist: str = ""
+    pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;

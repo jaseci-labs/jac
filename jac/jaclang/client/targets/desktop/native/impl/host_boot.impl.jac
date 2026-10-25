@@ -24,6 +24,23 @@ impl HostContext.shutdown {
     _stop_embedded_store(self.pg_home);
 }
 
+impl HostContext.wants_relaunch -> bool {
+    return self.choice is not None and bool(self.choice.relaunch);
+}
+
+impl HostContext.relaunch {
+    exe = host_executable();
+    sys.stdout.flush();
+    sys.stderr.flush();
+    os.execv(exe, [exe]);
+}
+
+impl HostContext.relaunch_if_requested {
+    if self.wants_relaunch() {
+        self.relaunch();
+    }
+}
+
 impl preferred_port(app_name: str) -> int {
     return 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
 }
@@ -244,11 +261,9 @@ impl serve_program(
     dist_dir: str,
     app_name: str,
     backend: str,
-    host: any,
-    store: any
+    broker: any
 ) -> tuple[any, int, any] {
     _ensure_jac_meta_importer();
-    broker = DesktopBrokerExtension(store=store, host=host);
     remote = backend != EMBEDDED;
     pinned = _pinned_port();
     attempts = [(pinned, 0)]
@@ -314,6 +329,19 @@ impl boot(config_json: str) -> HostContext {
         _migrate_legacy_data_dir(data_dir, app_dir);
     }
 
+    backends = (cfg.get("backends") or {}) as dict[str, str];
+    choice: (BackendChoice | None) = None;
+    session_file = "session.json";
+    if backends {
+        choice = BackendChoice.load(
+            backends,
+            str(cfg.get("default_backend") or ASK),
+            os.path.join(data_dir, ".jac", "desktop", "backend.json")
+        );
+        backend = choice.backend();
+        session_file = "session." + (choice.active or ASK) + ".json";
+    }
+
     if backend == EMBEDDED {
         _enter_embedded_env(
             embedded_store_env(app_dir, data_dir, str(cfg.get("pg_dist") or ""))
@@ -332,15 +360,22 @@ impl boot(config_json: str) -> HostContext {
         }
 
         entry_file = resolve_program(program, app_dir) if backend == EMBEDDED else "";
-        store = SessionStore(os.path.join(data_dir, ".jac", "desktop", "session.json"));
+        store = SessionStore(os.path.join(data_dir, ".jac", "desktop", session_file));
+        profiles = ProfileStore.load(
+            os.path.join(data_dir, ".jac", "desktop", "profiles.json")
+        )
+            if cfg.get("profiles") and backend == EMBEDDED
+            else None;
+        broker = DesktopBrokerExtension(
+            store=store, host=host, choice=choice, profiles=profiles
+        );
         (runtime, port, stop) = serve_program(
             entry_file,
             data_dir,
             os.path.join(app_dir, "dist"),
             app_name,
             backend,
-            host,
-            store
+            broker
         );
 
         ctx = HostContext(
@@ -349,6 +384,7 @@ impl boot(config_json: str) -> HostContext {
             port=port,
             library_dir=str(layout.library_dir()),
             pg_home=(data_dir if backend == EMBEDDED else ""),
+            choice=choice,
             _stop=stop
         );
         try {

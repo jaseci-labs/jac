@@ -29,10 +29,14 @@ obj HostContext {
         runtime: any = None,
         library_dir: str = "",
         pg_home: str = "",
+        choice: any = None,
         _stop: any = None;
 
     def setup_webview(wv_handle: int);
     def shutdown;
+    def wants_relaunch -> bool;
+    def relaunch;
+    def relaunch_if_requested;
 }
 
 
@@ -93,8 +97,7 @@ def serve_program(
     dist_dir: str,
     app_name: str,
     backend: str,
-    host: any,
-    store: any
+    broker: any
 ) -> tuple[any, int, any];
 
 

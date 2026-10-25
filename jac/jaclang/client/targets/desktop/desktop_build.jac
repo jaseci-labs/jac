@@ -59,8 +59,13 @@ def stage_program(
     project_dir: Path,
     image_dir: Path,
     backend: str,
-    dist_dir: (Path | None)
+    dist_dir: (Path | None),
+    serves_remote: bool = False
 ) -> dict[str, str];
+
+def inject_backend_script(index_html: Path);
+
+glob BACKEND_SCRIPT_TAG: str = '<script src="/__jac/backend.js"></script>';
 
 def stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str;
 

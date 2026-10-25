@@ -25,7 +25,10 @@ def _generate_host_source(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
     identifier: str = "",
-    pg_dist: str = ""
+    pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;
 
 def _stage_cef_runtime(cef_dist: Path, out_dir: Path);
