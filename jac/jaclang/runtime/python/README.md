@@ -161,14 +161,15 @@ Exported memoryviews pin the logical size, and conversion finishes before an
 address is taken so user callbacks cannot invalidate a saved buffer pointer.
 Array size reporting includes the Jac state and actual retained buffer allocation.
 
-`modules/pickle.jac` exposes typed reader/writer state. `pickle_encode.jac` and
-`pickle_decode.jac` implement all six protocols, memoization, object reductions,
-and callbacks; `pickle_stream.jac` owns framing and bounds checks, while
-`pickle_objects.jac` resolves globals and compatibility mappings. Retained
-CPython dictionaries store memo entries, and buffer objects keep their existing
-Python ABI. Shared serialization error notes live in `capi.jac`, also used by
-JSON. The two upstream pickle size assertions describe retired C layouts;
-smoke checks cover native memo allocation, reclamation, and callback cycles.
+`modules/pickle.jac` holds the Pickler and Unpickler objects, their memo
+proxies and the module-level dump(s)/load(s). `pickle_encode.jac` and
+`pickle_decode.jac` follow `Modules/_pickle.c` over C records: the encoder
+keeps the pointer-keyed open-addressing memo table and a framed bytes output
+buffer, the decoder an object stack, a mark stack and an index-keyed memo
+array, reading straight from the input buffer or a prefetched file chunk.
+dumps/loads run on stack-held records. The two upstream pickle size
+assertions describe retired C layouts; smoke checks cover native memo
+allocation, reclamation, and callback cycles.
 
 `modules/datetime_*.jac` implement `_datetime`: calendar arithmetic and ISO
 8601 parsing (`datetime_calendar.jac`), the shared accessors, constructors and

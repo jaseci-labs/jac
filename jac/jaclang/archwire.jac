@@ -15958,7 +15958,6 @@ graph import runtime.python {
             | modules.lzma
             | modules.marshal
             | modules.multibytecodec
-            | modules.pickle
             | modules.posix_fileio
             | modules.posix_files
             | modules.pyexpat
@@ -16208,7 +16207,8 @@ graph import runtime.python {
             | modules.itertools
             | modules.lsprof
             | modules.multibytecodec
-            | modules.pickle
+            | modules.pickle_decode
+            | modules.pickle_encode
             | modules.queue
             | modules.struct
             | modules.zlib { jacpy_binding_state_get, visit_reference },
@@ -16226,6 +16226,7 @@ graph import runtime.python {
             | modules.locale
             | modules.lzma
             | modules.md5
+            | modules.pickle
             | modules.pwd
             | modules.resource
             | modules.sha1
@@ -16796,58 +16797,7 @@ graph import runtime.python {
             text_object,
             text_value
         },
-        modules.pickle {
-            boundary_failure,
-            builtin_kind,
-            builtin_type,
-            checked,
-            jac_heap_size,
-            jac_list_heap_size,
-            object_error,
-            required,
-            text_object,
-            text_value
-        },
-        modules.pickle_decode {
-            boundary_failure,
-            checked,
-            memory_byte,
-            object_tuple,
-            required,
-            text_value
-        },
-        modules.pickle_encode {
-            boundary_failure,
-            builtin_kind,
-            builtin_kind_of,
-            checked,
-            memory_byte,
-            object_tuple,
-            repr_value,
-            required,
-            serialization_note,
-            text_object,
-            text_value,
-            type_name
-        },
-        modules.pickle_objects {
-            boundary_failure,
-            checked,
-            object_tuple,
-            repr_value,
-            required,
-            text_object,
-            text_value
-        },
-        modules.pickle_stream {
-            boundary_failure,
-            checked,
-            memory_byte,
-            memory_set,
-            object_error,
-            object_tuple,
-            required
-        },
+        modules.pickle { builtin_kind, builtin_type, object_error, text_object },
         modules.posix_stat { audit_event },
         modules.pyexpat {
             StaticText,
@@ -21748,218 +21698,177 @@ graph import runtime.python {
         },
         modules.pickle {
             NULL,
-            PyDict_Clear,
-            PyDict_Copy,
             PyDict_New,
-            PyDict_SetItem,
-            PyErr_Clear,
-            PyErr_ExceptionMatches,
-            PyExc_AttributeError,
             PyExc_RuntimeError,
             PyExc_TypeError,
-            PyExc_ValueError,
-            PyList_GetItemRef,
-            PyLong_AsLongLong,
-            PyLong_FromLongLong,
-            PyLong_FromVoidPtr,
-            PyMapping_Items,
             PyObject,
-            PyObject_Call,
-            PyObject_CallOneArg,
+            PyObject_GetAttr,
             PyObject_GetAttrString,
-            PyObject_GetIter,
-            PyTuple_Size,
+            PyUnicode_InternFromString,
             Py_NewRef,
             Py_None,
             Py_TYPE,
-            _PyDict_SizeOf,
-            jacpy_bytearray_memory,
             jacpy_error_pending,
-            jacpy_is_dict,
-            jacpy_is_tuple,
-            jacpy_list_size,
             jacpy_optional_attr,
             jacpy_release,
-            jacpy_set_exception,
-            jacpy_tuple_item
+            jacpy_set_exception
         },
         modules.pickle_decode {
             NULL,
-            PyDict_Items,
+            PyBool_FromLong,
+            PyBuffer_Release,
+            PyBytes_DecodeEscape,
+            PyBytes_FromStringAndSize,
+            PyBytes_Type,
+            PyDict_GetItemWithError,
             PyDict_New,
+            PyDict_Next,
             PyDict_SetItem,
+            PyErr_Clear,
             PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_EOFError,
+            PyExc_NotImplementedError,
             PyExc_OverflowError,
+            PyExc_RuntimeError,
             PyExc_TypeError,
             PyExc_UnicodeDecodeError,
             PyExc_ValueError,
             PyFloat_FromDouble,
-            PyFloat_FromString,
-            PyImport_ImportModuleAttrString,
+            PyImport_Import,
             PyIter_Next,
-            PyList_Append,
-            PyList_GetItemRef,
-            PyLong_AsLongLong,
-            PyLong_FromLongLong,
+            PyList_New,
+            PyList_SetSlice,
+            PyLong_AsLongAndOverflow,
+            PyLong_AsSsize_t,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_Realloc,
             PyMemoryView_FromObject,
-            PyNumber_Long,
+            PyOS_string_to_double,
             PyObject,
             PyObject_Call,
+            PyObject_CallNoArgs,
+            PyObject_CallObject,
             PyObject_CallOneArg,
-            PyObject_GetAttrString,
-            PyObject_IsTrue,
+            PyObject_GetAttr,
+            PyObject_GetBuffer,
+            PyObject_GetIter,
+            PyObject_GetOptionalAttr,
+            PyObject_HasAttrWithError,
             PyObject_SetAttr,
             PyObject_SetItem,
+            PySet_New,
+            PySys_Audit,
             PyTuple_New,
-            PyTuple_Size,
-            Py_NewRef,
+            PyTuple_Pack,
+            PyUnicode_AsUTF8,
+            PyUnicode_Decode,
+            PyUnicode_DecodeASCII,
+            PyUnicode_FromEncodedObject,
+            PyUnicode_InternFromString,
             Py_None,
-            jacpy_bytearray_new,
-            jacpy_bytes_address,
-            jacpy_bytes_decode,
-            jacpy_bytes_from_memory,
-            jacpy_bytes_length,
-            jacpy_bytes_unescape,
-            jacpy_dict_get,
-            jacpy_dict_size,
-            jacpy_error_pending,
-            jacpy_float_unpack,
-            jacpy_is_dict,
-            jacpy_is_exact_unicode,
-            jacpy_is_list,
-            jacpy_is_tuple,
-            jacpy_is_type,
-            jacpy_is_unicode,
-            jacpy_list_new,
-            jacpy_list_size,
-            jacpy_long_from_signed_bytes,
-            jacpy_memory_copy,
-            jacpy_optional_attr,
-            jacpy_release,
-            jacpy_set_new,
-            jacpy_tuple_item,
-            jacpy_tuple_set_owned,
-            jacpy_type_new,
-            jacpy_unicode_intern
+            Py_buffer,
+            _PyErr_ChainExceptions1,
+            _PyLong_FromByteArray,
+            _PyUnicode_EqualToASCIIString
         },
         modules.pickle_encode {
             NULL,
-            PyByteArray_Resize,
+            PyBool_Type,
+            PyBuffer_IsContiguous,
+            PyBuffer_Release,
+            PyByteArray_Type,
+            PyBytes_FromObject,
+            PyBytes_FromStringAndSize,
+            PyBytes_Type,
             PyCallable_Check,
+            PyDict_Contains,
+            PyDict_DelItem,
+            PyDict_GetItemRef,
+            PyDict_GetItemWithError,
+            PyDict_New,
+            PyDict_Next,
             PyDict_SetItem,
+            PyDict_Type,
+            PyErr_Clear,
             PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_ImportError,
             PyExc_OverflowError,
             PyExc_RuntimeError,
             PyExc_TypeError,
             PyExc_UnicodeEncodeError,
             PyExc_ValueError,
-            PyImport_ImportModuleAttrString,
+            PyFloat_Type,
+            PyFrozenSet_Type,
+            PyFunction_Type,
+            PyImport_Import,
             PyIter_Check,
             PyIter_Next,
-            PyList_GetItemRef,
-            PyLong_AsLongLong,
-            PyLong_FromLongLong,
+            PyList_Type,
+            PyLong_AsLong,
+            PyLong_AsLongAndOverflow,
+            PyLong_AsSsize_t,
+            PyLong_FromLong,
             PyLong_FromVoidPtr,
-            PyMapping_Items,
-            PyNumber_Add,
+            PyLong_GetSign,
+            PyLong_Type,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyOS_double_to_string,
             PyObject,
             PyObject_Call,
+            PyObject_CallNoArgs,
             PyObject_CallOneArg,
-            PyObject_GetAttrString,
+            PyObject_GetAttr,
+            PyObject_GetBuffer,
+            PyObject_GetItem,
             PyObject_GetIter,
+            PyObject_GetOptionalAttr,
             PyObject_IsTrue,
+            PyObject_Repr,
             PyObject_Str,
+            PyPickleBuffer_Type,
             PySequence_List,
+            PySet_Type,
             PyTuple_GetSlice,
+            PyTuple_New,
+            PyTuple_Pack,
             PyTuple_Size,
+            PyTuple_Type,
+            PyType_IsSubtype,
+            PyUnicode_AsASCIIString,
             PyUnicode_AsEncodedString,
-            PyUnicode_ReadChar,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_AsUTF8String,
+            PyUnicode_DecodeLatin1,
+            PyUnicode_InternFromString,
+            PyUnicode_Type,
+            Py_BuildValue,
             Py_Ellipsis,
             Py_LeaveRecursiveCall,
-            Py_NewRef,
             Py_None,
             Py_NotImplemented,
+            Py_buffer,
+            _PyBytes_Resize,
+            _PyErr_ChainExceptions1,
+            _PyLong_AsByteArray,
             _PyLong_NumBits,
-            jacpy_bytes_address,
-            jacpy_bytes_decode,
-            jacpy_bytes_from_memory,
-            jacpy_bytes_length,
-            jacpy_dict_get,
-            jacpy_dict_size,
-            jacpy_error_pending,
-            jacpy_float_bits,
-            jacpy_float_repr,
-            jacpy_float_value,
-            jacpy_is_dict,
-            jacpy_is_tuple,
-            jacpy_is_type,
-            jacpy_is_unicode,
-            jacpy_list_size,
-            jacpy_long_fits_i64,
-            jacpy_long_repr,
-            jacpy_long_sign,
-            jacpy_long_signed_bytes,
-            jacpy_mapping_optional_item,
-            jacpy_object_type,
-            jacpy_optional_attr,
-            jacpy_recursion_enter,
-            jacpy_release,
-            jacpy_tuple_item,
-            jacpy_unicode_size
-        },
-        modules.pickle_objects {
-            NULL,
-            PyDict_Copy,
-            PyDict_Keys,
-            PyErr_ExceptionMatches,
-            PyErr_GetRaisedException,
-            PyErr_SetRaisedException,
-            PyExc_AttributeError,
-            PyExc_Exception,
-            PyExc_ImportError,
-            PyExc_RuntimeError,
-            PyExc_ValueError,
-            PyImport_Import,
-            PyImport_ImportModuleAttrString,
-            PyList_GetItemRef,
-            PyObject,
-            PyObject_GetAttr,
-            PyObject_Str,
-            PySys_Audit,
-            PyTuple_Size,
-            Py_NewRef,
-            Py_None,
-            jacpy_dict_get,
-            jacpy_error_pending,
-            jacpy_is_tuple,
-            jacpy_is_unicode,
-            jacpy_list_size,
-            jacpy_optional_attr,
-            jacpy_release,
-            jacpy_tuple_item
-        },
-        modules.pickle_stream {
-            NULL,
-            PyByteArray_Resize,
-            PyErr_GetRaisedException,
-            PyErr_SetRaisedException,
-            PyExc_EOFError,
-            PyExc_OverflowError,
-            PyExc_TypeError,
-            PyLong_FromLongLong,
-            PyObject,
-            PyObject_Call,
-            PyObject_CallOneArg,
-            Py_NewRef,
-            jacpy_bytearray_new,
-            jacpy_bytes_address,
-            jacpy_bytes_from_memory,
-            jacpy_bytes_length,
-            jacpy_exception_context,
-            jacpy_is_bytes,
-            jacpy_memory_copy,
-            jacpy_release,
-            jacpy_set_exception
+            _PyUnicode_EqualToASCIIString
         },
         modules.posix_core {
             NULL,
@@ -27437,6 +27346,7 @@ graph import runtime.python {
             | modules.datetime
             | modules.decimal_context
             | modules.decimal_number
+            | modules.pickle
             | modules.ssl
             | modules.ssl_cert { PyTypeObject },
         bindings.asyncio {
@@ -29261,6 +29171,36 @@ graph import runtime.python {
             _Py_hashtable_entry_t,
             _Py_hashtable_t,
             _object
+        },
+        modules.pickle_decode {
+            PyByteArrayObject,
+            PyListObject,
+            PyMemoryViewObject_VIEW,
+            PyTypeObject,
+            _Py_ID___dict__,
+            _Py_ID___new__,
+            _Py_ID___setstate__,
+            _Py_ID_append,
+            _Py_ID_extend,
+            _Py_ID_peek,
+            _Py_ID_read,
+            _Py_ID_readinto,
+            _Py_ID_readline
+        },
+        modules.pickle_encode {
+            PyByteArrayObject,
+            PyFloatObject,
+            PyListObject,
+            Py_DTSF_ADD_DOT_0,
+            _Py_ID___class__,
+            _Py_ID___main__,
+            _Py_ID___module__,
+            _Py_ID___name__,
+            _Py_ID___new__,
+            _Py_ID___qualname__,
+            _Py_ID___reduce__,
+            _Py_ID_items,
+            _Py_ID_write
         },
         modules.posix_fileio { PY_BUFFER_SIZE },
         modules.posix_stat { PyTypeObject as TypeLayout },
@@ -36780,6 +36720,16 @@ graph import runtime.python {
         modules.io_iobase { PyObject_Size, bytes_data },
         modules.io_stringio { long_check, tuple_check, unicode_length },
         modules.io_textio { bytes_data, tuple_check, unicode_length },
+        modules.pickle_decode {
+            bytes_check,
+            bytes_data,
+            list_check_exact,
+            long_check,
+            tuple_check,
+            type_check,
+            unicode_check
+        },
+        modules.pickle_encode { bytes_data, tuple_check, type_check, unicode_check },
         modules.warnings {
             long_check_exact,
             tuple_check,
@@ -36812,8 +36762,6 @@ graph import runtime.python {
             | modules.math
             | modules.multiprocessing
             | modules.operator
-            | modules.pickle
-            | modules.pickle_decode
             | modules.posix_ids
             | modules.pyexpat
             | modules.sqlite3
@@ -36895,6 +36843,8 @@ graph import runtime.python {
         },
         modules.ctypes_cdata { dict_check, dict_check_exact, object_xincref },
         modules.ctypes_objects { dict_check_exact },
+        modules.pickle_decode { dict_check, unicode_check_exact },
+        modules.pickle_encode { dict_check, dict_check_exact },
         modules.warnings { dict_check, object_xincref, unicode_check_exact },
     ]
     object_model.errors ++> [
@@ -36975,6 +36925,7 @@ graph import runtime.python {
             | modules.decimal_convert
             | modules.decimal_number
             | modules.decimal_objects
+            | modules.pickle
             | modules.socket_address
             | modules.socket_core
             | modules.socket_object
@@ -37386,6 +37337,31 @@ graph import runtime.python {
             tuple_get_item,
             tuple_set_item
         },
+        modules.pickle_decode {
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
+        },
+        modules.pickle_encode {
+            PyType_Type,
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
+        },
         modules.scproxy { object_decref, object_new_ref, object_xdecref },
         modules.signal {
             current_interp,
@@ -37521,7 +37497,10 @@ graph import runtime.python {
         pytime_monotonic,
         pytime_system
     }
-    object_model.set ++> interpreter.lifecycle { frozenset_check }
+    object_model.set ++> [
+        interpreter.lifecycle { frozenset_check },
+        modules.pickle_decode { set_check },
+    ]
     object_model.slice ++> modules.ctypes_objects
         | modules.elementtree
         | modules.sqlite3 { PySlice_AdjustIndices, PySlice_Unpack }
@@ -37564,6 +37543,8 @@ graph import runtime.python {
             | interpreter.pystate
             | interpreter.specialize
             | modules.faulthandler
+            | modules.pickle_decode
+            | modules.pickle_encode
             | modules.warnings { py_id },
         interpreter.importing { py_id, weakref_get_ref },
         interpreter.lifecycle { dict_check_exact, py_id, weakref_get_ref },
@@ -40067,11 +40048,7 @@ graph import runtime.python.modules {
         asyncio.call_with_context { CallStack },
         asyncio.future_clear { clear_future_fields },
     ]
-    binary_scalars ++> [
-        array | struct { integer_from_bits, read_bits, write_bits },
-        pickle_decode { integer_from_bits },
-        pickle_stream { read_bits, write_bits },
-    ]
+    binary_scalars ++> array | struct { integer_from_bits, read_bits, write_bits }
     blake2_simd ++> blake2 {
         Hacl_Hash_Blake2b_blake2_params,
         simd128_copy,
@@ -42161,19 +42138,37 @@ graph import runtime.python.modules {
         },
     ]
     output_buffer ++> bz2 | lzma | zlib | zstd { BlocksOutputBuffer, Cursor }
-    pickle_decode ++> pickle { unpickle_state }
-    pickle_encode ++> pickle { pickle_state }
-    pickle_objects ++> [
-        pickle { find_global },
-        pickle_encode { global_names, mapped_names },
-    ]
-    pickle_opcodes ++> pickle_decode | pickle_encode { opcode }
-    pickle_stream ++> [
-        pickle { builtin_stream_error },
-        pickle_decode { builtin_stream_error, pickle_reader, stream_error },
-        pickle_encode { builtin_stream_error, pickle_writer, stream_error },
-        pickle_objects { builtin_stream_error, stream_error },
-    ]
+    pickle_decode ++> pickle {
+        UnpicklerRec,
+        find_class_object,
+        pickle_load,
+        pickle_loads,
+        unpickle_state,
+        unpickler_free,
+        unpickler_init,
+        unpickler_memo_clear,
+        unpickler_memo_copy,
+        unpickler_memo_set,
+        unpickler_new,
+        unpickler_run,
+        unpickler_sizeof,
+        unpickler_traverse
+    }
+    pickle_encode ++> pickle {
+        PicklerRec,
+        pickle_dump,
+        pickle_dumps,
+        pickle_state,
+        pickler_dump_file,
+        pickler_free,
+        pickler_init,
+        pickler_memo_clear,
+        pickler_memo_copy,
+        pickler_memo_set,
+        pickler_new,
+        pickler_sizeof,
+        pickler_traverse
+    }
     posix_constants ++> [
         io_buffered { SEEK_DATA, SEEK_HOLE },
         posix_core {
