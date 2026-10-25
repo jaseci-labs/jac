@@ -25,7 +25,12 @@ impl ModuleManager.update(
         }
 
         for (p, mod) in self.program.mod.hub.items() {
-            if p != file_path {
+            if p == file_path {
+                continue;
+            }
+            held = self.sem_managers.get(p);
+
+            if held is None or held.ir is not mod {
                 self.sem_managers[p] = SemTokManager(ir=mod, target_path=p);
             }
         }

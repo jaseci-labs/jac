@@ -754,6 +754,10 @@ graph import {
     type compiler.driver.ifacecache ++> project.compiler_host { IfaceRegistry }
     compiler.driver.jir ++> [
         client.client_bundle.ClientBundleBuilder._signature { ct_dep_digest },
+        client.compiler.ViteCompiler._wasm_input_key {
+            ct_dep_digest,
+            running_compiler_digest
+        },
         client.jac_client_compiler.JacClientCompiler.emit_dependencies {
             compute_content_sha256
         },
@@ -882,7 +886,7 @@ graph import {
     ]
     compiler.driver.pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
     compiler.driver.pipeline_runner ++> [
-        client.compiler.ViteCompiler._compile_wasm_module { build_wasm },
+        client.compiler.ViteCompiler._compile_wasm_module { wasm_artifact_inputs },
         client.route_scanner.resolve_route_exports { route_exports },
         dist.precompile_bytecode._application_sources { compile_application },
         dist.source.client.write_client { wasm_ir },
@@ -5371,7 +5375,7 @@ graph import compiler {
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
-        driver.pipeline_runner.wasm_ir { build_link_plan, wasm_program_ir },
+        driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
     backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache;
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
@@ -5413,8 +5417,8 @@ graph import compiler {
     ]
     backends.native.na_ir_gen_pass --> driver.pipeline.codegen_passes { NaIRGenPass }
     backends.native.wasm_build ++> [
-        driver.pipeline_runner.wasm_artifact { emit_wasm_from_ir },
-        driver.pipeline_runner.wasm_ir {
+        driver.pipeline_runner.wasm_artifact_inputs { emit_wasm_from_ir },
+        driver.pipeline_runner.wasm_ir_units {
             _assert_ir_rc_free,
             _project_gc_settings,
             app_declared_imports
@@ -11706,7 +11710,7 @@ graph import compiler.driver {
             pop_native_target,
             push_native_target
         },
-        pipeline_runner.wasm_ir {
+        pipeline_runner.wasm_ir_units {
             CompileOptions,
             pop_native_target,
             push_native_target
@@ -11882,7 +11886,7 @@ graph import compiler.driver {
         run_plan
     }
     module_compile ++> compiler { compile_module }
-    na_coverage ++> pipeline_runner.wasm_ir { na_coverage_begin, na_coverage_end }
+    na_coverage ++> pipeline_runner.wasm_ir_units { na_coverage_begin, na_coverage_end }
     native_iface ++> [
         jir.native_deps_section { native_unit_ref },
         jir.parse_native_dep_rows { resolve_native_unit_ref },

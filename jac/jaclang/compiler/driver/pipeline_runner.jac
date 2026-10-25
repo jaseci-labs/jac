@@ -2,7 +2,15 @@ import os;
 
 def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]];
 
+def wasm_ir_units(
+    program: JacProgram, file_path: str
+) -> tuple[str, set[str], list[str]];
+
 def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> bytes;
+
+def wasm_artifact_inputs(
+    program: JacProgram, file_path: str, exports: list[str]
+) -> tuple[bytes, list[str]];
 
 
 def native_application(

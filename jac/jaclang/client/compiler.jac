@@ -32,6 +32,7 @@ class ViteCompiler {
     def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
     def _emit_wasm_module(self: ViteCompiler, module_path: Path) -> bool;
     def _wasm_targets(self: ViteCompiler, module_path: Path) -> list[Path];
+    def _wasm_input_key(self: ViteCompiler, units: list[str]) -> str;
     def _compile_wasm_module(
         self: ViteCompiler, module_path: Path
     ) -> dict[str, bytes];
