@@ -221,8 +221,7 @@ import from c {
              PyModuleDef_Slot(slot=Py_mod_multiple_interpreters, value=ptr(2)),
              PyModuleDef_Slot(slot=Py_mod_gil, value=ptr(1)),
              PyModuleDef_Slot(slot=0, value=ptr())
-         ],
-         _PyIO_Module: ModuleDef = ModuleDef(
+         ]; glob _PyIO_Module: ModuleDef = ModuleDef(
              m_base=PyModuleDef_Base(
                  ob_base=_object(
                      ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,

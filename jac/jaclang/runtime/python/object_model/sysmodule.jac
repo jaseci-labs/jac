@@ -82,7 +82,10 @@ import from c {
         argv: ptr, path0: &mut ptr[PyObject]
     ) -> i32;  def _PyRuntime_Initialize -> PyStatus;  def _PyDumpExecutors(
         out: ptr
-    ) -> i32;  def _PyImport_InitModules(interp: ptr[u8]) -> ptr[PyObject];  def _PyImport_FixupBuiltin(
+    ) -> i32 {
+        PyErr_SetString(PyExc_NotImplementedError, ptr[u8]("No JIT available"));
+        return -1;
+    }  def _PyImport_InitModules(interp: ptr[u8]) -> ptr[PyObject];  def _PyImport_FixupBuiltin(
         tstate: ptr[PyThreadState],
         mod: ptr[PyObject],
         name: ptr[u8],
@@ -4875,7 +4878,9 @@ impl _PySys_InitCore(tstate: ptr[PyThreadState], sysdict: ptr[PyObject]) -> PySt
             sysdict, ptr[u8]("__unraisablehook__"), ptr[u8]("unraisablehook")
         )
         or not set_sys_from_string(sysdict, ptr[u8]("version"), Py_GetVersion())
-        or not set_sys(sysdict, ptr[u8]("hexversion"), PyLong_FromLong(i64(PY_VERSION_HEX)))
+        or not set_sys(
+            sysdict, ptr[u8]("hexversion"), PyLong_FromLong(i64(PY_VERSION_HEX))
+        )
         or not set_sys(
             sysdict,
             ptr[u8]("_git"),

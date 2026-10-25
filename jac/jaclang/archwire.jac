@@ -26511,6 +26511,7 @@ graph import runtime.python {
             PyExc_Exception,
             PyExc_FileNotFoundError,
             PyExc_ImportError,
+            PyExc_NotImplementedError,
             PyExc_OSError,
             PyExc_RecursionError,
             PyExc_RuntimeError,
